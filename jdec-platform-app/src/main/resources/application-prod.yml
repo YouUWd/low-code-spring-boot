@@ -1,0 +1,85 @@
+# ===== 生产环境配置 =====
+
+spring:
+  # ===== 多数据源配置（通过环境变量注入） =====
+  datasource:
+    dynamic:
+      primary: primary
+      datasources:
+        # 主数据源 — JDEC 平台库
+        primary:
+          url: jdbc:mysql://${DB_PRIMARY_HOST:127.0.0.1}:${DB_PRIMARY_PORT:3306}/${DB_PRIMARY_NAME:jdec_platform}?useUnicode=true&characterEncoding=utf-8&useSSL=true&serverTimezone=Asia/Shanghai
+          username: ${DB_PRIMARY_USERNAME}
+          password: ${DB_PRIMARY_PASSWORD}
+        # auth_center 数据源
+        auth_center:
+          url: jdbc:mysql://${DB_AUTH_CENTER_HOST:127.0.0.1}:${DB_AUTH_CENTER_PORT:3306}/${DB_AUTH_CENTER_NAME:auth_center}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_AUTH_CENTER_USERNAME}
+          password: ${DB_AUTH_CENTER_PASSWORD}
+        # config_center 数据源
+        config_center:
+          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:127.0.0.1}:${DB_CONFIG_CENTER_PORT:3306}/${DB_CONFIG_CENTER_NAME:config_center}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_CONFIG_CENTER_USERNAME}
+          password: ${DB_CONFIG_CENTER_PASSWORD}
+        # hr_manage 人力平台数据源
+        hr_manage:
+          url: jdbc:mysql://${DB_HR_MANAGE_HOST:127.0.0.1}:${DB_HR_MANAGE_PORT:3306}/${DB_HR_MANAGE_NAME:hr_manage}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_HR_MANAGE_USERNAME}
+          password: ${DB_HR_MANAGE_PASSWORD}
+        # third 数据源
+        third:
+          url: jdbc:mysql://${DB_THIRD_HOST:127.0.0.1}:${DB_THIRD_PORT:3306}/${DB_THIRD_NAME:third}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_THIRD_USERNAME}
+          password: ${DB_THIRD_PASSWORD}
+  # ===== Redis 配置（通过环境变量注入） =====
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: 3000ms
+      lettuce:
+        pool:
+          max-active: 32
+          max-idle: 16
+          min-idle: 4
+          max-wait: 3000ms
+
+# ===== MyBatis-Plus 生产模式 =====
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+# ===== 日志配置 =====
+logging:
+  level:
+    com.jdec.platform: INFO
+    org.springframework.modulith: WARN
+    root: WARN
+
+# ===== 企业微信配置 - 生产环境 =====
+wechat:
+  work:
+    subjects:
+      # 主体1: environment (环境公司)
+      environment:
+        corp-id: wxa1d00a1a588baec3
+        corp-secret: ${WECHAT_ENVIRONMENT_SECRET}
+        agent-id: 1000005
+        token: easyWeChat-work
+        aes-key: ''
+      # 主体2: electric (电力公司)
+      electric:
+        corp-id: wxa1d00a1a588baec3
+        corp-secret: ${WECHAT_ELECTRIC_SECRET}
+        agent-id: 1000005
+        token: easyWeChat-work
+        aes-key: ''
+      # 主体3: energy (能源公司)
+      energy:
+        corp-id: wwa69aae03b2f90d72
+        corp-secret: ${WECHAT_ENERGY_SECRET}
+        agent-id: 1000003
+        token: energy-work
+        aes-key: ''

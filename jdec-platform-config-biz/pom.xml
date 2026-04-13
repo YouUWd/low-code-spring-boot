@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.jdec</groupId>
+        <artifactId>jdec-platform</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>jdec-platform-config-biz</artifactId>
+    
+    <dependencies>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-config-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-shared</artifactId>
+        </dependency>
+        <!-- If config needs auth context later, it only depends on auth-api -->
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-auth-api</artifactId>
+        </dependency>
+        <!-- ClassGraph for classpath scanning -->
+        <dependency>
+            <groupId>io.github.classgraph</groupId>
+            <artifactId>classgraph</artifactId>
+            <version>4.8.165</version>
+        </dependency>
+        <!-- Jackson support for Java 8 date/time types -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+    </dependencies>
+</project>

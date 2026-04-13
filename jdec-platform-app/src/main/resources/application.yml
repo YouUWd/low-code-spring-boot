@@ -1,0 +1,52 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: jdec-platform
+  profiles:
+    active: test
+
+  # ===== 禁用 Spring Modulith 自动配置 =====
+  autoconfigure:
+    exclude:
+      - org.springframework.modulith.events.jdbc.JdbcEventPublicationAutoConfiguration
+
+  # ===== Jackson 序列化 =====
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  # ===== Redis 配置 =====
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 2000ms
+      jedis:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+# ===== MyBatis-Plus 全局配置 =====
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+# ===== JWT 配置 =====
+jwt:
+  # 签名密钥（生产环境请通过环境变量注入，至少 32 字节）
+  secret: jdec-platform-jwt-secret-key-2026-change-in-production
+  # 令牌过期时间（毫秒），默认 24 小时
+  expiration-ms: 86400000
+
+# ===== 企业微信配置 - 公共配置 =====
+wechat:
+  work:
+    api-base-url: https://qyapi.weixin.qq.com
+    token-cache-seconds: 7000
