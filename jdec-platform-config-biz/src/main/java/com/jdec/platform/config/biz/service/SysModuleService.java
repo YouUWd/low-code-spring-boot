@@ -60,16 +60,16 @@ public class SysModuleService implements SysModuleApi {
         long count =
                 moduleMapper.selectCount(
                         new LambdaQueryWrapper<SysModule>()
-                                .eq(SysModule::getModuleCode, request.getCode()));
+                                .eq(SysModule::getModuleCode, request.getModuleCode()));
         if (count > 0) {
-            throw new IllegalArgumentException("模块编码已存在: " + request.getCode());
+            throw new IllegalArgumentException("模块编码已存在: " + request.getModuleCode());
         }
 
         // 创建模块
         SysModule module =
                 SysModule.builder()
-                        .moduleCode(request.getCode())
-                        .moduleName(request.getName())
+                        .moduleCode(request.getModuleCode())
+                        .moduleName(request.getModuleName())
                         .description(request.getDescription())
                         .build();
 
@@ -89,8 +89,8 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 更新字段
-        if (request.getName() != null) {
-            module.setModuleName(request.getName());
+        if (request.getModuleName() != null) {
+            module.setModuleName(request.getModuleName());
         }
         if (request.getDescription() != null) {
             module.setDescription(request.getDescription());

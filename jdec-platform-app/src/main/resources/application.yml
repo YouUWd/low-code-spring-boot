@@ -5,7 +5,7 @@ spring:
   application:
     name: jdec-platform
   profiles:
-    active: test
+    active: dev
 
   # ===== 禁用 Spring Modulith 自动配置 =====
   autoconfigure:

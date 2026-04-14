@@ -1,6 +1,7 @@
 package com.jdec.platform.hr.api.dto.response;
 
-import com.jdec.platform.shared.annotation.ModuleVO;
+import com.jdec.platform.shared.annotation.SysModule;
+import com.jdec.platform.shared.enums.PermissionType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,7 +13,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ModuleVO(moduleCode = "userBase", moduleName = "用户基本信息", description = "用户基本信息模块", permissionType = "read")
+@SysModule(moduleCode = "userBase", moduleName = "用户基本信息", description = "用户基本信息模块", permissionTypes = {PermissionType.READ})
 public class UserBaseResp {
     @Schema(description = "用户ID", example = "1")
     private Integer userId;
