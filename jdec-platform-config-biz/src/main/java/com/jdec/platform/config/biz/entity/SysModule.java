@@ -29,6 +29,9 @@ public class SysModule {
     /** 模块描述 */
     private String description;
 
+    /** 是否启用 */
+    private Boolean enabled;
+
     /** 创建时间 */
     private LocalDateTime createTime;
 

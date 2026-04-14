@@ -2,26 +2,42 @@ package com.jdec.platform.config.biz.registry;
 
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleFieldConfig;
+import com.jdec.platform.config.biz.entity.SysModulePermission;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldConfigMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
-import com.jdec.platform.config.biz.service.PermissionInitializationService;
+import com.jdec.platform.config.biz.mapper.SysModulePermissionMapper;
 import com.jdec.platform.shared.annotation.ModuleVO;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.lang.reflect.RecordComponent;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 
 /**
  * 模块 VO 自动注册器
  *
  * <p>在应用启动时扫描所有带有 @ModuleVO 注解的 Record 类， 自动注册到模块管理系统，并创建对应的模块字段配置和权限。
+ * 
+ * <p>设计特点：
+ * <ul>
+ *   <li>VO 类的字段信息只收集一次</li>
+ *   <li>字段信息在创建字段配置和权限时复用</li>
+ *   <li>无需反查数据库获取字段信息</li>
+ *   <li>权限初始化逻辑集中在本类中</li>
+ * </ul>
  */
 @Slf4j
 @Component
@@ -31,8 +47,8 @@ public class ModuleVORegistry {
 
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldConfigMapper fieldConfigMapper;
+    private final SysModulePermissionMapper permissionMapper;
     private final ModuleVOScanner moduleVOScanner;
-    private final PermissionInitializationService permissionInitializationService;
 
     /** 应用启动完成后自动注册所有 VO */
     @EventListener(ApplicationReadyEvent.class)
@@ -67,12 +83,13 @@ public class ModuleVORegistry {
         log.info("注册模块: {} ({})", moduleName, moduleCode);
 
         // 1. 检查模块是否已存在
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysModule> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getModuleCode, moduleCode);
         SysModule existingModule = sysModuleMapper.selectOne(wrapper);
         if (existingModule != null) {
             log.info("模块已存在，跳过创建: {}", moduleCode);
+            // 模块已存在，但需要检查字段是否有变更
+            syncModuleFieldsAndPermissions(existingModule, voClass);
             return;
         }
 
@@ -87,40 +104,264 @@ public class ModuleVORegistry {
         sysModuleMapper.insert(module);
         log.info("模块创建成功: {} (ID: {})", moduleName, module.getId());
 
-        // 3. 创建模块字段配置
-        if (voClass.isRecord()) {
-            registerRecordFields(module, voClass);
+        // 3. 收集 VO 类的字段信息（只收集一次）
+        List<VOFieldInfo> fieldInfos = collectVOFieldInfo(voClass);
+
+        // 4. 创建模块字段配置
+        if (!fieldInfos.isEmpty()) {
+            registerRecordFields(module, fieldInfos);
         }
 
-        // 4. 初始化模块权限
-        permissionInitializationService.initializePermissionsForModule(module.getId());
+        // 5. 初始化模块权限（基于收集的字段信息）
+        String permissionType = annotation.permissionType();
+        initializePermissionsForModule(module, fieldInfos, permissionType);
     }
 
-    /** 为 Record 类注册字段配置 */
-    private void registerRecordFields(SysModule module, Class<?> recordClass) {
-        RecordComponent[] components = recordClass.getRecordComponents();
+    /**
+     * 同步模块字段和权限
+     *
+     * <p>当模块已存在时，检查 VO 类的字段是否有变更
+     * <p>如果有新增字段，创建对应的字段配置和权限
+     * <p>如果有删除字段，删除对应的字段配置和权限
+     *
+     * @param module 已存在的模块
+     * @param voClass VO 类
+     */
+    private void syncModuleFieldsAndPermissions(SysModule module, Class<?> voClass) {
+        log.info("检查模块字段变更: {} ({})", module.getModuleName(), module.getModuleCode());
+
+        // 1. 收集当前 VO 类的字段信息
+        List<VOFieldInfo> currentFieldInfos = collectVOFieldInfo(voClass);
+        Set<String> currentFieldCodes = currentFieldInfos.stream()
+                .map(f -> f.getFieldCode())
+                .collect(Collectors.toSet());
+
+        // 2. 查询数据库中已存在的字段
+        LambdaQueryWrapper<SysModuleFieldConfig> fieldWrapper = new LambdaQueryWrapper<>();
+        fieldWrapper.eq(SysModuleFieldConfig::getModuleId, module.getId());
+        List<SysModuleFieldConfig> existingFields = fieldConfigMapper.selectList(fieldWrapper);
+        Set<String> existingFieldCodes = existingFields.stream()
+                .map(SysModuleFieldConfig::getFieldCode)
+                .collect(Collectors.toSet());
+
+        // 3. 检查新增字段
+        Set<String> newFieldCodes = new HashSet<>(currentFieldCodes);
+        newFieldCodes.removeAll(existingFieldCodes);
+        if (!newFieldCodes.isEmpty()) {
+            log.info("检测到新增字段: {}", newFieldCodes);
+            List<VOFieldInfo> newFields = currentFieldInfos.stream()
+                    .filter(f -> newFieldCodes.contains(f.getFieldCode()))
+                    .collect(Collectors.toList());
+            registerRecordFields(module, newFields);
+            createNewFieldPermissions(module, newFields);
+        }
+
+        // 4. 检查删除字段
+        Set<String> deletedFieldCodes = new HashSet<>(existingFieldCodes);
+        deletedFieldCodes.removeAll(currentFieldCodes);
+        if (!deletedFieldCodes.isEmpty()) {
+            log.info("检测到删除字段: {}", deletedFieldCodes);
+            deleteFieldsAndPermissions(module, deletedFieldCodes);
+        }
+
+        if (newFieldCodes.isEmpty() && deletedFieldCodes.isEmpty()) {
+            log.info("模块字段无变更: {}", module.getModuleCode());
+        }
+    }
+
+    /**
+     * 为新增字段创建权限
+     *
+     * @param module 模块
+     * @param newFields 新增字段列表
+     */
+    private void createNewFieldPermissions(SysModule module, List<VOFieldInfo> newFields) {
+        for (VOFieldInfo fieldInfo : newFields) {
+            // 为新字段创建 READ 权限
+            createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), "read");
+
+            // 为新字段创建 UPDATE 权限
+            createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), "update");
+        }
+    }
+
+    /**
+     * 删除字段和相关权限
+     *
+     * <p>将字段标记为不可见（visible=false），而不是物理删除
+     * <p>这样可以保留历史数据，并在字段重新出现时恢复
+     *
+     * @param module 模块
+     * @param deletedFieldCodes 删除的字段编码集合
+     */
+    private void deleteFieldsAndPermissions(SysModule module, Set<String> deletedFieldCodes) {
+        for (String fieldCode : deletedFieldCodes) {
+            // 1. 将字段标记为不可见
+            LambdaQueryWrapper<SysModuleFieldConfig> fieldWrapper = new LambdaQueryWrapper<>();
+            fieldWrapper.eq(SysModuleFieldConfig::getModuleId, module.getId())
+                    .eq(SysModuleFieldConfig::getFieldCode, fieldCode);
+            SysModuleFieldConfig fieldConfig = fieldConfigMapper.selectOne(fieldWrapper);
+            
+            if (fieldConfig != null) {
+                fieldConfig.setEnabled(false);
+                fieldConfig.setUpdateTime(LocalDateTime.now());
+                fieldConfigMapper.updateById(fieldConfig);
+                log.debug("字段已禁用: {}.{}", module.getModuleCode(), fieldCode);
+            }
+
+            // 2. 禁用相关权限（而不是删除）
+            LambdaQueryWrapper<SysModulePermission> permissionWrapper = new LambdaQueryWrapper<>();
+            permissionWrapper.eq(SysModulePermission::getModuleId, module.getId())
+                    .eq(SysModulePermission::getFieldCode, fieldCode);
+            List<SysModulePermission> permissions = permissionMapper.selectList(permissionWrapper);
+            
+            for (SysModulePermission permission : permissions) {
+                permission.setEnabled(false);
+                permissionMapper.updateById(permission);
+                log.debug("字段权限已禁用: {}.{}", module.getModuleCode(), fieldCode);
+            }
+        }
+    }
+
+    /**
+     * 收集 VO 类的字段信息
+     *
+     * <p>支持 Record 类和普通 Class 类
+     * <p>只收集一次，避免重复反射
+     *
+     * @param voClass VO 类
+     * @return 字段信息列表
+     */
+    private List<VOFieldInfo> collectVOFieldInfo(Class<?> voClass) {
+        List<VOFieldInfo> fieldInfos = new ArrayList<>();
+
+        if (voClass.isRecord()) {
+            // 处理 Record 类
+            collectFromRecord(voClass, fieldInfos);
+        } else {
+            // 处理普通 Class 类
+            collectFromClass(voClass, fieldInfos);
+        }
+
+        return fieldInfos;
+    }
+
+    /**
+     * 从 Record 类收集字段信息
+     *
+     * @param voClass Record 类
+     * @param fieldInfos 字段信息列表
+     */
+    private void collectFromRecord(Class<?> voClass, List<VOFieldInfo> fieldInfos) {
+        RecordComponent[] components = voClass.getRecordComponents();
         if (components == null || components.length == 0) {
             return;
         }
 
-        int sortOrder = 0;
         for (RecordComponent component : components) {
-            sortOrder++;
-
             String fieldCode = component.getName();
             String fieldName = getFieldName(component);
             String fieldType = getFieldType(component);
 
+            fieldInfos.add(new VOFieldInfo(fieldCode, fieldName, fieldType));
+        }
+    }
+
+    /**
+     * 从普通 Class 类收集字段信息
+     *
+     * <p>通过反射获取 Class 的所有字段
+     *
+     * @param voClass 普通 Class 类
+     * @param fieldInfos 字段信息列表
+     */
+    private void collectFromClass(Class<?> voClass, List<VOFieldInfo> fieldInfos) {
+        java.lang.reflect.Field[] fields = voClass.getDeclaredFields();
+        if (fields == null || fields.length == 0) {
+            return;
+        }
+
+        for (java.lang.reflect.Field field : fields) {
+            // 跳过 static 和 final 字段
+            int modifiers = field.getModifiers();
+            if (java.lang.reflect.Modifier.isStatic(modifiers) || 
+                java.lang.reflect.Modifier.isFinal(modifiers)) {
+                continue;
+            }
+
+            String fieldCode = field.getName();
+            String fieldName = getFieldNameFromField(field);
+            String fieldType = getFieldTypeFromClass(field.getType());
+
+            fieldInfos.add(new VOFieldInfo(fieldCode, fieldName, fieldType));
+        }
+    }
+
+    /**
+     * 从 Field 对象获取字段名称
+     *
+     * @param field Field 对象
+     * @return 字段名称
+     */
+    private String getFieldNameFromField(java.lang.reflect.Field field) {
+        // 尝试从 @Schema 注解获取
+        Schema schema = field.getAnnotation(Schema.class);
+        if (schema != null) {
+            String description = schema.description();
+            if (description != null && !description.isEmpty()) {
+                log.debug("字段 {} 的 Schema description: {}", field.getName(), description);
+                return description;
+            }
+        }
+
+        log.debug("字段 {} 没有 Schema 注解或 description 为空，使用字段名", field.getName());
+        return field.getName();
+    }
+
+    /**
+     * 从 Class 类型获取字段类型
+     *
+     * @param type 字段类型
+     * @return 字段类型字符串
+     */
+    private String getFieldTypeFromClass(Class<?> type) {
+        if (type == Integer.class || type == int.class) {
+            return "integer";
+        } else if (type == String.class) {
+            return "string";
+        } else if (type == Boolean.class || type == boolean.class) {
+            return "boolean";
+        } else if (type == Long.class || type == long.class) {
+            return "long";
+        } else if (type == Double.class || type == double.class) {
+            return "double";
+        } else if (type == Float.class || type == float.class) {
+            return "float";
+        } else if (type == java.time.LocalDateTime.class) {
+            return "datetime";
+        } else if (type == java.time.LocalDate.class) {
+            return "date";
+        } else if (type == java.time.LocalTime.class) {
+            return "time";
+        }
+        return "string";
+    }
+
+    /** 注册字段配置 */
+    private void registerRecordFields(SysModule module, List<VOFieldInfo> fieldInfos) {
+        int sortOrder = 0;
+        for (VOFieldInfo fieldInfo : fieldInfos) {
+            sortOrder++;
+
             // 检查字段是否已存在
-            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysModuleFieldConfig>
-                    wrapper =
-                            new com.baomidou.mybatisplus.core.conditions.query
-                                    .LambdaQueryWrapper<>();
+            LambdaQueryWrapper<SysModuleFieldConfig> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(SysModuleFieldConfig::getModuleId, module.getId())
-                    .eq(SysModuleFieldConfig::getFieldCode, fieldCode);
+                    .eq(SysModuleFieldConfig::getFieldCode, fieldInfo.fieldCode);
             SysModuleFieldConfig existing = fieldConfigMapper.selectOne(wrapper);
+            
             if (existing != null) {
-                log.debug("字段已存在，跳过创建: {}.{}", module.getModuleCode(), fieldCode);
+                // 字段已存在，不做任何处理，交给前端用户控制
+                log.debug("字段已存在，保持原配置: {}.{}", module.getModuleCode(), fieldInfo.fieldCode);
                 continue;
             }
 
@@ -128,19 +369,20 @@ public class ModuleVORegistry {
             SysModuleFieldConfig fieldConfig =
                     SysModuleFieldConfig.builder()
                             .moduleId(module.getId())
-                            .fieldCode(fieldCode)
-                            .fieldName(fieldName)
-                            .fieldType(fieldType)
+                            .fieldCode(fieldInfo.fieldCode)
+                            .fieldName(fieldInfo.fieldName)
+                            .fieldType(fieldInfo.fieldType)
                             .visible(true)
                             .sortOrder(sortOrder)
                             .width(100)
                             .align("left")
+                            .enabled(true)
                             .createTime(LocalDateTime.now())
                             .updateTime(LocalDateTime.now())
                             .build();
 
             fieldConfigMapper.insert(fieldConfig);
-            log.debug("字段创建成功: {}.{} ({})", module.getModuleCode(), fieldCode, fieldName);
+            log.debug("字段创建成功: {}.{} ({})", module.getModuleCode(), fieldInfo.fieldCode, fieldInfo.fieldName);
         }
     }
 
@@ -199,5 +441,230 @@ public class ModuleVORegistry {
             return "date";
         }
         return "string";
+    }
+
+    /**
+     * 为模块初始化权限
+     *
+     * <p>基于收集的字段信息直接创建权限，无需查询数据库
+     * <p>权限粒度划分：
+     * <ul>
+     *   <li>write、delete: 模块级权限</li>
+     *   <li>read、update: 字段级权限</li>
+     * </ul>
+     *
+     * @param module 模块
+     * @param fieldInfos 字段信息列表
+     * @param permissionType 权限类型 (read/write/update/delete)
+     */
+    private void initializePermissionsForModule(SysModule module, List<VOFieldInfo> fieldInfos, String permissionType) {
+        log.info(
+                "开始为模块初始化权限: {} ({}) [permissionType={}]",
+                module.getModuleName(),
+                module.getModuleCode(),
+                permissionType != null ? permissionType : "all");
+
+        try {
+            if (permissionType == null) {
+                // 创建所有权限类型
+                // 模块级权限: write、delete
+                createModulePermission(module, "write");
+                createModulePermission(module, "delete");
+                // 字段级权限: read、update
+                createFieldPermissions(module, fieldInfos);
+            } else {
+                // 根据指定的权限类型创建权限
+                String lowerType = permissionType.toLowerCase();
+                switch (lowerType) {
+                    case "write":
+                    case "delete":
+                        // 模块级权限
+                        createModulePermission(module, lowerType);
+                        break;
+                    case "read":
+                    case "update":
+                        // 字段级权限
+                        createFieldPermissions(module, fieldInfos, lowerType);
+                        break;
+                    default:
+                        log.warn("不支持的权限类型: {}", permissionType);
+                }
+            }
+
+            log.info("模块权限初始化完成: {}", module.getModuleCode());
+        } catch (Exception e) {
+            log.error("模块权限初始化失败: {}", module.getModuleCode(), e);
+            throw new RuntimeException("权限初始化失败", e);
+        }
+    }
+
+    /**
+     * 创建模块级权限
+     *
+     * @param module 模块
+     * @param permissionType 权限类型 (read/write/update/delete)
+     */
+    private void createModulePermission(SysModule module, String permissionType) {
+        String permissionCode = String.format("%s:*:%s", module.getModuleCode(), permissionType);
+
+        // 检查权限是否已存在
+        LambdaQueryWrapper<SysModulePermission> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModulePermission::getPermissionCode, permissionCode);
+        SysModulePermission existing = permissionMapper.selectOne(wrapper);
+
+        if (existing != null) {
+            log.debug("模块级 {} 权限已存在，跳过创建: {}", permissionType.toUpperCase(), permissionCode);
+            return;
+        }
+
+        // 构建权限名称和描述
+        String permissionName = buildPermissionName(module.getModuleName(), permissionType);
+        String description = buildPermissionDescription(module.getModuleName(), permissionType);
+
+        SysModulePermission permission =
+                SysModulePermission.builder()
+                        .moduleId(module.getId())
+                        .fieldCode("*")
+                        .permissionType(permissionType.toUpperCase())
+                        .permissionCode(permissionCode)
+                        .permissionName(permissionName)
+                        .description(description)
+                        .enabled(true)
+                        .build();
+
+        permissionMapper.insert(permission);
+        log.debug("模块级 {} 权限创建成功: {}", permissionType.toUpperCase(), permissionCode);
+    }
+
+    /**
+     * 为模块的字段创建权限
+     *
+     * <p>基于收集的字段信息创建字段级权限
+     * <p>默认创建 READ 和 UPDATE 权限
+     *
+     * @param module 模块
+     * @param fieldInfos 字段信息列表
+     */
+    private void createFieldPermissions(SysModule module, List<VOFieldInfo> fieldInfos) {
+        for (VOFieldInfo fieldInfo : fieldInfos) {
+            // 为字段创建 READ 权限
+            createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), "read");
+
+            // 为字段创建 UPDATE 权限
+            createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), "update");
+        }
+    }
+
+    /**
+     * 为模块的字段创建指定类型的权限
+     *
+     * <p>基于收集的字段信息创建字段级权限
+     *
+     * @param module 模块
+     * @param fieldInfos 字段信息列表
+     * @param permissionType 权限类型 (read/update)
+     */
+    private void createFieldPermissions(SysModule module, List<VOFieldInfo> fieldInfos, String permissionType) {
+        for (VOFieldInfo fieldInfo : fieldInfos) {
+            createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), permissionType);
+        }
+    }
+
+    /**
+     * 创建字段级权限
+     *
+     * @param module 模块
+     * @param fieldCode 字段编码
+     * @param fieldName 字段名称
+     * @param permissionType 权限类型 (read/update)
+     */
+    private void createFieldPermission(SysModule module, String fieldCode, String fieldName, String permissionType) {
+        String permissionCode = String.format("%s:%s:%s", module.getModuleCode(), fieldCode, permissionType);
+
+        // 检查权限是否已存在
+        LambdaQueryWrapper<SysModulePermission> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModulePermission::getPermissionCode, permissionCode);
+        SysModulePermission existing = permissionMapper.selectOne(wrapper);
+
+        if (existing != null) {
+            log.debug("字段级 {} 权限已存在，跳过创建: {}", permissionType.toUpperCase(), permissionCode);
+            return;
+        }
+
+        String permissionName = String.format("%s-%s", fieldName, getOperationName(permissionType));
+        String description = String.format("允许%s%s字段", getOperationName(permissionType), fieldName);
+
+        SysModulePermission permission =
+                SysModulePermission.builder()
+                        .moduleId(module.getId())
+                        .fieldCode(fieldCode)
+                        .permissionType(permissionType.toUpperCase())
+                        .permissionCode(permissionCode)
+                        .permissionName(permissionName)
+                        .description(description)
+                        .enabled(true)
+                        .build();
+
+        permissionMapper.insert(permission);
+        log.debug("字段级 {} 权限创建成功: {}", permissionType.toUpperCase(), permissionCode);
+    }
+
+    /**
+     * 构建权限名称
+     *
+     * @param moduleName 模块名称
+     * @param permissionType 权限类型
+     * @return 权限名称
+     */
+    private String buildPermissionName(String moduleName, String permissionType) {
+        return String.format("%s-%s", moduleName, getOperationName(permissionType));
+    }
+
+    /**
+     * 构建权限描述
+     *
+     * @param moduleName 模块名称
+     * @param permissionType 权限类型
+     * @return 权限描述
+     */
+    private String buildPermissionDescription(String moduleName, String permissionType) {
+        return String.format("允许%s%s数据", getOperationName(permissionType), moduleName);
+    }
+
+    /**
+     * 获取操作名称
+     *
+     * @param permissionType 权限类型
+     * @return 操作名称
+     */
+    private String getOperationName(String permissionType) {
+        switch (permissionType.toLowerCase()) {
+            case "read":
+                return "查看";
+            case "write":
+                return "创建";
+            case "update":
+                return "修改";
+            case "delete":
+                return "删除";
+            default:
+                return permissionType;
+        }
+    }
+
+    /**
+     * VO 字段信息
+     */
+    @Data
+    @AllArgsConstructor
+    private static class VOFieldInfo {
+        /** 字段编码 */
+        private String fieldCode;
+
+        /** 字段名称 */
+        private String fieldName;
+
+        /** 字段类型 */
+        private String fieldType;
     }
 }

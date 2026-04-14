@@ -26,3 +26,5 @@ logs/
 
 # ===== maven-wrapper.jar =====
 .mvn/wrapper/maven-wrapper.jar
+
+*.md

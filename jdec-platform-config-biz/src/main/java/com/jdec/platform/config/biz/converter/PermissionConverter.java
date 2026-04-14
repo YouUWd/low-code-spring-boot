@@ -30,7 +30,7 @@ public class PermissionConverter {
                 .permissionCode(entity.getPermissionCode())
                 .permissionName(entity.getPermissionName())
                 .description(entity.getDescription())
-                .isEnabled(entity.getIsEnabled())
+                .enabled(entity.getEnabled())
                 .createTime(entity.getCreateTime())
                 .updateTime(entity.getUpdateTime())
                 .build();
@@ -56,7 +56,7 @@ public class PermissionConverter {
                 .code(entity.getRoleCode())
                 .name(entity.getRoleName())
                 .description(entity.getDescription())
-                .isEnabled(entity.getIsEnabled())
+                .enabled(entity.getEnabled())
                 .build();
     }
 
@@ -78,7 +78,7 @@ public class PermissionConverter {
                 .roleCode(dto.getCode())
                 .roleName(dto.getName())
                 .description(dto.getDescription())
-                .isEnabled(dto.getIsEnabled())
+                .enabled(dto.getEnabled())
                 .build();
     }
 

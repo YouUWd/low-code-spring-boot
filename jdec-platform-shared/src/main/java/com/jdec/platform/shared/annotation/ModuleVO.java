@@ -13,7 +13,7 @@ import java.lang.annotation.Target;
  * <p>示例:
  *
  * <pre>
- * @ModuleVO(moduleCode = "user_base", moduleName = "用户基本信息")
+ * @ModuleVO(moduleCode = "user_base", moduleName = "用户基本信息", permissionType = "read")
  * record UserBaseEntry(
  *     @Schema(description = "用户ID") Integer userId,
  *     @Schema(description = "用户名") String userName
@@ -44,6 +44,23 @@ public @interface ModuleVO {
      * @return 模块描述
      */
     String description() default "";
+    
+    /**
+     * 权限类型 - 用于自动权限初始化
+     *
+     * <p>支持的权限类型:
+     * <ul>
+     *   <li>read - 读取权限（GET 请求，Response 对象）</li>
+     *   <li>write - 写入权限（POST 请求，Request 对象）</li>
+     *   <li>update - 更新权限（PUT 请求，Request 对象）</li>
+     *   <li>delete - 删除权限（DELETE 请求）</li>
+     * </ul>
+     *
+     * <p>默认为 "read"
+     *
+     * @return 权限类型
+     */
+    String permissionType() default "read";
 
     /**
      * 是否启用 - 默认启用

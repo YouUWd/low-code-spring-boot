@@ -43,7 +43,7 @@ public class SysRoleService {
     /** 查询启用的角色 */
     public List<SysRole> getEnabledRoles() {
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysRole::getIsEnabled, 1);
+        wrapper.eq(SysRole::getEnabled, true);
         return roleMapper.selectList(wrapper);
     }
 

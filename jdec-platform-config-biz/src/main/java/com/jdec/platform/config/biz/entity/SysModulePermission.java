@@ -44,7 +44,7 @@ public class SysModulePermission {
     private String description;
 
     /** 是否启用 */
-    private Integer isEnabled;
+    private Boolean enabled;
 
     /** 创建时间 */
     private LocalDateTime createTime;

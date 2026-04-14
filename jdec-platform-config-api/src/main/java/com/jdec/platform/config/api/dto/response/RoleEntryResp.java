@@ -15,7 +15,7 @@ public class RoleEntryResp {
     private String code;
     private String name;
     private String description;
-    private Integer isEnabled;
+    private Boolean enabled;
 
     public boolean isValidCode() {
         return code != null && !code.trim().isEmpty();

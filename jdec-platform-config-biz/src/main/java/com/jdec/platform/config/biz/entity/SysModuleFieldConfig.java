@@ -44,6 +44,9 @@ public class SysModuleFieldConfig {
     /** 对齐方式 */
     private String align;
 
+    /** 是否启用 */
+    private Boolean enabled;
+
     /** 创建时间 */
     private LocalDateTime createTime;
 
