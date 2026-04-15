@@ -41,18 +41,4 @@ public class RegisterModuleReq extends BaseRequest {
     @Schema(description = "模块描述", example = "用户基本信息模块")
     private String description;
 
-    /**
-     * 验证请求对象
-     *
-     * @throws IllegalArgumentException 验证失败时抛出
-     */
-    @Override
-    public void validate() {
-        if (moduleCode == null || moduleCode.trim().isEmpty()) {
-            throw new IllegalArgumentException("模块编码不能为空");
-        }
-        if (moduleName == null || moduleName.trim().isEmpty()) {
-            throw new IllegalArgumentException("模块名称不能为空");
-        }
-    }
 }

@@ -12,15 +12,9 @@ import lombok.NoArgsConstructor;
 @Builder
 public class ModuleEntryResp {
     private Long id;
-    private String code;
-    private String name;
+    private String moduleCode;
+    private String moduleName;
     private String description;
+    private Boolean enabled;
 
-    public boolean isValidCode() {
-        return code != null && !code.trim().isEmpty();
-    }
-
-    public boolean isValidName() {
-        return name != null && !name.trim().isEmpty();
-    }
 }

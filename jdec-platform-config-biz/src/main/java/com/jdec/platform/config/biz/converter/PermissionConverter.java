@@ -54,7 +54,7 @@ public class PermissionConverter {
         return RoleEntryResp.builder()
                 .id(entity.getId())
                 .code(entity.getRoleCode())
-                .name(entity.getRoleName())
+                .roleName(entity.getRoleName())
                 .description(entity.getDescription())
                 .enabled(entity.getEnabled())
                 .build();
@@ -68,19 +68,6 @@ public class PermissionConverter {
         return entities.stream().map(this::toRoleEntry).collect(Collectors.toList());
     }
 
-    /** DTO 转 Entity */
-    public SysRole toSysRole(RoleEntryResp dto) {
-        if (dto == null) {
-            return null;
-        }
-        return SysRole.builder()
-                .id(dto.getId())
-                .roleCode(dto.getCode())
-                .roleName(dto.getName())
-                .description(dto.getDescription())
-                .enabled(dto.getEnabled())
-                .build();
-    }
 
     // ==================== 用户角色关联转换 ====================
 

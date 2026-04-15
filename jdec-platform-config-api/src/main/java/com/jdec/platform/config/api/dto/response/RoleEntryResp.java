@@ -13,15 +13,8 @@ import lombok.NoArgsConstructor;
 public class RoleEntryResp {
     private Long id;
     private String code;
-    private String name;
+    private String roleName;
     private String description;
     private Boolean enabled;
 
-    public boolean isValidCode() {
-        return code != null && !code.trim().isEmpty();
-    }
-
-    public boolean isValidName() {
-        return name != null && !name.trim().isEmpty();
-    }
 }

@@ -26,8 +26,9 @@ public class ModuleConverter {
         }
         return ModuleEntryResp.builder()
                 .id(entity.getId())
-                .code(entity.getModuleCode())
-                .name(entity.getModuleName())
+                .moduleCode(entity.getModuleCode())
+                .moduleName(entity.getModuleName())
+                .enabled(entity.getEnabled())
                 .description(entity.getDescription())
                 .build();
     }
@@ -40,18 +41,6 @@ public class ModuleConverter {
         return entities.stream().map(this::toModuleEntry).collect(Collectors.toList());
     }
 
-    /** DTO 转 Entity */
-    public SysModule toSysModule(ModuleEntryResp dto) {
-        if (dto == null) {
-            return null;
-        }
-        return SysModule.builder()
-                .id(dto.getId())
-                .moduleCode(dto.getCode())
-                .moduleName(dto.getName())
-                .description(dto.getDescription())
-                .build();
-    }
 
     // ==================== 字段配置转换 ====================
 
