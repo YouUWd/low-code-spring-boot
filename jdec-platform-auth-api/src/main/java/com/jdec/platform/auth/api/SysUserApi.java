@@ -1,6 +1,8 @@
 package com.jdec.platform.auth.api;
 
 import com.jdec.platform.auth.api.dto.response.LoginResp;
+import com.jdec.platform.auth.api.dto.response.UserEntryResp;
+import com.jdec.platform.shared.model.PageResult;
 
 /** 认证模块暴露的 API 接口 */
 public interface SysUserApi {
@@ -22,4 +24,13 @@ public interface SysUserApi {
      * @return 登录响应
      */
     LoginResp loginWithCode(String phone, String code);
+
+    /**
+     * 分页获取用户列表
+     *
+     * @param pageNum 页码
+     * @param pageSize 每页大小
+     * @return 分页用户信息
+     */
+    PageResult<UserEntryResp> listUsers(Long pageNum, Long pageSize);
 }

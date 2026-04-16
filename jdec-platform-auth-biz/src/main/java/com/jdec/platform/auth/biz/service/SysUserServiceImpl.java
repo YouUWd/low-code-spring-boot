@@ -1,14 +1,18 @@
 package com.jdec.platform.auth.biz.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.auth.api.SysUserApi;
 import com.jdec.platform.auth.api.dto.response.LoginResp;
+import com.jdec.platform.auth.api.dto.response.UserEntryResp;
 import com.jdec.platform.auth.biz.entity.SysUser;
 import com.jdec.platform.auth.biz.mapper.SysUserMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.security.JwtTokenProvider;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 @DataSource(DataSourceConstants.AUTH_CENTER)
-public class AuthServiceImpl implements SysUserApi {
+public class SysUserServiceImpl implements SysUserApi {
 
     private final SysUserMapper sysUserMapper;
     private final JwtTokenProvider jwtTokenProvider;
@@ -70,5 +74,33 @@ public class AuthServiceImpl implements SysUserApi {
 
         return new LoginResp(
                 token, user.getId(), user.getUserName(), user.getEmail(), user.getStatus());
+    }
+
+    /**
+     * 分页获取用户列表
+     *
+     * @param pageNum 页码
+     * @param pageSize 每页大小
+     * @return 分页用户信息
+     */
+    @Override
+    public PageResult<UserEntryResp> listUsers(Long pageNum, Long pageSize) {
+        Page<SysUser> page = new Page<>(pageNum, pageSize);
+        Page<SysUser> result = sysUserMapper.selectPage(page, new LambdaQueryWrapper<>());
+
+        List<UserEntryResp> records =
+                result.getRecords().stream()
+                        .map(
+                                user ->
+                                        UserEntryResp.builder()
+                                                .id(user.getId())
+                                                .userName(user.getUserName())
+                                                .email(user.getEmail())
+                                                .phone(user.getPhone())
+                                                .status(user.getStatus())
+                                                .build())
+                        .toList();
+
+        return PageResult.of(pageNum, pageSize, result.getTotal(), records);
     }
 }

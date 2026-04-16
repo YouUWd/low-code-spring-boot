@@ -40,7 +40,7 @@ public class SysModuleFieldConfigService implements SysModuleFieldConfigApi {
         List<SysModuleFieldConfig> configs =
                 fieldConfigMapper.selectList(
                         new LambdaQueryWrapper<SysModuleFieldConfig>()
-                                .eq(SysModuleFieldConfig::getModuleId, module.getId()));
+                                .eq(SysModuleFieldConfig::getModuleId, module.getId()).orderByAsc(SysModuleFieldConfig::getSortOrder));
         return moduleConverter.toModuleFieldConfigResps(configs);
     }
 

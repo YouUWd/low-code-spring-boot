@@ -54,7 +54,6 @@ public class SysUserRoleController {
      *
      * @param userId 用户 ID
      * @param roleId 角色 ID
-     * @param request 添加角色请求
      * @return 添加结果
      */
     @PostMapping("/{userId}/{roleId}")
@@ -67,8 +66,7 @@ public class SysUserRoleController {
             @Parameter(description = "用户 ID", example = "1")
             @PathVariable Long userId,
             @Parameter(description = "角色 ID", example = "1")
-            @PathVariable Long roleId,
-            @RequestBody AddRoleToUserReq request) {
+            @PathVariable Long roleId) {
         UserRoleEntryResp result = userRoleService.addRoleToUser(userId, roleId);
         return ApiResponse.success("角色添加成功", result);
     }
