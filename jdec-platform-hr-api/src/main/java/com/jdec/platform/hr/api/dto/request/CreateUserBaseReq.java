@@ -29,13 +29,4 @@ public class CreateUserBaseReq {
     private String address;
     private Integer marital;
 
-    public boolean isValid() {
-        return userId != null && userName != null && !userName.trim().isEmpty();
-    }
-
-    public void validate() {
-        if (!isValid()) {
-            throw new IllegalArgumentException("用户ID和用户名不能为空");
-        }
-    }
 }

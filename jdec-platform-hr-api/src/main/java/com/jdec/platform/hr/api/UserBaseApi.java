@@ -41,4 +41,11 @@ public interface UserBaseApi {
      * @return 用户基本信息
      */
     UserBaseResp updateUserBase(UpdateUserBaseReq request);
+
+    /**
+     * 删除用户基本信息
+     *
+     * @param userId 用户ID
+     */
+    void deleteUserBase(Integer userId);
 }

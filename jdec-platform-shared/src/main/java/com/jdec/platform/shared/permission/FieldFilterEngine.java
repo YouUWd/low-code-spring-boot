@@ -237,13 +237,37 @@ public class FieldFilterEngine {
      */
     private void copyField(Object source, Object target, String fieldName) {
         try {
-            Field field = source.getClass().getDeclaredField(fieldName);
+            Field field = getFieldRecursively(source.getClass(), fieldName);
+            if (field == null) {
+                log.debug("字段不存在: {}", fieldName);
+                return;
+            }
             field.setAccessible(true);
             Object value = field.get(source);
             field.set(target, value);
             log.debug("字段已复制: {}", fieldName);
         } catch (Exception e) {
             log.debug("字段复制失败: {}", fieldName, e);
+        }
+    }
+
+    /**
+     * 递归获取字段，支持继承的字段
+     *
+     * @param clazz 类
+     * @param fieldName 字段名
+     * @return 字段对象，如果不存在则返回null
+     */
+    private Field getFieldRecursively(Class<?> clazz, String fieldName) {
+        if (clazz == null) {
+            return null;
+        }
+
+        try {
+            return clazz.getDeclaredField(fieldName);
+        } catch (NoSuchFieldException e) {
+            // 在父类中查找
+            return getFieldRecursively(clazz.getSuperclass(), fieldName);
         }
     }
 

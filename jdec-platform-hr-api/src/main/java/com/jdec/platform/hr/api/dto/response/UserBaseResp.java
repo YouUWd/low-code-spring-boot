@@ -13,8 +13,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@SysModule(moduleCode = "userBase", moduleName = "用户基本信息", description = "用户基本信息模块", permissionTypes = {PermissionType.READ})
+@SysModule(moduleCode = "userBase", moduleName = "用户基本信息查看", description = "用户基本信息查看模块", permissionTypes = {PermissionType.READ})
 public class UserBaseResp {
+
+    @Schema(description = "ID", example = "1")
+    private Long id;
+
     @Schema(description = "用户ID", example = "1")
     private Integer userId;
 

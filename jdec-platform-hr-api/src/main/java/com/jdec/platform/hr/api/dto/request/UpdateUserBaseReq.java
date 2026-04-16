@@ -1,5 +1,7 @@
 package com.jdec.platform.hr.api.dto.request;
 
+import com.jdec.platform.shared.annotation.SysModule;
+import com.jdec.platform.shared.enums.PermissionType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -8,6 +10,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@SysModule(moduleCode = "userBase-update",moduleName = "用户基本信息编辑", description = "编辑用户基本信息", permissionTypes = PermissionType.UPDATE)
 public class UpdateUserBaseReq {
     private Long id;
     private String userName;

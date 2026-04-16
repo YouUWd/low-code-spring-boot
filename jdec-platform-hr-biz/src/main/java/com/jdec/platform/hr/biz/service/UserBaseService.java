@@ -58,7 +58,6 @@ public class UserBaseService implements UserBaseApi {
     @Override
     @Transactional
     public UserBaseResp createUserBase(CreateUserBaseReq request) {
-        request.validate();
         UserBase userBase =
                 UserBase.builder()
                         .userId(request.getUserId())
@@ -115,5 +114,15 @@ public class UserBaseService implements UserBaseApi {
         userBaseMapper.updateById(userBase);
         log.info("用户基本信息更新成功: {}", request.getId());
         return UserBaseConverter.toUserBaseResp(userBaseMapper.selectById(request.getId()));
+    }
+
+    @Override
+    @Transactional
+    public void deleteUserBase(Integer userId) {
+        if (userId == null) {
+            return;
+        }
+        userBaseMapper.deleteById(userId);
+        log.info("用户基本信息删除成功: {}", userId);
     }
 }

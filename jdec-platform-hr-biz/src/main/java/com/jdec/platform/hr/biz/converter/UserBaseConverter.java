@@ -20,6 +20,7 @@ public class UserBaseConverter {
         }
 
         return UserBaseResp.builder()
+                .id(entity.getId())
                 .userId(entity.getUserId())
                 .userName(entity.getUserName())
                 .shortName(entity.getShortName())
@@ -54,6 +55,7 @@ public class UserBaseConverter {
         }
 
         return UserBase.builder()
+                .id(dto.getId())
                 .userId(dto.getUserId())
                 .userName(dto.getUserName())
                 .shortName(dto.getShortName())
