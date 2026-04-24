@@ -1,5 +1,7 @@
 package com.jdec.platform.hr.api.dto.request;
 
+import com.jdec.platform.shared.annotation.ApiModule;
+import com.jdec.platform.shared.enums.PermissionType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -8,6 +10,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@ApiModule(moduleCode = "UserBase-Create", moduleName = "用户基本信息创建", permissionTypes = PermissionType.WRITE)
 public class CreateUserBaseReq {
     private Integer userId;
     private String userName;

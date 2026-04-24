@@ -6,6 +6,7 @@ import com.jdec.platform.config.biz.entity.SysModulePermission;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldConfigMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModulePermissionMapper;
+import com.jdec.platform.shared.annotation.ApiModule;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.PermissionType;
@@ -19,6 +20,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -41,12 +43,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 @Component
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class ModuleVORegistryImpl {
+public class ApiModuleRegistry {
 
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldConfigMapper fieldConfigMapper;
     private final SysModulePermissionMapper permissionMapper;
-    private final ModuleVOScanner moduleVOScanner;
+    private final ApiModuleScanner scanner;
 
     /**
      * 字段信息内部类
@@ -85,7 +87,7 @@ public class ModuleVORegistryImpl {
         log.info("开始扫描并注册模块 VO...");
 
         // 扫描所有带有 @ModuleVO 注解的类
-        List<Class<?>> moduleVOClasses = moduleVOScanner.scanModuleVOClasses();
+        List<Class<?>> moduleVOClasses = scanner.scanModules();
 
         for (Class<?> voClass : moduleVOClasses) {
             try {
@@ -100,14 +102,14 @@ public class ModuleVORegistryImpl {
 
     /** 注册单个模块 VO */
     private void registerModuleVO(Class<?> voClass) {
-        com.jdec.platform.shared.annotation.SysModule annotation = voClass.getAnnotation(com.jdec.platform.shared.annotation.SysModule.class);
+        ApiModule annotation = voClass.getAnnotation(ApiModule.class);
         if (annotation == null || !annotation.enabled()) {
             return;
         }
 
         String moduleCode = annotation.moduleCode();
         String moduleName = annotation.moduleName();
-        String description = annotation.description();
+        String description = StringUtils.defaultIfEmpty(annotation.description(),annotation.moduleName());
 
         log.info("注册模块: {} ({})", moduleName, moduleCode);
 
@@ -163,7 +165,7 @@ public class ModuleVORegistryImpl {
         // 1. 收集当前 VO 类的字段信息
         List<FieldInfo> currentFieldInfos = collectVOFieldInfo(voClass);
         Set<String> currentFieldCodes = currentFieldInfos.stream()
-                .map(f -> f.getFieldCode())
+                .map(FieldInfo::getFieldCode)
                 .collect(Collectors.toSet());
 
         // 2. 查询数据库中已存在的字段
@@ -284,7 +286,7 @@ public class ModuleVORegistryImpl {
      */
     private void collectFromRecord(Class<?> voClass, List<FieldInfo> fieldInfos) {
         RecordComponent[] components = voClass.getRecordComponents();
-        if (components == null || components.length == 0) {
+        if (components == null) {
             return;
         }
 
@@ -307,9 +309,6 @@ public class ModuleVORegistryImpl {
      */
     private void collectFromClass(Class<?> voClass, List<FieldInfo> fieldInfos) {
         java.lang.reflect.Field[] fields = voClass.getDeclaredFields();
-        if (fields == null || fields.length == 0) {
-            return;
-        }
 
         for (java.lang.reflect.Field field : fields) {
             // 跳过 static 和 final 字段

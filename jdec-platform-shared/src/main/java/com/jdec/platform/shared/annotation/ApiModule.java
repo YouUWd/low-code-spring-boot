@@ -11,32 +11,84 @@ import java.lang.annotation.Target;
  *
  * <p>使用此注解的类会在应用启动时自动注册到模块管理系统，并根据类的字段自动创建模块字段配置。
  *
- * <p>示例:
+ * <p>支持模块分类：moduleCode 作为主分组，operationType 作为子分类。
+ *
+ * <p>示例 - 简单模块（不区分操作类型）:
  *
  * <pre>
- * @SysModule(moduleCode = "user_base", moduleName = "用户基本信息", permissionType = "read")
- * public class UserBaseVO {
+ * @SysModule(
+ *     moduleCode = "employee", 
+ *     moduleName = "员工管理", 
+ *     permissionTypes = {PermissionType.READ, PermissionType.WRITE}
+ * )
+ * public class EmployeeVO {
+ *     @Schema(description = "员工ID") 
+ *     private Integer employeeId;
+ * }
+ * </pre>
+ *
+ * <p>示例 - 分类模块（区分操作类型）:
+ *
+ * <pre>
+ * // 查看权限
+ * @SysModule(
+ *     moduleCode = "userBase",
+ *     moduleName = "用户基本信息",
+ *     operationType = "read",
+ *     operationName = "查看",
+ *     sortOrder = 1,
+ *     permissionTypes = {PermissionType.READ}
+ * )
+ * public class UserBaseResp {
  *     @Schema(description = "用户ID") 
  *     private Integer userId;
- *     
- *     @Schema(description = "用户名") 
- *     private String userName;
+ * }
+ *
+ * // 编辑权限
+ * @SysModule(
+ *     moduleCode = "userBase",
+ *     moduleName = "用户基本信息",
+ *     operationType = "update",
+ *     operationName = "编辑",
+ *     sortOrder = 2,
+ *     permissionTypes = {PermissionType.UPDATE}
+ * )
+ * public class UpdateUserBaseReq {
+ *     @Schema(description = "用户ID") 
+ *     private Integer userId;
+ * }
+ *
+ * // 删除权限
+ * @SysModule(
+ *     moduleCode = "userBase",
+ *     moduleName = "用户基本信息",
+ *     operationType = "delete",
+ *     operationName = "删除",
+ *     sortOrder = 3,
+ *     permissionTypes = {PermissionType.DELETE}
+ * )
+ * public class DeleteUserBaseReq {
  * }
  * </pre>
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface SysModule {
+public @interface ApiModule {
 
     /**
-     * 模块编码 - 唯一标识
+     * 模块编码 (主分组) - 唯一标识一个业务模块
+     *
+     * <p>示例: userBase、role、permission、employee 等
+     * <p>同一个 moduleCode 下可以有多个操作类型（read、update、delete）
      *
      * @return 模块编码
      */
     String moduleCode();
 
     /**
-     * 模块名称 - 中文显示名称
+     * 模块名称 - 主分组的显示名称
+     *
+     * <p>示例: "用户基本信息"、"角色管理"、"权限管理"
      *
      * @return 模块名称
      */
@@ -48,7 +100,7 @@ public @interface SysModule {
      * @return 模块描述
      */
     String description() default "";
-    
+
     /**
      * 权限类型 - 用于自动权限初始化（必填）
      *

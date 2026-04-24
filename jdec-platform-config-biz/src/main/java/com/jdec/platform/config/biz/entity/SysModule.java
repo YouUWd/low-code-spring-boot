@@ -10,6 +10,8 @@ import lombok.NoArgsConstructor;
  * 系统模块 Entity
  *
  * <p>对应数据库表: sys_module
+ * <p>支持模块分类，通过 moduleCode 作为主分组，operationType 作为子分类
+ * <p>例如: moduleCode="userBase", operationType="read|update|delete"
  */
 @Data
 @NoArgsConstructor

@@ -1,8 +1,6 @@
 package com.jdec.platform.config.api.dto.request;
 
-import com.jdec.platform.shared.annotation.SysModule;
 import com.jdec.platform.shared.dto.BaseRequest;
-import com.jdec.platform.shared.enums.PermissionType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
@@ -20,7 +18,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @Schema(description = "创建角色请求")
-@SysModule(moduleCode = "CreateRole", moduleName = "新增角色",description = "新增角色", permissionTypes = PermissionType.WRITE)
 public class CreateRoleReq extends BaseRequest {
 
     /**

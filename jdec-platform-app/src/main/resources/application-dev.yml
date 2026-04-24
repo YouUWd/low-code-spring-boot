@@ -4,6 +4,12 @@ spring:
   # ===== 多数据源配置 =====
   datasource:
     dynamic:
+      hikari:
+        minimum-idle: 3          # 最小空闲连接数，开发环境设为 1 即可
+        maximum-pool-size: 5     # 最大连接数，开发环境单个数据源 3 个绝对够用了
+        idle-timeout: 600000     # 空闲连接存活时间（毫秒），10分钟不活动则释放
+        max-lifetime: 1800000    # 连接的最大生命周期（毫秒），30分钟
+        connection-timeout: 3000
       primary: primary
       datasources:
         # 主数据源 — mysql 无业务使用

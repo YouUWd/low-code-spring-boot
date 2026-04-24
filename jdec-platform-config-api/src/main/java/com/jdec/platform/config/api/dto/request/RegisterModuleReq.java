@@ -1,6 +1,5 @@
 package com.jdec.platform.config.api.dto.request;
 
-import com.jdec.platform.shared.annotation.SysModule;
 import com.jdec.platform.shared.dto.BaseRequest;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;

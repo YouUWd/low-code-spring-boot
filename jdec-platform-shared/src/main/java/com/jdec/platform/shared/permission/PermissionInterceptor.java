@@ -1,5 +1,6 @@
 package com.jdec.platform.shared.permission;
 
+import com.jdec.platform.shared.annotation.ApiModule;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import lombok.RequiredArgsConstructor;
@@ -87,8 +88,8 @@ public class PermissionInterceptor {
      * @return 模块代码
      */
     private String getModuleCode(Object obj) {
-        com.jdec.platform.shared.annotation.SysModule annotation = 
-            obj.getClass().getAnnotation(com.jdec.platform.shared.annotation.SysModule.class);
+        ApiModule annotation =
+            obj.getClass().getAnnotation(ApiModule.class);
         if (annotation != null) {
             return annotation.moduleCode();
         }
@@ -309,6 +310,6 @@ public class PermissionInterceptor {
      */
     private boolean isModuleVO(Object obj) {
         return obj.getClass().isAnnotationPresent(
-                com.jdec.platform.shared.annotation.SysModule.class);
+                ApiModule.class);
     }
 }

@@ -1,6 +1,6 @@
 package com.jdec.platform.hr.api.dto.response;
 
-import com.jdec.platform.shared.annotation.SysModule;
+import com.jdec.platform.shared.annotation.ApiModule;
 import com.jdec.platform.shared.enums.PermissionType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
@@ -8,12 +8,18 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 用户基本信息响应 */
+/**
+ * 用户基本信息响应
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@SysModule(moduleCode = "userBase", moduleName = "用户基本信息查看", description = "用户基本信息查看模块", permissionTypes = {PermissionType.READ})
+@ApiModule(
+        moduleCode = "UserBase-Read",
+        moduleName = "用户基本信息查看",
+        permissionTypes = {PermissionType.READ}
+)
 public class UserBaseResp {
 
     @Schema(description = "ID", example = "1")
@@ -60,4 +66,7 @@ public class UserBaseResp {
 
     @Schema(description = "地址", example = "北京市朝阳区")
     private String address;
+
+    @Schema(description = "Hello", example = "欢迎光临")
+    private HelloResp helloResp;
 }

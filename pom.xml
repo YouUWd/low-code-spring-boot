@@ -30,6 +30,7 @@
     </modules>
 
     <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>21</java.version>
         <spring-modulith.version>1.4.10</spring-modulith.version>
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
@@ -187,6 +188,7 @@
                 <configuration>
                     <source>21</source>
                     <target>21</target>
+                    <encoding>UTF-8</encoding>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
