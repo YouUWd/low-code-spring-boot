@@ -162,6 +162,10 @@ public class ApiModuleRegistry {
     private void syncModuleFieldsAndPermissions(SysModule module, Class<?> voClass) {
         log.info("检查模块字段变更: {} ({})", module.getModuleName(), module.getModuleCode());
 
+        // 获取模块的 permissionTypes 配置
+        ApiModule annotation = voClass.getAnnotation(ApiModule.class);
+        PermissionType[] permissionTypes = annotation != null ? annotation.permissionTypes() : new PermissionType[0];
+
         // 1. 收集当前 VO 类的字段信息
         List<FieldInfo> currentFieldInfos = collectVOFieldInfo(voClass);
         Set<String> currentFieldCodes = currentFieldInfos.stream()
@@ -185,7 +189,7 @@ public class ApiModuleRegistry {
                     .filter(f -> newFieldCodes.contains(f.getFieldCode()))
                     .collect(Collectors.toList());
             registerRecordFields(module, newFields);
-            createNewFieldPermissions(module, newFields);
+            createNewFieldPermissions(module, newFields, permissionTypes);
         }
 
         // 4. 检查删除字段
@@ -196,24 +200,64 @@ public class ApiModuleRegistry {
             deleteFieldsAndPermissions(module, deletedFieldCodes);
         }
 
+        // 5. 确保模块级权限存在（WRITE 和 DELETE）
+        ensureModuleLevelPermissions(module, permissionTypes);
+
         if (newFieldCodes.isEmpty() && deletedFieldCodes.isEmpty()) {
             log.info("模块字段无变更: {}", module.getModuleCode());
         }
     }
 
     /**
+     * 确保模块级权限存在
+     *
+     * <p>检查并创建缺失的模块级权限（WRITE 和 DELETE）
+     *
+     * @param module 模块
+     * @param permissionTypes 权限类型数组
+     */
+    private void ensureModuleLevelPermissions(SysModule module, PermissionType[] permissionTypes) {
+        if (permissionTypes == null || permissionTypes.length == 0) {
+            // 如果没有指定权限类型，确保所有模块级权限存在
+            createModulePermission(module, PermissionType.WRITE);
+            createModulePermission(module, PermissionType.DELETE);
+        } else {
+            // 根据指定的权限类型创建模块级权限
+            for (PermissionType permissionType : permissionTypes) {
+                if (permissionType == PermissionType.WRITE || permissionType == PermissionType.DELETE) {
+                    createModulePermission(module, permissionType);
+                }
+            }
+        }
+    }
+
+    /**
      * 为新增字段创建权限
+     *
+     * <p>根据模块的 permissionTypes 配置创建相应的权限
      *
      * @param module 模块
      * @param newFields 新增字段列表
+     * @param permissionTypes 权限类型数组
      */
-    private void createNewFieldPermissions(SysModule module, List<FieldInfo> newFields) {
-        for (FieldInfo fieldInfo : newFields) {
-            // 为新字段创建 READ 权限
-            createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), PermissionType.READ);
-
-            // 为新字段创建 UPDATE 权限
-            createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), PermissionType.UPDATE);
+    private void createNewFieldPermissions(SysModule module, List<FieldInfo> newFields, PermissionType[] permissionTypes) {
+        if (permissionTypes == null || permissionTypes.length == 0) {
+            // 如果没有指定权限类型，创建所有字段级权限（READ 和 UPDATE）
+            for (FieldInfo fieldInfo : newFields) {
+                createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), PermissionType.READ);
+                createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), PermissionType.UPDATE);
+            }
+        } else {
+            // 根据指定的权限类型创建权限
+            for (PermissionType permissionType : permissionTypes) {
+                if (permissionType == PermissionType.READ || permissionType == PermissionType.UPDATE) {
+                    // 字段级权限
+                    for (FieldInfo fieldInfo : newFields) {
+                        createFieldPermission(module, fieldInfo.getFieldCode(), fieldInfo.getFieldName(), permissionType);
+                    }
+                }
+                // WRITE 和 DELETE 是模块级权限，不需要为新字段创建
+            }
         }
     }
 

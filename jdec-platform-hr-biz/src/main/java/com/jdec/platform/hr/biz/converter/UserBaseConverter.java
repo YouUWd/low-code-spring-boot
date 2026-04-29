@@ -1,5 +1,6 @@
 package com.jdec.platform.hr.biz.converter;
 
+import com.jdec.platform.hr.api.dto.response.HelloResp;
 import com.jdec.platform.hr.api.dto.response.UserBaseResp;
 import com.jdec.platform.hr.biz.entity.UserBase;
 import java.util.Collections;
@@ -35,6 +36,7 @@ public class UserBaseConverter {
                 .birthday(entity.getBirthday())
                 .marital(entity.getMarital())
                 .address(entity.getAddress())
+                .helloResp(new HelloResp("Hell!","It works!"))
                 .build();
     }
 

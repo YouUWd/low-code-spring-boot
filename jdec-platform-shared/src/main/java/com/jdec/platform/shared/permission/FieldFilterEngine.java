@@ -11,7 +11,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -88,23 +87,26 @@ public class FieldFilterEngine {
             // 检查是否为 @ApiModule 标记的对象
             ApiModule annotation = obj.getClass().getAnnotation(ApiModule.class);
             if (annotation == null) {
+                log.debug("对象 {} 没有 @ApiModule 注解，跳过过滤", obj.getClass().getSimpleName());
                 return obj;
             }
 
             String moduleCode = annotation.moduleCode();
-            log.debug("开始过滤 @ApiModule 对象: {} (深度: {})", moduleCode, depth);
+            log.info("开始过滤 @ApiModule 对象: {} (深度: {}, 类型: {})", moduleCode, depth, obj.getClass().getSimpleName());
 
             // 从权限系统获取模块的字段编码
             List<String> fieldCodes = moduleFieldQueryService.getFieldCodesByModuleCode(moduleCode);
             if (fieldCodes == null || fieldCodes.isEmpty()) {
-                log.debug("模块未注册或无字段: {}", moduleCode);
+                log.warn("模块未注册或无字段: {}", moduleCode);
                 return obj;
             }
+            
+            log.debug("模块 {} 注册的字段: {}", moduleCode, fieldCodes);
 
             // 创建过滤后的对象
             try {
                 Object filtered = createFilteredObject(obj, moduleCode, fieldCodes, depth);
-                log.debug("@ApiModule 对象过滤完成: {}", moduleCode);
+                log.info("@ApiModule 对象过滤完成: {} -> {}", moduleCode, filtered != null ? filtered.getClass().getSimpleName() : "null");
                 return filtered;
             } catch (Exception e) {
                 log.error("过滤 @ApiModule 对象失败: {}", moduleCode, e);
@@ -232,6 +234,7 @@ public class FieldFilterEngine {
      * 创建过滤后的对象
      *
      * <p>支持自动检测并过滤未注册的嵌套对象字段
+     * <p>对于 Record 类型，创建新的 Record 实例，只包含允许的字段
      *
      * @param original 原始对象
      * @param moduleCode 模块代码
@@ -241,11 +244,17 @@ public class FieldFilterEngine {
      */
     private Object createFilteredObject(Object original, String moduleCode, List<String> fieldCodes, int depth)
             throws Exception {
-        // 创建新对象
-        Object filtered = original.getClass().getDeclaredConstructor().newInstance();
-
         // 一次查询获取用户对模块所有字段的READ权限（性能优化）
         Set<String> allowedFields = permissionValidator.getReadableFields(moduleCode);
+        
+        // 对于 Record 类型，创建新的 Record 实例，只包含允许的字段
+        if (original.getClass().isRecord()) {
+            log.debug("Record 类型对象，创建过滤后的新实例: {}", moduleCode);
+            return createFilteredRecord(original, allowedFields, depth);
+        }
+
+        // 创建新对象
+        Object filtered = original.getClass().getDeclaredConstructor().newInstance();
 
         // 复制所有字段，包括未注册的嵌套对象字段
         copyAllFieldsWithNestedDetection(original, filtered, allowedFields, depth);
@@ -276,9 +285,95 @@ public class FieldFilterEngine {
     }
 
     /**
+     * 创建过滤后的 Record 实例
+     *
+     * <p>Record 是不可变的，无法使用反射修改字段
+     * <p>此方法通过提取允许的字段值，使用 Record 的构造函数创建新实例
+     * <p>支持嵌套对象的递归过滤
+     *
+     * @param original 原始 Record 对象
+     * @param allowedFields 用户有权限的字段集合
+     * @param depth 当前递归深度
+     * @return 过滤后的 Record 对象
+     */
+    private Object createFilteredRecord(Object original, Set<String> allowedFields, int depth) throws Exception {
+        Class<?> recordClass = original.getClass();
+        java.lang.reflect.RecordComponent[] components = recordClass.getRecordComponents();
+        
+        log.info("创建过滤后的 Record: {}, 允许字段: {}, 深度: {}", recordClass.getSimpleName(), allowedFields, depth);
+        
+        // 提取允许的字段值
+        Object[] values = new Object[components.length];
+        Class<?>[] parameterTypes = new Class<?>[components.length];
+        
+        for (int i = 0; i < components.length; i++) {
+            java.lang.reflect.RecordComponent component = components[i];
+            String componentName = component.getName();
+            parameterTypes[i] = component.getType();
+            
+            if (allowedFields.contains(componentName)) {
+                // 获取字段值
+                Object value = component.getAccessor().invoke(original);
+                log.info("Record 字段 {} 被允许，原始值: {}", componentName, value);
+                
+                // 递归过滤嵌套对象
+                if (value != null && depth < MAX_FILTER_DEPTH) {
+                    if (value instanceof List) {
+                        log.debug("Record 字段 {} 是 List 类型，进行递归过滤", componentName);
+                        value = filterListInternal((List<?>) value, depth + 1);
+                    } else if (value.getClass().getAnnotation(ApiModule.class) != null) {
+                        log.info("Record 字段 {} 是 @ApiModule 对象，进行递归过滤", componentName);
+                        value = filterObjectInternal(value, depth + 1);
+                    }
+                }
+                
+                values[i] = value;
+                log.info("Record 字段 {} 最终值: {}", componentName, values[i]);
+            } else {
+                // 字段不被允许，设置为 null
+                log.info("Record 字段 {} 不被允许，设置为 null", componentName);
+                values[i] = null;
+            }
+        }
+        
+        // 使用规范构造函数创建新的 Record 实例
+        java.lang.reflect.Constructor<?> constructor = recordClass.getDeclaredConstructor(parameterTypes);
+        Object filtered = constructor.newInstance(values);
+        
+        log.info("过滤后的 Record 创建成功: {} = {}", recordClass.getSimpleName(), filtered);
+        return filtered;
+    }
+
+    /**
+     * 复制所有字段，包括嵌套对象字段
+     *
+     * <p>此方法会：
+     * <p>1. 复制所有已注册且用户有权限的字段
+     * <p>2. 对于嵌套的 @ApiModule 对象，递归过滤（使用嵌套对象自己的模块权限）
+     *
+     * @param source 源对象
+     * @param target 目标对象
+     * @param allowedFields 用户有权限的字段集合
+     * @param depth 当前递归深度
+     */
+    private void copyAllFieldsWithNestedDetection(Object source, Object target, Set<String> allowedFields, int depth) {
+        log.info("=== copyAllFieldsWithNestedDetection 开始 === source={}, target={}, depth={}", 
+                source.getClass().getSimpleName(), target.getClass().getSimpleName(), depth);
+        log.info("allowedFields: {}", allowedFields);
+        
+        // 复制所有已注册且用户有权限的字段
+        for (String fieldCode : allowedFields) {
+            log.debug("复制字段: {}", fieldCode);
+            copyFieldWithNestedFilter(source, target, fieldCode, depth);
+        }
+        
+        log.info("=== copyAllFieldsWithNestedDetection 结束 ===");
+    }
+
+    /**
      * 复制字段值，支持嵌套对象的递归过滤
      *
-     * <p>对于 @ApiModule 标记的嵌套对象，递归进行过滤
+     * <p>对于 @ApiModule 标记的嵌套对象，递归进行过滤（使用嵌套对象自己的模块权限）
      * <p>对于 List 类型的字段，过滤列表中的每个元素
      * <p>对于其他类型的字段，直接复制
      *
@@ -287,7 +382,7 @@ public class FieldFilterEngine {
      * @param fieldName 字段名
      * @param depth 当前递归深度
      */
-    private void copyField(Object source, Object target, String fieldName, int depth) {
+    private void copyFieldWithNestedFilter(Object source, Object target, String fieldName, int depth) {
         try {
             Field field = getFieldRecursively(source.getClass(), fieldName);
             if (field == null) {
@@ -296,128 +391,24 @@ public class FieldFilterEngine {
             }
             field.setAccessible(true);
             Object value = field.get(source);
+            log.debug("获取字段值: {} = {}", fieldName, value != null ? value.getClass().getSimpleName() : "null");
             
             // 递归过滤嵌套对象
             if (value != null && depth < MAX_FILTER_DEPTH) {
                 if (value instanceof List) {
-                    // 过滤列表中的每个元素
+                    log.debug("字段 {} 是 List 类型，进行递归过滤", fieldName);
                     value = filterListInternal((List<?>) value, depth + 1);
                 } else if (value.getClass().getAnnotation(ApiModule.class) != null) {
-                    // 递归过滤嵌套的 @ApiModule 对象
+                    log.info("字段 {} 是 @ApiModule 嵌套对象，进行递归过滤", fieldName);
                     value = filterObjectInternal(value, depth + 1);
+                    log.info("字段 {} 过滤后的值: {}", fieldName, value != null ? value.getClass().getSimpleName() : "null");
                 }
             }
             
             field.set(target, value);
             log.debug("字段已复制: {} (深度: {})", fieldName, depth);
         } catch (Exception e) {
-            log.debug("字段复制失败: {}", fieldName, e);
-        }
-    }
-
-    /**
-     * 扫描对象的所有字段，包括嵌套对象字段
-     *
-     * <p>此方法用于获取对象的所有字段，包括：
-     * <p>1. 已注册的字段（来自权限系统）
-     * <p>2. 未注册但标记了 @ApiModule 的嵌套对象字段
-     *
-     * @param obj 待扫描的对象
-     * @return 所有字段名集合
-     */
-    private Set<String> getAllFieldsIncludingNested(Object obj) {
-        Set<String> allFields = new HashSet<>();
-        
-        try {
-            Class<?> clazz = obj.getClass();
-            java.lang.reflect.Field[] fields = clazz.getDeclaredFields();
-            
-            for (java.lang.reflect.Field field : fields) {
-                // 跳过 static 和 final 字段
-                int modifiers = field.getModifiers();
-                if (java.lang.reflect.Modifier.isStatic(modifiers) || 
-                    java.lang.reflect.Modifier.isFinal(modifiers)) {
-                    continue;
-                }
-                
-                String fieldName = field.getName();
-                allFields.add(fieldName);
-            }
-        } catch (Exception e) {
-            log.debug("扫描对象字段异常", e);
-        }
-        
-        return allFields;
-    }
-
-    /**
-     * 复制所有字段，包括未注册的嵌套对象字段
-     *
-     * <p>此方法会：
-     * <p>1. 复制所有已注册且用户有权限的字段
-     * <p>2. 自动检测并复制未注册但标记了 @ApiModule 的嵌套对象字段
-     *
-     * @param source 源对象
-     * @param target 目标对象
-     * @param allowedFields 用户有权限的字段集合
-     * @param depth 当前递归深度
-     */
-    private void copyAllFieldsWithNestedDetection(Object source, Object target, Set<String> allowedFields, int depth) {
-        // 第一步：复制所有已注册且用户有权限的字段
-        for (String fieldCode : allowedFields) {
-            copyField(source, target, fieldCode, depth);
-        }
-        
-        // 第二步：自动检测并复制未注册的嵌套对象字段
-        if (depth < MAX_FILTER_DEPTH) {
-            Set<String> allFields = getAllFieldsIncludingNested(source);
-            Set<String> unregisteredFields = new HashSet<>(allFields);
-            unregisteredFields.removeAll(allowedFields);
-            
-            for (String fieldName : unregisteredFields) {
-                try {
-                    Field field = getFieldRecursively(source.getClass(), fieldName);
-                    if (field == null) {
-                        continue;
-                    }
-                    
-                    field.setAccessible(true);
-                    Object value = field.get(source);
-                    
-                    // 检查是否为嵌套对象
-                    if (value != null) {
-                        if (value instanceof List) {
-                            // 检查列表元素是否为 @ApiModule 对象
-                            List<?> list = (List<?>) value;
-                            if (!list.isEmpty()) {
-                                Object firstItem = list.get(0);
-                                if (firstItem != null && 
-                                    firstItem.getClass().getAnnotation(ApiModule.class) != null) {
-                                    // 递归过滤列表
-                                    Object filteredList = filterListInternal(list, depth + 1);
-                                    Field targetField = getFieldRecursively(target.getClass(), fieldName);
-                                    if (targetField != null) {
-                                        targetField.setAccessible(true);
-                                        targetField.set(target, filteredList);
-                                        log.debug("未注册的嵌套列表字段已复制并过滤: {} (深度: {})", fieldName, depth);
-                                    }
-                                }
-                            }
-                        } else if (value.getClass().getAnnotation(ApiModule.class) != null) {
-                            // 递归过滤嵌套对象
-                            Object filteredValue = filterObjectInternal(value, depth + 1);
-                            Field targetField = getFieldRecursively(target.getClass(), fieldName);
-                            if (targetField != null) {
-                                targetField.setAccessible(true);
-                                targetField.set(target, filteredValue);
-                                log.debug("未注册的嵌套对象字段已复制并过滤: {} (深度: {})", fieldName, depth);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.debug("处理未注册的嵌套字段失败: {}", fieldName, e);
-                }
-            }
+            log.error("字段复制失败: fieldName={}, error={}", fieldName, e.getMessage(), e);
         }
     }
 
