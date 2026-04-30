@@ -13,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
  * DataSource @DataSource} 注解切换数据源。
  */
 @Slf4j
-final class DataSourceContextHolder {
+public final class DataSourceContextHolder {
 
     private static final ThreadLocal<Deque<String>> CONTEXT =
             ThreadLocal.withInitial(ArrayDeque::new);
@@ -41,5 +41,30 @@ final class DataSourceContextHolder {
         if (stack.isEmpty()) {
             CONTEXT.remove();
         }
+    }
+
+    /**
+     * 获取当前线程的数据源名称（公共 API）
+     * 
+     * @return 数据源名称，如果未设置则返回 null
+     */
+    public static String getCurrentDataSource() {
+        return get();
+    }
+
+    /**
+     * 获取当前数据源，如果未设置则抛出异常（公共 API）
+     * 
+     * @return 数据源名称
+     * @throws IllegalStateException 如果未设置数据源
+     */
+    public static String getRequiredDataSource() {
+        String dataSource = get();
+        if (dataSource == null) {
+            throw new IllegalStateException(
+                "未设置数据源，请通过 X-Tenant-Id 请求头指定"
+            );
+        }
+        return dataSource;
     }
 }

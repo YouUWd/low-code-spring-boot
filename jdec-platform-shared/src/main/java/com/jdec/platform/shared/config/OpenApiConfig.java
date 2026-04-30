@@ -60,7 +60,7 @@ public class OpenApiConfig {
     public GroupedOpenApi configApi() {
         return GroupedOpenApi.builder()
                 .group("3. Config 配置中心")
-                .pathsToMatch("/api/config/**")
+                .pathsToMatch("/api/config/**", "/api/metadata/**", "/api/data/**")
                 .build();
     }
 

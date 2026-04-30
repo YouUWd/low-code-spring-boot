@@ -1,130 +1,110 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysModuleApi;
-import com.jdec.platform.config.api.dto.request.RegisterModuleReq;
-import com.jdec.platform.config.api.dto.request.UpdateModuleReq;
-import com.jdec.platform.config.api.dto.response.ModuleEntryResp;
+import com.jdec.platform.config.api.dto.request.CreateSysModuleReq;
+import com.jdec.platform.config.api.dto.request.QuerySysModuleReq;
+import com.jdec.platform.config.api.dto.request.SaveModuleReq;
+import com.jdec.platform.config.api.dto.request.SortOrderUpdateReq;
+import com.jdec.platform.config.api.dto.request.UpdateSysModuleReq;
+import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
+import com.jdec.platform.config.api.dto.response.SysModuleEntryResp;
+import com.jdec.platform.config.api.dto.response.SysModuleTreeResp;
+
 import com.jdec.platform.shared.model.ApiResponse;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
- * 模块管理 REST 控制器
- *
- * <p>提供模块的增删改查接口。
+ * 模块管理 Controller
  */
 @RestController
 @RequestMapping("/api/config/modules")
 @RequiredArgsConstructor
-@Tag(name = "模块管理", description = "模块的增删改查接口")
 public class SysModuleController {
 
-    private final SysModuleApi moduleService;
+    private final SysModuleApi sysModuleService;
 
     /**
-     * 获取所有模块
-     *
-     * @return 模块列表
-     */
-    @GetMapping
-    @Operation(summary = "获取所有模块", description = "获取系统中所有的模块列表")
-    @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "成功"),
-    })
-    public ApiResponse<List<ModuleEntryResp>> listModules() {
-        List<ModuleEntryResp> modules = moduleService.getModuleList();
-        return ApiResponse.success(modules);
-    }
-
-    /**
-     * 根据模块 ID 获取模块详情
-     *
-     * @param moduleId 模块 ID
-     * @return 模块详情
-     */
-    @GetMapping("/{moduleId}")
-    @Operation(summary = "获取模块详情", description = "根据模块 ID 获取模块的详细信息")
-    @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "成功"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "模块不存在"),
-    })
-    public ApiResponse<ModuleEntryResp> getModule(
-            @Parameter(description = "模块 ID", example = "1")
-            @PathVariable Long moduleId) {
-        ModuleEntryResp module = moduleService.getModuleById(moduleId);
-        return Optional.ofNullable(module)
-                .map(ApiResponse::success)
-                .orElseGet(() -> ApiResponse.error(404, "模块不存在"));
-    }
-
-    /**
-     * 创建新模块
-     *
-     * @param request 模块创建请求
-     * @return 创建的模块信息
+     * 创建模块
      */
     @PostMapping
-    @Operation(summary = "创建模块", description = "创建一个新的模块")
-    @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "创建成功"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "请求参数错误"),
-    })
-    public ApiResponse<ModuleEntryResp> createModule(@RequestBody RegisterModuleReq request) {
-        ModuleEntryResp module = moduleService.registerModule(request);
-        return ApiResponse.success("模块创建成功", module);
+    public ApiResponse<SysModuleEntryResp> createModule(@RequestBody CreateSysModuleReq request) {
+        SysModuleEntryResp result = sysModuleService.createModule(request);
+        return ApiResponse.success("创建成功", result);
     }
 
     /**
-     * 更新模块信息
-     *
-     * @param moduleId 模块 ID
-     * @param request 模块更新请求
-     * @return 更新后的模块信息
+     * 获取模块详情
+     */
+    @GetMapping("/{moduleId}")
+    public ApiResponse<SysModuleDetailResp> getModule(@PathVariable Long moduleId) {
+        SysModuleDetailResp result = sysModuleService.getModuleById(moduleId);
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 获取模块树
+     */
+    @GetMapping("/tree/{tenantId}")
+    public ApiResponse<List<SysModuleTreeResp>> getModuleTree(@PathVariable Long tenantId) {
+        List<SysModuleTreeResp> result = sysModuleService.getModuleTree(tenantId);
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 查询模块列表
+     */
+    @PostMapping("/query")
+    public ApiResponse<List<SysModuleEntryResp>> queryModules(@RequestBody QuerySysModuleReq request) {
+        List<SysModuleEntryResp> result = sysModuleService.queryModules(request);
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 更新模块
      */
     @PutMapping("/{moduleId}")
-    @Operation(summary = "更新模块", description = "更新指定模块的信息")
-    @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "更新成功"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "请求参数错误"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "模块不存在"),
-    })
-    public ApiResponse<ModuleEntryResp> updateModule(
-            @Parameter(description = "模块 ID", example = "1")
-            @PathVariable Long moduleId,
-            @RequestBody UpdateModuleReq request) {
-        ModuleEntryResp module = moduleService.updateModule(moduleId, request);
-        return ApiResponse.success("模块更新成功", module);
+    public ApiResponse<SysModuleEntryResp> updateModule(@RequestBody UpdateSysModuleReq request) {
+        SysModuleEntryResp result = sysModuleService.updateModule(request);
+        return ApiResponse.success("更新成功", result);
     }
 
     /**
      * 删除模块
-     *
-     * @param moduleId 模块 ID
-     * @return 删除结果
      */
     @DeleteMapping("/{moduleId}")
-    @Operation(summary = "删除模块", description = "删除指定的模块")
-    @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "删除成功"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "模块不存在"),
-    })
-    public ApiResponse<Void> deleteModule(
-            @Parameter(description = "模块 ID", example = "1")
-            @PathVariable Long moduleId) {
-        moduleService.deleteModule(moduleId);
-        return ApiResponse.success();
+    public ApiResponse<Void> deleteModule(@PathVariable Long moduleId) {
+        sysModuleService.deleteModule(moduleId);
+        return ApiResponse.success("删除成功");
+    }
+
+    /**
+     * 批量删除模块
+     */
+    @PostMapping("/batch-delete")
+    public ApiResponse<Void> batchDeleteModules(@RequestBody List<Long> moduleIds) {
+        sysModuleService.batchDeleteModules(moduleIds);
+        return ApiResponse.success("批量删除成功");
+    }
+
+    /**
+     * 批量更新模块排序
+     */
+    @PostMapping("/batch-update-sort-order")
+    public ApiResponse<Void> batchUpdateSortOrder(@RequestBody List<SortOrderUpdateReq> requests) {
+        sysModuleService.batchUpdateSortOrder(requests);
+        return ApiResponse.success("排序更新成功");
+    }
+
+    /**
+     * 保存模块完整信息
+     * 包含模块基本信息、关联表、字段配置和状态
+     */
+    @PostMapping("/save")
+    public ApiResponse<SysModuleDetailResp> saveModule(@RequestBody SaveModuleReq request) {
+        SysModuleDetailResp result = sysModuleService.saveModule(request);
+        return ApiResponse.success("保存成功", result);
     }
 }

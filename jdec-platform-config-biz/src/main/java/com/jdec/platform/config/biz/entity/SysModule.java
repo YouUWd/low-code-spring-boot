@@ -1,42 +1,122 @@
 package com.jdec.platform.config.biz.entity;
 
-import java.time.LocalDateTime;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+import java.time.LocalDateTime;
 
 /**
- * 系统模块 Entity
- *
- * <p>对应数据库表: sys_module
- * <p>支持模块分类，通过 moduleCode 作为主分组，operationType 作为子分类
- * <p>例如: moduleCode="userBase", operationType="read|update|delete"
+ * 模块基本信息实体
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@TableName("sys_module")
 public class SysModule {
 
-    /** 模块 ID */
+    /**
+     * 主键 ID
+     */
+    @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 模块编码 (唯一) */
+    /**
+     * 租户 ID
+     */
+    private String tenantId;
+
+    /**
+     * 模块唯一编码
+     */
     private String moduleCode;
 
-    /** 模块名称 */
+    /**
+     * 模块名称
+     */
     private String moduleName;
 
-    /** 模块描述 */
-    private String description;
+    /**
+     * 模块描述
+     */
+    private String moduleDesc;
 
-    /** 是否启用 */
-    private Boolean enabled;
+    /**
+     * 父模块 ID
+     */
+    private Long parentId;
 
-    /** 创建时间 */
-    private LocalDateTime createTime;
+    /**
+     * 模块层级
+     */
+    private Integer moduleLevel;
 
-    /** 更新时间 */
-    private LocalDateTime updateTime;
+    /**
+     * 模块路径
+     */
+    private String modulePath;
+
+    /**
+     * 主表名称
+     */
+    private String primaryTable;
+
+    /**
+     * 模块类型
+     */
+    private ModuleTypeEnum moduleType;
+
+    /**
+     * 模块状态
+     */
+    private String moduleStatus;
+
+    /**
+     * 是否叶子节点
+     */
+    private Integer leafFlag;
+
+    /**
+     * 排序顺序
+     */
+    private Integer sortOrder;
+
+    /**
+     * 版本号
+     */
+    private Integer version;
+
+    /**
+     * 创建人 ID
+     */
+    private String createdBy;
+
+    /**
+     * 创建时间
+     */
+    private LocalDateTime createdDate;
+
+    /**
+     * 创建人姓名
+     */
+    private String createdName;
+
+    /**
+     * 更新人 ID
+     */
+    private String updatedBy;
+
+    /**
+     * 更新时间
+     */
+    private LocalDateTime updatedDate;
+
+    /**
+     * 更新人姓名
+     */
+    private String updatedName;
+
+    /**
+     * 是否删除
+     */
+    private Integer deleted;
 }

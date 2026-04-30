@@ -24,7 +24,7 @@ spring:
           password: ${DB_AUTH_CENTER_PASSWORD:mysql-platform}
         # config_center 数据源
         config_center:
-          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:192.168.60.6}:${DB_CONFIG_CENTER_PORT:5506}/${DB_CONFIG_CENTER_NAME:config_center}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:192.168.60.6}:${DB_CONFIG_CENTER_PORT:5506}/${DB_CONFIG_CENTER_NAME:data_center}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_CONFIG_CENTER_USERNAME:root}
           password: ${DB_CONFIG_CENTER_PASSWORD:mysql-platform}
         # hr_manage 人力平台数据源

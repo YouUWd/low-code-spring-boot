@@ -1,7 +1,7 @@
 package com.jdec.platform.shared.exception;
 
 import com.jdec.platform.shared.model.ApiResponse;
-import com.jdec.platform.shared.permission.PermissionDeniedException;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,22 +17,21 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Slf4j
 public class GlobalExceptionHandler {
 
+
     /**
-     * 处理权限拒绝异常
+     * 处理业务异常
      *
      * @param e 权限拒绝异常
      * @return 403 Forbidden 响应
      */
-    @ExceptionHandler(PermissionDeniedException.class)
-    public ResponseEntity<ApiResponse<Void>> handlePermissionDenied(PermissionDeniedException e) {
-        log.warn("权限拒绝: permissionCode={}, permissionType={}", 
-            e.getPermissionCode(), e.getPermissionType());
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
 
-        ApiResponse<Void> response = ApiResponse.error(403, e.getMessage());
+        ApiResponse<Void> response = ApiResponse.error(400, e.getMessage());
 
         return ResponseEntity
-            .status(HttpStatus.FORBIDDEN)
-            .body(response);
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
     }
 
     /**

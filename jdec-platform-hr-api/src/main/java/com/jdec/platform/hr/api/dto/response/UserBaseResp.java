@@ -1,7 +1,5 @@
 package com.jdec.platform.hr.api.dto.response;
 
-import com.jdec.platform.shared.annotation.ApiModule;
-import com.jdec.platform.shared.enums.PermissionType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,11 +13,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ApiModule(
-        moduleCode = "UserBase-Read",
-        moduleName = "用户基本信息查看",
-        permissionTypes = {PermissionType.READ}
-)
 public class UserBaseResp {
 
     @Schema(description = "ID", example = "1")

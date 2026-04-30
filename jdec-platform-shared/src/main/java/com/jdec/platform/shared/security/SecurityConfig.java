@@ -44,6 +44,13 @@ public class SecurityConfig {
         "/api/auth/code/send", "/api/auth/login",
     };
 
+    /** 无需认证的业务端点。 */
+    private static final String[] CONFIG_ENDPOINTS = {
+        "/api/config/**",
+        "/api/metadata/**",
+        "/api/data/**",
+    };
+
     /** Swagger / OpenAPI 相关端点。 */
     private static final String[] SWAGGER_ENDPOINTS = {
         "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
@@ -57,6 +64,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(
                         auth ->
                                 auth.requestMatchers(PUBLIC_ENDPOINTS)
+                                        .permitAll()
+                                        .requestMatchers(CONFIG_ENDPOINTS)
                                         .permitAll()
                                         .requestMatchers(SWAGGER_ENDPOINTS)
                                         .permitAll()
