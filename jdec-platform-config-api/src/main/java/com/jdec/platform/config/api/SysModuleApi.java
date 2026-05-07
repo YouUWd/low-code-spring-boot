@@ -1,90 +1,60 @@
 package com.jdec.platform.config.api;
 
-import com.jdec.platform.config.api.dto.request.CreateSysModuleReq;
-import com.jdec.platform.config.api.dto.request.QuerySysModuleReq;
+import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
-import com.jdec.platform.config.api.dto.request.SortOrderUpdateReq;
-import com.jdec.platform.config.api.dto.request.UpdateSysModuleReq;
+import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
-import com.jdec.platform.config.api.dto.response.SysModuleEntryResp;
-import com.jdec.platform.config.api.dto.response.SysModuleTreeResp;
+import com.jdec.platform.config.api.dto.response.SysModuleListResp;
 
 import java.util.List;
 
 /**
  * 模块管理 API 接口
- * 定义模块的 CRUD 和查询操作
+ * 提供模块完整信息的 CRUD 操作
  */
 public interface SysModuleApi {
 
     /**
-     * 创建模块
+     * 获取模块列表
+     * 返回所有模块的基本信息（不包含树形结构），前端自行构建树
      *
-     * @param request 创建模块请求
-     * @return 模块条目响应
+     * @return 模块列表
      */
-    SysModuleEntryResp createModule(CreateSysModuleReq request);
+    List<SysModuleListResp> listModules();
 
     /**
-     * 根据 ID 获取模块详情
-     *
-     * @param moduleId 模块 ID
-     * @return 模块详情响应
-     */
-    SysModuleDetailResp getModuleById(Long moduleId);
-
-    /**
-     * 获取所有模块（树形结构）
-     *
-     * @param tenantId 租户 ID
-     * @return 模块树形响应列表
-     */
-    List<SysModuleTreeResp> getModuleTree(Long tenantId);
-
-    /**
-     * 查询模块列表
-     *
-     * @param request 查询请求
-     * @return 模块条目响应列表
-     */
-    List<SysModuleEntryResp> queryModules(QuerySysModuleReq request);
-
-    /**
-     * 更新模块
-     *
-     * @param request 更新模块请求
-     * @return 模块条目响应
-     */
-    SysModuleEntryResp updateModule(UpdateSysModuleReq request);
-
-    /**
-     * 删除模块
-     *
-     * @param moduleId 模块 ID
-     */
-    void deleteModule(Long moduleId);
-
-    /**
-     * 批量删除模块
-     *
-     * @param moduleIds 模块 ID 列表
-     */
-    void batchDeleteModules(List<Long> moduleIds);
-
-    /**
-     * 批量更新模块排序
-     * 用于前端拖拽排序场景
-     *
-     * @param requests 排序更新请求列表
-     */
-    void batchUpdateSortOrder(List<SortOrderUpdateReq> requests);
-
-    /**
-     * 保存模块完整信息
+     * 获取模块完整信息
      * 包含模块基本信息、关联表、字段配置和状态
+     *
+     * @param moduleId 模块 ID
+     * @return 模块完整信息响应
+     */
+    SysModuleCompleteResp getModuleComplete(Long moduleId);
+
+    /**
+     * 保存或编辑模块完整信息
+     * 包含模块基本信息、关联表、字段配置和状态
+     * 如果 request.module.id 为空则创建新模块，否则编辑现有模块
      *
      * @param request 保存模块请求
      * @return 模块详情响应
      */
     SysModuleDetailResp saveModule(SaveModuleReq request);
+
+    /**
+     * 删除模块完整信息
+     * 删除模块及其所有关联的表、字段配置和状态
+     *
+     * @param moduleId 模块 ID
+     */
+    void deleteModuleComplete(Long moduleId);
+
+    /**
+     * 移动模块
+     * 更新模块的父模块和排序顺序，用于处理拖拽移动场景
+     *
+     * @param request 移动模块请求
+     * @return 模块详情响应
+     */
+    SysModuleDetailResp moveModule(MoveModuleReq request);
 }

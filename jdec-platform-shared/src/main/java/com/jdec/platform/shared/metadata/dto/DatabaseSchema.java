@@ -1,5 +1,6 @@
 package com.jdec.platform.shared.metadata.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,11 +14,14 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Schema(description = "数据库Schema信息")
 public class DatabaseSchema {
     
     /** 数据库名称 */
+    @Schema(description = "数据库名称", example = "config_center")
     private String database;
     
     /** 数据库中的所有表 */
+    @Schema(description = "数据库中的所有表信息")
     private List<TableInfo> tables;
 }

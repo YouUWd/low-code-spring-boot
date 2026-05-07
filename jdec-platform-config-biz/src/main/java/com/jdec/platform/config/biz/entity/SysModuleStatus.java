@@ -26,6 +26,11 @@ public class SysModuleStatus {
     private Long moduleId;
 
     /**
+     * 状态父ID
+     */
+    private Long statusPid;
+
+    /**
      * 状态 ID
      */
     private Long statusId;

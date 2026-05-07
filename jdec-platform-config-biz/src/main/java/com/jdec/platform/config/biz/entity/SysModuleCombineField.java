@@ -7,11 +7,12 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 模块字段配置实体
+ * 模块组合字段配置实体
+ * 用于多表字段组合映射
  */
 @Data
-@TableName("sys_module_field")
-public class SysModuleField {
+@TableName("sys_module_combine_field")
+public class SysModuleCombineField {
 
     /**
      * 主键 ID
@@ -25,9 +26,9 @@ public class SysModuleField {
     private Long moduleId;
 
     /**
-     * 字段编码
+     * 逻辑字段名（驼峰格式）
      */
-    private String fieldCode;
+    private String logicalField;
 
     /**
      * 字段显示名称
@@ -35,12 +36,7 @@ public class SysModuleField {
     private String displayName;
 
     /**
-     * 逻辑字段名
-     */
-    private String logicalField;
-
-    /**
-     * 物理字段映射
+     * 物理字段映射，JSON格式: [{"entity":"student","field":"student_no","sort_order":1}]
      */
     private String sourceMapping;
 
@@ -50,54 +46,14 @@ public class SysModuleField {
     private String transformer;
 
     /**
-     * 转换环境
+     * 转换环境: database-数据库级, frontend-前端级, none-无转换
      */
     private String transformerEnv;
 
     /**
-     * 渲染图标
+     * 是否启用
      */
-    private String renderIcon;
-
-    /**
-     * 渲染类型
-     */
-    private String renderType;
-
-    /**
-     * 排序顺序
-     */
-    private Integer sortOrder;
-
-    /**
-     * 是否可见
-     */
-    private Integer visible;
-
-    /**
-     * 是否必填
-     */
-    private Integer required;
-
-    /**
-     * 是否可搜索
-     */
-    private Integer searchable;
-
-    /**
-     * 是否可排序
-     */
-    private Integer sortable;
-
-    /**
-     * 默认值
-     */
-    private String defaultValue;
-
-    /**
-     * 验证规则
-     */
-    private String validationRule;
+    private Integer enabled;
 
     /**
      * 创建人 ID
@@ -130,7 +86,7 @@ public class SysModuleField {
     private String updatedName;
 
     /**
-     * 是否删除
+     * 是否删除: 0-未删除, 1-已删除
      */
     private Integer deleted;
 }

@@ -1,0 +1,70 @@
+package com.jdec.platform.config.api.dto.response;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Data;
+
+/**
+ * 模块列表响应 DTO
+ * 返回模块的基本信息，不包含树形结构，前端自行构建树
+ */
+@Data
+@Schema(description = "模块列表项")
+public class SysModuleListResp {
+
+    @Schema(description = "模块ID", example = "1")
+    private Long id;
+
+    @Schema(description = "租户ID", example = "1")
+    private String tenantId;
+
+    @Schema(description = "模块编码", example = "sys_user")
+    private String moduleCode;
+
+    @Schema(description = "模块名称", example = "用户管理")
+    private String moduleName;
+
+    @Schema(description = "模块描述", example = "系统用户管理模块")
+    private String moduleDesc;
+
+    @Schema(description = "父模块ID（NULL表示根级）", example = "1")
+    private Long parentId;
+
+    @Schema(description = "模块层级", example = "1")
+    private Integer moduleLevel;
+
+    @Schema(description = "模块路径", example = "1/2/3")
+    private String modulePath;
+
+    @Schema(description = "主表名", example = "sys_user")
+    private String primaryTable;
+
+    @Schema(description = "模块类型", example = "LIST", allowableValues = {"LIST", "DETAIL"})
+    private String moduleType;
+
+    @Schema(description = "模块状态", example = "active")
+    private String moduleStatus;
+
+    @Schema(description = "是否叶子节点（0=否，1=是）", example = "1")
+    private Integer leafFlag;
+
+    @Schema(description = "排序顺序", example = "1")
+    private Integer sortOrder;
+
+    @Schema(description = "创建人ID", example = "1")
+    private Long createdBy;
+
+    @Schema(description = "创建人名称", example = "admin")
+    private String createdName;
+
+    @Schema(description = "创建时间", example = "2024-01-01T00:00:00")
+    private String createdDate;
+
+    @Schema(description = "更新人ID", example = "1")
+    private Long updatedBy;
+
+    @Schema(description = "更新人名称", example = "admin")
+    private String updatedName;
+
+    @Schema(description = "更新时间", example = "2024-01-01T00:00:00")
+    private String updatedDate;
+}

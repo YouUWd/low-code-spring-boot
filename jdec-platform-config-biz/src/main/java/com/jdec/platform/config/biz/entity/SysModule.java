@@ -81,14 +81,14 @@ public class SysModule {
     private Integer sortOrder;
 
     /**
-     * 版本号
+     * 列表表头配置（JSON格式）
      */
-    private Integer version;
+    private String tableHeader;
 
     /**
      * 创建人 ID
      */
-    private String createdBy;
+    private Long createdBy;
 
     /**
      * 创建时间
@@ -103,7 +103,7 @@ public class SysModule {
     /**
      * 更新人 ID
      */
-    private String updatedBy;
+    private Long updatedBy;
 
     /**
      * 更新时间

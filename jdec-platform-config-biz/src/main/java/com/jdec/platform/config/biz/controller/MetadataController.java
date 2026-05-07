@@ -5,7 +5,9 @@ import com.jdec.platform.shared.metadata.dto.DatabaseSchema;
 import com.jdec.platform.shared.metadata.dto.TableInfo;
 import com.jdec.platform.shared.metadata.service.DatabaseMetadataService;
 import com.jdec.platform.shared.model.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
  * </pre>
  */
 @Slf4j
+@Tag(name = "数据库元数据", description = "提供数据库表、列等元数据信息的查询接口")
 @RestController
 @RequestMapping("/api/metadata")
 @RequiredArgsConstructor
@@ -50,6 +53,7 @@ public class MetadataController {
      * @param tenantId 租户/数据源 ID（通过 X-Tenant-Id 请求头指定）
      * @return 表信息列表
      */
+    @Operation(summary = "获取所有表", description = "获取数据库中所有表的基本信息（表名、表描述等）")
     @GetMapping("/tables")
     public ApiResponse<List<TableInfo>> getAllTables(
             @Parameter(description = "租户/数据源 ID", example = "config_center", required = true)
@@ -69,8 +73,10 @@ public class MetadataController {
      * @param tenantId 租户/数据源 ID（通过 X-Tenant-Id 请求头指定）
      * @return 列信息列表
      */
+    @Operation(summary = "获取表的列信息", description = "获取指定表的所有列信息（列名、数据类型、是否可空等）")
     @GetMapping("/tables/{tableName}/columns")
     public ApiResponse<List<ColumnInfo>> getTableColumns(
+            @Parameter(description = "表名", example = "sys_module", required = true)
             @PathVariable String tableName,
             @Parameter(description = "租户/数据源 ID", example = "config_center", required = true)
             @RequestHeader("X-Tenant-Id") String tenantId) {
@@ -90,6 +96,7 @@ public class MetadataController {
      * @param tenantId 租户/数据源 ID（通过 X-Tenant-Id 请求头指定）
      * @return 完整的数据库 Schema 信息
      */
+    @Operation(summary = "获取完整数据库Schema", description = "获取数据库的完整Schema信息，包括所有表及其列的详细信息。注意：此操作可能耗时较长")
     @GetMapping("/schema")
     public ApiResponse<DatabaseSchema> getDatabaseSchema(
             @Parameter(description = "租户/数据源 ID", example = "config_center", required = true)

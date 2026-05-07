@@ -77,6 +77,11 @@ public class SysModuleDetailResp {
     private Integer sortOrder;
 
     /**
+     * 列表表头配置（JSON格式）
+     */
+    private String tableHeader;
+
+    /**
      * 版本号
      */
     private Integer version;
@@ -84,7 +89,7 @@ public class SysModuleDetailResp {
     /**
      * 创建人 ID
      */
-    private String createdBy;
+    private Long createdBy;
 
     /**
      * 创建时间
@@ -99,7 +104,7 @@ public class SysModuleDetailResp {
     /**
      * 更新人 ID
      */
-    private String updatedBy;
+    private Long updatedBy;
 
     /**
      * 更新时间
