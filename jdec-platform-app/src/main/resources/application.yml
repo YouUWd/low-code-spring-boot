@@ -7,6 +7,11 @@ spring:
   profiles:
     active: dev
 
+  # ===== 禁用静态资源处理 =====
+  web:
+    resources:
+      add-mappings: false
+
   # ===== 禁用 Spring Modulith 自动配置 =====
   autoconfigure:
     exclude:

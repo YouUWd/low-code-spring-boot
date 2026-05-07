@@ -37,6 +37,11 @@ spring:
           url: jdbc:mysql://${DB_THIRD_HOST:192.168.60.6}:${DB_THIRD_PORT:5506}/${DB_THIRD_NAME:third}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_THIRD_USERNAME:root}
           password: ${DB_THIRD_PASSWORD:mysql-platform}
+        # school 数据源
+        school:
+          url: jdbc:mysql://${DB_SCHOOL_HOST:192.168.60.6}:${DB_SCHOOL_PORT:5506}/${DB_SCHOOL_NAME:school}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_SCHOOL_USERNAME:root}
+          password: ${DB_SCHOOL_PASSWORD:mysql-platform}
   # ===== Redis 配置 =====
   data:
     redis:

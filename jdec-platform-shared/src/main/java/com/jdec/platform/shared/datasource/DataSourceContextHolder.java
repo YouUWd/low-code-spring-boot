@@ -21,7 +21,7 @@ public final class DataSourceContextHolder {
     private DataSourceContextHolder() {}
 
     /** 压入数据源 — 支持嵌套调用，每次切换都压栈保存。 */
-    static void set(String dataSource) {
+    public static void set(String dataSource) {
         log.debug("切换数据源 → {}（栈深度 {}）", dataSource, CONTEXT.get().size());
         CONTEXT.get().push(dataSource);
     }
@@ -32,7 +32,7 @@ public final class DataSourceContextHolder {
     }
 
     /** 弹出当前数据源，恢复上一层数据源；栈空时清除 ThreadLocal 避免内存泄漏。 */
-    static void clear() {
+    public static void clear() {
         Deque<String> stack = CONTEXT.get();
         if (!stack.isEmpty()) {
             String removed = stack.pop();
