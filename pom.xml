@@ -37,6 +37,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc-openapi.version>2.8.5</springdoc-openapi.version>
         <jackson.version>2.18.2</jackson.version>
+        <jooq.version>3.19.15</jooq.version>
     </properties>
 
     <!-- ==================== 版本管理 ==================== -->
@@ -124,6 +125,12 @@
                 <groupId>com.fasterxml.jackson.datatype</groupId>
                 <artifactId>jackson-datatype-jsr310</artifactId>
                 <version>${jackson.version}</version>
+            </dependency>
+            <!-- jOOQ -->
+            <dependency>
+                <groupId>org.jooq</groupId>
+                <artifactId>jooq</artifactId>
+                <version>${jooq.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

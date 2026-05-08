@@ -90,6 +90,31 @@ public class SysModuleService implements SysModuleApi {
             return null;
         }
 
+        return buildModuleCompleteResp(module);
+    }
+
+    /**
+     * 根据模块编码获取模块完整信息
+     *
+     * @param moduleCode 模块编码
+     * @return 模块完整信息
+     */
+    public SysModuleCompleteResp getModuleCompleteByCode(String moduleCode) {
+        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModule::getModuleCode, moduleCode);
+        SysModule module = sysModuleMapper.selectOne(wrapper);
+        
+        if (module == null) {
+            return null;
+        }
+
+        return buildModuleCompleteResp(module);
+    }
+
+    /**
+     * 构建模块完整信息响应
+     */
+    private SysModuleCompleteResp buildModuleCompleteResp(SysModule module) {
         SysModuleCompleteResp resp = new SysModuleCompleteResp();
 
         // 设置模块基本信息
@@ -115,6 +140,8 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setUpdatedDate(module.getUpdatedDate());
         moduleInfo.setUpdatedName(module.getUpdatedName());
         resp.setModule(moduleInfo);
+
+        Long moduleId = module.getId();
 
         // 获取关联表
         LambdaQueryWrapper<SysModuleTable> tableWrapper = new LambdaQueryWrapper<>();

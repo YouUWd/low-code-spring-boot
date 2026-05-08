@@ -3,6 +3,7 @@ package com.jdec.platform.shared.exception;
 import com.jdec.platform.shared.model.ApiResponse;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -21,13 +22,64 @@ public class GlobalExceptionHandler {
     /**
      * 处理业务异常
      *
-     * @param e 权限拒绝异常
-     * @return 403 Forbidden 响应
+     * @param e 业务异常
+     * @return 400 Bad Request 响应
      */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
 
         ApiResponse<Void> response = ApiResponse.error(400, e.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    /**
+     * 处理数据库唯一约束冲突异常
+     *
+     * @param e 重复键异常
+     * @return 400 Bad Request 响应
+     */
+    @ExceptionHandler(DuplicateKeyException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateKeyException(DuplicateKeyException e) {
+        log.warn("数据库唯一约束冲突", e);
+
+        // 从异常消息中提取关键文案
+        // 格式: Duplicate entry 'value' for key 'table.column_name'
+        String message = "数据已存在";
+        String exceptionMsg = e.getMessage();
+        
+        if (exceptionMsg != null && exceptionMsg.contains("Duplicate entry")) {
+            try {
+                // 提取 'value' - 找到 "Duplicate entry '" 后的值
+                String prefix = "Duplicate entry '";
+                int valueStart = exceptionMsg.indexOf(prefix);
+                if (valueStart >= 0) {
+                    valueStart += prefix.length();
+                    int valueEnd = exceptionMsg.indexOf("'", valueStart);
+                    
+                    // 提取表名 - 找到 "for key '" 后的值
+                    String keyPrefix = "for key '";
+                    int keyStart = exceptionMsg.indexOf(keyPrefix);
+                    if (keyStart >= 0) {
+                        keyStart += keyPrefix.length();
+                        int keyEnd = exceptionMsg.indexOf("'", keyStart);
+                        
+                        if (valueEnd > valueStart && keyEnd > keyStart) {
+                            String value = exceptionMsg.substring(valueStart, valueEnd);
+                            String keyInfo = exceptionMsg.substring(keyStart, keyEnd);
+                            String tableName = keyInfo.split("\\.")[0]; // 获取表名
+                            message = String.format("'%s' 在 %s 表中已存在", value, tableName);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log.debug("解析异常消息失败", ex);
+            }
+        }
+
+        ApiResponse<Void> response = ApiResponse.error(400, message);
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)

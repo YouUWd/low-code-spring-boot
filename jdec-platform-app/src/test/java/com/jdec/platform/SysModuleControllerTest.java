@@ -2,6 +2,7 @@ package com.jdec.platform;
 
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
+import com.jdec.platform.config.biz.controller.DataQueryController;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -20,7 +21,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -153,7 +156,49 @@ class SysModuleControllerTest {
     }
 
     /**
-     * 测试用例 6: 清理所有测试数据
+     * 测试用例 6: 学生完整信息模块（包含 1:1 关系）
+     * 主表：student
+     * 1:1 关系：student_profile（假设存在学生档案表，通过 student_id 关联）
+     */
+    @Test
+    @Order(6)
+    @DisplayName("创建学生完整信息模块 - 包含 1:1 关系")
+    void testCreateStudentWith11RelationModule() throws Exception {
+        SaveModuleReq request = buildStudentWith11RelationModule();
+        performCreateAndCollectId(request, "测试用例 6: 学生完整信息模块（1:1）");
+    }
+
+    /**
+     * 测试用例 7: 班级完整信息模块（包含 1:N 关系）
+     * 主表：class
+     * N:1 关系：teacher（班主任）
+     * 1:N 关系：student（班级学生列表）
+     */
+    @Test
+    @Order(7)
+    @DisplayName("创建班级完整信息模块 - 包含 N:1 和 1:N 关系")
+    void testCreateClassWith1NRelationModule() throws Exception {
+        SaveModuleReq request = buildClassWith1NRelationModule();
+        performCreateAndCollectId(request, "测试用例 7: 班级完整信息模块（N:1 + 1:N）");
+    }
+
+    /**
+     * 测试用例 8: 课程完整信息模块（包含 1:N 关系）
+     * 主表：course
+     * 1:N 关系：score（课程成绩列表）
+     */
+    @Test
+    @Order(8)
+    @DisplayName("创建课程完整信息模块 - 包含 1:N 关系")
+    void testCreateCourseWith1NRelationModule() throws Exception {
+        SaveModuleReq request = buildCourseWith1NRelationModule();
+        performCreateAndCollectId(request, "测试用例 8: 课程完整信息模块（1:N）");
+    }
+
+    /**
+     * 测试用例 999: 清理所有测试数据
+    /**
+     * 测试用例 999: 清理所有测试数据
      * 使用删除 API 清理前面测试用例创建的所有模块
      * 同时测试删除接口的功能
      */
@@ -199,63 +244,6 @@ class SysModuleControllerTest {
     }
 
     /**
-     * 独立的删除测试方法
-     * 可以单独运行，从数据库查询指定模块代码的 ID，然后使用 API 删除
-     * 
-     * 使用方法：
-     * mvn test -Dtest=SysModuleControllerTest#testDeleteModuleByCode -DmoduleCode=MOD-STUDENT-LIST
-     */
-    @Test
-    @DisplayName("删除指定模块 - 从数据库查询后删除")
-    void testDeleteModuleByCode() throws Exception {
-        // 从系统属性获取模块代码，如果没有指定则使用默认值
-        String moduleCode = System.getProperty("moduleCode", "MOD-STUDENT-LIST");
-        
-        System.out.println("\n========================================");
-        System.out.println("开始删除指定模块...");
-        System.out.println("模块代码: " + moduleCode);
-        System.out.println("租户 ID: " + TENANT_ID);
-        System.out.println("========================================\n");
-        
-        // 第一步：从数据库查询模块
-        System.out.println("第一步：查询模块...\n");
-        
-        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModule::getTenantId, TENANT_ID)
-               .eq(SysModule::getModuleCode, moduleCode);
-        
-        SysModule module = sysModuleMapper.selectOne(wrapper);
-        
-        if (module == null) {
-            System.out.println("✗ 未找到模块: " + moduleCode);
-            System.out.println("========================================\n");
-            throw new AssertionError("模块不存在: " + moduleCode);
-        }
-        
-        Long moduleId = module.getId();
-        System.out.println("✓ 找到模块，ID: " + moduleId);
-        System.out.println("模块名称: " + module.getModuleName());
-        System.out.println("模块类型: " + module.getModuleType());
-        
-        // 第二步：清理 DataSourceContextHolder，然后调用 API 删除
-        System.out.println("\n第二步：删除模块...\n");
-        DataSourceContextHolder.clear();
-        
-        // 使用 API 删除模块
-        mockMvc.perform(delete(API_BASE + "/" + moduleId + "/complete"))
-               .andDo(print())
-               .andExpect(status().isOk())
-               .andExpect(jsonPath("$.status").value(200))
-               .andExpect(jsonPath("$.msg").value("删除成功"));
-        
-        System.out.println("\n========================================");
-        System.out.println("✓ 模块删除成功！");
-        System.out.println("模块代码: " + moduleCode);
-        System.out.println("模块 ID: " + moduleId);
-        System.out.println("========================================\n");
-    }
-
-    /**
      * 批量删除测试方法
      * 可以单独运行，从数据库查询所有测试模块，然后使用 API 删除
      * 
@@ -270,7 +258,10 @@ class SysModuleControllerTest {
             "MOD-SCORE-LIST",
             "MOD-TEACHER-LIST",
             "MOD-CLASS-LIST",
-            "MOD-STUDENT-DETAIL"
+            "MOD-STUDENT-DETAIL",
+            "MOD-STUDENT-COMPLETE-11",
+            "MOD-CLASS-COMPLETE-1N",
+            "MOD-COURSE-COMPLETE-1N"
         );
         
         System.out.println("\n========================================");
@@ -725,4 +716,221 @@ class SysModuleControllerTest {
         status.setStatusId(statusId);
         return status;
     }
+
+    /**
+     * 构建学生完整信息模块（包含 1:1 关系）
+     * 1:1 关系：student.id = student_profile.student_id
+     */
+    private SaveModuleReq buildStudentWith11RelationModule() {
+        SaveModuleReq request = new SaveModuleReq();
+        
+        SaveSysModuleReq module = new SaveSysModuleReq();
+        module.setTenantId(TENANT_ID);
+        module.setModuleCode("MOD-STUDENT-COMPLETE-11");
+        module.setModuleName("学生完整信息（1:1）");
+        module.setModuleDesc("学生信息模块，包含学生档案（1:1关系）");
+        module.setParentId(null);
+        module.setPrimaryTable("student");
+        module.setModuleType("DETAIL");
+        module.setSortOrder(6);
+        module.setCreatedBy(1L);
+        module.setCreatedName("系统管理员");
+        module.setTableHeader(new ArrayList<>());
+        
+        request.setModule(module);
+        
+        // N:1 关系：class（班级）
+        // 1:1 关系：student_profile（学生档案）
+        request.setModuleTables(Arrays.asList(
+            createModuleTable("class", "班级表", "class_id", "id", "N:1", 1),
+            createModuleTable("student_profile", "学生档案表", "id", "student_id", "1:1", 2)
+        ));
+        
+        // 简单字段
+        request.setSimpleFields(Arrays.asList(
+            // 学生基本信息
+            createSimpleField("student", "student_no", null),
+            createSimpleField("student", "first_name", null),
+            createSimpleField("student", "last_name", null),
+            createSimpleField("student", "gender", null),
+            createSimpleField("student", "birth_date", null),
+            createSimpleField("student", "contact_phone", null),
+            createSimpleField("student", "enrollment_date", null),
+            createSimpleField("student", "status", null),
+            // 班级信息（N:1）
+            createSimpleField("class", "class_name", null),
+            createSimpleField("class", "grade_level", null),
+            // 学生档案信息（1:1）
+            createSimpleField("student_profile", "id_card_no", null),
+            createSimpleField("student_profile", "address", null),
+            createSimpleField("student_profile", "parent_name", null),
+            createSimpleField("student_profile", "parent_phone", null),
+            createSimpleField("student_profile", "emergency_contact", null),
+            createSimpleField("student_profile", "emergency_phone", null),
+            createSimpleField("student_profile", "blood_type", null),
+            createSimpleField("student_profile", "health_status", null),
+            createSimpleField("student_profile", "allergies", null),
+            createSimpleField("student_profile", "hobbies", null),
+            createSimpleField("student_profile", "special_skills", null)
+        ));
+        
+        // 组合字段
+        request.setCombineFields(Arrays.asList(
+            createCombineField("fullName", "完整姓名",
+                Arrays.asList(
+                    createSourceMapping("student", "last_name", 1),
+                    createSourceMapping("student", "first_name", 2)
+                ),
+                "CONCAT(${last_name}, ${first_name})", 1),
+            createCombineField("genderText", "性别文本",
+                Arrays.asList(createSourceMapping("student", "gender", 1)),
+                "CASE WHEN ${gender} = 1 THEN '男' WHEN ${gender} = 2 THEN '女' ELSE '未知' END", 1),
+            createCombineField("statusText", "状态文本",
+                Arrays.asList(createSourceMapping("student", "status", 1)),
+                "CASE WHEN ${status} = 1 THEN '在读' WHEN ${status} = 2 THEN '休学' WHEN ${status} = 3 THEN '毕业' ELSE '未知' END", 1),
+            createCombineField("classInfo", "班级信息",
+                Arrays.asList(
+                    createSourceMapping("class", "grade_level", 1),
+                    createSourceMapping("class", "class_name", 2)
+                ),
+                "CONCAT(${grade_level}, ' - ', ${class_name})", 1),
+            createCombineField("parentContact", "家长联系方式",
+                Arrays.asList(
+                    createSourceMapping("student_profile", "parent_name", 1),
+                    createSourceMapping("student_profile", "parent_phone", 2)
+                ),
+                "CONCAT(${parent_name}, ' (', ${parent_phone}, ')')", 1),
+            createCombineField("emergencyContact", "紧急联系方式",
+                Arrays.asList(
+                    createSourceMapping("student_profile", "emergency_contact", 1),
+                    createSourceMapping("student_profile", "emergency_phone", 2)
+                ),
+                "CONCAT(${emergency_contact}, ' (', ${emergency_phone}, ')')", 1)
+        ));
+        
+        return request;
+    }
+
+    /**
+     * 构建班级完整信息模块（包含 N:1 和 1:N 关系）
+     * N:1 关系：class → teacher（班主任）
+     * 1:N 关系：class → student（班级学生列表）
+     */
+    private SaveModuleReq buildClassWith1NRelationModule() {
+        SaveModuleReq request = new SaveModuleReq();
+        
+        SaveSysModuleReq module = new SaveSysModuleReq();
+        module.setTenantId(TENANT_ID);
+        module.setModuleCode("MOD-CLASS-COMPLETE-1N");
+        module.setModuleName("班级完整信息（1:N）");
+        module.setModuleDesc("班级信息模块，包含班主任（N:1）和学生列表（1:N）");
+        module.setParentId(null);
+        module.setPrimaryTable("class");
+        module.setModuleType("DETAIL");
+        module.setSortOrder(7);
+        module.setCreatedBy(1L);
+        module.setCreatedName("系统管理员");
+        module.setTableHeader(new ArrayList<>());
+        
+        request.setModule(module);
+        
+        // N:1 关系：teacher（班主任）
+        // 1:N 关系：student（班级学生列表）
+        request.setModuleTables(Arrays.asList(
+            createModuleTable("teacher", "教师表（班主任）", "head_teacher_id", "id", "N:1", 1),
+            createModuleTable("student", "学生表（班级学生）", "id", "class_id", "1:N", 2)
+        ));
+        
+        // 简单字段
+        request.setSimpleFields(Arrays.asList(
+            // 班级字段
+            createSimpleField("class", "class_code", null),
+            createSimpleField("class", "class_name", null),
+            createSimpleField("class", "grade_level", null),
+            createSimpleField("class", "student_count", null),
+            createSimpleField("class", "capacity", null),
+            // 班主任字段（N:1）
+            createSimpleField("teacher", "teacher_code", null),
+            createSimpleField("teacher", "first_name", null),
+            createSimpleField("teacher", "last_name", null),
+            // 学生字段（1:N）
+            createSimpleField("student", "student_no", null),
+            createSimpleField("student", "first_name", null),
+            createSimpleField("student", "last_name", null),
+            createSimpleField("student", "gender", null)
+        ));
+        
+        // 组合字段
+        request.setCombineFields(Arrays.asList(
+            createCombineField("headTeacherName", "班主任姓名",
+                Arrays.asList(
+                    createSourceMapping("teacher", "last_name", 1),
+                    createSourceMapping("teacher", "first_name", 2)
+                ),
+                "CONCAT(${last_name}, ${first_name})", 1),
+            createCombineField("studentFullName", "学生姓名",
+                Arrays.asList(
+                    createSourceMapping("student", "last_name", 1),
+                    createSourceMapping("student", "first_name", 2)
+                ),
+                "CONCAT(${last_name}, ${first_name})", 1)
+        ));
+        
+        return request;
+    }
+
+    /**
+     * 构建课程完整信息模块（包含 1:N 关系）
+     * 1:N 关系：course → score（课程成绩列表）
+     */
+    private SaveModuleReq buildCourseWith1NRelationModule() {
+        SaveModuleReq request = new SaveModuleReq();
+        
+        SaveSysModuleReq module = new SaveSysModuleReq();
+        module.setTenantId(TENANT_ID);
+        module.setModuleCode("MOD-COURSE-COMPLETE-1N");
+        module.setModuleName("课程完整信息（1:N）");
+        module.setModuleDesc("课程信息模块，包含课程成绩列表（1:N关系）");
+        module.setParentId(null);
+        module.setPrimaryTable("course");
+        module.setModuleType("DETAIL");
+        module.setSortOrder(8);
+        module.setCreatedBy(1L);
+        module.setCreatedName("系统管理员");
+        module.setTableHeader(new ArrayList<>());
+        
+        request.setModule(module);
+        
+        // 1:N 关系：score（课程成绩列表）
+        request.setModuleTables(Arrays.asList(
+            createModuleTable("score", "成绩表（课程成绩）", "id", "course_id", "1:N", 1)
+        ));
+        
+        // 简单字段
+        request.setSimpleFields(Arrays.asList(
+            // 课程字段
+            createSimpleField("course", "course_code", null),
+            createSimpleField("course", "course_name", null),
+            createSimpleField("course", "credits", null),
+            createSimpleField("course", "course_type", null),
+            // 成绩字段（1:N）
+            createSimpleField("score", "semester", null),
+            createSimpleField("score", "score", null),
+            createSimpleField("score", "grade_level", null),
+            createSimpleField("score", "exam_date", null)
+        ));
+        
+        // 组合字段
+        request.setCombineFields(Arrays.asList(
+            createCombineField("courseInfo", "课程信息",
+                Arrays.asList(
+                    createSourceMapping("course", "course_code", 1),
+                    createSourceMapping("course", "course_name", 2)
+                ),
+                "CONCAT(${course_code}, ' - ', ${course_name})", 1)
+        ));
+        
+        return request;
+    }
 }
+
