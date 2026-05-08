@@ -1,6 +1,8 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.biz.dto.FilterRule;
+import com.jdec.platform.config.biz.dto.SortRule;
 import com.jdec.platform.config.biz.service.DynamicQueryService;
 import com.jdec.platform.config.biz.service.SysModuleService;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -17,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -42,14 +45,11 @@ public class DataQueryController {
         @Schema(description = "每页大小", example = "20", defaultValue = "20")
         private Integer pageSize = 20;
         
-        @Schema(description = "排序字段", example = "id", defaultValue = "id")
-        private String sortField = "id";
+        @Schema(description = "排序规则列表（支持多字段排序）")
+        private List<SortRule> sorts;
         
-        @Schema(description = "排序方向（ASC/DESC）", example = "DESC", defaultValue = "DESC")
-        private String sortOrder = "DESC";
-        
-        @Schema(description = "过滤条件（字段名-值映射）", example = "{\"status\": 1, \"gender\": 2}")
-        private Map<String, Object> filters;
+        @Schema(description = "过滤条件列表（多条件之间使用 AND 连接）")
+        private List<FilterRule> filters;
     }
 
     /**
@@ -60,15 +60,15 @@ public class DataQueryController {
      * @return 分页查询结果
      */
     @PostMapping("/{moduleCode}")
-    @Operation(summary = "执行动态查询", description = "根据模块配置动态构建SQL并执行查询")
+    @Operation(summary = "执行动态查询", description = "根据模块配置动态构建SQL并执行查询，支持多种过滤操作符和多字段排序")
     @DataSource(DataSourceConstants.SCHOOL)
     public ApiResponse<PageResult<Map<String, Object>>> executeQuery(
             @PathVariable @Parameter(description = "模块编码", example = "MOD-STUDENT-LIST") String moduleCode,
             @RequestBody QueryRequest request) {
         
-        log.info("执行动态查询: moduleCode={}, page={}, pageSize={}, sortField={}, sortOrder={}", 
+        log.info("执行动态查询: moduleCode={}, page={}, pageSize={}, sorts={}, filters={}", 
                 moduleCode, request.getPage(), request.getPageSize(), 
-                request.getSortField(), request.getSortOrder());
+                request.getSorts(), request.getFilters());
         
         // 根据模块编码查询模块配置
         SysModuleCompleteResp moduleConfig = sysModuleService.getModuleCompleteByCode(moduleCode);
@@ -80,18 +80,19 @@ public class DataQueryController {
         // 验证过滤条件字段是否合法
         if (request.getFilters() != null && !request.getFilters().isEmpty()) {
             validateFilters(request.getFilters(), moduleConfig);
-            log.info("过滤条件: {}", request.getFilters());
         }
         
-        // 构建 orderBy 参数（格式：字段名,排序方向）
-        String orderBy = request.getSortField().trim() + "," + request.getSortOrder().trim();
+        // 验证排序字段是否合法
+        if (request.getSorts() != null && !request.getSorts().isEmpty()) {
+            validateSorts(request.getSorts(), moduleConfig);
+        }
         
         // 执行动态查询
         PageResult<Map<String, Object>> result = dynamicQueryService.executeQuery(
                 moduleConfig, 
                 request.getPage(), 
                 request.getPageSize(), 
-                orderBy, 
+                request.getSorts(), 
                 request.getFilters());
         
         return ApiResponse.success(result);
@@ -104,22 +105,37 @@ public class DataQueryController {
      * @param moduleConfig 模块配置
      * @throws BusinessException 如果存在非法字段
      */
-    private void validateFilters(Map<String, Object> filters, SysModuleCompleteResp moduleConfig) {
-        for (String fieldName : filters.keySet()) {
-            if (!isValidFilterField(fieldName, moduleConfig)) {
-                throw new BusinessException("非法的过滤字段: " + fieldName);
+    private void validateFilters(List<FilterRule> filters, SysModuleCompleteResp moduleConfig) {
+        for (FilterRule filter : filters) {
+            if (!isValidField(filter.getField(), moduleConfig)) {
+                throw new BusinessException("非法的过滤字段: " + filter.getField());
             }
         }
     }
 
     /**
-     * 检查字段是否为有效的过滤字段
+     * 验证排序字段是否合法
+     * 
+     * @param sorts 排序规则
+     * @param moduleConfig 模块配置
+     * @throws BusinessException 如果存在非法字段
+     */
+    private void validateSorts(List<SortRule> sorts, SysModuleCompleteResp moduleConfig) {
+        for (SortRule sort : sorts) {
+            if (!isValidField(sort.getField(), moduleConfig)) {
+                throw new BusinessException("非法的排序字段: " + sort.getField());
+            }
+        }
+    }
+
+    /**
+     * 检查字段是否为有效的字段
      * 
      * @param fieldName 字段名
      * @param moduleConfig 模块配置
      * @return 是否有效
      */
-    private boolean isValidFilterField(String fieldName, SysModuleCompleteResp moduleConfig) {
+    private boolean isValidField(String fieldName, SysModuleCompleteResp moduleConfig) {
         // 检查简单字段
         if (moduleConfig.getSimpleFields() != null) {
             for (SysModuleCompleteResp.SimpleFieldInfo field : moduleConfig.getSimpleFields()) {
