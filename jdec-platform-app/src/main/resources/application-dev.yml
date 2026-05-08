@@ -89,6 +89,15 @@ sa-token:
     is-slo: true
 sso:
   login-page-url: http://localhost:3000/sso/login
+
+# knife4j 配置
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+    enable-swagger-models: true
+    enable-document-manage: true
+    swagger-model-name: 实体类
 # ===== 企业微信配置 - 开发环境 =====
 wechat:
   work:

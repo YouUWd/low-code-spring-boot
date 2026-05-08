@@ -4,7 +4,6 @@ import com.jdec.platform.shared.context.SubjectContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -15,7 +14,7 @@ public class SubjectInterceptor implements HandlerInterceptor {
     private static final String SUBJECT_ID_HEADER = "subject-id";
 
     @Override
-    public boolean preHandle(HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull Object handler) {
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response,Object handler) {
         String subjectId = request.getHeader(SUBJECT_ID_HEADER);
         if (subjectId != null && !subjectId.isEmpty()) {
             SubjectContext.set(Integer.valueOf(subjectId));
@@ -24,7 +23,7 @@ public class SubjectInterceptor implements HandlerInterceptor {
     }
 
     @Override
-    public void afterCompletion(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull Object handler, Exception ex) {
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         SubjectContext.remove();
     }
 }
