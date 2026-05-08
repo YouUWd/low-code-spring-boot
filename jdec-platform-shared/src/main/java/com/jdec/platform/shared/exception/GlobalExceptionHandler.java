@@ -1,13 +1,15 @@
 package com.jdec.platform.shared.exception;
 
 import com.jdec.platform.shared.model.ApiResponse;
-
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
 
 /**
  * 全局异常处理器
@@ -85,7 +87,45 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.BAD_REQUEST)
                 .body(response);
     }
+    /**
+     * 无对应Handler - 过滤掉静态资源请求
+     */
+    @ExceptionHandler(NoHandlerFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ResponseEntity<ApiResponse<Void>> handleNoHandlerFoundException(
+            NoHandlerFoundException e,
+            HttpServletRequest request) {
 
+        String uri = request.getRequestURI();
+
+        // 过滤掉静态资源请求，不打印错误日志
+        if (isStaticResource(uri)) {
+            return null;
+        }
+
+        log.warn("接口不存在: {}", uri);
+        ApiResponse<Void> response = ApiResponse.error("接口不存在: " + uri);
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(response);
+    }
+    /**
+     * 判断是否为静态资源请求
+     */
+    private boolean isStaticResource(String uri) {
+        return uri.endsWith(".ico")
+                || uri.endsWith(".css")
+                || uri.endsWith(".js")
+                || uri.endsWith(".png")
+                || uri.endsWith(".jpg")
+                || uri.endsWith(".gif")
+                || uri.endsWith(".woff")
+                || uri.endsWith(".woff2")
+                || uri.endsWith(".ttf")
+                || uri.startsWith("/webjars/")
+                || uri.startsWith("/static/")
+                || uri.startsWith("/assets/");
+    }
     /**
      * 处理其他异常
      *
