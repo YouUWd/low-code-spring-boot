@@ -13,8 +13,6 @@ import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.jooq.impl.DSL.*;
@@ -29,7 +27,6 @@ import static org.jooq.impl.DSL.*;
 public class DynamicQueryService {
 
     private final DataSource dataSource;
-    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]+)\\}");
     
     // 默认配置常量
     private static final String DEFAULT_PRIMARY_KEY = "id";
@@ -276,55 +273,52 @@ public class DynamicQueryService {
         fields.add(field(name(primaryTable, DEFAULT_PRIMARY_KEY)).as(DEFAULT_PRIMARY_KEY));
         log.info("  ✓ [主键] {}.{}", primaryTable, DEFAULT_PRIMARY_KEY);
         
-        // 添加简单字段
+        // 收集所有需要查询的字段（简单字段 + 组合字段依赖的源字段）
+        Set<String> requiredFields = new HashSet<>();
+        
+        // 1. 添加简单字段
         if (moduleConfig.getSimpleFields() != null) {
             for (SysModuleCompleteResp.SimpleFieldInfo fieldInfo : moduleConfig.getSimpleFields()) {
                 if (!usedEntities.contains(fieldInfo.getTableName())) {
                     continue; // 跳过 1:N 关系字段
                 }
                 
-                if (fieldInfo.getTransformer() != null && !fieldInfo.getTransformer().isEmpty()) {
-                    // 有转换表达式，使用 SQL 表达式
-                    String sqlExpr = replaceTransformerPlaceholders(
-                            fieldInfo.getTransformer(), 
-                            fieldInfo.getTableName());
-                    fields.add(field(sqlExpr).as(fieldInfo.getColumnName()));
-                    log.info("  ✓ [转换字段] {} AS {}", sqlExpr, fieldInfo.getColumnName());
-                } else {
-                    // 无转换表达式，直接使用字段
-                    fields.add(field(name(fieldInfo.getTableName(), fieldInfo.getColumnName())));
-                    log.info("  ✓ [简单字段] {}.{}", fieldInfo.getTableName(), fieldInfo.getColumnName());
-                }
+                String fieldKey = fieldInfo.getTableName() + "." + fieldInfo.getColumnName();
+                requiredFields.add(fieldKey);
             }
         }
         
-        // 添加组合字段
+        // 2. 收集组合字段依赖的源字段
         if (moduleConfig.getCombineFields() != null) {
             for (SysModuleCompleteResp.CombineFieldInfo fieldInfo : moduleConfig.getCombineFields()) {
                 if (fieldInfo.getEnabled() != 1) {
                     continue;
                 }
                 
-                // 检查是否所有源字段都在使用的实体中
+                // 解析 sourceMapping，提取所有源字段
                 JSONArray sourceMappings = JSON.parseArray(fieldInfo.getSourceMapping());
-                boolean allInUsedEntities = true;
                 for (int i = 0; i < sourceMappings.size(); i++) {
                     JSONObject mapping = sourceMappings.getJSONObject(i);
                     String entity = mapping.getString("entity");
-                    if (!usedEntities.contains(entity)) {
-                        allInUsedEntities = false;
-                        break;
+                    String fieldName = mapping.getString("field");
+                    
+                    // 只添加在使用的实体中的字段
+                    if (usedEntities.contains(entity)) {
+                        String fieldKey = entity + "." + fieldName;
+                        requiredFields.add(fieldKey);
                     }
                 }
-                
-                if (!allInUsedEntities) {
-                    continue; // 跳过 1:N 关系字段
-                }
-                
-                String sqlExpr = buildCombineFieldExpression(fieldInfo);
-                fields.add(field(sqlExpr).as(fieldInfo.getLogicalField()));
-                log.info("  ✓ [组合字段] {} AS {}", sqlExpr, fieldInfo.getLogicalField());
             }
+        }
+        
+        // 3. 构建 SELECT 字段（不处理 transformer，直接查询原始字段）
+        for (String fieldKey : requiredFields) {
+            String[] parts = fieldKey.split("\\.");
+            String tableName = parts[0];
+            String columnName = parts[1];
+            
+            fields.add(field(name(tableName, columnName)));
+            log.info("  ✓ [字段] {}.{}", tableName, columnName);
         }
         
         if (fields.size() == 1) { // 只有主键
@@ -334,53 +328,7 @@ public class DynamicQueryService {
         return fields;
     }
 
-    /**
-     * 构建组合字段表达式
-     */
-    private String buildCombineFieldExpression(SysModuleCompleteResp.CombineFieldInfo field) {
-        String transformer = field.getTransformer();
-        
-        // 解析 sourceMapping JSON
-        JSONArray sourceMappings = JSON.parseArray(field.getSourceMapping());
-        Map<String, String> fieldMap = new HashMap<>();
-        
-        for (int i = 0; i < sourceMappings.size(); i++) {
-            JSONObject mapping = sourceMappings.getJSONObject(i);
-            String entity = mapping.getString("entity");
-            String fieldName = mapping.getString("field");
-            fieldMap.put(fieldName, entity + "." + fieldName);
-        }
-        
-        // 替换占位符
-        Matcher matcher = PLACEHOLDER_PATTERN.matcher(transformer);
-        StringBuffer result = new StringBuffer();
-        
-        while (matcher.find()) {
-            String placeholder = matcher.group(1);
-            String replacement = fieldMap.getOrDefault(placeholder, placeholder);
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-        
-        return result.toString();
-    }
 
-    /**
-     * 替换转换表达式中的占位符
-     */
-    private String replaceTransformerPlaceholders(String transformer, String tableName) {
-        Matcher matcher = PLACEHOLDER_PATTERN.matcher(transformer);
-        StringBuffer result = new StringBuffer();
-        
-        while (matcher.find()) {
-            String placeholder = matcher.group(1);
-            String replacement = tableName + "." + placeholder;
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-        
-        return result.toString();
-    }
 
     /**
      * 应用 WHERE 条件
@@ -581,46 +529,42 @@ public class DynamicQueryService {
         List<Field<?>> fields = new ArrayList<>();
         String tableName = entity.getTableName();
         
-        // 添加简单字段
+        // 收集所有需要查询的字段（简单字段 + 组合字段依赖的源字段）
+        Set<String> requiredFields = new HashSet<>();
+        
+        // 1. 添加简单字段
         if (moduleConfig.getSimpleFields() != null) {
             for (SysModuleCompleteResp.SimpleFieldInfo fieldInfo : moduleConfig.getSimpleFields()) {
                 if (tableName.equals(fieldInfo.getTableName())) {
-                    if (fieldInfo.getTransformer() != null && !fieldInfo.getTransformer().isEmpty()) {
-                        String sqlExpr = replaceTransformerPlaceholders(
-                                fieldInfo.getTransformer(), 
-                                fieldInfo.getTableName());
-                        fields.add(field(sqlExpr).as(fieldInfo.getColumnName()));
-                    } else {
-                        fields.add(field(name(fieldInfo.getTableName(), fieldInfo.getColumnName())));
-                    }
+                    requiredFields.add(fieldInfo.getColumnName());
                 }
             }
         }
         
-        // 添加组合字段
+        // 2. 收集组合字段依赖的源字段
         if (moduleConfig.getCombineFields() != null) {
             for (SysModuleCompleteResp.CombineFieldInfo fieldInfo : moduleConfig.getCombineFields()) {
                 if (fieldInfo.getEnabled() != 1) {
                     continue;
                 }
                 
-                // 检查是否所有源字段都属于当前子表
+                // 解析 sourceMapping，提取属于当前子表的源字段
                 JSONArray sourceMappings = JSON.parseArray(fieldInfo.getSourceMapping());
-                boolean allInChildTable = true;
                 for (int i = 0; i < sourceMappings.size(); i++) {
                     JSONObject mapping = sourceMappings.getJSONObject(i);
                     String entityName = mapping.getString("entity");
-                    if (!tableName.equals(entityName)) {
-                        allInChildTable = false;
-                        break;
+                    String fieldName = mapping.getString("field");
+                    
+                    if (tableName.equals(entityName)) {
+                        requiredFields.add(fieldName);
                     }
                 }
-                
-                if (allInChildTable) {
-                    String sqlExpr = buildCombineFieldExpression(fieldInfo);
-                    fields.add(field(sqlExpr).as(fieldInfo.getLogicalField()));
-                }
             }
+        }
+        
+        // 3. 构建 SELECT 字段（不处理 transformer，直接查询原始字段）
+        for (String columnName : requiredFields) {
+            fields.add(field(name(tableName, columnName)));
         }
         
         if (fields.isEmpty()) {

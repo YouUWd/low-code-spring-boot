@@ -69,7 +69,7 @@ public class SysModuleController {
      */
     @Operation(summary = "删除模块完整信息", description = "删除模块及其所有关联的表、字段配置和状态信息")
     @DeleteMapping("/{moduleId}/complete")
-    public ApiResponse<Void> deleteModuleComplete(
+    public ApiResponse<String> deleteModuleComplete(
             @Parameter(description = "模块ID", required = true, example = "1")
             @PathVariable Long moduleId) {
         sysModuleService.deleteModuleComplete(moduleId);

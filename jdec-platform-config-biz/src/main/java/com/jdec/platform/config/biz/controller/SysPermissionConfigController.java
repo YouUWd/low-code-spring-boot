@@ -62,7 +62,7 @@ public class SysPermissionConfigController {
      * 删除权限配置
      */
     @DeleteMapping("/{permissionId}")
-    public ApiResponse<Void> deletePermissionConfig(@PathVariable Long permissionId) {
+    public ApiResponse<String> deletePermissionConfig(@PathVariable Long permissionId) {
         sysPermissionConfigService.deletePermissionConfig(permissionId);
         return ApiResponse.success("删除成功");
     }
@@ -71,7 +71,7 @@ public class SysPermissionConfigController {
      * 批量删除权限配置
      */
     @PostMapping("/batch-delete")
-    public ApiResponse<Void> batchDeletePermissionConfigs(@RequestBody List<Long> permissionIds) {
+    public ApiResponse<String> batchDeletePermissionConfigs(@RequestBody List<Long> permissionIds) {
         sysPermissionConfigService.batchDeletePermissionConfigs(permissionIds);
         return ApiResponse.success("批量删除成功");
     }
