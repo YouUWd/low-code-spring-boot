@@ -73,7 +73,7 @@ public class SysModuleController {
             @Parameter(description = "模块ID", required = true, example = "1")
             @PathVariable Long moduleId) {
         sysModuleService.deleteModuleComplete(moduleId);
-        return ApiResponse.success("删除成功");
+        return ApiResponse.success("删除成功", null);
     }
 
     /**

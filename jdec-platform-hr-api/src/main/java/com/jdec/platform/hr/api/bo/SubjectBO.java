@@ -1,0 +1,19 @@
+package com.jdec.platform.hr.api.bo;
+
+import lombok.Data;
+
+import java.io.Serializable;
+
+@Data
+public class SubjectBO implements Serializable {
+    private Long id;
+
+    /** 主体名称 */
+    private String subjectName;
+
+    /** 对应公司名称 */
+    private String companyName;
+
+    /** 别名 */
+    private String alias;
+}

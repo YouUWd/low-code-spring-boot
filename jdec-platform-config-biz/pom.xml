@@ -16,12 +16,7 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-shared</artifactId>
-        </dependency>
-        <!-- If config needs auth context later, it only depends on auth-api -->
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-auth-api</artifactId>
+            <artifactId>jdec-platform-hr-api</artifactId>
         </dependency>
         <!-- ClassGraph for classpath scanning -->
         <dependency>
