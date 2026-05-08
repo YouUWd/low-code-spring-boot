@@ -7,7 +7,7 @@ import com.jdec.platform.auth.api.dto.request.LoginReq;
 import com.jdec.platform.auth.api.dto.request.SendCodeReq;
 import com.jdec.platform.auth.api.dto.response.LoginResp;
 import com.jdec.platform.config.api.SysUserApi;
-import com.jdec.platform.config.api.bo.UserBO;
+import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.shared.constants.RedisConstant;
 import com.jdec.platform.shared.constants.SystemConstant;
 import com.jdec.platform.shared.enums.DeviceTypeEnum;
@@ -40,7 +40,7 @@ public class AuthService implements AuthApi {
     @Override
     public LoginResp login(LoginReq request) {
         // 1. 查询用户
-        UserBO user = sysUserApi.getUserByPhone(request.getPhone());
+        SysUserBO user = sysUserApi.getUserByPhone(request.getPhone());
         if (user == null) {
             throw new BusinessException("当前账号无记录，请联系管理员");
         }
@@ -89,7 +89,7 @@ public class AuthService implements AuthApi {
                 .build();
     }
 
-    private LoginUser buildLoginUser(UserBO user, String appCode) {
+    private LoginUser buildLoginUser(SysUserBO user, String appCode) {
         // TODO: 后续完善角色、权限加载
         return LoginUser.builder()
                 .userId(user.getId())
@@ -108,7 +108,7 @@ public class AuthService implements AuthApi {
     @Override
     public LoginResp getUserInfo() {
         LoginUser loginUser = SecurityUtils.getLoginUserOrThrow();
-        UserBO user = sysUserApi.getUserByPhone(loginUser.getPhone());
+        SysUserBO user = sysUserApi.getUserByPhone(loginUser.getPhone());
         return LoginResp.builder()
                 .userId(user.getId())
                 .username(user.getUserName())
@@ -122,7 +122,7 @@ public class AuthService implements AuthApi {
     public String sendVerifyCode(SendCodeReq req) {
         String msg;
         // 1. 按 phone + is_delete=1 查询 sys_user
-        UserBO userBO = sysUserApi.getUserByPhone(req.getPhone());
+        SysUserBO userBO = sysUserApi.getUserByPhone(req.getPhone());
         if (userBO == null) {
             throw new BusinessException("当前账号无记录，请联系管理员");
         }

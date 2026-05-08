@@ -13,8 +13,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
-@RequestMapping("user")
+@RequestMapping("/api/config/sys/user")
 @RequiredArgsConstructor
 @Tag(name = "用户管理", description = "用户的管理接口")
 public class SysUserController {
@@ -41,5 +43,11 @@ public class SysUserController {
             @PathVariable Long id) {
         sysUserApi.disableUser(id);
         return ApiResponse.success();
+    }
+
+    @GetMapping("/list")
+    @Operation(summary = "查询用户列表", description = "先查sys_role_user表根据appCode过滤拿到用户id，再查sys_user表获取用户数据")
+    public ApiResponse<List<SysUserPageResp>> getUserList() {
+        return ApiResponse.success(sysUserApi.getUserList());
     }
 }

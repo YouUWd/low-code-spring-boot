@@ -3,10 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
-import com.jdec.platform.config.api.dto.response.CheckRoleUserResp;
-import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
-import com.jdec.platform.config.api.dto.response.RoleConfigPageResp;
-import com.jdec.platform.config.api.dto.response.RoleUserTimeResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,13 +12,15 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * 角色管理 REST 控制器
  *
  * <p>提供角色的增删改查接口。
  */
 @RestController
-@RequestMapping("/api/config/role")
+@RequestMapping("/api/config/sys/role")
 @RequiredArgsConstructor
 @Tag(name = "角色管理", description = "角色的增删改查接口")
 public class SysRoleController {
@@ -73,5 +72,14 @@ public class SysRoleController {
             @PathVariable Long roleId) {
         sysRoleApi.deleteRole(roleId);
         return ApiResponse.success();
+    }
+
+    /**
+     * 提供主体下拉列表
+     */
+    @GetMapping("/subjects")
+    @Operation(summary = "主体下拉列表")
+    public ApiResponse<List<SubjectOptionResp>> listSubjects() {
+        return ApiResponse.success(sysRoleApi.listSubjectOptions());
     }
 }

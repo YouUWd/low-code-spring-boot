@@ -6,12 +6,17 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysUserApi;
-import com.jdec.platform.config.api.bo.UserBO;
+import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysUser;
+import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
+import com.jdec.platform.shared.context.AppCodeContext;
+import com.jdec.platform.shared.datasource.DataSource;
+import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.DeleteFlagEnum;
 import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -21,13 +26,18 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * 用户 Service 实现
  */
 @Service
 @RequiredArgsConstructor
+@DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysUserService implements SysUserApi {
     private final SysUserMapper sysUserMapper;
+    private final SysRoleUserMapper sysRoleUserMapper;
 
     @Override
     public PageResult<SysUserPageResp> getUserPage(QuerySysUserPageReq query) {
@@ -100,13 +110,35 @@ public class SysUserService implements SysUserApi {
     }
 
     @Override
-    public UserBO getUserByPhone(String phone) {
+    public SysUserBO getUserByPhone(String phone) {
         SysUser sysUser = sysUserMapper.selectOne(
                 Wrappers.<SysUser>lambdaQuery()
                         .eq(SysUser::getPhone, phone)
                         .eq(SysUser::getDeleted, DeleteFlagEnum.NO_DELETE.getCode())
                         .eq(SysUser::getSuperFlag, UserStatusFlagEnum.ENABLE.getCode())
         );
-        return BeanUtil.toBean(sysUser, UserBO.class);
+        return BeanUtil.toBean(sysUser, SysUserBO.class);
+    }
+
+    @Override
+    public List<SysUserPageResp> getUserList() {
+        // 1. 根据appCode查询sys_role_user表获取用户id列表
+        List<SysRoleUser> roleUsers = sysRoleUserMapper.selectList(
+                Wrappers.<SysRoleUser>lambdaQuery()
+                        .eq(SysRoleUser::getAppCode, AppCodeContext.get())
+                        .select(SysRoleUser::getUserId)
+        );
+        if (roleUsers.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 根据用户id列表查询sys_user表
+        List<Long> userIds = roleUsers.stream().map(SysRoleUser::getUserId).distinct().toList();
+        List<SysUser> users = sysUserMapper.selectList(
+                Wrappers.<SysUser>lambdaQuery()
+                        .in(SysUser::getId, userIds)
+                        .orderByDesc(SysUser::getCreatedDate)
+        );
+        return users.stream().map(this::toUserPageResp).toList();
     }
 }

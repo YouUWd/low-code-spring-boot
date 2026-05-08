@@ -1,7 +1,10 @@
 package com.jdec.platform.hr.biz.service;
 
+import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.hr.api.UserApi;
+import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.request.CreateUserReq;
 import com.jdec.platform.hr.api.dto.request.UpdateUserReq;
 import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
@@ -9,13 +12,19 @@ import com.jdec.platform.hr.biz.entity.User;
 import com.jdec.platform.hr.biz.mapper.UserMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 用户服务 */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * 用户服务
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -97,6 +106,26 @@ public class UserService implements UserApi {
         userMapper.updateById(user);
         log.info("用户更新成功: {}", request.getId());
         return toUserBasicInfo(userMapper.selectById(request.getId()));
+    }
+
+    @Override
+    public List<UserBO> listByIds(Set<Long> allUserIds) {
+        List<User> users = userMapper.selectList(
+                Wrappers.<User>lambdaQuery()
+                        .in(User::getId, new ArrayList<>(allUserIds))
+                        .eq(User::getIsDelete, 1)
+                        .eq(User::getUserStatus, 1)
+        );
+        return BeanUtil.copyToList(users, UserBO.class);
+    }
+
+    @Override
+    public List<UserBO> listBySubjectId(Long subjectId) {
+        List<User> users = userMapper.selectList(
+                Wrappers.<User>lambdaQuery()
+                        .eq(User::getSubjectId, subjectId)
+        );
+        return BeanUtil.copyToList(users, UserBO.class);
     }
 
     /**

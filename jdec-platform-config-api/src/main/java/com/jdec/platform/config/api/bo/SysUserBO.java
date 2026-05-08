@@ -6,7 +6,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Data
-public class UserBO implements Serializable {
+public class SysUserBO implements Serializable {
     private Long id;
 
     private Long userId;

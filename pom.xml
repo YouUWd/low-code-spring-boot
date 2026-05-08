@@ -154,6 +154,12 @@
                 <artifactId>sa-token-forest</artifactId>
                 <version>${sa-token.version}</version>
             </dependency>
+            <!-- OSS SDK (AWS SDK Java V2) -->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>s3</artifactId>
+                <version>2.27.21</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 

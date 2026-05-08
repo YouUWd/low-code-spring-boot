@@ -17,10 +17,16 @@ import com.jdec.platform.config.biz.mapper.SysRoleMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
+import com.jdec.platform.hr.api.DepartmentApi;
+import com.jdec.platform.hr.api.SubjectApi;
+import com.jdec.platform.hr.api.UserApi;
+import com.jdec.platform.hr.api.bo.DepartmentBO;
+import com.jdec.platform.hr.api.bo.SubjectBO;
+import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.enums.DeleteFlagEnum;
-import com.jdec.platform.shared.enums.EffectiveTypeEnum;
-import com.jdec.platform.shared.enums.UserTypeEnum;
+import com.jdec.platform.shared.datasource.DataSource;
+import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.enums.*;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import lombok.RequiredArgsConstructor;
@@ -34,11 +40,15 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysRoleService implements SysRoleApi {
     private final SysRoleMapper sysRoleMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysUserMapper sysUserMapper;
+    private final UserApi userApi;
+    private final SubjectApi subjectApi;
+    private final DepartmentApi departmentApi;
 
     @Override
     public Long getUserRoleCount(Long id, Long subjectId, String appCode) {
@@ -339,7 +349,7 @@ public class SysRoleService implements SysRoleApi {
             return resp;
         }).collect(Collectors.toList());
 
-        return PageResult.of(query.getPageNum(),query.getPageSize(),rolePage.getTotal(),respList);
+        return PageResult.of(query.getPageNum(), query.getPageSize(), rolePage.getTotal(), respList);
     }
 
     @Override
@@ -417,6 +427,18 @@ public class SysRoleService implements SysRoleApi {
 
         // 5. 删除角色本身
         sysRoleMapper.deleteById(roleId);
+    }
+
+    @Override
+    public List<SubjectOptionResp> listSubjectOptions() {
+        List<SubjectBO> subjectList = subjectApi.getSubjectList();
+        return subjectList.stream()
+                .map(subject -> {
+                    SubjectOptionResp resp = new SubjectOptionResp();
+                    resp.setSubjectId(subject.getId());
+                    resp.setSubjectName(subject.getSubjectName());
+                    return resp;
+                }).toList();
     }
 
     private List<RoleSubjectResp> buildSubjectList(List<SysRoleSubject> subjects) {
@@ -570,12 +592,11 @@ public class SysRoleService implements SysRoleApi {
                 .map(SysUser::getId)
                 .collect(Collectors.toSet());
 
-        // todo: 调用人力系统获取用户数据
         // 批量查询User表，构建userId -> User的映射
-        /*Map<Long, User> userMap = new HashMap<>();
+        Map<Long, UserBO> userMap = new HashMap<>();
         if (!allUserIds.isEmpty()) {
-            List<User> userList = userService.listByIds(allUserIds);
-            for (User u : userList) {
+            List<UserBO> userList = userApi.listByIds(allUserIds);
+            for (UserBO u : userList) {
                 userMap.put(u.getId(), u);
             }
         }
@@ -586,6 +607,15 @@ public class SysRoleService implements SysRoleApi {
                 insideIds.add(removeUPrefix(id));
             }
         }
+        // 查询部门信息（用于获取负责人）
+        List<DepartmentBO> departments = departmentApi.getDepartmentList();
+        Map<Long, DepartmentBO> deptMap =
+                departments.stream()
+                        .collect(Collectors.toMap(DepartmentBO::getId, d -> d));
+        // 查询主体信息
+        List<SubjectBO> subjects = subjectApi.getSubjectList();
+        Map<Long, SubjectBO> subjectMap =
+                subjects.stream().collect(Collectors.toMap(SubjectBO::getId, d -> d));
         List<SysUser> newUsers = new ArrayList<>();
         for (Long userId : allUserIds) {
             if (!existingUserIds.contains(userId)) {
@@ -593,24 +623,29 @@ public class SysRoleService implements SysRoleApi {
                 sysUser.setUserId(userId);
                 sysUser.setUserType(insideIds.contains(userId)
                         ? UserTypeEnum.INSIDE.getCode() : UserTypeEnum.EXTERNAL.getCode());
-                sysUser.setAppCode(AppCodeContext.get());
-                sysUser.setStatusFlag(YesOrNoEnum.YES.getCode());
-                sysUser.setDeleted(YesOrNoEnum.NO.getCode());
+                sysUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
+                sysUser.setDeleted(DeleteFlagEnum.NO_DELETE.getCode());
 
                 // 从User表获取数据填充
-                User u = userMap.get(userId);
+                UserBO u = userMap.get(userId);
                 if (u != null) {
                     sysUser.setUserName(u.getUserName());
-                    sysUser.setShortName(u.getShortName());
-                    sysUser.setPhone(u.getPhone());
-                    sysUser.setUserAvatar(u.getUserAvatar());
                     sysUser.setSex(u.getSex());
+                    sysUser.setUserAvatar(u.getUserAvatar());
+                    sysUser.setWorkNumber(u.getWorkNumber());
+                    sysUser.setPhone(u.getPhone());
+                    sysUser.setShortName(u.getShortName());
+                    sysUser.setSubjectId(Long.valueOf(u.getSubjectId()));
+                    SubjectBO subject = subjectMap.get(u.getSubjectId().longValue());
+                    sysUser.setSubjectName(subject.getSubjectName());
+                    sysUser.setCompanyName(subject.getCompanyName());
                     sysUser.setDepartIds(u.getDepartmentId());
                     sysUser.setDepartName(u.getDepartmentName());
-                    sysUser.setSubjectId(u.getSubjectId() != null ? u.getSubjectId().longValue() : null);
-                    sysUser.setWorkNumber(u.getWorkNumber());
+                    String managerName = this.getManagerByDepartId(u.getDepartmentId(), deptMap);
+                    sysUser.setLeaderName(managerName);
                     sysUser.setPositionName(u.getJobName());
-                    sysUser.setEmployedStatus(u.getJobStatus());
+                    sysUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
+                    sysUser.setEmployedStatus(EmployedStatusEnum.EMPLOYED_STATUS_ENABLED.getCode());
                 } else {
                     sysUser.setUserName("用户" + userId);
                 }
@@ -618,8 +653,62 @@ public class SysRoleService implements SysRoleApi {
             }
         }
         if (!newUsers.isEmpty()) {
-            sysUserService.saveBatch(newUsers);
-        }*/
+            sysUserMapper.insert(newUsers);
+        }
+    }
+
+    private String getManagerByDepartId(String departIds, Map<Long, DepartmentBO> departMap) {
+        return getColumnInfoByDepartId(departIds, departMap, ",");
+    }
+
+    private String getColumnInfoByDepartId(
+            Object departIds, Map<Long, DepartmentBO> departs, String glue) {
+        List<Long> idList = parseDepartIds(departIds);
+        if (idList.isEmpty()) {
+            return "";
+        }
+        List<String> values =
+                idList.stream()
+                        .filter(departs::containsKey)
+                        .map(departs::get)
+                        .map(DepartmentBO::getManagerName)
+                        .filter(Objects::nonNull)
+                        .filter(v -> !v.trim().isEmpty())
+                        .distinct()
+                        .collect(Collectors.toList());
+
+        return String.join(glue, values);
+    }
+
+    // 辅助方法：将部门ID参数转换为List<Integer>
+    private List<Long> parseDepartIds(Object departIds) {
+        if (departIds == null) {
+            return Collections.emptyList();
+        }
+        if (departIds instanceof Collection) {
+            return ((Collection<?>) departIds)
+                    .stream()
+                    .map(Object::toString)
+                    .filter(s -> !s.trim().isEmpty())
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+        }
+        if (departIds instanceof String str) {
+            if (str.trim().isEmpty()) {
+                return Collections.emptyList();
+            }
+            return Arrays.stream(str.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
+        }
+        // 假设是单个数字
+        try {
+            return Collections.singletonList(Long.parseLong(departIds.toString()));
+        } catch (NumberFormatException e) {
+            return Collections.emptyList();
+        }
     }
 
     /**
@@ -817,16 +906,13 @@ public class SysRoleService implements SysRoleApi {
     }
 
     /**
-     * todo: 通过人力接口进行查询
      * 校验：授权主体时，是否有员工已单独配置在该角色中
      * 通过 user 表查询主体下用户，与前端传入 userId 做对比
      */
     private List<String> checkSubjectUserConflict(Long subjectId, Set<Long> userIds) {
-        /*List<User> users = userService.list(
-                new LambdaQueryWrapper<User>()
-                        .eq(User::getSubjectId, subjectId.intValue()));
+        List<UserBO> users = userApi.listBySubjectId(subjectId);
         Set<Long> subjectUserIds = users.stream()
-                .map(User::getId)
+                .map(UserBO::getId)
                 .collect(Collectors.toSet());
 
         Set<Long> conflictIds = new HashSet<>(userIds);
@@ -838,8 +924,7 @@ public class SysRoleService implements SysRoleApi {
 
         return users.stream()
                 .filter(user -> conflictIds.contains(user.getId()))
-                .map(User::getUserName)
-                .toList();*/
-        return Collections.emptyList();
+                .map(UserBO::getUserName)
+                .toList();
     }
 }

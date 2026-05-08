@@ -2,7 +2,7 @@ package com.jdec.platform.auth.biz.security;
 
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.SysUserApi;
-import com.jdec.platform.config.api.bo.UserBO;
+import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.shared.security.SaTokenUserDataLoader;
 import com.jdec.platform.shared.security.model.UserInfo;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ public class SaTokenUserDataLoaderImpl implements SaTokenUserDataLoader {
     private final SysRoleApi sysRoleApi;
     @Override
     public UserInfo getUserByPhone(String phone) {
-        UserBO user = sysUserApi.getUserByPhone(phone);
+        SysUserBO user = sysUserApi.getUserByPhone(phone);
         if (user == null) {
             return null;
         }
@@ -35,7 +35,7 @@ public class SaTokenUserDataLoaderImpl implements SaTokenUserDataLoader {
 
     @Override
     public Long getUserRoleCount(String phone,String appCode) {
-        UserBO user = sysUserApi.getUserByPhone(phone);
+        SysUserBO user = sysUserApi.getUserByPhone(phone);
         return sysRoleApi.getUserRoleCount(user.getId(),user.getSubjectId(),appCode);
     }
 }

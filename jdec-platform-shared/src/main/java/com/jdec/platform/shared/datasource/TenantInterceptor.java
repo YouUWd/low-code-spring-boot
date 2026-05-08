@@ -57,6 +57,8 @@ public class TenantInterceptor implements HandlerInterceptor {
             DataSourceContextHolder.set(tenantId);
             AppCodeContext.set(tenantId);
             log.debug("TenantInterceptor 设置默认数据源: {}", tenantId);
+        } else {
+            throw new BusinessException("未携带应用编码");
         }
 
         return true;

@@ -2,11 +2,10 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
-import com.jdec.platform.config.api.dto.response.CheckRoleUserResp;
-import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
-import com.jdec.platform.config.api.dto.response.RoleConfigPageResp;
-import com.jdec.platform.config.api.dto.response.RoleUserTimeResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.model.PageResult;
+
+import java.util.List;
 
 public interface SysRoleApi {
     /**
@@ -29,4 +28,8 @@ public interface SysRoleApi {
     RoleConfigDetailResp getRoleConfigDetail(Long roleId, Integer userType);
 
     void deleteRole(Long roleId);
+
+    List<SubjectOptionResp> listSubjectOptions();
+
+
 }

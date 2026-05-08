@@ -1,9 +1,13 @@
 package com.jdec.platform.hr.api;
 
+import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.request.CreateUserReq;
 import com.jdec.platform.hr.api.dto.request.UpdateUserReq;
 import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
+
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /** 用户模块暴露的 API */
 public interface UserApi {
@@ -47,4 +51,8 @@ public interface UserApi {
      * @return 用户基本信息
      */
     UserBasicInfoResp updateUser(UpdateUserReq request);
+
+    List<UserBO> listByIds(Set<Long> allUserIds);
+
+    List<UserBO> listBySubjectId(Long subjectId);
 }
