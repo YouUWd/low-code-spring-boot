@@ -1,26 +1,38 @@
 package com.jdec.platform.auth.api.dto.response;
 
-import lombok.AllArgsConstructor;
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
-/** 登录响应，包含认证信息 */
+/**
+ * 登录响应
+ */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Builder
+@Schema(description = "登录响应")
 public class LoginResp {
-    /** JWT Token */
+
+    @Schema(description = "Token")
     private String token;
 
-    /** 用户ID */
+    @Schema(description = "Token 名称")
+    private String tokenName;
+
+    @Schema(description = "用户ID")
     private Long userId;
 
-    /** 用户名 */
+    @Schema(description = "用户名")
     private String username;
 
-    /** 邮箱 */
-    private String email;
+    @Schema(description = "手机号")
+    private String phone;
 
-    /** 账户状态 */
-    private Integer status;
+    @Schema(description = "头像")
+    private String avatar;
+
+    @Schema(description = "是否超级管理员")
+    private Boolean superAdmin;
+
+    @Schema(description = "应用编码")
+    private String appCode;
 }

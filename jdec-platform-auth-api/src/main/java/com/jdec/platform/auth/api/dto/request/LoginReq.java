@@ -1,20 +1,24 @@
 package com.jdec.platform.auth.api.dto.request;
 
-import lombok.AllArgsConstructor;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
-/** 登录请求 */
+/**
+ * 登录请求
+ */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Schema(description = "登录请求")
 public class LoginReq {
-    /** 手机号 */
+
+    @Schema(description = "手机号", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "手机号不能为空")
     private String phone;
 
-    /** 验证码 */
+    @Schema(description = "验证码",requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "验证码不能为空")
     private String code;
 
-    /** 是否返回员工信息，默认 false */
-    private Boolean includeEmployeeInfo = false;
+    @Schema(description = "APP编码，默认 CONFIG")
+    private String appCode;
 }
