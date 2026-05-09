@@ -17,16 +17,16 @@ import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.shared.context.AppCodeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import com.jdec.platform.shared.enums.DeleteFlagEnum;
 import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
-import java.util.Collections;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+
+import java.util.Collections;
+import java.util.List;
 
 /** 用户 Service 实现 */
 @Service
@@ -134,7 +134,6 @@ public class SysUserService implements SysUserApi {
                 sysUserMapper.selectOne(
                         Wrappers.<SysUser>lambdaQuery()
                                 .eq(SysUser::getPhone, phone)
-                                .eq(SysUser::getDeleted, DeleteFlagEnum.NO_DELETE.getCode())
                                 .eq(SysUser::getSuperFlag, UserStatusFlagEnum.ENABLE.getCode()));
         return BeanUtil.toBean(sysUser, SysUserBO.class);
     }

@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -7,16 +8,11 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
+import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.config.biz.entity.SysRole;
-import com.jdec.platform.config.biz.entity.SysRoleSubject;
-import com.jdec.platform.config.biz.entity.SysRoleUser;
-import com.jdec.platform.config.biz.entity.SysUser;
-import com.jdec.platform.config.biz.mapper.SysRoleMapper;
-import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
-import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
-import com.jdec.platform.config.biz.mapper.SysUserMapper;
+import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.UserApi;
@@ -24,17 +20,24 @@ import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.shared.context.AppCodeContext;
+import com.jdec.platform.shared.context.SubjectContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import com.jdec.platform.shared.enums.*;
+import com.jdec.platform.shared.enums.EffectiveTypeEnum;
+import com.jdec.platform.shared.enums.EmployedStatusEnum;
+import com.jdec.platform.shared.enums.UserStatusFlagEnum;
+import com.jdec.platform.shared.enums.UserTypeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
-import java.util.*;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-/** 角色 Service 实现 */
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * 角色 Service 实现
+ */
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -43,6 +46,8 @@ public class SysRoleService implements SysRoleApi {
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysUserMapper sysUserMapper;
+    private final SysRoleMenuMapper sysRoleMenuMapper;
+    private final SysMenuMapper sysMenuMapper;
     private final UserApi userApi;
     private final SubjectApi subjectApi;
     private final DepartmentApi departmentApi;
@@ -53,16 +58,13 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectCount(
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getUserId, id)
-                                .eq(SysRoleUser::getAppCode, appCode)
-                                .eq(SysRoleUser::getDeleted, DeleteFlagEnum.NO_DELETE.getCode()));
+                                .eq(SysRoleUser::getAppCode, appCode));
         Long count1 =
                 sysRoleSubjectMapper.selectCount(
                         Wrappers.<SysRoleSubject>lambdaQuery()
                                 .eq(SysRoleSubject::getSubjectId, subjectId)
                                 .eq(SysRoleSubject::getAppCode, appCode)
-                                .eq(
-                                        SysRoleSubject::getDeleted,
-                                        DeleteFlagEnum.NO_DELETE.getCode()));
+                );
         return count + count1;
     }
 
@@ -462,6 +464,74 @@ public class SysRoleService implements SysRoleApi {
                 .toList();
     }
 
+    @Override
+    public List<RoleListResp> listRole() {
+        List<SysRole> sysRoles = sysRoleMapper.selectList(
+                Wrappers.<SysRole>lambdaQuery()
+                        .eq(SysRole::getAppCode, AppCodeContext.get())
+                        .eq(SysRole::getSubjectId, SubjectContext.get())
+        );
+        return BeanUtil.copyToList(sysRoles, RoleListResp.class);
+    }
+
+    @Override
+    public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String appCode) {
+        // 查询角色菜单关联
+        List<SysRoleMenu> roleMenus = sysRoleMenuMapper.selectList(
+                Wrappers.<SysRoleMenu>lambdaQuery()
+                        .eq(SysRoleMenu::getRoleId, roleId)
+        );
+
+        if (roleMenus.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 获取菜单ID列表
+        List<Long> menuIds = roleMenus.stream()
+                .map(SysRoleMenu::getMenuId)
+                .toList();
+
+        // 查询菜单信息
+        LambdaQueryWrapper<SysMenu> menuWrapper = new LambdaQueryWrapper<SysMenu>()
+                .in(SysMenu::getId, menuIds)
+                .eq(SysMenu::getSubjectId, subjectId)
+                .eq(SysMenu::getAppCode, appCode);
+        List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
+
+        // 构建响应
+        return menus.stream().map(menu -> {
+            RoleMenuResp resp = new RoleMenuResp();
+            resp.setMenuId(menu.getId());
+            resp.setMenuTitle(menu.getTitle());
+            return resp;
+        }).toList();
+    }
+
+    @Override
+    public void saveRoleMenu(SaveRoleMenuReq request) {
+        Long roleId = request.getRoleId();
+        List<Long> menuIds = request.getMenuIds();
+
+        // 删除旧的角色菜单关联
+        sysRoleMenuMapper.delete(
+                Wrappers.<SysRoleMenu>lambdaQuery()
+                        .eq(SysRoleMenu::getRoleId, roleId)
+        );
+
+        // 批量插入新的角色菜单关联
+        if (CollUtil.isNotEmpty(menuIds)) {
+            List<SysRoleMenu> roleMenus = menuIds.stream().map(menuId -> {
+                SysRoleMenu roleMenu = new SysRoleMenu();
+                roleMenu.setRoleId(roleId);
+                roleMenu.setMenuId(menuId);
+                roleMenu.setAppCode(AppCodeContext.get());
+                roleMenu.setSubjectId(SubjectContext.get());
+                return roleMenu;
+            }).toList();
+            sysRoleMenuMapper.insert(roleMenus);
+        }
+    }
+
     private List<RoleSubjectResp> buildSubjectList(List<SysRoleSubject> subjects) {
         if (subjects.isEmpty()) {
             return Collections.emptyList();
@@ -476,7 +546,9 @@ public class SysRoleService implements SysRoleApi {
         return respList;
     }
 
-    /** 构建用户VO列表 */
+    /**
+     * 构建用户VO列表
+     */
     private List<RoleUserResp> buildUserList(List<SysRoleUser> roleUsers) {
         if (roleUsers.isEmpty()) {
             return Collections.emptyList();
@@ -505,7 +577,9 @@ public class SysRoleService implements SysRoleApi {
                 .collect(Collectors.toList());
     }
 
-    /** 清理孤立用户：检查用户是否没有任何角色绑定，如果有则删除sys_user记录 */
+    /**
+     * 清理孤立用户：检查用户是否没有任何角色绑定，如果有则删除sys_user记录
+     */
     private void cleanupOrphanedUsers(Set<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return;
@@ -515,9 +589,9 @@ public class SysRoleService implements SysRoleApi {
             // 检查该用户是否还有其他角色绑定
             boolean hasOtherRole =
                     sysRoleUserMapper.selectCount(
-                                    new LambdaQueryWrapper<SysRoleUser>()
-                                            .eq(SysRoleUser::getUserId, userId)
-                                            .eq(SysRoleUser::getAppCode, AppCodeContext.get()))
+                            new LambdaQueryWrapper<SysRoleUser>()
+                                    .eq(SysRoleUser::getUserId, userId)
+                                    .eq(SysRoleUser::getAppCode, AppCodeContext.get()))
                             > 0;
 
             if (!hasOtherRole) {
@@ -528,7 +602,9 @@ public class SysRoleService implements SysRoleApi {
         }
     }
 
-    /** 保存单独用户授权关系 注意：只添加不属于该主体的用户，属于该主体的用户无需再和角色进行关联 */
+    /**
+     * 保存单独用户授权关系 注意：只添加不属于该主体的用户，属于该主体的用户无需再和角色进行关联
+     */
     private void saveUserRelations(SaveRoleUserReq request, Long roleId) {
         List<String> insideIdStrs = request.getUserInsideIds();
         List<String> externalIdStrs = request.getUserExternalIds();
@@ -593,13 +669,17 @@ public class SysRoleService implements SysRoleApi {
         return ru;
     }
 
-    /** 判断用户是否属于指定主体 */
+    /**
+     * 判断用户是否属于指定主体
+     */
     private boolean isUserInSubject(Long userId, Long subjectId, Map<Long, SysUser> userMap) {
         SysUser user = userMap.get(userId);
         return user != null && user.getSubjectId() != null && user.getSubjectId().equals(subjectId);
     }
 
-    /** 批量检查并创建不存在的用户 */
+    /**
+     * 批量检查并创建不存在的用户
+     */
     private void batchEnsureUsersExist(Set<Long> allUserIds, List<String> insideIdStrs) {
         List<SysUser> existingUsers = sysUserMapper.selectByIds(allUserIds);
         Set<Long> existingUserIds =
@@ -638,7 +718,6 @@ public class SysRoleService implements SysRoleApi {
                                 ? UserTypeEnum.INSIDE.getCode()
                                 : UserTypeEnum.EXTERNAL.getCode());
                 sysUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
-                sysUser.setDeleted(DeleteFlagEnum.NO_DELETE.getCode());
 
                 // 从User表获取数据填充
                 UserBO u = userMap.get(userId);
@@ -702,10 +781,10 @@ public class SysRoleService implements SysRoleApi {
         if (departIds instanceof Collection) {
             return ((Collection<?>) departIds)
                     .stream()
-                            .map(Object::toString)
-                            .filter(s -> !s.trim().isEmpty())
-                            .map(Long::parseLong)
-                            .collect(Collectors.toList());
+                    .map(Object::toString)
+                    .filter(s -> !s.trim().isEmpty())
+                    .map(Long::parseLong)
+                    .collect(Collectors.toList());
         }
         if (departIds instanceof String str) {
             if (str.trim().isEmpty()) {
@@ -725,7 +804,9 @@ public class SysRoleService implements SysRoleApi {
         }
     }
 
-    /** 保存角色主体关联 */
+    /**
+     * 保存角色主体关联
+     */
     private void saveRoleSubject(SaveRoleUserReq request, Long roleId) {
         Long subjectId = request.getSubjectId();
         SysRoleSubject old =
@@ -751,7 +832,9 @@ public class SysRoleService implements SysRoleApi {
         }
     }
 
-    /** 更新时，是否对已有用户记录进行覆盖（时间范围改变） */
+    /**
+     * 更新时，是否对已有用户记录进行覆盖（时间范围改变）
+     */
     private boolean hasExistingUserTimeChanged(
             Long roleId, Set<Long> userIds, SaveRoleUserReq request) {
         List<SysRoleUser> existing =
@@ -779,7 +862,9 @@ public class SysRoleService implements SysRoleApi {
         return false;
     }
 
-    /** 当前角色中是否已有员工设置过自定义时间 */
+    /**
+     * 当前角色中是否已有员工设置过自定义时间
+     */
     private boolean hasCustomTimeInRole(Long roleId) {
         List<SysRoleUser> roleUsers =
                 sysRoleUserMapper.selectList(
@@ -810,7 +895,9 @@ public class SysRoleService implements SysRoleApi {
         return userCustom || subjectCustom;
     }
 
-    /** 校验：更新时，授权主体后，角色是否已经单独关联了属于该主体的员工 返回这些员工的名称列表，用于提示"是否覆盖" */
+    /**
+     * 校验：更新时，授权主体后，角色是否已经单独关联了属于该主体的员工 返回这些员工的名称列表，用于提示"是否覆盖"
+     */
     private List<String> checkRoleHasSubjectUsers(Long roleId, Long subjectId) {
         // 查询该角色下单独关联的用户
         List<SysRoleUser> roleUsers =
@@ -835,7 +922,9 @@ public class SysRoleService implements SysRoleApi {
         return users.stream().map(SysUser::getUserName).toList();
     }
 
-    /** 当前选定的角色中绑定的用户是否在别的角色中已经设置过自定义时间 currentRoleId 为 null 时表示新增角色，查询所有角色 */
+    /**
+     * 当前选定的角色中绑定的用户是否在别的角色中已经设置过自定义时间 currentRoleId 为 null 时表示新增角色，查询所有角色
+     */
     private boolean hasCustomTimeInOtherRoles(Long currentRoleId, Set<Long> userIds) {
         LambdaQueryWrapper<SysRoleUser> wrapper =
                 new LambdaQueryWrapper<SysRoleUser>()
@@ -848,7 +937,9 @@ public class SysRoleService implements SysRoleApi {
         return !sysRoleUserMapper.selectList(wrapper).isEmpty();
     }
 
-    /** 获取用户中，之前已经和任何角色绑定的用户名称列表 */
+    /**
+     * 获取用户中，之前已经和任何角色绑定的用户名称列表
+     */
     private List<String> getUsersBoundToAnyRole(Set<Long> userIds) {
         // 查询这些用户中，已经和任何角色绑定过的用户
         List<SysRoleUser> boundUsers =
@@ -872,7 +963,9 @@ public class SysRoleService implements SysRoleApi {
         return users.stream().map(SysUser::getUserName).toList();
     }
 
-    /** 自动判断有效期类型 */
+    /**
+     * 自动判断有效期类型
+     */
     private void autoDetectEffectiveType(SaveRoleUserReq request) {
         if (request.getEffectiveStartDate() != null || request.getEffectiveEndDate() != null) {
             request.setEffectiveType(EffectiveTypeEnum.CUSTOM.getCode());
@@ -881,7 +974,9 @@ public class SysRoleService implements SysRoleApi {
         }
     }
 
-    /** 收集所有用户ID（去掉U前缀） */
+    /**
+     * 收集所有用户ID（去掉U前缀）
+     */
     private Set<Long> collectUserIds(SaveRoleUserReq request) {
         Set<Long> allUserIds = new HashSet<>();
         if (request.getUserInsideIds() != null) {
@@ -897,7 +992,9 @@ public class SysRoleService implements SysRoleApi {
         return allUserIds;
     }
 
-    /** 去掉ID的U前缀 */
+    /**
+     * 去掉ID的U前缀
+     */
     private Long removeUPrefix(String id) {
         if (id != null && id.startsWith("U")) {
             return Long.parseLong(id.substring(1));
@@ -906,7 +1003,9 @@ public class SysRoleService implements SysRoleApi {
         return Long.parseLong(id);
     }
 
-    /** 校验：授权主体时，是否有员工已单独配置在该角色中 通过 user 表查询主体下用户，与前端传入 userId 做对比 */
+    /**
+     * 校验：授权主体时，是否有员工已单独配置在该角色中 通过 user 表查询主体下用户，与前端传入 userId 做对比
+     */
     private List<String> checkSubjectUserConflict(Long subjectId, Set<Long> userIds) {
         List<UserBO> users = userApi.listBySubjectId(subjectId);
         Set<Long> subjectUserIds = users.stream().map(UserBO::getId).collect(Collectors.toSet());
