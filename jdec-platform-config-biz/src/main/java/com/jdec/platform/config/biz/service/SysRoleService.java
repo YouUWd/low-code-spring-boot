@@ -8,10 +8,12 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.entity.SysRole;
+import com.jdec.platform.config.biz.entity.SysRoleSubject;
+import com.jdec.platform.config.biz.entity.SysRoleUser;
+import com.jdec.platform.config.biz.entity.SysUser;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.SubjectApi;
@@ -43,8 +45,6 @@ public class SysRoleService implements SysRoleApi {
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysUserMapper sysUserMapper;
-    private final SysRoleMenuMapper sysRoleMenuMapper;
-    private final SysMenuMapper sysMenuMapper;
     private final UserApi userApi;
     private final SubjectApi subjectApi;
     private final DepartmentApi departmentApi;
@@ -468,67 +468,6 @@ public class SysRoleService implements SysRoleApi {
                                 .eq(SysRole::getAppCode, AppCodeContext.get())
                                 .eq(SysRole::getSubjectId, SubjectContext.get()));
         return BeanUtil.copyToList(sysRoles, RoleListResp.class);
-    }
-
-    @Override
-    public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String appCode) {
-        // 查询角色菜单关联
-        List<SysRoleMenu> roleMenus =
-                sysRoleMenuMapper.selectList(
-                        Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
-
-        if (roleMenus.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        // 获取菜单ID列表
-        List<Long> menuIds = roleMenus.stream().map(SysRoleMenu::getMenuId).toList();
-
-        // 查询菜单信息
-        LambdaQueryWrapper<SysMenu> menuWrapper =
-                new LambdaQueryWrapper<SysMenu>()
-                        .in(SysMenu::getId, menuIds)
-                        .eq(SysMenu::getSubjectId, subjectId)
-                        .eq(SysMenu::getAppCode, appCode);
-        List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
-
-        // 构建响应
-        return menus.stream()
-                .map(
-                        menu -> {
-                            RoleMenuResp resp = new RoleMenuResp();
-                            resp.setMenuId(menu.getId());
-                            resp.setMenuTitle(menu.getTitle());
-                            return resp;
-                        })
-                .toList();
-    }
-
-    @Override
-    public void saveRoleMenu(SaveRoleMenuReq request) {
-        Long roleId = request.getRoleId();
-        List<Long> menuIds = request.getMenuIds();
-
-        // 删除旧的角色菜单关联
-        sysRoleMenuMapper.delete(
-                Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
-
-        // 批量插入新的角色菜单关联
-        if (CollUtil.isNotEmpty(menuIds)) {
-            List<SysRoleMenu> roleMenus =
-                    menuIds.stream()
-                            .map(
-                                    menuId -> {
-                                        SysRoleMenu roleMenu = new SysRoleMenu();
-                                        roleMenu.setRoleId(roleId);
-                                        roleMenu.setMenuId(menuId);
-                                        roleMenu.setAppCode(AppCodeContext.get());
-                                        roleMenu.setSubjectId(SubjectContext.get());
-                                        return roleMenu;
-                                    })
-                            .toList();
-            sysRoleMenuMapper.insert(roleMenus);
-        }
     }
 
     private List<RoleSubjectResp> buildSubjectList(List<SysRoleSubject> subjects) {

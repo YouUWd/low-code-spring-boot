@@ -1,0 +1,60 @@
+package com.jdec.platform.config.biz.controller;
+
+import com.jdec.platform.config.api.SysSpecialPermissionApi;
+import com.jdec.platform.config.api.dto.request.QuerySysSpecialPermissionReq;
+import com.jdec.platform.config.api.dto.request.SysSpecialPermissionSaveReq;
+import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
+import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
+import com.jdec.platform.shared.model.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+/** 特殊权限管理 REST 控制器 */
+@RestController
+@RequestMapping("/api/config/sys/special-permission")
+@RequiredArgsConstructor
+@Tag(name = "特殊权限管理", description = "特殊权限的增删改查接口")
+public class SysSpecialPermissionController {
+
+    private final SysSpecialPermissionApi sysSpecialPermissionApi;
+
+    @PostMapping("/save")
+    @Operation(summary = "新增/编辑特殊权限", description = "id为空则新增，不为空则修改")
+    public ApiResponse<Void> save(@Valid @RequestBody SysSpecialPermissionSaveReq request) {
+        sysSpecialPermissionApi.saveSpecialPermission(request);
+        return ApiResponse.success();
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "删除特殊权限", description = "删除指定特殊权限")
+    public ApiResponse<Void> delete(
+            @Parameter(description = "特殊权限ID", example = "1") @PathVariable Long id) {
+        sysSpecialPermissionApi.deleteSpecialPermission(id);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/options")
+    @Operation(summary = "查询特殊权限下拉列表", description = "查询所有启用的特殊权限")
+    public ApiResponse<List<SysSpecialPermissionOptionResp>> listOptions() {
+        return ApiResponse.success(sysSpecialPermissionApi.listSpecialPermissionOptions());
+    }
+
+    @GetMapping("/list")
+    @Operation(summary = "查询特殊权限列表", description = "支持特殊权限名称、编码、状态过滤")
+    public ApiResponse<List<SysSpecialPermissionResp>> listSpecialPermission(
+            QuerySysSpecialPermissionReq request) {
+        return ApiResponse.success(sysSpecialPermissionApi.listSpecialPermission(request));
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "查询特殊权限详情", description = "查询指定特殊权限详情")
+    public ApiResponse<SysSpecialPermissionResp> getSpecialPermission(
+            @Parameter(description = "特殊权限ID", example = "1") @PathVariable Long id) {
+        return ApiResponse.success(sysSpecialPermissionApi.getSpecialPermission(id));
+    }
+}

@@ -8,8 +8,14 @@ import com.jdec.platform.config.api.dto.request.QuerySysRightReq;
 import com.jdec.platform.config.api.dto.request.SysRightSaveReq;
 import com.jdec.platform.config.api.dto.response.SysRightOptionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
+import com.jdec.platform.config.biz.entity.SysDataPermissionType;
+import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysRight;
+import com.jdec.platform.config.biz.entity.SysSpecialPermission;
+import com.jdec.platform.config.biz.mapper.SysDataPermissionTypeMapper;
+import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRightMapper;
+import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
 import com.jdec.platform.shared.context.AppCodeContext;
 import com.jdec.platform.shared.context.SubjectContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -30,6 +36,9 @@ import org.springframework.util.StringUtils;
 public class SysRightService implements SysRightApi {
 
     private final SysRightMapper sysRightMapper;
+    private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
+    private final SysDataPermissionTypeMapper sysDataPermissionTypeMapper;
+    private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
 
     @Override
     public void saveRight(SysRightSaveReq req) {
@@ -108,55 +117,104 @@ public class SysRightService implements SysRightApi {
 
     @Override
     public List<SysRightResp> listRight(QuerySysRightReq req) {
-        List<SysRight> list =
-                sysRightMapper.selectList(
-                        new LambdaQueryWrapper<SysRight>()
-                                .eq(SysRight::getAppCode, AppCodeContext.get())
-                                .eq(SysRight::getSubjectId, SubjectContext.get())
-                                .like(
-                                        StringUtils.hasText(req.getRightName()),
-                                        SysRight::getRightName,
-                                        req.getRightName())
-                                .orderByAsc(SysRight::getId));
-        if (list.isEmpty()) {
-            return new ArrayList<>();
+        List<SysRightResp> result = new LinkedList<>();
+
+        // 1. 查询数据权限类型（nodeType = 1）
+        LambdaQueryWrapper<SysDataPermissionType> dataPermissionWrapper =
+                new LambdaQueryWrapper<>();
+        dataPermissionWrapper
+                .eq(SysDataPermissionType::getAppCode, AppCodeContext.get())
+                .eq(SysDataPermissionType::getSubjectId, SubjectContext.get())
+                .like(
+                        StringUtils.hasText(req.getRightName()),
+                        SysDataPermissionType::getName,
+                        req.getRightName())
+                .orderByAsc(SysDataPermissionType::getSort)
+                .orderByAsc(SysDataPermissionType::getId);
+        List<SysDataPermissionType> dataPermissionList =
+                sysDataPermissionTypeMapper.selectList(dataPermissionWrapper);
+        for (SysDataPermissionType item : dataPermissionList) {
+            SysRightResp resp = new SysRightResp();
+            resp.setId(item.getId());
+            resp.setPid(0L);
+            resp.setRightName(item.getName());
+            resp.setRightSlug(item.getCode());
+            resp.setNodeType(1); // 数据权限
+            resp.setDescription(item.getDescription());
+            result.add(resp);
         }
-        // 查询所有父节点
+
+        // 2. 查询交互权限（nodeType = 2），需要查询父级信息
+        LambdaQueryWrapper<SysInteractionPermission> interactionWrapper =
+                new LambdaQueryWrapper<>();
+        interactionWrapper
+                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get())
+                .eq(SysInteractionPermission::getSubjectId, SubjectContext.get())
+                .like(
+                        StringUtils.hasText(req.getRightName()),
+                        SysInteractionPermission::getName,
+                        req.getRightName())
+                .orderByAsc(SysInteractionPermission::getSort)
+                .orderByAsc(SysInteractionPermission::getId);
+        List<SysInteractionPermission> interactionList =
+                sysInteractionPermissionMapper.selectList(interactionWrapper);
+
+        // 查询所有父级交互权限
         Set<Long> parentIds =
-                list.stream()
-                        .map(SysRight::getPid)
+                interactionList.stream()
+                        .map(SysInteractionPermission::getParentId)
                         .filter(pid -> pid != null && pid != 0L)
                         .collect(Collectors.toSet());
-        Map<Long, SysRight> parentMap = new HashMap<>();
+        Map<Long, SysInteractionPermission> parentMap = new HashMap<>();
         if (CollUtil.isNotEmpty(parentIds)) {
             parentMap =
-                    sysRightMapper.selectByIds(parentIds).stream()
-                            .collect(Collectors.toMap(SysRight::getId, r -> r));
+                    sysInteractionPermissionMapper.selectByIds(parentIds).stream()
+                            .collect(Collectors.toMap(SysInteractionPermission::getId, r -> r));
         }
-        Map<Long, SysRight> finalParentMap = parentMap;
-        return list.stream()
-                .map(
-                        right -> {
-                            SysRightResp resp = new SysRightResp();
-                            resp.setId(right.getId());
-                            resp.setPid(right.getPid());
-                            resp.setRightName(right.getRightName());
-                            resp.setRightSlug(right.getRightSlug());
-                            resp.setNodeType(right.getNodeType());
-                            resp.setDescription(right.getDescription());
-                            if (right.getPid() != null && right.getPid() != 0L) {
-                                SysRight parent = finalParentMap.get(right.getPid());
-                                if (parent != null) {
-                                    resp.setParentRightName(parent.getRightName());
-                                    resp.setParentRightSlug(parent.getRightSlug());
-                                } else {
-                                    resp.setParentRightName("");
-                                    resp.setParentRightSlug("");
-                                }
-                            }
-                            return resp;
-                        })
-                .collect(Collectors.toList());
+
+        for (SysInteractionPermission item : interactionList) {
+            SysRightResp resp = new SysRightResp();
+            resp.setId(item.getId());
+            resp.setPid(item.getParentId());
+            resp.setRightName(item.getName());
+            resp.setRightSlug(item.getCode());
+            resp.setNodeType(2); // 交互权限
+            // 设置父级信息
+            if (item.getParentId() != null && item.getParentId() != 0L) {
+                SysInteractionPermission parent = parentMap.get(item.getParentId());
+                if (parent != null) {
+                    resp.setParentRightName(parent.getName());
+                    resp.setParentRightSlug(parent.getCode());
+                }
+            }
+            result.add(resp);
+        }
+
+        // 3. 查询特殊权限（nodeType = 3）
+        LambdaQueryWrapper<SysSpecialPermission> specialWrapper = new LambdaQueryWrapper<>();
+        specialWrapper
+                .eq(SysSpecialPermission::getAppCode, AppCodeContext.get())
+                .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
+                .like(
+                        StringUtils.hasText(req.getRightName()),
+                        SysSpecialPermission::getName,
+                        req.getRightName())
+                .orderByAsc(SysSpecialPermission::getSort)
+                .orderByAsc(SysSpecialPermission::getId);
+        List<SysSpecialPermission> specialList =
+                sysSpecialPermissionMapper.selectList(specialWrapper);
+        for (SysSpecialPermission item : specialList) {
+            SysRightResp resp = new SysRightResp();
+            resp.setId(item.getId());
+            resp.setPid(0L);
+            resp.setRightName(item.getName());
+            resp.setRightSlug(item.getCode());
+            resp.setNodeType(3); // 特殊权限（其它权限）
+            resp.setDescription(item.getDescription());
+            result.add(resp);
+        }
+
+        return result;
     }
 
     /** 收集所有子节点ID */

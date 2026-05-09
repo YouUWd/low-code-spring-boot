@@ -1,17 +1,24 @@
 package com.jdec.platform.config.biz.controller;
 
-import com.jdec.platform.config.api.SysRoleApi;
+import com.jdec.platform.config.api.SysRolePermissionApi;
+import com.jdec.platform.config.api.dto.request.SaveRoleDataPermissionReq;
+import com.jdec.platform.config.api.dto.request.SaveRoleInteractionPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
+import com.jdec.platform.config.api.dto.request.SaveRoleSpecialPermissionReq;
+import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
+import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleMenuResp;
+import com.jdec.platform.config.api.dto.response.RoleSpecialPermissionResp;
 import com.jdec.platform.shared.context.AppCodeContext;
 import com.jdec.platform.shared.context.SubjectContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/config/sys/role")
@@ -19,7 +26,7 @@ import org.springframework.web.bind.annotation.*;
 @Tag(name = "角色权限管理", description = "角色权限分配相关接口，包括菜单，模块，互动，数据以及其它权限分配")
 public class SysRolePermissionController {
 
-    private final SysRoleApi sysRoleApi;
+    private final SysRolePermissionApi sysRolePermissionApi;
 
     @GetMapping("/get-role-menu")
     @Operation(summary = "查询角色菜单", description = "根据角色ID查询该角色关联的菜单列表")
@@ -27,13 +34,58 @@ public class SysRolePermissionController {
             @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
         Long subjectId = SubjectContext.get();
         String appCode = AppCodeContext.get();
-        return ApiResponse.success(sysRoleApi.getRoleMenu(roleId, subjectId, appCode));
+        return ApiResponse.success(sysRolePermissionApi.getRoleMenu(roleId, subjectId, appCode));
     }
 
     @PostMapping("/save-role-menu")
     @Operation(summary = "保存角色菜单", description = "保存角色与菜单的关联关系")
     public ApiResponse<Void> saveRoleMenu(@RequestBody SaveRoleMenuReq request) {
-        sysRoleApi.saveRoleMenu(request);
+        sysRolePermissionApi.saveRoleMenu(request);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/get-role-interaction-permission")
+    @Operation(summary = "查询角色交互权限", description = "根据角色ID查询该角色关联的交互权限列表")
+    public ApiResponse<List<RoleInteractionPermissionResp>> getRoleInteractionPermission(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
+        return ApiResponse.success(sysRolePermissionApi.getRoleInteractionPermission(roleId));
+    }
+
+    @PostMapping("/save-role-interaction-permission")
+    @Operation(summary = "保存角色交互权限", description = "保存角色与交互权限的关联关系")
+    public ApiResponse<Void> saveRoleInteractionPermission(
+            @RequestBody SaveRoleInteractionPermissionReq request) {
+        sysRolePermissionApi.saveRoleInteractionPermission(request);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/save-role-data-permission")
+    @Operation(summary = "保存角色数据权限", description = "保存角色与数据权限的关联关系，hasTarget为1时需指定用户列表")
+    public ApiResponse<Void> saveRoleDataPermission(
+            @RequestBody SaveRoleDataPermissionReq request) {
+        sysRolePermissionApi.saveRoleDataPermission(request);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/get-role-data-permission")
+    @Operation(summary = "查询角色数据权限", description = "根据角色ID查询该角色关联的数据权限列表")
+    public ApiResponse<List<RoleDataPermissionResp>> getRoleDataPermission(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
+        return ApiResponse.success(sysRolePermissionApi.getRoleDataPermission(roleId));
+    }
+
+    @GetMapping("/get-role-special-permission")
+    @Operation(summary = "查询角色特殊权限", description = "根据角色ID查询该角色关联的特殊权限列表")
+    public ApiResponse<List<RoleSpecialPermissionResp>> getRoleSpecialPermission(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
+        return ApiResponse.success(sysRolePermissionApi.getRoleSpecialPermission(roleId));
+    }
+
+    @PostMapping("/save-role-special-permission")
+    @Operation(summary = "保存角色特殊权限", description = "保存角色与特殊权限的关联关系")
+    public ApiResponse<Void> saveRoleSpecialPermission(
+            @RequestBody SaveRoleSpecialPermissionReq request) {
+        sysRolePermissionApi.saveRoleSpecialPermission(request);
         return ApiResponse.success();
     }
 }
