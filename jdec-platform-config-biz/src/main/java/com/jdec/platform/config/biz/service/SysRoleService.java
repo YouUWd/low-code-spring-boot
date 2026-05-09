@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -7,16 +8,11 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
+import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.config.biz.entity.SysRole;
-import com.jdec.platform.config.biz.entity.SysRoleSubject;
-import com.jdec.platform.config.biz.entity.SysRoleUser;
-import com.jdec.platform.config.biz.entity.SysUser;
-import com.jdec.platform.config.biz.mapper.SysRoleMapper;
-import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
-import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
-import com.jdec.platform.config.biz.mapper.SysUserMapper;
+import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.UserApi;
@@ -24,9 +20,13 @@ import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.shared.context.AppCodeContext;
+import com.jdec.platform.shared.context.SubjectContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import com.jdec.platform.shared.enums.*;
+import com.jdec.platform.shared.enums.EffectiveTypeEnum;
+import com.jdec.platform.shared.enums.EmployedStatusEnum;
+import com.jdec.platform.shared.enums.UserStatusFlagEnum;
+import com.jdec.platform.shared.enums.UserTypeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.*;
@@ -43,6 +43,8 @@ public class SysRoleService implements SysRoleApi {
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysUserMapper sysUserMapper;
+    private final SysRoleMenuMapper sysRoleMenuMapper;
+    private final SysMenuMapper sysMenuMapper;
     private final UserApi userApi;
     private final SubjectApi subjectApi;
     private final DepartmentApi departmentApi;
@@ -53,16 +55,12 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectCount(
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getUserId, id)
-                                .eq(SysRoleUser::getAppCode, appCode)
-                                .eq(SysRoleUser::getDeleted, DeleteFlagEnum.NO_DELETE.getCode()));
+                                .eq(SysRoleUser::getAppCode, appCode));
         Long count1 =
                 sysRoleSubjectMapper.selectCount(
                         Wrappers.<SysRoleSubject>lambdaQuery()
                                 .eq(SysRoleSubject::getSubjectId, subjectId)
-                                .eq(SysRoleSubject::getAppCode, appCode)
-                                .eq(
-                                        SysRoleSubject::getDeleted,
-                                        DeleteFlagEnum.NO_DELETE.getCode()));
+                                .eq(SysRoleSubject::getAppCode, appCode));
         return count + count1;
     }
 
@@ -462,6 +460,77 @@ public class SysRoleService implements SysRoleApi {
                 .toList();
     }
 
+    @Override
+    public List<RoleListResp> listRole() {
+        List<SysRole> sysRoles =
+                sysRoleMapper.selectList(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .eq(SysRole::getAppCode, AppCodeContext.get())
+                                .eq(SysRole::getSubjectId, SubjectContext.get()));
+        return BeanUtil.copyToList(sysRoles, RoleListResp.class);
+    }
+
+    @Override
+    public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String appCode) {
+        // 查询角色菜单关联
+        List<SysRoleMenu> roleMenus =
+                sysRoleMenuMapper.selectList(
+                        Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
+
+        if (roleMenus.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 获取菜单ID列表
+        List<Long> menuIds = roleMenus.stream().map(SysRoleMenu::getMenuId).toList();
+
+        // 查询菜单信息
+        LambdaQueryWrapper<SysMenu> menuWrapper =
+                new LambdaQueryWrapper<SysMenu>()
+                        .in(SysMenu::getId, menuIds)
+                        .eq(SysMenu::getSubjectId, subjectId)
+                        .eq(SysMenu::getAppCode, appCode);
+        List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
+
+        // 构建响应
+        return menus.stream()
+                .map(
+                        menu -> {
+                            RoleMenuResp resp = new RoleMenuResp();
+                            resp.setMenuId(menu.getId());
+                            resp.setMenuTitle(menu.getTitle());
+                            return resp;
+                        })
+                .toList();
+    }
+
+    @Override
+    public void saveRoleMenu(SaveRoleMenuReq request) {
+        Long roleId = request.getRoleId();
+        List<Long> menuIds = request.getMenuIds();
+
+        // 删除旧的角色菜单关联
+        sysRoleMenuMapper.delete(
+                Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
+
+        // 批量插入新的角色菜单关联
+        if (CollUtil.isNotEmpty(menuIds)) {
+            List<SysRoleMenu> roleMenus =
+                    menuIds.stream()
+                            .map(
+                                    menuId -> {
+                                        SysRoleMenu roleMenu = new SysRoleMenu();
+                                        roleMenu.setRoleId(roleId);
+                                        roleMenu.setMenuId(menuId);
+                                        roleMenu.setAppCode(AppCodeContext.get());
+                                        roleMenu.setSubjectId(SubjectContext.get());
+                                        return roleMenu;
+                                    })
+                            .toList();
+            sysRoleMenuMapper.insert(roleMenus);
+        }
+    }
+
     private List<RoleSubjectResp> buildSubjectList(List<SysRoleSubject> subjects) {
         if (subjects.isEmpty()) {
             return Collections.emptyList();
@@ -638,7 +707,6 @@ public class SysRoleService implements SysRoleApi {
                                 ? UserTypeEnum.INSIDE.getCode()
                                 : UserTypeEnum.EXTERNAL.getCode());
                 sysUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
-                sysUser.setDeleted(DeleteFlagEnum.NO_DELETE.getCode());
 
                 // 从User表获取数据填充
                 UserBO u = userMap.get(userId);

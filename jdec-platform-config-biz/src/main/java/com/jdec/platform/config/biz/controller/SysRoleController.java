@@ -75,4 +75,10 @@ public class SysRoleController {
     public ApiResponse<List<SubjectOptionResp>> listSubjects() {
         return ApiResponse.success(sysRoleApi.listSubjectOptions());
     }
+
+    @GetMapping("/get-list")
+    @Operation(summary = "角色下拉列表")
+    public ApiResponse<List<RoleListResp>> listRole() {
+        return ApiResponse.success(sysRoleApi.listRole());
+    }
 }

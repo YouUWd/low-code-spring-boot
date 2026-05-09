@@ -17,7 +17,6 @@ import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.shared.context.AppCodeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import com.jdec.platform.shared.enums.DeleteFlagEnum;
 import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
@@ -134,7 +133,6 @@ public class SysUserService implements SysUserApi {
                 sysUserMapper.selectOne(
                         Wrappers.<SysUser>lambdaQuery()
                                 .eq(SysUser::getPhone, phone)
-                                .eq(SysUser::getDeleted, DeleteFlagEnum.NO_DELETE.getCode())
                                 .eq(SysUser::getSuperFlag, UserStatusFlagEnum.ENABLE.getCode()));
         return BeanUtil.toBean(sysUser, SysUserBO.class);
     }
