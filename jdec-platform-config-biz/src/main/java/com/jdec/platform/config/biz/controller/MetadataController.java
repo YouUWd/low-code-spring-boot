@@ -1,9 +1,9 @@
 package com.jdec.platform.config.biz.controller;
 
-import com.jdec.platform.shared.metadata.dto.ColumnInfo;
-import com.jdec.platform.shared.metadata.dto.DatabaseSchema;
-import com.jdec.platform.shared.metadata.dto.TableInfo;
-import com.jdec.platform.shared.metadata.service.DatabaseMetadataService;
+import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
+import com.jdec.platform.config.api.dto.response.DatabaseSchemaResp;
+import com.jdec.platform.config.api.dto.response.TableInfoResp;
+import com.jdec.platform.config.biz.service.DatabaseMetadataService;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -56,12 +56,12 @@ public class MetadataController {
      */
     @Operation(summary = "获取所有表", description = "获取数据库中所有表的基本信息（表名、表描述等）")
     @GetMapping("/tables")
-    public ApiResponse<List<TableInfo>> getAllTables(
+    public ApiResponse<List<TableInfoResp>> getAllTables(
             @Parameter(description = "租户/数据源 ID", example = "config_center", required = true)
                     @RequestHeader("X-Tenant-Id")
                     String tenantId) {
         log.info("查询数据源 {} 的所有表", tenantId);
-        List<TableInfo> tables = metadataService.getAllTables();
+        List<TableInfoResp> tables = metadataService.getAllTables();
 
         return ApiResponse.success(tables);
     }
@@ -77,14 +77,14 @@ public class MetadataController {
      */
     @Operation(summary = "获取表的列信息", description = "获取指定表的所有列信息（列名、数据类型、是否可空等）")
     @GetMapping("/tables/{tableName}/columns")
-    public ApiResponse<List<ColumnInfo>> getTableColumns(
+    public ApiResponse<List<ColumnInfoResp>> getTableColumns(
             @Parameter(description = "表名", example = "sys_module", required = true) @PathVariable
                     String tableName,
             @Parameter(description = "租户/数据源 ID", example = "config_center", required = true)
                     @RequestHeader("X-Tenant-Id")
                     String tenantId) {
         log.info("查询数据源 {} 的表 {} 的列信息", tenantId, tableName);
-        List<ColumnInfo> columns = metadataService.getTableColumns(tableName);
+        List<ColumnInfoResp> columns = metadataService.getTableColumns(tableName);
 
         return ApiResponse.success(columns);
     }
@@ -103,16 +103,16 @@ public class MetadataController {
             summary = "获取完整数据库Schema",
             description = "获取数据库的完整Schema信息，包括所有表及其列的详细信息。注意：此操作可能耗时较长")
     @GetMapping("/schema")
-    public ApiResponse<DatabaseSchema> getDatabaseSchema(
+    public ApiResponse<DatabaseSchemaResp> getDatabaseSchema(
             @Parameter(description = "租户/数据源 ID", example = "config_center", required = true)
                     @RequestHeader("X-Tenant-Id")
                     String tenantId) {
         log.info("查询数据源 {} 的完整 Schema", tenantId);
 
         // 使用优化的单条 SQL 查询获取所有表和列信息
-        List<TableInfo> tables = metadataService.getAllTablesWithColumns();
+        List<TableInfoResp> tables = metadataService.getAllTablesWithColumns();
 
-        DatabaseSchema schema = DatabaseSchema.builder().tables(tables).build();
+        DatabaseSchemaResp schema = DatabaseSchemaResp.builder().tables(tables).build();
 
         log.info("成功查询数据源 {} 的 Schema，共 {} 张表", tenantId, tables.size());
 

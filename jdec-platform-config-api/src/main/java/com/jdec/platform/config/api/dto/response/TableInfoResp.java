@@ -1,4 +1,4 @@
-package com.jdec.platform.shared.metadata.dto;
+package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
@@ -7,13 +7,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 数据库表信息 */
+/** 数据库表信息响应 */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "数据库表信息")
-public class TableInfo {
+public class TableInfoResp {
 
     /** 表名 */
     @Schema(description = "表名", example = "sys_module")
@@ -25,5 +25,5 @@ public class TableInfo {
 
     /** 表的所有列 */
     @Schema(description = "表的所有列信息")
-    private List<ColumnInfo> columns;
+    private List<ColumnInfoResp> columns;
 }
