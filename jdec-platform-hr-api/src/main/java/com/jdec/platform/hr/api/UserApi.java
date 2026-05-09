@@ -4,6 +4,7 @@ import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.request.CreateUserReq;
 import com.jdec.platform.hr.api.dto.request.UpdateUserReq;
 import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
+import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -54,4 +55,12 @@ public interface UserApi {
     List<UserBO> listByIds(Set<Long> allUserIds);
 
     List<UserBO> listBySubjectId(Long subjectId);
+
+    /**
+     * 获取人员架构树
+     *
+     * @param userType 用户类型 0=全部 1=内部 2=外部
+     * @return 人员架构树
+     */
+    List<UserTreeNodeResp> getUserTreeList(Integer userType);
 }

@@ -8,14 +8,14 @@ import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.request.CreateUserReq;
 import com.jdec.platform.hr.api.dto.request.UpdateUserReq;
 import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
+import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
+import com.jdec.platform.hr.biz.entity.Department;
 import com.jdec.platform.hr.biz.entity.User;
+import com.jdec.platform.hr.biz.mapper.DepartmentMapper;
 import com.jdec.platform.hr.biz.mapper.UserMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService implements UserApi {
 
     private final UserMapper userMapper;
+    private final DepartmentMapper departmentMapper;
 
     @Override
     public Optional<Integer> getSubjectIdByPhone(String phone) {
@@ -146,5 +147,106 @@ public class UserService implements UserApi {
                 .departmentName(user.getDepartmentName())
                 .userStatus(user.getUserStatus())
                 .build();
+    }
+
+    @Override
+    public List<UserTreeNodeResp> getUserTreeList(Integer userType) {
+        // userType: 0=全部, 1=内部, 2=外部。当前项目仅支持内部用户树
+        if (userType != null && userType == 2) {
+            return Collections.emptyList();
+        }
+
+        // 1. 获取部门列表
+        List<Department> departments =
+                departmentMapper.selectList(
+                        new LambdaQueryWrapper<Department>().eq(Department::getStatus, 1));
+        if (departments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 获取用户列表
+        List<User> users =
+                userMapper.selectList(
+                        new LambdaQueryWrapper<User>()
+                                .eq(User::getState, 1)
+                                .eq(User::getIsDelete, 1));
+
+        // 3. 将用户按部门分类
+        Map<String, List<UserTreeNodeResp>> deptUsers = new LinkedHashMap<>();
+        for (User user : users) {
+            String deptIds = user.getDepartmentId();
+            if (deptIds == null || deptIds.isEmpty()) {
+                continue;
+            }
+            for (String deptId : deptIds.split(",")) {
+                deptId = deptId.trim();
+                if (deptId.isEmpty()) {
+                    continue;
+                }
+                UserTreeNodeResp userNode =
+                        UserTreeNodeResp.builder()
+                                .id("U" + user.getId())
+                                .sysId(user.getId())
+                                .label(user.getUserName())
+                                .departId("D" + deptId)
+                                .sex(user.getSex() != null ? user.getSex() : 1)
+                                .avatar(user.getUserAvatar())
+                                .workNumber(
+                                        user.getWorkNumber() != null ? user.getWorkNumber() : "")
+                                .type(3)
+                                .departName(
+                                        user.getDepartmentName() != null
+                                                ? user.getDepartmentName()
+                                                : "")
+                                .build();
+                deptUsers.computeIfAbsent("D" + deptId, k -> new ArrayList<>()).add(userNode);
+            }
+        }
+
+        // 4. 构建部门节点并挂载用户
+        List<UserTreeNodeResp> departListWithUsers = new ArrayList<>();
+        for (Department dept : departments) {
+            String pid = (dept.getPid() != null && dept.getPid() != 0) ? "D" + dept.getPid() : "D0";
+            UserTreeNodeResp node =
+                    UserTreeNodeResp.builder()
+                            .id("D" + dept.getId())
+                            .label(dept.getName())
+                            .pid(pid)
+                            .type(dept.getType() != null ? dept.getType() : 1)
+                            .children(
+                                    new ArrayList<>(
+                                            deptUsers.getOrDefault(
+                                                    "D" + dept.getId(), new ArrayList<>())))
+                            .build();
+            departListWithUsers.add(node);
+        }
+
+        // 5. 构建嵌套树
+        return buildNestedTree(departListWithUsers, "D0");
+    }
+
+    private List<UserTreeNodeResp> buildNestedTree(List<UserTreeNodeResp> items, String rootPid) {
+        Map<String, UserTreeNodeResp> nodeMap = new LinkedHashMap<>();
+        for (UserTreeNodeResp item : items) {
+            nodeMap.put(item.getId(), item);
+        }
+
+        List<UserTreeNodeResp> tree = new ArrayList<>();
+        for (UserTreeNodeResp item : items) {
+            String pid = item.getPid();
+            UserTreeNodeResp parent = nodeMap.get(pid);
+            boolean isRoot = (pid == null || pid.equals(rootPid) || parent == null);
+            if (isRoot) {
+                tree.add(item);
+            } else {
+                List<UserTreeNodeResp> children = parent.getChildren();
+                if (children == null) {
+                    children = new ArrayList<>();
+                    parent.setChildren(children);
+                }
+                children.add(item);
+            }
+        }
+        return tree;
     }
 }

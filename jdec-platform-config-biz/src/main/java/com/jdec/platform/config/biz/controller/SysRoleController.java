@@ -4,6 +4,8 @@ import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.hr.api.UserApi;
+import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,6 +27,14 @@ import org.springframework.web.bind.annotation.*;
 public class SysRoleController {
 
     private final SysRoleApi sysRoleApi;
+    private final UserApi userApi;
+
+    @GetMapping("/get-user-tree")
+    @Operation(summary = "获取人员架构树", description = "按照部门层级展示人员架构")
+    public ApiResponse<List<UserTreeNodeResp>> getUserTreeList(
+            @Parameter(description = "用户类型", example = "1") @RequestParam Integer userType) {
+        return ApiResponse.success(userApi.getUserTreeList(userType));
+    }
 
     @PostMapping("/check-role-user")
     @Operation(summary = "保存角色及用户关联预检查", description = "检查是否存在冲突，返回需要确认的提示信息")
