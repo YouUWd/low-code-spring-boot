@@ -11,43 +11,37 @@ import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.shared.context.AppCodeContext;
 import com.jdec.platform.shared.context.SubjectContext;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.util.*;
-
-/**
- * 系统菜单 Service 实现
- */
+/** 系统菜单 Service 实现 */
 @Service
 @RequiredArgsConstructor
 public class SysMenuService implements SysMenuApi {
 
     private final SysMenuMapper sysMenuMapper;
 
-    /**
-     * 菜单类型：导航
-     */
+    /** 菜单类型：导航 */
     private static final Integer MENU_TYPE_NAV = 1;
-    /**
-     * 顶层父级ID
-     */
+
+    /** 顶层父级ID */
     private static final Long ROOT_PID = 0L;
 
     @Override
     public List<SysMenuTreeResp> tree(Integer category) {
         String appCode = AppCodeContext.get();
-        List<SysMenu> list = sysMenuMapper.selectList(
-                new LambdaQueryWrapper<SysMenu>()
-                        .eq(SysMenu::getCategory, category)
-                        .eq(SysMenu::getSubjectId, SubjectContext.get())
-                        .eq(SysMenu::getAppCode, appCode)
-                        .orderByAsc(SysMenu::getSortOrder)
-                        .orderByAsc(SysMenu::getId)
-        );
+        List<SysMenu> list =
+                sysMenuMapper.selectList(
+                        new LambdaQueryWrapper<SysMenu>()
+                                .eq(SysMenu::getCategory, category)
+                                .eq(SysMenu::getSubjectId, SubjectContext.get())
+                                .eq(SysMenu::getAppCode, appCode)
+                                .orderByAsc(SysMenu::getSortOrder)
+                                .orderByAsc(SysMenu::getId));
         if (CollectionUtils.isEmpty(list)) {
             return Collections.emptyList();
         }
@@ -98,12 +92,12 @@ public class SysMenuService implements SysMenuApi {
             sysMenuMapper.insert(entity);
         } else {
             // 编辑
-            boolean exists = sysMenuMapper.exists(
-                    Wrappers.<SysMenu>lambdaQuery()
-                            .eq(SysMenu::getId, req.getId())
-                            .eq(SysMenu::getSubjectId, SubjectContext.get())
-                            .eq(SysMenu::getAppCode, AppCodeContext.get())
-            );
+            boolean exists =
+                    sysMenuMapper.exists(
+                            Wrappers.<SysMenu>lambdaQuery()
+                                    .eq(SysMenu::getId, req.getId())
+                                    .eq(SysMenu::getSubjectId, SubjectContext.get())
+                                    .eq(SysMenu::getAppCode, AppCodeContext.get()));
             if (!exists) {
                 throw new BusinessException("菜单不存在");
             }
@@ -116,7 +110,8 @@ public class SysMenuService implements SysMenuApi {
                 checkCycle(req.getId(), pid, SubjectContext.get());
             }
             // 校验同级名称是否重复
-            checkDuplicateTitle(pid, req.getCategory(), req.getTitle(), SubjectContext.get(), req.getId());
+            checkDuplicateTitle(
+                    pid, req.getCategory(), req.getTitle(), SubjectContext.get(), req.getId());
 
             SysMenu entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
@@ -128,12 +123,12 @@ public class SysMenuService implements SysMenuApi {
     @Override
     public void deleteMenu(Long id) {
         String appCode = AppCodeContext.get();
-        boolean exists = sysMenuMapper.exists(
-                Wrappers.<SysMenu>lambdaQuery()
-                        .eq(SysMenu::getId, id)
-                        .eq(SysMenu::getSubjectId, SubjectContext.get())
-                        .eq(SysMenu::getAppCode, appCode)
-        );
+        boolean exists =
+                sysMenuMapper.exists(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getId, id)
+                                .eq(SysMenu::getSubjectId, SubjectContext.get())
+                                .eq(SysMenu::getAppCode, appCode));
         if (!exists) {
             throw new BusinessException("菜单不存在");
         }
@@ -151,12 +146,12 @@ public class SysMenuService implements SysMenuApi {
         if (id == null) {
             throw new BusinessException("节点ID不能为空");
         }
-        SysMenu node = sysMenuMapper.selectOne(
-                Wrappers.<SysMenu>lambdaQuery()
-                        .eq(SysMenu::getId, id)
-                        .eq(SysMenu::getSubjectId, SubjectContext.get())
-                        .eq(SysMenu::getAppCode, appCode)
-        );
+        SysMenu node =
+                sysMenuMapper.selectOne(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getId, id)
+                                .eq(SysMenu::getSubjectId, SubjectContext.get())
+                                .eq(SysMenu::getAppCode, appCode));
         if (node == null) {
             throw new BusinessException("菜单不存在");
         }
@@ -167,12 +162,12 @@ public class SysMenuService implements SysMenuApi {
         // 不能拖到自己的子节点下面（形成环）
         if (!targetPid.equals(ROOT_PID)) {
             checkCycle(id, targetPid, SubjectContext.get());
-            boolean exists = sysMenuMapper.exists(
-                    Wrappers.<SysMenu>lambdaQuery()
-                            .eq(SysMenu::getId, targetPid)
-                            .eq(SysMenu::getSubjectId, SubjectContext.get())
-                            .eq(SysMenu::getAppCode, appCode)
-            );
+            boolean exists =
+                    sysMenuMapper.exists(
+                            Wrappers.<SysMenu>lambdaQuery()
+                                    .eq(SysMenu::getId, targetPid)
+                                    .eq(SysMenu::getSubjectId, SubjectContext.get())
+                                    .eq(SysMenu::getAppCode, appCode));
             if (!exists) {
                 throw new BusinessException("目标父菜单不存在");
             }
@@ -182,23 +177,24 @@ public class SysMenuService implements SysMenuApi {
             throw new BusinessException("一级菜单类型必须为导航");
         }
         // 校验同级名称是否重复
-        checkDuplicateTitle(targetPid, node.getCategory(), node.getTitle(), SubjectContext.get(), id);
+        checkDuplicateTitle(
+                targetPid, node.getCategory(), node.getTitle(), SubjectContext.get(), id);
 
         node.setPid(targetPid);
         sysMenuMapper.updateById(node);
     }
 
-    /**
-     * 校验同级菜单名称是否重复
-     */
-    private void checkDuplicateTitle(Long pid, Integer category, String title, Long subjectId, Long excludeId) {
+    /** 校验同级菜单名称是否重复 */
+    private void checkDuplicateTitle(
+            Long pid, Integer category, String title, Long subjectId, Long excludeId) {
         String appCode = AppCodeContext.get();
-        LambdaQueryWrapper<SysMenu> wrapper = new LambdaQueryWrapper<SysMenu>()
-                .eq(SysMenu::getPid, pid)
-                .eq(SysMenu::getCategory, category)
-                .eq(SysMenu::getTitle, title)
-                .eq(SysMenu::getSubjectId, subjectId)
-                .eq(SysMenu::getAppCode, appCode);
+        LambdaQueryWrapper<SysMenu> wrapper =
+                new LambdaQueryWrapper<SysMenu>()
+                        .eq(SysMenu::getPid, pid)
+                        .eq(SysMenu::getCategory, category)
+                        .eq(SysMenu::getTitle, title)
+                        .eq(SysMenu::getSubjectId, subjectId)
+                        .eq(SysMenu::getAppCode, appCode);
         if (excludeId != null) {
             wrapper.ne(SysMenu::getId, excludeId);
         }
@@ -208,17 +204,15 @@ public class SysMenuService implements SysMenuApi {
         }
     }
 
-    /**
-     * 收集所有子节点ID（限定同主体、同应用）
-     */
+    /** 收集所有子节点ID（限定同主体、同应用） */
     private Set<Long> collectChildrenIds(Long parentId, Long subjectId, String appCode) {
         Set<Long> result = new HashSet<>();
-        List<SysMenu> children = sysMenuMapper.selectList(
-                Wrappers.<SysMenu>lambdaQuery()
-                        .eq(SysMenu::getPid, parentId)
-                        .eq(SysMenu::getSubjectId, subjectId)
-                        .eq(SysMenu::getAppCode, appCode)
-        );
+        List<SysMenu> children =
+                sysMenuMapper.selectList(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getPid, parentId)
+                                .eq(SysMenu::getSubjectId, subjectId)
+                                .eq(SysMenu::getAppCode, appCode));
         for (SysMenu child : children) {
             result.add(child.getId());
             result.addAll(collectChildrenIds(child.getId(), subjectId, appCode));
@@ -226,19 +220,17 @@ public class SysMenuService implements SysMenuApi {
         return result;
     }
 
-    /**
-     * 检查是否形成环：targetPid 不能是 id 的子节点（包括自身）
-     */
+    /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */
     private void checkCycle(Long id, Long targetPid, Long subjectId) {
         if (id.equals(targetPid)) {
             throw new BusinessException("不能将节点移动到自身或其子菜单下");
         }
-        List<SysMenu> children = sysMenuMapper.selectList(
-                Wrappers.<SysMenu>lambdaQuery()
-                        .eq(SysMenu::getPid, id)
-                        .eq(SysMenu::getSubjectId, subjectId)
-                        .eq(SysMenu::getAppCode, AppCodeContext.get())
-        );
+        List<SysMenu> children =
+                sysMenuMapper.selectList(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getPid, id)
+                                .eq(SysMenu::getSubjectId, subjectId)
+                                .eq(SysMenu::getAppCode, AppCodeContext.get()));
         for (SysMenu child : children) {
             checkCycle(child.getId(), targetPid, subjectId);
         }

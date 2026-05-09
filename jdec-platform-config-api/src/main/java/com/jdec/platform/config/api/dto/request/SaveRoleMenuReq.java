@@ -1,13 +1,10 @@
 package com.jdec.platform.config.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.Data;
 
-import java.util.List;
-
-/**
- * 角色菜单保存请求
- */
+/** 角色菜单保存请求 */
 @Data
 @Schema(description = "角色菜单保存请求")
 public class SaveRoleMenuReq {

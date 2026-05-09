@@ -1,13 +1,10 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.Data;
 
-import java.util.List;
-
-/**
- * 菜单树形节点响应
- */
+/** 菜单树形节点响应 */
 @Data
 @Schema(description = "菜单树形节点")
 public class SysMenuTreeResp {

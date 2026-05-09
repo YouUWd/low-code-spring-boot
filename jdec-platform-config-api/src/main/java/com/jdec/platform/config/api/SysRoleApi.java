@@ -5,11 +5,11 @@ import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.model.PageResult;
-
 import java.util.List;
 
 public interface SysRoleApi {
     List<RoleListResp> listRole();
+
     /**
      * 根据角色ID查询菜单列表
      *
@@ -26,6 +26,7 @@ public interface SysRoleApi {
      * @param request 保存请求
      */
     void saveRoleMenu(SaveRoleMenuReq request);
+
     /**
      * 查询用户角色数
      *

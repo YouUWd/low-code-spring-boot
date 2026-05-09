@@ -3,9 +3,7 @@ package com.jdec.platform.config.api.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/**
- * 菜单拖拽请求
- */
+/** 菜单拖拽请求 */
 @Data
 @Schema(description = "菜单拖拽请求")
 public class SysMenuDragReq {

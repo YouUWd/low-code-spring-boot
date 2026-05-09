@@ -9,10 +9,9 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/config/sys/role")
@@ -25,9 +24,7 @@ public class SysRolePermissionController {
     @GetMapping("/get-role-menu")
     @Operation(summary = "查询角色菜单", description = "根据角色ID查询该角色关联的菜单列表")
     public ApiResponse<List<RoleMenuResp>> getRoleMenu(
-            @Parameter(description = "角色ID", example = "1")
-            @RequestParam Long roleId
-    ) {
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
         Long subjectId = SubjectContext.get();
         String appCode = AppCodeContext.get();
         return ApiResponse.success(sysRoleApi.getRoleMenu(roleId, subjectId, appCode));

@@ -8,10 +8,9 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * 菜单配置 REST 控制器
@@ -29,8 +28,8 @@ public class SysMenuController {
     @GetMapping("/tree")
     @Operation(summary = "查询菜单树", description = "按菜单分类查询所有菜单的树形结构")
     public ApiResponse<List<SysMenuTreeResp>> tree(
-            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单", example = "1")
-            @RequestParam Integer category) {
+            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单", example = "1") @RequestParam
+                    Integer category) {
         return ApiResponse.success(sysMenuApi.tree(category));
     }
 
@@ -44,8 +43,7 @@ public class SysMenuController {
     @DeleteMapping("/{id}")
     @Operation(summary = "删除菜单", description = "删除指定菜单及其所有子菜单")
     public ApiResponse<Void> delete(
-            @Parameter(description = "菜单ID", example = "1")
-            @PathVariable Long id) {
+            @Parameter(description = "菜单ID", example = "1") @PathVariable Long id) {
         sysMenuApi.deleteMenu(id);
         return ApiResponse.success();
     }
