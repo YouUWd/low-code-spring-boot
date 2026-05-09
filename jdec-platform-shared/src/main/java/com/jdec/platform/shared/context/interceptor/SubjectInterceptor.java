@@ -17,7 +17,7 @@ public class SubjectInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,Object handler) {
         String subjectId = request.getHeader(SUBJECT_ID_HEADER);
         if (subjectId != null && !subjectId.isEmpty()) {
-            SubjectContext.set(Integer.valueOf(subjectId));
+            SubjectContext.set(Long.valueOf(subjectId));
         }
         return true;
     }

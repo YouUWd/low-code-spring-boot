@@ -8,20 +8,20 @@ import com.jdec.platform.shared.constants.SystemConstant;
  */
 public class SubjectContext {
 
-    private static final ThreadLocal<Integer> SUBJECT_HOLDER = new ThreadLocal<>();
+    private static final ThreadLocal<Long> SUBJECT_HOLDER = new ThreadLocal<>();
 
     /**
      * 设置当前请求的 subject
      */
-    public static void set(Integer subject) {
+    public static void set(Long subject) {
         SUBJECT_HOLDER.set(subject);
     }
 
     /**
      * 获取当前请求的 subject
      */
-    public static Integer get() {
-        Integer subject = SUBJECT_HOLDER.get();
+    public static Long get() {
+        Long subject = SUBJECT_HOLDER.get();
         return subject != null ? subject : SystemConstant.DEFAULT_SUBJECT;
     }
 

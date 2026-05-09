@@ -37,7 +37,8 @@ public class SaTokenConfig implements WebMvcConfigurer {
                             "/webjars/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",
-                            "/favicon.ico"
+                            "/favicon.ico",
+                            "/api/config/**"
                     )
                     .notMatch("/api/config/**",
                             "/api/metadata/**",

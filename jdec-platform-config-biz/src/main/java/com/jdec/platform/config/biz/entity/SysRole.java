@@ -57,7 +57,7 @@ public class SysRole implements Serializable {
     private LocalDateTime updatedDate;
 
     @Schema(description = "1删除0正常")
-    @TableLogic
+    @TableLogic(value = "0", delval = "1")
     @TableField(fill = FieldFill.INSERT)
     private Integer deleted;
 }
