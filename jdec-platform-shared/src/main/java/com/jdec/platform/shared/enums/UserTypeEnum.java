@@ -2,12 +2,9 @@ package com.jdec.platform.shared.enums;
 
 import lombok.Getter;
 
-/**
- * 用户类型枚举
- */
+/** 用户类型枚举 */
 @Getter
 public enum UserTypeEnum {
-
     INSIDE(1, "内部用户"),
     EXTERNAL(2, "外部用户"),
     ;

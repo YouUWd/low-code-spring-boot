@@ -9,10 +9,9 @@ import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * 角色管理 REST 控制器
@@ -42,41 +41,35 @@ public class SysRoleController {
 
     @GetMapping("/get-role-user-time")
     @Operation(summary = "获取指定用户的时效")
-    public ApiResponse<RoleUserTimeResp> getRoleUserTime(@RequestParam("userId") String userId, @RequestParam("roleId")Long roleId) {
-        return ApiResponse.success(sysRoleApi.getRoleUserTime(userId,roleId));
+    public ApiResponse<RoleUserTimeResp> getRoleUserTime(
+            @RequestParam("userId") String userId, @RequestParam("roleId") Long roleId) {
+        return ApiResponse.success(sysRoleApi.getRoleUserTime(userId, roleId));
     }
 
     @GetMapping("/get-role-config-page")
     @Operation(summary = "分页查询角色配置", description = "分页查询角色及其关联的用户、主体列表")
-    public ApiResponse<PageResult<RoleConfigPageResp>> getRoleConfigPage(QueryRoleConfigPageReq query) {
+    public ApiResponse<PageResult<RoleConfigPageResp>> getRoleConfigPage(
+            QueryRoleConfigPageReq query) {
         return ApiResponse.success(sysRoleApi.getRoleConfigPage(query));
     }
-
 
     @GetMapping("/get-role-config-detail")
     @Operation(summary = "获取角色配置详情", description = "获取角色及其关联的用户、主体列表")
     public ApiResponse<RoleConfigDetailResp> getInsideInfo(
-            @Parameter(description = "角色ID", example = "1")
-            @RequestParam Long roleId,
-            @Parameter(description = "用户类型", example = "1")
-            @RequestParam Integer userType
-    ) {
-        return ApiResponse.success(sysRoleApi.getRoleConfigDetail(roleId,userType));
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
+            @Parameter(description = "用户类型", example = "1") @RequestParam Integer userType) {
+        return ApiResponse.success(sysRoleApi.getRoleConfigDetail(roleId, userType));
     }
-
 
     @DeleteMapping("/{roleId}")
     @Operation(summary = "删除角色", description = "删除指定角色及其关联的用户/主体关系")
     public ApiResponse<Void> deleteRole(
-            @Parameter(description = "角色ID", example = "1")
-            @PathVariable Long roleId) {
+            @Parameter(description = "角色ID", example = "1") @PathVariable Long roleId) {
         sysRoleApi.deleteRole(roleId);
         return ApiResponse.success();
     }
 
-    /**
-     * 提供主体下拉列表
-     */
+    /** 提供主体下拉列表 */
     @GetMapping("/subjects")
     @Operation(summary = "主体下拉列表")
     public ApiResponse<List<SubjectOptionResp>> listSubjects() {

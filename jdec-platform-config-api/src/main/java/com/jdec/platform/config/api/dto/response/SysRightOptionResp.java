@@ -3,9 +3,7 @@ package com.jdec.platform.config.api.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/**
- * 权限节点下拉选项响应
- */
+/** 权限节点下拉选项响应 */
 @Data
 @Schema(description = "权限节点下拉选项")
 public class SysRightOptionResp {

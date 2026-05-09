@@ -5,9 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-/**
- * 角色配置查询条件
- */
+/** 角色配置查询条件 */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Schema(description = "角色配置查询条件")

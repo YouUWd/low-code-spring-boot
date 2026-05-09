@@ -1,27 +1,23 @@
 package com.jdec.platform.config.biz.service;
 
+import static org.jooq.impl.DSL.*;
+
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.biz.dto.SortRule;
 import com.jdec.platform.shared.model.PageResult;
+import java.util.*;
+import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.*;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
-import javax.sql.DataSource;
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static org.jooq.impl.DSL.*;
-
-/**
- * 动态查询服务
- * 使用 jOOQ 构建类型安全的 SQL 查询，避免 SQL 注入
- */
+/** 动态查询服务 使用 jOOQ 构建类型安全的 SQL 查询，避免 SQL 注入 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -39,17 +35,18 @@ public class DynamicQueryService {
      * 根据模块配置执行动态查询
      *
      * @param moduleConfig 模块完整配置
-     * @param page         页码（从1开始）
-     * @param pageSize     每页大小
-     * @param sorts        排序规则列表
-     * @param filters      过滤条件列表
+     * @param page 页码（从1开始）
+     * @param pageSize 每页大小
+     * @param sorts 排序规则列表
+     * @param filters 过滤条件列表
      * @return 分页查询结果
      */
-    public PageResult<Map<String, Object>> executeQuery(SysModuleCompleteResp moduleConfig,
-                                                        Integer page,
-                                                        Integer pageSize,
-                                                        List<com.jdec.platform.config.biz.dto.SortRule> sorts,
-                                                        List<com.jdec.platform.config.biz.dto.FilterRule> filters) {
+    public PageResult<Map<String, Object>> executeQuery(
+            SysModuleCompleteResp moduleConfig,
+            Integer page,
+            Integer pageSize,
+            List<com.jdec.platform.config.biz.dto.SortRule> sorts,
+            List<com.jdec.platform.config.biz.dto.FilterRule> filters) {
 
         DSLContext dsl = DSL.using(dataSource, SQLDialect.MYSQL);
 
@@ -63,7 +60,8 @@ public class DynamicQueryService {
 
         if (moduleConfig.getModuleTables() != null) {
             for (SysModuleCompleteResp.ModuleTableInfo table : moduleConfig.getModuleTables()) {
-                if ("1:1".equals(table.getRelationType()) || "N:1".equals(table.getRelationType())) {
+                if ("1:1".equals(table.getRelationType())
+                        || "N:1".equals(table.getRelationType())) {
                     oneToOneEntities.add(table);
                 } else if ("1:N".equals(table.getRelationType())) {
                     oneToManyEntities.add(table);
@@ -71,12 +69,15 @@ public class DynamicQueryService {
             }
         }
 
-        log.info("[关系分析] 1:1/N:1: {} 个, 1:N: {} 个",
-                oneToOneEntities.size(), oneToManyEntities.size());
+        log.info(
+                "[关系分析] 1:1/N:1: {} 个, 1:N: {} 个",
+                oneToOneEntities.size(),
+                oneToManyEntities.size());
 
         // 执行主查询（包含 1:1/N:1 关系）
-        List<Map<String, Object>> mainData = executeMainQuery(
-                dsl, moduleConfig, oneToOneEntities, page, pageSize, sorts, filters);
+        List<Map<String, Object>> mainData =
+                executeMainQuery(
+                        dsl, moduleConfig, oneToOneEntities, page, pageSize, sorts, filters);
 
         log.info("[主查询结果] {} 条记录", mainData.size());
 
@@ -92,17 +93,10 @@ public class DynamicQueryService {
         log.info("========== 动态查询结束 ==========");
 
         // 构建分页结果
-        return PageResult.of(
-                page.longValue(),
-                pageSize.longValue(),
-                total,
-                mainData
-        );
+        return PageResult.of(page.longValue(), pageSize.longValue(), total, mainData);
     }
 
-    /**
-     * 执行主查询（包含 1:1/N:1 关系）
-     */
+    /** 执行主查询（包含 1:1/N:1 关系） */
     private List<Map<String, Object>> executeMainQuery(
             DSLContext dsl,
             SysModuleCompleteResp moduleConfig,
@@ -134,21 +128,27 @@ public class DynamicQueryService {
         for (SysModuleCompleteResp.ModuleTableInfo entity : oneToOneEntities) {
             Table<?> joinTable = table(name(entity.getTableName()));
             Field<Object> leftField = field(name(primaryTable, entity.getJoinLeftField()));
-            Field<Object> rightField = field(name(entity.getTableName(), entity.getJoinRightField()));
+            Field<Object> rightField =
+                    field(name(entity.getTableName(), entity.getJoinRightField()));
 
             query = query.leftJoin(joinTable).on(leftField.eq(rightField));
 
-            log.info("  ✓ LEFT JOIN {} ON {}.{} = {}.{}",
+            log.info(
+                    "  ✓ LEFT JOIN {} ON {}.{} = {}.{}",
                     entity.getTableName(),
-                    primaryTable, entity.getJoinLeftField(),
-                    entity.getTableName(), entity.getJoinRightField());
+                    primaryTable,
+                    entity.getJoinLeftField(),
+                    entity.getTableName(),
+                    entity.getJoinRightField());
         }
 
         // 应用 WHERE 条件
         SelectConditionStep<?> conditionQuery = applyWhereClause(query, filters, primaryTable);
 
         // 应用排序和分页
-        Result<?> result = applyOrderByAndPagination(conditionQuery, sorts, page, pageSize, primaryTable, moduleConfig);
+        Result<?> result =
+                applyOrderByAndPagination(
+                        conditionQuery, sorts, page, pageSize, primaryTable, moduleConfig);
 
         log.info("[执行结果] {} 条记录", result.size());
 
@@ -156,9 +156,7 @@ public class DynamicQueryService {
         return transformResults(result, moduleConfig, usedEntities);
     }
 
-    /**
-     * 应用排序和分页
-     */
+    /** 应用排序和分页 */
     private Result<?> applyOrderByAndPagination(
             SelectConditionStep<?> query,
             List<SortRule> sorts,
@@ -174,15 +172,23 @@ public class DynamicQueryService {
             // 默认按主键降序排序
             Field<Object> defaultSortField = field(name(primaryTable, DEFAULT_PRIMARY_KEY));
             sortFields.add(defaultSortField.desc());
-            log.info("  ✓ [排序] 默认: {}.{} {}", primaryTable, DEFAULT_PRIMARY_KEY, DEFAULT_SORT_DIRECTION);
+            log.info(
+                    "  ✓ [排序] 默认: {}.{} {}",
+                    primaryTable,
+                    DEFAULT_PRIMARY_KEY,
+                    DEFAULT_SORT_DIRECTION);
         } else {
             // 应用多字段排序
             for (com.jdec.platform.config.biz.dto.SortRule sort : sorts) {
                 String fieldName = sort.getField();
-                String direction = sort.getOrder() != null ? sort.getOrder().toUpperCase() : SORT_DIRECTION_ASC;
+                String direction =
+                        sort.getOrder() != null
+                                ? sort.getOrder().toUpperCase()
+                                : SORT_DIRECTION_ASC;
 
                 // 验证排序方向
-                if (!SORT_DIRECTION_ASC.equals(direction) && !SORT_DIRECTION_DESC.equals(direction)) {
+                if (!SORT_DIRECTION_ASC.equals(direction)
+                        && !SORT_DIRECTION_DESC.equals(direction)) {
                     log.warn("  ⚠ [排序] 无效的排序方向: {}, 使用默认 {}", direction, SORT_DIRECTION_ASC);
                     direction = SORT_DIRECTION_ASC;
                 }
@@ -207,7 +213,11 @@ public class DynamicQueryService {
             if (sortFields.isEmpty()) {
                 Field<Object> defaultSortField = field(name(primaryTable, DEFAULT_PRIMARY_KEY));
                 sortFields.add(defaultSortField.desc());
-                log.info("  ✓ [排序] 所有字段无效，使用默认: {}.{} {}", primaryTable, DEFAULT_PRIMARY_KEY, DEFAULT_SORT_DIRECTION);
+                log.info(
+                        "  ✓ [排序] 所有字段无效，使用默认: {}.{} {}",
+                        primaryTable,
+                        DEFAULT_PRIMARY_KEY,
+                        DEFAULT_SORT_DIRECTION);
             }
         }
 
@@ -215,12 +225,9 @@ public class DynamicQueryService {
         int offset = (page - 1) * pageSize;
         log.info("[SQL] {}", query.orderBy(sortFields).limit(pageSize).offset(offset).getSQL());
         return query.orderBy(sortFields).limit(pageSize).offset(offset).fetch();
-
     }
 
-    /**
-     * 执行统计查询
-     */
+    /** 执行统计查询 */
     private Long executeCountQuery(
             DSLContext dsl,
             SysModuleCompleteResp moduleConfig,
@@ -237,25 +244,24 @@ public class DynamicQueryService {
         for (SysModuleCompleteResp.ModuleTableInfo entity : oneToOneEntities) {
             Table<?> joinTable = table(name(entity.getTableName()));
             Field<Object> leftField = field(name(primaryTable, entity.getJoinLeftField()));
-            Field<Object> rightField = field(name(entity.getTableName(), entity.getJoinRightField()));
+            Field<Object> rightField =
+                    field(name(entity.getTableName(), entity.getJoinRightField()));
 
             query = query.leftJoin(joinTable).on(leftField.eq(rightField));
         }
 
         // 应用 WHERE 条件
-        SelectConditionStep<Record1<Integer>> conditionQuery = applyWhereClause(query, filters, primaryTable);
+        SelectConditionStep<Record1<Integer>> conditionQuery =
+                applyWhereClause(query, filters, primaryTable);
 
         // 执行查询
         Integer count = conditionQuery.fetchOne(0, Integer.class);
         return count != null ? count.longValue() : 0L;
     }
 
-    /**
-     * 构建 SELECT 字段列表
-     */
+    /** 构建 SELECT 字段列表 */
     private List<Field<?>> buildSelectFields(
-            SysModuleCompleteResp moduleConfig,
-            Set<String> usedEntities) {
+            SysModuleCompleteResp moduleConfig, Set<String> usedEntities) {
 
         List<Field<?>> fields = new ArrayList<>();
         String primaryTable = moduleConfig.getModule().getPrimaryTable();
@@ -281,7 +287,8 @@ public class DynamicQueryService {
 
         // 2. 收集组合字段依赖的源字段
         if (moduleConfig.getCombineFields() != null) {
-            for (SysModuleCompleteResp.CombineFieldInfo fieldInfo : moduleConfig.getCombineFields()) {
+            for (SysModuleCompleteResp.CombineFieldInfo fieldInfo :
+                    moduleConfig.getCombineFields()) {
                 if (fieldInfo.getEnabled() != 1) {
                     continue;
                 }
@@ -319,10 +326,7 @@ public class DynamicQueryService {
         return fields;
     }
 
-
-    /**
-     * 应用 WHERE 条件
-     */
+    /** 应用 WHERE 条件 */
     private <R extends org.jooq.Record> SelectConditionStep<R> applyWhereClause(
             SelectJoinStep<R> query,
             List<com.jdec.platform.config.biz.dto.FilterRule> filters,
@@ -336,7 +340,8 @@ public class DynamicQueryService {
 
         for (com.jdec.platform.config.biz.dto.FilterRule filter : filters) {
             String fieldName = filter.getField();
-            String operator = filter.getOperator() != null ? filter.getOperator().toLowerCase() : "eq";
+            String operator =
+                    filter.getOperator() != null ? filter.getOperator().toLowerCase() : "eq";
             Object value = filter.getValue();
 
             // 使用 jOOQ 的参数绑定，避免 SQL 注入
@@ -361,9 +366,9 @@ public class DynamicQueryService {
     /**
      * 根据操作符构建 jOOQ 条件
      *
-     * @param field    字段
+     * @param field 字段
      * @param operator 操作符
-     * @param value    值
+     * @param value 值
      * @return jOOQ 条件
      */
     private Condition buildCondition(Field<Object> field, String operator, Object value) {
@@ -433,7 +438,7 @@ public class DynamicQueryService {
     /**
      * 验证字段是否存在于模块配置中
      *
-     * @param fieldName    字段名
+     * @param fieldName 字段名
      * @param moduleConfig 模块配置
      * @return 是否有效
      */
@@ -460,13 +465,9 @@ public class DynamicQueryService {
         return DEFAULT_PRIMARY_KEY.equals(fieldName);
     }
 
-    /**
-     * 转换查询结果
-     */
+    /** 转换查询结果 */
     private List<Map<String, Object>> transformResults(
-            Result<?> result,
-            SysModuleCompleteResp moduleConfig,
-            Set<String> usedEntities) {
+            Result<?> result, SysModuleCompleteResp moduleConfig, Set<String> usedEntities) {
 
         List<Map<String, Object>> data = new ArrayList<>();
 
@@ -484,9 +485,7 @@ public class DynamicQueryService {
         return data;
     }
 
-    /**
-     * 附加 1:N 关系数据
-     */
+    /** 附加 1:N 关系数据 */
     private void attachOneToManyRelations(
             DSLContext dsl,
             List<Map<String, Object>> mainData,
@@ -498,10 +497,11 @@ public class DynamicQueryService {
 
             // 获取父记录的关联字段值（joinLeftField）
             // 例如：class 表的 id 字段
-            List<Object> parentKeys = mainData.stream()
-                    .map(row -> row.get(entity.getJoinLeftField()))
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
+            List<Object> parentKeys =
+                    mainData.stream()
+                            .map(row -> row.get(entity.getJoinLeftField()))
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toList());
 
             if (parentKeys.isEmpty()) {
                 log.info("  ⊗ 没有父记录关联字段值，跳过");
@@ -512,8 +512,8 @@ public class DynamicQueryService {
 
             // 查询子记录（使用 joinRightField 作为查询条件）
             // 例如：WHERE student.class_id IN (parentKeys)
-            List<Map<String, Object>> childRecords = queryChildRecords(
-                    dsl, entity, parentKeys, moduleConfig);
+            List<Map<String, Object>> childRecords =
+                    queryChildRecords(dsl, entity, parentKeys, moduleConfig);
 
             log.info("  查询到子记录数: {}", childRecords.size());
 
@@ -522,32 +522,38 @@ public class DynamicQueryService {
                 Object parentKey = row.get(entity.getJoinLeftField());
 
                 // 找到所有 joinRightField 等于 parentKey 的子记录
-                List<Map<String, Object>> children = childRecords.stream()
-                        .filter(child -> Objects.equals(
-                                child.get(entity.getJoinRightField()),
-                                parentKey))
-                        .map(child -> {
-                            Map<String, Object> cleaned = new HashMap<>(child);
-                            // 移除关联字段，避免冗余
-                            cleaned.remove(entity.getJoinRightField());
-                            return cleaned;
-                        })
-                        .collect(Collectors.toList());
+                List<Map<String, Object>> children =
+                        childRecords.stream()
+                                .filter(
+                                        child ->
+                                                Objects.equals(
+                                                        child.get(entity.getJoinRightField()),
+                                                        parentKey))
+                                .map(
+                                        child -> {
+                                            Map<String, Object> cleaned = new HashMap<>(child);
+                                            // 移除关联字段，避免冗余
+                                            cleaned.remove(entity.getJoinRightField());
+                                            return cleaned;
+                                        })
+                                .collect(Collectors.toList());
 
                 if (!children.isEmpty()) {
                     // 使用表名 + "s" 作为关系键（例如：student -> students）
                     String relationKey = entity.getTableName() + "s";
                     row.put(relationKey, children);
-                    log.info("  ✓ 为父记录 {}={} 附加了 {} 条子记录到 '{}'",
-                            entity.getJoinLeftField(), parentKey, children.size(), relationKey);
+                    log.info(
+                            "  ✓ 为父记录 {}={} 附加了 {} 条子记录到 '{}'",
+                            entity.getJoinLeftField(),
+                            parentKey,
+                            children.size(),
+                            relationKey);
                 }
             }
         }
     }
 
-    /**
-     * 查询子记录
-     */
+    /** 查询子记录 */
     private List<Map<String, Object>> queryChildRecords(
             DSLContext dsl,
             SysModuleCompleteResp.ModuleTableInfo entity,
@@ -564,9 +570,8 @@ public class DynamicQueryService {
         selectFields.add(joinField);
 
         // 构建查询 - 使用 jOOQ 的 IN 条件，自动处理参数绑定
-        SelectConditionStep<?> query = dsl.select(selectFields)
-                .from(childTable)
-                .where(joinField.in(parentKeys));
+        SelectConditionStep<?> query =
+                dsl.select(selectFields).from(childTable).where(joinField.in(parentKeys));
 
         log.info("  子查询 SQL: {}", query.getSQL());
 
@@ -587,12 +592,9 @@ public class DynamicQueryService {
         return data;
     }
 
-    /**
-     * 构建子表 SELECT 字段
-     */
+    /** 构建子表 SELECT 字段 */
     private List<Field<?>> buildChildSelectFields(
-            SysModuleCompleteResp.ModuleTableInfo entity,
-            SysModuleCompleteResp moduleConfig) {
+            SysModuleCompleteResp.ModuleTableInfo entity, SysModuleCompleteResp moduleConfig) {
 
         List<Field<?>> fields = new ArrayList<>();
         String tableName = entity.getTableName();
@@ -611,7 +613,8 @@ public class DynamicQueryService {
 
         // 2. 收集组合字段依赖的源字段
         if (moduleConfig.getCombineFields() != null) {
-            for (SysModuleCompleteResp.CombineFieldInfo fieldInfo : moduleConfig.getCombineFields()) {
+            for (SysModuleCompleteResp.CombineFieldInfo fieldInfo :
+                    moduleConfig.getCombineFields()) {
                 if (fieldInfo.getEnabled() != 1) {
                     continue;
                 }

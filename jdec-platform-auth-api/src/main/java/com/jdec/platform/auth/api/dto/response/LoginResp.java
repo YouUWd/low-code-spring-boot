@@ -4,9 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Data;
 
-/**
- * 登录响应
- */
+/** 登录响应 */
 @Data
 @Builder
 @Schema(description = "登录响应")

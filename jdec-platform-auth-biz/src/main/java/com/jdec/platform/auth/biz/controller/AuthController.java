@@ -11,9 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * 认证控制器
- */
+/** 认证控制器 */
 @Tag(name = "认证管理", description = "登录、退出、用户信息")
 @RestController
 @RequestMapping("/api/config/auth")

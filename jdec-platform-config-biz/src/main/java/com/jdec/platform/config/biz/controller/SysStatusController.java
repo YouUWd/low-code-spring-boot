@@ -8,10 +8,9 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 /**
  * 状态配置 REST 控制器
@@ -43,8 +42,7 @@ public class SysStatusController {
     @DeleteMapping("/{id}")
     @Operation(summary = "删除状态", description = "删除指定状态及其所有子状态")
     public ApiResponse<Void> delete(
-            @Parameter(description = "状态ID", example = "1")
-            @PathVariable Long id,
+            @Parameter(description = "状态ID", example = "1") @PathVariable Long id,
             @RequestParam(required = false, defaultValue = "0") Long subjectId) {
         sysStatusApi.deleteStatus(id, subjectId);
         return ApiResponse.success();

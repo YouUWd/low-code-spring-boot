@@ -1,13 +1,10 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.Data;
 
-import java.util.List;
-
-/**
- * 保存角色用户预检查结果
- */
+/** 保存角色用户预检查结果 */
 @Data
 @Schema(description = "保存角色用户预检查结果")
 public class CheckRoleUserResp {

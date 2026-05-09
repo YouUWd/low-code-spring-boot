@@ -4,7 +4,6 @@ import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.request.CreateUserReq;
 import com.jdec.platform.hr.api.dto.request.UpdateUserReq;
 import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;

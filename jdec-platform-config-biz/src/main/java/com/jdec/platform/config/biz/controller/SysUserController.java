@@ -10,10 +10,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/config/sys/user")
@@ -39,14 +38,15 @@ public class SysUserController {
     @PutMapping("/disable/{id}")
     @Operation(summary = "停用用户", description = "将用户状态设为禁用")
     public ApiResponse<Void> disableUser(
-            @Parameter(description = "用户ID", example = "1")
-            @PathVariable Long id) {
+            @Parameter(description = "用户ID", example = "1") @PathVariable Long id) {
         sysUserApi.disableUser(id);
         return ApiResponse.success();
     }
 
     @GetMapping("/list")
-    @Operation(summary = "查询用户列表", description = "先查sys_role_user表根据appCode过滤拿到用户id，再查sys_user表获取用户数据")
+    @Operation(
+            summary = "查询用户列表",
+            description = "先查sys_role_user表根据appCode过滤拿到用户id，再查sys_user表获取用户数据")
     public ApiResponse<List<SysUserPageResp>> getUserList() {
         return ApiResponse.success(sysUserApi.getUserList());
     }

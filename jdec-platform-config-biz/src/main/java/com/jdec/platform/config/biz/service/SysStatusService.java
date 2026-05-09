@@ -10,17 +10,14 @@ import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.shared.context.AppCodeContext;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.util.*;
-
-/**
- * 状态 Service 实现
- */
+/** 状态 Service 实现 */
 @Service
 @RequiredArgsConstructor
 public class SysStatusService implements SysStatusApi {
@@ -32,13 +29,13 @@ public class SysStatusService implements SysStatusApi {
         if (subjectId == null) {
             subjectId = 0L;
         }
-        List<SysStatus> list = sysStatusMapper.selectList(
-                new LambdaQueryWrapper<SysStatus>()
-                        .eq(SysStatus::getAppCode, AppCodeContext.get())
-                        .eq(SysStatus::getSubjectId, subjectId)
-                        .orderByAsc(SysStatus::getStatusValue)
-                        .orderByAsc(SysStatus::getId)
-        );
+        List<SysStatus> list =
+                sysStatusMapper.selectList(
+                        new LambdaQueryWrapper<SysStatus>()
+                                .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .orderByAsc(SysStatus::getStatusValue)
+                                .orderByAsc(SysStatus::getId));
         if (CollectionUtils.isEmpty(list)) {
             return Collections.emptyList();
         }
@@ -83,25 +80,25 @@ public class SysStatusService implements SysStatusApi {
             entity.setSubjectId(subjectId);
             entity.setAppCode(AppCodeContext.get());
             // 校验同级名称是否重复（按主体、应用隔离）
-            long count = sysStatusMapper.selectCount(
-                    new LambdaQueryWrapper<SysStatus>()
-                            .eq(SysStatus::getPid, entity.getPid())
-                            .eq(SysStatus::getSubjectId, subjectId)
-                            .eq(SysStatus::getAppCode, AppCodeContext.get())
-                            .eq(SysStatus::getTitle, entity.getTitle())
-            );
+            long count =
+                    sysStatusMapper.selectCount(
+                            new LambdaQueryWrapper<SysStatus>()
+                                    .eq(SysStatus::getPid, entity.getPid())
+                                    .eq(SysStatus::getSubjectId, subjectId)
+                                    .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                    .eq(SysStatus::getTitle, entity.getTitle()));
             if (count > 0) {
                 throw new BusinessException("同级状态下名称已存在");
             }
             sysStatusMapper.insert(entity);
         } else {
             // 编辑
-            boolean exists = sysStatusMapper.exists(
-                    Wrappers.<SysStatus>lambdaQuery()
-                            .eq(SysStatus::getId, req.getId())
-                            .eq(SysStatus::getSubjectId, subjectId)
-                            .eq(SysStatus::getAppCode, AppCodeContext.get())
-            );
+            boolean exists =
+                    sysStatusMapper.exists(
+                            Wrappers.<SysStatus>lambdaQuery()
+                                    .eq(SysStatus::getId, req.getId())
+                                    .eq(SysStatus::getSubjectId, subjectId)
+                                    .eq(SysStatus::getAppCode, AppCodeContext.get()));
             if (!exists) {
                 throw new BusinessException("状态不存在");
             }
@@ -117,14 +114,14 @@ public class SysStatusService implements SysStatusApi {
             if (req.getPid() != null && req.getPid() != 0L) {
                 checkCycle(req.getId(), req.getPid(), subjectId);
                 // 校验同级名称是否重复（按主体、应用隔离）
-                Long count = sysStatusMapper.selectCount(
-                        Wrappers.<SysStatus>lambdaQuery()
-                                .eq(SysStatus::getPid, req.getPid())
-                                .eq(SysStatus::getSubjectId, subjectId)
-                                .eq(SysStatus::getAppCode, AppCodeContext.get())
-                                .eq(SysStatus::getTitle, req.getTitle())
-                                .ne(SysStatus::getId, req.getId())
-                );
+                Long count =
+                        sysStatusMapper.selectCount(
+                                Wrappers.<SysStatus>lambdaQuery()
+                                        .eq(SysStatus::getPid, req.getPid())
+                                        .eq(SysStatus::getSubjectId, subjectId)
+                                        .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                        .eq(SysStatus::getTitle, req.getTitle())
+                                        .ne(SysStatus::getId, req.getId()));
                 if (count > 0) {
                     throw new BusinessException("同级状态下名称已存在");
                 }
@@ -139,12 +136,12 @@ public class SysStatusService implements SysStatusApi {
         if (subjectId == null) {
             subjectId = 0L;
         }
-        boolean exists = sysStatusMapper.exists(
-                Wrappers.<SysStatus>lambdaQuery()
-                        .eq(SysStatus::getId, id)
-                        .eq(SysStatus::getSubjectId, subjectId)
-                        .eq(SysStatus::getAppCode, AppCodeContext.get())
-        );
+        boolean exists =
+                sysStatusMapper.exists(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getId, id)
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
         if (!exists) {
             throw new BusinessException("状态不存在");
         }
@@ -162,12 +159,12 @@ public class SysStatusService implements SysStatusApi {
         if (id == null) {
             throw new BusinessException("节点ID不能为空");
         }
-        SysStatus node = sysStatusMapper.selectOne(
-                Wrappers.<SysStatus>lambdaQuery()
-                        .eq(SysStatus::getId, id)
-                        .eq(SysStatus::getSubjectId, subjectId)
-                        .eq(SysStatus::getAppCode, AppCodeContext.get())
-        );
+        SysStatus node =
+                sysStatusMapper.selectOne(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getId, id)
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
         if (node == null) {
             throw new BusinessException("状态不存在");
         }
@@ -181,25 +178,25 @@ public class SysStatusService implements SysStatusApi {
         // 不能拖到自己的子节点下面（形成环）
         if (targetPid != 0L) {
             checkCycle(id, targetPid, subjectId);
-            boolean exists = sysStatusMapper.exists(
-                    Wrappers.<SysStatus>lambdaQuery()
-                            .eq(SysStatus::getId, targetPid)
-                            .eq(SysStatus::getSubjectId, subjectId)
-                            .eq(SysStatus::getAppCode, AppCodeContext.get())
-            );
+            boolean exists =
+                    sysStatusMapper.exists(
+                            Wrappers.<SysStatus>lambdaQuery()
+                                    .eq(SysStatus::getId, targetPid)
+                                    .eq(SysStatus::getSubjectId, subjectId)
+                                    .eq(SysStatus::getAppCode, AppCodeContext.get()));
             if (!exists) {
                 throw new BusinessException("目标父状态不存在");
             }
         }
         // 校验同级名称是否重复
-        Long count = sysStatusMapper.selectCount(
-                Wrappers.<SysStatus>lambdaQuery()
-                        .eq(SysStatus::getPid, targetPid)
-                        .eq(SysStatus::getSubjectId, subjectId)
-                        .eq(SysStatus::getAppCode, AppCodeContext.get())
-                        .eq(SysStatus::getTitle, node.getTitle())
-                        .ne(SysStatus::getId, id)
-        );
+        Long count =
+                sysStatusMapper.selectCount(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getPid, targetPid)
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                .eq(SysStatus::getTitle, node.getTitle())
+                                .ne(SysStatus::getId, id));
         if (count > 0) {
             throw new BusinessException("同级状态下名称已存在");
         }
@@ -207,17 +204,15 @@ public class SysStatusService implements SysStatusApi {
         sysStatusMapper.updateById(node);
     }
 
-    /**
-     * 收集所有子节点ID
-     */
+    /** 收集所有子节点ID */
     private Set<Long> collectChildrenIds(Long parentId, Long subjectId) {
         Set<Long> result = new HashSet<>();
-        List<SysStatus> children = sysStatusMapper.selectList(
-                Wrappers.<SysStatus>lambdaQuery()
-                        .eq(SysStatus::getPid, parentId)
-                        .eq(SysStatus::getSubjectId, subjectId)
-                        .eq(SysStatus::getAppCode, AppCodeContext.get())
-        );
+        List<SysStatus> children =
+                sysStatusMapper.selectList(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getPid, parentId)
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
         for (SysStatus child : children) {
             result.add(child.getId());
             result.addAll(collectChildrenIds(child.getId(), subjectId));
@@ -225,19 +220,17 @@ public class SysStatusService implements SysStatusApi {
         return result;
     }
 
-    /**
-     * 检查是否形成环：targetPid 不能是 id 的子节点（包括自身）
-     */
+    /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */
     private void checkCycle(Long id, Long targetPid, Long subjectId) {
         if (id.equals(targetPid)) {
             throw new BusinessException("不能将节点移动到自身或其子节点下");
         }
-        List<SysStatus> children = sysStatusMapper.selectList(
-                Wrappers.<SysStatus>lambdaQuery()
-                        .eq(SysStatus::getPid, id)
-                        .eq(SysStatus::getSubjectId, subjectId)
-                        .eq(SysStatus::getAppCode, AppCodeContext.get())
-        );
+        List<SysStatus> children =
+                sysStatusMapper.selectList(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getPid, id)
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
         for (SysStatus child : children) {
             checkCycle(child.getId(), targetPid, subjectId);
         }

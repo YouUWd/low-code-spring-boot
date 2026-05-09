@@ -2,15 +2,12 @@ package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Data;
-
 import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import lombok.Data;
 
-/**
- * 系统表-角色用户表
- */
+/** 系统表-角色用户表 */
 @Data
 @TableName("sys_role_user")
 @Schema(description = "角色用户关联")

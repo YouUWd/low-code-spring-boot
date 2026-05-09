@@ -8,15 +8,14 @@ import com.jdec.platform.shared.security.model.UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/**
- * Sa-Token 用户数据加载器实现
- */
+/** Sa-Token 用户数据加载器实现 */
 @Component
 @RequiredArgsConstructor
 public class SaTokenUserDataLoaderImpl implements SaTokenUserDataLoader {
 
     private final SysUserApi sysUserApi;
     private final SysRoleApi sysRoleApi;
+
     @Override
     public UserInfo getUserByPhone(String phone) {
         SysUserBO user = sysUserApi.getUserByPhone(phone);
@@ -34,8 +33,8 @@ public class SaTokenUserDataLoaderImpl implements SaTokenUserDataLoader {
     }
 
     @Override
-    public Long getUserRoleCount(String phone,String appCode) {
+    public Long getUserRoleCount(String phone, String appCode) {
         SysUserBO user = sysUserApi.getUserByPhone(phone);
-        return sysRoleApi.getUserRoleCount(user.getId(),user.getSubjectId(),appCode);
+        return sysRoleApi.getUserRoleCount(user.getId(), user.getSubjectId(), appCode);
     }
 }

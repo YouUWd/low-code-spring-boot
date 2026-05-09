@@ -5,9 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-/**
- * 权限节点保存/编辑请求
- */
+/** 权限节点保存/编辑请求 */
 @Data
 @Schema(description = "权限节点保存/编辑请求")
 public class SysRightSaveReq {

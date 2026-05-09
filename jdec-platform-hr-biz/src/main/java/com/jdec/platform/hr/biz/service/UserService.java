@@ -12,19 +12,16 @@ import com.jdec.platform.hr.biz.entity.User;
 import com.jdec.platform.hr.biz.mapper.UserMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-
-/**
- * 用户服务
- */
+/** 用户服务 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -110,21 +107,20 @@ public class UserService implements UserApi {
 
     @Override
     public List<UserBO> listByIds(Set<Long> allUserIds) {
-        List<User> users = userMapper.selectList(
-                Wrappers.<User>lambdaQuery()
-                        .in(User::getId, new ArrayList<>(allUserIds))
-                        .eq(User::getIsDelete, 1)
-                        .eq(User::getUserStatus, 1)
-        );
+        List<User> users =
+                userMapper.selectList(
+                        Wrappers.<User>lambdaQuery()
+                                .in(User::getId, new ArrayList<>(allUserIds))
+                                .eq(User::getIsDelete, 1)
+                                .eq(User::getUserStatus, 1));
         return BeanUtil.copyToList(users, UserBO.class);
     }
 
     @Override
     public List<UserBO> listBySubjectId(Long subjectId) {
-        List<User> users = userMapper.selectList(
-                Wrappers.<User>lambdaQuery()
-                        .eq(User::getSubjectId, subjectId)
-        );
+        List<User> users =
+                userMapper.selectList(
+                        Wrappers.<User>lambdaQuery().eq(User::getSubjectId, subjectId));
         return BeanUtil.copyToList(users, UserBO.class);
     }
 

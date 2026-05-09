@@ -11,17 +11,14 @@ import com.jdec.platform.config.biz.entity.SysPermissionConfig;
 import com.jdec.platform.config.biz.mapper.SysPermissionConfigMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.stream.Collectors;
-
-/**
- * 权限配置管理 Service 实现
- */
+/** 权限配置管理 Service 实现 */
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -30,7 +27,8 @@ public class SysPermissionConfigService implements SysPermissionConfigApi {
     private final SysPermissionConfigMapper sysPermissionConfigMapper;
 
     @Override
-    public SysPermissionConfigEntryResp createPermissionConfig(CreateSysPermissionConfigReq request) {
+    public SysPermissionConfigEntryResp createPermissionConfig(
+            CreateSysPermissionConfigReq request) {
         SysPermissionConfig config = new SysPermissionConfig();
         config.setTenantId(request.getTenantId());
         config.setModuleId(request.getModuleId());
@@ -56,7 +54,8 @@ public class SysPermissionConfigService implements SysPermissionConfigApi {
     }
 
     @Override
-    public SysPermissionConfigEntryResp getPermissionByField(Long tenantId, String tableName, String fieldName) {
+    public SysPermissionConfigEntryResp getPermissionByField(
+            Long tenantId, String tableName, String fieldName) {
         LambdaQueryWrapper<SysPermissionConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysPermissionConfig::getTenantId, tenantId)
                 .eq(SysPermissionConfig::getTableName, tableName)
@@ -68,7 +67,8 @@ public class SysPermissionConfigService implements SysPermissionConfigApi {
     }
 
     @Override
-    public List<SysPermissionConfigEntryResp> queryPermissionConfigs(QuerySysPermissionConfigReq request) {
+    public List<SysPermissionConfigEntryResp> queryPermissionConfigs(
+            QuerySysPermissionConfigReq request) {
         LambdaQueryWrapper<SysPermissionConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysPermissionConfig::getTenantId, request.getTenantId())
                 .eq(SysPermissionConfig::getDeleted, 0);
@@ -87,13 +87,12 @@ public class SysPermissionConfigService implements SysPermissionConfigApi {
         }
 
         List<SysPermissionConfig> configs = sysPermissionConfigMapper.selectList(wrapper);
-        return configs.stream()
-                .map(this::toPermissionConfigEntry)
-                .collect(Collectors.toList());
+        return configs.stream().map(this::toPermissionConfigEntry).collect(Collectors.toList());
     }
 
     @Override
-    public SysPermissionConfigEntryResp updatePermissionConfig(UpdateSysPermissionConfigReq request) {
+    public SysPermissionConfigEntryResp updatePermissionConfig(
+            UpdateSysPermissionConfigReq request) {
         SysPermissionConfig config = sysPermissionConfigMapper.selectById(request.getId());
         if (config == null) {
             throw new RuntimeException("权限配置不存在");
@@ -127,14 +126,16 @@ public class SysPermissionConfigService implements SysPermissionConfigApi {
         LambdaQueryWrapper<SysPermissionConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.in(SysPermissionConfig::getId, permissionIds);
         List<SysPermissionConfig> configs = sysPermissionConfigMapper.selectList(wrapper);
-        configs.forEach(config -> {
-            config.setDeleted(1);
-            sysPermissionConfigMapper.updateById(config);
-        });
+        configs.forEach(
+                config -> {
+                    config.setDeleted(1);
+                    sysPermissionConfigMapper.updateById(config);
+                });
     }
 
     @Override
-    public boolean hasPermission(Long tenantId, String tableName, String fieldName, Integer operation) {
+    public boolean hasPermission(
+            Long tenantId, String tableName, String fieldName, Integer operation) {
         LambdaQueryWrapper<SysPermissionConfig> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysPermissionConfig::getTenantId, tenantId)
                 .eq(SysPermissionConfig::getTableName, tableName)

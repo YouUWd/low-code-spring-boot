@@ -4,6 +4,7 @@ package com.jdec.platform.shared.service;
  * 用户权限服务接口
  *
  * <p>查询用户权限信息
+ *
  * <p>支持直接权限和角色继承权限
  */
 public interface UserPermissionService {

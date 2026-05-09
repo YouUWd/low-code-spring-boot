@@ -268,15 +268,15 @@
                         <endWithNewline/>
                     </java>
                 </configuration>
-<!--                <executions>-->
-<!--                    &lt;!&ndash; 绑定到 compile 阶段自动检查格式 &ndash;&gt;-->
-<!--                    <execution>-->
-<!--                        <goals>-->
-<!--                            <goal>check</goal>-->
-<!--                        </goals>-->
-<!--                        <phase>compile</phase>-->
-<!--                    </execution>-->
-<!--                </executions>-->
+                <executions>
+                    <!-- 绑定到 compile 阶段自动检查格式 -->
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <phase>compile</phase>
+                    </execution>
+                </executions>
             </plugin>
 
         </plugins>

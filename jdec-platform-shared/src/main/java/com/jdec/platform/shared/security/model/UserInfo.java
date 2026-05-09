@@ -1,12 +1,11 @@
 package com.jdec.platform.shared.security.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.io.Serializable;
 
 @Data
 @Builder
@@ -15,6 +14,7 @@ import java.io.Serializable;
 public class UserInfo implements Serializable {
     private Long id;
     private Long userId;
+
     @Schema(description = "用户名")
     private String username;
 

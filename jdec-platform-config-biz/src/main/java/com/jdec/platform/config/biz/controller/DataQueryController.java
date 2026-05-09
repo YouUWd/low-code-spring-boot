@@ -5,8 +5,6 @@ import com.jdec.platform.config.biz.dto.FilterRule;
 import com.jdec.platform.config.biz.dto.SortRule;
 import com.jdec.platform.config.biz.service.DynamicQueryService;
 import com.jdec.platform.config.biz.service.SysModuleService;
-import com.jdec.platform.shared.datasource.DataSource;
-import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
@@ -14,13 +12,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
+import java.util.Map;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -32,9 +29,7 @@ public class DataQueryController {
     private final SysModuleService sysModuleService;
     private final DynamicQueryService dynamicQueryService;
 
-    /**
-     * 动态查询请求对象
-     */
+    /** 动态查询请求对象 */
     @Data
     @Schema(description = "动态查询请求")
     public static class QueryRequest {
@@ -56,21 +51,29 @@ public class DataQueryController {
      * 根据模块编码执行动态查询
      *
      * @param moduleCode 模块编码
-     * @param request    查询请求参数
+     * @param request 查询请求参数
      * @return 分页查询结果
      */
     @PostMapping("/{moduleCode}")
     @Operation(summary = "执行动态查询", description = "根据模块配置动态构建SQL并执行查询，支持多种过滤操作符和多字段排序")
     public ApiResponse<PageResult<Map<String, Object>>> executeQuery(
-            @PathVariable @Parameter(description = "模块编码", example = "MOD-STUDENT-LIST") String moduleCode,
-            @RequestHeader("X-Tenant-Id") @Parameter(description = "租户/数据源 ID", example = "school", required = true) String tenantId,
+            @PathVariable @Parameter(description = "模块编码", example = "MOD-STUDENT-LIST")
+                    String moduleCode,
+            @RequestHeader("X-Tenant-Id")
+                    @Parameter(description = "租户/数据源 ID", example = "school", required = true)
+                    String tenantId,
             @RequestBody QueryRequest request) {
-        log.info("执行动态查询: moduleCode={}, page={}, pageSize={}, sorts={}, filters={}",
-                moduleCode, request.getPage(), request.getPageSize(),
-                request.getSorts(), request.getFilters());
+        log.info(
+                "执行动态查询: moduleCode={}, page={}, pageSize={}, sorts={}, filters={}",
+                moduleCode,
+                request.getPage(),
+                request.getPageSize(),
+                request.getSorts(),
+                request.getFilters());
 
         // 根据模块编码查询模块配置
-        SysModuleCompleteResp moduleConfig = sysModuleService.getModuleComplete(tenantId, moduleCode);
+        SysModuleCompleteResp moduleConfig =
+                sysModuleService.getModuleComplete(tenantId, moduleCode);
 
         if (moduleConfig == null) {
             throw new BusinessException("模块不存在: " + moduleCode);
@@ -87,12 +90,13 @@ public class DataQueryController {
         }
 
         // 执行动态查询
-        PageResult<Map<String, Object>> result = dynamicQueryService.executeQuery(
-                moduleConfig,
-                request.getPage(),
-                request.getPageSize(),
-                request.getSorts(),
-                request.getFilters());
+        PageResult<Map<String, Object>> result =
+                dynamicQueryService.executeQuery(
+                        moduleConfig,
+                        request.getPage(),
+                        request.getPageSize(),
+                        request.getSorts(),
+                        request.getFilters());
 
         return ApiResponse.success(result);
     }
@@ -100,7 +104,7 @@ public class DataQueryController {
     /**
      * 验证过滤条件字段是否合法
      *
-     * @param filters      过滤条件
+     * @param filters 过滤条件
      * @param moduleConfig 模块配置
      * @throws BusinessException 如果存在非法字段
      */
@@ -115,7 +119,7 @@ public class DataQueryController {
     /**
      * 验证排序字段是否合法
      *
-     * @param sorts        排序规则
+     * @param sorts 排序规则
      * @param moduleConfig 模块配置
      * @throws BusinessException 如果存在非法字段
      */
@@ -130,7 +134,7 @@ public class DataQueryController {
     /**
      * 检查字段是否为有效的字段
      *
-     * @param fieldName    字段名
+     * @param fieldName 字段名
      * @param moduleConfig 模块配置
      * @return 是否有效
      */

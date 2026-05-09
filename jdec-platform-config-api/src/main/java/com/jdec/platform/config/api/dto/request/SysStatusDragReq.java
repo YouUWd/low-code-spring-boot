@@ -3,9 +3,7 @@ package com.jdec.platform.config.api.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/**
- * 状态拖拽请求
- */
+/** 状态拖拽请求 */
 @Data
 @Schema(description = "状态拖拽请求")
 public class SysStatusDragReq {

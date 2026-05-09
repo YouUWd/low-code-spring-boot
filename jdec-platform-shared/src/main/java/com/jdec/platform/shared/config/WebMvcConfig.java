@@ -7,16 +7,15 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/**
- * Web MVC 配置
- */
+/** Web MVC 配置 */
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private final TenantInterceptor tenantInterceptor;
     private final SubjectInterceptor subjectInterceptor;
 
-    public WebMvcConfig(TenantInterceptor tenantInterceptor, SubjectInterceptor subjectInterceptor) {
+    public WebMvcConfig(
+            TenantInterceptor tenantInterceptor, SubjectInterceptor subjectInterceptor) {
         this.tenantInterceptor = tenantInterceptor;
         this.subjectInterceptor = subjectInterceptor;
     }

@@ -15,18 +15,15 @@ import com.jdec.platform.shared.context.SubjectContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.*;
-import java.util.stream.Collectors;
-
-/**
- * 权限节点 Service 实现
- */
+/** 权限节点 Service 实现 */
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -48,12 +45,12 @@ public class SysRightService implements SysRightApi {
             sysRightMapper.insert(entity);
         } else {
             // 编辑
-            SysRight entity = sysRightMapper.selectOne(
-                    Wrappers.<SysRight>lambdaQuery()
-                            .eq(SysRight::getId, req.getId())
-                            .eq(SysRight::getSubjectId, SubjectContext.get())
-                            .eq(SysRight::getAppCode, AppCodeContext.get())
-            );
+            SysRight entity =
+                    sysRightMapper.selectOne(
+                            Wrappers.<SysRight>lambdaQuery()
+                                    .eq(SysRight::getId, req.getId())
+                                    .eq(SysRight::getSubjectId, SubjectContext.get())
+                                    .eq(SysRight::getAppCode, AppCodeContext.get()));
             if (entity == null) {
                 throw new BusinessException("权限节点不存在");
             }
@@ -73,12 +70,12 @@ public class SysRightService implements SysRightApi {
     @Transactional
     @Override
     public void deleteRight(Long id) {
-        boolean exists = sysRightMapper.exists(
-                Wrappers.<SysRight>lambdaQuery()
-                        .eq(SysRight::getId, id)
-                        .eq(SysRight::getSubjectId, SubjectContext.get())
-                        .eq(SysRight::getAppCode, AppCodeContext.get())
-        );
+        boolean exists =
+                sysRightMapper.exists(
+                        Wrappers.<SysRight>lambdaQuery()
+                                .eq(SysRight::getId, id)
+                                .eq(SysRight::getSubjectId, SubjectContext.get())
+                                .eq(SysRight::getAppCode, AppCodeContext.get()));
         if (!exists) {
             throw new BusinessException("权限节点不存在");
         }
@@ -90,78 +87,87 @@ public class SysRightService implements SysRightApi {
 
     @Override
     public List<SysRightOptionResp> listParentOptions(Integer nodeType) {
-        List<SysRight> list = sysRightMapper.selectList(
-                new LambdaQueryWrapper<SysRight>()
-                        .eq(SysRight::getAppCode, AppCodeContext.get())
-                        .eq(SysRight::getPid, 0L)
-                        .eq(nodeType != null, SysRight::getNodeType, nodeType)
-                        .orderByAsc(SysRight::getId)
-        );
-        return list.stream().map(right -> {
-            SysRightOptionResp resp = new SysRightOptionResp();
-            resp.setId(right.getId());
-            resp.setRightName(right.getRightName());
-            resp.setRightSlug(right.getRightSlug());
-            return resp;
-        }).collect(Collectors.toList());
+        List<SysRight> list =
+                sysRightMapper.selectList(
+                        new LambdaQueryWrapper<SysRight>()
+                                .eq(SysRight::getAppCode, AppCodeContext.get())
+                                .eq(SysRight::getPid, 0L)
+                                .eq(nodeType != null, SysRight::getNodeType, nodeType)
+                                .orderByAsc(SysRight::getId));
+        return list.stream()
+                .map(
+                        right -> {
+                            SysRightOptionResp resp = new SysRightOptionResp();
+                            resp.setId(right.getId());
+                            resp.setRightName(right.getRightName());
+                            resp.setRightSlug(right.getRightSlug());
+                            return resp;
+                        })
+                .collect(Collectors.toList());
     }
 
     @Override
     public List<SysRightResp> listRight(QuerySysRightReq req) {
-        List<SysRight> list = sysRightMapper.selectList(
-                new LambdaQueryWrapper<SysRight>()
-                        .eq(SysRight::getAppCode, AppCodeContext.get())
-                        .eq(SysRight::getSubjectId, SubjectContext.get())
-                        .like(StringUtils.hasText(req.getRightName()), SysRight::getRightName, req.getRightName())
-                        .orderByAsc(SysRight::getId)
-        );
+        List<SysRight> list =
+                sysRightMapper.selectList(
+                        new LambdaQueryWrapper<SysRight>()
+                                .eq(SysRight::getAppCode, AppCodeContext.get())
+                                .eq(SysRight::getSubjectId, SubjectContext.get())
+                                .like(
+                                        StringUtils.hasText(req.getRightName()),
+                                        SysRight::getRightName,
+                                        req.getRightName())
+                                .orderByAsc(SysRight::getId));
         if (list.isEmpty()) {
             return new ArrayList<>();
         }
         // 查询所有父节点
-        Set<Long> parentIds = list.stream()
-                .map(SysRight::getPid)
-                .filter(pid -> pid != null && pid != 0L)
-                .collect(Collectors.toSet());
+        Set<Long> parentIds =
+                list.stream()
+                        .map(SysRight::getPid)
+                        .filter(pid -> pid != null && pid != 0L)
+                        .collect(Collectors.toSet());
         Map<Long, SysRight> parentMap = new HashMap<>();
         if (CollUtil.isNotEmpty(parentIds)) {
-            parentMap = sysRightMapper.selectByIds(parentIds).stream()
-                    .collect(Collectors.toMap(SysRight::getId, r -> r));
+            parentMap =
+                    sysRightMapper.selectByIds(parentIds).stream()
+                            .collect(Collectors.toMap(SysRight::getId, r -> r));
         }
         Map<Long, SysRight> finalParentMap = parentMap;
-        return list.stream().map(right -> {
-            SysRightResp resp = new SysRightResp();
-            resp.setId(right.getId());
-            resp.setPid(right.getPid());
-            resp.setRightName(right.getRightName());
-            resp.setRightSlug(right.getRightSlug());
-            resp.setNodeType(right.getNodeType());
-            resp.setDescription(right.getDescription());
-            if (right.getPid() != null && right.getPid() != 0L) {
-                SysRight parent = finalParentMap.get(right.getPid());
-                if (parent != null) {
-                    resp.setParentRightName(parent.getRightName());
-                    resp.setParentRightSlug(parent.getRightSlug());
-                } else {
-                    resp.setParentRightName("");
-                    resp.setParentRightSlug("");
-                }
-            }
-            return resp;
-        }).collect(Collectors.toList());
+        return list.stream()
+                .map(
+                        right -> {
+                            SysRightResp resp = new SysRightResp();
+                            resp.setId(right.getId());
+                            resp.setPid(right.getPid());
+                            resp.setRightName(right.getRightName());
+                            resp.setRightSlug(right.getRightSlug());
+                            resp.setNodeType(right.getNodeType());
+                            resp.setDescription(right.getDescription());
+                            if (right.getPid() != null && right.getPid() != 0L) {
+                                SysRight parent = finalParentMap.get(right.getPid());
+                                if (parent != null) {
+                                    resp.setParentRightName(parent.getRightName());
+                                    resp.setParentRightSlug(parent.getRightSlug());
+                                } else {
+                                    resp.setParentRightName("");
+                                    resp.setParentRightSlug("");
+                                }
+                            }
+                            return resp;
+                        })
+                .collect(Collectors.toList());
     }
 
-    /**
-     * 收集所有子节点ID
-     */
+    /** 收集所有子节点ID */
     private Set<Long> collectChildrenIds(Long parentId, Long subjectId) {
         Set<Long> result = new java.util.HashSet<>();
-        List<SysRight> children = sysRightMapper.selectList(
-                Wrappers.<SysRight>lambdaQuery()
-                        .eq(SysRight::getPid, parentId)
-                        .eq(SysRight::getSubjectId, subjectId)
-                        .eq(SysRight::getAppCode, AppCodeContext.get())
-        );
+        List<SysRight> children =
+                sysRightMapper.selectList(
+                        Wrappers.<SysRight>lambdaQuery()
+                                .eq(SysRight::getPid, parentId)
+                                .eq(SysRight::getSubjectId, subjectId)
+                                .eq(SysRight::getAppCode, AppCodeContext.get()));
         for (SysRight child : children) {
             result.add(child.getId());
             result.addAll(collectChildrenIds(child.getId(), subjectId));

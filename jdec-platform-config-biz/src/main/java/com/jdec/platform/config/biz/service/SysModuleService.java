@@ -3,13 +3,13 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
-import com.jdec.platform.config.api.SysModuleApi;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveSysModuleReq;
-import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import com.jdec.platform.config.biz.entity.SysModule;
@@ -25,19 +25,16 @@ import com.jdec.platform.config.biz.mapper.SysModuleTableMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
-
-/**
- * 模块管理 Service 实现
- */
+/** 模块管理 Service 实现 */
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -53,41 +50,54 @@ public class SysModuleService implements SysModuleApi {
     @Override
     public List<SysModuleListResp> listModules(String tenantId) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModule::getTenantId,tenantId);
-        wrapper.orderByAsc(SysModule::getParentId)
-                .orderByAsc(SysModule::getSortOrder);
+        wrapper.eq(SysModule::getTenantId, tenantId);
+        wrapper.orderByAsc(SysModule::getParentId).orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
         return modules.stream()
-                .map(module -> {
-                    SysModuleListResp resp = new SysModuleListResp();
-                    resp.setId(module.getId());
-                    resp.setTenantId(module.getTenantId());
-                    resp.setModuleCode(module.getModuleCode());
-                    resp.setModuleName(module.getModuleName());
-                    resp.setModuleDesc(module.getModuleDesc());
-                    resp.setParentId(module.getParentId());
-                    resp.setModuleLevel(module.getModuleLevel());
-                    resp.setModulePath(module.getModulePath());
-                    resp.setPrimaryTable(module.getPrimaryTable());
-                    resp.setModuleType(module.getModuleType() != null ? module.getModuleType().name() : null);
-                    resp.setModuleStatus(module.getModuleStatus());
-                    resp.setLeafFlag(module.getLeafFlag());
-                    resp.setSortOrder(module.getSortOrder());
-                    resp.setCreatedBy(module.getCreatedBy());
-                    resp.setCreatedName(module.getCreatedName());
-                    resp.setCreatedDate(module.getCreatedDate() != null ? module.getCreatedDate().toString() : null);
-                    resp.setUpdatedBy(module.getUpdatedBy());
-                    resp.setUpdatedName(module.getUpdatedName());
-                    resp.setUpdatedDate(module.getUpdatedDate() != null ? module.getUpdatedDate().toString() : null);
-                    return resp;
-                })
+                .map(
+                        module -> {
+                            SysModuleListResp resp = new SysModuleListResp();
+                            resp.setId(module.getId());
+                            resp.setTenantId(module.getTenantId());
+                            resp.setModuleCode(module.getModuleCode());
+                            resp.setModuleName(module.getModuleName());
+                            resp.setModuleDesc(module.getModuleDesc());
+                            resp.setParentId(module.getParentId());
+                            resp.setModuleLevel(module.getModuleLevel());
+                            resp.setModulePath(module.getModulePath());
+                            resp.setPrimaryTable(module.getPrimaryTable());
+                            resp.setModuleType(
+                                    module.getModuleType() != null
+                                            ? module.getModuleType().name()
+                                            : null);
+                            resp.setModuleStatus(module.getModuleStatus());
+                            resp.setLeafFlag(module.getLeafFlag());
+                            resp.setSortOrder(module.getSortOrder());
+                            resp.setCreatedBy(module.getCreatedBy());
+                            resp.setCreatedName(module.getCreatedName());
+                            resp.setCreatedDate(
+                                    module.getCreatedDate() != null
+                                            ? module.getCreatedDate().toString()
+                                            : null);
+                            resp.setUpdatedBy(module.getUpdatedBy());
+                            resp.setUpdatedName(module.getUpdatedName());
+                            resp.setUpdatedDate(
+                                    module.getUpdatedDate() != null
+                                            ? module.getUpdatedDate().toString()
+                                            : null);
+                            return resp;
+                        })
                 .collect(Collectors.toList());
     }
 
     @Override
     public SysModuleCompleteResp getModuleComplete(String tenantId, String moduleCode) {
-        SysModule module = sysModuleMapper.selectOne(Wrappers.<SysModule>lambdaQuery().eq(SysModule::getTenantId, tenantId).eq(SysModule::getModuleCode, moduleCode));
+        SysModule module =
+                sysModuleMapper.selectOne(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(SysModule::getTenantId, tenantId)
+                                .eq(SysModule::getModuleCode, moduleCode));
         if (module == null) {
             return null;
         }
@@ -95,10 +105,7 @@ public class SysModuleService implements SysModuleApi {
         return buildModuleCompleteResp(module);
     }
 
-
-    /**
-     * 构建模块完整信息响应
-     */
+    /** 构建模块完整信息响应 */
     private SysModuleCompleteResp buildModuleCompleteResp(SysModule module) {
         SysModuleCompleteResp resp = new SysModuleCompleteResp();
 
@@ -130,56 +137,68 @@ public class SysModuleService implements SysModuleApi {
 
         // 获取关联表
         LambdaQueryWrapper<SysModuleTable> tableWrapper = new LambdaQueryWrapper<>();
-        tableWrapper.eq(SysModuleTable::getModuleId, moduleId)
+        tableWrapper
+                .eq(SysModuleTable::getModuleId, moduleId)
                 .orderByAsc(SysModuleTable::getSortOrder);
         List<SysModuleTable> tables = sysModuleTableMapper.selectList(tableWrapper);
-        List<SysModuleCompleteResp.ModuleTableInfo> tableInfos = tables.stream()
-                .map(t -> {
-                    SysModuleCompleteResp.ModuleTableInfo info = new SysModuleCompleteResp.ModuleTableInfo();
-                    info.setId(t.getId());
-                    info.setTableName(t.getTableName());
-                    info.setTableDesc(t.getTableDesc());
-                    info.setJoinLeftField(t.getJoinLeftField());
-                    info.setJoinRightField(t.getJoinRightField());
-                    info.setRelationType(t.getRelationType());
-                    info.setSortOrder(t.getSortOrder());
-                    return info;
-                })
-                .collect(Collectors.toList());
+        List<SysModuleCompleteResp.ModuleTableInfo> tableInfos =
+                tables.stream()
+                        .map(
+                                t -> {
+                                    SysModuleCompleteResp.ModuleTableInfo info =
+                                            new SysModuleCompleteResp.ModuleTableInfo();
+                                    info.setId(t.getId());
+                                    info.setTableName(t.getTableName());
+                                    info.setTableDesc(t.getTableDesc());
+                                    info.setJoinLeftField(t.getJoinLeftField());
+                                    info.setJoinRightField(t.getJoinRightField());
+                                    info.setRelationType(t.getRelationType());
+                                    info.setSortOrder(t.getSortOrder());
+                                    return info;
+                                })
+                        .collect(Collectors.toList());
         resp.setModuleTables(tableInfos);
 
         // 获取简单字段
         LambdaQueryWrapper<SysModuleSimpleField> simpleFieldWrapper = new LambdaQueryWrapper<>();
         simpleFieldWrapper.eq(SysModuleSimpleField::getModuleId, moduleId);
-        List<SysModuleSimpleField> simpleFields = sysModuleSimpleFieldMapper.selectList(simpleFieldWrapper);
-        List<SysModuleCompleteResp.SimpleFieldInfo> simpleFieldInfos = simpleFields.stream()
-                .map(f -> {
-                    SysModuleCompleteResp.SimpleFieldInfo info = new SysModuleCompleteResp.SimpleFieldInfo();
-                    info.setId(f.getId());
-                    info.setTableName(f.getTableName());
-                    info.setColumnName(f.getColumnName());
-                    info.setTransformer(f.getTransformer());
-                    return info;
-                })
-                .collect(Collectors.toList());
+        List<SysModuleSimpleField> simpleFields =
+                sysModuleSimpleFieldMapper.selectList(simpleFieldWrapper);
+        List<SysModuleCompleteResp.SimpleFieldInfo> simpleFieldInfos =
+                simpleFields.stream()
+                        .map(
+                                f -> {
+                                    SysModuleCompleteResp.SimpleFieldInfo info =
+                                            new SysModuleCompleteResp.SimpleFieldInfo();
+                                    info.setId(f.getId());
+                                    info.setTableName(f.getTableName());
+                                    info.setColumnName(f.getColumnName());
+                                    info.setTransformer(f.getTransformer());
+                                    return info;
+                                })
+                        .collect(Collectors.toList());
         resp.setSimpleFields(simpleFieldInfos);
 
         // 获取组合字段
         LambdaQueryWrapper<SysModuleCombineField> combineFieldWrapper = new LambdaQueryWrapper<>();
         combineFieldWrapper.eq(SysModuleCombineField::getModuleId, moduleId);
-        List<SysModuleCombineField> combineFields = sysModuleCombineFieldMapper.selectList(combineFieldWrapper);
-        List<SysModuleCompleteResp.CombineFieldInfo> combineFieldInfos = combineFields.stream()
-                .map(f -> {
-                    SysModuleCompleteResp.CombineFieldInfo info = new SysModuleCompleteResp.CombineFieldInfo();
-                    info.setId(f.getId());
-                    info.setLogicalField(f.getLogicalField());
-                    info.setDisplayName(f.getDisplayName());
-                    info.setSourceMapping(f.getSourceMapping());
-                    info.setTransformer(f.getTransformer());
-                    info.setEnabled(f.getEnabled());
-                    return info;
-                })
-                .collect(Collectors.toList());
+        List<SysModuleCombineField> combineFields =
+                sysModuleCombineFieldMapper.selectList(combineFieldWrapper);
+        List<SysModuleCompleteResp.CombineFieldInfo> combineFieldInfos =
+                combineFields.stream()
+                        .map(
+                                f -> {
+                                    SysModuleCompleteResp.CombineFieldInfo info =
+                                            new SysModuleCompleteResp.CombineFieldInfo();
+                                    info.setId(f.getId());
+                                    info.setLogicalField(f.getLogicalField());
+                                    info.setDisplayName(f.getDisplayName());
+                                    info.setSourceMapping(f.getSourceMapping());
+                                    info.setTransformer(f.getTransformer());
+                                    info.setEnabled(f.getEnabled());
+                                    return info;
+                                })
+                        .collect(Collectors.toList());
         resp.setCombineFields(combineFieldInfos);
 
         // 获取模块状态（仅DETAIL类型）
@@ -187,15 +206,18 @@ public class SysModuleService implements SysModuleApi {
             LambdaQueryWrapper<SysModuleStatus> statusWrapper = new LambdaQueryWrapper<>();
             statusWrapper.eq(SysModuleStatus::getModuleId, moduleId);
             List<SysModuleStatus> statuses = sysModuleStatusMapper.selectList(statusWrapper);
-            List<SysModuleCompleteResp.ModuleStatusInfo> statusInfos = statuses.stream()
-                    .map(s -> {
-                        SysModuleCompleteResp.ModuleStatusInfo info = new SysModuleCompleteResp.ModuleStatusInfo();
-                        info.setId(s.getId());
-                        info.setStatusPid(s.getStatusPid());
-                        info.setStatusId(s.getStatusId());
-                        return info;
-                    })
-                    .collect(Collectors.toList());
+            List<SysModuleCompleteResp.ModuleStatusInfo> statusInfos =
+                    statuses.stream()
+                            .map(
+                                    s -> {
+                                        SysModuleCompleteResp.ModuleStatusInfo info =
+                                                new SysModuleCompleteResp.ModuleStatusInfo();
+                                        info.setId(s.getId());
+                                        info.setStatusPid(s.getStatusPid());
+                                        info.setStatusId(s.getStatusId());
+                                        return info;
+                                    })
+                            .collect(Collectors.toList());
             resp.setModuleStatuses(statusInfos);
         }
 
@@ -211,7 +233,7 @@ public class SysModuleService implements SysModuleApi {
 
         SysModule module;
         Long moduleId;
-        
+
         // 如果 ID 为空则创建新模块，否则编辑现有模块
         if (request.getModule().getId() == null) {
             // 创建新模块
@@ -241,10 +263,11 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 仅DETAIL类型模块保存状态信息
-        if (ModuleTypeEnum.DETAIL == module.getModuleType() && !CollectionUtils.isEmpty(request.getModuleStatuses())) {
+        if (ModuleTypeEnum.DETAIL == module.getModuleType()
+                && !CollectionUtils.isEmpty(request.getModuleStatuses())) {
             saveModuleStatuses(moduleId, request.getModuleStatuses());
         }
-        
+
         return toModuleDetail(module);
     }
 
@@ -326,8 +349,9 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 判断是否为同父模块拖拽
-        boolean isSameParent = (oldParentId == null && targetParentId == null) || 
-                               (oldParentId != null && oldParentId.equals(targetParentId));
+        boolean isSameParent =
+                (oldParentId == null && targetParentId == null)
+                        || (oldParentId != null && oldParentId.equals(targetParentId));
 
         if (isSameParent) {
             // 同父模块拖拽：只需要调整排序顺序
@@ -338,38 +362,39 @@ public class SysModuleService implements SysModuleApi {
 
             // 查询同父模块下的所有子节点
             LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(SysModule::getParentId, oldParentId)
-                    .orderByAsc(SysModule::getSortOrder);
+            wrapper.eq(SysModule::getParentId, oldParentId).orderByAsc(SysModule::getSortOrder);
             List<SysModule> siblings = sysModuleMapper.selectList(wrapper);
 
             // 调整排序顺序
             List<SysModule> toUpdate = new ArrayList<>();
             if (oldSortOrder < targetSortOrder) {
                 // 向后移动：将 oldSortOrder+1 到 targetSortOrder 之间的节点前移
-                siblings.forEach(sibling -> {
-                    if (!sibling.getId().equals(moduleId)) {
-                        int currentSort = sibling.getSortOrder();
-                        if (currentSort > oldSortOrder && currentSort <= targetSortOrder) {
-                            sibling.setSortOrder(currentSort - 1);
-                            sibling.setUpdatedDate(LocalDateTime.now());
-                            toUpdate.add(sibling);
-                        }
-                    }
-                });
+                siblings.forEach(
+                        sibling -> {
+                            if (!sibling.getId().equals(moduleId)) {
+                                int currentSort = sibling.getSortOrder();
+                                if (currentSort > oldSortOrder && currentSort <= targetSortOrder) {
+                                    sibling.setSortOrder(currentSort - 1);
+                                    sibling.setUpdatedDate(LocalDateTime.now());
+                                    toUpdate.add(sibling);
+                                }
+                            }
+                        });
             } else {
                 // 向前移动：将 targetSortOrder 到 oldSortOrder-1 之间的节点后移
-                siblings.forEach(sibling -> {
-                    if (!sibling.getId().equals(moduleId)) {
-                        int currentSort = sibling.getSortOrder();
-                        if (currentSort >= targetSortOrder && currentSort < oldSortOrder) {
-                            sibling.setSortOrder(currentSort + 1);
-                            sibling.setUpdatedDate(LocalDateTime.now());
-                            toUpdate.add(sibling);
-                        }
-                    }
-                });
+                siblings.forEach(
+                        sibling -> {
+                            if (!sibling.getId().equals(moduleId)) {
+                                int currentSort = sibling.getSortOrder();
+                                if (currentSort >= targetSortOrder && currentSort < oldSortOrder) {
+                                    sibling.setSortOrder(currentSort + 1);
+                                    sibling.setUpdatedDate(LocalDateTime.now());
+                                    toUpdate.add(sibling);
+                                }
+                            }
+                        });
             }
-            
+
             if (!toUpdate.isEmpty()) {
                 Db.updateBatchById(toUpdate);
             }
@@ -381,29 +406,33 @@ public class SysModuleService implements SysModuleApi {
 
         } else {
             // 跨父模块拖拽
-            
+
             // 1. 调整旧父模块下的排序：将 oldSortOrder 之后的节点前移
             LambdaQueryWrapper<SysModule> oldSiblingsWrapper = new LambdaQueryWrapper<>();
-            oldSiblingsWrapper.eq(SysModule::getParentId, oldParentId)
+            oldSiblingsWrapper
+                    .eq(SysModule::getParentId, oldParentId)
                     .gt(SysModule::getSortOrder, oldSortOrder);
             List<SysModule> oldSiblings = sysModuleMapper.selectList(oldSiblingsWrapper);
-            oldSiblings.forEach(sibling -> {
-                sibling.setSortOrder(sibling.getSortOrder() - 1);
-                sibling.setUpdatedDate(LocalDateTime.now());
-            });
+            oldSiblings.forEach(
+                    sibling -> {
+                        sibling.setSortOrder(sibling.getSortOrder() - 1);
+                        sibling.setUpdatedDate(LocalDateTime.now());
+                    });
             if (!oldSiblings.isEmpty()) {
                 Db.updateBatchById(oldSiblings);
             }
 
             // 2. 调整新父模块下的排序：将 targetSortOrder 及之后的节点后移
             LambdaQueryWrapper<SysModule> newSiblingsWrapper = new LambdaQueryWrapper<>();
-            newSiblingsWrapper.eq(SysModule::getParentId, targetParentId)
+            newSiblingsWrapper
+                    .eq(SysModule::getParentId, targetParentId)
                     .ge(SysModule::getSortOrder, targetSortOrder);
             List<SysModule> newSiblings = sysModuleMapper.selectList(newSiblingsWrapper);
-            newSiblings.forEach(sibling -> {
-                sibling.setSortOrder(sibling.getSortOrder() + 1);
-                sibling.setUpdatedDate(LocalDateTime.now());
-            });
+            newSiblings.forEach(
+                    sibling -> {
+                        sibling.setSortOrder(sibling.getSortOrder() + 1);
+                        sibling.setUpdatedDate(LocalDateTime.now());
+                    });
             if (!newSiblings.isEmpty()) {
                 Db.updateBatchById(newSiblings);
             }
@@ -416,9 +445,15 @@ public class SysModuleService implements SysModuleApi {
             if (targetParentId != null) {
                 // 复用前面已经查询过的 targetParent（第 313 行）
                 SysModule targetParent = sysModuleMapper.selectById(targetParentId);
-                module.setModuleLevel((targetParent.getModuleLevel() != null ? targetParent.getModuleLevel() : 0) + 1);
-                String parentPath = targetParent.getModulePath() != null ? targetParent.getModulePath() : "";
-                String newPath = parentPath.isEmpty() ? module.getModuleCode() : parentPath + "/" + module.getModuleCode();
+                module.setModuleLevel(
+                        (targetParent.getModuleLevel() != null ? targetParent.getModuleLevel() : 0)
+                                + 1);
+                String parentPath =
+                        targetParent.getModulePath() != null ? targetParent.getModulePath() : "";
+                String newPath =
+                        parentPath.isEmpty()
+                                ? module.getModuleCode()
+                                : parentPath + "/" + module.getModuleCode();
                 module.setModulePath(newPath);
 
                 // 更新目标父模块的叶子节点标记
@@ -455,7 +490,7 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setModuleStatus("active");
         module.setLeafFlag(1);
-        
+
         // 将 tableHeader 转换为 JSON 字符串
         if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {
             try {
@@ -475,13 +510,19 @@ public class SysModuleService implements SysModuleApi {
             if (parentModule == null) {
                 throw new BusinessException(404, "父模块不存在");
             }
-            
+
             // 设置层级
-            module.setModuleLevel((parentModule.getModuleLevel() != null ? parentModule.getModuleLevel() : 0) + 1);
-            
+            module.setModuleLevel(
+                    (parentModule.getModuleLevel() != null ? parentModule.getModuleLevel() : 0)
+                            + 1);
+
             // 设置路径（在 insert 前设置好，避免后续 update）
-            String parentPath = parentModule.getModulePath() != null ? parentModule.getModulePath() : "";
-            String newPath = parentPath.isEmpty() ? module.getModuleCode() : parentPath + "/" + module.getModuleCode();
+            String parentPath =
+                    parentModule.getModulePath() != null ? parentModule.getModulePath() : "";
+            String newPath =
+                    parentPath.isEmpty()
+                            ? module.getModuleCode()
+                            : parentPath + "/" + module.getModuleCode();
             module.setModulePath(newPath);
 
             // 更新父模块的叶子节点标记
@@ -521,23 +562,31 @@ public class SysModuleService implements SysModuleApi {
             return;
         }
 
-        List<SysModuleTable> tableList = tables.stream().map(tableReq -> {
-            SysModuleTable table = new SysModuleTable();
-            table.setModuleId(moduleId);
-            table.setTableName(tableReq.getTableName());
-            table.setTableDesc(tableReq.getTableDesc());
-            table.setJoinLeftField(tableReq.getJoinLeftField());
-            table.setJoinRightField(tableReq.getJoinRightField());
-            table.setRelationType(tableReq.getRelationType());
-            table.setSortOrder(tableReq.getSortOrder() != null ? tableReq.getSortOrder() : 0);
-            table.setCreatedDate(LocalDateTime.now());
-            return table;
-        }).collect(Collectors.toList());
-        
+        List<SysModuleTable> tableList =
+                tables.stream()
+                        .map(
+                                tableReq -> {
+                                    SysModuleTable table = new SysModuleTable();
+                                    table.setModuleId(moduleId);
+                                    table.setTableName(tableReq.getTableName());
+                                    table.setTableDesc(tableReq.getTableDesc());
+                                    table.setJoinLeftField(tableReq.getJoinLeftField());
+                                    table.setJoinRightField(tableReq.getJoinRightField());
+                                    table.setRelationType(tableReq.getRelationType());
+                                    table.setSortOrder(
+                                            tableReq.getSortOrder() != null
+                                                    ? tableReq.getSortOrder()
+                                                    : 0);
+                                    table.setCreatedDate(LocalDateTime.now());
+                                    return table;
+                                })
+                        .collect(Collectors.toList());
+
         Db.saveBatch(tableList);
     }
 
-    private void saveSimpleFields(Long moduleId, List<SaveModuleReq.SaveSimpleFieldReq> simpleFields) {
+    private void saveSimpleFields(
+            Long moduleId, List<SaveModuleReq.SaveSimpleFieldReq> simpleFields) {
         // 清理旧的简单字段
         LambdaQueryWrapper<SysModuleSimpleField> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModuleSimpleField::getModuleId, moduleId);
@@ -548,20 +597,25 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 保存新的简单字段
-        List<SysModuleSimpleField> fieldList = simpleFields.stream().map(fieldReq -> {
-            SysModuleSimpleField field = new SysModuleSimpleField();
-            field.setModuleId(moduleId);
-            field.setTableName(fieldReq.getTableName());
-            field.setColumnName(fieldReq.getColumnName());
-            field.setTransformer(fieldReq.getTransformer());
-            field.setCreatedDate(LocalDateTime.now());
-            return field;
-        }).collect(Collectors.toList());
-        
+        List<SysModuleSimpleField> fieldList =
+                simpleFields.stream()
+                        .map(
+                                fieldReq -> {
+                                    SysModuleSimpleField field = new SysModuleSimpleField();
+                                    field.setModuleId(moduleId);
+                                    field.setTableName(fieldReq.getTableName());
+                                    field.setColumnName(fieldReq.getColumnName());
+                                    field.setTransformer(fieldReq.getTransformer());
+                                    field.setCreatedDate(LocalDateTime.now());
+                                    return field;
+                                })
+                        .collect(Collectors.toList());
+
         Db.saveBatch(fieldList);
     }
 
-    private void saveCombineFields(Long moduleId, List<SaveModuleReq.SaveCombineFieldReq> combineFields) {
+    private void saveCombineFields(
+            Long moduleId, List<SaveModuleReq.SaveCombineFieldReq> combineFields) {
         // 清理旧的组合字段
         LambdaQueryWrapper<SysModuleCombineField> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModuleCombineField::getModuleId, moduleId);
@@ -572,31 +626,43 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 保存新的组合字段
-        List<SysModuleCombineField> fieldList = combineFields.stream().map(fieldReq -> {
-            SysModuleCombineField field = new SysModuleCombineField();
-            field.setModuleId(moduleId);
-            field.setLogicalField(fieldReq.getLogicalField());
-            field.setDisplayName(fieldReq.getDisplayName());
-            
-            // 将 List<SourceMappingItem> 转换为 JSON 字符串
-            if (fieldReq.getSourceMapping() != null && !fieldReq.getSourceMapping().isEmpty()) {
-                try {
-                    field.setSourceMapping(objectMapper.writeValueAsString(fieldReq.getSourceMapping()));
-                } catch (Exception e) {
-                    throw new BusinessException(500, "sourceMapping 序列化失败", e);
-                }
-            }
-            
-            field.setTransformer(fieldReq.getTransformer());
-            field.setEnabled(fieldReq.getEnabled() != null ? fieldReq.getEnabled() : 1);
-            field.setCreatedDate(LocalDateTime.now());
-            return field;
-        }).collect(Collectors.toList());
-        
+        List<SysModuleCombineField> fieldList =
+                combineFields.stream()
+                        .map(
+                                fieldReq -> {
+                                    SysModuleCombineField field = new SysModuleCombineField();
+                                    field.setModuleId(moduleId);
+                                    field.setLogicalField(fieldReq.getLogicalField());
+                                    field.setDisplayName(fieldReq.getDisplayName());
+
+                                    // 将 List<SourceMappingItem> 转换为 JSON 字符串
+                                    if (fieldReq.getSourceMapping() != null
+                                            && !fieldReq.getSourceMapping().isEmpty()) {
+                                        try {
+                                            field.setSourceMapping(
+                                                    objectMapper.writeValueAsString(
+                                                            fieldReq.getSourceMapping()));
+                                        } catch (Exception e) {
+                                            throw new BusinessException(
+                                                    500, "sourceMapping 序列化失败", e);
+                                        }
+                                    }
+
+                                    field.setTransformer(fieldReq.getTransformer());
+                                    field.setEnabled(
+                                            fieldReq.getEnabled() != null
+                                                    ? fieldReq.getEnabled()
+                                                    : 1);
+                                    field.setCreatedDate(LocalDateTime.now());
+                                    return field;
+                                })
+                        .collect(Collectors.toList());
+
         Db.saveBatch(fieldList);
     }
 
-    private void saveModuleStatuses(Long moduleId, List<SaveModuleReq.SaveModuleStatusReq> moduleStatuses) {
+    private void saveModuleStatuses(
+            Long moduleId, List<SaveModuleReq.SaveModuleStatusReq> moduleStatuses) {
         // 清理旧的模块状态
         LambdaQueryWrapper<SysModuleStatus> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModuleStatus::getModuleId, moduleId);
@@ -607,15 +673,19 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 保存新的模块状态
-        List<SysModuleStatus> statusList = moduleStatuses.stream().map(statusReq -> {
-            SysModuleStatus status = new SysModuleStatus();
-            status.setModuleId(moduleId);
-            status.setStatusPid(statusReq.getStatusPid());
-            status.setStatusId(statusReq.getStatusId());
-            status.setCreatedDate(LocalDateTime.now());
-            return status;
-        }).collect(Collectors.toList());
-        
+        List<SysModuleStatus> statusList =
+                moduleStatuses.stream()
+                        .map(
+                                statusReq -> {
+                                    SysModuleStatus status = new SysModuleStatus();
+                                    status.setModuleId(moduleId);
+                                    status.setStatusPid(statusReq.getStatusPid());
+                                    status.setStatusId(statusReq.getStatusId());
+                                    status.setCreatedDate(LocalDateTime.now());
+                                    return status;
+                                })
+                        .collect(Collectors.toList());
+
         Db.saveBatch(statusList);
     }
 
@@ -623,7 +693,7 @@ public class SysModuleService implements SysModuleApi {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getParentId, moduleId);
         long childCount = sysModuleMapper.selectCount(wrapper);
-        
+
         SysModule module = sysModuleMapper.selectById(moduleId);
         if (module != null) {
             int newLeafFlag = childCount > 0 ? 0 : 1;
@@ -634,15 +704,12 @@ public class SysModuleService implements SysModuleApi {
         }
     }
 
-    /**
-     * 检查 targetId 是否是 moduleId 的后代
-     * 用于防止将模块移动到其子模块下
-     */
+    /** 检查 targetId 是否是 moduleId 的后代 用于防止将模块移动到其子模块下 */
     private boolean isDescendant(Long moduleId, Long targetId) {
         if (moduleId == null || targetId == null) {
             return false;
         }
-        
+
         if (moduleId.equals(targetId)) {
             return true;
         }
@@ -668,15 +735,13 @@ public class SysModuleService implements SysModuleApi {
         return false;
     }
 
-    /**
-     * 更新模块基本信息
-     */
+    /** 更新模块基本信息 */
     private void updateModuleInfo(SysModule module, SaveSysModuleReq request) {
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
-        
+
         // 更新 tableHeader
         if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {
             try {
@@ -685,7 +750,7 @@ public class SysModuleService implements SysModuleApi {
                 throw new BusinessException(500, "tableHeader 序列化失败", e);
             }
         }
-        
+
         module.setUpdatedDate(LocalDateTime.now());
     }
 
@@ -720,6 +785,7 @@ public class SysModuleService implements SysModuleApi {
 
     /**
      * 将字符串转换为 ModuleTypeEnum
+     *
      * @param moduleType 模块类型字符串
      * @return ModuleTypeEnum
      * @throws BusinessException 当模块类型无效时抛出异常
@@ -728,17 +794,14 @@ public class SysModuleService implements SysModuleApi {
         if (moduleType == null || moduleType.trim().isEmpty()) {
             throw new BusinessException(400, "模块类型不能为空");
         }
-        
+
         String trimmedType = moduleType.trim().toUpperCase();
-        
+
         try {
             return ModuleTypeEnum.valueOf(trimmedType);
         } catch (IllegalArgumentException e) {
             throw new BusinessException(
-                400,
-                String.format("无效的模块类型: %s，允许的值为: LIST, DETAIL", moduleType),
-                e
-            );
+                    400, String.format("无效的模块类型: %s，允许的值为: LIST, DETAIL", moduleType), e);
         }
     }
 }

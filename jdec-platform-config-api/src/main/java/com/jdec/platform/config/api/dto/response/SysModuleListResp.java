@@ -3,10 +3,7 @@ package com.jdec.platform.config.api.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/**
- * 模块列表响应 DTO
- * 返回模块的基本信息，不包含树形结构，前端自行构建树
- */
+/** 模块列表响应 DTO 返回模块的基本信息，不包含树形结构，前端自行构建树 */
 @Data
 @Schema(description = "模块列表项")
 public class SysModuleListResp {
@@ -38,7 +35,10 @@ public class SysModuleListResp {
     @Schema(description = "主表名", example = "sys_user")
     private String primaryTable;
 
-    @Schema(description = "模块类型", example = "LIST", allowableValues = {"LIST", "DETAIL"})
+    @Schema(
+            description = "模块类型",
+            example = "LIST",
+            allowableValues = {"LIST", "DETAIL"})
     private String moduleType;
 
     @Schema(description = "模块状态", example = "active")

@@ -14,7 +14,8 @@ public class SubjectInterceptor implements HandlerInterceptor {
     private static final String SUBJECT_ID_HEADER = "subject-id";
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response,Object handler) {
+    public boolean preHandle(
+            HttpServletRequest request, HttpServletResponse response, Object handler) {
         String subjectId = request.getHeader(SUBJECT_ID_HEADER);
         if (subjectId != null && !subjectId.isEmpty()) {
             SubjectContext.set(Long.valueOf(subjectId));
@@ -23,7 +24,11 @@ public class SubjectInterceptor implements HandlerInterceptor {
     }
 
     @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+    public void afterCompletion(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            Object handler,
+            Exception ex) {
         SubjectContext.remove();
     }
 }

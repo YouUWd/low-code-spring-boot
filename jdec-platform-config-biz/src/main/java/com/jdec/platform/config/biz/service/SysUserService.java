@@ -22,16 +22,13 @@ import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
+import java.util.Collections;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.List;
-
-/**
- * 用户 Service 实现
- */
+/** 用户 Service 实现 */
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -42,16 +39,38 @@ public class SysUserService implements SysUserApi {
     @Override
     public PageResult<SysUserPageResp> getUserPage(QuerySysUserPageReq query) {
         Page<SysUser> page = new Page<>(query.getPageNum(), query.getPageSize());
-        LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<SysUser>()
-                .like(StrUtil.isNotBlank(query.getUserName()), SysUser::getUserName, query.getUserName())
-                .like(StrUtil.isNotBlank(query.getWorkNumber()), SysUser::getWorkNumber, query.getWorkNumber())
-                .like(StrUtil.isNotBlank(query.getPhone()), SysUser::getPhone, query.getPhone())
-                .eq(query.getUserType() != null, SysUser::getUserType, query.getUserType())
-                .eq(query.getStatusFlag() != null, SysUser::getStatusFlag, query.getStatusFlag())
-                .like(StrUtil.isNotBlank(query.getCompanyName()), SysUser::getCompanyName, query.getCompanyName())
-                .like(StrUtil.isNotBlank(query.getDepartName()), SysUser::getDepartName, query.getDepartName())
-                .like(StrUtil.isNotBlank(query.getSubjectName()), SysUser::getSubjectName, query.getSubjectName())
-                .orderByDesc(SysUser::getCreatedDate);
+        LambdaQueryWrapper<SysUser> wrapper =
+                new LambdaQueryWrapper<SysUser>()
+                        .like(
+                                StrUtil.isNotBlank(query.getUserName()),
+                                SysUser::getUserName,
+                                query.getUserName())
+                        .like(
+                                StrUtil.isNotBlank(query.getWorkNumber()),
+                                SysUser::getWorkNumber,
+                                query.getWorkNumber())
+                        .like(
+                                StrUtil.isNotBlank(query.getPhone()),
+                                SysUser::getPhone,
+                                query.getPhone())
+                        .eq(query.getUserType() != null, SysUser::getUserType, query.getUserType())
+                        .eq(
+                                query.getStatusFlag() != null,
+                                SysUser::getStatusFlag,
+                                query.getStatusFlag())
+                        .like(
+                                StrUtil.isNotBlank(query.getCompanyName()),
+                                SysUser::getCompanyName,
+                                query.getCompanyName())
+                        .like(
+                                StrUtil.isNotBlank(query.getDepartName()),
+                                SysUser::getDepartName,
+                                query.getDepartName())
+                        .like(
+                                StrUtil.isNotBlank(query.getSubjectName()),
+                                SysUser::getSubjectName,
+                                query.getSubjectName())
+                        .orderByDesc(SysUser::getCreatedDate);
         Page<SysUser> result = sysUserMapper.selectPage(page, wrapper);
         return PageResultUtils.of(result.convert(this::toUserPageResp));
     }
@@ -111,34 +130,34 @@ public class SysUserService implements SysUserApi {
 
     @Override
     public SysUserBO getUserByPhone(String phone) {
-        SysUser sysUser = sysUserMapper.selectOne(
-                Wrappers.<SysUser>lambdaQuery()
-                        .eq(SysUser::getPhone, phone)
-                        .eq(SysUser::getDeleted, DeleteFlagEnum.NO_DELETE.getCode())
-                        .eq(SysUser::getSuperFlag, UserStatusFlagEnum.ENABLE.getCode())
-        );
+        SysUser sysUser =
+                sysUserMapper.selectOne(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .eq(SysUser::getPhone, phone)
+                                .eq(SysUser::getDeleted, DeleteFlagEnum.NO_DELETE.getCode())
+                                .eq(SysUser::getSuperFlag, UserStatusFlagEnum.ENABLE.getCode()));
         return BeanUtil.toBean(sysUser, SysUserBO.class);
     }
 
     @Override
     public List<SysUserPageResp> getUserList() {
         // 1. 根据appCode查询sys_role_user表获取用户id列表
-        List<SysRoleUser> roleUsers = sysRoleUserMapper.selectList(
-                Wrappers.<SysRoleUser>lambdaQuery()
-                        .eq(SysRoleUser::getAppCode, AppCodeContext.get())
-                        .select(SysRoleUser::getUserId)
-        );
+        List<SysRoleUser> roleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getAppCode, AppCodeContext.get())
+                                .select(SysRoleUser::getUserId));
         if (roleUsers.isEmpty()) {
             return Collections.emptyList();
         }
 
         // 2. 根据用户id列表查询sys_user表
         List<Long> userIds = roleUsers.stream().map(SysRoleUser::getUserId).distinct().toList();
-        List<SysUser> users = sysUserMapper.selectList(
-                Wrappers.<SysUser>lambdaQuery()
-                        .in(SysUser::getId, userIds)
-                        .orderByDesc(SysUser::getCreatedDate)
-        );
+        List<SysUser> users =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getId, userIds)
+                                .orderByDesc(SysUser::getCreatedDate));
         return users.stream().map(this::toUserPageResp).toList();
     }
 }

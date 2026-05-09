@@ -1,13 +1,10 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDateTime;
 import lombok.Data;
 
-import java.time.LocalDateTime;
-
-/**
- * 用户分页查询响应VO
- */
+/** 用户分页查询响应VO */
 @Data
 @Schema(description = "用户分页查询响应")
 public class SysUserPageResp {

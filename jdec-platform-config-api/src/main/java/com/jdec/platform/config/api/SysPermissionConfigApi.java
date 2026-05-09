@@ -5,14 +5,9 @@ import com.jdec.platform.config.api.dto.request.QuerySysPermissionConfigReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysPermissionConfigReq;
 import com.jdec.platform.config.api.dto.response.SysPermissionConfigDetailResp;
 import com.jdec.platform.config.api.dto.response.SysPermissionConfigEntryResp;
-
 import java.util.List;
 
-/**
- * 权限配置管理 API 接口
- * 定义权限配置的 CRUD 和查询操作
- * 权限模型：位运算（READ:1, CREATE:2, UPDATE:4）
- */
+/** 权限配置管理 API 接口 定义权限配置的 CRUD 和查询操作 权限模型：位运算（READ:1, CREATE:2, UPDATE:4） */
 public interface SysPermissionConfigApi {
 
     /**
@@ -39,7 +34,8 @@ public interface SysPermissionConfigApi {
      * @param fieldName 字段名称
      * @return 权限配置条目响应
      */
-    SysPermissionConfigEntryResp getPermissionByField(Long tenantId, String tableName, String fieldName);
+    SysPermissionConfigEntryResp getPermissionByField(
+            Long tenantId, String tableName, String fieldName);
 
     /**
      * 查询权限配置

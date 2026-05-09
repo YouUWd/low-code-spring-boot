@@ -7,20 +7,18 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 数据库 Schema 信息
- */
+/** 数据库 Schema 信息 */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "数据库Schema信息")
 public class DatabaseSchema {
-    
+
     /** 数据库名称 */
     @Schema(description = "数据库名称", example = "config_center")
     private String database;
-    
+
     /** 数据库中的所有表 */
     @Schema(description = "数据库中的所有表信息")
     private List<TableInfo> tables;

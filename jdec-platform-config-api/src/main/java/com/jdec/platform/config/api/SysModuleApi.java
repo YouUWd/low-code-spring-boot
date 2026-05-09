@@ -5,26 +5,20 @@ import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
-
 import java.util.List;
 
-/**
- * 模块管理 API 接口
- * 提供模块完整信息的 CRUD 操作
- */
+/** 模块管理 API 接口 提供模块完整信息的 CRUD 操作 */
 public interface SysModuleApi {
 
     /**
-     * 获取模块列表
-     * 返回所有模块的基本信息（不包含树形结构），前端自行构建树
+     * 获取模块列表 返回所有模块的基本信息（不包含树形结构），前端自行构建树
      *
      * @return 模块列表
      */
     List<SysModuleListResp> listModules(String tenantId);
 
     /**
-     * 获取模块完整信息
-     * 包含模块基本信息、关联表、字段配置和状态
+     * 获取模块完整信息 包含模块基本信息、关联表、字段配置和状态
      *
      * @param moduleCode 模块编码
      * @return 模块完整信息响应
@@ -32,9 +26,7 @@ public interface SysModuleApi {
     SysModuleCompleteResp getModuleComplete(String tenantId, String moduleCode);
 
     /**
-     * 保存或编辑模块完整信息
-     * 包含模块基本信息、关联表、字段配置和状态
-     * 如果 request.module.id 为空则创建新模块，否则编辑现有模块
+     * 保存或编辑模块完整信息 包含模块基本信息、关联表、字段配置和状态 如果 request.module.id 为空则创建新模块，否则编辑现有模块
      *
      * @param request 保存模块请求
      * @return 模块详情响应
@@ -42,16 +34,14 @@ public interface SysModuleApi {
     SysModuleDetailResp saveModule(SaveModuleReq request);
 
     /**
-     * 删除模块完整信息
-     * 删除模块及其所有关联的表、字段配置和状态
+     * 删除模块完整信息 删除模块及其所有关联的表、字段配置和状态
      *
      * @param moduleId 模块 ID
      */
     void deleteModuleComplete(Long moduleId);
 
     /**
-     * 移动模块
-     * 更新模块的父模块和排序顺序，用于处理拖拽移动场景
+     * 移动模块 更新模块的父模块和排序顺序，用于处理拖拽移动场景
      *
      * @param request 移动模块请求
      * @return 模块详情响应

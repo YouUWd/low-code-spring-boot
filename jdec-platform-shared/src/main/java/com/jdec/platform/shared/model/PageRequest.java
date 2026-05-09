@@ -5,9 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.Data;
 
-/**
- * 分页请求基类
- */
+/** 分页请求基类 */
 @Data
 @Schema(description = "分页请求")
 public class PageRequest {

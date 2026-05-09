@@ -1,14 +1,11 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Data;
-
 import java.time.LocalDate;
 import java.util.List;
+import lombok.Data;
 
-/**
- * 角色配置响应VO
- */
+/** 角色配置响应VO */
 @Data
 @Schema(description = "角色配置响应")
 public class RoleConfigPageResp {

@@ -3,9 +3,7 @@ package com.jdec.platform.config.api.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
-/**
- * 角色关联用户信息VO
- */
+/** 角色关联用户信息VO */
 @Data
 @Schema(description = "角色关联用户信息")
 public class RoleUserResp {

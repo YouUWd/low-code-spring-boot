@@ -8,6 +8,7 @@ import lombok.Data;
 public class RoleSubjectResp {
     @Schema(description = "主体ID")
     private Long subjectId;
+
     @Schema(description = "主体名称")
     private String subjectName;
 }

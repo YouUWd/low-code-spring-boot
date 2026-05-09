@@ -36,8 +36,6 @@ public class UserConverter {
         if (entities == null) {
             return Collections.emptyList();
         }
-        return entities.stream()
-                .map(UserConverter::toUserBasicInfo)
-                .collect(Collectors.toList());
+        return entities.stream().map(UserConverter::toUserBasicInfo).collect(Collectors.toList());
     }
 }

@@ -37,8 +37,7 @@ public class UserBaseController {
     @GetMapping("/{userId}")
     public ApiResponse<UserBaseResp> getUserBase(@PathVariable Integer userId) {
         Optional<UserBaseResp> userBase = userBaseApi.getUserBaseById(userId);
-        return userBase.map(ApiResponse::success)
-                .orElseGet(() -> ApiResponse.error(404, "用户不存在"));
+        return userBase.map(ApiResponse::success).orElseGet(() -> ApiResponse.error(404, "用户不存在"));
     }
 
     /**

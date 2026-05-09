@@ -6,9 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 用户基本信息响应
- */
+/** 用户基本信息响应 */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

@@ -4,12 +4,12 @@ import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.model.PageResult;
-
 import java.util.List;
 
 public interface SysRoleApi {
     /**
      * 查询用户角色数
+     *
      * @param id
      * @param subjectId
      * @param appCode
@@ -30,6 +30,4 @@ public interface SysRoleApi {
     void deleteRole(Long roleId);
 
     List<SubjectOptionResp> listSubjectOptions();
-
-
 }

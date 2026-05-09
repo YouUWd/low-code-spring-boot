@@ -1,17 +1,14 @@
 package com.jdec.platform.shared.security.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.io.Serializable;
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.io.Serializable;
-import java.time.LocalDateTime;
-
-/**
- * 登录用户信息
- */
+/** 登录用户信息 */
 @Data
 @Builder
 @NoArgsConstructor
@@ -21,47 +18,30 @@ public class LoginUser implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /**
-     * 用户ID
-     */
+    /** 用户ID */
     private Long userId;
 
-    /**
-     * 用户名
-     */
+    /** 用户名 */
     private String username;
 
-    /**
-     * 手机号
-     */
+    /** 手机号 */
     private String phone;
 
-    /**
-     * 头像
-     */
+    /** 头像 */
     private String avatar;
 
-    /**
-     * 是否超级管理员
-     */
+    /** 是否超级管理员 */
     private Boolean superAdmin;
 
-    /**
-     * 当前应用Code
-     */
+    /** 当前应用Code */
     private String appCode;
 
-    /**
-     * 登录时间
-     */
+    /** 登录时间 */
     private LocalDateTime loginTime;
 
-    /**
-     * 登录IP
-     */
+    /** 登录IP */
     private String loginIp;
-    /**
-     * 登录token
-     */
+
+    /** 登录token */
     private String token;
 }

@@ -2,51 +2,36 @@ package com.jdec.platform.config.api.dto.response;
 
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Data;
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.Data;
 
-/**
- * 模块完整信息响应 DTO
- * 包含模块基本信息、关联表、字段配置和状态
- */
+/** 模块完整信息响应 DTO 包含模块基本信息、关联表、字段配置和状态 */
 @Data
 @Schema(description = "模块完整信息响应")
 public class SysModuleCompleteResp {
 
-    /**
-     * 模块基本信息
-     */
+    /** 模块基本信息 */
     @Schema(description = "模块基本信息")
     private ModuleInfo module;
 
-    /**
-     * 模块关联表列表
-     */
+    /** 模块关联表列表 */
     @Schema(description = "模块关联表列表")
     private List<ModuleTableInfo> moduleTables;
 
-    /**
-     * 模块简单字段列表
-     */
+    /** 模块简单字段列表 */
     @Schema(description = "模块简单字段列表")
     private List<SimpleFieldInfo> simpleFields;
 
-    /**
-     * 模块组合字段列表
-     */
+    /** 模块组合字段列表 */
     @Schema(description = "模块组合字段列表")
     private List<CombineFieldInfo> combineFields;
 
-    /**
-     * 模块状态列表（仅DETAIL类型）
-     */
+    /** 模块状态列表（仅DETAIL类型） */
     @Schema(description = "模块状态列表（仅DETAIL类型）")
     private List<ModuleStatusInfo> moduleStatuses;
 
-    /**
-     * 模块基本信息
-     */
+    /** 模块基本信息 */
     @Data
     @Schema(description = "模块基本信息")
     public static class ModuleInfo {
@@ -77,10 +62,16 @@ public class SysModuleCompleteResp {
         @Schema(description = "主表名称", example = "student")
         private String primaryTable;
 
-        @Schema(description = "模块类型", example = "LIST", allowableValues = {"LIST", "DETAIL"})
+        @Schema(
+                description = "模块类型",
+                example = "LIST",
+                allowableValues = {"LIST", "DETAIL"})
         private ModuleTypeEnum moduleType;
 
-        @Schema(description = "模块状态", example = "active", allowableValues = {"active", "inactive", "archived"})
+        @Schema(
+                description = "模块状态",
+                example = "active",
+                allowableValues = {"active", "inactive", "archived"})
         private String moduleStatus;
 
         @Schema(description = "是否叶子节点", example = "1")
@@ -111,9 +102,7 @@ public class SysModuleCompleteResp {
         private String updatedName;
     }
 
-    /**
-     * 模块关联表信息
-     */
+    /** 模块关联表信息 */
     @Data
     @Schema(description = "模块关联表信息")
     public static class ModuleTableInfo {
@@ -132,16 +121,17 @@ public class SysModuleCompleteResp {
         @Schema(description = "右表关联字段", example = "student_id")
         private String joinRightField;
 
-        @Schema(description = "关联关系类型", example = "1:N", allowableValues = {"1:1", "1:N", "N:1"})
+        @Schema(
+                description = "关联关系类型",
+                example = "1:N",
+                allowableValues = {"1:1", "1:N", "N:1"})
         private String relationType;
 
         @Schema(description = "排序顺序", example = "1")
         private Integer sortOrder;
     }
 
-    /**
-     * 简单字段信息
-     */
+    /** 简单字段信息 */
     @Data
     @Schema(description = "简单字段信息")
     public static class SimpleFieldInfo {
@@ -158,9 +148,7 @@ public class SysModuleCompleteResp {
         private String transformer;
     }
 
-    /**
-     * 组合字段信息
-     */
+    /** 组合字段信息 */
     @Data
     @Schema(description = "组合字段信息")
     public static class CombineFieldInfo {
@@ -183,9 +171,7 @@ public class SysModuleCompleteResp {
         private Integer enabled;
     }
 
-    /**
-     * 模块状态信息
-     */
+    /** 模块状态信息 */
     @Data
     @Schema(description = "模块状态信息")
     public static class ModuleStatusInfo {

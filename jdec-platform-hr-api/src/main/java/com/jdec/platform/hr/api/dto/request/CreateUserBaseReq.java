@@ -1,6 +1,5 @@
 package com.jdec.platform.hr.api.dto.request;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -29,5 +28,4 @@ public class CreateUserBaseReq {
     private String graduationCollege;
     private String address;
     private Integer marital;
-
 }

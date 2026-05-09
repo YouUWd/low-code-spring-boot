@@ -3,13 +3,11 @@ package com.jdec.platform.config.biz.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import lombok.Data;
 
-/**
- * 租户信息实体
- */
+/** 租户信息实体 */
 @Data
 @TableName("sys_tenant")
 public class SysTenant {
@@ -36,15 +34,11 @@ public class SysTenant {
     private Long storageQuota;
     private LocalDate expireDate;
     private String tenantStatus;
-    
-    /**
-     * 数据库配置 JSON
-     */
+
+    /** 数据库配置 JSON */
     private String dbConfig;
-    
-    /**
-     * 功能开关配置 JSON
-     */
+
+    /** 功能开关配置 JSON */
     private String featureFlags;
 
     private String createdBy;

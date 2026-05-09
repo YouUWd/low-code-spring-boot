@@ -20,7 +20,6 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 @Slf4j
 public class GlobalExceptionHandler {
 
-
     /**
      * 处理业务异常
      *
@@ -32,9 +31,7 @@ public class GlobalExceptionHandler {
 
         ApiResponse<Void> response = ApiResponse.error(400, e.getMessage());
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     /**
@@ -51,7 +48,7 @@ public class GlobalExceptionHandler {
         // 格式: Duplicate entry 'value' for key 'table.column_name'
         String message = "数据已存在";
         String exceptionMsg = e.getMessage();
-        
+
         if (exceptionMsg != null && exceptionMsg.contains("Duplicate entry")) {
             try {
                 // 提取 'value' - 找到 "Duplicate entry '" 后的值
@@ -60,14 +57,14 @@ public class GlobalExceptionHandler {
                 if (valueStart >= 0) {
                     valueStart += prefix.length();
                     int valueEnd = exceptionMsg.indexOf("'", valueStart);
-                    
+
                     // 提取表名 - 找到 "for key '" 后的值
                     String keyPrefix = "for key '";
                     int keyStart = exceptionMsg.indexOf(keyPrefix);
                     if (keyStart >= 0) {
                         keyStart += keyPrefix.length();
                         int keyEnd = exceptionMsg.indexOf("'", keyStart);
-                        
+
                         if (valueEnd > valueStart && keyEnd > keyStart) {
                             String value = exceptionMsg.substring(valueStart, valueEnd);
                             String keyInfo = exceptionMsg.substring(keyStart, keyEnd);
@@ -83,18 +80,14 @@ public class GlobalExceptionHandler {
 
         ApiResponse<Void> response = ApiResponse.error(400, message);
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(response);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
-    /**
-     * 无对应Handler - 过滤掉静态资源请求
-     */
+
+    /** 无对应Handler - 过滤掉静态资源请求 */
     @ExceptionHandler(NoHandlerFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ResponseEntity<ApiResponse<Void>> handleNoHandlerFoundException(
-            NoHandlerFoundException e,
-            HttpServletRequest request) {
+            NoHandlerFoundException e, HttpServletRequest request) {
 
         String uri = request.getRequestURI();
 
@@ -105,13 +98,10 @@ public class GlobalExceptionHandler {
 
         log.warn("接口不存在: {}", uri);
         ApiResponse<Void> response = ApiResponse.error("接口不存在: " + uri);
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(response);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
-    /**
-     * 判断是否为静态资源请求
-     */
+
+    /** 判断是否为静态资源请求 */
     private boolean isStaticResource(String uri) {
         return uri.endsWith(".ico")
                 || uri.endsWith(".css")
@@ -126,6 +116,7 @@ public class GlobalExceptionHandler {
                 || uri.startsWith("/static/")
                 || uri.startsWith("/assets/");
     }
+
     /**
      * 处理其他异常
      *
@@ -138,8 +129,6 @@ public class GlobalExceptionHandler {
 
         ApiResponse<Void> response = ApiResponse.error("系统内部错误");
 
-        return ResponseEntity
-            .status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(response);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 }

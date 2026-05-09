@@ -16,19 +16,16 @@ import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.security.model.LoginUser;
+import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
-
-/**
- * 认证 Service 实现
- */
+/** 认证 Service 实现 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -51,8 +48,10 @@ public class AuthService implements AuthApi {
         }
 
         // 3. 获取验证码并校验
-        if(!request.getCode().equals("1024110")){
-            String cacheKey = String.format(RedisConstant.VERIFY_CODE_KEY, user.getAppCode(), user.getPhone());
+        if (!request.getCode().equals("1024110")) {
+            String cacheKey =
+                    String.format(
+                            RedisConstant.VERIFY_CODE_KEY, user.getAppCode(), user.getPhone());
             String code = stringRedisTemplate.opsForValue().get(cacheKey);
             if (code == null) {
                 throw new BusinessException("验证码已过期，请重新获取");
@@ -62,14 +61,17 @@ public class AuthService implements AuthApi {
             }
         }
         // 4. Sa-Token 登录
-        String appCode = StringUtils.hasText(request.getAppCode())
-                ? request.getAppCode()
-                : SystemConstant.DEFAULT_APP_CODE;
+        String appCode =
+                StringUtils.hasText(request.getAppCode())
+                        ? request.getAppCode()
+                        : SystemConstant.DEFAULT_APP_CODE;
 
-        StpUtil.login(user.getId(), new SaLoginParameter()
-                .setDeviceType(DeviceTypeEnum.PC.getValue())
-                .setExtra("username", user.getUserName())
-                .setExtra("appCode", appCode));
+        StpUtil.login(
+                user.getId(),
+                new SaLoginParameter()
+                        .setDeviceType(DeviceTypeEnum.PC.getValue())
+                        .setExtra("username", user.getUserName())
+                        .setExtra("appCode", appCode));
 
         // 5. 构建并存储 LoginUser
         LoginUser loginUser = buildLoginUser(user, appCode);
@@ -128,11 +130,13 @@ public class AuthService implements AuthApi {
         }
 
         // 2. 校验状态
-        if (userBO.getStatusFlag() == null || Objects.equals(userBO.getStatusFlag(), UserStatusFlagEnum.DISABLE.getCode())) {
+        if (userBO.getStatusFlag() == null
+                || Objects.equals(userBO.getStatusFlag(), UserStatusFlagEnum.DISABLE.getCode())) {
             throw new BusinessException("当前用户已禁用");
         }
         if (userBO.getEmployedStatus() == null
-                || Objects.equals(userBO.getEmployedStatus(), UserEmployeeStatusEnum.DEPARTURE.getCode())) {
+                || Objects.equals(
+                        userBO.getEmployedStatus(), UserEmployeeStatusEnum.DEPARTURE.getCode())) {
             throw new BusinessException("当前用户已禁用");
         }
 
@@ -149,7 +153,9 @@ public class AuthService implements AuthApi {
         }
 
         // 4. 检查 Redis 缓存
-        String cacheKey = String.format(RedisConstant.VERIFY_CODE_KEY, userBO.getAppCode(), userBO.getPhone());
+        String cacheKey =
+                String.format(
+                        RedisConstant.VERIFY_CODE_KEY, userBO.getAppCode(), userBO.getPhone());
         String existingCode = stringRedisTemplate.opsForValue().get(cacheKey);
 
         if (existingCode != null) {
@@ -162,7 +168,7 @@ public class AuthService implements AuthApi {
         String codeStr = String.valueOf(code);
 
         // todo: 6. 发送验证码（根据 user_type 自动选择企业微信/短信）
-//        boolean sent = weChatMsgService.sendVerifyCode(userBO, codeStr);
+        //        boolean sent = weChatMsgService.sendVerifyCode(userBO, codeStr);
 
         stringRedisTemplate.opsForValue().set(cacheKey, codeStr, 300, TimeUnit.SECONDS);
         if (true) {

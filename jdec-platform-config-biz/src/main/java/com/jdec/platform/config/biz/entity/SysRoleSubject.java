@@ -2,15 +2,12 @@ package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Data;
-
 import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import lombok.Data;
 
-/**
- * 角色主体绑定表
- */
+/** 角色主体绑定表 */
 @Data
 @TableName("sys_role_subject")
 @Schema(description = "角色主体绑定")

@@ -1,9 +1,8 @@
 package com.jdec.platform.config.api.bo;
 
-import lombok.Data;
-
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import lombok.Data;
 
 @Data
 public class SysUserBO implements Serializable {

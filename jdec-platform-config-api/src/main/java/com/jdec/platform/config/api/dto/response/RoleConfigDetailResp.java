@@ -1,10 +1,9 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Data;
-
 import java.time.LocalDate;
 import java.util.List;
+import lombok.Data;
 
 @Schema(description = "角色配置详情")
 @Data

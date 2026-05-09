@@ -5,9 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-/**
- * 用户编辑请求
- */
+/** 用户编辑请求 */
 @Data
 @Schema(description = "用户编辑请求")
 public class UpdateSysUserReq {

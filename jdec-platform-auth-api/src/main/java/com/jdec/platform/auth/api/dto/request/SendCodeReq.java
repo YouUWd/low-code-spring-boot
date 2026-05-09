@@ -3,9 +3,8 @@ package com.jdec.platform.auth.api.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import lombok.Data;
-
 import java.io.Serializable;
+import lombok.Data;
 
 @Data
 @Schema(description = "发送验证码")

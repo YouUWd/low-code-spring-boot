@@ -7,24 +7,22 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 数据库表信息
- */
+/** 数据库表信息 */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "数据库表信息")
 public class TableInfo {
-    
+
     /** 表名 */
     @Schema(description = "表名", example = "sys_module")
     private String tableName;
-    
+
     /** 表注释 */
     @Schema(description = "表描述/注释", example = "模块基本信息表")
     private String tableComment;
-    
+
     /** 表的所有列 */
     @Schema(description = "表的所有列信息")
     private List<ColumnInfo> columns;
