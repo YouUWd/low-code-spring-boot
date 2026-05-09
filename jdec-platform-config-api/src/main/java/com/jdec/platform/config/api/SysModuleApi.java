@@ -20,16 +20,16 @@ public interface SysModuleApi {
      *
      * @return 模块列表
      */
-    List<SysModuleListResp> listModules();
+    List<SysModuleListResp> listModules(String tenantId);
 
     /**
      * 获取模块完整信息
      * 包含模块基本信息、关联表、字段配置和状态
      *
-     * @param moduleId 模块 ID
+     * @param moduleCode 模块编码
      * @return 模块完整信息响应
      */
-    SysModuleCompleteResp getModuleComplete(Long moduleId);
+    SysModuleCompleteResp getModuleComplete(String tenantId, String moduleCode);
 
     /**
      * 保存或编辑模块完整信息

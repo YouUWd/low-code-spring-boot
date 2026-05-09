@@ -25,6 +25,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(tenantInterceptor)
                 .addPathPatterns("/api/config/**")
+                .addPathPatterns("/api/metadata/**")
+                .addPathPatterns("/api/data/**")
                 .excludePathPatterns("/api/config/auth/**"); // 登录接口不需要租户信息
 
         registry.addInterceptor(subjectInterceptor)

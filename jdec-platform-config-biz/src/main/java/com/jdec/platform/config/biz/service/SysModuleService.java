@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,8 +51,9 @@ public class SysModuleService implements SysModuleApi {
     private final ObjectMapper objectMapper;
 
     @Override
-    public List<SysModuleListResp> listModules() {
+    public List<SysModuleListResp> listModules(String tenantId) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModule::getTenantId,tenantId);
         wrapper.orderByAsc(SysModule::getParentId)
                 .orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
@@ -84,8 +86,8 @@ public class SysModuleService implements SysModuleApi {
     }
 
     @Override
-    public SysModuleCompleteResp getModuleComplete(Long moduleId) {
-        SysModule module = sysModuleMapper.selectById(moduleId);
+    public SysModuleCompleteResp getModuleComplete(String tenantId, String moduleCode) {
+        SysModule module = sysModuleMapper.selectOne(Wrappers.<SysModule>lambdaQuery().eq(SysModule::getTenantId, tenantId).eq(SysModule::getModuleCode, moduleCode));
         if (module == null) {
             return null;
         }
@@ -93,23 +95,6 @@ public class SysModuleService implements SysModuleApi {
         return buildModuleCompleteResp(module);
     }
 
-    /**
-     * 根据模块编码获取模块完整信息
-     *
-     * @param moduleCode 模块编码
-     * @return 模块完整信息
-     */
-    public SysModuleCompleteResp getModuleCompleteByCode(String moduleCode) {
-        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModule::getModuleCode, moduleCode);
-        SysModule module = sysModuleMapper.selectOne(wrapper);
-        
-        if (module == null) {
-            return null;
-        }
-
-        return buildModuleCompleteResp(module);
-    }
 
     /**
      * 构建模块完整信息响应

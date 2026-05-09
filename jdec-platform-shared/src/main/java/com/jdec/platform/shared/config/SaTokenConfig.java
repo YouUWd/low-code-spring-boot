@@ -39,6 +39,10 @@ public class SaTokenConfig implements WebMvcConfigurer {
                             "/swagger-ui/**",
                             "/favicon.ico"
                     )
+                    .notMatch("/api/config/**",
+                            "/api/metadata/**",
+                            "/api/data/**"
+                    )
                     .check(r -> StpUtil.checkLogin());
         })).addPathPatterns("/**");
     }
