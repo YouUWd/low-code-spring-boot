@@ -1,4 +1,4 @@
-package com.jdec.platform.shared.metadata.dto;
+package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
@@ -7,13 +7,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 数据库 Schema 信息 */
+/** 数据库 Schema 信息响应 */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "数据库Schema信息")
-public class DatabaseSchema {
+public class DatabaseSchemaResp {
 
     /** 数据库名称 */
     @Schema(description = "数据库名称", example = "config_center")
@@ -21,5 +21,5 @@ public class DatabaseSchema {
 
     /** 数据库中的所有表 */
     @Schema(description = "数据库中的所有表信息")
-    private List<TableInfo> tables;
+    private List<TableInfoResp> tables;
 }
