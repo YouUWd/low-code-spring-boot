@@ -1,0 +1,60 @@
+package com.jdec.platform.config.biz.controller;
+
+import com.jdec.platform.config.api.SysDataPermissionTypeApi;
+import com.jdec.platform.config.api.dto.request.QuerySysDataPermissionTypeReq;
+import com.jdec.platform.config.api.dto.request.SysDataPermissionTypeSaveReq;
+import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeOptionResp;
+import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeResp;
+import com.jdec.platform.shared.model.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+/** 数据权限类型管理 REST 控制器 */
+@RestController
+@RequestMapping("/api/config/sys/data-permission-type")
+@RequiredArgsConstructor
+@Tag(name = "数据权限类型管理", description = "数据权限类型的增删改查接口")
+public class SysDataPermissionTypeController {
+
+    private final SysDataPermissionTypeApi sysDataPermissionTypeApi;
+
+    @PostMapping("/save")
+    @Operation(summary = "新增/编辑数据权限类型", description = "id为空则新增，不为空则修改")
+    public ApiResponse<Void> save(@Valid @RequestBody SysDataPermissionTypeSaveReq request) {
+        sysDataPermissionTypeApi.saveDataPermissionType(request);
+        return ApiResponse.success();
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "删除数据权限类型", description = "删除指定数据权限类型")
+    public ApiResponse<Void> delete(
+            @Parameter(description = "数据权限类型ID", example = "1") @PathVariable Long id) {
+        sysDataPermissionTypeApi.deleteDataPermissionType(id);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/options")
+    @Operation(summary = "查询数据权限类型下拉列表", description = "查询所有启用的数据权限类型")
+    public ApiResponse<List<SysDataPermissionTypeOptionResp>> listOptions() {
+        return ApiResponse.success(sysDataPermissionTypeApi.listDataPermissionTypeOptions());
+    }
+
+    @GetMapping("/list")
+    @Operation(summary = "查询数据权限类型列表", description = "支持数据权限类型名称、编码、状态过滤")
+    public ApiResponse<List<SysDataPermissionTypeResp>> listDataPermissionType(
+            QuerySysDataPermissionTypeReq request) {
+        return ApiResponse.success(sysDataPermissionTypeApi.listDataPermissionType(request));
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "查询数据权限类型详情", description = "查询指定数据权限类型详情")
+    public ApiResponse<SysDataPermissionTypeResp> getDataPermissionType(
+            @Parameter(description = "数据权限类型ID", example = "1") @PathVariable Long id) {
+        return ApiResponse.success(sysDataPermissionTypeApi.getDataPermissionType(id));
+    }
+}
