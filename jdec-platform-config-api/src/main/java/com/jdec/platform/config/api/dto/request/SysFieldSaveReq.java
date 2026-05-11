@@ -30,6 +30,9 @@ public class SysFieldSaveReq {
     @Schema(description = "关联关系名称")
     private String relationName;
 
+    @Schema(description = "是否加密存储: 0-否, 1-是")
+    private Integer encrypted;
+
     @Schema(description = "字段业务配置值列表（级联保存）")
     private List<SysFieldValueSaveReq> fieldValues;
 }

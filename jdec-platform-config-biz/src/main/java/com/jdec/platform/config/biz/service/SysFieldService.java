@@ -15,7 +15,6 @@ import com.jdec.platform.config.biz.mapper.SysFieldValueMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -109,58 +108,22 @@ public class SysFieldService implements SysFieldApi {
             String tenantId, String tableName, List<ColumnInfoResp> columns) {
         try {
             List<SysField> sysFields = querySysFieldEntities(tenantId, tableName);
-            if (sysFields.isEmpty()) {
-                columns.forEach(
-                        column ->
-                                column.setDisplayName(
-                                        column.getColumnComment() != null
-                                                ? column.getColumnComment()
-                                                : column.getColumnName()));
-                return;
-            }
-
-            List<Long> fieldIds = sysFields.stream().map(SysField::getId).toList();
-            // 扩展值表不再通过 tenant_id 过滤，直接通过关联的 field_id 获取（field_id 已隐含租户信息）
-            List<SysFieldValue> fieldValues =
-                    sysFieldValueMapper.selectList(
-                            new LambdaQueryWrapper<SysFieldValue>()
-                                    .in(SysFieldValue::getFieldId, fieldIds)
-                                    .eq(SysFieldValue::getDeleted, 0));
-
-            Map<Long, List<SysFieldValueResp>> valueMap =
-                    fieldValues.stream()
-                            .map(
-                                    v ->
-                                            SysFieldValueResp.builder()
-                                                    .id(v.getId())
-                                                    .fieldId(v.getFieldId())
-                                                    .moduleId(v.getModuleId())
-                                                    .moduleName(v.getModuleName())
-                                                    .fieldValue(v.getFieldValue())
-                                                    .approvalChainTypeId(v.getApprovalChainTypeId())
-                                                    .sortOrder(v.getSortOrder())
-                                                    .enabled(v.getEnabled())
-                                                    .build())
-                            .collect(Collectors.groupingBy(SysFieldValueResp::getFieldId));
-
-            Map<String, SysField> configMap = new HashMap<>(sysFields.size());
-            sysFields.forEach(sysField -> configMap.put(sysField.getColumnName(), sysField));
+            Map<String, String> configMap =
+                    sysFields.stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            SysField::getColumnName, SysField::getDisplayName));
 
             columns.forEach(
                     column -> {
-                        SysField config = configMap.get(column.getColumnName());
-                        if (config != null) {
-                            column.setDisplayName(config.getDisplayName());
-                            column.setRelationBusinessNo(config.getRelationBusinessNo());
-                            column.setRelationName(config.getRelationName());
-                            column.setFieldValues(
-                                    valueMap.getOrDefault(config.getId(), Collections.emptyList()));
+                        String displayName = configMap.get(column.getColumnName());
+                        if (displayName != null) {
+                            column.setDisplayName(displayName);
                         } else {
                             column.setDisplayName(
                                     column.getColumnComment() != null
                                             ? column.getColumnComment()
                                             : column.getColumnName());
-                            column.setFieldValues(Collections.emptyList());
                         }
                     });
         } catch (Exception e) {
@@ -172,19 +135,89 @@ public class SysFieldService implements SysFieldApi {
 
     @Override
     public List<SysFieldResp> querySysFields(String tenantId, String tableName) {
-        List<SysField> list = querySysFieldEntities(tenantId, tableName);
-        return list.stream()
+        log.debug("查询表 {}.{} 的完整字段配置列表（元数据驱动）", tenantId, tableName);
+
+        // 1. 获取数据库中该表所有的列名和注释
+        String sql =
+                """
+            SELECT COLUMN_NAME, COLUMN_COMMENT
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+            ORDER BY ORDINAL_POSITION
+            """;
+
+        List<Map<String, Object>> columnRows = jdbcTemplate.queryForList(sql, tenantId, tableName);
+
+        // 2. 获取已有的配置信息
+        List<SysField> sysFields = querySysFieldEntities(tenantId, tableName);
+
+        // 2.1 获取关联的扩展值信息
+        List<Long> fieldIds = sysFields.stream().map(SysField::getId).toList();
+        Map<Long, List<SysFieldValueResp>> valueMap =
+                fieldIds.isEmpty()
+                        ? Collections.emptyMap()
+                        : sysFieldValueMapper
+                                .selectList(
+                                        new LambdaQueryWrapper<SysFieldValue>()
+                                                .in(SysFieldValue::getFieldId, fieldIds)
+                                                .eq(SysFieldValue::getDeleted, 0))
+                                .stream()
+                                .map(
+                                        v ->
+                                                SysFieldValueResp.builder()
+                                                        .id(v.getId())
+                                                        .fieldId(v.getFieldId())
+                                                        .moduleId(v.getModuleId())
+                                                        .moduleName(v.getModuleName())
+                                                        .fieldValue(v.getFieldValue())
+                                                        .approvalChainTypeId(
+                                                                v.getApprovalChainTypeId())
+                                                        .sortOrder(v.getSortOrder())
+                                                        .enabled(v.getEnabled())
+                                                        .build())
+                                .collect(Collectors.groupingBy(SysFieldValueResp::getFieldId));
+
+        Map<String, SysField> configMap =
+                sysFields.stream().collect(Collectors.toMap(SysField::getColumnName, f -> f));
+
+        // 3. 以元数据驱动进行合并
+        return columnRows.stream()
                 .map(
-                        e ->
-                                SysFieldResp.builder()
-                                        .id(e.getId())
-                                        .tenantId(e.getTenantId())
-                                        .tableName(e.getTableName())
-                                        .columnName(e.getColumnName())
-                                        .displayName(e.getDisplayName())
-                                        .relationBusinessNo(e.getRelationBusinessNo())
-                                        .relationName(e.getRelationName())
-                                        .build())
+                        row -> {
+                            String columnName = (String) row.get("COLUMN_NAME");
+                            String columnComment = (String) row.get("COLUMN_COMMENT");
+                            SysField config = configMap.get(columnName);
+
+                            if (config != null) {
+                                // 已有配置
+                                return SysFieldResp.builder()
+                                        .id(config.getId())
+                                        .tenantId(tenantId)
+                                        .tableName(tableName)
+                                        .columnName(columnName)
+                                        .displayName(config.getDisplayName())
+                                        .relationBusinessNo(config.getRelationBusinessNo())
+                                        .relationName(config.getRelationName())
+                                        .encrypted(config.getEncrypted())
+                                        .fieldValues(
+                                                valueMap.getOrDefault(
+                                                        config.getId(), Collections.emptyList()))
+                                        .build();
+                            } else {
+                                // 尚无配置，返回默认值
+                                return SysFieldResp.builder()
+                                        .tenantId(tenantId)
+                                        .tableName(tableName)
+                                        .columnName(columnName)
+                                        .displayName(
+                                                columnComment != null && !columnComment.isEmpty()
+                                                        ? columnComment
+                                                        : columnName)
+                                        .encrypted(0)
+                                        .fieldValues(Collections.emptyList())
+                                        .build();
+                            }
+                        })
                 .toList();
     }
 
@@ -210,6 +243,7 @@ public class SysFieldService implements SysFieldApi {
                         .displayName(req.getDisplayName())
                         .relationBusinessNo(req.getRelationBusinessNo())
                         .relationName(req.getRelationName())
+                        .encrypted(req.getEncrypted())
                         .deleted(0)
                         .build();
 

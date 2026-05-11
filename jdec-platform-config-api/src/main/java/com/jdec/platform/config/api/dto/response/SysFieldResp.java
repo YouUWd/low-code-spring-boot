@@ -1,6 +1,7 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,4 +35,10 @@ public class SysFieldResp {
 
     @Schema(description = "关联关系名称")
     private String relationName;
+
+    @Schema(description = "是否加密存储: 0-否, 1-是")
+    private Integer encrypted;
+
+    @Schema(description = "字段业务配置值列表")
+    private List<SysFieldValueResp> fieldValues;
 }

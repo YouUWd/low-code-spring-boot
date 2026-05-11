@@ -1,7 +1,6 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,18 +31,4 @@ public class ColumnInfoResp {
     /** 前端显示名称 */
     @Schema(description = "前端显示名称（由业务人员配置）", example = "主键ID")
     private String displayName;
-
-    /** 关联关系业务编号 */
-    @Schema(description = "关联关系业务编号（如 sys_module 表名）", example = "sys_module")
-    private String relationBusinessNo;
-
-    /** 关联关系名称 */
-    @Schema(description = "关联关系名称（如 '父模块'）", example = "父模块")
-    private String relationName;
-
-    // ===== sys_field_value 业务配置信息 =====
-
-    /** 字段扩展值列表 */
-    @Schema(description = "字段业务配置值列表")
-    private List<SysFieldValueResp> fieldValues;
 }
