@@ -27,13 +27,6 @@ public interface SysFieldApi {
      */
     List<ColumnInfoResp> getTableColumns(String tenantId, String tableName);
 
-    /**
-     * 获取数据库的完整 Schema 信息
-     *
-     * @param tenantId 租户ID
-     * @return 完整的数据库 Schema 信息
-     */
-    DatabaseSchemaResp getDatabaseSchema(String tenantId);
 
     /**
      * 查询字段配置列表

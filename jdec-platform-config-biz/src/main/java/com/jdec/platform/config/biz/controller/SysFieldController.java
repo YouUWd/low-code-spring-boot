@@ -51,15 +51,6 @@ public class SysFieldController {
         return ApiResponse.success(sysFieldApi.getTableColumns(tenantId, tableName));
     }
 
-    @Operation(summary = "获取完整数据库Schema", description = "获取数据库的完整Schema信息，包括所有表及其列的详细 information")
-    @GetMapping("/schema")
-    public ApiResponse<DatabaseSchemaResp> getDatabaseSchema(
-            @Parameter(description = "租户/数据源 ID", example = "config_center", required = true)
-                    @RequestHeader("X-Tenant-Id")
-                    String tenantId) {
-        log.info("查询数据源 {} 的完整 Schema", tenantId);
-        return ApiResponse.success(sysFieldApi.getDatabaseSchema(tenantId));
-    }
 
     @Operation(summary = "查询字段配置列表", description = "根据租户ID和表名查询已保存的字段显示配置")
     @GetMapping("/tables/{tableName}/columns/settings")

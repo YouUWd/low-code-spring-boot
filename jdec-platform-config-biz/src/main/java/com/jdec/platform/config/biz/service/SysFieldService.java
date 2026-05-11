@@ -108,67 +108,6 @@ public class SysFieldService implements SysFieldApi {
         }
     }
 
-    @Override
-    public DatabaseSchemaResp getDatabaseSchema(String tenantId) {
-        log.debug("查询数据源 {} 的完整 Schema 信息", tenantId);
-
-        String sql =
-                """
-            SELECT
-                t.TABLE_NAME,
-                t.TABLE_COMMENT,
-                c.COLUMN_NAME,
-                c.COLUMN_TYPE,
-                c.COLUMN_COMMENT
-            FROM INFORMATION_SCHEMA.TABLES t
-            LEFT JOIN INFORMATION_SCHEMA.COLUMNS c
-                ON t.TABLE_SCHEMA = c.TABLE_SCHEMA
-                AND t.TABLE_NAME = c.TABLE_NAME
-            WHERE t.TABLE_SCHEMA = ?
-            ORDER BY t.TABLE_NAME, c.ORDINAL_POSITION
-            """;
-
-        try {
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, tenantId);
-            LinkedHashMap<String, TableInfoResp> tableMap = new LinkedHashMap<>();
-
-            rows.forEach(
-                    row -> {
-                        String tableName = (String) row.get("TABLE_NAME");
-                        tableMap.computeIfAbsent(
-                                tableName,
-                                k ->
-                                        TableInfoResp.builder()
-                                                .tableName(tableName)
-                                                .tableComment((String) row.get("TABLE_COMMENT"))
-                                                .columns(new ArrayList<>())
-                                                .build());
-
-                        String columnName = (String) row.get("COLUMN_NAME");
-                        if (columnName != null) {
-                            ColumnInfoResp column =
-                                    ColumnInfoResp.builder()
-                                            .columnName(columnName)
-                                            .columnType((String) row.get("COLUMN_TYPE"))
-                                            .columnComment((String) row.get("COLUMN_COMMENT"))
-                                            .build();
-                            tableMap.get(tableName).getColumns().add(column);
-                        }
-                    });
-
-            tableMap.values()
-                    .forEach(
-                            table ->
-                                    enrichColumnsWithSysField(
-                                            tenantId, table.getTableName(), table.getColumns()));
-
-            return DatabaseSchemaResp.builder().tables(new ArrayList<>(tableMap.values())).build();
-        } catch (Exception e) {
-            log.error("查询数据源 {} 的数据库 Schema 失败", tenantId, e);
-            throw new RuntimeException("查询数据库 Schema 失败: " + e.getMessage(), e);
-        }
-    }
-
     private void enrichColumnsWithSysField(
             String tenantId, String tableName, List<ColumnInfoResp> columns) {
         try {
