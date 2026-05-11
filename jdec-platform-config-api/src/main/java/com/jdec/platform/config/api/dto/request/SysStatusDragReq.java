@@ -13,7 +13,4 @@ public class SysStatusDragReq {
 
     @Schema(description = "目标父节点ID，拖到顶层传0")
     private Long targetPid;
-
-    @Schema(description = "所属主体")
-    private Long subjectId;
 }

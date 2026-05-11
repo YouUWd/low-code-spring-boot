@@ -9,31 +9,34 @@ import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.datasource.DataSource;
+import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
-import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-/** 状态 Service 实现 */
+import java.util.*;
+
+/**
+ * 状态 Service 实现
+ */
 @Service
 @RequiredArgsConstructor
+@DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysStatusService implements SysStatusApi {
 
     private final SysStatusMapper sysStatusMapper;
 
     @Override
-    public List<SysStatusTreeResp> tree(Long subjectId) {
-        if (subjectId == null) {
-            subjectId = 0L;
-        }
+    public List<SysStatusTreeResp> tree() {
         List<SysStatus> list =
                 sysStatusMapper.selectList(
                         new LambdaQueryWrapper<SysStatus>()
                                 .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
-                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                 .orderByAsc(SysStatus::getStatusValue)
                                 .orderByAsc(SysStatus::getId));
         if (CollectionUtils.isEmpty(list)) {
@@ -69,7 +72,6 @@ public class SysStatusService implements SysStatusApi {
 
     @Override
     public void saveStatus(SysStatusSaveReq req) {
-        Long subjectId = req.getSubjectId() != null ? req.getSubjectId() : 0L;
         if (req.getId() == null) {
             // 新增
             SysStatus entity = new SysStatus();
@@ -77,14 +79,14 @@ public class SysStatusService implements SysStatusApi {
             if (entity.getPid() == null) {
                 entity.setPid(0L);
             }
-            entity.setSubjectId(subjectId);
+            entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             // 校验同级名称是否重复（按主体、应用隔离）
             long count =
                     sysStatusMapper.selectCount(
                             new LambdaQueryWrapper<SysStatus>()
                                     .eq(SysStatus::getPid, entity.getPid())
-                                    .eq(SysStatus::getSubjectId, subjectId)
+                                    .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                     .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                     .eq(SysStatus::getTitle, entity.getTitle()));
             if (count > 0) {
@@ -97,7 +99,7 @@ public class SysStatusService implements SysStatusApi {
                     sysStatusMapper.exists(
                             Wrappers.<SysStatus>lambdaQuery()
                                     .eq(SysStatus::getId, req.getId())
-                                    .eq(SysStatus::getSubjectId, subjectId)
+                                    .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                     .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
             if (!exists) {
                 throw new BusinessException("状态不存在");
@@ -105,20 +107,20 @@ public class SysStatusService implements SysStatusApi {
             SysStatus entity = new SysStatus();
             BeanUtils.copyProperties(req, entity);
             entity.setId(req.getId());
-            entity.setSubjectId(subjectId);
+            entity.setSubjectId(AppContext.getSubjectId());
             // 不能把自己设为自己的父节点
             if (req.getId().equals(req.getPid())) {
                 throw new BusinessException("不能将自己设为父状态");
             }
             // 校验是否形成了环（不能把自己子节点设为父节点）
             if (req.getPid() != null && req.getPid() != 0L) {
-                checkCycle(req.getId(), req.getPid(), subjectId);
+                checkCycle(req.getId(), req.getPid(), AppContext.getSubjectId());
                 // 校验同级名称是否重复（按主体、应用隔离）
                 Long count =
                         sysStatusMapper.selectCount(
                                 Wrappers.<SysStatus>lambdaQuery()
                                         .eq(SysStatus::getPid, req.getPid())
-                                        .eq(SysStatus::getSubjectId, subjectId)
+                                        .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                         .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                         .eq(SysStatus::getTitle, req.getTitle())
                                         .ne(SysStatus::getId, req.getId()));
@@ -155,7 +157,6 @@ public class SysStatusService implements SysStatusApi {
     public void dragStatus(SysStatusDragReq req) {
         Long id = req.getId();
         Long targetPid = req.getTargetPid();
-        Long subjectId = req.getSubjectId() != null ? req.getSubjectId() : 0L;
         if (id == null) {
             throw new BusinessException("节点ID不能为空");
         }
@@ -163,7 +164,7 @@ public class SysStatusService implements SysStatusApi {
                 sysStatusMapper.selectOne(
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getId, id)
-                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
         if (node == null) {
             throw new BusinessException("状态不存在");
@@ -177,12 +178,12 @@ public class SysStatusService implements SysStatusApi {
         }
         // 不能拖到自己的子节点下面（形成环）
         if (targetPid != 0L) {
-            checkCycle(id, targetPid, subjectId);
+            checkCycle(id, targetPid, AppContext.getSubjectId());
             boolean exists =
                     sysStatusMapper.exists(
                             Wrappers.<SysStatus>lambdaQuery()
                                     .eq(SysStatus::getId, targetPid)
-                                    .eq(SysStatus::getSubjectId, subjectId)
+                                    .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                     .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
             if (!exists) {
                 throw new BusinessException("目标父状态不存在");
@@ -193,7 +194,7 @@ public class SysStatusService implements SysStatusApi {
                 sysStatusMapper.selectCount(
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getPid, targetPid)
-                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysStatus::getTitle, node.getTitle())
                                 .ne(SysStatus::getId, id));
@@ -204,7 +205,9 @@ public class SysStatusService implements SysStatusApi {
         sysStatusMapper.updateById(node);
     }
 
-    /** 收集所有子节点ID */
+    /**
+     * 收集所有子节点ID
+     */
     private Set<Long> collectChildrenIds(Long parentId, Long subjectId) {
         Set<Long> result = new HashSet<>();
         List<SysStatus> children =
@@ -220,7 +223,9 @@ public class SysStatusService implements SysStatusApi {
         return result;
     }
 
-    /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */
+    /**
+     * 检查是否形成环：targetPid 不能是 id 的子节点（包括自身）
+     */
     private void checkCycle(Long id, Long targetPid, Long subjectId) {
         if (id.equals(targetPid)) {
             throw new BusinessException("不能将节点移动到自身或其子节点下");

@@ -9,17 +9,21 @@ import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.datasource.DataSource;
+import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
-import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
+import java.util.*;
+
 /** 系统菜单 Service 实现 */
 @Service
 @RequiredArgsConstructor
+@DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysMenuService implements SysMenuApi {
 
     private final SysMenuMapper sysMenuMapper;

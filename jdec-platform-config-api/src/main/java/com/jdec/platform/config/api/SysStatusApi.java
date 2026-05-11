@@ -8,7 +8,7 @@ import java.util.List;
 public interface SysStatusApi {
 
     /** 查询状态树 */
-    List<SysStatusTreeResp> tree(Long subjectId);
+    List<SysStatusTreeResp> tree();
 
     /** 新增/编辑状态 */
     void saveStatus(SysStatusSaveReq req);

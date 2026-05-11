@@ -23,6 +23,7 @@ desktop.ini
 *.log
 logs/
 
-
 # ===== maven-wrapper.jar =====
 .mvn/wrapper/maven-wrapper.jar
+# ===== AI =====
+./CLAUDE.md

@@ -14,9 +14,6 @@ public class SysStatusSaveReq {
     @Schema(description = "父id，顶层为0")
     private Long pid;
 
-    @Schema(description = "所属主体")
-    private Long subjectId;
-
     @Schema(description = "状态名称")
     private String title;
 

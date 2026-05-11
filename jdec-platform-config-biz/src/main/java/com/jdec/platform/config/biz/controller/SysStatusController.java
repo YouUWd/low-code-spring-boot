@@ -8,9 +8,10 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 状态配置 REST 控制器
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
  * <p>提供状态的树形展示、增删改、拖拽接口。
  */
 @RestController
-@RequestMapping("status")
+@RequestMapping("/api/config/status")
 @RequiredArgsConstructor
 @Tag(name = "状态配置", description = "状态的树形展示、增删改、拖拽接口")
 public class SysStatusController {
@@ -27,9 +28,8 @@ public class SysStatusController {
 
     @GetMapping("/tree")
     @Operation(summary = "查询状态树", description = "查询所有状态的树形结构")
-    public ApiResponse<List<SysStatusTreeResp>> tree(
-            @RequestParam(required = false, defaultValue = "0") Long subjectId) {
-        return ApiResponse.success(sysStatusApi.tree(subjectId));
+    public ApiResponse<List<SysStatusTreeResp>> tree() {
+        return ApiResponse.success(sysStatusApi.tree());
     }
 
     @PostMapping("/save")

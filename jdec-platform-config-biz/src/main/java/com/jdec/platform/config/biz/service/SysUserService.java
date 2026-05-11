@@ -10,8 +10,10 @@ import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysUser;
+import com.jdec.platform.config.biz.mapper.SysRoleMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.shared.context.AppContext;
@@ -21,11 +23,12 @@ import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
-import java.util.Collections;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+
+import java.util.Collections;
+import java.util.List;
 
 /** 用户 Service 实现 */
 @Service
@@ -34,12 +37,46 @@ import org.springframework.stereotype.Service;
 public class SysUserService implements SysUserApi {
     private final SysUserMapper sysUserMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
+    private final SysRoleMapper sysRoleMapper;
 
     @Override
     public PageResult<SysUserPageResp> getUserPage(QuerySysUserPageReq query) {
+        // 1. 根据 projectNo + subjectId 查询角色列表
+        List<SysRole> roles =
+                sysRoleMapper.selectList(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysRole::getSubjectId, AppContext.getSubjectId())
+                                .select(SysRole::getId));
+        if (roles.isEmpty()) {
+            return PageResult.of(
+                    query.getPageNum(),
+                    query.getPageSize(),
+                    0L,
+                    Collections.emptyList());
+        }
+
+        // 2. 根据角色 ID 列表查询关联的用户 ID
+        List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
+        List<SysRoleUser> roleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .in(SysRoleUser::getRoleId, roleIds)
+                                .select(SysRoleUser::getUserId));
+        if (roleUsers.isEmpty()) {
+            return PageResult.of(
+                    query.getPageNum(),
+                    query.getPageSize(),
+                    0L,
+                    Collections.emptyList());
+        }
+
+        // 3. 根据用户 ID 列表分页查询用户
+        List<Long> userIds = roleUsers.stream().map(SysRoleUser::getUserId).distinct().toList();
         Page<SysUser> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysUser> wrapper =
                 new LambdaQueryWrapper<SysUser>()
+                        .in(SysUser::getId, userIds)
                         .like(
                                 StrUtil.isNotBlank(query.getUserName()),
                                 SysUser::getUserName,
