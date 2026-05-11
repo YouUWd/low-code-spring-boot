@@ -2,9 +2,10 @@ package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Data;
+
 import java.io.Serializable;
 import java.time.LocalDateTime;
-import lombok.Data;
 
 /** 系统菜单 */
 @Data
@@ -80,9 +81,4 @@ public class SysMenu implements Serializable {
     @Schema(description = "更改时间")
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedDate;
-
-    @Schema(description = "1删除0正常")
-    @TableLogic
-    @TableField(fill = FieldFill.INSERT)
-    private Integer deleted;
 }

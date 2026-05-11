@@ -17,6 +17,12 @@ public class SysInteractionPermissionDetailResp {
     @Schema(description = "父权限名称")
     private String parentName;
 
+    @Schema(description = "模块id")
+    private Long moduleId;
+
+    @Schema(description = "模块标识")
+    private String moduleCode;
+
     @Schema(description = "权限名称")
     private String name;
 

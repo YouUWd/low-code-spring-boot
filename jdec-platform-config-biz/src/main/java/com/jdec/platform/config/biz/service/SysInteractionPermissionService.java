@@ -32,6 +32,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
 
+    @Transactional
     @Override
     public void saveInteractionPermission(SysInteractionPermissionSaveReq req) {
         if (req.getId() == null) {
@@ -40,6 +41,23 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             BeanUtils.copyProperties(req, entity);
             if (entity.getParentId() == null) {
                 entity.setParentId(0L);
+            }
+            // 子节点：从父节点同步 moduleId 和 moduleCode
+            if (entity.getParentId() != 0L) {
+                SysInteractionPermission parent =
+                        sysInteractionPermissionMapper.selectOne(
+                                Wrappers.<SysInteractionPermission>lambdaQuery()
+                                        .eq(SysInteractionPermission::getId, entity.getParentId())
+                                        .eq(
+                                                SysInteractionPermission::getSubjectId,
+                                                AppContext.getSubjectId())
+                                        .eq(
+                                                SysInteractionPermission::getProjectNo,
+                                                AppContext.getProjectNo()));
+                if (parent != null) {
+                    entity.setModuleId(parent.getModuleId());
+                    entity.setModuleCode(parent.getModuleCode());
+                }
             }
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
@@ -65,9 +83,36 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             }
             entity.setName(req.getName());
             entity.setCode(req.getCode());
-            entity.setParentId(req.getParentId() != null ? req.getParentId() : 0L);
+            long newParentId = req.getParentId() != null ? req.getParentId() : 0L;
+            long oldParentId = entity.getParentId() != null ? entity.getParentId() : 0L;
+            entity.setParentId(newParentId);
             entity.setSort(req.getSort());
             entity.setStatus(req.getStatus());
+            // 父节点发生变化时，从新父节点同步 moduleId 和 moduleCode
+            if (newParentId != oldParentId) {
+                if (newParentId != 0L) {
+                    SysInteractionPermission newParent =
+                            sysInteractionPermissionMapper.selectOne(
+                                    Wrappers.<SysInteractionPermission>lambdaQuery()
+                                            .eq(SysInteractionPermission::getId, newParentId)
+                                            .eq(
+                                                    SysInteractionPermission::getSubjectId,
+                                                    AppContext.getSubjectId())
+                                            .eq(
+                                                    SysInteractionPermission::getProjectNo,
+                                                    AppContext.getProjectNo()));
+                    if (newParent != null) {
+                        entity.setModuleId(newParent.getModuleId());
+                        entity.setModuleCode(newParent.getModuleCode());
+                    }
+                } else {
+                    entity.setModuleId(req.getModuleId());
+                    entity.setModuleCode(req.getModuleCode());
+                }
+                // 级联更新所有子节点的 moduleId 和 moduleCode
+                cascadeUpdateModuleInfo(
+                        req.getId(), entity.getModuleId(), entity.getModuleCode());
+            }
             sysInteractionPermissionMapper.updateById(entity);
         }
     }
@@ -179,6 +224,8 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                             resp.setCode(permission.getCode());
                             resp.setSort(permission.getSort());
                             resp.setStatus(permission.getStatus());
+                            resp.setModuleId(permission.getModuleId());
+                            resp.setModuleCode(permission.getModuleCode());
                             if (permission.getParentId() != null
                                     && permission.getParentId() != 0L) {
                                 SysInteractionPermission parent =
@@ -216,6 +263,8 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         resp.setCode(entity.getCode());
         resp.setSort(entity.getSort());
         resp.setStatus(entity.getStatus());
+        resp.setModuleId(entity.getModuleId());
+        resp.setModuleCode(entity.getModuleCode());
         resp.setSubjectId(entity.getSubjectId());
         resp.setProjectNo(entity.getProjectNo());
         if (entity.getCreatedDate() != null) {
@@ -265,6 +314,8 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             resp.setCode(entity.getCode());
             resp.setSort(entity.getSort());
             resp.setStatus(entity.getStatus());
+            resp.setModuleId(entity.getModuleId());
+            resp.setModuleCode(entity.getModuleCode());
             respMap.put(entity.getId(), resp);
         }
 
@@ -288,6 +339,24 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         }
 
         return rootList;
+    }
+
+    /** 级联更新所有子节点的 moduleId 和 moduleCode */
+    private void cascadeUpdateModuleInfo(Long parentId, Long moduleId, String moduleCode) {
+        List<SysInteractionPermission> children =
+                sysInteractionPermissionMapper.selectList(
+                        Wrappers.<SysInteractionPermission>lambdaQuery()
+                                .eq(SysInteractionPermission::getParentId, parentId)
+                                .eq(SysInteractionPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo()));
+        for (SysInteractionPermission child : children) {
+            child.setModuleId(moduleId);
+            child.setModuleCode(moduleCode);
+            sysInteractionPermissionMapper.updateById(child);
+            cascadeUpdateModuleInfo(child.getId(), moduleId, moduleCode);
+        }
     }
 
     /** 收集所有子节点ID */

@@ -68,7 +68,4 @@ public class SysStatus implements Serializable {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedDate;
 
-    @Schema(description = "1删除0正常")
-    @TableLogic(value = "0", delval = "1")
-    private Integer deleted;
 }

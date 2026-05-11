@@ -73,6 +73,4 @@ public class SysModule {
     /** 更新人姓名 */
     private String updatedName;
 
-    /** 是否删除 */
-    private Integer deleted;
 }

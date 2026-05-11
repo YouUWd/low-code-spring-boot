@@ -59,5 +59,4 @@ public class SysRoleModuleField implements Serializable {
     /** 更新人姓名 */
     private String updatedName;
 
-    private Integer deleted;
 }

@@ -15,6 +15,12 @@ public class SysInteractionPermissionSaveReq {
     @Schema(description = "父权限ID，顶级为0")
     private Long parentId;
 
+    @Schema(description = "模块id")
+    private Long moduleId;
+
+    @Schema(description = "模块标识")
+    private String moduleCode;
+
     @Schema(description = "权限名称", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "权限名称不能为空")
     private String name;

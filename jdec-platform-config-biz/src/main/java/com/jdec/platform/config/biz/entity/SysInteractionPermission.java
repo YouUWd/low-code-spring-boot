@@ -19,6 +19,12 @@ public class SysInteractionPermission implements Serializable {
     @Schema(description = "父权限ID")
     private Long parentId;
 
+    @Schema(description = "模块id")
+    private Long moduleId;
+
+    @Schema(description = "模块标识")
+    private String moduleCode;
+
     @Schema(description = "权限名称")
     private String name;
 
@@ -59,7 +65,4 @@ public class SysInteractionPermission implements Serializable {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedDate;
 
-    @Schema(description = "1删除0正常")
-    @TableLogic(value = "0", delval = "1")
-    private Integer deleted;
 }

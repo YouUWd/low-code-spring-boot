@@ -8,9 +8,10 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 /**
  * 菜单配置 REST 控制器
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
  * <p>提供菜单的树形展示、增删改、拖拽接口。
  */
 @RestController
-@RequestMapping("menu")
+@RequestMapping("/api/config/menu")
 @RequiredArgsConstructor
 @Tag(name = "菜单配置", description = "菜单的树形展示、增删改、拖拽接口")
 public class SysMenuController {
