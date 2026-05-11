@@ -5,7 +5,6 @@ import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.dto.request.SysFieldSaveReq;
 import com.jdec.platform.config.api.dto.request.SysFieldValueSaveReq;
 import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
-import com.jdec.platform.config.api.dto.response.DatabaseSchemaResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
@@ -15,10 +14,8 @@ import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysFieldValueMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -230,26 +227,25 @@ public class SysFieldService implements SysFieldApi {
     private void processFieldValues(Long fieldId, List<SysFieldValueSaveReq> valueReqs) {
         // 仅根据 fieldId 清理旧配置
         sysFieldValueMapper.delete(
-            new LambdaQueryWrapper<SysFieldValue>()
-                .eq(SysFieldValue::getFieldId, fieldId)
-        );
+                new LambdaQueryWrapper<SysFieldValue>().eq(SysFieldValue::getFieldId, fieldId));
 
         if (valueReqs == null || valueReqs.isEmpty()) {
             return;
         }
 
         for (SysFieldValueSaveReq vReq : valueReqs) {
-            SysFieldValue vEntity = SysFieldValue.builder()
-                .fieldId(fieldId)
-                .moduleId(vReq.getModuleId())
-                .moduleName(vReq.getModuleName())
-                .fieldValue(vReq.getFieldValue())
-                .approvalChainTypeId(vReq.getApprovalChainTypeId())
-                .sortOrder(vReq.getSortOrder() != null ? vReq.getSortOrder() : 0)
-                .enabled(vReq.getEnabled() != null ? vReq.getEnabled() : 1)
-                .deleted(0)
-                .build();
-            
+            SysFieldValue vEntity =
+                    SysFieldValue.builder()
+                            .fieldId(fieldId)
+                            .moduleId(vReq.getModuleId())
+                            .moduleName(vReq.getModuleName())
+                            .fieldValue(vReq.getFieldValue())
+                            .approvalChainTypeId(vReq.getApprovalChainTypeId())
+                            .sortOrder(vReq.getSortOrder() != null ? vReq.getSortOrder() : 0)
+                            .enabled(vReq.getEnabled() != null ? vReq.getEnabled() : 1)
+                            .deleted(0)
+                            .build();
+
             sysFieldValueMapper.insert(vEntity);
         }
         log.debug("已完成字段 {} 的 {} 条扩展配置保存", fieldId, valueReqs.size());

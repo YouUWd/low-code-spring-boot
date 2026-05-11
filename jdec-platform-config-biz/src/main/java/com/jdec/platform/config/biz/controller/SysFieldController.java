@@ -3,7 +3,6 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.dto.request.SysFieldSaveReq;
 import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
-import com.jdec.platform.config.api.dto.response.DatabaseSchemaResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -50,7 +49,6 @@ public class SysFieldController {
         log.info("查询数据源 {} 的表 {} 的列信息", tenantId, tableName);
         return ApiResponse.success(sysFieldApi.getTableColumns(tenantId, tableName));
     }
-
 
     @Operation(summary = "查询字段配置列表", description = "根据租户ID和表名查询已保存的字段显示配置")
     @GetMapping("/tables/{tableName}/columns/settings")
