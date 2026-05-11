@@ -7,10 +7,12 @@ import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.SaveRoleDataPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleInteractionPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
+import com.jdec.platform.config.api.dto.request.SaveRoleModuleFieldReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleMenuResp;
+import com.jdec.platform.config.api.dto.response.RoleModuleFieldResp;
 import com.jdec.platform.config.api.dto.response.RoleSpecialPermissionResp;
 import com.jdec.platform.config.biz.entity.SysDataPermissionTarget;
 import com.jdec.platform.config.biz.entity.SysDataPermissionType;
@@ -19,6 +21,7 @@ import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysRoleDataPermission;
 import com.jdec.platform.config.biz.entity.SysRoleInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysRoleMenu;
+import com.jdec.platform.config.biz.entity.SysRoleModuleField;
 import com.jdec.platform.config.biz.entity.SysRoleSpecialPermission;
 import com.jdec.platform.config.biz.entity.SysSpecialPermission;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionTargetMapper;
@@ -28,6 +31,7 @@ import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleDataPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
@@ -53,6 +57,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysDataPermissionTypeMapper sysDataPermissionTypeMapper;
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
+    private final SysRoleModuleFieldMapper sysRoleModuleFieldMapper;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -407,5 +412,59 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             return resp;
                         })
                 .toList();
+    }
+
+    @Override
+    public List<RoleModuleFieldResp> getRoleModuleFieldPermission(Long roleId, Long moduleId) {
+        List<SysRoleModuleField> list =
+                sysRoleModuleFieldMapper.selectList(
+                        Wrappers.<SysRoleModuleField>lambdaQuery()
+                                .eq(SysRoleModuleField::getRoleId, roleId)
+                                .eq(SysRoleModuleField::getModuleId, moduleId));
+
+        return list.stream()
+                .map(
+                        e ->
+                                RoleModuleFieldResp.builder()
+                                        .id(e.getId())
+                                        .fieldType(e.getFieldType())
+                                        .fieldId(e.getFieldId())
+                                        .readable(e.getReadable())
+                                        .writable(e.getWritable())
+                                        .updatable(e.getUpdatable())
+                                        .build())
+                .toList();
+    }
+
+    @Transactional
+    @Override
+    public void saveRoleModuleFieldPermission(SaveRoleModuleFieldReq request) {
+        Long roleId = request.getRoleId();
+        Long moduleId = request.getModuleId();
+
+        // 1. 删除该角色在该模块下的旧权限
+        sysRoleModuleFieldMapper.delete(
+                Wrappers.<SysRoleModuleField>lambdaQuery()
+                        .eq(SysRoleModuleField::getRoleId, roleId)
+                        .eq(SysRoleModuleField::getModuleId, moduleId));
+
+        // 2. 批量插入新权限
+        if (CollUtil.isNotEmpty(request.getPermissions())) {
+            List<SysRoleModuleField> entities =
+                    request.getPermissions().stream()
+                            .map(
+                                    item ->
+                                            SysRoleModuleField.builder()
+                                                    .roleId(roleId)
+                                                    .moduleId(moduleId)
+                                                    .fieldType(item.getFieldType())
+                                                    .fieldId(item.getFieldId())
+                                                    .readable(item.getReadable())
+                                                    .writable(item.getWritable())
+                                                    .updatable(item.getUpdatable())
+                                                    .build())
+                            .toList();
+            sysRoleModuleFieldMapper.insert(entities);
+        }
     }
 }

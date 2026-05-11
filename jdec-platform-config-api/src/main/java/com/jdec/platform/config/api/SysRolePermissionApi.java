@@ -3,10 +3,12 @@ package com.jdec.platform.config.api;
 import com.jdec.platform.config.api.dto.request.SaveRoleDataPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleInteractionPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
+import com.jdec.platform.config.api.dto.request.SaveRoleModuleFieldReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleMenuResp;
+import com.jdec.platform.config.api.dto.response.RoleModuleFieldResp;
 import com.jdec.platform.config.api.dto.response.RoleSpecialPermissionResp;
 import java.util.List;
 
@@ -72,4 +74,20 @@ public interface SysRolePermissionApi {
      * @param request 保存请求
      */
     void saveRoleSpecialPermission(SaveRoleSpecialPermissionReq request);
+
+    /**
+     * 根据角色ID和模块ID查询字段权限
+     *
+     * @param roleId 角色ID
+     * @param moduleId 模块ID
+     * @return 字段权限列表
+     */
+    List<RoleModuleFieldResp> getRoleModuleFieldPermission(Long roleId, Long moduleId);
+
+    /**
+     * 保存角色模块字段权限
+     *
+     * @param request 保存请求
+     */
+    void saveRoleModuleFieldPermission(SaveRoleModuleFieldReq request);
 }
