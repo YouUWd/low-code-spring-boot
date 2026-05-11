@@ -15,10 +15,10 @@ public class SaveSysModuleReq {
 
     /** 租户 ID */
     @Schema(
-            description = "租户ID",
+            description = "项目编号",
             requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "tenant-001")
-    private String tenantId;
+            example = "P260319144021")
+    private String projectNo;
 
     /** 模块唯一编码，如 MOD-STUDENT-FULL */
     @Schema(

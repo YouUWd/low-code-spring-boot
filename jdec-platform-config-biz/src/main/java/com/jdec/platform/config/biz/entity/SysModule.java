@@ -17,7 +17,7 @@ public class SysModule {
     private Long id;
 
     /** 租户 ID */
-    private String tenantId;
+    private String projectNo;
 
     /** 模块唯一编码 */
     private String moduleCode;

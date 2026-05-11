@@ -11,8 +11,8 @@ public class SysModuleDetailResp {
     /** 模块 ID */
     private Long id;
 
-    /** 租户 ID */
-    private String tenantId;
+    /** 项目编号 */
+    private String projectNo;
 
     /** 模块编码 */
     private String moduleCode;

@@ -18,8 +18,8 @@ public class SysFieldResp {
     @Schema(description = "主键ID")
     private Long id;
 
-    @Schema(description = "租户ID")
-    private String tenantId;
+    @Schema(description = "项目编号")
+    private String projectNo;
 
     @Schema(description = "表名")
     private String tableName;

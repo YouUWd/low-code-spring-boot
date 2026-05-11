@@ -1,9 +1,0 @@
-package com.jdec.platform.config.biz.mapper;
-
-import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.jdec.platform.config.biz.entity.SysPermissionConfig;
-import org.apache.ibatis.annotations.Mapper;
-
-/** 权限配置 Mapper 接口 使用配置中心数据源 */
-@Mapper
-public interface SysPermissionConfigMapper extends BaseMapper<SysPermissionConfig> {}

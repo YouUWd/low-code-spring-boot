@@ -12,17 +12,14 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.util.*;
-
-/**
- * 状态 Service 实现
- */
+/** 状态 Service 实现 */
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -205,9 +202,7 @@ public class SysStatusService implements SysStatusApi {
         sysStatusMapper.updateById(node);
     }
 
-    /**
-     * 收集所有子节点ID
-     */
+    /** 收集所有子节点ID */
     private Set<Long> collectChildrenIds(Long parentId, Long subjectId) {
         Set<Long> result = new HashSet<>();
         List<SysStatus> children =
@@ -223,9 +218,7 @@ public class SysStatusService implements SysStatusApi {
         return result;
     }
 
-    /**
-     * 检查是否形成环：targetPid 不能是 id 的子节点（包括自身）
-     */
+    /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */
     private void checkCycle(Long id, Long targetPid, Long subjectId) {
         if (id.equals(targetPid)) {
             throw new BusinessException("不能将节点移动到自身或其子节点下");

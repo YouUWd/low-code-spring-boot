@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.DataQueryApi;
 import com.jdec.platform.config.api.dto.request.DataQueryReq;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,13 +34,10 @@ public class DataQueryController {
     public ApiResponse<PageResult<Map<String, Object>>> executeQuery(
             @PathVariable @Parameter(description = "模块编码", example = "MOD-STUDENT-LIST")
                     String moduleCode,
-            @RequestHeader("X-Tenant-Id")
-                    @Parameter(description = "租户/数据源 ID", example = "school", required = true)
-                    String tenantId,
             @RequestBody DataQueryReq request) {
 
         PageResult<Map<String, Object>> result =
-                dataQueryApi.executeQuery(moduleCode, tenantId, request);
+                dataQueryApi.executeQuery(moduleCode, AppContext.getProjectNo(), request);
         return ApiResponse.success(result);
     }
 }

@@ -22,7 +22,7 @@ public class SysField {
     private Long id;
 
     /** 租户ID */
-    private String tenantId;
+    private String projectNo;
 
     /** 表名 */
     private String tableName;

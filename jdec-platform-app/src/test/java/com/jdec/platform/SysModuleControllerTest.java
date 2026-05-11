@@ -45,7 +45,7 @@ class SysModuleControllerTest {
     @Autowired private SysModuleMapper sysModuleMapper;
 
     private static final String API_BASE = "/api/config/modules";
-    private static final String TENANT_ID = "school-001";
+    private static final String PROJECT_NO = "school";
 
     // 收集所有测试用例创建的模块 ID
     private static final List<Long> createdModuleIds = new ArrayList<>();
@@ -225,14 +225,15 @@ class SysModuleControllerTest {
 
         System.out.println("\n========================================");
         System.out.println("开始批量删除测试模块...");
-        System.out.println("租户 ID: " + TENANT_ID);
+        System.out.println("租户 ID: " + PROJECT_NO);
         System.out.println("========================================\n");
 
         // 第一步：一次性查询所有模块 ID
         System.out.println("第一步：查询所有测试模块...\n");
 
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModule::getTenantId, TENANT_ID).in(SysModule::getModuleCode, testModuleCodes);
+        wrapper.eq(SysModule::getProjectNo, PROJECT_NO)
+                .in(SysModule::getModuleCode, testModuleCodes);
 
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
@@ -300,7 +301,7 @@ class SysModuleControllerTest {
 
         // 模块基本信息
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-STUDENT-LIST");
         module.setModuleName("学生列表");
         module.setModuleDesc("学生信息列表查询模块");
@@ -383,7 +384,7 @@ class SysModuleControllerTest {
         SaveModuleReq request = new SaveModuleReq();
 
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-SCORE-LIST");
         module.setModuleName("学生成绩列表");
         module.setModuleDesc("学生成绩查询模块，支持按学生、课程、学期查询");
@@ -457,7 +458,7 @@ class SysModuleControllerTest {
         SaveModuleReq request = new SaveModuleReq();
 
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-TEACHER-LIST");
         module.setModuleName("教师管理");
         module.setModuleDesc("教师信息管理模块");
@@ -532,7 +533,7 @@ class SysModuleControllerTest {
         SaveModuleReq request = new SaveModuleReq();
 
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-CLASS-LIST");
         module.setModuleName("班级管理");
         module.setModuleDesc("班级信息管理模块");
@@ -602,7 +603,7 @@ class SysModuleControllerTest {
         SaveModuleReq request = new SaveModuleReq();
 
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-STUDENT-DETAIL");
         module.setModuleName("学生详情");
         module.setModuleDesc("学生详细信息查看和编辑模块，支持状态流转");
@@ -753,7 +754,7 @@ class SysModuleControllerTest {
         SaveModuleReq request = new SaveModuleReq();
 
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-STUDENT-COMPLETE-11");
         module.setModuleName("学生完整信息（1:1）");
         module.setModuleDesc("学生信息模块，包含学生档案（1:1关系）");
@@ -861,7 +862,7 @@ class SysModuleControllerTest {
         SaveModuleReq request = new SaveModuleReq();
 
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-CLASS-COMPLETE-1N");
         module.setModuleName("班级完整信息（1:N）");
         module.setModuleDesc("班级信息模块，包含班主任（N:1）和学生列表（1:N）");
@@ -929,7 +930,7 @@ class SysModuleControllerTest {
         SaveModuleReq request = new SaveModuleReq();
 
         SaveSysModuleReq module = new SaveSysModuleReq();
-        module.setTenantId(TENANT_ID);
+        module.setProjectNo(PROJECT_NO);
         module.setModuleCode("MOD-COURSE-COMPLETE-1N");
         module.setModuleName("课程完整信息（1:N）");
         module.setModuleDesc("课程信息模块，包含课程成绩列表（1:N关系）");

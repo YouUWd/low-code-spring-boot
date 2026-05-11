@@ -22,6 +22,7 @@ import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleSimpleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleTableMapper;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -34,7 +35,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-/** 模块管理 Service 实现 */
+/**
+ * 模块管理 Service 实现
+ *
+ * <p>核心配置存储在 {@code config_center} 数据源。
+ *
+ * <p>对于读操作，显式接收 {@code projectNo} 作为隔离键；
+ *
+ * <p>对于写操作，优先基于主键 ID 定位记录，并利用 {@code AppContext} 自动填充租户上下文。
+ */
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -48,9 +57,9 @@ public class SysModuleService implements SysModuleApi {
     private final ObjectMapper objectMapper;
 
     @Override
-    public List<SysModuleListResp> listModules(String tenantId) {
+    public List<SysModuleListResp> listModules(String projectNo) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModule::getTenantId, tenantId);
+        wrapper.eq(SysModule::getProjectNo, projectNo);
         wrapper.orderByAsc(SysModule::getParentId).orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
@@ -59,7 +68,7 @@ public class SysModuleService implements SysModuleApi {
                         module -> {
                             SysModuleListResp resp = new SysModuleListResp();
                             resp.setId(module.getId());
-                            resp.setTenantId(module.getTenantId());
+                            resp.setProjectNo(module.getProjectNo());
                             resp.setModuleCode(module.getModuleCode());
                             resp.setModuleName(module.getModuleName());
                             resp.setModuleDesc(module.getModuleDesc());
@@ -92,11 +101,11 @@ public class SysModuleService implements SysModuleApi {
     }
 
     @Override
-    public SysModuleCompleteResp getModuleComplete(String tenantId, String moduleCode) {
+    public SysModuleCompleteResp getModuleComplete(String projectNo, String moduleCode) {
         SysModule module =
                 sysModuleMapper.selectOne(
                         Wrappers.<SysModule>lambdaQuery()
-                                .eq(SysModule::getTenantId, tenantId)
+                                .eq(SysModule::getProjectNo, projectNo)
                                 .eq(SysModule::getModuleCode, moduleCode));
         if (module == null) {
             return null;
@@ -112,7 +121,7 @@ public class SysModuleService implements SysModuleApi {
         // 设置模块基本信息
         SysModuleCompleteResp.ModuleInfo moduleInfo = new SysModuleCompleteResp.ModuleInfo();
         moduleInfo.setId(module.getId());
-        moduleInfo.setTenantId(module.getTenantId());
+        moduleInfo.setProjectNo(module.getProjectNo());
         moduleInfo.setModuleCode(module.getModuleCode());
         moduleInfo.setModuleName(module.getModuleName());
         moduleInfo.setModuleDesc(module.getModuleDesc());
@@ -481,7 +490,7 @@ public class SysModuleService implements SysModuleApi {
 
     private SysModule createOrUpdateModule(SaveSysModuleReq request) {
         SysModule module = new SysModule();
-        module.setTenantId(request.getTenantId());
+        module.setProjectNo(AppContext.getProjectNo());
         module.setModuleCode(request.getModuleCode());
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
@@ -538,7 +547,7 @@ public class SysModuleService implements SysModuleApi {
         // 设置排序顺序
         if (request.getSortOrder() == null) {
             LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(SysModule::getTenantId, request.getTenantId())
+            wrapper.eq(SysModule::getProjectNo, AppContext.getProjectNo())
                     .eq(SysModule::getParentId, request.getParentId())
                     .orderByDesc(SysModule::getSortOrder)
                     .last("LIMIT 1");
@@ -760,7 +769,7 @@ public class SysModuleService implements SysModuleApi {
         }
         SysModuleDetailResp resp = new SysModuleDetailResp();
         resp.setId(module.getId());
-        resp.setTenantId(module.getTenantId());
+        resp.setProjectNo(module.getProjectNo());
         resp.setModuleCode(module.getModuleCode());
         resp.setModuleName(module.getModuleName());
         resp.setModuleDesc(module.getModuleDesc());

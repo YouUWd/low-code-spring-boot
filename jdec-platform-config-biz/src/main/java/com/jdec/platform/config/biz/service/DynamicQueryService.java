@@ -38,7 +38,7 @@ public class DynamicQueryService implements DataQueryApi {
 
     @Override
     public PageResult<Map<String, Object>> executeQuery(
-            String moduleCode, String tenantId, DataQueryReq request) {
+            String moduleCode, String projectNo, DataQueryReq request) {
         log.info(
                 "执行动态查询: moduleCode={}, page={}, pageSize={}, sorts={}, filters={}",
                 moduleCode,
@@ -49,7 +49,7 @@ public class DynamicQueryService implements DataQueryApi {
 
         // 根据模块编码查询模块配置
         SysModuleCompleteResp moduleConfig =
-                sysModuleService.getModuleComplete(tenantId, moduleCode);
+                sysModuleService.getModuleComplete(projectNo, moduleCode);
 
         if (moduleConfig == null) {
             throw new BusinessException("模块不存在: " + moduleCode);
@@ -67,7 +67,7 @@ public class DynamicQueryService implements DataQueryApi {
 
         // 执行动态查询
         return executeQuery(
-                tenantId,
+                projectNo,
                 moduleConfig,
                 request.getPage(),
                 request.getPageSize(),

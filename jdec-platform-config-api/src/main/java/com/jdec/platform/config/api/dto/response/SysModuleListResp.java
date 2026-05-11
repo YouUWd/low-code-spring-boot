@@ -11,8 +11,8 @@ public class SysModuleListResp {
     @Schema(description = "模块ID", example = "1")
     private Long id;
 
-    @Schema(description = "租户ID", example = "1")
-    private String tenantId;
+    @Schema(description = "项目编码", example = "1")
+    private String projectNo;
 
     @Schema(description = "模块编码", example = "sys_user")
     private String moduleCode;

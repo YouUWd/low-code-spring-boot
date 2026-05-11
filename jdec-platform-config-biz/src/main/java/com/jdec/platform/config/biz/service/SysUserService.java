@@ -23,12 +23,11 @@ import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
+import java.util.Collections;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
-
-import java.util.Collections;
-import java.util.List;
 
 /** 用户 Service 实现 */
 @Service
@@ -50,10 +49,7 @@ public class SysUserService implements SysUserApi {
                                 .select(SysRole::getId));
         if (roles.isEmpty()) {
             return PageResult.of(
-                    query.getPageNum(),
-                    query.getPageSize(),
-                    0L,
-                    Collections.emptyList());
+                    query.getPageNum(), query.getPageSize(), 0L, Collections.emptyList());
         }
 
         // 2. 根据角色 ID 列表查询关联的用户 ID
@@ -65,10 +61,7 @@ public class SysUserService implements SysUserApi {
                                 .select(SysRoleUser::getUserId));
         if (roleUsers.isEmpty()) {
             return PageResult.of(
-                    query.getPageNum(),
-                    query.getPageSize(),
-                    0L,
-                    Collections.emptyList());
+                    query.getPageNum(), query.getPageSize(), 0L, Collections.emptyList());
         }
 
         // 3. 根据用户 ID 列表分页查询用户

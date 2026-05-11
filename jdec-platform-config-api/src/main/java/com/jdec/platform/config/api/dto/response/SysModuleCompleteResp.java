@@ -38,8 +38,8 @@ public class SysModuleCompleteResp {
         @Schema(description = "模块ID", example = "1")
         private Long id;
 
-        @Schema(description = "租户ID", example = "tenant-001")
-        private String tenantId;
+        @Schema(description = "项目编码", example = "P260319144021")
+        private String projectNo;
 
         @Schema(description = "模块编码", example = "MOD-STUDENT-FULL")
         private String moduleCode;

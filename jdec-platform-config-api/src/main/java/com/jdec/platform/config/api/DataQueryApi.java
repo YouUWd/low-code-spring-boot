@@ -11,10 +11,10 @@ public interface DataQueryApi {
      * 根据模块编码执行动态查询
      *
      * @param moduleCode 模块编码
-     * @param tenantId 租户/数据源 ID
+     * @param projectNo 项目编码
      * @param request 查询请求参数
      * @return 分页查询结果
      */
     PageResult<Map<String, Object>> executeQuery(
-            String moduleCode, String tenantId, DataQueryReq request);
+            String moduleCode, String projectNo, DataQueryReq request);
 }
