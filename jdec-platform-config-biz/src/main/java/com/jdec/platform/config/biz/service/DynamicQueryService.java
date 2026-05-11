@@ -5,12 +5,16 @@ import static org.jooq.impl.DSL.*;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
+import com.jdec.platform.config.api.DataQueryApi;
+import com.jdec.platform.config.api.dto.request.DataQueryReq;
+import com.jdec.platform.config.api.dto.request.FilterRule;
+import com.jdec.platform.config.api.dto.request.SortRule;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
-import com.jdec.platform.config.biz.dto.SortRule;
+import com.jdec.platform.shared.datasource.DataSourceResolver;
+import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.*;
 import java.util.stream.Collectors;
-import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.*;
@@ -21,15 +25,85 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class DynamicQueryService {
+public class DynamicQueryService implements DataQueryApi {
 
-    private final DataSource dataSource;
+    private final DataSourceResolver dataSourceResolver;
+    private final SysModuleService sysModuleService;
 
     // 默认配置常量
     private static final String DEFAULT_PRIMARY_KEY = "id";
     private static final String DEFAULT_SORT_DIRECTION = "DESC";
     private static final String SORT_DIRECTION_ASC = "ASC";
     private static final String SORT_DIRECTION_DESC = "DESC";
+
+    @Override
+    public PageResult<Map<String, Object>> executeQuery(
+            String moduleCode, String tenantId, DataQueryReq request) {
+        log.info(
+                "执行动态查询: moduleCode={}, page={}, pageSize={}, sorts={}, filters={}",
+                moduleCode,
+                request.getPage(),
+                request.getPageSize(),
+                request.getSorts(),
+                request.getFilters());
+
+        // 根据模块编码查询模块配置
+        SysModuleCompleteResp moduleConfig =
+                sysModuleService.getModuleComplete(tenantId, moduleCode);
+
+        if (moduleConfig == null) {
+            throw new BusinessException("模块不存在: " + moduleCode);
+        }
+
+        // 验证过滤条件字段是否合法
+        if (request.getFilters() != null && !request.getFilters().isEmpty()) {
+            validateFilters(request.getFilters(), moduleConfig);
+        }
+
+        // 验证排序字段是否合法
+        if (request.getSorts() != null && !request.getSorts().isEmpty()) {
+            validateSorts(request.getSorts(), moduleConfig);
+        }
+
+        // 执行动态查询
+        return executeQuery(
+                tenantId,
+                moduleConfig,
+                request.getPage(),
+                request.getPageSize(),
+                request.getSorts(),
+                request.getFilters());
+    }
+
+    /**
+     * 验证过滤条件字段是否合法
+     *
+     * @param filters 过滤条件
+     * @param moduleConfig 模块配置
+     * @throws BusinessException 如果存在非法字段
+     */
+    private void validateFilters(List<FilterRule> filters, SysModuleCompleteResp moduleConfig) {
+        for (FilterRule filter : filters) {
+            if (!isValidField(filter.getField(), moduleConfig)) {
+                throw new BusinessException("非法的过滤字段: " + filter.getField());
+            }
+        }
+    }
+
+    /**
+     * 验证排序字段是否合法
+     *
+     * @param sorts 排序规则
+     * @param moduleConfig 模块配置
+     * @throws BusinessException 如果存在非法字段
+     */
+    private void validateSorts(List<SortRule> sorts, SysModuleCompleteResp moduleConfig) {
+        for (SortRule sort : sorts) {
+            if (!isValidField(sort.getField(), moduleConfig)) {
+                throw new BusinessException("非法的排序字段: " + sort.getField());
+            }
+        }
+    }
 
     /**
      * 根据模块配置执行动态查询
@@ -42,13 +116,14 @@ public class DynamicQueryService {
      * @return 分页查询结果
      */
     public PageResult<Map<String, Object>> executeQuery(
+            String projectNo,
             SysModuleCompleteResp moduleConfig,
             Integer page,
             Integer pageSize,
-            List<com.jdec.platform.config.biz.dto.SortRule> sorts,
-            List<com.jdec.platform.config.biz.dto.FilterRule> filters) {
+            List<SortRule> sorts,
+            List<FilterRule> filters) {
 
-        DSLContext dsl = DSL.using(dataSource, SQLDialect.MYSQL);
+        DSLContext dsl = DSL.using(dataSourceResolver.resolve(projectNo), SQLDialect.MYSQL);
 
         log.info("========== 动态查询开始 ==========");
         log.info("模块: {}", moduleConfig.getModule().getModuleName());
@@ -103,8 +178,8 @@ public class DynamicQueryService {
             List<SysModuleCompleteResp.ModuleTableInfo> oneToOneEntities,
             Integer page,
             Integer pageSize,
-            List<com.jdec.platform.config.biz.dto.SortRule> sorts,
-            List<com.jdec.platform.config.biz.dto.FilterRule> filters) {
+            List<SortRule> sorts,
+            List<FilterRule> filters) {
 
         log.info("[主查询] 构建查询...");
 
@@ -179,7 +254,7 @@ public class DynamicQueryService {
                     DEFAULT_SORT_DIRECTION);
         } else {
             // 应用多字段排序
-            for (com.jdec.platform.config.biz.dto.SortRule sort : sorts) {
+            for (SortRule sort : sorts) {
                 String fieldName = sort.getField();
                 String direction =
                         sort.getOrder() != null
@@ -232,7 +307,7 @@ public class DynamicQueryService {
             DSLContext dsl,
             SysModuleCompleteResp moduleConfig,
             List<SysModuleCompleteResp.ModuleTableInfo> oneToOneEntities,
-            List<com.jdec.platform.config.biz.dto.FilterRule> filters) {
+            List<FilterRule> filters) {
 
         String primaryTable = moduleConfig.getModule().getPrimaryTable();
         Table<?> mainTable = table(name(primaryTable));
@@ -328,9 +403,7 @@ public class DynamicQueryService {
 
     /** 应用 WHERE 条件 */
     private <R extends org.jooq.Record> SelectConditionStep<R> applyWhereClause(
-            SelectJoinStep<R> query,
-            List<com.jdec.platform.config.biz.dto.FilterRule> filters,
-            String primaryTable) {
+            SelectJoinStep<R> query, List<FilterRule> filters, String primaryTable) {
 
         if (filters == null || filters.isEmpty()) {
             return query.where(DSL.noCondition());
@@ -338,7 +411,7 @@ public class DynamicQueryService {
 
         List<Condition> conditions = new ArrayList<>();
 
-        for (com.jdec.platform.config.biz.dto.FilterRule filter : filters) {
+        for (FilterRule filter : filters) {
             String fieldName = filter.getField();
             String operator =
                     filter.getOperator() != null ? filter.getOperator().toLowerCase() : "eq";

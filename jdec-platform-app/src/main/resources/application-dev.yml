@@ -57,6 +57,15 @@ spring:
           min-idle: 2
           max-wait: 3000ms
 
+# ===== 项目-数据源映射 =====
+jdec:
+  project:
+    datasource-mapping:
+      primary: primary
+      school: school
+      hr_manage: hr_manage
+      config_center: config_center
+
 # ===== MyBatis-Plus 开发模式 =====
 mybatis-plus:
   configuration:

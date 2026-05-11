@@ -1,4 +1,4 @@
-package com.jdec.platform.config.biz.dto;
+package com.jdec.platform.config.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;

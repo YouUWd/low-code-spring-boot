@@ -13,4 +13,9 @@ public class DynamicRoutingDataSource extends AbstractRoutingDataSource {
     protected Object determineCurrentLookupKey() {
         return DataSourceContextHolder.get();
     }
+
+    /** 根据数据源名称获取物理 DataSource。 利用父类 AbstractRoutingDataSource 维护的 resolvedDataSources Map。 */
+    public javax.sql.DataSource getDataSource(String name) {
+        return getResolvedDataSources().get(name);
+    }
 }

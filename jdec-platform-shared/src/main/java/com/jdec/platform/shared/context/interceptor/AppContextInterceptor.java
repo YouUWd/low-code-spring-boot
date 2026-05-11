@@ -11,20 +11,20 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class AppContextInterceptor implements HandlerInterceptor {
 
-    private static final String SUBJECT_ID_HEADER = "subject-id";
-    private static final String PROJECT_NO_HEADER = "project-no";
+    private static final String SUBJECT_ID_HEADER = "X-Subject-Id";
+    private static final String PROJECT_NO_HEADER = "X-Project-No";
 
     @Override
     public boolean preHandle(
             HttpServletRequest request, HttpServletResponse response, Object handler) {
-        String subjectId = request.getHeader(SUBJECT_ID_HEADER);
-        if (subjectId != null && !subjectId.isEmpty()) {
-            AppContext.setSubjectId(Long.valueOf(subjectId));
-        }
+        String subjectIdStr = request.getHeader(SUBJECT_ID_HEADER);
+        Long subjectId =
+                (subjectIdStr != null && !subjectIdStr.isEmpty())
+                        ? Long.valueOf(subjectIdStr)
+                        : null;
         String projectNo = request.getHeader(PROJECT_NO_HEADER);
-        if (projectNo != null && !projectNo.isEmpty()) {
-            AppContext.setProjectNo(projectNo);
-        }
+
+        AppContext.setContext(projectNo, subjectId);
         return true;
     }
 

@@ -1,48 +1,53 @@
 package com.jdec.platform.shared.context;
 
 import com.jdec.platform.shared.constants.SystemConstant;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /** 应用请求上下文，统一管理 projectNo 和 subjectId */
 public class AppContext {
 
-    private static final ThreadLocal<String> PROJECT_NO_HOLDER = new ThreadLocal<>();
-    private static final ThreadLocal<Long> SUBJECT_HOLDER = new ThreadLocal<>();
+    private static final ThreadLocal<AppRequestContext> CONTEXT_HOLDER = new ThreadLocal<>();
 
-    /** 设置当前请求的 projectNo */
-    public static void setProjectNo(String projectNo) {
-        PROJECT_NO_HOLDER.set(projectNo);
+    /** 获取当前线程的上下文对象，如果不存在则返回空对象（避免外部调用 NPE） */
+    private static AppRequestContext getContext() {
+        AppRequestContext context = CONTEXT_HOLDER.get();
+        return context != null ? context : new AppRequestContext();
+    }
+
+    /** 一次性初始化上下文（真正的原子操作） 直接覆盖 ThreadLocal 中的引用，确保上下文快照的一致性 */
+    public static void setContext(String projectNo, Long subjectId) {
+        CONTEXT_HOLDER.set(new AppRequestContext(projectNo, subjectId));
     }
 
     /** 获取当前请求的 projectNo */
     public static String getProjectNo() {
-        String projectNo = PROJECT_NO_HOLDER.get();
+        String projectNo = getContext().getProjectNo();
         return projectNo != null ? projectNo : SystemConstant.DEFAULT_PROJECT_NO;
-    }
-
-    /** 移除当前线程的 projectNo */
-    public static void removeProjectNo() {
-        PROJECT_NO_HOLDER.remove();
-    }
-
-    /** 设置当前请求的 subjectId */
-    public static void setSubjectId(Long subjectId) {
-        SUBJECT_HOLDER.set(subjectId);
     }
 
     /** 获取当前请求的 subjectId */
     public static Long getSubjectId() {
-        Long subjectId = SUBJECT_HOLDER.get();
-        return subjectId != null ? subjectId : SystemConstant.DEFAULT_SUBJECT;
+        return getContext().getSubjectId();
     }
 
-    /** 移除当前线程的 subjectId */
-    public static void removeSubjectId() {
-        SUBJECT_HOLDER.remove();
-    }
-
-    /** 移除当前线程所有上下文 */
+    /** 移除当前线程的所有上下文信息 */
     public static void remove() {
-        PROJECT_NO_HOLDER.remove();
-        SUBJECT_HOLDER.remove();
+        CONTEXT_HOLDER.remove();
+    }
+
+    /** 上下文实体类 */
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class AppRequestContext {
+        /** 项目编号 */
+        private String projectNo;
+
+        /** 主体ID */
+        private Long subjectId;
     }
 }

@@ -20,7 +20,7 @@ import org.springframework.context.annotation.Primary;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-@EnableConfigurationProperties(DynamicDataSourceProperties.class)
+@EnableConfigurationProperties({DynamicDataSourceProperties.class, ProjectProperties.class})
 public class DynamicDataSourceConfig {
 
     private final DynamicDataSourceProperties properties;
