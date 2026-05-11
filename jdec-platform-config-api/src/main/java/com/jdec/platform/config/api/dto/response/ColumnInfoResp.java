@@ -1,17 +1,18 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 数据库列信息响应 */
+/** 列信息响应 */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "数据库列信息")
+@Schema(description = "列详细信息响应")
 public class ColumnInfoResp {
 
     /** 列名 */
@@ -39,4 +40,10 @@ public class ColumnInfoResp {
     /** 关联关系名称 */
     @Schema(description = "关联关系名称（如 '父模块'）", example = "父模块")
     private String relationName;
+
+    // ===== sys_field_value 业务配置信息 =====
+
+    /** 字段扩展值列表 */
+    @Schema(description = "字段业务配置值列表")
+    private List<SysFieldValueResp> fieldValues;
 }
