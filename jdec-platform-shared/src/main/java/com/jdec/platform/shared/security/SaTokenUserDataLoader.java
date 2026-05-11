@@ -14,5 +14,5 @@ public interface SaTokenUserDataLoader {
      * @param phone
      * @return
      */
-    Long getUserRoleCount(String phone, String appCode);
+    Long getUserRoleCount(String phone, String projectNo);
 }

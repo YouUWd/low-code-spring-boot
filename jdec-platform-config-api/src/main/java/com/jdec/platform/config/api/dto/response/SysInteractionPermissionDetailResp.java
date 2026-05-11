@@ -33,7 +33,7 @@ public class SysInteractionPermissionDetailResp {
     private Long subjectId;
 
     @Schema(description = "应用编码")
-    private String appCode;
+    private String projectNo;
 
     @Schema(description = "创建时间")
     private String createdDate;

@@ -12,8 +12,7 @@ import com.jdec.platform.config.biz.entity.SysDataPermissionType;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionTypeMapper;
 import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.UserBO;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.CommonStatusEnum;
@@ -44,16 +43,20 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
                     sysDataPermissionTypeMapper.exists(
                             Wrappers.<SysDataPermissionType>lambdaQuery()
                                     .eq(SysDataPermissionType::getCode, req.getCode())
-                                    .eq(SysDataPermissionType::getSubjectId, SubjectContext.get())
-                                    .eq(SysDataPermissionType::getAppCode, AppCodeContext.get()));
+                                    .eq(
+                                            SysDataPermissionType::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysDataPermissionType::getProjectNo,
+                                            AppContext.getProjectNo()));
             if (exists) {
                 throw new BusinessException("类型编码已存在");
             }
             // 新增
             SysDataPermissionType entity = new SysDataPermissionType();
             BeanUtils.copyProperties(req, entity);
-            entity.setSubjectId(SubjectContext.get());
-            entity.setAppCode(AppCodeContext.get());
+            entity.setSubjectId(AppContext.getSubjectId());
+            entity.setProjectNo(AppContext.getProjectNo());
             entity.setTargetType("user");
             sysDataPermissionTypeMapper.insert(entity);
         } else {
@@ -70,10 +73,10 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
                                         .ne(SysDataPermissionType::getId, req.getId())
                                         .eq(
                                                 SysDataPermissionType::getSubjectId,
-                                                SubjectContext.get())
+                                                AppContext.getSubjectId())
                                         .eq(
-                                                SysDataPermissionType::getAppCode,
-                                                AppCodeContext.get()));
+                                                SysDataPermissionType::getProjectNo,
+                                                AppContext.getProjectNo()));
                 if (exists) {
                     throw new BusinessException("类型编码已存在");
                 }
@@ -94,8 +97,10 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
                 sysDataPermissionTypeMapper.exists(
                         Wrappers.<SysDataPermissionType>lambdaQuery()
                                 .eq(SysDataPermissionType::getId, id)
-                                .eq(SysDataPermissionType::getSubjectId, SubjectContext.get())
-                                .eq(SysDataPermissionType::getAppCode, AppCodeContext.get()));
+                                .eq(SysDataPermissionType::getSubjectId, AppContext.getSubjectId())
+                                .eq(
+                                        SysDataPermissionType::getProjectNo,
+                                        AppContext.getProjectNo()));
         if (!exists) {
             throw new BusinessException("数据权限类型不存在");
         }
@@ -107,8 +112,8 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
         List<SysDataPermissionType> list =
                 sysDataPermissionTypeMapper.selectList(
                         new LambdaQueryWrapper<SysDataPermissionType>()
-                                .eq(SysDataPermissionType::getAppCode, AppCodeContext.get())
-                                .eq(SysDataPermissionType::getSubjectId, SubjectContext.get())
+                                .eq(SysDataPermissionType::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysDataPermissionType::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysDataPermissionType::getStatus, 1)
                                 .orderByAsc(SysDataPermissionType::getSort)
                                 .orderByAsc(SysDataPermissionType::getId));
@@ -131,8 +136,8 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
         List<SysDataPermissionType> list =
                 sysDataPermissionTypeMapper.selectList(
                         new LambdaQueryWrapper<SysDataPermissionType>()
-                                .eq(SysDataPermissionType::getAppCode, AppCodeContext.get())
-                                .eq(SysDataPermissionType::getSubjectId, SubjectContext.get())
+                                .eq(SysDataPermissionType::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysDataPermissionType::getSubjectId, AppContext.getSubjectId())
                                 .like(
                                         StringUtils.hasText(req.getName()),
                                         SysDataPermissionType::getName,
@@ -150,7 +155,7 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
             return new ArrayList<>();
         }
         // todo: 有了登录以后，替换成登录用户的主体id
-        Long subjectId = SubjectContext.get();
+        Long subjectId = AppContext.getSubjectId();
         return list.stream()
                 .map(
                         type -> {
@@ -194,8 +199,10 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
                 sysDataPermissionTypeMapper.selectOne(
                         Wrappers.<SysDataPermissionType>lambdaQuery()
                                 .eq(SysDataPermissionType::getId, id)
-                                .eq(SysDataPermissionType::getSubjectId, SubjectContext.get())
-                                .eq(SysDataPermissionType::getAppCode, AppCodeContext.get()));
+                                .eq(SysDataPermissionType::getSubjectId, AppContext.getSubjectId())
+                                .eq(
+                                        SysDataPermissionType::getProjectNo,
+                                        AppContext.getProjectNo()));
         if (entity == null) {
             throw new BusinessException("数据权限类型不存在");
         }

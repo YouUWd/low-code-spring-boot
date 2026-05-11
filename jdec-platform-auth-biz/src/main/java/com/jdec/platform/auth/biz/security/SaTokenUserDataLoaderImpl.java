@@ -28,13 +28,13 @@ public class SaTokenUserDataLoaderImpl implements SaTokenUserDataLoader {
                 .username(user.getUserName())
                 .password(user.getPassword())
                 .status(user.getStatusFlag())
-                .appCode(user.getAppCode())
+                .projectNo(user.getProjectNo())
                 .build();
     }
 
     @Override
-    public Long getUserRoleCount(String phone, String appCode) {
+    public Long getUserRoleCount(String phone, String projectNo) {
         SysUserBO user = sysUserApi.getUserByPhone(phone);
-        return sysRoleApi.getUserRoleCount(user.getId(), user.getSubjectId(), appCode);
+        return sysRoleApi.getUserRoleCount(user.getId(), user.getSubjectId(), projectNo);
     }
 }

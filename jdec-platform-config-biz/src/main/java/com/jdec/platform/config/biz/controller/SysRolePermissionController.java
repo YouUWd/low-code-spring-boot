@@ -9,8 +9,7 @@ import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleMenuResp;
 import com.jdec.platform.config.api.dto.response.RoleSpecialPermissionResp;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,9 +30,9 @@ public class SysRolePermissionController {
     @Operation(summary = "查询角色菜单", description = "根据角色ID查询该角色关联的菜单列表")
     public ApiResponse<List<RoleMenuResp>> getRoleMenu(
             @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
-        Long subjectId = SubjectContext.get();
-        String appCode = AppCodeContext.get();
-        return ApiResponse.success(sysRolePermissionApi.getRoleMenu(roleId, subjectId, appCode));
+        Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
+        return ApiResponse.success(sysRolePermissionApi.getRoleMenu(roleId, subjectId, projectNo));
     }
 
     @PostMapping("/save-role-menu")

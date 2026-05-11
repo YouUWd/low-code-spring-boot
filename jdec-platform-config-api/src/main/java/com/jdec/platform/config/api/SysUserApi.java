@@ -22,9 +22,9 @@ public interface SysUserApi {
     SysUserBO getUserByPhone(String phone);
 
     /**
-     * 根据appCode查询用户列表
+     * 根据projectNo查询用户列表
      *
-     * <p>先查sys_role_user表根据appCode过滤拿到用户id，再查sys_user表获取用户数据
+     * <p>先查sys_role_user表根据projectNo过滤拿到用户id，再查sys_user表获取用户数据
      */
     List<SysUserPageResp> getUserList();
 }

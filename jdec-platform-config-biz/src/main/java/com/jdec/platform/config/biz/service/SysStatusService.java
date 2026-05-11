@@ -8,7 +8,7 @@ import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
-import com.jdec.platform.shared.context.AppCodeContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class SysStatusService implements SysStatusApi {
         List<SysStatus> list =
                 sysStatusMapper.selectList(
                         new LambdaQueryWrapper<SysStatus>()
-                                .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysStatus::getSubjectId, subjectId)
                                 .orderByAsc(SysStatus::getStatusValue)
                                 .orderByAsc(SysStatus::getId));
@@ -78,14 +78,14 @@ public class SysStatusService implements SysStatusApi {
                 entity.setPid(0L);
             }
             entity.setSubjectId(subjectId);
-            entity.setAppCode(AppCodeContext.get());
+            entity.setProjectNo(AppContext.getProjectNo());
             // 校验同级名称是否重复（按主体、应用隔离）
             long count =
                     sysStatusMapper.selectCount(
                             new LambdaQueryWrapper<SysStatus>()
                                     .eq(SysStatus::getPid, entity.getPid())
                                     .eq(SysStatus::getSubjectId, subjectId)
-                                    .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                    .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                     .eq(SysStatus::getTitle, entity.getTitle()));
             if (count > 0) {
                 throw new BusinessException("同级状态下名称已存在");
@@ -98,7 +98,7 @@ public class SysStatusService implements SysStatusApi {
                             Wrappers.<SysStatus>lambdaQuery()
                                     .eq(SysStatus::getId, req.getId())
                                     .eq(SysStatus::getSubjectId, subjectId)
-                                    .eq(SysStatus::getAppCode, AppCodeContext.get()));
+                                    .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
             if (!exists) {
                 throw new BusinessException("状态不存在");
             }
@@ -119,7 +119,7 @@ public class SysStatusService implements SysStatusApi {
                                 Wrappers.<SysStatus>lambdaQuery()
                                         .eq(SysStatus::getPid, req.getPid())
                                         .eq(SysStatus::getSubjectId, subjectId)
-                                        .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                        .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                         .eq(SysStatus::getTitle, req.getTitle())
                                         .ne(SysStatus::getId, req.getId()));
                 if (count > 0) {
@@ -141,7 +141,7 @@ public class SysStatusService implements SysStatusApi {
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getId, id)
                                 .eq(SysStatus::getSubjectId, subjectId)
-                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
         if (!exists) {
             throw new BusinessException("状态不存在");
         }
@@ -164,7 +164,7 @@ public class SysStatusService implements SysStatusApi {
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getId, id)
                                 .eq(SysStatus::getSubjectId, subjectId)
-                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
         if (node == null) {
             throw new BusinessException("状态不存在");
         }
@@ -183,7 +183,7 @@ public class SysStatusService implements SysStatusApi {
                             Wrappers.<SysStatus>lambdaQuery()
                                     .eq(SysStatus::getId, targetPid)
                                     .eq(SysStatus::getSubjectId, subjectId)
-                                    .eq(SysStatus::getAppCode, AppCodeContext.get()));
+                                    .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
             if (!exists) {
                 throw new BusinessException("目标父状态不存在");
             }
@@ -194,7 +194,7 @@ public class SysStatusService implements SysStatusApi {
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getPid, targetPid)
                                 .eq(SysStatus::getSubjectId, subjectId)
-                                .eq(SysStatus::getAppCode, AppCodeContext.get())
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysStatus::getTitle, node.getTitle())
                                 .ne(SysStatus::getId, id));
         if (count > 0) {
@@ -212,7 +212,7 @@ public class SysStatusService implements SysStatusApi {
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getPid, parentId)
                                 .eq(SysStatus::getSubjectId, subjectId)
-                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
         for (SysStatus child : children) {
             result.add(child.getId());
             result.addAll(collectChildrenIds(child.getId(), subjectId));
@@ -230,7 +230,7 @@ public class SysStatusService implements SysStatusApi {
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getPid, id)
                                 .eq(SysStatus::getSubjectId, subjectId)
-                                .eq(SysStatus::getAppCode, AppCodeContext.get()));
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
         for (SysStatus child : children) {
             checkCycle(child.getId(), targetPid, subjectId);
         }

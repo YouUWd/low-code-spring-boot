@@ -24,6 +24,6 @@ public class UserInfo implements Serializable {
     @Schema(description = "状态 0-禁用 1-启用")
     private Integer status;
 
-    @Schema(description = "应用编码")
-    private String appCode;
+    @Schema(description = "项目编号")
+    private String projectNo;
 }

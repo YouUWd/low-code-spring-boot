@@ -42,7 +42,7 @@ public class SysMenu implements Serializable {
 
     @Schema(description = "应用编码")
     @TableField(fill = FieldFill.INSERT)
-    private String appCode;
+    private String projectNo;
 
     @Schema(description = "排序")
     private Integer sortOrder;

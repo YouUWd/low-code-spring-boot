@@ -16,10 +16,10 @@ public interface SysRolePermissionApi {
      *
      * @param roleId 角色ID
      * @param subjectId 主体ID
-     * @param appCode 应用编码
+     * @param projectNo 项目编号
      * @return 角色菜单列表
      */
-    List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String appCode);
+    List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo);
 
     /**
      * 保存角色菜单关联

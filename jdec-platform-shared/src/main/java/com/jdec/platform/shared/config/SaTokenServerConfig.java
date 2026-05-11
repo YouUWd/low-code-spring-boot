@@ -37,14 +37,14 @@ public class SaTokenServerConfig {
                 (name, pwd) -> {
                     log.info("SSO doLogin, phone={}", name);
                     String client = saSsoServerTemplate.paramName.client;
-                    String appCode = SaHolder.getRequest().getParam(client);
+                    String projectNo = SaHolder.getRequest().getParam(client);
                     // 调用业务层验证账号密码
                     UserInfo userInfo = saTokenUserDataLoader.getUserByPhone(name);
                     if (userInfo == null) {
                         throw new BusinessException("用户不存在");
                     }
                     // 通过角色用户表查询，判定当前登录的用户是否有权限
-                    Long count = saTokenUserDataLoader.getUserRoleCount(name, appCode);
+                    Long count = saTokenUserDataLoader.getUserRoleCount(name, projectNo);
                     if (count == 0) {
                         throw new BusinessException("用户无此应用使用权限");
                     }
@@ -52,7 +52,9 @@ public class SaTokenServerConfig {
                     if (!pwd.equals("1024110")) {
                         String cacheKey =
                                 String.format(
-                                        RedisConstant.VERIFY_CODE_KEY, userInfo.getAppCode(), name);
+                                        RedisConstant.VERIFY_CODE_KEY,
+                                        userInfo.getProjectNo(),
+                                        name);
                         String code = stringRedisTemplate.opsForValue().get(cacheKey);
                         if (code == null) {
                             throw new BusinessException("验证码已过期，请重新获取");
@@ -86,13 +88,13 @@ public class SaTokenServerConfig {
                     ParamName paramName = saSsoServerTemplate.paramName;
                     // 获取当前请求的 redirect 参数（客户端回调地址）
                     String redirectUrl = SaHolder.getRequest().getParam(paramName.redirect);
-                    String appCode = SaHolder.getRequest().getParam(paramName.client);
+                    String projectNo = SaHolder.getRequest().getParam(paramName.client);
                     // 构建前端登录页地址，携带 redirect 参数
                     // 前端登录成功后需要用此参数进行回调
                     String loginPageUrl =
                             ssoLoginPageUrl
-                                    + "?appCode="
-                                    + appCode
+                                    + "?projectNo="
+                                    + projectNo
                                     + "&redirect="
                                     + SaFoxUtil.encodeUrl(redirectUrl);
 

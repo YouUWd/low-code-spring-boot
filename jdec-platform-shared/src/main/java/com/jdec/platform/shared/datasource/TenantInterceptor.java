@@ -1,6 +1,6 @@
 package com.jdec.platform.shared.datasource;
 
-import com.jdec.platform.shared.context.AppCodeContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -51,7 +51,7 @@ public class TenantInterceptor implements HandlerInterceptor {
 
             // 压入数据源到栈底
             DataSourceContextHolder.set(tenantId);
-            AppCodeContext.set(tenantId);
+            AppContext.setProjectNo(tenantId);
             log.debug("TenantInterceptor 设置默认数据源: {}", tenantId);
         } else {
             throw new BusinessException("未携带应用编码");
@@ -70,6 +70,6 @@ public class TenantInterceptor implements HandlerInterceptor {
         // 注意：如果有 @DataSource 注解，它们会先被 DataSourceAspect 弹出
         // 这里只弹出 TenantInterceptor 压入的那个元素
         DataSourceContextHolder.clear();
-        AppCodeContext.remove();
+        AppContext.removeProjectNo();
     }
 }

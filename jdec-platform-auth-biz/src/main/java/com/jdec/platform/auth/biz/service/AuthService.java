@@ -51,7 +51,7 @@ public class AuthService implements AuthApi {
         if (!request.getCode().equals("1024110")) {
             String cacheKey =
                     String.format(
-                            RedisConstant.VERIFY_CODE_KEY, user.getAppCode(), user.getPhone());
+                            RedisConstant.VERIFY_CODE_KEY, user.getProjectNo(), user.getPhone());
             String code = stringRedisTemplate.opsForValue().get(cacheKey);
             if (code == null) {
                 throw new BusinessException("验证码已过期，请重新获取");
@@ -61,23 +61,23 @@ public class AuthService implements AuthApi {
             }
         }
         // 4. Sa-Token 登录
-        String appCode =
-                StringUtils.hasText(request.getAppCode())
-                        ? request.getAppCode()
-                        : SystemConstant.DEFAULT_APP_CODE;
+        String projectNo =
+                StringUtils.hasText(request.getProjectNo())
+                        ? request.getProjectNo()
+                        : SystemConstant.DEFAULT_PROJECT_NO;
 
         StpUtil.login(
                 user.getId(),
                 new SaLoginParameter()
                         .setDeviceType(DeviceTypeEnum.PC.getValue())
                         .setExtra("username", user.getUserName())
-                        .setExtra("appCode", appCode));
+                        .setExtra("projectNo", projectNo));
 
         // 5. 构建并存储 LoginUser
-        LoginUser loginUser = buildLoginUser(user, appCode);
+        LoginUser loginUser = buildLoginUser(user, projectNo);
         SecurityUtils.setLoginUser(loginUser);
 
-        log.info("用户登录成功: username={}, appCode={}", user.getUserName(), appCode);
+        log.info("用户登录成功: username={}, projectNo={}", user.getUserName(), projectNo);
 
         return LoginResp.builder()
                 .token(StpUtil.getTokenValue())
@@ -87,11 +87,11 @@ public class AuthService implements AuthApi {
                 .phone(user.getPhone())
                 .avatar(user.getUserAvatar())
                 .superAdmin(user.getSuperFlag() != null && user.getSuperFlag() == 1)
-                .appCode(user.getAppCode())
+                .projectNo(user.getProjectNo())
                 .build();
     }
 
-    private LoginUser buildLoginUser(SysUserBO user, String appCode) {
+    private LoginUser buildLoginUser(SysUserBO user, String projectNo) {
         // TODO: 后续完善角色、权限加载
         return LoginUser.builder()
                 .userId(user.getId())
@@ -155,7 +155,7 @@ public class AuthService implements AuthApi {
         // 4. 检查 Redis 缓存
         String cacheKey =
                 String.format(
-                        RedisConstant.VERIFY_CODE_KEY, userBO.getAppCode(), userBO.getPhone());
+                        RedisConstant.VERIFY_CODE_KEY, userBO.getProjectNo(), userBO.getPhone());
         String existingCode = stringRedisTemplate.opsForValue().get(cacheKey);
 
         if (existingCode != null) {

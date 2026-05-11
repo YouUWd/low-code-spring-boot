@@ -29,7 +29,7 @@ public class SysRole implements Serializable {
     private String description;
 
     @Schema(description = "应用编码")
-    private String appCode;
+    private String projectNo;
 
     @Schema(description = "模拟操作用户")
     @TableField(fill = FieldFill.INSERT)

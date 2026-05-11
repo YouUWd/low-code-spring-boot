@@ -14,10 +14,10 @@ public interface SysRoleApi {
      *
      * @param id
      * @param subjectId
-     * @param appCode
+     * @param projectNo
      * @return
      */
-    Long getUserRoleCount(Long id, Long subjectId, String appCode);
+    Long getUserRoleCount(Long id, Long subjectId, String projectNo);
 
     CheckRoleUserResp checkRoleUser(SaveRoleUserReq request);
 

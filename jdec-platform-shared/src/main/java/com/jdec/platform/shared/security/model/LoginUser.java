@@ -33,8 +33,8 @@ public class LoginUser implements Serializable {
     /** 是否超级管理员 */
     private Boolean superAdmin;
 
-    /** 当前应用Code */
-    private String appCode;
+    /** 当前项目编号 */
+    private String projectNo;
 
     /** 登录时间 */
     private LocalDateTime loginTime;

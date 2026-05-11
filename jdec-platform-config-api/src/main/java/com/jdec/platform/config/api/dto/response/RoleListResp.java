@@ -19,5 +19,5 @@ public class RoleListResp implements Serializable {
     private Long subjectId;
 
     @Schema(description = "应用编码")
-    private String appCode;
+    private String projectNo;
 }

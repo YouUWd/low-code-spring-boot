@@ -20,7 +20,7 @@ public class SysTenant {
     private String entityCode;
     private String entityName;
     private String appName;
-    private String appCode;
+    private String projectNo;
     private String appDesc;
     private String tenantType;
     private String unifiedCreditCode;

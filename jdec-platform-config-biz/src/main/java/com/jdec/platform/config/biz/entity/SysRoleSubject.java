@@ -36,7 +36,7 @@ public class SysRoleSubject implements Serializable {
     private Integer effectiveType;
 
     @Schema(description = "应用编码")
-    private String appCode;
+    private String projectNo;
 
     @Schema(description = "创建人")
     @TableField(fill = FieldFill.INSERT)

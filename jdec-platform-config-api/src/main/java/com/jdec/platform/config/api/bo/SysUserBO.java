@@ -47,7 +47,7 @@ public class SysUserBO implements Serializable {
 
     private Integer superFlag;
 
-    private String appCode;
+    private String projectNo;
 
     private Long createdBy;
 

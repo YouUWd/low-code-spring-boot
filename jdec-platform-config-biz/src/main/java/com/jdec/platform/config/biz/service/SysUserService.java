@@ -14,7 +14,7 @@ import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysUser;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
-import com.jdec.platform.shared.context.AppCodeContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.UserStatusFlagEnum;
@@ -139,11 +139,11 @@ public class SysUserService implements SysUserApi {
 
     @Override
     public List<SysUserPageResp> getUserList() {
-        // 1. 根据appCode查询sys_role_user表获取用户id列表
+        // 1. 根据projectNo查询sys_role_user表获取用户id列表
         List<SysRoleUser> roleUsers =
                 sysRoleUserMapper.selectList(
                         Wrappers.<SysRoleUser>lambdaQuery()
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get())
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo())
                                 .select(SysRoleUser::getUserId));
         if (roleUsers.isEmpty()) {
             return Collections.emptyList();

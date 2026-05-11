@@ -2,8 +2,8 @@ package com.jdec.platform.shared.constants;
 
 /** 系统常量 */
 public interface SystemConstant {
-    /** 默认APP编码 */
-    String DEFAULT_APP_CODE = "CONFIG";
+    /** 默认项目编号 */
+    String DEFAULT_PROJECT_NO = "CONFIG";
 
     /** 默认subject */
     Integer DEFAULT_SUBJECT = 0;

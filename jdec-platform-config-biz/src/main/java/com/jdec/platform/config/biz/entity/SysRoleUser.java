@@ -33,7 +33,7 @@ public class SysRoleUser implements Serializable {
     private Long originalUserId;
 
     @Schema(description = "应用编码")
-    private String appCode;
+    private String projectNo;
 
     @Schema(description = "是否当前用户 0否 1是")
     private Integer currentFlag;

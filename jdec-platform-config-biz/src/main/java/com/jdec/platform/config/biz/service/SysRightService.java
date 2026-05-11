@@ -16,8 +16,7 @@ import com.jdec.platform.config.biz.mapper.SysDataPermissionTypeMapper;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRightMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -49,8 +48,8 @@ public class SysRightService implements SysRightApi {
             if (entity.getPid() == null) {
                 entity.setPid(0L);
             }
-            entity.setSubjectId(SubjectContext.get());
-            entity.setAppCode(AppCodeContext.get());
+            entity.setSubjectId(AppContext.getSubjectId());
+            entity.setProjectNo(AppContext.getProjectNo());
             sysRightMapper.insert(entity);
         } else {
             // 编辑
@@ -58,8 +57,8 @@ public class SysRightService implements SysRightApi {
                     sysRightMapper.selectOne(
                             Wrappers.<SysRight>lambdaQuery()
                                     .eq(SysRight::getId, req.getId())
-                                    .eq(SysRight::getSubjectId, SubjectContext.get())
-                                    .eq(SysRight::getAppCode, AppCodeContext.get()));
+                                    .eq(SysRight::getSubjectId, AppContext.getSubjectId())
+                                    .eq(SysRight::getProjectNo, AppContext.getProjectNo()));
             if (entity == null) {
                 throw new BusinessException("权限节点不存在");
             }
@@ -83,13 +82,13 @@ public class SysRightService implements SysRightApi {
                 sysRightMapper.exists(
                         Wrappers.<SysRight>lambdaQuery()
                                 .eq(SysRight::getId, id)
-                                .eq(SysRight::getSubjectId, SubjectContext.get())
-                                .eq(SysRight::getAppCode, AppCodeContext.get()));
+                                .eq(SysRight::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysRight::getProjectNo, AppContext.getProjectNo()));
         if (!exists) {
             throw new BusinessException("权限节点不存在");
         }
         // 级联删除所有子节点
-        Set<Long> ids = collectChildrenIds(id, SubjectContext.get());
+        Set<Long> ids = collectChildrenIds(id, AppContext.getSubjectId());
         ids.add(id);
         sysRightMapper.deleteByIds(ids);
     }
@@ -99,7 +98,7 @@ public class SysRightService implements SysRightApi {
         List<SysRight> list =
                 sysRightMapper.selectList(
                         new LambdaQueryWrapper<SysRight>()
-                                .eq(SysRight::getAppCode, AppCodeContext.get())
+                                .eq(SysRight::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysRight::getPid, 0L)
                                 .eq(nodeType != null, SysRight::getNodeType, nodeType)
                                 .orderByAsc(SysRight::getId));
@@ -123,8 +122,8 @@ public class SysRightService implements SysRightApi {
         LambdaQueryWrapper<SysDataPermissionType> dataPermissionWrapper =
                 new LambdaQueryWrapper<>();
         dataPermissionWrapper
-                .eq(SysDataPermissionType::getAppCode, AppCodeContext.get())
-                .eq(SysDataPermissionType::getSubjectId, SubjectContext.get())
+                .eq(SysDataPermissionType::getProjectNo, AppContext.getProjectNo())
+                .eq(SysDataPermissionType::getSubjectId, AppContext.getSubjectId())
                 .like(
                         StringUtils.hasText(req.getRightName()),
                         SysDataPermissionType::getName,
@@ -148,8 +147,8 @@ public class SysRightService implements SysRightApi {
         LambdaQueryWrapper<SysInteractionPermission> interactionWrapper =
                 new LambdaQueryWrapper<>();
         interactionWrapper
-                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get())
-                .eq(SysInteractionPermission::getSubjectId, SubjectContext.get())
+                .eq(SysInteractionPermission::getProjectNo, AppContext.getProjectNo())
+                .eq(SysInteractionPermission::getSubjectId, AppContext.getSubjectId())
                 .like(
                         StringUtils.hasText(req.getRightName()),
                         SysInteractionPermission::getName,
@@ -193,8 +192,8 @@ public class SysRightService implements SysRightApi {
         // 3. 查询特殊权限（nodeType = 3）
         LambdaQueryWrapper<SysSpecialPermission> specialWrapper = new LambdaQueryWrapper<>();
         specialWrapper
-                .eq(SysSpecialPermission::getAppCode, AppCodeContext.get())
-                .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
+                .eq(SysSpecialPermission::getProjectNo, AppContext.getProjectNo())
+                .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())
                 .like(
                         StringUtils.hasText(req.getRightName()),
                         SysSpecialPermission::getName,
@@ -225,7 +224,7 @@ public class SysRightService implements SysRightApi {
                         Wrappers.<SysRight>lambdaQuery()
                                 .eq(SysRight::getPid, parentId)
                                 .eq(SysRight::getSubjectId, subjectId)
-                                .eq(SysRight::getAppCode, AppCodeContext.get()));
+                                .eq(SysRight::getProjectNo, AppContext.getProjectNo()));
         for (SysRight child : children) {
             result.add(child.getId());
             result.addAll(collectChildrenIds(child.getId(), subjectId));

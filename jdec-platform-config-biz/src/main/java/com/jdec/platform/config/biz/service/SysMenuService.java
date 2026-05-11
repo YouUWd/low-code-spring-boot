@@ -8,8 +8,7 @@ import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -33,13 +32,13 @@ public class SysMenuService implements SysMenuApi {
 
     @Override
     public List<SysMenuTreeResp> tree(Integer category) {
-        String appCode = AppCodeContext.get();
+        String projectNo = AppContext.getProjectNo();
         List<SysMenu> list =
                 sysMenuMapper.selectList(
                         new LambdaQueryWrapper<SysMenu>()
                                 .eq(SysMenu::getCategory, category)
-                                .eq(SysMenu::getSubjectId, SubjectContext.get())
-                                .eq(SysMenu::getAppCode, appCode)
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, projectNo)
                                 .orderByAsc(SysMenu::getSortOrder)
                                 .orderByAsc(SysMenu::getId));
         if (CollectionUtils.isEmpty(list)) {
@@ -86,9 +85,10 @@ public class SysMenuService implements SysMenuApi {
             // 新增
             SysMenu entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
-            entity.setAppCode(AppCodeContext.get());
+            entity.setProjectNo(AppContext.getProjectNo());
             // 校验同级名称是否重复（按父级、分类、主体、应用隔离）
-            checkDuplicateTitle(pid, req.getCategory(), req.getTitle(), SubjectContext.get(), null);
+            checkDuplicateTitle(
+                    pid, req.getCategory(), req.getTitle(), AppContext.getSubjectId(), null);
             sysMenuMapper.insert(entity);
         } else {
             // 编辑
@@ -96,8 +96,8 @@ public class SysMenuService implements SysMenuApi {
                     sysMenuMapper.exists(
                             Wrappers.<SysMenu>lambdaQuery()
                                     .eq(SysMenu::getId, req.getId())
-                                    .eq(SysMenu::getSubjectId, SubjectContext.get())
-                                    .eq(SysMenu::getAppCode, AppCodeContext.get()));
+                                    .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                    .eq(SysMenu::getProjectNo, AppContext.getProjectNo()));
             if (!exists) {
                 throw new BusinessException("菜单不存在");
             }
@@ -107,11 +107,11 @@ public class SysMenuService implements SysMenuApi {
             }
             // 校验是否形成了环（不能把自己子节点设为父节点）
             if (!pid.equals(ROOT_PID)) {
-                checkCycle(req.getId(), pid, SubjectContext.get());
+                checkCycle(req.getId(), pid, AppContext.getSubjectId());
             }
             // 校验同级名称是否重复
             checkDuplicateTitle(
-                    pid, req.getCategory(), req.getTitle(), SubjectContext.get(), req.getId());
+                    pid, req.getCategory(), req.getTitle(), AppContext.getSubjectId(), req.getId());
 
             SysMenu entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
@@ -122,18 +122,18 @@ public class SysMenuService implements SysMenuApi {
     @Transactional
     @Override
     public void deleteMenu(Long id) {
-        String appCode = AppCodeContext.get();
+        String projectNo = AppContext.getProjectNo();
         boolean exists =
                 sysMenuMapper.exists(
                         Wrappers.<SysMenu>lambdaQuery()
                                 .eq(SysMenu::getId, id)
-                                .eq(SysMenu::getSubjectId, SubjectContext.get())
-                                .eq(SysMenu::getAppCode, appCode));
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, projectNo));
         if (!exists) {
             throw new BusinessException("菜单不存在");
         }
         // 级联删除所有子节点（同主体、同应用下）
-        Set<Long> ids = collectChildrenIds(id, SubjectContext.get(), appCode);
+        Set<Long> ids = collectChildrenIds(id, AppContext.getSubjectId(), projectNo);
         ids.add(id);
         sysMenuMapper.deleteByIds(ids);
     }
@@ -142,7 +142,7 @@ public class SysMenuService implements SysMenuApi {
     public void dragMenu(SysMenuDragReq req) {
         Long id = req.getId();
         Long targetPid = req.getTargetPid() == null ? ROOT_PID : req.getTargetPid();
-        String appCode = AppCodeContext.get();
+        String projectNo = AppContext.getProjectNo();
         if (id == null) {
             throw new BusinessException("节点ID不能为空");
         }
@@ -150,8 +150,8 @@ public class SysMenuService implements SysMenuApi {
                 sysMenuMapper.selectOne(
                         Wrappers.<SysMenu>lambdaQuery()
                                 .eq(SysMenu::getId, id)
-                                .eq(SysMenu::getSubjectId, SubjectContext.get())
-                                .eq(SysMenu::getAppCode, appCode));
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, projectNo));
         if (node == null) {
             throw new BusinessException("菜单不存在");
         }
@@ -161,13 +161,13 @@ public class SysMenuService implements SysMenuApi {
         }
         // 不能拖到自己的子节点下面（形成环）
         if (!targetPid.equals(ROOT_PID)) {
-            checkCycle(id, targetPid, SubjectContext.get());
+            checkCycle(id, targetPid, AppContext.getSubjectId());
             boolean exists =
                     sysMenuMapper.exists(
                             Wrappers.<SysMenu>lambdaQuery()
                                     .eq(SysMenu::getId, targetPid)
-                                    .eq(SysMenu::getSubjectId, SubjectContext.get())
-                                    .eq(SysMenu::getAppCode, appCode));
+                                    .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                    .eq(SysMenu::getProjectNo, projectNo));
             if (!exists) {
                 throw new BusinessException("目标父菜单不存在");
             }
@@ -178,7 +178,7 @@ public class SysMenuService implements SysMenuApi {
         }
         // 校验同级名称是否重复
         checkDuplicateTitle(
-                targetPid, node.getCategory(), node.getTitle(), SubjectContext.get(), id);
+                targetPid, node.getCategory(), node.getTitle(), AppContext.getSubjectId(), id);
 
         node.setPid(targetPid);
         sysMenuMapper.updateById(node);
@@ -187,14 +187,14 @@ public class SysMenuService implements SysMenuApi {
     /** 校验同级菜单名称是否重复 */
     private void checkDuplicateTitle(
             Long pid, Integer category, String title, Long subjectId, Long excludeId) {
-        String appCode = AppCodeContext.get();
+        String projectNo = AppContext.getProjectNo();
         LambdaQueryWrapper<SysMenu> wrapper =
                 new LambdaQueryWrapper<SysMenu>()
                         .eq(SysMenu::getPid, pid)
                         .eq(SysMenu::getCategory, category)
                         .eq(SysMenu::getTitle, title)
                         .eq(SysMenu::getSubjectId, subjectId)
-                        .eq(SysMenu::getAppCode, appCode);
+                        .eq(SysMenu::getProjectNo, projectNo);
         if (excludeId != null) {
             wrapper.ne(SysMenu::getId, excludeId);
         }
@@ -205,17 +205,17 @@ public class SysMenuService implements SysMenuApi {
     }
 
     /** 收集所有子节点ID（限定同主体、同应用） */
-    private Set<Long> collectChildrenIds(Long parentId, Long subjectId, String appCode) {
+    private Set<Long> collectChildrenIds(Long parentId, Long subjectId, String projectNo) {
         Set<Long> result = new HashSet<>();
         List<SysMenu> children =
                 sysMenuMapper.selectList(
                         Wrappers.<SysMenu>lambdaQuery()
                                 .eq(SysMenu::getPid, parentId)
                                 .eq(SysMenu::getSubjectId, subjectId)
-                                .eq(SysMenu::getAppCode, appCode));
+                                .eq(SysMenu::getProjectNo, projectNo));
         for (SysMenu child : children) {
             result.add(child.getId());
-            result.addAll(collectChildrenIds(child.getId(), subjectId, appCode));
+            result.addAll(collectChildrenIds(child.getId(), subjectId, projectNo));
         }
         return result;
     }
@@ -230,7 +230,7 @@ public class SysMenuService implements SysMenuApi {
                         Wrappers.<SysMenu>lambdaQuery()
                                 .eq(SysMenu::getPid, id)
                                 .eq(SysMenu::getSubjectId, subjectId)
-                                .eq(SysMenu::getAppCode, AppCodeContext.get()));
+                                .eq(SysMenu::getProjectNo, AppContext.getProjectNo()));
         for (SysMenu child : children) {
             checkCycle(child.getId(), targetPid, subjectId);
         }

@@ -12,8 +12,7 @@ import com.jdec.platform.config.api.dto.response.SysInteractionPermissionOptionR
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionResp;
 import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -42,8 +41,8 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             if (entity.getParentId() == null) {
                 entity.setParentId(0L);
             }
-            entity.setSubjectId(SubjectContext.get());
-            entity.setAppCode(AppCodeContext.get());
+            entity.setSubjectId(AppContext.getSubjectId());
+            entity.setProjectNo(AppContext.getProjectNo());
             sysInteractionPermissionMapper.insert(entity);
         } else {
             // 编辑
@@ -53,10 +52,10 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                     .eq(SysInteractionPermission::getId, req.getId())
                                     .eq(
                                             SysInteractionPermission::getSubjectId,
-                                            SubjectContext.get())
+                                            AppContext.getSubjectId())
                                     .eq(
-                                            SysInteractionPermission::getAppCode,
-                                            AppCodeContext.get()));
+                                            SysInteractionPermission::getProjectNo,
+                                            AppContext.getProjectNo()));
             if (entity == null) {
                 throw new BusinessException("交互权限不存在");
             }
@@ -80,13 +79,17 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                 sysInteractionPermissionMapper.exists(
                         Wrappers.<SysInteractionPermission>lambdaQuery()
                                 .eq(SysInteractionPermission::getId, id)
-                                .eq(SysInteractionPermission::getSubjectId, SubjectContext.get())
-                                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get()));
+                                .eq(
+                                        SysInteractionPermission::getSubjectId,
+                                        AppContext.getSubjectId())
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo()));
         if (!exists) {
             throw new BusinessException("交互权限不存在");
         }
         // 级联删除所有子节点
-        Set<Long> ids = collectChildrenIds(id, SubjectContext.get());
+        Set<Long> ids = collectChildrenIds(id, AppContext.getSubjectId());
         ids.add(id);
         sysInteractionPermissionMapper.deleteByIds(ids);
     }
@@ -96,8 +99,12 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         List<SysInteractionPermission> list =
                 sysInteractionPermissionMapper.selectList(
                         new LambdaQueryWrapper<SysInteractionPermission>()
-                                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get())
-                                .eq(SysInteractionPermission::getSubjectId, SubjectContext.get())
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo())
+                                .eq(
+                                        SysInteractionPermission::getSubjectId,
+                                        AppContext.getSubjectId())
                                 .eq(SysInteractionPermission::getParentId, 0L)
                                 .eq(SysInteractionPermission::getStatus, 1)
                                 .orderByAsc(SysInteractionPermission::getSort)
@@ -121,8 +128,12 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         List<SysInteractionPermission> list =
                 sysInteractionPermissionMapper.selectList(
                         new LambdaQueryWrapper<SysInteractionPermission>()
-                                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get())
-                                .eq(SysInteractionPermission::getSubjectId, SubjectContext.get())
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo())
+                                .eq(
+                                        SysInteractionPermission::getSubjectId,
+                                        AppContext.getSubjectId())
                                 .like(
                                         StringUtils.hasText(req.getName()),
                                         SysInteractionPermission::getName,
@@ -189,8 +200,12 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                 sysInteractionPermissionMapper.selectOne(
                         Wrappers.<SysInteractionPermission>lambdaQuery()
                                 .eq(SysInteractionPermission::getId, id)
-                                .eq(SysInteractionPermission::getSubjectId, SubjectContext.get())
-                                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get()));
+                                .eq(
+                                        SysInteractionPermission::getSubjectId,
+                                        AppContext.getSubjectId())
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo()));
         if (entity == null) {
             throw new BusinessException("交互权限不存在");
         }
@@ -202,7 +217,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         resp.setSort(entity.getSort());
         resp.setStatus(entity.getStatus());
         resp.setSubjectId(entity.getSubjectId());
-        resp.setAppCode(entity.getAppCode());
+        resp.setProjectNo(entity.getProjectNo());
         if (entity.getCreatedDate() != null) {
             resp.setCreatedDate(entity.getCreatedDate().toString());
         }
@@ -227,8 +242,12 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         List<SysInteractionPermission> allList =
                 sysInteractionPermissionMapper.selectList(
                         new LambdaQueryWrapper<SysInteractionPermission>()
-                                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get())
-                                .eq(SysInteractionPermission::getSubjectId, SubjectContext.get())
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo())
+                                .eq(
+                                        SysInteractionPermission::getSubjectId,
+                                        AppContext.getSubjectId())
                                 .orderByAsc(SysInteractionPermission::getSort)
                                 .orderByAsc(SysInteractionPermission::getId));
 
@@ -279,7 +298,9 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                         Wrappers.<SysInteractionPermission>lambdaQuery()
                                 .eq(SysInteractionPermission::getParentId, parentId)
                                 .eq(SysInteractionPermission::getSubjectId, subjectId)
-                                .eq(SysInteractionPermission::getAppCode, AppCodeContext.get()));
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo()));
         for (SysInteractionPermission child : children) {
             result.add(child.getId());
             result.addAll(collectChildrenIds(child.getId(), subjectId));

@@ -9,8 +9,7 @@ import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
 import com.jdec.platform.config.biz.entity.SysSpecialPermission;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -38,16 +37,20 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
                     sysSpecialPermissionMapper.exists(
                             Wrappers.<SysSpecialPermission>lambdaQuery()
                                     .eq(SysSpecialPermission::getCode, req.getCode())
-                                    .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
-                                    .eq(SysSpecialPermission::getAppCode, AppCodeContext.get()));
+                                    .eq(
+                                            SysSpecialPermission::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysSpecialPermission::getProjectNo,
+                                            AppContext.getProjectNo()));
             if (exists) {
                 throw new BusinessException("权限编码已存在");
             }
             // 新增
             SysSpecialPermission entity = new SysSpecialPermission();
             BeanUtils.copyProperties(req, entity);
-            entity.setSubjectId(SubjectContext.get());
-            entity.setAppCode(AppCodeContext.get());
+            entity.setSubjectId(AppContext.getSubjectId());
+            entity.setProjectNo(AppContext.getProjectNo());
             sysSpecialPermissionMapper.insert(entity);
         } else {
             // 编辑
@@ -55,8 +58,12 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
                     sysSpecialPermissionMapper.selectOne(
                             Wrappers.<SysSpecialPermission>lambdaQuery()
                                     .eq(SysSpecialPermission::getId, req.getId())
-                                    .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
-                                    .eq(SysSpecialPermission::getAppCode, AppCodeContext.get()));
+                                    .eq(
+                                            SysSpecialPermission::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysSpecialPermission::getProjectNo,
+                                            AppContext.getProjectNo()));
             if (entity == null) {
                 throw new BusinessException("特殊权限不存在");
             }
@@ -69,10 +76,10 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
                                         .ne(SysSpecialPermission::getId, req.getId())
                                         .eq(
                                                 SysSpecialPermission::getSubjectId,
-                                                SubjectContext.get())
+                                                AppContext.getSubjectId())
                                         .eq(
-                                                SysSpecialPermission::getAppCode,
-                                                AppCodeContext.get()));
+                                                SysSpecialPermission::getProjectNo,
+                                                AppContext.getProjectNo()));
                 if (exists) {
                     throw new BusinessException("权限编码已存在");
                 }
@@ -93,8 +100,8 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
                 sysSpecialPermissionMapper.exists(
                         Wrappers.<SysSpecialPermission>lambdaQuery()
                                 .eq(SysSpecialPermission::getId, id)
-                                .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
-                                .eq(SysSpecialPermission::getAppCode, AppCodeContext.get()));
+                                .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysSpecialPermission::getProjectNo, AppContext.getProjectNo()));
         if (!exists) {
             throw new BusinessException("特殊权限不存在");
         }
@@ -106,8 +113,8 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
         List<SysSpecialPermission> list =
                 sysSpecialPermissionMapper.selectList(
                         new LambdaQueryWrapper<SysSpecialPermission>()
-                                .eq(SysSpecialPermission::getAppCode, AppCodeContext.get())
-                                .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
+                                .eq(SysSpecialPermission::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysSpecialPermission::getStatus, 1)
                                 .orderByAsc(SysSpecialPermission::getSort)
                                 .orderByAsc(SysSpecialPermission::getId));
@@ -129,8 +136,8 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
         List<SysSpecialPermission> list =
                 sysSpecialPermissionMapper.selectList(
                         new LambdaQueryWrapper<SysSpecialPermission>()
-                                .eq(SysSpecialPermission::getAppCode, AppCodeContext.get())
-                                .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
+                                .eq(SysSpecialPermission::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())
                                 .like(
                                         StringUtils.hasText(req.getName()),
                                         SysSpecialPermission::getName,
@@ -169,8 +176,8 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
                 sysSpecialPermissionMapper.selectOne(
                         Wrappers.<SysSpecialPermission>lambdaQuery()
                                 .eq(SysSpecialPermission::getId, id)
-                                .eq(SysSpecialPermission::getSubjectId, SubjectContext.get())
-                                .eq(SysSpecialPermission::getAppCode, AppCodeContext.get()));
+                                .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysSpecialPermission::getProjectNo, AppContext.getProjectNo()));
         if (entity == null) {
             throw new BusinessException("特殊权限不存在");
         }

@@ -1,6 +1,6 @@
 package com.jdec.platform.shared.context.interceptor;
 
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -9,16 +9,21 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 @Slf4j
 @Component
-public class SubjectInterceptor implements HandlerInterceptor {
+public class AppContextInterceptor implements HandlerInterceptor {
 
     private static final String SUBJECT_ID_HEADER = "subject-id";
+    private static final String PROJECT_NO_HEADER = "project-no";
 
     @Override
     public boolean preHandle(
             HttpServletRequest request, HttpServletResponse response, Object handler) {
         String subjectId = request.getHeader(SUBJECT_ID_HEADER);
         if (subjectId != null && !subjectId.isEmpty()) {
-            SubjectContext.set(Long.valueOf(subjectId));
+            AppContext.setSubjectId(Long.valueOf(subjectId));
+        }
+        String projectNo = request.getHeader(PROJECT_NO_HEADER);
+        if (projectNo != null && !projectNo.isEmpty()) {
+            AppContext.setProjectNo(projectNo);
         }
         return true;
     }
@@ -29,6 +34,6 @@ public class SubjectInterceptor implements HandlerInterceptor {
             HttpServletResponse response,
             Object handler,
             Exception ex) {
-        SubjectContext.remove();
+        AppContext.remove();
     }
 }

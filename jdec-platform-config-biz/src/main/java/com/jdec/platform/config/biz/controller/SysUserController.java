@@ -46,7 +46,7 @@ public class SysUserController {
     @GetMapping("/list")
     @Operation(
             summary = "查询用户列表",
-            description = "先查sys_role_user表根据appCode过滤拿到用户id，再查sys_user表获取用户数据")
+            description = "先查sys_role_user表根据projectNo过滤拿到用户id，再查sys_user表获取用户数据")
     public ApiResponse<List<SysUserPageResp>> getUserList() {
         return ApiResponse.success(sysUserApi.getUserList());
     }

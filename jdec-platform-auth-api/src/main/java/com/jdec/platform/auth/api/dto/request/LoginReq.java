@@ -17,6 +17,6 @@ public class LoginReq {
     @NotBlank(message = "验证码不能为空")
     private String code;
 
-    @Schema(description = "APP编码，默认 CONFIG")
-    private String appCode;
+    @Schema(description = "项目编号，默认 CONFIG")
+    private String projectNo;
 }

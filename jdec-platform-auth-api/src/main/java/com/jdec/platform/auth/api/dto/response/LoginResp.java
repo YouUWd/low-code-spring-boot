@@ -31,6 +31,6 @@ public class LoginResp {
     @Schema(description = "是否超级管理员")
     private Boolean superAdmin;
 
-    @Schema(description = "应用编码")
-    private String appCode;
+    @Schema(description = "项目编号")
+    private String projectNo;
 }

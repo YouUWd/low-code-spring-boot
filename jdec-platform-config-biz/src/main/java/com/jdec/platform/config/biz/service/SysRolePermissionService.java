@@ -30,8 +30,7 @@ import com.jdec.platform.config.biz.mapper.SysRoleInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -56,7 +55,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
 
     @Override
-    public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String appCode) {
+    public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
         // 查询角色菜单关联
         List<SysRoleMenu> roleMenus =
                 sysRoleMenuMapper.selectList(
@@ -74,7 +73,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                 new LambdaQueryWrapper<SysMenu>()
                         .in(SysMenu::getId, menuIds)
                         .eq(SysMenu::getSubjectId, subjectId)
-                        .eq(SysMenu::getAppCode, appCode);
+                        .eq(SysMenu::getProjectNo, projectNo);
         List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
 
         // 构建响应
@@ -107,8 +106,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                                         SysRoleMenu roleMenu = new SysRoleMenu();
                                         roleMenu.setRoleId(roleId);
                                         roleMenu.setMenuId(menuId);
-                                        roleMenu.setAppCode(AppCodeContext.get());
-                                        roleMenu.setSubjectId(SubjectContext.get());
+                                        roleMenu.setProjectNo(AppContext.getProjectNo());
+                                        roleMenu.setSubjectId(AppContext.getSubjectId());
                                         return roleMenu;
                                     })
                             .toList();

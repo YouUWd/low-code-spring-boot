@@ -21,8 +21,7 @@ import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.hr.api.bo.UserBO;
-import com.jdec.platform.shared.context.AppCodeContext;
-import com.jdec.platform.shared.context.SubjectContext;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.EffectiveTypeEnum;
@@ -50,17 +49,17 @@ public class SysRoleService implements SysRoleApi {
     private final DepartmentApi departmentApi;
 
     @Override
-    public Long getUserRoleCount(Long id, Long subjectId, String appCode) {
+    public Long getUserRoleCount(Long id, Long subjectId, String projectNo) {
         Long count =
                 sysRoleUserMapper.selectCount(
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getUserId, id)
-                                .eq(SysRoleUser::getAppCode, appCode));
+                                .eq(SysRoleUser::getProjectNo, projectNo));
         Long count1 =
                 sysRoleSubjectMapper.selectCount(
                         Wrappers.<SysRoleSubject>lambdaQuery()
                                 .eq(SysRoleSubject::getSubjectId, subjectId)
-                                .eq(SysRoleSubject::getAppCode, appCode));
+                                .eq(SysRoleSubject::getProjectNo, projectNo));
         return count + count1;
     }
 
@@ -194,7 +193,7 @@ public class SysRoleService implements SysRoleApi {
                     sysRoleUserMapper.selectList(
                             new LambdaQueryWrapper<SysRoleUser>()
                                     .eq(SysRoleUser::getRoleId, roleId)
-                                    .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                    .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
             previousUserIds =
                     previousRoleUsers.stream()
                             .map(SysRoleUser::getUserId)
@@ -219,12 +218,12 @@ public class SysRoleService implements SysRoleApi {
             sysRoleSubjectMapper.delete(
                     new LambdaQueryWrapper<SysRoleSubject>()
                             .eq(SysRoleSubject::getRoleId, roleId)
-                            .eq(SysRoleSubject::getAppCode, AppCodeContext.get()));
+                            .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
             // 删除角色-用户关联
             sysRoleUserMapper.delete(
                     new LambdaQueryWrapper<SysRoleUser>()
                             .eq(SysRoleUser::getRoleId, roleId)
-                            .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                            .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         }
 
         // 保存角色
@@ -232,7 +231,7 @@ public class SysRoleService implements SysRoleApi {
             SysRole role = new SysRole();
             role.setRoleName(request.getRoleName());
             role.setRoleSlug(request.getRoleName());
-            role.setAppCode(AppCodeContext.get());
+            role.setProjectNo(AppContext.getProjectNo());
             sysRoleMapper.insert(role);
             roleId = role.getId();
             request.setId(roleId);
@@ -277,7 +276,7 @@ public class SysRoleService implements SysRoleApi {
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getUserId, removeUPrefix(userId))
                                 .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         RoleUserTimeResp resp = new RoleUserTimeResp();
         resp.setUserId(userId);
         if (user != null) {
@@ -306,7 +305,7 @@ public class SysRoleService implements SysRoleApi {
     public PageResult<RoleConfigPageResp> getRoleConfigPage(QueryRoleConfigPageReq query) {
         Page<SysRole> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysRole::getAppCode, AppCodeContext.get());
+        wrapper.eq(SysRole::getProjectNo, AppContext.getProjectNo());
         IPage<SysRole> rolePage = sysRoleMapper.selectPage(page, wrapper);
 
         List<RoleConfigPageResp> respList =
@@ -325,8 +324,8 @@ public class SysRoleService implements SysRoleApi {
                                                                     SysRoleUser::getRoleId,
                                                                     role.getId())
                                                             .eq(
-                                                                    SysRoleUser::getAppCode,
-                                                                    AppCodeContext.get()));
+                                                                    SysRoleUser::getProjectNo,
+                                                                    AppContext.getProjectNo()));
 
                                     // 填充用户列表
                                     List<RoleUserResp> userList = buildUserList(roleUsers);
@@ -340,8 +339,8 @@ public class SysRoleService implements SysRoleApi {
                                                                     SysRoleSubject::getRoleId,
                                                                     role.getId())
                                                             .eq(
-                                                                    SysRoleSubject::getAppCode,
-                                                                    AppCodeContext.get()));
+                                                                    SysRoleSubject::getProjectNo,
+                                                                    AppContext.getProjectNo()));
                                     // 填充主体列表
                                     List<RoleSubjectResp> subjectList = buildSubjectList(subjects);
                                     resp.setSubjectList(subjectList);
@@ -386,7 +385,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleSubjectMapper.selectList(
                         Wrappers.<SysRoleSubject>lambdaQuery()
                                 .eq(SysRoleSubject::getRoleId, roleId)
-                                .eq(SysRoleSubject::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
         if (CollUtil.isNotEmpty(subjectList)) {
             List<Long> subjectIds = subjectList.stream().map(SysRoleSubject::getSubjectId).toList();
             resp.setEffectiveStartDate(subjectList.getFirst().getEffectiveStartDate());
@@ -398,7 +397,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectList(
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         if (CollUtil.isNotEmpty(userList)) {
             List<Long> userIds = userList.stream().map(SysRoleUser::getUserId).toList();
             List<SysUser> users =
@@ -421,7 +420,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectList(
                         new LambdaQueryWrapper<SysRoleUser>()
                                 .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         Set<Long> userIds =
                 roleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toSet());
 
@@ -429,13 +428,13 @@ public class SysRoleService implements SysRoleApi {
         sysRoleSubjectMapper.delete(
                 new LambdaQueryWrapper<SysRoleSubject>()
                         .eq(SysRoleSubject::getRoleId, roleId)
-                        .eq(SysRoleSubject::getAppCode, AppCodeContext.get()));
+                        .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
 
         // 3. 删除角色用户关联 (sys_role_user)
         sysRoleUserMapper.delete(
                 new LambdaQueryWrapper<SysRoleUser>()
                         .eq(SysRoleUser::getRoleId, roleId)
-                        .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                        .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
 
         // 4. 对于每个用户，检查是否还关联其他角色，如果没有则删除sys_user记录
         if (!userIds.isEmpty()) {
@@ -465,8 +464,8 @@ public class SysRoleService implements SysRoleApi {
         List<SysRole> sysRoles =
                 sysRoleMapper.selectList(
                         Wrappers.<SysRole>lambdaQuery()
-                                .eq(SysRole::getAppCode, AppCodeContext.get())
-                                .eq(SysRole::getSubjectId, SubjectContext.get()));
+                                .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysRole::getSubjectId, AppContext.getSubjectId()));
         return BeanUtil.copyToList(sysRoles, RoleListResp.class);
     }
 
@@ -525,7 +524,9 @@ public class SysRoleService implements SysRoleApi {
                     sysRoleUserMapper.selectCount(
                                     new LambdaQueryWrapper<SysRoleUser>()
                                             .eq(SysRoleUser::getUserId, userId)
-                                            .eq(SysRoleUser::getAppCode, AppCodeContext.get()))
+                                            .eq(
+                                                    SysRoleUser::getProjectNo,
+                                                    AppContext.getProjectNo()))
                             > 0;
 
             if (!hasOtherRole) {
@@ -597,7 +598,7 @@ public class SysRoleService implements SysRoleApi {
         ru.setEffectiveStartDate(request.getEffectiveStartDate());
         ru.setEffectiveEndDate(request.getEffectiveEndDate());
         ru.setEffectiveType(request.getEffectiveType());
-        ru.setAppCode(AppCodeContext.get());
+        ru.setProjectNo(AppContext.getProjectNo());
         return ru;
     }
 
@@ -740,7 +741,7 @@ public class SysRoleService implements SysRoleApi {
                         new LambdaQueryWrapper<SysRoleSubject>()
                                 .eq(SysRoleSubject::getRoleId, roleId)
                                 .eq(SysRoleSubject::getSubjectId, subjectId)
-                                .eq(SysRoleSubject::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
 
         SysRoleSubject subject = new SysRoleSubject();
         subject.setRoleId(roleId);
@@ -749,7 +750,7 @@ public class SysRoleService implements SysRoleApi {
         subject.setEffectiveStartDate(request.getEffectiveStartDate());
         subject.setEffectiveEndDate(request.getEffectiveEndDate());
         subject.setEffectiveType(request.getEffectiveType());
-        subject.setAppCode(AppCodeContext.get());
+        subject.setProjectNo(AppContext.getProjectNo());
         if (old == null) {
             sysRoleSubjectMapper.insert(subject);
         } else {
@@ -766,7 +767,7 @@ public class SysRoleService implements SysRoleApi {
                         new LambdaQueryWrapper<SysRoleUser>()
                                 .eq(SysRoleUser::getRoleId, roleId)
                                 .in(SysRoleUser::getUserId, userIds)
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
 
         if (existing.isEmpty()) {
             return false;
@@ -792,7 +793,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectList(
                         new LambdaQueryWrapper<SysRoleUser>()
                                 .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         boolean userCustom =
                 roleUsers.stream()
                         .anyMatch(
@@ -805,7 +806,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleSubjectMapper.selectList(
                         new LambdaQueryWrapper<SysRoleSubject>()
                                 .eq(SysRoleSubject::getRoleId, roleId)
-                                .eq(SysRoleSubject::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
         boolean subjectCustom =
                 subjects.stream()
                         .anyMatch(
@@ -824,7 +825,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectList(
                         new LambdaQueryWrapper<SysRoleUser>()
                                 .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
 
         if (roleUsers.isEmpty()) {
             return Collections.emptyList();
@@ -848,7 +849,7 @@ public class SysRoleService implements SysRoleApi {
                 new LambdaQueryWrapper<SysRoleUser>()
                         .in(SysRoleUser::getUserId, userIds)
                         .eq(SysRoleUser::getEffectiveType, EffectiveTypeEnum.CUSTOM.getCode())
-                        .eq(SysRoleUser::getAppCode, AppCodeContext.get());
+                        .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo());
         if (currentRoleId != null) {
             wrapper.ne(SysRoleUser::getRoleId, currentRoleId);
         }
@@ -862,7 +863,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectList(
                         new LambdaQueryWrapper<SysRoleUser>()
                                 .in(SysRoleUser::getUserId, userIds)
-                                .eq(SysRoleUser::getAppCode, AppCodeContext.get()));
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
 
         if (boundUsers.isEmpty()) {
             return Collections.emptyList();

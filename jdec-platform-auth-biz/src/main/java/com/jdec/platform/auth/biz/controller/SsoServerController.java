@@ -53,12 +53,12 @@ public class SsoServerController {
         }
     }
 
-    /** todo: 获取SSO登录页应用信息 前端登录页初始化时调用，根据 appCode 展示应用信息 */
+    /** todo: 获取SSO登录页应用信息 前端登录页初始化时调用，根据 projectNo 展示应用信息 */
     /*    @GetMapping("/appInfo")
     @Operation(summary = "获取SSO登录页应用信息")
-    public ApiResponse<SsoAppInfoVO> getAppInfo(@RequestParam(name = "appCode", required = false,
-            defaultValue = "SYSTEM") String appCode) {
-        SsoAppInfoVO vo = sysAppService.getSsoAppInfo(appCode);
+    public ApiResponse<SsoAppInfoVO> getAppInfo(@RequestParam(name = "projectNo", required = false,
+            defaultValue = "SYSTEM") String projectNo) {
+        SsoAppInfoVO vo = sysAppService.getSsoAppInfo(projectNo);
         return ApiResponse.success(vo);
     }*/
 
