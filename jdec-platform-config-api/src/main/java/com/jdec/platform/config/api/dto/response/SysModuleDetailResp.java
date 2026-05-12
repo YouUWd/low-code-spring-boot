@@ -2,6 +2,7 @@ package com.jdec.platform.config.api.dto.response;
 
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.Data;
 
 /** 模块详情响应 DTO 用于详情页面，包含完整信息 */
@@ -48,7 +49,7 @@ public class SysModuleDetailResp {
     private Integer sortOrder;
 
     /** 列表表头配置（JSON格式） */
-    private String tableHeader;
+    private List<SysModuleCompleteResp.TableHeaderColumnInfo> tableHeader;
 
     /** 版本号 */
     private Integer version;

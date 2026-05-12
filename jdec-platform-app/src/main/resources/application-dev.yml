@@ -132,3 +132,11 @@ wechat:
         agent-id: 1000002
         token: energy-work-dev
         aes-key: ''
+
+# ----- OSS 存储配置 (开发环境: MinIO) -----
+oss:
+  endpoint: http://192.168.60.8:9001
+  access-key: ufFEFflFsvqXBbj5ow5i
+  secret-key: 26rjzhZUKJ5vrIjy2rg6oTimKBPwJI2rsnUwem6D
+  bucket-name: jdec-platform
+  path-style-access: true

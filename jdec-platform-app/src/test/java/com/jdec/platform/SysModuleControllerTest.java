@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.dto.request.*;
+import com.jdec.platform.config.api.dto.request.SaveModuleReq.SaveSysModuleReq;
 import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;

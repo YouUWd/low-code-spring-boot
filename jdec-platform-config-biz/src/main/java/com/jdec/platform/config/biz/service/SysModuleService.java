@@ -3,12 +3,14 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
-import com.jdec.platform.config.api.dto.request.SaveSysModuleReq;
+import com.jdec.platform.config.api.dto.request.SaveModuleReq.SaveSysModuleReq;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp.TableHeaderColumnInfo;
 import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
@@ -31,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -46,6 +49,7 @@ import org.springframework.util.CollectionUtils;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysModuleService implements SysModuleApi {
 
@@ -133,7 +137,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setModuleStatus(module.getModuleStatus());
         moduleInfo.setLeafFlag(module.getLeafFlag());
         moduleInfo.setSortOrder(module.getSortOrder());
-        moduleInfo.setTableHeader(module.getTableHeader());
+        moduleInfo.setTableHeader(parseTableHeader(module.getTableHeader()));
         moduleInfo.setCreatedBy(module.getCreatedBy());
         moduleInfo.setCreatedDate(module.getCreatedDate());
         moduleInfo.setCreatedName(module.getCreatedName());
@@ -864,7 +868,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setModuleStatus(module.getModuleStatus());
         resp.setLeafFlag(module.getLeafFlag());
         resp.setSortOrder(module.getSortOrder());
-        resp.setTableHeader(module.getTableHeader());
+        resp.setTableHeader(parseTableHeader(module.getTableHeader()));
 
         resp.setCreatedBy(module.getCreatedBy());
         resp.setCreatedDate(module.getCreatedDate());
@@ -894,6 +898,20 @@ public class SysModuleService implements SysModuleApi {
         } catch (IllegalArgumentException e) {
             throw new BusinessException(
                     400, String.format("无效的模块类型: %s，允许的值为: LIST, DETAIL", moduleType), e);
+        }
+    }
+
+    /** 将表头 JSON 字符串解析为 List */
+    private List<TableHeaderColumnInfo> parseTableHeader(String tableHeaderJson) {
+        if (tableHeaderJson == null || tableHeaderJson.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            return objectMapper.readValue(
+                    tableHeaderJson, new TypeReference<List<TableHeaderColumnInfo>>() {});
+        } catch (Exception e) {
+            log.error("tableHeader 解析失败: {}", tableHeaderJson, e);
+            return new ArrayList<>();
         }
     }
 }
