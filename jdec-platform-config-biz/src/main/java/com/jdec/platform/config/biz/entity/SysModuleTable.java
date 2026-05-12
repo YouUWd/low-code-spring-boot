@@ -53,5 +53,4 @@ public class SysModuleTable {
 
     /** 更新人姓名 */
     private String updatedName;
-
 }

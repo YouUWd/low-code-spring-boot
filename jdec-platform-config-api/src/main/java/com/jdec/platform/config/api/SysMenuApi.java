@@ -18,11 +18,12 @@ public interface SysMenuApi {
     void saveMenu(SysMenuSaveReq req);
 
     /**
-     * 删除菜单（级联删除子节点）
+     * 删除菜单（级联删除子节点及角色关联）
      *
      * @param id 菜单ID
+     * @param force 是否强制删除。false 时若有子菜单或角色关联则抛出提示；true 时级联删除
      */
-    void deleteMenu(Long id);
+    void deleteMenu(Long id, boolean force);
 
     /** 拖拽菜单 */
     void dragMenu(SysMenuDragReq req);

@@ -72,5 +72,4 @@ public class SysModule {
 
     /** 更新人姓名 */
     private String updatedName;
-
 }

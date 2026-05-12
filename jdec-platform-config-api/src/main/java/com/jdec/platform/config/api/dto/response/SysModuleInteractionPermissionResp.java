@@ -21,9 +21,7 @@ public class SysModuleInteractionPermissionResp {
     @Schema(description = "模块编码")
     private String moduleCode;
 
-    @Schema(
-            description = "交互权限类型（仅虚拟类型节点有值：1-申请 2-编辑 3-查看）",
-            nullable = true)
+    @Schema(description = "交互权限类型（仅虚拟类型节点有值：1-申请 2-编辑 3-查看）", nullable = true)
     private Integer type;
 
     @Schema(description = "该节点关联的交互权限列表（仅虚拟类型节点有值）", nullable = true)

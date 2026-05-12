@@ -31,14 +31,6 @@ public class SysSpecialPermission implements Serializable {
     @Schema(description = "状态 1:启用 0:禁用")
     private Integer status;
 
-    @Schema(description = "创建时间")
-    @TableField(fill = FieldFill.INSERT)
-    private LocalDateTime createdAt;
-
-    @Schema(description = "更新时间")
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private LocalDateTime updatedAt;
-
     @Schema(description = "所属主体")
     private Long subjectId;
 
@@ -66,5 +58,4 @@ public class SysSpecialPermission implements Serializable {
     @Schema(description = "更改时间")
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedDate;
-
 }

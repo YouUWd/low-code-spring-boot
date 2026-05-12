@@ -14,8 +14,13 @@ public interface SysInteractionPermissionApi {
     /** 新增/编辑交互权限 */
     void saveInteractionPermission(SysInteractionPermissionSaveReq req);
 
-    /** 删除交互权限 */
-    void deleteInteractionPermission(Long id);
+    /**
+     * 删除交互权限
+     *
+     * @param id 交互权限ID
+     * @param force 是否强制删除。false 时若有角色关联则抛出提示；true 时级联删除
+     */
+    void deleteInteractionPermission(Long id, boolean force);
 
     /** 查询交互权限列表 */
     List<SysInteractionPermissionListResp> listInteractionPermission(

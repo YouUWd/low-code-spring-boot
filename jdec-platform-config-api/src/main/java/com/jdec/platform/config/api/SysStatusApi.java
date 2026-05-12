@@ -13,8 +13,14 @@ public interface SysStatusApi {
     /** 新增/编辑状态 */
     void saveStatus(SysStatusSaveReq req);
 
-    /** 删除状态（级联删除子节点） */
-    void deleteStatus(Long id, Long subjectId);
+    /**
+     * 删除状态（级联删除子节点）
+     *
+     * @param id 状态ID
+     * @param subjectId 主体ID
+     * @param force 是否强制删除。false 时若有子状态则抛出提示；true 时级联删除
+     */
+    void deleteStatus(Long id, Long subjectId, boolean force);
 
     /** 拖拽状态 */
     void dragStatus(SysStatusDragReq req);

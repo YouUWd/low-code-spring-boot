@@ -11,8 +11,10 @@ import com.jdec.platform.config.api.dto.response.SysInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysModuleInteractionPermissionResp;
 import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysModule;
+import com.jdec.platform.config.biz.entity.SysRoleInteractionPermission;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleInteractionPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -36,6 +38,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
     private final SysModuleMapper sysModuleMapper;
+    private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
 
     @Transactional
     @Override
@@ -73,7 +76,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     @Transactional
     @Override
-    public void deleteInteractionPermission(Long id) {
+    public void deleteInteractionPermission(Long id, boolean force) {
         boolean exists =
                 sysInteractionPermissionMapper.exists(
                         Wrappers.<SysInteractionPermission>lambdaQuery()
@@ -87,6 +90,19 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         if (!exists) {
             throw new BusinessException("交互权限不存在");
         }
+        // 查询角色关联数量
+        long roleCount =
+                sysRoleInteractionPermissionMapper.selectCount(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(SysRoleInteractionPermission::getPermissionId, id));
+        if (!force && roleCount > 0) {
+            throw new BusinessException(
+                    "删除确认：该交互权限已被 " + roleCount + " 个角色授权引用，删除后相关授权将被同步清除，请确认后携带 force=true 重新请求");
+        }
+        // 级联删除角色-交互权限关联
+        sysRoleInteractionPermissionMapper.delete(
+                Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                        .eq(SysRoleInteractionPermission::getPermissionId, id));
         sysInteractionPermissionMapper.deleteById(id);
     }
 
@@ -222,8 +238,12 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         List<SysInteractionPermission> allPermissions =
                 sysInteractionPermissionMapper.selectList(
                         new LambdaQueryWrapper<SysInteractionPermission>()
-                                .eq(SysInteractionPermission::getProjectNo, AppContext.getProjectNo())
-                                .eq(SysInteractionPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(
+                                        SysInteractionPermission::getProjectNo,
+                                        AppContext.getProjectNo())
+                                .eq(
+                                        SysInteractionPermission::getSubjectId,
+                                        AppContext.getSubjectId())
                                 .orderByAsc(SysInteractionPermission::getSort)
                                 .orderByAsc(SysInteractionPermission::getId));
 
@@ -257,8 +277,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
     }
 
     private static final List<Integer> INTERACTION_TYPES = Arrays.asList(1, 2, 3);
-    private static final Map<Integer, String> TYPE_LABEL =
-            Map.of(1, "申请", 2, "编辑", 3, "查看");
+    private static final Map<Integer, String> TYPE_LABEL = Map.of(1, "申请", 2, "编辑", 3, "查看");
 
     private List<SysModuleInteractionPermissionResp> buildModuleTree(
             Map<Long, List<SysModule>> modulesByParent,

@@ -12,8 +12,13 @@ public interface SysSpecialPermissionApi {
     /** 新增/编辑特殊权限 */
     void saveSpecialPermission(SysSpecialPermissionSaveReq req);
 
-    /** 删除特殊权限 */
-    void deleteSpecialPermission(Long id);
+    /**
+     * 删除特殊权限
+     *
+     * @param id 特殊权限ID
+     * @param force 是否强制删除。false 时若有角色关联则抛出提示；true 时级联删除
+     */
+    void deleteSpecialPermission(Long id, boolean force);
 
     /** 查询特殊权限下拉列表 */
     List<SysSpecialPermissionOptionResp> listSpecialPermissionOptions();

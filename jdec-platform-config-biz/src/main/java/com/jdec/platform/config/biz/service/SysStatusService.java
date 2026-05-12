@@ -131,7 +131,7 @@ public class SysStatusService implements SysStatusApi {
 
     @Transactional
     @Override
-    public void deleteStatus(Long id, Long subjectId) {
+    public void deleteStatus(Long id, Long subjectId, boolean force) {
         if (subjectId == null) {
             subjectId = 0L;
         }
@@ -144,8 +144,14 @@ public class SysStatusService implements SysStatusApi {
         if (!exists) {
             throw new BusinessException("状态不存在");
         }
-        // 级联删除所有子节点
-        Set<Long> ids = collectChildrenIds(id, subjectId);
+        // 收集所有子节点ID
+        Set<Long> childIds = collectChildrenIds(id, subjectId);
+        int childCount = childIds.size();
+        if (!force && childCount > 0) {
+            throw new BusinessException(
+                    "删除确认：该状态下有 " + childCount + " 个子状态将被同步删除，请确认后携带 force=true 重新请求");
+        }
+        Set<Long> ids = new HashSet<>(childIds);
         ids.add(id);
         sysStatusMapper.deleteByIds(ids);
     }

@@ -33,10 +33,13 @@ public class SysInteractionPermissionController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除交互权限")
+    @Operation(summary = "删除交互权限", description = "force=false 时若有角色授权引用则返回提示；force=true 时级联删除角色关联")
     public ApiResponse<Void> delete(
-            @Parameter(description = "交互权限ID", example = "1") @PathVariable Long id) {
-        sysInteractionPermissionApi.deleteInteractionPermission(id);
+            @Parameter(description = "交互权限ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysInteractionPermissionApi.deleteInteractionPermission(id, force);
         return ApiResponse.success();
     }
 
@@ -61,9 +64,7 @@ public class SysInteractionPermissionController {
     }
 
     @GetMapping("/module-tree")
-    @Operation(
-            summary = "查询模块交互权限树",
-            description = "返回模块树，每个模块节点下按申请/编辑/查看三种类型展开，各类型携带对应的交互权限列表")
+    @Operation(summary = "查询模块交互权限树", description = "返回模块树，每个模块节点下按申请/编辑/查看三种类型展开，各类型携带对应的交互权限列表")
     public ApiResponse<List<SysModuleInteractionPermissionResp>>
             listModuleInteractionPermissionTree() {
         return ApiResponse.success(
