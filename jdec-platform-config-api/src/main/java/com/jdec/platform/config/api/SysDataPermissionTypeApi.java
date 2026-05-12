@@ -12,8 +12,13 @@ public interface SysDataPermissionTypeApi {
     /** 新增/编辑数据权限类型 */
     void saveDataPermissionType(SysDataPermissionTypeSaveReq req);
 
-    /** 删除数据权限类型 */
-    void deleteDataPermissionType(Long id);
+    /**
+     * 删除数据权限类型
+     *
+     * @param id 数据权限类型ID
+     * @param force 是否强制删除。false 时若有角色关联则抛出提示；true 时级联删除
+     */
+    void deleteDataPermissionType(Long id, boolean force);
 
     /** 查询数据权限类型下拉列表 */
     List<SysDataPermissionTypeOptionResp> listDataPermissionTypeOptions();

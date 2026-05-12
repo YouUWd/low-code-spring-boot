@@ -8,8 +8,12 @@ import com.jdec.platform.config.api.dto.request.SysDataPermissionTypeSaveReq;
 import com.jdec.platform.config.api.dto.response.DataPermissionUserResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeResp;
+import com.jdec.platform.config.biz.entity.SysDataPermissionTarget;
 import com.jdec.platform.config.biz.entity.SysDataPermissionType;
+import com.jdec.platform.config.biz.entity.SysRoleDataPermission;
+import com.jdec.platform.config.biz.mapper.SysDataPermissionTargetMapper;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionTypeMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleDataPermissionMapper;
 import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.shared.context.AppContext;
@@ -33,6 +37,8 @@ import org.springframework.util.StringUtils;
 public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
 
     private final SysDataPermissionTypeMapper sysDataPermissionTypeMapper;
+    private final SysRoleDataPermissionMapper sysRoleDataPermissionMapper;
+    private final SysDataPermissionTargetMapper sysDataPermissionTargetMapper;
     private final UserApi userApi;
 
     @Override
@@ -92,7 +98,7 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
 
     @Transactional
     @Override
-    public void deleteDataPermissionType(Long id) {
+    public void deleteDataPermissionType(Long id, boolean force) {
         boolean exists =
                 sysDataPermissionTypeMapper.exists(
                         Wrappers.<SysDataPermissionType>lambdaQuery()
@@ -104,6 +110,39 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
         if (!exists) {
             throw new BusinessException("数据权限类型不存在");
         }
+        // 查询角色关联数量
+        long roleCount =
+                sysRoleDataPermissionMapper.selectCount(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(SysRoleDataPermission::getDataPermissionTypeId, id));
+        if (!force && roleCount > 0) {
+            throw new BusinessException(
+                    "删除确认：该数据权限类型已被 "
+                            + roleCount
+                            + " 个角色授权引用，删除后相关授权及其数据权限目标将被同步清除，请确认后携带 force=true 重新请求");
+        }
+        // 查出所有关联的 role_data_permission id
+        List<Long> roleDataPermissionIds =
+                sysRoleDataPermissionMapper
+                        .selectList(
+                                Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                        .eq(SysRoleDataPermission::getDataPermissionTypeId, id)
+                                        .select(SysRoleDataPermission::getId))
+                        .stream()
+                        .map(SysRoleDataPermission::getId)
+                        .collect(Collectors.toList());
+        // 级联删除 sys_data_permission_target
+        if (!roleDataPermissionIds.isEmpty()) {
+            sysDataPermissionTargetMapper.delete(
+                    Wrappers.<SysDataPermissionTarget>lambdaQuery()
+                            .in(
+                                    SysDataPermissionTarget::getRoleDataPermissionId,
+                                    roleDataPermissionIds));
+        }
+        // 级联删除 sys_role_data_permission
+        sysRoleDataPermissionMapper.delete(
+                Wrappers.<SysRoleDataPermission>lambdaQuery()
+                        .eq(SysRoleDataPermission::getDataPermissionTypeId, id));
         sysDataPermissionTypeMapper.deleteById(id);
     }
 
@@ -155,7 +194,7 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
             return new ArrayList<>();
         }
         // todo: 有了登录以后，替换成登录用户的主体id
-        Long subjectId = AppContext.getSubjectId();
+        Long subjectId = 1L;
         return list.stream()
                 .map(
                         type -> {

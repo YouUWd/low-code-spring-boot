@@ -5,8 +5,8 @@ import com.jdec.platform.config.api.dto.request.QuerySysInteractionPermissionReq
 import com.jdec.platform.config.api.dto.request.SysInteractionPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionDetailResp;
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionListResp;
-import com.jdec.platform.config.api.dto.response.SysInteractionPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionResp;
+import com.jdec.platform.config.api.dto.response.SysModuleInteractionPermissionResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -33,37 +33,41 @@ public class SysInteractionPermissionController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除交互权限", description = "删除指定交互权限及其所有子节点")
+    @Operation(summary = "删除交互权限", description = "force=false 时若有角色授权引用则返回提示；force=true 时级联删除角色关联")
     public ApiResponse<Void> delete(
-            @Parameter(description = "交互权限ID", example = "1") @PathVariable Long id) {
-        sysInteractionPermissionApi.deleteInteractionPermission(id);
+            @Parameter(description = "交互权限ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysInteractionPermissionApi.deleteInteractionPermission(id, force);
         return ApiResponse.success();
     }
 
-    @GetMapping("/parent/options")
-    @Operation(summary = "查询父级交互权限下拉列表", description = "查询所有顶级交互权限")
-    public ApiResponse<List<SysInteractionPermissionOptionResp>> listParentOptions() {
-        return ApiResponse.success(
-                sysInteractionPermissionApi.listParentInteractionPermissionOptions());
-    }
-
     @GetMapping("/list")
-    @Operation(summary = "查询交互权限列表", description = "支持交互权限名称、编码、状态过滤")
+    @Operation(summary = "查询交互权限列表", description = "支持交互权限名称、编码、状态、类型过滤")
     public ApiResponse<List<SysInteractionPermissionListResp>> listInteractionPermission(
             QuerySysInteractionPermissionReq request) {
         return ApiResponse.success(sysInteractionPermissionApi.listInteractionPermission(request));
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "查询交互权限详情", description = "查询指定交互权限详情")
+    @Operation(summary = "查询交互权限详情")
     public ApiResponse<SysInteractionPermissionDetailResp> getInteractionPermission(
             @Parameter(description = "交互权限ID", example = "1") @PathVariable Long id) {
         return ApiResponse.success(sysInteractionPermissionApi.getInteractionPermission(id));
     }
 
-    @GetMapping("/tree")
-    @Operation(summary = "查询交互权限树形结构", description = "查询所有交互权限并构建树形结构")
-    public ApiResponse<List<SysInteractionPermissionResp>> listInteractionPermissionTree() {
-        return ApiResponse.success(sysInteractionPermissionApi.listInteractionPermissionTree());
+    @GetMapping("/all")
+    @Operation(summary = "查询所有交互权限（扁平化）")
+    public ApiResponse<List<SysInteractionPermissionResp>> listAllInteractionPermissions() {
+        return ApiResponse.success(sysInteractionPermissionApi.listAllInteractionPermissions());
+    }
+
+    @GetMapping("/module-tree")
+    @Operation(summary = "查询模块交互权限树", description = "返回模块树，每个模块节点下按申请/编辑/查看三种类型展开，各类型携带对应的交互权限列表")
+    public ApiResponse<List<SysModuleInteractionPermissionResp>>
+            listModuleInteractionPermissionTree() {
+        return ApiResponse.success(
+                sysInteractionPermissionApi.listModuleInteractionPermissionTree());
     }
 }

@@ -21,7 +21,6 @@ public class SysDataPermissionTypeSaveReq {
     private String name;
 
     @Schema(description = "是否有目标", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "是否有目标不能为空")
     private Integer hasTarget;
 
     @Schema(description = "类型描述")

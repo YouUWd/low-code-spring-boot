@@ -7,7 +7,9 @@ import com.jdec.platform.config.api.dto.request.QuerySysSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysSpecialPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
+import com.jdec.platform.config.biz.entity.SysRoleSpecialPermission;
 import com.jdec.platform.config.biz.entity.SysSpecialPermission;
+import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -28,6 +30,7 @@ import org.springframework.util.StringUtils;
 public class SysSpecialPermissionService implements SysSpecialPermissionApi {
 
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
+    private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
 
     @Override
     public void saveSpecialPermission(SysSpecialPermissionSaveReq req) {
@@ -95,7 +98,7 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
 
     @Transactional
     @Override
-    public void deleteSpecialPermission(Long id) {
+    public void deleteSpecialPermission(Long id, boolean force) {
         boolean exists =
                 sysSpecialPermissionMapper.exists(
                         Wrappers.<SysSpecialPermission>lambdaQuery()
@@ -105,6 +108,19 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
         if (!exists) {
             throw new BusinessException("特殊权限不存在");
         }
+        // 查询角色关联数量
+        long roleCount =
+                sysRoleSpecialPermissionMapper.selectCount(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(SysRoleSpecialPermission::getSpecialPermissionId, id));
+        if (!force && roleCount > 0) {
+            throw new BusinessException(
+                    "删除确认：该特殊权限已被 " + roleCount + " 个角色授权引用，删除后相关授权将被同步清除，请确认后携带 force=true 重新请求");
+        }
+        // 级联删除角色-特殊权限关联
+        sysRoleSpecialPermissionMapper.delete(
+                Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                        .eq(SysRoleSpecialPermission::getSpecialPermissionId, id));
         sysSpecialPermissionMapper.deleteById(id);
     }
 

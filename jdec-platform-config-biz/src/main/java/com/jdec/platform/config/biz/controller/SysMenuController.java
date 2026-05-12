@@ -41,10 +41,15 @@ public class SysMenuController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除菜单", description = "删除指定菜单及其所有子菜单")
+    @Operation(
+            summary = "删除菜单",
+            description = "删除指定菜单及其所有子菜单。force=false 时若有子菜单或角色授权则返回提示；force=true 时级联删除")
     public ApiResponse<Void> delete(
-            @Parameter(description = "菜单ID", example = "1") @PathVariable Long id) {
-        sysMenuApi.deleteMenu(id);
+            @Parameter(description = "菜单ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysMenuApi.deleteMenu(id, force);
         return ApiResponse.success();
     }
 

@@ -7,7 +7,9 @@ import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
 import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.biz.entity.SysMenu;
+import com.jdec.platform.config.biz.entity.SysRoleMenu;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -26,6 +28,7 @@ import org.springframework.util.CollectionUtils;
 public class SysMenuService implements SysMenuApi {
 
     private final SysMenuMapper sysMenuMapper;
+    private final SysRoleMenuMapper sysRoleMenuMapper;
 
     /** 菜单类型：导航 */
     private static final Integer MENU_TYPE_NAV = 1;
@@ -124,7 +127,7 @@ public class SysMenuService implements SysMenuApi {
 
     @Transactional
     @Override
-    public void deleteMenu(Long id) {
+    public void deleteMenu(Long id, boolean force) {
         String projectNo = AppContext.getProjectNo();
         boolean exists =
                 sysMenuMapper.exists(
@@ -135,9 +138,29 @@ public class SysMenuService implements SysMenuApi {
         if (!exists) {
             throw new BusinessException("菜单不存在");
         }
-        // 级联删除所有子节点（同主体、同应用下）
+        // 收集本节点及所有子节点ID
         Set<Long> ids = collectChildrenIds(id, AppContext.getSubjectId(), projectNo);
+        int childCount = ids.size();
         ids.add(id);
+        // 查询角色关联数量
+        long roleMenuCount =
+                sysRoleMenuMapper.selectCount(
+                        Wrappers.<SysRoleMenu>lambdaQuery().in(SysRoleMenu::getMenuId, ids));
+        if (!force && (childCount > 0 || roleMenuCount > 0)) {
+            StringBuilder msg = new StringBuilder("删除确认：");
+            if (childCount > 0) {
+                msg.append("该菜单下有 ").append(childCount).append(" 个子菜单将被同步删除；");
+            }
+            if (roleMenuCount > 0) {
+                msg.append("有 ").append(roleMenuCount).append(" 条角色菜单授权将被同步清除；");
+            }
+            msg.append("请确认后携带 force=true 重新请求");
+            throw new BusinessException(msg.toString());
+        }
+        // 级联删除角色-菜单关联
+        sysRoleMenuMapper.delete(
+                Wrappers.<SysRoleMenu>lambdaQuery().in(SysRoleMenu::getMenuId, ids));
+        // 删除菜单
         sysMenuMapper.deleteByIds(ids);
     }
 

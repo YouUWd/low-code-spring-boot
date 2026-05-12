@@ -31,10 +31,15 @@ public class SysDataPermissionTypeController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除数据权限类型", description = "删除指定数据权限类型")
+    @Operation(
+            summary = "删除数据权限类型",
+            description = "force=false 时若有角色授权引用则返回提示；force=true 时级联删除角色关联及数据权限目标")
     public ApiResponse<Void> delete(
-            @Parameter(description = "数据权限类型ID", example = "1") @PathVariable Long id) {
-        sysDataPermissionTypeApi.deleteDataPermissionType(id);
+            @Parameter(description = "数据权限类型ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysDataPermissionTypeApi.deleteDataPermissionType(id, force);
         return ApiResponse.success();
     }
 

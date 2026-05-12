@@ -31,10 +31,13 @@ public class SysSpecialPermissionController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除特殊权限", description = "删除指定特殊权限")
+    @Operation(summary = "删除特殊权限", description = "force=false 时若有角色授权引用则返回提示；force=true 时级联删除角色关联")
     public ApiResponse<Void> delete(
-            @Parameter(description = "特殊权限ID", example = "1") @PathVariable Long id) {
-        sysSpecialPermissionApi.deleteSpecialPermission(id);
+            @Parameter(description = "特殊权限ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysSpecialPermissionApi.deleteSpecialPermission(id, force);
         return ApiResponse.success();
     }
 

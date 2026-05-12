@@ -39,11 +39,16 @@ public class SysStatusController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "删除状态", description = "删除指定状态及其所有子状态")
+    @Operation(
+            summary = "删除状态",
+            description = "删除指定状态。force=false 时若有子状态则返回提示；force=true 时级联删除所有子状态")
     public ApiResponse<Void> delete(
             @Parameter(description = "状态ID", example = "1") @PathVariable Long id,
-            @RequestParam(required = false, defaultValue = "0") Long subjectId) {
-        sysStatusApi.deleteStatus(id, subjectId);
+            @RequestParam(required = false, defaultValue = "0") Long subjectId,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysStatusApi.deleteStatus(id, subjectId, force);
         return ApiResponse.success();
     }
 
