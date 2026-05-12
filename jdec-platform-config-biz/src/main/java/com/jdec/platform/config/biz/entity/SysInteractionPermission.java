@@ -16,8 +16,8 @@ public class SysInteractionPermission implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Schema(description = "父权限ID")
-    private Long parentId;
+    @Schema(description = "交互权限类型")
+    private Integer type;
 
     @Schema(description = "模块id")
     private Long moduleId;

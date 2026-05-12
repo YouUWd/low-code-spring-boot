@@ -1,6 +1,5 @@
 package com.jdec.platform.config.biz.service;
 
-import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysRightApi;
@@ -143,7 +142,7 @@ public class SysRightService implements SysRightApi {
             result.add(resp);
         }
 
-        // 2. 查询交互权限（nodeType = 2），需要查询父级信息
+        // 2. 查询交互权限（nodeType = 2）
         LambdaQueryWrapper<SysInteractionPermission> interactionWrapper =
                 new LambdaQueryWrapper<>();
         interactionWrapper
@@ -158,34 +157,13 @@ public class SysRightService implements SysRightApi {
         List<SysInteractionPermission> interactionList =
                 sysInteractionPermissionMapper.selectList(interactionWrapper);
 
-        // 查询所有父级交互权限
-        Set<Long> parentIds =
-                interactionList.stream()
-                        .map(SysInteractionPermission::getParentId)
-                        .filter(pid -> pid != null && pid != 0L)
-                        .collect(Collectors.toSet());
-        Map<Long, SysInteractionPermission> parentMap = new HashMap<>();
-        if (CollUtil.isNotEmpty(parentIds)) {
-            parentMap =
-                    sysInteractionPermissionMapper.selectByIds(parentIds).stream()
-                            .collect(Collectors.toMap(SysInteractionPermission::getId, r -> r));
-        }
-
         for (SysInteractionPermission item : interactionList) {
             SysRightResp resp = new SysRightResp();
             resp.setId(item.getId());
-            resp.setPid(item.getParentId());
+            resp.setPid(0L);
             resp.setRightName(item.getName());
             resp.setRightSlug(item.getCode());
             resp.setNodeType(2); // 交互权限
-            // 设置父级信息
-            if (item.getParentId() != null && item.getParentId() != 0L) {
-                SysInteractionPermission parent = parentMap.get(item.getParentId());
-                if (parent != null) {
-                    resp.setParentRightName(parent.getName());
-                    resp.setParentRightSlug(parent.getCode());
-                }
-            }
             result.add(resp);
         }
 

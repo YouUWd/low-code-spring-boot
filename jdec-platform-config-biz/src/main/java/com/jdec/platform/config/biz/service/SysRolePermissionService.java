@@ -153,6 +153,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             resp.setPermissionId(permission.getId());
                             resp.setPermissionName(permission.getName());
                             resp.setPermissionCode(permission.getCode());
+                            resp.setModuleId(permission.getModuleId());
+                            resp.setType(permission.getType());
                             return resp;
                         })
                 .toList();

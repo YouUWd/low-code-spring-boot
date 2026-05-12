@@ -17,6 +17,6 @@ public class QuerySysInteractionPermissionReq {
     @Schema(description = "状态 1:启用 0:禁用")
     private Integer status;
 
-    @Schema(description = "父权限ID")
-    private Long parentId;
+    @Schema(description = "交互权限类型")
+    private Integer type;
 }
