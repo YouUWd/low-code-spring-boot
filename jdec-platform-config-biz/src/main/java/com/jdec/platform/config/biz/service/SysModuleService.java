@@ -320,7 +320,7 @@ public class SysModuleService implements SysModuleApi {
         sysModuleStatusMapper.delete(statusWrapper);
 
         // 更新父模块的叶子节点标记
-        if (module.getParentId() != null) {
+        if (module.getParentId() != null && module.getParentId() > 0) {
             updateLeafFlag(module.getParentId());
         }
     }
@@ -446,7 +446,7 @@ public class SysModuleService implements SysModuleApi {
                     module.getModuleLevel() - oldModuleLevel);
 
             // 5. 更新旧父模块的叶子节点标记
-            if (oldParentId != null) {
+            if (oldParentId > 0) {
                 updateLeafFlag(oldParentId);
             }
         }
@@ -462,11 +462,7 @@ public class SysModuleService implements SysModuleApi {
      */
     private List<SysModule> getChildrenSorted(Long parentId) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-        if (parentId == null) {
-            wrapper.isNull(SysModule::getParentId);
-        } else {
-            wrapper.eq(SysModule::getParentId, parentId);
-        }
+        wrapper.eq(SysModule::getParentId, parentId != null ? parentId : 0L);
         wrapper.orderByAsc(SysModule::getSortOrder);
         return new ArrayList<>(sysModuleMapper.selectList(wrapper));
     }
@@ -569,6 +565,10 @@ public class SysModuleService implements SysModuleApi {
     }
 
     private SysModule createOrUpdateModule(SaveSysModuleReq request) {
+        if (request.getParentId() == null) {
+            throw new BusinessException(400, "父模块ID不能为空，根节点请传入0");
+        }
+
         SysModule module = new SysModule();
         module.setProjectNo(AppContext.getProjectNo());
         module.setModuleCode(request.getModuleCode());
@@ -594,8 +594,8 @@ public class SysModuleService implements SysModuleApi {
         module.setCreatedName(request.getCreatedName());
 
         // 处理父模块相关逻辑
-        if (request.getParentId() != null) {
-            SysModule parentModule = sysModuleMapper.selectById(request.getParentId());
+        if (module.getParentId() > 0) {
+            SysModule parentModule = sysModuleMapper.selectById(module.getParentId());
             if (parentModule == null) {
                 throw new BusinessException(404, "父模块不存在");
             }
@@ -628,7 +628,7 @@ public class SysModuleService implements SysModuleApi {
         if (request.getSortOrder() == null) {
             LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(SysModule::getProjectNo, AppContext.getProjectNo())
-                    .eq(SysModule::getParentId, request.getParentId())
+                    .eq(SysModule::getParentId, module.getParentId())
                     .orderByDesc(SysModule::getSortOrder)
                     .last("LIMIT 1");
             SysModule lastModule = sysModuleMapper.selectOne(wrapper);
@@ -813,7 +813,7 @@ public class SysModuleService implements SysModuleApi {
 
         // 递归向上查找父节点，检查是否存在 moduleId
         Long currentParentId = target.getParentId();
-        while (currentParentId != null) {
+        while (currentParentId > 0) {
             if (currentParentId.equals(moduleId)) {
                 return true;
             }
