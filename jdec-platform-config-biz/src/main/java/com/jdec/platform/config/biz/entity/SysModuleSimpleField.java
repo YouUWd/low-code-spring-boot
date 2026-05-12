@@ -47,5 +47,4 @@ public class SysModuleSimpleField {
 
     /** 更新人姓名 */
     private String updatedName;
-
 }

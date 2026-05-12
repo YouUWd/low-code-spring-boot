@@ -43,5 +43,4 @@ public class SysRoleDataPermission implements Serializable {
     @Schema(description = "更改时间")
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedDate;
-
 }

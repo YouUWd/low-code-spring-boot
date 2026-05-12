@@ -333,6 +333,12 @@ public class SysModuleService implements SysModuleApi {
         Integer targetSortOrder = request.getTargetSortOrder();
 
         // 参数验证
+        if (moduleId == null) {
+            throw new BusinessException(400, "模块ID不能为空");
+        }
+        if (targetParentId == null) {
+            throw new BusinessException(400, "目标父模块ID不能为空，根节点请传入0");
+        }
         if (targetSortOrder == null || targetSortOrder < 0) {
             throw new BusinessException(400, "目标排序顺序不能为空且必须大于等于0");
         }
@@ -343,11 +349,10 @@ public class SysModuleService implements SysModuleApi {
         }
 
         Long oldParentId = module.getParentId();
-        Integer oldSortOrder = module.getSortOrder();
-
-        // 检查目标父模块是否存在（如果不为空）
-        if (targetParentId != null) {
-            SysModule targetParent = sysModuleMapper.selectById(targetParentId);
+        // 提前查询目标父模块，后续复用，避免重复查询
+        SysModule targetParent = null;
+        if (targetParentId > 0) {
+            targetParent = sysModuleMapper.selectById(targetParentId);
             if (targetParent == null) {
                 throw new BusinessException(404, "目标父模块不存在");
             }
@@ -358,105 +363,40 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 判断是否为同父模块拖拽
-        boolean isSameParent =
-                (oldParentId == null && targetParentId == null)
-                        || (oldParentId != null && oldParentId.equals(targetParentId));
+        assert oldParentId != null;
+        if (oldParentId.equals(targetParentId)) {
+            // 同父拖拽：全量洗牌。
+            // 取出该组全部子节点，移除被拖模块后插入目标位置，然后从 0 开始完整重编号。
+            // 相比增量移位，全量洗牌确保 sortOrder 无论 DB 原始状态如何都连续无断层。
+            List<SysModule> siblings = getChildrenSorted(oldParentId);
+            siblings.removeIf(s -> s.getId().equals(moduleId));
 
-        if (isSameParent) {
-            // 同父模块拖拽：只需要调整排序顺序
-            if (oldSortOrder.equals(targetSortOrder)) {
-                // 位置没有变化，无需操作
-                return toModuleDetail(module);
-            }
+            // clamp 目标位置到合法范围 [0, siblings.size()]
+            int insertPos = Math.min(targetSortOrder, siblings.size());
+            siblings.add(insertPos, module);
 
-            // 查询同父模块下的所有子节点
-            LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(SysModule::getParentId, oldParentId).orderByAsc(SysModule::getSortOrder);
-            List<SysModule> siblings = sysModuleMapper.selectList(wrapper);
-
-            // 调整排序顺序
-            List<SysModule> toUpdate = new ArrayList<>();
-            if (oldSortOrder < targetSortOrder) {
-                // 向后移动：将 oldSortOrder+1 到 targetSortOrder 之间的节点前移
-                siblings.forEach(
-                        sibling -> {
-                            if (!sibling.getId().equals(moduleId)) {
-                                int currentSort = sibling.getSortOrder();
-                                if (currentSort > oldSortOrder && currentSort <= targetSortOrder) {
-                                    sibling.setSortOrder(currentSort - 1);
-                                    sibling.setUpdatedDate(LocalDateTime.now());
-                                    toUpdate.add(sibling);
-                                }
-                            }
-                        });
-            } else {
-                // 向前移动：将 targetSortOrder 到 oldSortOrder-1 之间的节点后移
-                siblings.forEach(
-                        sibling -> {
-                            if (!sibling.getId().equals(moduleId)) {
-                                int currentSort = sibling.getSortOrder();
-                                if (currentSort >= targetSortOrder && currentSort < oldSortOrder) {
-                                    sibling.setSortOrder(currentSort + 1);
-                                    sibling.setUpdatedDate(LocalDateTime.now());
-                                    toUpdate.add(sibling);
-                                }
-                            }
-                        });
-            }
-
-            if (!toUpdate.isEmpty()) {
-                Db.updateBatchById(toUpdate);
-            }
-
-            // 更新被移动模块的排序顺序
-            module.setSortOrder(targetSortOrder);
-            module.setUpdatedDate(LocalDateTime.now());
-            sysModuleMapper.updateById(module);
+            // reshuffleAndUpdate 内部对 sortOrder 做 diff，位置未变的记录不产生 DB 写入
+            reshuffleAndUpdate(siblings);
 
         } else {
-            // 跨父模块拖拽
+            // 跨父移动
 
-            // 1. 调整旧父模块下的排序：将 oldSortOrder 之后的节点前移
-            LambdaQueryWrapper<SysModule> oldSiblingsWrapper = new LambdaQueryWrapper<>();
-            oldSiblingsWrapper
-                    .eq(SysModule::getParentId, oldParentId)
-                    .gt(SysModule::getSortOrder, oldSortOrder);
-            List<SysModule> oldSiblings = sysModuleMapper.selectList(oldSiblingsWrapper);
-            oldSiblings.forEach(
-                    sibling -> {
-                        sibling.setSortOrder(sibling.getSortOrder() - 1);
-                        sibling.setUpdatedDate(LocalDateTime.now());
-                    });
-            if (!oldSiblings.isEmpty()) {
-                Db.updateBatchById(oldSiblings);
-            }
+            // 1. 旧父组：移除被移动模块后完整重编号，确保旧父排序连续
+            List<SysModule> oldChildren = getChildrenSorted(oldParentId);
+            oldChildren.removeIf(s -> s.getId().equals(moduleId));
+            reshuffleAndUpdate(oldChildren);
 
-            // 2. 调整新父模块下的排序：将 targetSortOrder 及之后的节点后移
-            LambdaQueryWrapper<SysModule> newSiblingsWrapper = new LambdaQueryWrapper<>();
-            newSiblingsWrapper
-                    .eq(SysModule::getParentId, targetParentId)
-                    .ge(SysModule::getSortOrder, targetSortOrder);
-            List<SysModule> newSiblings = sysModuleMapper.selectList(newSiblingsWrapper);
-            newSiblings.forEach(
-                    sibling -> {
-                        sibling.setSortOrder(sibling.getSortOrder() + 1);
-                        sibling.setUpdatedDate(LocalDateTime.now());
-                    });
-            if (!newSiblings.isEmpty()) {
-                Db.updateBatchById(newSiblings);
-            }
+            // 2. 更新被移动模块自身的 parentId / moduleLevel / modulePath
+            String oldModulePath = module.getModulePath();
+            int oldModuleLevel = module.getModuleLevel() != null ? module.getModuleLevel() : 1;
 
-            // 3. 更新被移动模块的父模块、排序和层级
             module.setParentId(targetParentId);
-            module.setSortOrder(targetSortOrder);
 
-            // 更新模块层级和路径
-            if (targetParentId != null) {
-                // 复用前面已经查询过的 targetParent（第 313 行）
-                SysModule targetParent = sysModuleMapper.selectById(targetParentId);
-                module.setModuleLevel(
+            if (targetParent != null) {
+                int newLevel =
                         (targetParent.getModuleLevel() != null ? targetParent.getModuleLevel() : 0)
-                                + 1);
+                                + 1;
+                module.setModuleLevel(newLevel);
                 String parentPath =
                         targetParent.getModulePath() != null ? targetParent.getModulePath() : "";
                 String newPath =
@@ -465,10 +405,13 @@ public class SysModuleService implements SysModuleApi {
                                 : parentPath + "/" + module.getModuleCode();
                 module.setModulePath(newPath);
 
-                // 更新目标父模块的叶子节点标记
+                // 更新目标父模块的叶子节点标记（仅更新 leafFlag 字段）
                 if (targetParent.getLeafFlag() == 1) {
                     targetParent.setLeafFlag(0);
-                    sysModuleMapper.updateById(targetParent);
+                    SysModule leafPartial = new SysModule();
+                    leafPartial.setId(targetParent.getId());
+                    leafPartial.setLeafFlag(0);
+                    sysModuleMapper.updateById(leafPartial);
                 }
             } else {
                 // 移动到根级
@@ -476,16 +419,153 @@ public class SysModuleService implements SysModuleApi {
                 module.setModulePath(module.getModuleCode());
             }
 
-            module.setUpdatedDate(LocalDateTime.now());
-            sysModuleMapper.updateById(module);
+            // 仅更新跨父移动涉及的字段：parentId / moduleLevel / modulePath / updatedDate
+            LocalDateTime now = LocalDateTime.now();
+            module.setUpdatedDate(now);
+            SysModule modulePartial = new SysModule();
+            modulePartial.setId(module.getId());
+            modulePartial.setParentId(module.getParentId());
+            modulePartial.setModuleLevel(module.getModuleLevel());
+            modulePartial.setModulePath(module.getModulePath());
+            modulePartial.setUpdatedDate(now);
+            sysModuleMapper.updateById(modulePartial);
 
-            // 4. 更新旧父模块的叶子节点标记
+            // 3. 新父组：从 DB 拉取当前子节点（已包含刚写入的 module），
+            //    移除 module 后在目标位置插入，完整重编号
+            List<SysModule> newChildren = getChildrenSorted(targetParentId);
+            newChildren.removeIf(s -> s.getId().equals(moduleId));
+            int insertPos = Math.min(targetSortOrder, newChildren.size());
+            newChildren.add(insertPos, module);
+            reshuffleAndUpdate(newChildren);
+
+            // 4. 级联更新所有子孙节点的 modulePath 和 moduleLevel
+            updateDescendantPathsAndLevels(
+                    moduleId,
+                    oldModulePath,
+                    module.getModulePath(),
+                    module.getModuleLevel() - oldModuleLevel);
+
+            // 5. 更新旧父模块的叶子节点标记
             if (oldParentId != null) {
                 updateLeafFlag(oldParentId);
             }
         }
 
-        return toModuleDetail(module);
+        // 重新从 DB 读取最新状态返回（洗牌后 sortOrder 已落库）
+        return toModuleDetail(sysModuleMapper.selectById(moduleId));
+    }
+
+    /**
+     * 查询指定父节点下的所有直接子节点，按 sortOrder 升序排列，返回可变列表。
+     *
+     * @param parentId 父节点 ID（null 表示根节点）
+     */
+    private List<SysModule> getChildrenSorted(Long parentId) {
+        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
+        if (parentId == null) {
+            wrapper.isNull(SysModule::getParentId);
+        } else {
+            wrapper.eq(SysModule::getParentId, parentId);
+        }
+        wrapper.orderByAsc(SysModule::getSortOrder);
+        return new ArrayList<>(sysModuleMapper.selectList(wrapper));
+    }
+
+    /**
+     * 对列表按当前顺序完整重编号（0, 1, 2, ...），仅对 sortOrder 有变化的记录执行批量更新。
+     *
+     * <p>全量洗牌确保排序连续无断层，避免增量移位累积导致的混乱与不可预测性。
+     *
+     * @param modules 已按目标顺序排列的模块列表
+     */
+    private void reshuffleAndUpdate(List<SysModule> modules) {
+        if (modules.isEmpty()) {
+            return;
+        }
+        // 利用 MyBatis-Plus 默认 NOT_NULL 更新策略：
+        // 构造仅含 id / sortOrder / updatedDate 的最小化对象，
+        // updateBatchById 生成的 SQL 只含这两个业务字段，避免全字段更新。
+        LocalDateTime now = LocalDateTime.now();
+        List<SysModule> partials = new ArrayList<>();
+        for (int i = 0; i < modules.size(); i++) {
+            SysModule m = modules.get(i);
+            if (!Integer.valueOf(i).equals(m.getSortOrder())) {
+                // 同步内存对象，保持与 DB 最终状态一致
+                m.setSortOrder(i);
+                m.setUpdatedDate(now);
+                // 构造 partial：只携带需要落库的字段
+                SysModule partial = new SysModule();
+                partial.setId(m.getId());
+                partial.setSortOrder(i);
+                partial.setUpdatedDate(now);
+                partials.add(partial);
+            }
+        }
+        if (!partials.isEmpty()) {
+            Db.updateBatchById(partials);
+        }
+    }
+
+    /**
+     * 级联更新指定模块下所有子孙节点的 modulePath 和 moduleLevel。
+     *
+     * <p>在跨父模块移动后调用，确保子孙节点的路径与层级与新位置一致。
+     *
+     * @param rootModuleId 被移动模块的 ID（不含自身，从其直接子节点开始递归）
+     * @param oldRootPath 被移动模块移动前的 modulePath
+     * @param newRootPath 被移动模块移动后的 modulePath
+     * @param levelDiff 层级差值（新 level - 旧 level）
+     */
+    private void updateDescendantPathsAndLevels(
+            Long rootModuleId, String oldRootPath, String newRootPath, int levelDiff) {
+        if (levelDiff == 0 && oldRootPath != null && oldRootPath.equals(newRootPath)) {
+            // 路径和层级均未变化，无需更新
+            return;
+        }
+
+        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModule::getParentId, rootModuleId);
+        List<SysModule> children = sysModuleMapper.selectList(wrapper);
+
+        if (children.isEmpty()) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<SysModule> partials = new ArrayList<>();
+        for (SysModule child : children) {
+            String childOldPath = child.getModulePath();
+            String childNewPath;
+            if (childOldPath != null
+                    && oldRootPath != null
+                    && childOldPath.startsWith(oldRootPath)) {
+                childNewPath = newRootPath + childOldPath.substring(oldRootPath.length());
+            } else {
+                // 兜底：重新拼接
+                childNewPath = newRootPath + "/" + child.getModuleCode();
+            }
+            // 同步内存对象
+            child.setModulePath(childNewPath);
+            if (child.getModuleLevel() != null) {
+                child.setModuleLevel(child.getModuleLevel() + levelDiff);
+            }
+            child.setUpdatedDate(now);
+
+            // 构造仅含变更字段的 partial，避免全字段更新
+            SysModule partial = new SysModule();
+            partial.setId(child.getId());
+            partial.setModulePath(childNewPath);
+            partial.setModuleLevel(child.getModuleLevel());
+            partial.setUpdatedDate(now);
+            partials.add(partial);
+
+            // 递归处理孙节点
+            updateDescendantPathsAndLevels(child.getId(), childOldPath, childNewPath, levelDiff);
+        }
+
+        if (!partials.isEmpty()) {
+            Db.updateBatchById(partials);
+        }
     }
 
     private SysModule createOrUpdateModule(SaveSysModuleReq request) {
@@ -707,8 +787,11 @@ public class SysModuleService implements SysModuleApi {
         if (module != null) {
             int newLeafFlag = childCount > 0 ? 0 : 1;
             if (module.getLeafFlag() != newLeafFlag) {
-                module.setLeafFlag(newLeafFlag);
-                sysModuleMapper.updateById(module);
+                // 仅更新 leafFlag 字段，避免全字段覆盖
+                SysModule partial = new SysModule();
+                partial.setId(moduleId);
+                partial.setLeafFlag(newLeafFlag);
+                sysModuleMapper.updateById(partial);
             }
         }
     }

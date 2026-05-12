@@ -16,8 +16,11 @@ public class MoveModuleReq {
     @Schema(description = "要移动的模块ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "5")
     private Long moduleId;
 
-    /** 目标父模块 ID（NULL 表示移动到根级） */
-    @Schema(description = "目标父模块ID（NULL表示移动到根级）", example = "2")
+    /** 目标父模块 ID（0 表示移动到根级） */
+    @Schema(
+            description = "目标父模块ID（0表示移动到根级）",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "2")
     private Long targetParentId;
 
     /** 目标位置的排序顺序 后端会自动调整该位置及之后的所有同级节点的排序 */

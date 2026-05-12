@@ -1,8 +1,6 @@
 package com.jdec.platform.config.biz.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import java.time.LocalDateTime;
 import lombok.Data;
@@ -16,8 +14,10 @@ public class SysModule {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 租户 ID */
+    /** 项目编号 */
     private String projectNo;
+
+    private Long subjectId;
 
     /** 模块唯一编码 */
     private String moduleCode;
@@ -72,5 +72,4 @@ public class SysModule {
 
     /** 更新人姓名 */
     private String updatedName;
-
 }

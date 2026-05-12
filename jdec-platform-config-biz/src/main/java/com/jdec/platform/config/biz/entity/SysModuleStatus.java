@@ -41,5 +41,4 @@ public class SysModuleStatus {
 
     /** 更新人姓名 */
     private String updatedName;
-
 }

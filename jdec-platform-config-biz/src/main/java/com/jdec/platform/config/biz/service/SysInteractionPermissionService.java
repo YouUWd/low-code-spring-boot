@@ -110,8 +110,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                     entity.setModuleCode(req.getModuleCode());
                 }
                 // 级联更新所有子节点的 moduleId 和 moduleCode
-                cascadeUpdateModuleInfo(
-                        req.getId(), entity.getModuleId(), entity.getModuleCode());
+                cascadeUpdateModuleInfo(req.getId(), entity.getModuleId(), entity.getModuleCode());
             }
             sysInteractionPermissionMapper.updateById(entity);
         }
@@ -347,7 +346,9 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                 sysInteractionPermissionMapper.selectList(
                         Wrappers.<SysInteractionPermission>lambdaQuery()
                                 .eq(SysInteractionPermission::getParentId, parentId)
-                                .eq(SysInteractionPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(
+                                        SysInteractionPermission::getSubjectId,
+                                        AppContext.getSubjectId())
                                 .eq(
                                         SysInteractionPermission::getProjectNo,
                                         AppContext.getProjectNo()));
