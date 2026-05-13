@@ -20,7 +20,6 @@ import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -234,7 +233,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                 .orderByAsc(SysModule::getSortOrder)
                                 .orderByAsc(SysModule::getId));
 
-        // 2. 查询当前项目下所有交互权限，按 moduleId+type 分组
+        // 2. 查询当前项目下所有交互权限，按 moduleId 分组
         List<SysInteractionPermission> allPermissions =
                 sysInteractionPermissionMapper.selectList(
                         new LambdaQueryWrapper<SysInteractionPermission>()
@@ -247,11 +246,11 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                 .orderByAsc(SysInteractionPermission::getSort)
                                 .orderByAsc(SysInteractionPermission::getId));
 
-        Map<String, List<SysInteractionPermissionResp>> permissionMap =
+        Map<Long, List<SysInteractionPermissionResp>> permissionMap =
                 allPermissions.stream()
                         .collect(
                                 Collectors.groupingBy(
-                                        p -> p.getModuleId() + "_" + p.getType(),
+                                        SysInteractionPermission::getModuleId,
                                         Collectors.mapping(
                                                 p -> {
                                                     SysInteractionPermissionResp r =
@@ -276,12 +275,9 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         return buildModuleTree(modulesByParent, permissionMap, 0L);
     }
 
-    private static final List<Integer> INTERACTION_TYPES = Arrays.asList(1, 2, 3);
-    private static final Map<Integer, String> TYPE_LABEL = Map.of(1, "申请", 2, "编辑", 3, "查看");
-
     private List<SysModuleInteractionPermissionResp> buildModuleTree(
             Map<Long, List<SysModule>> modulesByParent,
-            Map<String, List<SysInteractionPermissionResp>> permissionMap,
+            Map<Long, List<SysInteractionPermissionResp>> permissionMap,
             Long parentId) {
         List<SysModule> children = modulesByParent.get(parentId);
         if (children == null || children.isEmpty()) {
@@ -290,30 +286,11 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         List<SysModuleInteractionPermissionResp> result = new ArrayList<>();
         for (SysModule module : children) {
             SysModuleInteractionPermissionResp node = new SysModuleInteractionPermissionResp();
-            node.setNodeKey(String.valueOf(module.getId()));
-            node.setNodeName(module.getModuleName());
             node.setModuleId(module.getId());
+            node.setModuleName(module.getModuleName());
             node.setModuleCode(module.getModuleCode());
-
-            // 递归子模块
-            List<SysModuleInteractionPermissionResp> subChildren =
-                    buildModuleTree(modulesByParent, permissionMap, module.getId());
-
-            // 为当前模块节点追加三个虚拟类型子节点
-            for (Integer type : INTERACTION_TYPES) {
-                String key = module.getId() + "_" + type;
-                SysModuleInteractionPermissionResp typeNode =
-                        new SysModuleInteractionPermissionResp();
-                typeNode.setNodeKey(key);
-                typeNode.setNodeName(module.getModuleName() + TYPE_LABEL.get(type));
-                typeNode.setModuleId(module.getId());
-                typeNode.setModuleCode(module.getModuleCode());
-                typeNode.setType(type);
-                typeNode.setPermissions(permissionMap.getOrDefault(key, new ArrayList<>()));
-                subChildren.add(typeNode);
-            }
-
-            node.setChildren(subChildren);
+            node.setPermissions(permissionMap.getOrDefault(module.getId(), new ArrayList<>()));
+            node.setChildren(buildModuleTree(modulesByParent, permissionMap, module.getId()));
             result.add(node);
         }
         return result;

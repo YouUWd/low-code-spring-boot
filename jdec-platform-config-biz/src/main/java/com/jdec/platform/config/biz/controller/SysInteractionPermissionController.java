@@ -64,7 +64,7 @@ public class SysInteractionPermissionController {
     }
 
     @GetMapping("/module-tree")
-    @Operation(summary = "查询模块交互权限树", description = "返回模块树，每个模块节点下按申请/编辑/查看三种类型展开，各类型携带对应的交互权限列表")
+    @Operation(summary = "查询模块交互权限树", description = "返回模块树，每个模块节点直接携带对应的交互权限列表")
     public ApiResponse<List<SysModuleInteractionPermissionResp>>
             listModuleInteractionPermissionTree() {
         return ApiResponse.success(

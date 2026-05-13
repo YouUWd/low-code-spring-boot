@@ -25,6 +25,10 @@ public class SysInteractionPermissionSaveReq {
     @NotBlank(message = "模块标识不能为空")
     private String moduleCode;
 
+    @Schema(description = "模块类型", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "模块类型不能为空")
+    private Integer moduleType;
+
     @Schema(description = "权限名称", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "权限名称不能为空")
     private String name;

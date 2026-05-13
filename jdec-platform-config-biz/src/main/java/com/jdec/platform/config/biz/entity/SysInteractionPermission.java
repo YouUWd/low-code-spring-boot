@@ -25,6 +25,9 @@ public class SysInteractionPermission implements Serializable {
     @Schema(description = "模块标识")
     private String moduleCode;
 
+    @Schema(description = "模块类型")
+    private Integer moduleType;
+
     @Schema(description = "权限名称")
     private String name;
 
