@@ -21,6 +21,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         registry.addInterceptor(appContextInterceptor)
                 .addPathPatterns("/api/config/**")
+                .addPathPatterns("/api/data/**")
                 .excludePathPatterns("/api/config/auth/**"); // 登录接口不需要租户信息
     }
 

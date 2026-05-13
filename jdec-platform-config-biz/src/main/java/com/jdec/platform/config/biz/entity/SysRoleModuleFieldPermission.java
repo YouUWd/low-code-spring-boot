@@ -13,8 +13,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("sys_role_module_field")
-public class SysRoleModuleField implements Serializable {
+@TableName("sys_role_module_field_permission")
+public class SysRoleModuleFieldPermission implements Serializable {
 
     /** 主键ID */
     @TableId(type = IdType.AUTO)

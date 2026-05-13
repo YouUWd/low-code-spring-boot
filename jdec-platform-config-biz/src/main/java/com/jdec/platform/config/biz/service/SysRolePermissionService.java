@@ -21,7 +21,7 @@ import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysRoleDataPermission;
 import com.jdec.platform.config.biz.entity.SysRoleInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysRoleMenu;
-import com.jdec.platform.config.biz.entity.SysRoleModuleField;
+import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.entity.SysRoleSpecialPermission;
 import com.jdec.platform.config.biz.entity.SysSpecialPermission;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionTargetMapper;
@@ -31,7 +31,7 @@ import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleDataPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
-import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
@@ -57,7 +57,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysDataPermissionTypeMapper sysDataPermissionTypeMapper;
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
-    private final SysRoleModuleFieldMapper sysRoleModuleFieldMapper;
+    private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -418,11 +418,11 @@ public class SysRolePermissionService implements SysRolePermissionApi {
 
     @Override
     public List<RoleModuleFieldResp> getRoleModuleFieldPermission(Long roleId, Long moduleId) {
-        List<SysRoleModuleField> list =
-                sysRoleModuleFieldMapper.selectList(
-                        Wrappers.<SysRoleModuleField>lambdaQuery()
-                                .eq(SysRoleModuleField::getRoleId, roleId)
-                                .eq(SysRoleModuleField::getModuleId, moduleId));
+        List<SysRoleModuleFieldPermission> list =
+                sysRoleModuleFieldPermissionMapper.selectList(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
 
         return list.stream()
                 .map(
@@ -445,18 +445,18 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         Long moduleId = request.getModuleId();
 
         // 1. 删除该角色在该模块下的旧权限
-        sysRoleModuleFieldMapper.delete(
-                Wrappers.<SysRoleModuleField>lambdaQuery()
-                        .eq(SysRoleModuleField::getRoleId, roleId)
-                        .eq(SysRoleModuleField::getModuleId, moduleId));
+        sysRoleModuleFieldPermissionMapper.delete(
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                        .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
 
         // 2. 批量插入新权限
         if (CollUtil.isNotEmpty(request.getPermissions())) {
-            List<SysRoleModuleField> entities =
+            List<SysRoleModuleFieldPermission> entities =
                     request.getPermissions().stream()
                             .map(
                                     item ->
-                                            SysRoleModuleField.builder()
+                                            SysRoleModuleFieldPermission.builder()
                                                     .roleId(roleId)
                                                     .moduleId(moduleId)
                                                     .fieldType(item.getFieldType())
@@ -466,7 +466,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                                                     .updatable(item.getUpdatable())
                                                     .build())
                             .toList();
-            sysRoleModuleFieldMapper.insert(entities);
+            sysRoleModuleFieldPermissionMapper.insert(entities);
         }
     }
 }
