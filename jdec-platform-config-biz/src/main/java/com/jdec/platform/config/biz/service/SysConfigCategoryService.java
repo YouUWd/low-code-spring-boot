@@ -35,16 +35,13 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     private final SysConfigItemService itemService;
 
     @Override
-    public List<SysConfigCategoryResp> list(Long moduleId) {
+    public List<SysConfigCategoryResp> list() {
         String projectNo = AppContext.getProjectNo();
         LambdaQueryWrapper<SysConfigCategory> wrapper =
                 new LambdaQueryWrapper<SysConfigCategory>()
                         .eq(SysConfigCategory::getProjectNo, projectNo)
                         .orderByAsc(SysConfigCategory::getSort)
                         .orderByAsc(SysConfigCategory::getId);
-        if (moduleId != null) {
-            wrapper.eq(SysConfigCategory::getModuleId, moduleId);
-        }
         List<SysConfigCategory> list = categoryMapper.selectList(wrapper);
         if (list.isEmpty()) {
             return Collections.emptyList();
@@ -60,7 +57,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     }
 
     @Override
-    public List<SysConfigTreeNodeResp> mixedTree(Long moduleId) {
+    public List<SysConfigTreeNodeResp> mixedTree() {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
 
@@ -70,22 +67,19 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         .eq(SysConfigCategory::getProjectNo, projectNo)
                         .orderByAsc(SysConfigCategory::getSort)
                         .orderByAsc(SysConfigCategory::getId);
-        if (moduleId != null) {
-            categoryWrapper.eq(SysConfigCategory::getModuleId, moduleId);
-        }
         List<SysConfigCategory> categories = categoryMapper.selectList(categoryWrapper);
 
         if (CollectionUtils.isEmpty(categories)) {
             return Collections.emptyList();
         }
 
-        // 查询所有配置项
-        List<Long> categoryIds =
-                categories.stream().map(SysConfigCategory::getId).collect(Collectors.toList());
+        // 查询所有配置项（按 categoryAlias 关联）
+        List<String> categoryAliases =
+                categories.stream().map(SysConfigCategory::getAlias).collect(Collectors.toList());
         List<SysConfigItem> items =
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
-                                .in(SysConfigItem::getCategoryId, categoryIds)
+                                .in(SysConfigItem::getCategoryAlias, categoryAliases)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
                                 .orderByAsc(SysConfigItem::getSort)
                                 .orderByAsc(SysConfigItem::getId));
@@ -99,8 +93,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             List<SysConfigCategory> categories, List<SysConfigItem> items) {
         List<SysConfigTreeNodeResp> result = new ArrayList<>();
 
-        // 将 Category 转换为树节点
-        Map<Long, SysConfigTreeNodeResp> categoryNodeMap = new LinkedHashMap<>();
+        // 将 Category 转换为树节点，并建立 alias -> node 的映射
+        Map<String, SysConfigTreeNodeResp> categoryNodeMap = new LinkedHashMap<>();
         for (SysConfigCategory category : categories) {
             SysConfigTreeNodeResp node = new SysConfigTreeNodeResp();
             node.setNodeType("category");
@@ -115,24 +109,22 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             node.setDepth(1);
             node.setPath("/" + category.getId() + "/");
             node.setChildren(new ArrayList<>());
-            categoryNodeMap.put(category.getId(), node);
+            categoryNodeMap.put(category.getAlias(), node);
             result.add(node);
         }
 
-        // 将 Item 转换为树节点并挂载到对应的 Category 下
+        // 将 Item 转换为树节点
         Map<Long, SysConfigTreeNodeResp> itemNodeMap = new LinkedHashMap<>();
         for (SysConfigItem item : items) {
             SysConfigTreeNodeResp node = new SysConfigTreeNodeResp();
             node.setNodeType("item");
             node.setId(item.getId());
             node.setPid(item.getPid());
-            node.setCategoryId(item.getCategoryId());
             node.setCategoryAlias(item.getCategoryAlias());
             node.setLabel(item.getLabel());
             node.setValue(item.getValue());
             node.setDescription(item.getDescription());
             node.setExtra(item.getExtra());
-            node.setSource(item.getSource());
             node.setSort(item.getSort());
             node.setStatus(item.getStatus());
             node.setDepth(item.getDepth());
@@ -146,8 +138,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             SysConfigTreeNodeResp node = itemNodeMap.get(item.getId());
             Long pid = item.getPid();
             if (pid == null || pid == 0L) {
-                // 挂载到
-                SysConfigTreeNodeResp categoryNode = categoryNodeMap.get(item.getCategoryId());
+                // 挂载到 Category 下（通过 categoryAlias）
+                SysConfigTreeNodeResp categoryNode = categoryNodeMap.get(item.getCategoryAlias());
                 if (categoryNode != null) {
                     categoryNode.getChildren().add(node);
                 }
@@ -158,7 +150,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                     parentNode.getChildren().add(node);
                 } else {
                     // 如果找不到父节点，挂载到 Category 下
-                    SysConfigTreeNodeResp categoryNode = categoryNodeMap.get(item.getCategoryId());
+                    SysConfigTreeNodeResp categoryNode =
+                            categoryNodeMap.get(item.getCategoryAlias());
                     if (categoryNode != null) {
                         categoryNode.getChildren().add(node);
                     }
@@ -240,17 +233,23 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         if (!exists) {
             throw new BusinessException("配置分类不存在");
         }
-        // 查询关联的配置项数量
+        // 获取分类 alias
+        SysConfigCategory category = categoryMapper.selectById(id);
+        if (category == null) {
+            throw new BusinessException("配置分类不存在");
+        }
+        // 查询关联的配置项数量（通过 categoryAlias）
         long itemCount =
                 itemMapper.selectCount(
-                        Wrappers.<SysConfigItem>lambdaQuery().eq(SysConfigItem::getCategoryId, id));
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getCategoryAlias, category.getAlias()));
         if (!force && itemCount > 0) {
-            throw new BusinessException(
-                    "删除确认：该分类下有 " + itemCount + " 个配置项将被同步删除；请确认后携带 force=true 重新请求");
+            throw new BusinessException("删除确认：该分类下有 " + itemCount + " 个配置项将被同步删除；请确认后重新请求");
         }
-        // 级联删除配置项
+        // 级联删除配置项（通过 categoryAlias）
         itemMapper.delete(
-                Wrappers.<SysConfigItem>lambdaQuery().eq(SysConfigItem::getCategoryId, id));
+                Wrappers.<SysConfigItem>lambdaQuery()
+                        .eq(SysConfigItem::getCategoryAlias, category.getAlias()));
         // 删除分类
         categoryMapper.deleteById(id);
     }
@@ -273,23 +272,13 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     // ==================== 配置项接口委托 ====================
 
     @Override
-    public List<SysConfigItemTreeResp> treeByCategory(Long categoryId) {
-        return itemService.treeByCategory(categoryId);
+    public List<SysConfigItemTreeResp> getItemsByCategory(Long categoryId) {
+        return itemService.getItemsByCategory(categoryId);
     }
 
     @Override
-    public List<SysConfigItemTreeResp> treeByCategoryAlias(String categoryAlias) {
-        return itemService.treeByCategoryAlias(categoryAlias);
-    }
-
-    @Override
-    public List<SysConfigItemTreeResp> listByCategory(Long categoryId) {
-        return itemService.listByCategory(categoryId);
-    }
-
-    @Override
-    public List<SysConfigItemTreeResp> listByCategoryAlias(String categoryAlias) {
-        return itemService.listByCategoryAlias(categoryAlias);
+    public List<SysConfigItemTreeResp> getItemsByCategoryAlias(String categoryAlias) {
+        return itemService.getItemsByCategoryAlias(categoryAlias);
     }
 
     @Override

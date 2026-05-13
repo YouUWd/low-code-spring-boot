@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/config/category")
 @RequiredArgsConstructor
-@Tag(name = "配置管理", description = "配置分类和配置项的统一管理接口")
+@Tag(name = "通用配置管理", description = "配置分类和配置项的统一管理接口")
 public class SysConfigCategoryController {
 
     private final SysConfigCategoryApi sysConfigCategoryApi;
@@ -30,19 +30,15 @@ public class SysConfigCategoryController {
     // ==================== 配置分类接口 ====================
 
     @GetMapping("/list")
-    @Operation(summary = "查询配置分类列表", description = "按模块ID查询配置分类列表，不传则查询全部")
-    public ApiResponse<List<SysConfigCategoryResp>> list(
-            @Parameter(description = "模块ID", example = "1") @RequestParam(required = false)
-                    Long moduleId) {
-        return ApiResponse.success(sysConfigCategoryApi.list(moduleId));
+    @Operation(summary = "查询配置分类列表", description = "查询当前应用的所有配置分类")
+    public ApiResponse<List<SysConfigCategoryResp>> list() {
+        return ApiResponse.success(sysConfigCategoryApi.list());
     }
 
     @GetMapping("/mixedTree")
     @Operation(summary = "查询混合树", description = "查询配置分类和配置项的混合树结构")
-    public ApiResponse<List<SysConfigTreeNodeResp>> mixedTree(
-            @Parameter(description = "模块ID", example = "1") @RequestParam(required = false)
-                    Long moduleId) {
-        return ApiResponse.success(sysConfigCategoryApi.mixedTree(moduleId));
+    public ApiResponse<List<SysConfigTreeNodeResp>> mixedTree() {
+        return ApiResponse.success(sysConfigCategoryApi.mixedTree());
     }
 
     @GetMapping("/getByAlias")
@@ -75,34 +71,19 @@ public class SysConfigCategoryController {
 
     // ==================== 配置项接口 ====================
 
-    @GetMapping("/item/tree/byCategory")
-    @Operation(summary = "查询配置项树（按分类ID）", description = "按分类ID查询配置项的树形结构")
-    public ApiResponse<List<SysConfigItemTreeResp>> itemTreeByCategory(
+    @GetMapping("/item/byCategory")
+    @Operation(summary = "查询配置项（按分类ID）", description = "按分类ID查询配置项，根据分类format自动返回树形或列表结构")
+    public ApiResponse<List<SysConfigItemTreeResp>> itemByCategory(
             @Parameter(description = "分类ID", example = "1") @RequestParam Long categoryId) {
-        return ApiResponse.success(sysConfigCategoryApi.treeByCategory(categoryId));
+        return ApiResponse.success(sysConfigCategoryApi.getItemsByCategory(categoryId));
     }
 
-    @GetMapping("/item/tree/byCategoryAlias")
-    @Operation(summary = "查询配置项树（按分类alias）", description = "按分类英文标识查询配置项的树形结构")
-    public ApiResponse<List<SysConfigItemTreeResp>> itemTreeByCategoryAlias(
+    @GetMapping("/item/byCategoryAlias")
+    @Operation(summary = "查询配置项（按分类alias）", description = "按分类alias查询配置项，根据分类format自动返回树形或列表结构")
+    public ApiResponse<List<SysConfigItemTreeResp>> itemByCategoryAlias(
             @Parameter(description = "分类英文标识", example = "employee_status") @RequestParam
                     String categoryAlias) {
-        return ApiResponse.success(sysConfigCategoryApi.treeByCategoryAlias(categoryAlias));
-    }
-
-    @GetMapping("/item/list/byCategory")
-    @Operation(summary = "查询配置项列表（按分类ID）", description = "按分类ID查询配置项的扁平列表")
-    public ApiResponse<List<SysConfigItemTreeResp>> itemListByCategory(
-            @Parameter(description = "分类ID", example = "1") @RequestParam Long categoryId) {
-        return ApiResponse.success(sysConfigCategoryApi.listByCategory(categoryId));
-    }
-
-    @GetMapping("/item/list/byCategoryAlias")
-    @Operation(summary = "查询配置项列表（按分类alias）", description = "按分类英文标识查询配置项的扁平列表")
-    public ApiResponse<List<SysConfigItemTreeResp>> itemListByCategoryAlias(
-            @Parameter(description = "分类英文标识", example = "employee_status") @RequestParam
-                    String categoryAlias) {
-        return ApiResponse.success(sysConfigCategoryApi.listByCategoryAlias(categoryAlias));
+        return ApiResponse.success(sysConfigCategoryApi.getItemsByCategoryAlias(categoryAlias));
     }
 
     @PostMapping("/item/save")

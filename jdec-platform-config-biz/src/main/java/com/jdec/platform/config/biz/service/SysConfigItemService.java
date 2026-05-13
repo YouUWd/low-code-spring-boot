@@ -31,55 +31,78 @@ public class SysConfigItemService {
 
     private static final Long ROOT_PID = 0L;
 
-    public List<SysConfigItemTreeResp> treeByCategory(Long categoryId) {
+    /**
+     * 查询配置项（按分类ID）
+     *
+     * <p>根据分类的 format 字段自动判定返回树形或列表结构
+     */
+    public List<SysConfigItemTreeResp> getItemsByCategory(Long categoryId) {
+        String projectNo = AppContext.getProjectNo();
+        SysConfigCategory category = categoryMapper.selectById(categoryId);
+        if (category == null || !category.getProjectNo().equals(projectNo)) {
+            throw new BusinessException("配置分类不存在");
+        }
+
         List<SysConfigItem> list = queryItemsByCategory(categoryId, null);
-        return buildTree(list);
+        return "tree".equals(category.getFormat()) ? buildTree(list) : toRespList(list);
     }
 
-    public List<SysConfigItemTreeResp> treeByCategoryAlias(String categoryAlias) {
+    /**
+     * 查询配置项（按分类alias）
+     *
+     * <p>根据分类的 format 字段自动判定返回树形或列表结构
+     */
+    public List<SysConfigItemTreeResp> getItemsByCategoryAlias(String categoryAlias) {
+        String projectNo = AppContext.getProjectNo();
+        SysConfigCategory category =
+                categoryMapper.selectOne(
+                        Wrappers.<SysConfigCategory>lambdaQuery()
+                                .eq(SysConfigCategory::getAlias, categoryAlias)
+                                .eq(SysConfigCategory::getProjectNo, projectNo));
+        if (category == null) {
+            throw new BusinessException("配置分类不存在");
+        }
+
         List<SysConfigItem> list = queryItemsByCategory(null, categoryAlias);
-        return buildTree(list);
+        return "tree".equals(category.getFormat()) ? buildTree(list) : toRespList(list);
     }
 
-    public List<SysConfigItemTreeResp> listByCategory(Long categoryId) {
-        List<SysConfigItem> list = queryItemsByCategory(categoryId, null);
-        return list.stream().map(this::toResp).collect(Collectors.toList());
-    }
-
-    public List<SysConfigItemTreeResp> listByCategoryAlias(String categoryAlias) {
-        List<SysConfigItem> list = queryItemsByCategory(null, categoryAlias);
+    private List<SysConfigItemTreeResp> toRespList(List<SysConfigItem> list) {
         return list.stream().map(this::toResp).collect(Collectors.toList());
     }
 
     public void saveItem(SysConfigItemSaveReq req) {
         Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
         Long pid = req.getPid() == null ? ROOT_PID : req.getPid();
         req.setPid(pid);
 
-        // 校验：label 和 value 不能为空
+        // 校验：label 不能为空
         if (req.getLabel() == null || req.getLabel().trim().isEmpty()) {
             throw new BusinessException("配置项名称不能为空");
         }
 
-        // 确定 categoryId：如果有父节点，从父节点继承；否则必须指定
-        Long categoryId = determineCategoryId(req, pid, subjectId);
-        req.setCategoryId(categoryId);
+        // 确定 categoryAlias：如果有父节点，从父节点继承；否则必须指定
+        String categoryAlias = determineCategoryAlias(req, pid, subjectId);
 
         // 校验分类是否存在
-        SysConfigCategory category = categoryMapper.selectById(categoryId);
+        SysConfigCategory category =
+                categoryMapper.selectOne(
+                        Wrappers.<SysConfigCategory>lambdaQuery()
+                                .eq(SysConfigCategory::getAlias, categoryAlias)
+                                .eq(SysConfigCategory::getProjectNo, projectNo));
         if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
 
         // 校验：同一分类下，同一父节点下，label 不能重复
-        checkDuplicateLabel(categoryId, pid, req.getLabel(), subjectId, req.getId());
+        checkDuplicateLabel(categoryAlias, pid, req.getLabel(), subjectId, req.getId());
 
         if (req.getId() == null) {
             // 新增
             SysConfigItem entity = new SysConfigItem();
             BeanUtils.copyProperties(req, entity);
-            entity.setCategoryId(categoryId);
-            entity.setCategoryAlias(category.getAlias());
+            entity.setCategoryAlias(categoryAlias);
             entity.setSubjectId(subjectId);
             calculatePathAndDepth(entity, pid);
             itemMapper.insert(entity);
@@ -96,15 +119,14 @@ public class SysConfigItemService {
                 checkCycle(req.getId(), pid, subjectId);
             }
 
-            // 校验：不能修改 categoryId（子级必须跟随父级）
-            if (!existing.getCategoryId().equals(categoryId)) {
+            // 校验：不能修改 categoryAlias（子级必须跟随父级）
+            if (!existing.getCategoryAlias().equals(categoryAlias)) {
                 throw new BusinessException("不能修改配置项的分类，子级必须跟随父级分类");
             }
 
             SysConfigItem entity = new SysConfigItem();
             BeanUtils.copyProperties(req, entity);
-            entity.setCategoryId(categoryId);
-            entity.setCategoryAlias(category.getAlias());
+            entity.setCategoryAlias(categoryAlias);
             calculatePathAndDepth(entity, pid);
             itemMapper.updateById(entity);
 
@@ -115,30 +137,30 @@ public class SysConfigItemService {
         }
     }
 
-    /** 确定 categoryId：如果有父节点，从父节点继承；否则必须指定 */
-    private Long determineCategoryId(SysConfigItemSaveReq req, Long pid, Long subjectId) {
+    /** 确定 categoryAlias：如果有父节点，从父节点继承；否则必须指定 */
+    private String determineCategoryAlias(SysConfigItemSaveReq req, Long pid, Long subjectId) {
         if (pid != null && !pid.equals(ROOT_PID)) {
-            // 有父节点，从父节点继承 categoryId
+            // 有父节点，从父节点继承 categoryAlias
             SysConfigItem parent = itemMapper.selectById(pid);
             if (parent == null || !parent.getSubjectId().equals(subjectId)) {
                 throw new BusinessException("父节点不存在");
             }
-            return parent.getCategoryId();
+            return parent.getCategoryAlias();
         } else {
-            // 没有父节点，必须指定 categoryId
-            if (req.getCategoryId() == null) {
-                throw new BusinessException("根节点配置项必须指定分类");
+            // 没有父节点，必须指定 categoryAlias
+            if (req.getCategoryAlias() == null || req.getCategoryAlias().trim().isEmpty()) {
+                throw new BusinessException("根节点配置项必须指定分类别名");
             }
-            return req.getCategoryId();
+            return req.getCategoryAlias();
         }
     }
 
     /** 校验同一分类下、同一父节点下，label 是否重复 */
     private void checkDuplicateLabel(
-            Long categoryId, Long pid, String label, Long subjectId, Long excludeId) {
+            String categoryAlias, Long pid, String label, Long subjectId, Long excludeId) {
         LambdaQueryWrapper<SysConfigItem> wrapper =
                 new LambdaQueryWrapper<SysConfigItem>()
-                        .eq(SysConfigItem::getCategoryId, categoryId)
+                        .eq(SysConfigItem::getCategoryAlias, categoryAlias)
                         .eq(SysConfigItem::getPid, pid)
                         .eq(SysConfigItem::getLabel, label)
                         .eq(SysConfigItem::getSubjectId, subjectId);
@@ -161,8 +183,7 @@ public class SysConfigItemService {
         Set<Long> childIds = collectChildrenIds(id, subjectId);
         int childCount = childIds.size();
         if (!force && childCount > 0) {
-            throw new BusinessException(
-                    "删除确认：该配置项下有 " + childCount + " 个子项将被同步删除；请确认后携带 force=true 重新请求");
+            throw new BusinessException("删除确认：该配置项下有 " + childCount + " 个子项将被同步删除；请确认后重新请求");
         }
         if (!childIds.isEmpty()) {
             itemMapper.deleteByIds(childIds);
@@ -172,18 +193,25 @@ public class SysConfigItemService {
 
     private List<SysConfigItem> queryItemsByCategory(Long categoryId, String categoryAlias) {
         Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
+
+        // 如果传入 categoryId，需要先查询对应的 alias
+        if (categoryId != null) {
+            SysConfigCategory category = categoryMapper.selectById(categoryId);
+            if (category == null || !category.getProjectNo().equals(projectNo)) {
+                throw new BusinessException("配置分类不存在");
+            }
+            categoryAlias = category.getAlias();
+        } else if (categoryAlias == null || categoryAlias.trim().isEmpty()) {
+            throw new BusinessException("分类ID或alias至少提供一个");
+        }
+
         LambdaQueryWrapper<SysConfigItem> wrapper =
                 new LambdaQueryWrapper<SysConfigItem>()
+                        .eq(SysConfigItem::getCategoryAlias, categoryAlias)
                         .eq(SysConfigItem::getSubjectId, subjectId)
                         .orderByAsc(SysConfigItem::getSort)
                         .orderByAsc(SysConfigItem::getId);
-        if (categoryId != null) {
-            wrapper.eq(SysConfigItem::getCategoryId, categoryId);
-        } else if (categoryAlias != null) {
-            wrapper.eq(SysConfigItem::getCategoryAlias, categoryAlias);
-        } else {
-            throw new BusinessException("分类ID或alias至少提供一个");
-        }
         return itemMapper.selectList(wrapper);
     }
 

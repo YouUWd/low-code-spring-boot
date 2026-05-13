@@ -16,9 +16,6 @@ public class SysConfigItem implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Schema(description = "所属分类ID")
-    private Long categoryId;
-
     @Schema(description = "冗余分类alias，方便直接按alias查询")
     private String categoryAlias;
 
@@ -42,9 +39,6 @@ public class SysConfigItem implements Serializable {
 
     @Schema(description = "扩展属性 颜色/图标等")
     private String extra;
-
-    @Schema(description = "1系统内置 2用户自定义")
-    private Integer source;
 
     @Schema(description = "排序")
     private Integer sort;

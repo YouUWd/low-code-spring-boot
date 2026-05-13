@@ -11,8 +11,8 @@ public class SysConfigItemSaveReq {
     @Schema(description = "主键ID，为空时新增")
     private Long id;
 
-    @Schema(description = "所属分类ID")
-    private Long categoryId;
+    @Schema(description = "分类别名（根节点必填）")
+    private String categoryAlias;
 
     @Schema(description = "父级ID，0为根节点")
     private Long pid;

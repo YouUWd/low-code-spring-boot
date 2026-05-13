@@ -18,9 +18,6 @@ public class SysConfigTreeNodeResp {
     @Schema(description = "父节点ID")
     private Long pid;
 
-    @Schema(description = "分类ID（仅 item 类型有值）")
-    private Long categoryId;
-
     @Schema(description = "分类别名（仅 item 类型有值）")
     private String categoryAlias;
 

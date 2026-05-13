@@ -12,9 +12,6 @@ public class SysConfigItemTreeResp {
     @Schema(description = "主键ID")
     private Long id;
 
-    @Schema(description = "所属分类ID")
-    private Long categoryId;
-
     @Schema(description = "冗余分类alias")
     private String categoryAlias;
 

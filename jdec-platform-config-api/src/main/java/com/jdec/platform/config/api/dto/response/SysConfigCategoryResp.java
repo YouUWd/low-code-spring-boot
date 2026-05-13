@@ -20,12 +20,6 @@ public class SysConfigCategoryResp {
     @Schema(description = "分类说明")
     private String description;
 
-    @Schema(description = "模块id")
-    private Long moduleId;
-
-    @Schema(description = "模块名称")
-    private String moduleName;
-
     @Schema(description = "格式：list / tree / kv")
     private String format;
 

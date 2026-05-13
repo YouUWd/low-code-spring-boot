@@ -9,19 +9,11 @@ import java.util.List;
 
 public interface SysConfigCategoryApi {
 
-    /**
-     * 查询配置分类列表
-     *
-     * @param moduleId 模块ID（可选）
-     */
-    List<SysConfigCategoryResp> list(Long moduleId);
+    /** 查询配置分类列表 */
+    List<SysConfigCategoryResp> list();
 
-    /**
-     * 查询混合树（Category + Item）
-     *
-     * @param moduleId 模块ID（可选）
-     */
-    List<SysConfigTreeNodeResp> mixedTree(Long moduleId);
+    /** 查询混合树（Category + Item） */
+    List<SysConfigTreeNodeResp> mixedTree();
 
     /**
      * 根据alias查询配置分类
@@ -44,32 +36,22 @@ public interface SysConfigCategoryApi {
     // ==================== 配置项接口 ====================
 
     /**
-     * 查询配置项树（按分类ID）
+     * 查询配置项（按分类ID）
+     *
+     * <p>根据分类的 format 字段自动判定返回树形或列表结构
      *
      * @param categoryId 分类ID
      */
-    List<SysConfigItemTreeResp> treeByCategory(Long categoryId);
+    List<SysConfigItemTreeResp> getItemsByCategory(Long categoryId);
 
     /**
-     * 查询配置项树（按分类alias）
+     * 查询配置项（按分类alias）
+     *
+     * <p>根据分类的 format 字段自动判定返回树形或列表结构
      *
      * @param categoryAlias 分类英文标识
      */
-    List<SysConfigItemTreeResp> treeByCategoryAlias(String categoryAlias);
-
-    /**
-     * 查询配置项列表（按分类ID，扁平结构）
-     *
-     * @param categoryId 分类ID
-     */
-    List<SysConfigItemTreeResp> listByCategory(Long categoryId);
-
-    /**
-     * 查询配置项列表（按分类alias，扁平结构）
-     *
-     * @param categoryAlias 分类英文标识
-     */
-    List<SysConfigItemTreeResp> listByCategoryAlias(String categoryAlias);
+    List<SysConfigItemTreeResp> getItemsByCategoryAlias(String categoryAlias);
 
     /** 新增/编辑配置项 */
     void saveItem(SysConfigItemSaveReq req);
