@@ -15,7 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Tag(name = "文件上传")
 @RestController
-@RequestMapping("/common/files")
+@RequestMapping("api/common/files")
 @RequiredArgsConstructor
 public class SysFileController {
 
