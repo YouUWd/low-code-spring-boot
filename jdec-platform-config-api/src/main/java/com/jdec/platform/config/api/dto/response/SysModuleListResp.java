@@ -41,6 +41,9 @@ public class SysModuleListResp {
             allowableValues = {"LIST", "DETAIL"})
     private String moduleType;
 
+    @Schema(description = "是否启用审批", example = "0")
+    private Integer approvalRequired;
+
     @Schema(description = "模块状态", example = "active")
     private String moduleStatus;
 

@@ -68,6 +68,9 @@ public class SysModuleCompleteResp {
                 allowableValues = {"LIST", "DETAIL"})
         private ModuleTypeEnum moduleType;
 
+        @Schema(description = "是否启用审批", example = "0")
+        private Integer approvalRequired;
+
         @Schema(
                 description = "模块状态",
                 example = "active",

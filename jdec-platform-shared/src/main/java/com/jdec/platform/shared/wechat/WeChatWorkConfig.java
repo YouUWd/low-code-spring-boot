@@ -49,15 +49,10 @@ public class WeChatWorkConfig {
     /** 根据主体ID获取配置key */
     private String getSubjectKey(Integer subjectId) {
         // 1: environment, 2: electric, 3: energy
-        switch (subjectId) {
-            case 1:
-                return "environment";
-            case 2:
-                return "electric";
-            case 3:
-                return "energy";
-            default:
-                return "environment";
-        }
+        return switch (subjectId) {
+            case 2 -> "electric";
+            case 3 -> "energy";
+            default -> "environment";
+        };
     }
 }

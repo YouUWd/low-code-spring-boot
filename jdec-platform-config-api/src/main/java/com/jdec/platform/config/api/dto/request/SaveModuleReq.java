@@ -178,6 +178,10 @@ public class SaveModuleReq {
                 allowableValues = {"LIST", "DETAIL"})
         private String moduleType;
 
+        /** 是否启用审批: 0-否, 1-是 */
+        @Schema(description = "是否启用审批（0=否，1=是）", example = "0")
+        private Integer approvalRequired;
+
         /** 同级排序顺序，数字越小越靠前 */
         @Schema(description = "排序顺序（数字越小越靠前）", example = "1")
         private Integer sortOrder;

@@ -43,6 +43,9 @@ public class SysModule {
     /** 模块类型 */
     private ModuleTypeEnum moduleType;
 
+    /** 是否启用审批 * */
+    private Integer approvalRequired;
+
     /** 模块状态 */
     private String moduleStatus;
 

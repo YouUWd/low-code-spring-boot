@@ -21,6 +21,9 @@ public class UpdateSysModuleReq {
     /** 模块类型: query-查询模块, folder-文件夹, custom-自定义 */
     private String moduleType;
 
+    /** 是否启用审批: 0-否, 1-是 */
+    private Integer approvalRequired;
+
     /** 模块状态: active-启用, inactive-禁用, archived-归档 */
     private String moduleStatus;
 

@@ -85,6 +85,7 @@ public class SysModuleService implements SysModuleApi {
                                             ? module.getModuleType().name()
                                             : null);
                             resp.setModuleStatus(module.getModuleStatus());
+                            resp.setApprovalRequired(module.getApprovalRequired());
                             resp.setLeafFlag(module.getLeafFlag());
                             resp.setSortOrder(module.getSortOrder());
                             resp.setCreatedBy(module.getCreatedBy());
@@ -135,6 +136,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setPrimaryTable(module.getPrimaryTable());
         moduleInfo.setModuleType(module.getModuleType());
         moduleInfo.setModuleStatus(module.getModuleStatus());
+        moduleInfo.setApprovalRequired(module.getApprovalRequired());
         moduleInfo.setLeafFlag(module.getLeafFlag());
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setTableHeader(parseTableHeader(module.getTableHeader()));
@@ -581,6 +583,7 @@ public class SysModuleService implements SysModuleApi {
         module.setParentId(request.getParentId());
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
+        module.setApprovalRequired(request.getApprovalRequired());
         module.setModuleStatus("active");
         module.setLeafFlag(1);
 
@@ -837,6 +840,7 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleDesc(request.getModuleDesc());
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
+        module.setApprovalRequired(request.getApprovalRequired());
 
         // 更新 tableHeader
         if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {
@@ -866,6 +870,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setPrimaryTable(module.getPrimaryTable());
         resp.setModuleType(module.getModuleType());
         resp.setModuleStatus(module.getModuleStatus());
+        resp.setApprovalRequired(module.getApprovalRequired());
         resp.setLeafFlag(module.getLeafFlag());
         resp.setSortOrder(module.getSortOrder());
         resp.setTableHeader(parseTableHeader(module.getTableHeader()));
