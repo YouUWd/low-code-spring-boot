@@ -1,6 +1,5 @@
 package com.jdec.platform.shared.context;
 
-import com.jdec.platform.shared.constants.SystemConstant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,8 +23,7 @@ public class AppContext {
 
     /** 获取当前请求的 projectNo */
     public static String getProjectNo() {
-        String projectNo = getContext().getProjectNo();
-        return projectNo != null ? projectNo : SystemConstant.DEFAULT_PROJECT_NO;
+        return getContext().getProjectNo();
     }
 
     /** 获取当前请求的 subjectId */

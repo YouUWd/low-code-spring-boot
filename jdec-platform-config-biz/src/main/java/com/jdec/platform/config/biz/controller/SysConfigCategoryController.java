@@ -1,0 +1,127 @@
+package com.jdec.platform.config.biz.controller;
+
+import com.jdec.platform.config.api.SysConfigCategoryApi;
+import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
+import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
+import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
+import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
+import com.jdec.platform.config.api.dto.response.SysConfigTreeNodeResp;
+import com.jdec.platform.shared.model.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+/**
+ * 配置管理 REST 控制器
+ *
+ * <p>提供配置分类和配置项的统一管理接口。
+ */
+@RestController
+@RequestMapping("/api/config/category")
+@RequiredArgsConstructor
+@Tag(name = "配置管理", description = "配置分类和配置项的统一管理接口")
+public class SysConfigCategoryController {
+
+    private final SysConfigCategoryApi sysConfigCategoryApi;
+
+    // ==================== 配置分类接口 ====================
+
+    @GetMapping("/list")
+    @Operation(summary = "查询配置分类列表", description = "按模块ID查询配置分类列表，不传则查询全部")
+    public ApiResponse<List<SysConfigCategoryResp>> list(
+            @Parameter(description = "模块ID", example = "1") @RequestParam(required = false)
+                    Long moduleId) {
+        return ApiResponse.success(sysConfigCategoryApi.list(moduleId));
+    }
+
+    @GetMapping("/mixedTree")
+    @Operation(summary = "查询混合树", description = "查询配置分类和配置项的混合树结构")
+    public ApiResponse<List<SysConfigTreeNodeResp>> mixedTree(
+            @Parameter(description = "模块ID", example = "1") @RequestParam(required = false)
+                    Long moduleId) {
+        return ApiResponse.success(sysConfigCategoryApi.mixedTree(moduleId));
+    }
+
+    @GetMapping("/getByAlias")
+    @Operation(summary = "根据alias查询配置分类", description = "根据分类英文标识查询配置分类")
+    public ApiResponse<SysConfigCategoryResp> getByAlias(
+            @Parameter(description = "分类英文标识", example = "employee_status") @RequestParam
+                    String alias) {
+        return ApiResponse.success(sysConfigCategoryApi.getByAlias(alias));
+    }
+
+    @PostMapping("/save")
+    @Operation(summary = "新增/编辑配置分类", description = "id为空则新增，不为空则修改")
+    public ApiResponse<Void> save(@RequestBody SysConfigCategorySaveReq request) {
+        sysConfigCategoryApi.saveCategory(request);
+        return ApiResponse.success();
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(
+            summary = "删除配置分类",
+            description = "删除指定配置分类及其所有配置项。force=false 时若有配置项则返回提示；force=true 时级联删除")
+    public ApiResponse<Void> delete(
+            @Parameter(description = "分类ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysConfigCategoryApi.deleteCategory(id, force);
+        return ApiResponse.success();
+    }
+
+    // ==================== 配置项接口 ====================
+
+    @GetMapping("/item/tree/byCategory")
+    @Operation(summary = "查询配置项树（按分类ID）", description = "按分类ID查询配置项的树形结构")
+    public ApiResponse<List<SysConfigItemTreeResp>> itemTreeByCategory(
+            @Parameter(description = "分类ID", example = "1") @RequestParam Long categoryId) {
+        return ApiResponse.success(sysConfigCategoryApi.treeByCategory(categoryId));
+    }
+
+    @GetMapping("/item/tree/byCategoryAlias")
+    @Operation(summary = "查询配置项树（按分类alias）", description = "按分类英文标识查询配置项的树形结构")
+    public ApiResponse<List<SysConfigItemTreeResp>> itemTreeByCategoryAlias(
+            @Parameter(description = "分类英文标识", example = "employee_status") @RequestParam
+                    String categoryAlias) {
+        return ApiResponse.success(sysConfigCategoryApi.treeByCategoryAlias(categoryAlias));
+    }
+
+    @GetMapping("/item/list/byCategory")
+    @Operation(summary = "查询配置项列表（按分类ID）", description = "按分类ID查询配置项的扁平列表")
+    public ApiResponse<List<SysConfigItemTreeResp>> itemListByCategory(
+            @Parameter(description = "分类ID", example = "1") @RequestParam Long categoryId) {
+        return ApiResponse.success(sysConfigCategoryApi.listByCategory(categoryId));
+    }
+
+    @GetMapping("/item/list/byCategoryAlias")
+    @Operation(summary = "查询配置项列表（按分类alias）", description = "按分类英文标识查询配置项的扁平列表")
+    public ApiResponse<List<SysConfigItemTreeResp>> itemListByCategoryAlias(
+            @Parameter(description = "分类英文标识", example = "employee_status") @RequestParam
+                    String categoryAlias) {
+        return ApiResponse.success(sysConfigCategoryApi.listByCategoryAlias(categoryAlias));
+    }
+
+    @PostMapping("/item/save")
+    @Operation(summary = "新增/编辑配置项", description = "id为空则新增，不为空则修改")
+    public ApiResponse<Void> saveItem(@RequestBody SysConfigItemSaveReq request) {
+        sysConfigCategoryApi.saveItem(request);
+        return ApiResponse.success();
+    }
+
+    @DeleteMapping("/item/{id}")
+    @Operation(
+            summary = "删除配置项",
+            description = "删除指定配置项及其所有子项。force=false 时若有子项则返回提示；force=true 时级联删除")
+    public ApiResponse<Void> deleteItem(
+            @Parameter(description = "配置项ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否强制删除", example = "false")
+                    @RequestParam(defaultValue = "false")
+                    boolean force) {
+        sysConfigCategoryApi.deleteItem(id, force);
+        return ApiResponse.success();
+    }
+}

@@ -18,6 +18,9 @@ public class SysMenuTreeResp {
     @Schema(description = "菜单名称")
     private String title;
 
+    @Schema(description = "参数")
+    private String param;
+
     @Schema(description = "菜单类型.1:导航 2:页面 3:标签 4:表")
     private Integer menuType;
 

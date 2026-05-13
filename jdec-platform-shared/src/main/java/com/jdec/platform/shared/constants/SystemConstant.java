@@ -5,9 +5,6 @@ public interface SystemConstant {
     /** 默认项目编号 */
     String DEFAULT_PROJECT_NO = "CONFIG";
 
-    /** 默认subject */
-    Integer DEFAULT_SUBJECT = 0;
-
     /** 禁用状态 */
     Integer STATUS_DISABLE = 0;
 }
