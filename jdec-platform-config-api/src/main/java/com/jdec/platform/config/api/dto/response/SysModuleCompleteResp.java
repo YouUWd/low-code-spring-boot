@@ -41,6 +41,9 @@ public class SysModuleCompleteResp {
         @Schema(description = "项目编码", example = "P260319144021")
         private String projectNo;
 
+        @Schema(description = "主体ID", example = "1")
+        private Long subjectId;
+
         @Schema(description = "模块编码", example = "MOD-STUDENT-FULL")
         private String moduleCode;
 

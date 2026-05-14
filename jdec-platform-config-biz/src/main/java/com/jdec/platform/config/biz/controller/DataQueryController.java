@@ -37,7 +37,8 @@ public class DataQueryController {
             @RequestBody DataQueryReq request) {
 
         PageResult<Map<String, Object>> result =
-                dataQueryApi.executeQuery(moduleCode, AppContext.getProjectNo(), request);
+                dataQueryApi.executeQuery(
+                        moduleCode, AppContext.getProjectNo(), AppContext.getSubjectId(), request);
         return ApiResponse.success(result);
     }
 }

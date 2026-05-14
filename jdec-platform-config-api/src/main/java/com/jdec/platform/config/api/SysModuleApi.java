@@ -13,29 +13,31 @@ public interface SysModuleApi {
     /**
      * 获取模块列表 返回所有模块的基本信息（不包含树形结构），前端自行构建树
      *
-     * @param projectNo 项目编码（用于租户数据隔离）
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
      * @return 模块列表
      */
-    List<SysModuleListResp> listModules(String projectNo);
+    List<SysModuleListResp> listModules(String projectNo, Long subjectId);
 
     /**
      * 获取模块完整信息 包含模块基本信息、关联表、字段配置和状态
      *
-     * @param projectNo 项目编码（用于租户数据隔离）
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
      * @param moduleCode 模块编码
      * @return 模块完整信息响应
      */
-    SysModuleCompleteResp getModuleComplete(String projectNo, String moduleCode);
+    SysModuleCompleteResp getModuleComplete(String projectNo, Long subjectId, String moduleCode);
 
     /**
      * 保存或编辑模块完整信息 包含模块基本信息、关联表、字段配置和状态
      *
-     * <p>如果是新增操作，将自动从 {@code AppContext} 中获取项目编码填充 {@code tenant_id}。
-     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
      * @param request 保存模块请求
      * @return 模块详情响应
      */
-    SysModuleDetailResp saveModule(SaveModuleReq request);
+    SysModuleDetailResp saveModule(String projectNo, Long subjectId, SaveModuleReq request);
 
     /**
      * 删除模块完整信息 删除模块及其所有关联的表、字段配置和状态

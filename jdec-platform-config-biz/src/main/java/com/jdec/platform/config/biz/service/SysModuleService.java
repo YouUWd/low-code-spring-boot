@@ -24,7 +24,6 @@ import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleSimpleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleTableMapper;
-import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -43,9 +42,9 @@ import org.springframework.util.CollectionUtils;
  *
  * <p>核心配置存储在 {@code config_center} 数据源。
  *
- * <p>对于读操作，显式接收 {@code projectNo} 作为隔离键；
+ * <p>对于读操作，显式接收 {@code projectNo} 和 {@code subjectId} 作为隔离键；
  *
- * <p>对于写操作，优先基于主键 ID 定位记录，并利用 {@code AppContext} 自动填充租户上下文。
+ * <p>对于写操作，优先基于主键 ID 定位记录。
  */
 @Service
 @RequiredArgsConstructor
@@ -61,9 +60,10 @@ public class SysModuleService implements SysModuleApi {
     private final ObjectMapper objectMapper;
 
     @Override
-    public List<SysModuleListResp> listModules(String projectNo) {
+    public List<SysModuleListResp> listModules(String projectNo, Long subjectId) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getProjectNo, projectNo);
+        wrapper.eq(SysModule::getSubjectId, subjectId);
         wrapper.orderByAsc(SysModule::getParentId).orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
@@ -73,6 +73,7 @@ public class SysModuleService implements SysModuleApi {
                             SysModuleListResp resp = new SysModuleListResp();
                             resp.setId(module.getId());
                             resp.setProjectNo(module.getProjectNo());
+                            resp.setSubjectId(module.getSubjectId());
                             resp.setModuleCode(module.getModuleCode());
                             resp.setModuleName(module.getModuleName());
                             resp.setModuleDesc(module.getModuleDesc());
@@ -106,11 +107,13 @@ public class SysModuleService implements SysModuleApi {
     }
 
     @Override
-    public SysModuleCompleteResp getModuleComplete(String projectNo, String moduleCode) {
+    public SysModuleCompleteResp getModuleComplete(
+            String projectNo, Long subjectId, String moduleCode) {
         SysModule module =
                 sysModuleMapper.selectOne(
                         Wrappers.<SysModule>lambdaQuery()
                                 .eq(SysModule::getProjectNo, projectNo)
+                                .eq(SysModule::getSubjectId, subjectId)
                                 .eq(SysModule::getModuleCode, moduleCode));
         if (module == null) {
             return null;
@@ -127,6 +130,7 @@ public class SysModuleService implements SysModuleApi {
         SysModuleCompleteResp.ModuleInfo moduleInfo = new SysModuleCompleteResp.ModuleInfo();
         moduleInfo.setId(module.getId());
         moduleInfo.setProjectNo(module.getProjectNo());
+        moduleInfo.setSubjectId(module.getSubjectId());
         moduleInfo.setModuleCode(module.getModuleCode());
         moduleInfo.setModuleName(module.getModuleName());
         moduleInfo.setModuleDesc(module.getModuleDesc());
@@ -241,7 +245,7 @@ public class SysModuleService implements SysModuleApi {
 
     @Override
     @Transactional
-    public SysModuleDetailResp saveModule(SaveModuleReq request) {
+    public SysModuleDetailResp saveModule(String projectNo, Long subjectId, SaveModuleReq request) {
         if (request.getModule() == null) {
             throw new BusinessException(400, "模块信息不能为空");
         }
@@ -252,7 +256,7 @@ public class SysModuleService implements SysModuleApi {
         // 如果 ID 为空则创建新模块，否则编辑现有模块
         if (request.getModule().getId() == null) {
             // 创建新模块
-            module = createOrUpdateModule(request.getModule());
+            module = createOrUpdateModule(projectNo, subjectId, request.getModule());
             moduleId = module.getId();
         } else {
             moduleId = request.getModule().getId();
@@ -570,13 +574,15 @@ public class SysModuleService implements SysModuleApi {
         }
     }
 
-    private SysModule createOrUpdateModule(SaveSysModuleReq request) {
+    private SysModule createOrUpdateModule(
+            String projectNo, Long subjectId, SaveSysModuleReq request) {
         if (request.getParentId() == null) {
             throw new BusinessException(400, "父模块ID不能为空，根节点请传入0");
         }
 
         SysModule module = new SysModule();
-        module.setProjectNo(AppContext.getProjectNo());
+        module.setProjectNo(projectNo);
+        module.setSubjectId(subjectId);
         module.setModuleCode(request.getModuleCode());
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
@@ -595,10 +601,6 @@ public class SysModuleService implements SysModuleApi {
                 throw new BusinessException(500, "tableHeader 序列化失败", e);
             }
         }
-
-        module.setCreatedBy(request.getCreatedBy());
-        module.setCreatedDate(LocalDateTime.now());
-        module.setCreatedName(request.getCreatedName());
 
         // 处理父模块相关逻辑
         if (module.getParentId() > 0) {
@@ -634,7 +636,8 @@ public class SysModuleService implements SysModuleApi {
         // 设置排序顺序
         if (request.getSortOrder() == null) {
             LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(SysModule::getProjectNo, AppContext.getProjectNo())
+            wrapper.eq(SysModule::getProjectNo, projectNo)
+                    .eq(SysModule::getSubjectId, subjectId)
                     .eq(SysModule::getParentId, module.getParentId())
                     .orderByDesc(SysModule::getSortOrder)
                     .last("LIMIT 1");
@@ -861,6 +864,7 @@ public class SysModuleService implements SysModuleApi {
         SysModuleDetailResp resp = new SysModuleDetailResp();
         resp.setId(module.getId());
         resp.setProjectNo(module.getProjectNo());
+        resp.setSubjectId(module.getSubjectId());
         resp.setModuleCode(module.getModuleCode());
         resp.setModuleName(module.getModuleName());
         resp.setModuleDesc(module.getModuleDesc());

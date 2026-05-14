@@ -36,8 +36,9 @@ public class SysModuleController {
     @GetMapping
     public ApiResponse<List<SysModuleListResp>> listModules() {
         String projectNo = AppContext.getProjectNo();
-        log.info("查询项目 {} 的模块列表", projectNo);
-        List<SysModuleListResp> result = sysModuleService.listModules(projectNo);
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} (主体 {}) 的模块列表", projectNo, subjectId);
+        List<SysModuleListResp> result = sysModuleService.listModules(projectNo, subjectId);
         return ApiResponse.success(result);
     }
 
@@ -55,8 +56,10 @@ public class SysModuleController {
             @Parameter(description = "模块编码", required = true, example = "1") @PathVariable
                     String moduleCode) {
         String projectNo = AppContext.getProjectNo();
-        log.info("查询项目 {} 的模块完整信息: moduleCode={}", projectNo, moduleCode);
-        SysModuleCompleteResp result = sysModuleService.getModuleComplete(projectNo, moduleCode);
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} (主体 {}) 的模块完整信息: moduleCode={}", projectNo, subjectId, moduleCode);
+        SysModuleCompleteResp result =
+                sysModuleService.getModuleComplete(projectNo, subjectId, moduleCode);
         return ApiResponse.success(result);
     }
 
@@ -73,11 +76,14 @@ public class SysModuleController {
             description = "一次性保存或编辑模块的所有配置信息，包括基本信息、关联表、简单字段和组合字段。若 module.id 为空则创建新模块，否则编辑现有模块")
     @PostMapping("/complete")
     public ApiResponse<SysModuleDetailResp> saveModuleComplete(@RequestBody SaveModuleReq request) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         log.info(
-                "保存项目 {} 的模块信息: moduleCode={}",
-                AppContext.getProjectNo(),
+                "保存项目 {} (主体 {}) 的模块信息: moduleCode={}",
+                projectNo,
+                subjectId,
                 request.getModule().getModuleCode());
-        SysModuleDetailResp result = sysModuleService.saveModule(request);
+        SysModuleDetailResp result = sysModuleService.saveModule(projectNo, subjectId, request);
         return ApiResponse.success("保存成功", result);
     }
 
