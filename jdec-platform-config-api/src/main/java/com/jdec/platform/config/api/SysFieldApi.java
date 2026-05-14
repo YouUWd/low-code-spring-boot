@@ -21,26 +21,29 @@ public interface SysFieldApi {
      * 获取表的所有列信息（包含配置增强）
      *
      * @param projectNo 项目编码
+     * @param subjectId 主体ID
      * @param tableName 表名
      * @return 列信息列表
      */
-    List<ColumnInfoResp> getTableColumns(String projectNo, String tableName);
+    List<ColumnInfoResp> getTableColumns(String projectNo, Long subjectId, String tableName);
 
     /**
      * 查询字段配置列表
      *
      * @param projectNo 项目编码
+     * @param subjectId 主体ID
      * @param tableName 表名
      * @return 字段配置列表
      */
-    List<SysFieldResp> querySysFields(String projectNo, String tableName);
+    List<SysFieldResp> querySysFields(String projectNo, Long subjectId, String tableName);
 
     /**
      * 保存或更新字段配置
      *
      * @param projectNo 项目编码
+     * @param subjectId 主体ID
      * @param tableName 表名
      * @param req 保存请求
      */
-    void saveSysField(String projectNo, String tableName, SysFieldSaveReq req);
+    void saveSysField(String projectNo, Long subjectId, String tableName, SysFieldSaveReq req);
 }

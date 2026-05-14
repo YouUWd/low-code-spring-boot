@@ -45,8 +45,9 @@ public class SysFieldController {
             @Parameter(description = "表名", example = "sys_module", required = true) @PathVariable
                     String tableName) {
         String projectNo = AppContext.getProjectNo();
-        log.info("查询项目 {} 的表 {} 的列信息", projectNo, tableName);
-        return ApiResponse.success(sysFieldApi.getTableColumns(projectNo, tableName));
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 主体 {} 的表 {} 的列信息", projectNo, subjectId, tableName);
+        return ApiResponse.success(sysFieldApi.getTableColumns(projectNo, subjectId, tableName));
     }
 
     @Operation(summary = "查询字段配置列表", description = "根据租户ID和表名查询已保存的字段显示配置")
@@ -55,8 +56,9 @@ public class SysFieldController {
             @Parameter(description = "表名", example = "sys_module", required = true) @PathVariable
                     String tableName) {
         String projectNo = AppContext.getProjectNo();
-        log.info("查询项目 {} 的表 {} 的字段配置列表", projectNo, tableName);
-        return ApiResponse.success(sysFieldApi.querySysFields(projectNo, tableName));
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 主体 {} 的表 {} 的字段配置列表", projectNo, subjectId, tableName);
+        return ApiResponse.success(sysFieldApi.querySysFields(projectNo, subjectId, tableName));
     }
 
     @Operation(summary = "保存字段配置", description = "保存或更新单个字段的显示名称、关联关系等配置")
@@ -66,8 +68,14 @@ public class SysFieldController {
                     String tableName,
             @RequestBody SysFieldSaveReq req) {
         String projectNo = AppContext.getProjectNo();
-        log.info("保存项目 {} 的表 {} 的字段 {} 配置", projectNo, tableName, req.getColumnName());
-        sysFieldApi.saveSysField(projectNo, tableName, req);
+        Long subjectId = AppContext.getSubjectId();
+        log.info(
+                "保存项目 {} 主体 {} 的表 {} 的字段 {} 配置",
+                projectNo,
+                subjectId,
+                tableName,
+                req.getColumnName());
+        sysFieldApi.saveSysField(projectNo, subjectId, tableName, req);
         return ApiResponse.success();
     }
 }
