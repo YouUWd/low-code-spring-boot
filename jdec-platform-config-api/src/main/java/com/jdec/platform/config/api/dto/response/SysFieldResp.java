@@ -21,6 +21,9 @@ public class SysFieldResp {
     @Schema(description = "项目编号")
     private String projectNo;
 
+    @Schema(description = "主体ID")
+    private Long subjectId;
+
     @Schema(description = "表名")
     private String tableName;
 

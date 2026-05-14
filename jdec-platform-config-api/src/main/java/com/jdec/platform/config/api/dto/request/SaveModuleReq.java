@@ -141,13 +141,6 @@ public class SaveModuleReq {
         @Schema(description = "模块ID（编辑时使用，创建时为空）", example = "1")
         private Long id;
 
-        /** 租户 ID */
-        @Schema(
-                description = "项目编号",
-                requiredMode = Schema.RequiredMode.REQUIRED,
-                example = "P260319144021")
-        private String projectNo;
-
         /** 模块唯一编码，如 MOD-STUDENT-FULL */
         @Schema(
                 description = "模块唯一编码",
@@ -189,13 +182,5 @@ public class SaveModuleReq {
         /** 列表表头配置（仅LIST类型模块需要） */
         @Schema(description = "列表表头配置（仅LIST类型模块需要）")
         private List<TableHeaderColumn> tableHeader;
-
-        /** 创建人 ID */
-        @Schema(description = "创建人ID", example = "user-001")
-        private Long createdBy;
-
-        /** 创建人姓名 */
-        @Schema(description = "创建人姓名", example = "张三")
-        private String createdName;
     }
 }

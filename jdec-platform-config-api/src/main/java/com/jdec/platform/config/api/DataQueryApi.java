@@ -12,9 +12,10 @@ public interface DataQueryApi {
      *
      * @param moduleCode 模块编码
      * @param projectNo 项目编码
+     * @param subjectId 主体Id
      * @param request 查询请求参数
      * @return 分页查询结果
      */
     PageResult<Map<String, Object>> executeQuery(
-            String moduleCode, String projectNo, DataQueryReq request);
+            String moduleCode, String projectNo, Long subjectId, DataQueryReq request);
 }

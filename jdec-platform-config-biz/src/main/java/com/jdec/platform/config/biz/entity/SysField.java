@@ -21,8 +21,11 @@ public class SysField {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 租户ID */
+    /** 项目编号 */
     private String projectNo;
+
+    /** 主体ID */
+    private Long subjectId;
 
     /** 表名 */
     private String tableName;

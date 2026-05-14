@@ -15,6 +15,9 @@ public class SysModuleDetailResp {
     /** 项目编号 */
     private String projectNo;
 
+    /** 主体ID */
+    private Long subjectId;
+
     /** 模块编码 */
     private String moduleCode;
 

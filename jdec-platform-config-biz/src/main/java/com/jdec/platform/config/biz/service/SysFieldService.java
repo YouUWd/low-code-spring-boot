@@ -70,8 +70,9 @@ public class SysFieldService implements SysFieldApi {
     }
 
     @Override
-    public List<ColumnInfoResp> getTableColumns(String projectNo, String tableName) {
-        log.debug("查询表 {}.{} 的列信息", projectNo, tableName);
+    public List<ColumnInfoResp> getTableColumns(
+            String projectNo, Long subjectId, String tableName) {
+        log.debug("查询项目 {} 主体 {} 表 {} 的列信息", projectNo, subjectId, tableName);
 
         String sql =
                 """
@@ -95,7 +96,7 @@ public class SysFieldService implements SysFieldApi {
                                                     .build())
                             .toList();
 
-            enrichColumnsWithSysField(projectNo, tableName, columns);
+            enrichColumnsWithSysField(projectNo, subjectId, tableName, columns);
 
             return columns;
         } catch (Exception e) {
@@ -105,9 +106,9 @@ public class SysFieldService implements SysFieldApi {
     }
 
     private void enrichColumnsWithSysField(
-            String projectNo, String tableName, List<ColumnInfoResp> columns) {
+            String projectNo, Long subjectId, String tableName, List<ColumnInfoResp> columns) {
         try {
-            List<SysField> sysFields = querySysFieldEntities(projectNo, tableName);
+            List<SysField> sysFields = querySysFieldEntities(projectNo, subjectId, tableName);
             Map<String, String> configMap =
                     sysFields.stream()
                             .collect(
@@ -134,8 +135,8 @@ public class SysFieldService implements SysFieldApi {
     // ==================== 字段配置持久化逻辑 ====================
 
     @Override
-    public List<SysFieldResp> querySysFields(String projectNo, String tableName) {
-        log.debug("查询表 {}.{} 的完整字段配置列表（元数据驱动）", projectNo, tableName);
+    public List<SysFieldResp> querySysFields(String projectNo, Long subjectId, String tableName) {
+        log.debug("查询项目 {} 主体 {} 表 {} 的完整字段配置列表", projectNo, subjectId, tableName);
 
         // 1. 获取数据库中该表所有的列名和注释
         String sql =
@@ -149,7 +150,7 @@ public class SysFieldService implements SysFieldApi {
         List<Map<String, Object>> columnRows = jdbcTemplate.queryForList(sql, projectNo, tableName);
 
         // 2. 获取已有的配置信息
-        List<SysField> sysFields = querySysFieldEntities(projectNo, tableName);
+        List<SysField> sysFields = querySysFieldEntities(projectNo, subjectId, tableName);
 
         // 2.1 获取关联的扩展值信息
         List<Long> fieldIds = sysFields.stream().map(SysField::getId).toList();
@@ -193,6 +194,7 @@ public class SysFieldService implements SysFieldApi {
                                 return SysFieldResp.builder()
                                         .id(config.getId())
                                         .projectNo(projectNo)
+                                        .subjectId(subjectId)
                                         .tableName(tableName)
                                         .columnName(columnName)
                                         .displayName(config.getDisplayName())
@@ -207,6 +209,7 @@ public class SysFieldService implements SysFieldApi {
                                 // 尚无配置，返回默认值
                                 return SysFieldResp.builder()
                                         .projectNo(projectNo)
+                                        .subjectId(subjectId)
                                         .tableName(tableName)
                                         .columnName(columnName)
                                         .displayName(
@@ -221,23 +224,32 @@ public class SysFieldService implements SysFieldApi {
                 .toList();
     }
 
-    public List<SysField> querySysFieldEntities(String projectNo, String tableName) {
+    public List<SysField> querySysFieldEntities(
+            String projectNo, Long subjectId, String tableName) {
         return sysFieldMapper.selectList(
                 new LambdaQueryWrapper<SysField>()
                         .eq(SysField::getProjectNo, projectNo)
+                        .eq(SysField::getSubjectId, subjectId)
                         .eq(SysField::getTableName, tableName)
                         .eq(SysField::getDeleted, 0));
     }
 
     @Override
     @Transactional
-    public void saveSysField(String projectNo, String tableName, SysFieldSaveReq req) {
-        log.info("开始保存字段配置及扩展值: {}/{}", tableName, req.getColumnName());
+    public void saveSysField(
+            String projectNo, Long subjectId, String tableName, SysFieldSaveReq req) {
+        log.info(
+                "开始保存项目 {} 主体 {} 的字段配置: {}/{}",
+                projectNo,
+                subjectId,
+                tableName,
+                req.getColumnName());
 
         SysField entity =
                 SysField.builder()
                         .id(req.getId())
                         .projectNo(projectNo)
+                        .subjectId(subjectId)
                         .tableName(tableName)
                         .columnName(req.getColumnName())
                         .displayName(req.getDisplayName())
