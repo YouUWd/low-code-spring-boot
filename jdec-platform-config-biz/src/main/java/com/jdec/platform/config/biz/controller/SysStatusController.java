@@ -58,4 +58,14 @@ public class SysStatusController {
         sysStatusApi.dragStatus(request);
         return ApiResponse.success();
     }
+
+    @PostMapping("/{id}/toggle")
+    @Operation(summary = "停用/启用状态", description = "切换状态的启用状态，enabled=1启用，enabled=0停用")
+    public ApiResponse<Void> toggle(
+            @Parameter(description = "状态ID", example = "1") @PathVariable Long id,
+            @Parameter(description = "是否启用：1-启用，0-停用", example = "1") @RequestParam
+                    Integer enabled) {
+        sysStatusApi.toggleStatus(id, enabled);
+        return ApiResponse.success();
+    }
 }

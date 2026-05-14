@@ -224,6 +224,29 @@ public class SysStatusService implements SysStatusApi {
         return result;
     }
 
+    @Override
+    public void toggleStatus(Long id, Integer enabled) {
+        if (id == null) {
+            throw new BusinessException("状态ID不能为空");
+        }
+        if (enabled == null || (enabled != 0 && enabled != 1)) {
+            throw new BusinessException("enabled 参数必须为 0 或 1");
+        }
+
+        SysStatus status =
+                sysStatusMapper.selectOne(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getId, id)
+                                .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
+        if (status == null) {
+            throw new BusinessException("状态不存在");
+        }
+
+        status.setEnabled(enabled);
+        sysStatusMapper.updateById(status);
+    }
+
     /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */
     private void checkCycle(Long id, Long targetPid, Long subjectId) {
         if (id.equals(targetPid)) {

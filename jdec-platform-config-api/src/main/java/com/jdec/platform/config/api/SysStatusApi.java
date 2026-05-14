@@ -24,4 +24,12 @@ public interface SysStatusApi {
 
     /** 拖拽状态 */
     void dragStatus(SysStatusDragReq req);
+
+    /**
+     * 停用/启用状态
+     *
+     * @param id 状态ID
+     * @param enabled 是否启用：1-启用，0-停用
+     */
+    void toggleStatus(Long id, Integer enabled);
 }
