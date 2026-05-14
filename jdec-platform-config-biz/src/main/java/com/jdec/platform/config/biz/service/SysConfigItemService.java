@@ -57,7 +57,7 @@ public class SysConfigItemService {
         SysConfigCategory category =
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
-                                .eq(SysConfigCategory::getAlias, categoryAlias)
+                                .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
                                 .eq(SysConfigCategory::getProjectNo, projectNo));
         if (category == null) {
             throw new BusinessException("配置分类不存在");
@@ -89,7 +89,7 @@ public class SysConfigItemService {
         SysConfigCategory category =
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
-                                .eq(SysConfigCategory::getAlias, categoryAlias)
+                                .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
                                 .eq(SysConfigCategory::getProjectNo, projectNo));
         if (category == null) {
             throw new BusinessException("配置分类不存在");
@@ -201,7 +201,7 @@ public class SysConfigItemService {
             if (category == null || !category.getProjectNo().equals(projectNo)) {
                 throw new BusinessException("配置分类不存在");
             }
-            categoryAlias = category.getAlias();
+            categoryAlias = category.getCategoryAlias();
         } else if (categoryAlias == null || categoryAlias.trim().isEmpty()) {
             throw new BusinessException("分类ID或alias至少提供一个");
         }

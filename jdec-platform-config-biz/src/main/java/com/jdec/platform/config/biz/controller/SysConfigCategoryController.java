@@ -41,12 +41,12 @@ public class SysConfigCategoryController {
         return ApiResponse.success(sysConfigCategoryApi.mixedTree());
     }
 
-    @GetMapping("/getByAlias")
-    @Operation(summary = "根据alias查询配置分类", description = "根据分类英文标识查询配置分类")
-    public ApiResponse<SysConfigCategoryResp> getByAlias(
+    @GetMapping("/getByCategoryAlias")
+    @Operation(summary = "根据categoryAlias查询配置分类", description = "根据分类英文标识查询配置分类")
+    public ApiResponse<SysConfigCategoryResp> getByCategoryAlias(
             @Parameter(description = "分类英文标识", example = "employee_status") @RequestParam
-                    String alias) {
-        return ApiResponse.success(sysConfigCategoryApi.getByAlias(alias));
+                    String categoryAlias) {
+        return ApiResponse.success(sysConfigCategoryApi.getByCategoryAlias(categoryAlias));
     }
 
     @PostMapping("/save")

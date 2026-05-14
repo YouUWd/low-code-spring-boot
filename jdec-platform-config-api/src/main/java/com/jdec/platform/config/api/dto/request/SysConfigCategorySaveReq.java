@@ -12,10 +12,10 @@ public class SysConfigCategorySaveReq {
     private Long id;
 
     @Schema(description = "分类名称 如：员工状态")
-    private String name;
+    private String label;
 
     @Schema(description = "分类英文标识 如：employee_status")
-    private String alias;
+    private String categoryAlias;
 
     @Schema(description = "分类说明")
     private String description;

@@ -12,10 +12,10 @@ public class SysConfigCategoryResp {
     private Long id;
 
     @Schema(description = "分类名称")
-    private String name;
+    private String label;
 
     @Schema(description = "分类英文标识")
-    private String alias;
+    private String categoryAlias;
 
     @Schema(description = "分类说明")
     private String description;

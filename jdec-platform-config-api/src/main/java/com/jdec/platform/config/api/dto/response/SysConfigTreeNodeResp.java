@@ -18,7 +18,7 @@ public class SysConfigTreeNodeResp {
     @Schema(description = "父节点ID")
     private Long pid;
 
-    @Schema(description = "分类别名（仅 item 类型有值）")
+    @Schema(description = "分类别名（category 类型为自身别名，item 类型为所属分类别名）")
     private String categoryAlias;
 
     @Schema(description = "显示名称")

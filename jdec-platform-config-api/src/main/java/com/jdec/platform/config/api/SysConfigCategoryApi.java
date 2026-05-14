@@ -16,11 +16,11 @@ public interface SysConfigCategoryApi {
     List<SysConfigTreeNodeResp> mixedTree();
 
     /**
-     * 根据alias查询配置分类
+     * 根据categoryAlias查询配置分类
      *
-     * @param alias 分类英文标识
+     * @param categoryAlias 分类英文标识
      */
-    SysConfigCategoryResp getByAlias(String alias);
+    SysConfigCategoryResp getByCategoryAlias(String categoryAlias);
 
     /** 新增/编辑配置分类 */
     void saveCategory(SysConfigCategorySaveReq req);

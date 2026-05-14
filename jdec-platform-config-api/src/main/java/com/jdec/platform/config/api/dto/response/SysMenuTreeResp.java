@@ -48,8 +48,14 @@ public class SysMenuTreeResp {
     @Schema(description = "帮助文档地址")
     private String docUrl;
 
+    @Schema(description = "帮助文档名称")
+    private String docName;
+
     @Schema(description = "演示视频地址")
     private String videoUrl;
+
+    @Schema(description = "帮助视频名")
+    private String videoName;
 
     @Schema(description = "子节点列表")
     private List<SysMenuTreeResp> children;

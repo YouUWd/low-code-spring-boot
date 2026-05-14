@@ -59,8 +59,14 @@ public class SysMenu implements Serializable {
     @Schema(description = "帮助文档地址")
     private String docUrl;
 
+    @Schema(description = "帮助文档名称")
+    private String docName;
+
     @Schema(description = "演示视频地址")
     private String videoUrl;
+
+    @Schema(description = "帮助视频名")
+    private String videoName;
 
     @Schema(description = "模拟操作用户")
     @TableField(fill = FieldFill.INSERT)

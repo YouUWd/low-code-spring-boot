@@ -75,7 +75,9 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
 
         // 查询所有配置项（按 categoryAlias 关联）
         List<String> categoryAliases =
-                categories.stream().map(SysConfigCategory::getAlias).collect(Collectors.toList());
+                categories.stream()
+                        .map(SysConfigCategory::getCategoryAlias)
+                        .collect(Collectors.toList());
         List<SysConfigItem> items =
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
@@ -100,7 +102,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             node.setNodeType("category");
             node.setId(category.getId());
             node.setPid(0L);
-            node.setLabel(category.getName());
+            node.setCategoryAlias(category.getCategoryAlias());
+            node.setLabel(category.getLabel());
             node.setDescription(category.getDescription());
             node.setFormat(category.getFormat());
             node.setSource(category.getSource());
@@ -109,7 +112,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             node.setDepth(1);
             node.setPath("/" + category.getId() + "/");
             node.setChildren(new ArrayList<>());
-            categoryNodeMap.put(category.getAlias(), node);
+            categoryNodeMap.put(category.getCategoryAlias(), node);
             result.add(node);
         }
 
@@ -163,12 +166,12 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     }
 
     @Override
-    public SysConfigCategoryResp getByAlias(String alias) {
+    public SysConfigCategoryResp getByCategoryAlias(String categoryAlias) {
         String projectNo = AppContext.getProjectNo();
         SysConfigCategory entity =
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
-                                .eq(SysConfigCategory::getAlias, alias)
+                                .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
                                 .eq(SysConfigCategory::getProjectNo, projectNo));
         if (entity == null) {
             return null;
@@ -183,22 +186,22 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         String projectNo = AppContext.getProjectNo();
 
         // 校验：name 和 alias 不能为空
-        if (req.getName() == null || req.getName().trim().isEmpty()) {
+        if (req.getLabel() == null || req.getLabel().trim().isEmpty()) {
             throw new BusinessException("分类名称不能为空");
         }
-        if (req.getAlias() == null || req.getAlias().trim().isEmpty()) {
+        if (req.getCategoryAlias() == null || req.getCategoryAlias().trim().isEmpty()) {
             throw new BusinessException("分类标识不能为空");
         }
 
-        // 校验：alias 只能包含字母、数字、下划线
-        if (!req.getAlias().matches("^[a-zA-Z0-9_]+$")) {
+        // 校验：categoryAlias 只能包含字母、数字、下划线
+        if (!req.getCategoryAlias().matches("^[a-zA-Z0-9_]+$")) {
             throw new BusinessException("分类标识只能包含字母、数字、下划线");
         }
 
         if (req.getId() == null) {
             // 新增
-            // 校验 alias 是否重复
-            checkDuplicateAlias(req.getAlias(), projectNo, null);
+            // 校验 categoryAlias 是否重复
+            checkDuplicateAlias(req.getCategoryAlias(), projectNo, null);
             SysConfigCategory entity = new SysConfigCategory();
             BeanUtils.copyProperties(req, entity);
             entity.setProjectNo(projectNo);
@@ -213,8 +216,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             if (!exists) {
                 throw new BusinessException("配置分类不存在");
             }
-            // 校验 alias 是否重复
-            checkDuplicateAlias(req.getAlias(), projectNo, req.getId());
+            // 校验 categoryAlias 是否重复
+            checkDuplicateAlias(req.getCategoryAlias(), projectNo, req.getId());
             SysConfigCategory entity = new SysConfigCategory();
             BeanUtils.copyProperties(req, entity);
             categoryMapper.updateById(entity);
@@ -242,23 +245,23 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         long itemCount =
                 itemMapper.selectCount(
                         Wrappers.<SysConfigItem>lambdaQuery()
-                                .eq(SysConfigItem::getCategoryAlias, category.getAlias()));
+                                .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias()));
         if (!force && itemCount > 0) {
             throw new BusinessException("删除确认：该分类下有 " + itemCount + " 个配置项将被同步删除；请确认后重新请求");
         }
         // 级联删除配置项（通过 categoryAlias）
         itemMapper.delete(
                 Wrappers.<SysConfigItem>lambdaQuery()
-                        .eq(SysConfigItem::getCategoryAlias, category.getAlias()));
+                        .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias()));
         // 删除分类
         categoryMapper.deleteById(id);
     }
 
-    /** 校验 alias 是否重复 */
+    /** 校验 categoryAlias 是否重复 */
     private void checkDuplicateAlias(String alias, String projectNo, Long excludeId) {
         LambdaQueryWrapper<SysConfigCategory> wrapper =
                 new LambdaQueryWrapper<SysConfigCategory>()
-                        .eq(SysConfigCategory::getAlias, alias)
+                        .eq(SysConfigCategory::getCategoryAlias, alias)
                         .eq(SysConfigCategory::getProjectNo, projectNo);
         if (excludeId != null) {
             wrapper.ne(SysConfigCategory::getId, excludeId);
