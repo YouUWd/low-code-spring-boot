@@ -29,6 +29,10 @@ public class MessageRequest {
     @JsonProperty("text")
     private TextContent text;
 
+    /** Markdown消息内容 */
+    @JsonProperty("markdown")
+    private MarkdownContent markdown;
+
     /** 是否保密消息 */
     @JsonProperty("safe")
     @Builder.Default
@@ -40,6 +44,16 @@ public class MessageRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TextContent {
+        /** 消息内容 */
+        private String content;
+    }
+
+    /** Markdown消息内容 */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MarkdownContent {
         /** 消息内容 */
         private String content;
     }

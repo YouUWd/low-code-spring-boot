@@ -110,22 +110,23 @@ knife4j:
 # ===== 企业微信配置 - 开发环境 =====
 wechat:
   work:
+    api-base-url: http://192.168.60.6:5555
     subjects:
-      # 主体1: environment (环境公司)
+      # 主体1: environment (环保公司)
       environment:
         corp-id: wxa1d00a1a588baec3
         corp-secret: ${WECHAT_ENVIRONMENT_SECRET:Fp5VM-jUKBxObAf-wyT896fSjh2eB37E3nLtGFMXFy4}
         agent-id: 1000015
         token: easyWeChat-work-dev
         aes-key: ''
-      # 主体2: electric (电力公司)
+      # 主体2: electric (电气公司)
       electric:
         corp-id: wxa1d00a1a588baec3
         corp-secret: ${WECHAT_ELECTRIC_SECRET:Fp5VM-jUKBxObAf-wyT896fSjh2eB37E3nLtGFMXFy4}
         agent-id: 1000015
         token: easyWeChat-work-dev
         aes-key: ''
-      # 主体3: energy (能源公司)
+      # 主体3: energy (能化公司)
       energy:
         corp-id: wwa69aae03b2f90d72
         corp-secret: ${WECHAT_ENERGY_SECRET:C0oRlyHAWR96A0TsDngv_lMmYdi5KPjbBTdxIILM8Xk}

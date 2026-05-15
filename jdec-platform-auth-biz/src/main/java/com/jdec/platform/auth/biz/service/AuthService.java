@@ -172,9 +172,7 @@ public class AuthService implements AuthApi {
         // 6. 发送验证码（根据 user_type 自动选择企业微信/短信）
         try {
             weChatWorkService.sendVerificationCode(
-                    Math.toIntExact(userBO.getSubjectId()),
-                    String.valueOf(userBO.getUserId()),
-                    codeStr);
+                    userBO.getSubjectId(), String.valueOf(userBO.getUserId()), codeStr);
             stringRedisTemplate.opsForValue().set(cacheKey, codeStr, 300, TimeUnit.SECONDS);
             boolean isExternal = userBO.getUserType() != null && userBO.getUserType() == 2;
             msg = isExternal ? "验证码已发送成功，请在手机短信中查收" : "验证码已发送成功，请在企业微信查收";
