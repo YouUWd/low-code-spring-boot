@@ -12,11 +12,17 @@ public class SysConfigTreeNodeResp {
     @Schema(description = "节点类型：category-分类, item-配置项")
     private String nodeType;
 
-    @Schema(description = "节点ID")
-    private String id;
+    @Schema(description = "节点ID（数字）")
+    private Long id;
 
-    @Schema(description = "父节点ID")
-    private String pid;
+    @Schema(description = "节点ID（带前缀字符串，category-xxx 或 item-xxx）")
+    private String nodeId;
+
+    @Schema(description = "父节点ID（数字）")
+    private Long pid;
+
+    @Schema(description = "父节点ID（带前缀字符串）")
+    private String parentNodeId;
 
     @Schema(description = "分类别名（category 类型为自身别名，item 类型为所属分类别名）")
     private String categoryAlias;
