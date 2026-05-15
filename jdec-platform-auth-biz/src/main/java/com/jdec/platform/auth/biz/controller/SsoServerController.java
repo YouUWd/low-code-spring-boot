@@ -2,11 +2,11 @@ package com.jdec.platform.auth.biz.controller;
 
 import cn.dev33.satoken.sso.processor.SaSsoServerProcessor;
 import cn.dev33.satoken.sso.template.SaSsoServerUtil;
-import cn.dev33.satoken.sso.util.SaSsoConsts;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.util.SaFoxUtil;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,26 +31,28 @@ public class SsoServerController {
         return SaSsoServerProcessor.instance.dister();
     }
 
-    /** 获取 redirectUrl */
-    @RequestMapping("/getRedirectUrl")
-    public ApiResponse<String> getRedirectUrl(String client, String redirect, String mode) {
+    /**
+     * 获取重定向 URL
+     *
+     * @param client 客户端标识（应用 projectNo）
+     * @param redirect 客户端回调地址（需 URL 编码）
+     * @return 重定向 URL，未登录返回空字符串
+     */
+    @GetMapping("/getRedirectUrl")
+    @Operation(summary = "获取SSO重定向URL", description = "已登录用户获取携带 ticket 的重定向地址，用于跨域单点登录")
+    public ApiResponse<String> getRedirectUrl(
+            @Parameter(description = "客户端标识（应用 projectNo）", required = true) String client,
+            @Parameter(description = "客户端回调地址（需 URL 编码）", required = true) String redirect) {
         // 未登录情况下，返回空字符串
         if (!StpUtil.isLogin()) {
             return ApiResponse.success("");
         }
         // 已登录情况下，构建 redirectUrl
         redirect = SaFoxUtil.decoderUrl(redirect);
-        if (SaSsoConsts.MODE_SIMPLE.equals(mode)) {
-            // 模式一
-            SaSsoServerUtil.checkRedirectUrl(client, redirect);
-            return ApiResponse.success(redirect);
-        } else {
-            // 模式二或模式三
-            String redirectUrl =
-                    SaSsoServerUtil.buildRedirectUrl(
-                            client, redirect, StpUtil.getLoginId(), StpUtil.getTokenValue());
-            return ApiResponse.success(redirectUrl);
-        }
+        String redirectUrl =
+                SaSsoServerUtil.buildRedirectUrl(
+                        client, redirect, StpUtil.getLoginId(), StpUtil.getTokenValue());
+        return ApiResponse.success(redirectUrl);
     }
 
     /** todo: 获取SSO登录页应用信息 前端登录页初始化时调用，根据 projectNo 展示应用信息 */
@@ -67,5 +69,32 @@ public class SsoServerController {
     @Operation(summary = "检查SSO登录状态")
     public ApiResponse<Boolean> isLogin() {
         return ApiResponse.success(StpUtil.isLogin());
+    }
+
+    /**
+     * 获取 SSO Ticket
+     *
+     * @param client 客户端标识（应用 projectNo）
+     * @return ticket 字符串，未登录返回空字符串
+     */
+    @GetMapping("/getTicket")
+    @Operation(summary = "获取SSO Ticket", description = "已登录用户获取用于跨域认证的 ticket")
+    public ApiResponse<String> getTicket(
+            @Parameter(description = "客户端标识（应用 projectNo）", required = true) String client) {
+        // 未登录情况下，返回空字符串
+        if (!StpUtil.isLogin()) {
+            log.warn("用户未登录，无法获取 ticket");
+            return ApiResponse.success("");
+        }
+        Object loginId = StpUtil.getLoginId();
+        // 删除旧ticket
+        SaSsoServerUtil.deleteTicket(
+                SaSsoServerUtil.getTicketValue(String.valueOf(loginId), client));
+        // 已登录情况下，创建 ticket
+        String ticket =
+                SaSsoServerUtil.createTicketAndSave(
+                        client, String.valueOf(loginId), StpUtil.getTokenValue());
+        log.info("为 client={} 创建 ticket 成功，loginId={}", client, loginId);
+        return ApiResponse.success(ticket);
     }
 }
