@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
 import com.jdec.platform.config.biz.entity.SysConfigCategory;
@@ -302,5 +303,58 @@ public class SysConfigItemService {
         for (SysConfigItem child : children) {
             checkCycle(child.getId(), targetPid, subjectId);
         }
+    }
+
+    /**
+     * 拖拽配置项
+     *
+     * <p>限制：item 不能拖到 category 层级，只能在 item 之间拖拽
+     */
+    @Transactional
+    public void dragItem(SysConfigItemDragReq req) {
+        Long subjectId = AppContext.getSubjectId();
+        Long dragId = req.getDragId();
+        Long targetPid = req.getTargetPid();
+
+        // 校验：被拖拽节点必须存在
+        SysConfigItem dragItem = itemMapper.selectById(dragId);
+        if (dragItem == null || !dragItem.getSubjectId().equals(subjectId)) {
+            throw new BusinessException("被拖拽的配置项不存在");
+        }
+
+        // 校验：不能拖到自己下面
+        if (dragId.equals(targetPid)) {
+            throw new BusinessException("不能将节点拖拽到自身下");
+        }
+
+        // 校验：目标父节点必须是 item（不能是 category）
+        if (targetPid != null && !targetPid.equals(ROOT_PID)) {
+            SysConfigItem targetParent = itemMapper.selectById(targetPid);
+            if (targetParent == null || !targetParent.getSubjectId().equals(subjectId)) {
+                throw new BusinessException("目标父节点不存在");
+            }
+
+            // 校验：目标父节点必须与被拖拽节点属于同一分类
+            if (!targetParent.getCategoryAlias().equals(dragItem.getCategoryAlias())) {
+                throw new BusinessException("不能跨分类拖拽配置项");
+            }
+
+            // 校验：不能拖到自己的子节点下（避免循环依赖）
+            checkCycle(dragId, targetPid, subjectId);
+        }
+
+        // 更新被拖拽节点的父节点
+        dragItem.setPid(targetPid == null ? ROOT_PID : targetPid);
+        calculatePathAndDepth(dragItem, dragItem.getPid());
+
+        // 如果指定了排序值，更新排序
+        if (req.getTargetSort() != null) {
+            dragItem.setSort(req.getTargetSort());
+        }
+
+        itemMapper.updateById(dragItem);
+
+        // 更新所有子节点的 path 和 depth
+        updateChildrenPath(dragId, subjectId);
     }
 }

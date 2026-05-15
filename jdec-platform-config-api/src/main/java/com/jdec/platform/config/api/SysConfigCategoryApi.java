@@ -1,6 +1,7 @@
 package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
+import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
 import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
@@ -63,4 +64,13 @@ public interface SysConfigCategoryApi {
      * @param force 是否强制删除。false 时若有子节点则抛出提示；true 时级联删除
      */
     void deleteItem(Long id, boolean force);
+
+    /**
+     * 拖拽配置项
+     *
+     * <p>支持将配置项拖拽到其它层级。限制：item 不能拖到 category 层级，只能在 item 之间拖拽
+     *
+     * @param req 拖拽请求
+     */
+    void dragItem(SysConfigItemDragReq req);
 }

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
+import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
 import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
@@ -292,5 +293,10 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     @Override
     public void deleteItem(Long id, boolean force) {
         itemService.deleteItem(id, force);
+    }
+
+    @Override
+    public void dragItem(SysConfigItemDragReq req) {
+        itemService.dragItem(req);
     }
 }

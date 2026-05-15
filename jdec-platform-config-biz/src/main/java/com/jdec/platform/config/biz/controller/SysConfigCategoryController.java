@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
+import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
 import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
@@ -103,6 +104,15 @@ public class SysConfigCategoryController {
                     @RequestParam(defaultValue = "false")
                     boolean force) {
         sysConfigCategoryApi.deleteItem(id, force);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/item/drag")
+    @Operation(
+            summary = "拖拽配置项",
+            description = "支持将配置项拖拽到其它层级。限制：item 不能拖到 category 层级，只能在 item 之间拖拽")
+    public ApiResponse<Void> dragItem(@RequestBody SysConfigItemDragReq request) {
+        sysConfigCategoryApi.dragItem(request);
         return ApiResponse.success();
     }
 }
