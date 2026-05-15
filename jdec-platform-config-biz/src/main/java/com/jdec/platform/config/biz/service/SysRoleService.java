@@ -14,7 +14,10 @@ import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleSubject;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysUser;
-import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.config.biz.mapper.SysRoleMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
+import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.UserApi;
@@ -35,6 +38,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 角色 Service 实现 */
 @Service
@@ -79,8 +83,8 @@ public class SysRoleService implements SysRoleApi {
         // 新增和更新都得校验
         if (request.getSubjectId() != null && !allUserIds.isEmpty()) {
             // 获取冲突的用户（主体下的用户）
-            List<String> conflictNames =
-                    checkSubjectUserConflict(request.getSubjectId(), allUserIds);
+            List<UserBO> subjectUsers = userApi.listBySubjectId(request.getSubjectId());
+            List<String> conflictNames = checkSubjectUserConflict(subjectUsers, allUserIds);
             if (!conflictNames.isEmpty()) {
                 if (isUpdate) {
                     // 更新时：检查冲突用户是否和任何角色绑定过
@@ -155,15 +159,40 @@ public class SysRoleService implements SysRoleApi {
     public void saveRoleUser(SaveRoleUserReq request) {
         autoDetectEffectiveType(request);
 
+        Set<Long> allUserIds = collectUserIds(request);
+
+        // 提前完成所有跨库查询（hr 库），必须在事务开启前执行
+        Map<Long, UserBO> hrUserMap = new HashMap<>();
+        Map<Long, DepartmentBO> deptMap = new HashMap<>();
+        Map<Long, SubjectBO> subjectMap = new HashMap<>();
+        List<UserBO> subjectUsers = Collections.emptyList();
+        if (!allUserIds.isEmpty()) {
+            userApi.listByIds(allUserIds).forEach(u -> hrUserMap.put(u.getId(), u));
+            departmentApi.getDepartmentList().forEach(d -> deptMap.put(d.getId(), d));
+            subjectApi.getSubjectList().forEach(s -> subjectMap.put(s.getId(), s));
+        }
+        if (request.getSubjectId() != null) {
+            subjectUsers = userApi.listBySubjectId(request.getSubjectId());
+        }
+
+        doSaveRoleUser(request, allUserIds, hrUserMap, deptMap, subjectMap, subjectUsers);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void doSaveRoleUser(
+            SaveRoleUserReq request,
+            Set<Long> allUserIds,
+            Map<Long, UserBO> hrUserMap,
+            Map<Long, DepartmentBO> deptMap,
+            Map<Long, SubjectBO> subjectMap,
+            List<UserBO> subjectUsers) {
         Long roleId = request.getId();
         boolean isCreate = roleId == null;
-        Set<Long> allUserIds = collectUserIds(request);
 
         // ========== 校验1：选择主体后，再选择该主体下的员工 ==========
         // 新增和更新都得校验
         if (request.getSubjectId() != null && !allUserIds.isEmpty()) {
-            List<String> conflictNames =
-                    checkSubjectUserConflict(request.getSubjectId(), allUserIds);
+            List<String> conflictNames = checkSubjectUserConflict(subjectUsers, allUserIds);
             if (!conflictNames.isEmpty()) {
                 if (isCreate) {
                     // 新增时：之前不可能有绑定，不可强制保存
@@ -260,7 +289,8 @@ public class SysRoleService implements SysRoleApi {
 
         // 保存新的单独用户关联（过滤掉属于该主体的用户）
         if (!allUserIds.isEmpty()) {
-            batchEnsureUsersExist(allUserIds, request.getUserInsideIds());
+            batchEnsureUsersExist(
+                    allUserIds, request.getUserInsideIds(), hrUserMap, deptMap, subjectMap);
             saveUserRelations(request, roleId);
         }
 
@@ -618,19 +648,17 @@ public class SysRoleService implements SysRoleApi {
     }
 
     /** 批量检查并创建不存在的用户 */
-    private void batchEnsureUsersExist(Set<Long> allUserIds, List<String> insideIdStrs) {
-        List<SysUser> existingUsers = sysUserMapper.selectByIds(allUserIds);
+    private void batchEnsureUsersExist(
+            Set<Long> allUserIds,
+            List<String> insideIdStrs,
+            Map<Long, UserBO> userMap,
+            Map<Long, DepartmentBO> deptMap,
+            Map<Long, SubjectBO> subjectMap) {
+        List<SysUser> existingUsers =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery().in(SysUser::getUserId, allUserIds));
         Set<Long> existingUserIds =
-                existingUsers.stream().map(SysUser::getId).collect(Collectors.toSet());
-
-        // 批量查询User表，构建userId -> User的映射
-        Map<Long, UserBO> userMap = new HashMap<>();
-        if (!allUserIds.isEmpty()) {
-            List<UserBO> userList = userApi.listByIds(allUserIds);
-            for (UserBO u : userList) {
-                userMap.put(u.getId(), u);
-            }
-        }
+                existingUsers.stream().map(SysUser::getUserId).collect(Collectors.toSet());
 
         Set<Long> insideIds = new HashSet<>();
         if (insideIdStrs != null) {
@@ -638,14 +666,6 @@ public class SysRoleService implements SysRoleApi {
                 insideIds.add(removeUPrefix(id));
             }
         }
-        // 查询部门信息（用于获取负责人）
-        List<DepartmentBO> departments = departmentApi.getDepartmentList();
-        Map<Long, DepartmentBO> deptMap =
-                departments.stream().collect(Collectors.toMap(DepartmentBO::getId, d -> d));
-        // 查询主体信息
-        List<SubjectBO> subjects = subjectApi.getSubjectList();
-        Map<Long, SubjectBO> subjectMap =
-                subjects.stream().collect(Collectors.toMap(SubjectBO::getId, d -> d));
         List<SysUser> newUsers = new ArrayList<>();
         for (Long userId : allUserIds) {
             if (!existingUserIds.contains(userId)) {
@@ -924,9 +944,9 @@ public class SysRoleService implements SysRoleApi {
     }
 
     /** 校验：授权主体时，是否有员工已单独配置在该角色中 通过 user 表查询主体下用户，与前端传入 userId 做对比 */
-    private List<String> checkSubjectUserConflict(Long subjectId, Set<Long> userIds) {
-        List<UserBO> users = userApi.listBySubjectId(subjectId);
-        Set<Long> subjectUserIds = users.stream().map(UserBO::getId).collect(Collectors.toSet());
+    private List<String> checkSubjectUserConflict(List<UserBO> subjectUsers, Set<Long> userIds) {
+        Set<Long> subjectUserIds =
+                subjectUsers.stream().map(UserBO::getId).collect(Collectors.toSet());
 
         Set<Long> conflictIds = new HashSet<>(userIds);
         conflictIds.retainAll(subjectUserIds);
@@ -935,7 +955,7 @@ public class SysRoleService implements SysRoleApi {
             return Collections.emptyList();
         }
 
-        return users.stream()
+        return subjectUsers.stream()
                 .filter(user -> conflictIds.contains(user.getId()))
                 .map(UserBO::getUserName)
                 .toList();
