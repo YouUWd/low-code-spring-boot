@@ -23,14 +23,33 @@ public class GlobalExceptionHandler {
      * 处理业务异常
      *
      * @param e 业务异常
-     * @return 400 Bad Request 响应
+     * @return 200 OK 响应，业务错误码在 response.status 中
      */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
+        log.warn("业务异常: code={}, message={}", e.getCode(), e.getMessage());
 
-        ApiResponse<Void> response = ApiResponse.error(400, e.getMessage());
+        // 根据错误码自动判断错误类型
+        String errorType = determineErrorType(e.getCode());
+        ApiResponse<Void> response = ApiResponse.error(e.getCode(), e.getMessage(), errorType);
 
         return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
+
+    /**
+     * 根据错误码自动判断错误类型
+     *
+     * @param code 错误码
+     * @return 错误类型
+     */
+    private String determineErrorType(int code) {
+        return switch (code) {
+            case 401 -> ErrorType.REDIRECT_LOGIN.getValue(); // 登录过期
+            case 600 -> ErrorType.MODAL.getValue(); // 权限变动
+            case 701 -> ErrorType.MODAL.getValue(); // 异常（带弹框）
+            case 801, 802 -> ErrorType.MODAL.getValue(); // 用户重置相关
+            default -> ErrorType.TOAST.getValue(); // 默认 toast 提示
+        };
     }
 
     /**
@@ -95,7 +114,7 @@ public class GlobalExceptionHandler {
         }
 
         log.warn("接口不存在: {}", uri);
-        ApiResponse<Void> response = ApiResponse.error("接口不存在: " + uri);
+        ApiResponse<Void> response = ApiResponse.error(404, "接口不存在: " + uri);
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
@@ -125,7 +144,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
         log.error("系统异常", e);
 
-        ApiResponse<Void> response = ApiResponse.error("系统内部错误");
+        ApiResponse<Void> response = ApiResponse.error(500, "系统内部错误");
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }

@@ -28,6 +28,7 @@ import com.jdec.platform.shared.enums.EffectiveTypeEnum;
 import com.jdec.platform.shared.enums.EmployedStatusEnum;
 import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.enums.UserTypeEnum;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.*;
@@ -88,7 +89,9 @@ public class SysRoleService implements SysRoleApi {
                         // 之前都没有绑定过任何角色，不可强制保存
                         resp.setNeedConfirm(true);
                         resp.setConfirmType(3);
-                        resp.setMessage("\"" + String.join("、", conflictNames) + "\"已在授权主体中，请重新设置");
+                        resp.setMessage(
+                                String.format(
+                                        "\"%s\"已在授权主体中，请重新设置", String.join("、", conflictNames)));
                         return resp;
                     }
                     // 有之前绑定过任何角色的员工，可强制保存（继续执行后续校验）
@@ -96,7 +99,8 @@ public class SysRoleService implements SysRoleApi {
                     // 新增时：之前不可能有绑定，不可强制保存
                     resp.setNeedConfirm(true);
                     resp.setConfirmType(3);
-                    resp.setMessage("\"" + String.join("、", conflictNames) + "\"已在授权主体中，请重新设置");
+                    resp.setMessage(
+                            String.format("\"%s\"已在授权主体中，请重新设置", String.join("、", conflictNames)));
                     return resp;
                 }
             }
@@ -121,7 +125,8 @@ public class SysRoleService implements SysRoleApi {
             if (!overlapNames.isEmpty()) {
                 resp.setNeedConfirm(true);
                 resp.setConfirmType(2); // 可强制保存，覆盖已关联的员工
-                resp.setMessage("\"" + String.join("、", overlapNames) + "\"已在该角色中，是否覆盖？");
+                resp.setMessage(
+                        String.format("\"%s\"已在该角色中，是否覆盖？", String.join("、", overlapNames)));
                 resp.setConflictNames(overlapNames);
                 return resp;
             }
@@ -163,14 +168,17 @@ public class SysRoleService implements SysRoleApi {
                 if (isCreate) {
                     // 新增时：之前不可能有绑定，不可强制保存
                     throw new BusinessException(
-                            "\"" + String.join("、", conflictNames) + "\"已在授权主体中，请重新设置");
+                            ApiCodeEnum.WARNING.getCode(),
+                            String.format("\"%s\"已在授权主体中，请重新设置", String.join("、", conflictNames)));
                 } else {
                     // 更新时：检查冲突用户是否和任何角色绑定过
                     List<String> previouslyBound = getUsersBoundToAnyRole(allUserIds);
                     if (previouslyBound.isEmpty()) {
                         // 之前都没有绑定过任何角色，不可强制保存
                         throw new BusinessException(
-                                "\"" + String.join("、", conflictNames) + "\"已在授权主体中，请重新设置");
+                                ApiCodeEnum.WARNING.getCode(),
+                                String.format(
+                                        "\"%s\"已在授权主体中，请重新设置", String.join("、", conflictNames)));
                     }
                     // 有之前绑定过任何角色的员工，可强制保存（跳过校验，继续执行）
                 }
@@ -181,7 +189,7 @@ public class SysRoleService implements SysRoleApi {
         if (!Boolean.TRUE.equals(request.getForce())
                 && !allUserIds.isEmpty()
                 && hasCustomTimeInOtherRoles(roleId, allUserIds)) {
-            throw new BusinessException("该角色中存在员工设置过权限时间，是否覆盖？");
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "该角色中存在员工设置过权限时间，是否覆盖？");
         }
 
         // ========== 更新逻辑 ==========
@@ -206,7 +214,8 @@ public class SysRoleService implements SysRoleApi {
                         checkRoleHasSubjectUsers(roleId, request.getSubjectId());
                 if (!overlapNames.isEmpty()) {
                     throw new BusinessException(
-                            "\"" + String.join("、", overlapNames) + "\"已在该角色中，是否覆盖？");
+                            ApiCodeEnum.WARNING.getCode(),
+                            String.format("\"%s\"已在该角色中，是否覆盖？", String.join("、", overlapNames)));
                 }
             }
         }
@@ -238,7 +247,7 @@ public class SysRoleService implements SysRoleApi {
         } else {
             SysRole role = sysRoleMapper.selectById(roleId);
             if (role == null) {
-                throw new IllegalArgumentException("角色不存在");
+                throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色不存在");
             }
             role.setRoleName(request.getRoleName());
             sysRoleMapper.updateById(role);
@@ -375,7 +384,7 @@ public class SysRoleService implements SysRoleApi {
     public RoleConfigDetailResp getRoleConfigDetail(Long roleId, Integer userType) {
         SysRole role = sysRoleMapper.selectById(roleId);
         if (role == null) {
-            throw new BusinessException("角色不存在");
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色不存在");
         }
         RoleConfigDetailResp resp = new RoleConfigDetailResp();
         resp.setId(role.getId());

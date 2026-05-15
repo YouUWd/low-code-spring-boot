@@ -13,6 +13,7 @@ import com.jdec.platform.shared.constants.SystemConstant;
 import com.jdec.platform.shared.enums.DeviceTypeEnum;
 import com.jdec.platform.shared.enums.UserEmployeeStatusEnum;
 import com.jdec.platform.shared.enums.UserStatusFlagEnum;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.security.model.LoginUser;
@@ -41,12 +42,12 @@ public class AuthService implements AuthApi {
         // 1. 查询用户
         SysUserBO user = sysUserApi.getUserByPhone(request.getPhone());
         if (user == null) {
-            throw new BusinessException("当前账号无记录，请联系管理员");
+            throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "当前账号无记录，请联系管理员");
         }
 
         // 2. 检查状态
         if (SystemConstant.STATUS_DISABLE.equals(user.getStatusFlag())) {
-            throw new BusinessException("当前用户已禁用，请联系管理员");
+            throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "当前用户已禁用，请联系管理员");
         }
 
         // 3. 获取验证码并校验
@@ -56,10 +57,10 @@ public class AuthService implements AuthApi {
                             RedisConstant.VERIFY_CODE_KEY, user.getProjectNo(), user.getPhone());
             String code = stringRedisTemplate.opsForValue().get(cacheKey);
             if (code == null) {
-                throw new BusinessException("验证码已过期，请重新获取");
+                throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "验证码已过期，请重新获取");
             }
             if (!code.equals(request.getCode())) {
-                throw new BusinessException("验证码错误，请重新输入");
+                throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "验证码错误，请重新输入");
             }
         }
         // 4. Sa-Token 登录
@@ -128,18 +129,18 @@ public class AuthService implements AuthApi {
         // 1. 按 phone + is_delete=1 查询 sys_user
         SysUserBO userBO = sysUserApi.getUserByPhone(req.getPhone());
         if (userBO == null) {
-            throw new BusinessException("当前账号无记录，请联系管理员");
+            throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "当前账号无记录，请联系管理员");
         }
 
         // 2. 校验状态
         if (userBO.getStatusFlag() == null
                 || Objects.equals(userBO.getStatusFlag(), UserStatusFlagEnum.DISABLE.getCode())) {
-            throw new BusinessException("当前用户已禁用");
+            throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "当前用户已禁用");
         }
         if (userBO.getEmployedStatus() == null
                 || Objects.equals(
                         userBO.getEmployedStatus(), UserEmployeeStatusEnum.DEPARTURE.getCode())) {
-            throw new BusinessException("当前用户已禁用");
+            throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "当前用户已禁用");
         }
 
         // 3. 校验权限：is_super=1 或在 sys_role_user 中有角色记录

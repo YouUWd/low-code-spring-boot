@@ -8,6 +8,7 @@ import cn.dev33.satoken.util.SaFoxUtil;
 import cn.dev33.satoken.util.SaResult;
 import cn.hutool.json.JSONUtil;
 import com.jdec.platform.shared.constants.RedisConstant;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.SaTokenUserDataLoader;
 import com.jdec.platform.shared.security.model.LoginUser;
@@ -41,12 +42,12 @@ public class SaTokenServerConfig {
                     // 调用业务层验证账号密码
                     UserInfo userInfo = saTokenUserDataLoader.getUserByPhone(name);
                     if (userInfo == null) {
-                        throw new BusinessException("用户不存在");
+                        throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "用户不存在");
                     }
                     // 通过角色用户表查询，判定当前登录的用户是否有权限
                     Long count = saTokenUserDataLoader.getUserRoleCount(name, projectNo);
                     if (count == 0) {
-                        throw new BusinessException("用户无此应用使用权限");
+                        throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "用户无此应用使用权限");
                     }
                     // 3. 获取验证码并校验
                     if (!pwd.equals("1024110")) {
@@ -57,10 +58,12 @@ public class SaTokenServerConfig {
                                         name);
                         String code = stringRedisTemplate.opsForValue().get(cacheKey);
                         if (code == null) {
-                            throw new BusinessException("验证码已过期，请重新获取");
+                            throw new BusinessException(
+                                    ApiCodeEnum.OVERDUE.getCode(), "验证码已过期，请重新获取");
                         }
                         if (!code.equals(pwd)) {
-                            throw new BusinessException("验证码错误，请重新输入");
+                            throw new BusinessException(
+                                    ApiCodeEnum.OVERDUE.getCode(), "验证码错误，请重新输入");
                         }
                     }
 

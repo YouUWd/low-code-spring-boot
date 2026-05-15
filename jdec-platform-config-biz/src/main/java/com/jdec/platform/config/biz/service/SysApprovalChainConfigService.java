@@ -16,6 +16,7 @@ import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.*;
@@ -294,7 +295,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         // 查询配置
         SysApprovalChainConfig config = sysApprovalChainConfigMapper.selectById(id);
         if (config == null) {
-            throw new BusinessException("配置不存在");
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
         }
 
         // 查询按钮配置
@@ -386,7 +387,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
         // 校验：当前主状态不能与下一主状态相同
         if (request.getCurrentStatusGroupId().equals(request.getNextStatusGroupId())) {
-            throw new BusinessException("当前主状态不能与下一主状态相同，请重新选择");
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "当前主状态不能与下一主状态相同，请重新选择");
         }
 
         // 准备实体数据
@@ -417,7 +418,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                             SysApprovalChainConfig::getNextStatusGroupId,
                                             config.getNextStatusGroupId()));
             if (exist != null) {
-                throw new BusinessException("当前步骤已存在，请重新选择");
+                throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "当前步骤已存在，请重新选择");
             }
 
             // 插入
@@ -466,7 +467,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             // 修改逻辑
             SysApprovalChainConfig exist = sysApprovalChainConfigMapper.selectById(id);
             if (exist == null) {
-                throw new BusinessException("配置不存在");
+                throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
             }
 
             // 查询上一步
@@ -593,11 +594,13 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             // 校验冲突：上一步的当前主状态不能等于当前步骤的当前主状态
             if (upConfig.getCurrentStatusGroupId()
                     .equals(currentConfig.getCurrentStatusGroupId())) {
-                throw new BusinessException("当前步骤当前主状态与上一步骤主状态冲突，请重新选择");
+                throw new BusinessException(
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤当前主状态与上一步骤主状态冲突，请重新选择");
             }
             // 上一步的当前主状态不能等于当前步骤的下一主状态
             if (upConfig.getCurrentStatusGroupId().equals(currentConfig.getNextStatusGroupId())) {
-                throw new BusinessException("当前步骤之后主状态与上一步骤当前主状态冲突，请重新选择");
+                throw new BusinessException(
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤之后主状态与上一步骤当前主状态冲突，请重新选择");
             }
 
             // 更新上一步的下一状态为当前步骤的当前状态
@@ -613,11 +616,13 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
             // 校验冲突：下一步的下一主状态不能等于当前步骤的当前主状态
             if (nextConfig.getNextStatusGroupId().equals(currentConfig.getCurrentStatusGroupId())) {
-                throw new BusinessException("当前步骤当前主状态与下一步骤之后主状态冲突，请重新选择");
+                throw new BusinessException(
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤当前主状态与下一步骤之后主状态冲突，请重新选择");
             }
             // 下一步的下一主状态不能等于当前步骤的下一主状态
             if (nextConfig.getNextStatusGroupId().equals(currentConfig.getNextStatusGroupId())) {
-                throw new BusinessException("当前步骤之后主状态与下一步骤之后主状态冲突，请重新选择");
+                throw new BusinessException(
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤之后主状态与下一步骤之后主状态冲突，请重新选择");
             }
 
             // 更新下一步的当前状态为当前步骤的下一状态
@@ -691,7 +696,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         // 查询要删除的配置
         SysApprovalChainConfig deletedConfig = sysApprovalChainConfigMapper.selectById(id);
         if (deletedConfig == null) {
-            throw new BusinessException("配置不存在");
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
         }
 
         // 查询上一步配置
