@@ -3,8 +3,8 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
+import com.jdec.platform.config.api.dto.response.MoveModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
-import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -69,13 +69,13 @@ public class SysModuleController {
      * <p>项目上下文通过 X-Project-No 请求头指定。
      *
      * @param request 模块完整信息请求
-     * @return 保存后的模块详细信息
+     * @return 模块 ID
      */
     @Operation(
             summary = "保存或编辑模块完整信息",
             description = "一次性保存或编辑模块的所有配置信息，包括基本信息、关联表、简单字段和组合字段。若 module.id 为空则创建新模块，否则编辑现有模块")
     @PostMapping("/complete")
-    public ApiResponse<SysModuleDetailResp> saveModuleComplete(@RequestBody SaveModuleReq request) {
+    public ApiResponse<Long> saveModuleComplete(@RequestBody SaveModuleReq request) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
         log.info(
@@ -83,8 +83,8 @@ public class SysModuleController {
                 projectNo,
                 subjectId,
                 request.getModule().getModuleCode());
-        SysModuleDetailResp result = sysModuleService.saveModule(projectNo, subjectId, request);
-        return ApiResponse.success("保存成功", result);
+        Long moduleId = sysModuleService.saveModule(projectNo, subjectId, request);
+        return ApiResponse.success("保存成功", moduleId);
     }
 
     /**
@@ -111,18 +111,18 @@ public class SysModuleController {
      * <p>项目上下文通过 X-Project-No 请求头指定。
      *
      * @param request 移动模块请求（包含模块ID、目标父模块ID和排序顺序）
-     * @return 移动后的模块详细信息
+     * @return 移动后的模块变动信息
      */
     @Operation(summary = "移动模块", description = "移动模块到新的父模块下，并更新排序顺序。支持拖拽移动场景")
     @PostMapping("/move")
-    public ApiResponse<SysModuleDetailResp> moveModule(@RequestBody MoveModuleReq request) {
+    public ApiResponse<MoveModuleResp> moveModule(@RequestBody MoveModuleReq request) {
         log.info(
                 "移动项目 {} 的模块: moduleId={}, targetParentId={}, targetSortOrder={}",
                 AppContext.getProjectNo(),
                 request.getModuleId(),
                 request.getTargetParentId(),
                 request.getTargetSortOrder());
-        SysModuleDetailResp result = sysModuleService.moveModule(request);
+        MoveModuleResp result = sysModuleService.moveModule(request);
         return ApiResponse.success("移动成功", result);
     }
 }

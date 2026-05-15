@@ -2,8 +2,8 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
+import com.jdec.platform.config.api.dto.response.MoveModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
-import com.jdec.platform.config.api.dto.response.SysModuleDetailResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
 import java.util.List;
 
@@ -35,9 +35,9 @@ public interface SysModuleApi {
      * @param projectNo 项目编码
      * @param subjectId 主体ID
      * @param request 保存模块请求
-     * @return 模块详情响应
+     * @return 模块 ID
      */
-    SysModuleDetailResp saveModule(String projectNo, Long subjectId, SaveModuleReq request);
+    Long saveModule(String projectNo, Long subjectId, SaveModuleReq request);
 
     /**
      * 删除模块完整信息 删除模块及其所有关联的表、字段配置和状态
@@ -54,7 +54,7 @@ public interface SysModuleApi {
      * <p>基于全局唯一 {@code moduleId} 进行操作。
      *
      * @param request 移动模块请求
-     * @return 模块详情响应
+     * @return 移动模块结果
      */
-    SysModuleDetailResp moveModule(MoveModuleReq request);
+    MoveModuleResp moveModule(MoveModuleReq request);
 }

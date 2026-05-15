@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api.dto.response;
 
+import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
@@ -17,19 +18,19 @@ public class SysModuleCompleteResp {
 
     /** 模块关联表列表 */
     @Schema(description = "模块关联表列表")
-    private List<ModuleTableInfo> moduleTables;
+    private List<ModuleTableDTO> moduleTables;
 
     /** 模块简单字段列表 */
     @Schema(description = "模块简单字段列表")
-    private List<SimpleFieldInfo> simpleFields;
+    private List<ModuleSimpleFieldDTO> simpleFields;
 
     /** 模块组合字段列表 */
     @Schema(description = "模块组合字段列表")
-    private List<CombineFieldInfo> combineFields;
+    private List<ModuleCombineFieldDTO> combineFields;
 
     /** 模块状态列表（仅DETAIL类型） */
     @Schema(description = "模块状态列表（仅DETAIL类型）")
-    private List<ModuleStatusInfo> moduleStatuses;
+    private List<ModuleStatusDTO> moduleStatuses;
 
     /** 模块基本信息 */
     @Data
@@ -86,8 +87,8 @@ public class SysModuleCompleteResp {
         @Schema(description = "排序顺序", example = "1")
         private Integer sortOrder;
 
-        @Schema(description = "列表表头配置（JSON格式）")
-        private List<TableHeaderColumnInfo> tableHeader;
+        @Schema(description = "列表表头配置")
+        private List<ModuleTableHeaderDTO> tableHeader;
 
         @Schema(description = "创建人ID", example = "1")
         private Long createdBy;
@@ -106,132 +107,5 @@ public class SysModuleCompleteResp {
 
         @Schema(description = "更新人姓名", example = "李四")
         private String updatedName;
-    }
-
-    /** 模块关联表信息 */
-    @Data
-    @Schema(description = "模块关联表信息")
-    public static class ModuleTableInfo {
-        @Schema(description = "关联ID", example = "1")
-        private Long id;
-
-        @Schema(description = "表名", example = "course")
-        private String tableName;
-
-        @Schema(description = "表描述", example = "课程表")
-        private String tableDesc;
-
-        @Schema(description = "左表关联字段", example = "id")
-        private String joinLeftField;
-
-        @Schema(description = "右表关联字段", example = "student_id")
-        private String joinRightField;
-
-        @Schema(
-                description = "关联关系类型",
-                example = "1:N",
-                allowableValues = {"1:1", "1:N", "N:1"})
-        private String relationType;
-
-        @Schema(description = "排序顺序", example = "1")
-        private Integer sortOrder;
-    }
-
-    /** 简单字段信息 */
-    @Data
-    @Schema(description = "简单字段信息")
-    public static class SimpleFieldInfo {
-        @Schema(description = "字段ID", example = "1")
-        private Long id;
-
-        @Schema(description = "表名", example = "student")
-        private String tableName;
-
-        @Schema(description = "列名", example = "student_no")
-        private String columnName;
-
-        @Schema(description = "转换表达式", example = "UPPER(${student_no})")
-        private String transformer;
-    }
-
-    /** 组合字段信息 */
-    @Data
-    @Schema(description = "组合字段信息")
-    public static class CombineFieldInfo {
-        @Schema(description = "字段ID", example = "1")
-        private Long id;
-
-        @Schema(description = "逻辑字段名", example = "fullName")
-        private String logicalField;
-
-        @Schema(description = "字段显示名称", example = "全名")
-        private String displayName;
-
-        @Schema(description = "物理字段映射（JSON格式）")
-        private String sourceMapping;
-
-        @Schema(description = "转换表达式", example = "CONCAT(${last_name}, ${first_name})")
-        private String transformer;
-
-        @Schema(description = "是否启用", example = "1")
-        private Integer enabled;
-    }
-
-    /** 模块状态信息 */
-    @Data
-    @Schema(description = "模块状态信息")
-    public static class ModuleStatusInfo {
-        @Schema(description = "状态ID", example = "1")
-        private Long id;
-
-        @Schema(description = "状态父ID", example = "1")
-        private Long statusPid;
-
-        @Schema(description = "状态ID", example = "10")
-        private Long statusId;
-    }
-
-    /** 列表表头列配置信息 */
-    @Data
-    @Schema(description = "列表表头列配置信息")
-    public static class TableHeaderColumnInfo {
-
-        /** 列名称 */
-        @Schema(description = "列名称", example = "学号")
-        private String name;
-
-        /** 关联字段 */
-        @Schema(description = "关联字段", example = "student_no")
-        private String field;
-
-        /** 列宽度（像素） */
-        @Schema(description = "列宽度（像素）", example = "100")
-        private Integer width;
-
-        /** 排序顺序 */
-        @Schema(description = "排序顺序", example = "1")
-        private Integer sortOrder;
-
-        /** 搜索类型 */
-        @Schema(
-                description = "搜索类型",
-                example = "text",
-                allowableValues = {"text", "number", "date", "select", "range", "none"})
-        private String searchType;
-
-        /** 固定列位置 */
-        @Schema(
-                description = "固定列位置",
-                example = "none",
-                allowableValues = {"none", "left", "right"})
-        private String fixed;
-
-        /** 文本超出是否省略 */
-        @Schema(description = "文本超出是否省略", example = "true")
-        private Boolean ellipsis;
-
-        /** 是否可排序 */
-        @Schema(description = "是否可排序", example = "true")
-        private Boolean sortable;
     }
 }
