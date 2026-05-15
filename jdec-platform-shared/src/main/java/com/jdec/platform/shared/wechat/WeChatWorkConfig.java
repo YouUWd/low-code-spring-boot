@@ -41,15 +41,18 @@ public class WeChatWorkConfig {
     }
 
     /** 根据主体ID获取配置 */
-    public SubjectConfig getSubjectConfig(Integer subjectId) {
+    public SubjectConfig getSubjectConfig(Long subjectId) {
         String key = getSubjectKey(subjectId);
         return subjects.get(key);
     }
 
     /** 根据主体ID获取配置key */
-    private String getSubjectKey(Integer subjectId) {
+    private String getSubjectKey(Long subjectId) {
         // 1: environment, 2: electric, 3: energy
-        return switch (subjectId) {
+        if (subjectId == null) {
+            return "environment";
+        }
+        return switch (subjectId.intValue()) {
             case 2 -> "electric";
             case 3 -> "energy";
             default -> "environment";

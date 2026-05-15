@@ -4,6 +4,8 @@ import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.wechat.model.AccessTokenResponse;
 import com.jdec.platform.shared.wechat.model.MessageRequest;
 import com.jdec.platform.shared.wechat.model.WeChatWorkResponse;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -27,7 +29,7 @@ public class WeChatWorkService {
     private final RestTemplate restTemplate;
 
     // 缓存的access_token，按主体ID分别缓存
-    private final Map<Integer, TokenCache> tokenCacheMap = new ConcurrentHashMap<>();
+    private final Map<Long, TokenCache> tokenCacheMap = new ConcurrentHashMap<>();
 
     /** Token缓存 */
     private static class TokenCache {
@@ -49,7 +51,7 @@ public class WeChatWorkService {
      *
      * @param subjectId 主体ID
      */
-    public String getAccessToken(Integer subjectId) {
+    public String getAccessToken(Long subjectId) {
         // 检查缓存是否有效
         TokenCache cache = tokenCacheMap.get(subjectId);
         if (cache != null && cache.isValid()) {
@@ -108,25 +110,56 @@ public class WeChatWorkService {
      * @param userId 用户ID（企业微信用户ID）
      * @param content 消息内容
      */
-    public void sendTextMessage(Integer subjectId, String userId, String content) {
+    public void sendTextMessage(Long subjectId, String userId, String content) {
+        sendMessage(subjectId, userId, content, "text");
+    }
+
+    /**
+     * 发送Markdown消息
+     *
+     * @param subjectId 主体ID
+     * @param userId 用户ID（企业微信用户ID）
+     * @param content 消息内容（支持Markdown语法）
+     */
+    public void sendMarkdownMessage(Long subjectId, String userId, String content) {
+        sendMessage(subjectId, userId, content, "markdown");
+    }
+
+    /**
+     * 统一发送消息入口
+     *
+     * @param subjectId 主体ID
+     * @param userId 用户ID
+     * @param content 内容
+     * @param msgType 消息类型 (text, markdown等)
+     */
+    public void sendMessage(Long subjectId, String userId, String content, String msgType) {
+        MessageRequest.MessageRequestBuilder builder =
+                MessageRequest.builder().toUser(userId).msgType(msgType);
+
+        if ("markdown".equalsIgnoreCase(msgType)) {
+            builder.markdown(MessageRequest.MarkdownContent.builder().content(content).build());
+        } else {
+            builder.text(MessageRequest.TextContent.builder().content(content).build());
+        }
+
+        executeSendMessage(subjectId, userId, builder.build());
+    }
+
+    /** 执行发送逻辑 */
+    private void executeSendMessage(Long subjectId, String userId, MessageRequest request) {
         WeChatWorkConfig.SubjectConfig subjectConfig = config.getSubjectConfig(subjectId);
         if (subjectConfig == null) {
             throw new BusinessException(500, "未找到主体ID " + subjectId + " 的企业微信配置");
         }
+
+        request.setAgentId(subjectConfig.getAgentId());
 
         String accessToken = getAccessToken(subjectId);
         String url =
                 String.format(
                         "%s/cgi-bin/message/send?access_token=%s",
                         config.getApiBaseUrl(), accessToken);
-
-        MessageRequest request =
-                MessageRequest.builder()
-                        .toUser(userId)
-                        .msgType("text")
-                        .agentId(subjectConfig.getAgentId())
-                        .text(MessageRequest.TextContent.builder().content(content).build())
-                        .build();
 
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -142,10 +175,10 @@ public class WeChatWorkService {
                         500, "发送企业微信消息失败: " + (body != null ? body.getErrMsg() : "响应为空"));
             }
 
-            log.info("成功发送企业微信消息到主体{}的用户: {}", subjectId, userId);
+            log.info("成功发送企业微信{}消息到主体{}的用户: {}", request.getMsgType(), subjectId, userId);
 
         } catch (Exception e) {
-            log.error("发送企业微信消息失败，主体: {}, 用户: {}", subjectId, userId, e);
+            log.error("发送企业微信{}消息失败，主体: {}, 用户: {}", request.getMsgType(), subjectId, userId, e);
             throw new BusinessException(500, "发送企业微信消息失败: " + e.getMessage());
         }
     }
@@ -157,8 +190,38 @@ public class WeChatWorkService {
      * @param userId 用户ID（企业微信用户ID）
      * @param code 验证码
      */
-    public void sendVerificationCode(Integer subjectId, String userId, String code) {
+    public void sendVerificationCode(Long subjectId, String userId, String code) {
         String content = String.format("【验证码】您的登录验证码是：%s，有效期5分钟，请勿泄露给他人。如非本人操作，请忽略此消息。", code);
         sendTextMessage(subjectId, userId, content);
+    }
+
+    /**
+     * 发送Markdown格式的验证码消息
+     *
+     * @param projectNo 项目编号
+     * @param projectName 项目名称
+     * @param userId 用户ID
+     * @param code 验证码
+     * @param userName 用户姓名
+     */
+    public void sendMarkdownVerificationCode(
+            Long subjectId,
+            String projectNo,
+            String projectName,
+            String userId,
+            String code,
+            String userName) {
+        String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String content =
+                String.format(
+                        """
+                ## %s
+                <font color="comment">%s</font>
+                > #### 验证码: <font color='warning'>%s</font>
+                 #### 验证码5分钟内有效期,请勿泄露他人使用。
+                #### 消息接收人:%s
+                """,
+                        projectName, now, code, userName);
+        sendMarkdownMessage(subjectId, userId, content);
     }
 }

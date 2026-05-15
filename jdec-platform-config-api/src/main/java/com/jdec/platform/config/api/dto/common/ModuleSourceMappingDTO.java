@@ -1,12 +1,18 @@
-package com.jdec.platform.config.api.dto.request;
+package com.jdec.platform.config.api.dto.common;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /** 字段源映射项 */
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "字段源映射项")
-public class SourceMappingItem {
+public class ModuleSourceMappingDTO {
 
     /** 实体/表名 */
     @Schema(description = "实体/表名", requiredMode = Schema.RequiredMode.REQUIRED, example = "student")

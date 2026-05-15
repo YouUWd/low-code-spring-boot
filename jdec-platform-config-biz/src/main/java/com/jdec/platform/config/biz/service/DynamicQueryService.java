@@ -2,10 +2,8 @@ package com.jdec.platform.config.biz.service;
 
 import static org.jooq.impl.DSL.*;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
 import com.jdec.platform.config.api.DataQueryApi;
+import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.request.DataQueryReq;
 import com.jdec.platform.config.api.dto.request.FilterRule;
 import com.jdec.platform.config.api.dto.request.SortRule;
@@ -130,11 +128,11 @@ public class DynamicQueryService implements DataQueryApi {
         log.info("主表: {}", moduleConfig.getModule().getPrimaryTable());
 
         // 分离关系类型
-        List<SysModuleCompleteResp.ModuleTableInfo> oneToOneEntities = new ArrayList<>();
-        List<SysModuleCompleteResp.ModuleTableInfo> oneToManyEntities = new ArrayList<>();
+        List<ModuleTableDTO> oneToOneEntities = new ArrayList<>();
+        List<ModuleTableDTO> oneToManyEntities = new ArrayList<>();
 
         if (moduleConfig.getModuleTables() != null) {
-            for (SysModuleCompleteResp.ModuleTableInfo table : moduleConfig.getModuleTables()) {
+            for (ModuleTableDTO table : moduleConfig.getModuleTables()) {
                 if ("1:1".equals(table.getRelationType())
                         || "N:1".equals(table.getRelationType())) {
                     oneToOneEntities.add(table);
@@ -175,7 +173,7 @@ public class DynamicQueryService implements DataQueryApi {
     private List<Map<String, Object>> executeMainQuery(
             DSLContext dsl,
             SysModuleCompleteResp moduleConfig,
-            List<SysModuleCompleteResp.ModuleTableInfo> oneToOneEntities,
+            List<ModuleTableDTO> oneToOneEntities,
             Integer page,
             Integer pageSize,
             List<SortRule> sorts,
@@ -200,7 +198,7 @@ public class DynamicQueryService implements DataQueryApi {
         SelectJoinStep<?> query = dsl.select(selectFields).from(mainTable);
 
         // 应用 LEFT JOIN
-        for (SysModuleCompleteResp.ModuleTableInfo entity : oneToOneEntities) {
+        for (ModuleTableDTO entity : oneToOneEntities) {
             Table<?> joinTable = table(name(entity.getTableName()));
             Field<Object> leftField = field(name(primaryTable, entity.getJoinLeftField()));
             Field<Object> rightField =
@@ -306,7 +304,7 @@ public class DynamicQueryService implements DataQueryApi {
     private Long executeCountQuery(
             DSLContext dsl,
             SysModuleCompleteResp moduleConfig,
-            List<SysModuleCompleteResp.ModuleTableInfo> oneToOneEntities,
+            List<ModuleTableDTO> oneToOneEntities,
             List<FilterRule> filters) {
 
         String primaryTable = moduleConfig.getModule().getPrimaryTable();
@@ -316,7 +314,7 @@ public class DynamicQueryService implements DataQueryApi {
         SelectJoinStep<Record1<Integer>> query = dsl.selectCount().from(mainTable);
 
         // 应用 LEFT JOIN
-        for (SysModuleCompleteResp.ModuleTableInfo entity : oneToOneEntities) {
+        for (ModuleTableDTO entity : oneToOneEntities) {
             Table<?> joinTable = table(name(entity.getTableName()));
             Field<Object> leftField = field(name(primaryTable, entity.getJoinLeftField()));
             Field<Object> rightField =
@@ -350,7 +348,7 @@ public class DynamicQueryService implements DataQueryApi {
 
         // 1. 添加简单字段
         if (moduleConfig.getSimpleFields() != null) {
-            for (SysModuleCompleteResp.SimpleFieldInfo fieldInfo : moduleConfig.getSimpleFields()) {
+            for (ModuleSimpleFieldDTO fieldInfo : moduleConfig.getSimpleFields()) {
                 if (!usedEntities.contains(fieldInfo.getTableName())) {
                     continue; // 跳过 1:N 关系字段
                 }
@@ -362,23 +360,22 @@ public class DynamicQueryService implements DataQueryApi {
 
         // 2. 收集组合字段依赖的源字段
         if (moduleConfig.getCombineFields() != null) {
-            for (SysModuleCompleteResp.CombineFieldInfo fieldInfo :
-                    moduleConfig.getCombineFields()) {
+            for (ModuleCombineFieldDTO fieldInfo : moduleConfig.getCombineFields()) {
                 if (fieldInfo.getEnabled() != 1) {
                     continue;
                 }
 
-                // 解析 sourceMapping，提取所有源字段
-                JSONArray sourceMappings = JSON.parseArray(fieldInfo.getSourceMapping());
-                for (int i = 0; i < sourceMappings.size(); i++) {
-                    JSONObject mapping = sourceMappings.getJSONObject(i);
-                    String entity = mapping.getString("entity");
-                    String fieldName = mapping.getString("field");
+                // 提取所有源字段
+                if (fieldInfo.getSourceMapping() != null) {
+                    for (ModuleSourceMappingDTO mapping : fieldInfo.getSourceMapping()) {
+                        String entity = mapping.getEntity();
+                        String fieldName = mapping.getField();
 
-                    // 只添加在使用的实体中的字段
-                    if (usedEntities.contains(entity)) {
-                        String fieldKey = entity + "." + fieldName;
-                        requiredFields.add(fieldKey);
+                        // 只添加在使用的实体中的字段
+                        if (usedEntities.contains(entity)) {
+                            String fieldKey = entity + "." + fieldName;
+                            requiredFields.add(fieldKey);
+                        }
                     }
                 }
             }
@@ -518,7 +515,7 @@ public class DynamicQueryService implements DataQueryApi {
     private boolean isValidField(String fieldName, SysModuleCompleteResp moduleConfig) {
         // 检查简单字段
         if (moduleConfig.getSimpleFields() != null) {
-            for (SysModuleCompleteResp.SimpleFieldInfo field : moduleConfig.getSimpleFields()) {
+            for (ModuleSimpleFieldDTO field : moduleConfig.getSimpleFields()) {
                 if (fieldName.equals(field.getColumnName())) {
                     return true;
                 }
@@ -527,7 +524,7 @@ public class DynamicQueryService implements DataQueryApi {
 
         // 检查组合字段
         if (moduleConfig.getCombineFields() != null) {
-            for (SysModuleCompleteResp.CombineFieldInfo field : moduleConfig.getCombineFields()) {
+            for (ModuleCombineFieldDTO field : moduleConfig.getCombineFields()) {
                 if (fieldName.equals(field.getLogicalField()) && field.getEnabled() == 1) {
                     return true;
                 }
@@ -562,10 +559,10 @@ public class DynamicQueryService implements DataQueryApi {
     private void attachOneToManyRelations(
             DSLContext dsl,
             List<Map<String, Object>> mainData,
-            List<SysModuleCompleteResp.ModuleTableInfo> entities,
+            List<ModuleTableDTO> entities,
             SysModuleCompleteResp moduleConfig) {
 
-        for (SysModuleCompleteResp.ModuleTableInfo entity : entities) {
+        for (ModuleTableDTO entity : entities) {
             log.info("[子查询] {}...", entity.getTableName());
 
             // 获取父记录的关联字段值（joinLeftField）
@@ -629,7 +626,7 @@ public class DynamicQueryService implements DataQueryApi {
     /** 查询子记录 */
     private List<Map<String, Object>> queryChildRecords(
             DSLContext dsl,
-            SysModuleCompleteResp.ModuleTableInfo entity,
+            ModuleTableDTO entity,
             List<Object> parentKeys,
             SysModuleCompleteResp moduleConfig) {
 
@@ -667,7 +664,7 @@ public class DynamicQueryService implements DataQueryApi {
 
     /** 构建子表 SELECT 字段 */
     private List<Field<?>> buildChildSelectFields(
-            SysModuleCompleteResp.ModuleTableInfo entity, SysModuleCompleteResp moduleConfig) {
+            ModuleTableDTO entity, SysModuleCompleteResp moduleConfig) {
 
         List<Field<?>> fields = new ArrayList<>();
         String tableName = entity.getTableName();
@@ -677,7 +674,7 @@ public class DynamicQueryService implements DataQueryApi {
 
         // 1. 添加简单字段
         if (moduleConfig.getSimpleFields() != null) {
-            for (SysModuleCompleteResp.SimpleFieldInfo fieldInfo : moduleConfig.getSimpleFields()) {
+            for (ModuleSimpleFieldDTO fieldInfo : moduleConfig.getSimpleFields()) {
                 if (tableName.equals(fieldInfo.getTableName())) {
                     requiredFields.add(fieldInfo.getColumnName());
                 }
@@ -686,21 +683,20 @@ public class DynamicQueryService implements DataQueryApi {
 
         // 2. 收集组合字段依赖的源字段
         if (moduleConfig.getCombineFields() != null) {
-            for (SysModuleCompleteResp.CombineFieldInfo fieldInfo :
-                    moduleConfig.getCombineFields()) {
+            for (ModuleCombineFieldDTO fieldInfo : moduleConfig.getCombineFields()) {
                 if (fieldInfo.getEnabled() != 1) {
                     continue;
                 }
 
-                // 解析 sourceMapping，提取属于当前子表的源字段
-                JSONArray sourceMappings = JSON.parseArray(fieldInfo.getSourceMapping());
-                for (int i = 0; i < sourceMappings.size(); i++) {
-                    JSONObject mapping = sourceMappings.getJSONObject(i);
-                    String entityName = mapping.getString("entity");
-                    String fieldName = mapping.getString("field");
+                // 提取属于当前子表的源字段
+                if (fieldInfo.getSourceMapping() != null) {
+                    for (ModuleSourceMappingDTO mapping : fieldInfo.getSourceMapping()) {
+                        String entityName = mapping.getEntity();
+                        String fieldName = mapping.getField();
 
-                    if (tableName.equals(entityName)) {
-                        requiredFields.add(fieldName);
+                        if (tableName.equals(entityName)) {
+                            requiredFields.add(fieldName);
+                        }
                     }
                 }
             }
