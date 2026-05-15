@@ -11,7 +11,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** SSO Server 端控制器 提供单点登录服务端接口 */
@@ -22,12 +24,45 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class SsoServerController {
     /**
-     * SSO-Server端：处理所有SSO相关请求 http://{host}:{port}/api/config/sso/auth -- 单点登录授权地址
-     * http://{host}:{port}/api/config/sso/doLogin -- 账号密码登录接口，接受参数：name、pwd
+     * SSO-Server端：处理所有SSO相关请求（兜底接口，保留用于Sa-Token内部路由） http://{host}:{port}/api/config/sso/auth --
+     * 单点登录授权地址 http://{host}:{port}/api/config/sso/doLogin -- 账号密码登录接口，接受参数：name、pwd
      * http://{host}:{port}/api/config/sso/signout -- 单点注销地址（isSlo=true时打开）
      */
+    @Operation(summary = "SSO通用处理接口", description = "兜底接口，处理所有未明确定义的SSO请求", hidden = true)
     @RequestMapping("/**")
     public Object ssoRequest() {
+        return SaSsoServerProcessor.instance.dister();
+    }
+
+    /**
+     * SSO单点登录授权接口
+     *
+     * @param redirect 客户端回调地址
+     * @param client 客户端标识（应用 projectNo）
+     * @return 授权结果（重定向或登录页）
+     */
+    @GetMapping("/auth")
+    @Operation(summary = "SSO单点登录授权", description = "SSO认证入口，已登录返回ticket，未登录跳转登录页")
+    public Object auth(
+            @Parameter(description = "客户端回调地址", required = true) @RequestParam String redirect,
+            @Parameter(description = "客户端标识（应用 projectNo）") @RequestParam(required = false)
+                    String client) {
+        return SaSsoServerProcessor.instance.dister();
+    }
+
+    /**
+     * SSO账号密码登录接口
+     *
+     * @param phone 手机号
+     * @param verifyCode 验证码
+     * @return 登录结果
+     */
+    @PostMapping("/doLogin")
+    @Operation(summary = "SSO账号密码登录", description = "提交用户名密码进行SSO登录认证")
+    public Object doLogin(
+            @Parameter(description = "手机号", required = true) @RequestParam String phone,
+            @Parameter(description = "验证码", required = true) @RequestParam String verifyCode,
+            @Parameter(description = "应用编码", required = true) @RequestParam String client) {
         return SaSsoServerProcessor.instance.dister();
     }
 

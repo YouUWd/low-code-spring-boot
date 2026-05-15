@@ -35,6 +35,6 @@ public class SaTokenUserDataLoaderImpl implements SaTokenUserDataLoader {
     @Override
     public Long getUserRoleCount(String phone, String projectNo) {
         SysUserBO user = sysUserApi.getUserByPhone(phone);
-        return sysRoleApi.getUserRoleCount(user.getId(), user.getSubjectId(), projectNo);
+        return sysRoleApi.getUserRoleCount(user.getUserId(), user.getSubjectId(), projectNo);
     }
 }
