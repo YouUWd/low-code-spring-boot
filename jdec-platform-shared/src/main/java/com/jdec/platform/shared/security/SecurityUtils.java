@@ -37,7 +37,7 @@ public class SecurityUtils {
 
     /** 存储登录用户信息 */
     public static void setLoginUser(LoginUser loginUser) {
-        StpUtil.getSession().set(LOGIN_USER_KEY, loginUser);
+        StpUtil.getSession().set(LOGIN_USER_KEY, JSONUtil.toJsonStr(loginUser));
     }
 
     /** 判断是否超级管理员 */

@@ -101,8 +101,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         for (SysConfigCategory category : categories) {
             SysConfigTreeNodeResp node = new SysConfigTreeNodeResp();
             node.setNodeType("category");
-            node.setId(category.getId());
-            node.setPid(0L);
+            node.setId("category-" + category.getId());
+            node.setPid("0");
             node.setCategoryAlias(category.getCategoryAlias());
             node.setLabel(category.getLabel());
             node.setDescription(category.getDescription());
@@ -122,8 +122,9 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         for (SysConfigItem item : items) {
             SysConfigTreeNodeResp node = new SysConfigTreeNodeResp();
             node.setNodeType("item");
-            node.setId(item.getId());
-            node.setPid(item.getPid());
+            node.setId("item-" + item.getId());
+            node.setPid(
+                    item.getPid() == null || item.getPid() == 0L ? "0" : "item-" + item.getPid());
             node.setCategoryAlias(item.getCategoryAlias());
             node.setLabel(item.getLabel());
             node.setValue(item.getValue());

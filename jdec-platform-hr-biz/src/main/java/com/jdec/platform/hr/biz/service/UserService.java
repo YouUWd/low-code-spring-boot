@@ -112,8 +112,7 @@ public class UserService implements UserApi {
                 userMapper.selectList(
                         Wrappers.<User>lambdaQuery()
                                 .in(User::getId, new ArrayList<>(allUserIds))
-                                .eq(User::getIsDelete, 1)
-                                .eq(User::getUserStatus, 1));
+                                .eq(User::getIsDelete, 1));
         return BeanUtil.copyToList(users, UserBO.class);
     }
 

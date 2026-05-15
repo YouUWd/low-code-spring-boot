@@ -48,7 +48,7 @@ spring:
       host: ${REDIS_HOST:192.168.60.6}
       port: ${REDIS_PORT:5379}
       password: ${REDIS_PASSWORD:redis-jd-platform}
-      database: ${REDIS_DATABASE:0}
+      database: ${REDIS_DATABASE:8}
       timeout: 3000ms
       lettuce:
         pool:

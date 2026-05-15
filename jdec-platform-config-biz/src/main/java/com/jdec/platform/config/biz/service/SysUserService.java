@@ -161,9 +161,7 @@ public class SysUserService implements SysUserApi {
     public SysUserBO getUserByPhone(String phone) {
         SysUser sysUser =
                 sysUserMapper.selectOne(
-                        Wrappers.<SysUser>lambdaQuery()
-                                .eq(SysUser::getPhone, phone)
-                                .eq(SysUser::getSuperFlag, UserStatusFlagEnum.ENABLE.getCode()));
+                        Wrappers.<SysUser>lambdaQuery().eq(SysUser::getPhone, phone));
         return BeanUtil.toBean(sysUser, SysUserBO.class);
     }
 

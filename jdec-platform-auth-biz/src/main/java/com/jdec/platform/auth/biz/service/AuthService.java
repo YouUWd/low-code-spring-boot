@@ -16,6 +16,7 @@ import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.security.model.LoginUser;
+import com.jdec.platform.shared.wechat.WeChatWorkService;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +34,7 @@ public class AuthService implements AuthApi {
 
     private final SysUserApi sysUserApi;
     private final StringRedisTemplate stringRedisTemplate;
+    private final WeChatWorkService weChatWorkService;
 
     @Override
     public LoginResp login(LoginReq request) {
@@ -167,17 +169,18 @@ public class AuthService implements AuthApi {
         int code = ThreadLocalRandom.current().nextInt(1000, 10000);
         String codeStr = String.valueOf(code);
 
-        // todo: 6. 发送验证码（根据 user_type 自动选择企业微信/短信）
-        //        boolean sent = weChatMsgService.sendVerifyCode(userBO, codeStr);
-
-        stringRedisTemplate.opsForValue().set(cacheKey, codeStr, 300, TimeUnit.SECONDS);
-        if (true) {
+        // 6. 发送验证码（根据 user_type 自动选择企业微信/短信）
+        try {
+            weChatWorkService.sendVerificationCode(
+                    Math.toIntExact(userBO.getSubjectId()),
+                    String.valueOf(userBO.getUserId()),
+                    codeStr);
+            stringRedisTemplate.opsForValue().set(cacheKey, codeStr, 300, TimeUnit.SECONDS);
             boolean isExternal = userBO.getUserType() != null && userBO.getUserType() == 2;
             msg = isExternal ? "验证码已发送成功，请在手机短信中查收" : "验证码已发送成功，请在企业微信查收";
-        } else {
-            msg = "发送验证码失败，请重试" + codeStr;
+        } catch (Exception e) {
+            return "发送验证码失败，请重试" + codeStr;
         }
-
         return msg;
     }
 }

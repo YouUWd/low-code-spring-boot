@@ -13,10 +13,10 @@ public class SysConfigTreeNodeResp {
     private String nodeType;
 
     @Schema(description = "节点ID")
-    private Long id;
+    private String id;
 
     @Schema(description = "父节点ID")
-    private Long pid;
+    private String pid;
 
     @Schema(description = "分类别名（category 类型为自身别名，item 类型为所属分类别名）")
     private String categoryAlias;
