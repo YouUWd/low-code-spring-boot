@@ -16,10 +16,11 @@
  * <ul>
  *   <li>依赖 config.api - 自己的 API 接口
  *   <li>依赖 auth.api - 认证授权接口
+ *   <li>依赖 hr.api - 人力资源接口
  *   <li>依赖 shared - 共享工具和配置
  * </ul>
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Config BIZ",
-        allowedDependencies = {"config.api", "auth.api", "shared"})
+        allowedDependencies = {"config.api", "auth.api", "hr.api", "shared"})
 package com.jdec.platform.config.biz;
