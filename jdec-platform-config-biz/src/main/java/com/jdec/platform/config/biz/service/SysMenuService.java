@@ -77,10 +77,13 @@ public class SysMenuService implements SysMenuApi {
         return tree;
     }
 
+    @Transactional
     @Override
     public void saveMenu(SysMenuSaveReq req) {
         Long pid = req.getPid() == null ? ROOT_PID : req.getPid();
         req.setPid(pid);
+        Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
 
         // 校验：一级菜单类型必须为导航
         if (pid.equals(ROOT_PID) && !MENU_TYPE_NAV.equals(req.getMenuType())) {
@@ -91,20 +94,40 @@ public class SysMenuService implements SysMenuApi {
             // 新增
             SysMenu entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
-            entity.setProjectNo(AppContext.getProjectNo());
+            entity.setProjectNo(projectNo);
             // 校验同级名称是否重复（按父级、分类、主体、应用隔离）
-            checkDuplicateTitle(
-                    pid, req.getCategory(), req.getTitle(), AppContext.getSubjectId(), null);
+            checkDuplicateTitle(pid, req.getCategory(), req.getTitle(), subjectId, null);
+
+            // 处理排序值
+            if (req.getSortOrder() == null) {
+                // 前端未传排序值，自动设置为同级最大值+1
+                Integer maxSortOrder = getMaxSortOrderByPid(pid, subjectId, projectNo);
+                entity.setSortOrder(maxSortOrder == null ? 1 : maxSortOrder + 1);
+            } else {
+                // 前端传了排序值，检查是否与同级冲突
+                boolean sortExists =
+                        sysMenuMapper.exists(
+                                Wrappers.<SysMenu>lambdaQuery()
+                                        .eq(SysMenu::getPid, pid)
+                                        .eq(SysMenu::getSortOrder, req.getSortOrder())
+                                        .eq(SysMenu::getSubjectId, subjectId)
+                                        .eq(SysMenu::getProjectNo, projectNo));
+                if (sortExists) {
+                    // 排序值冲突，将该位置及之后的节点排序值+1
+                    adjustSortOrderOnInsert(pid, req.getSortOrder(), subjectId, projectNo);
+                }
+            }
+
             sysMenuMapper.insert(entity);
         } else {
             // 编辑
-            boolean exists =
-                    sysMenuMapper.exists(
+            SysMenu oldEntity =
+                    sysMenuMapper.selectOne(
                             Wrappers.<SysMenu>lambdaQuery()
                                     .eq(SysMenu::getId, req.getId())
-                                    .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
-                                    .eq(SysMenu::getProjectNo, AppContext.getProjectNo()));
-            if (!exists) {
+                                    .eq(SysMenu::getSubjectId, subjectId)
+                                    .eq(SysMenu::getProjectNo, projectNo));
+            if (oldEntity == null) {
                 throw new BusinessException("菜单不存在");
             }
             // 不能把自己设为自己的父节点
@@ -113,14 +136,66 @@ public class SysMenuService implements SysMenuApi {
             }
             // 校验是否形成了环（不能把自己子节点设为父节点）
             if (!pid.equals(ROOT_PID)) {
-                checkCycle(req.getId(), pid, AppContext.getSubjectId());
+                checkCycle(req.getId(), pid, subjectId);
             }
             // 校验同级名称是否重复
-            checkDuplicateTitle(
-                    pid, req.getCategory(), req.getTitle(), AppContext.getSubjectId(), req.getId());
+            checkDuplicateTitle(pid, req.getCategory(), req.getTitle(), subjectId, req.getId());
+
+            Long oldPid = oldEntity.getPid();
+            Integer oldSortOrder = oldEntity.getSortOrder();
 
             SysMenu entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
+
+            // 处理排序值
+            if (req.getSortOrder() == null) {
+                // 前端未传排序值
+                if (!pid.equals(oldPid)) {
+                    // 父节点变化，设置为新父节点下的最大值+1
+                    Integer maxSortOrder = getMaxSortOrderByPid(pid, subjectId, projectNo);
+                    entity.setSortOrder(maxSortOrder == null ? 1 : maxSortOrder + 1);
+                }
+                // 父节点未变化，保持原排序值
+            } else {
+                // 前端传了排序值
+                if (pid.equals(oldPid)) {
+                    // 同父节点内，排序值变化
+                    if (!req.getSortOrder().equals(oldSortOrder)) {
+                        boolean sortExists =
+                                sysMenuMapper.exists(
+                                        Wrappers.<SysMenu>lambdaQuery()
+                                                .eq(SysMenu::getPid, pid)
+                                                .eq(SysMenu::getSortOrder, req.getSortOrder())
+                                                .eq(SysMenu::getSubjectId, subjectId)
+                                                .eq(SysMenu::getProjectNo, projectNo)
+                                                .ne(SysMenu::getId, req.getId()));
+                        if (sortExists) {
+                            // 排序值冲突，调整其他节点
+                            adjustSortOrderOnUpdate(
+                                    req.getId(),
+                                    pid,
+                                    req.getSortOrder(),
+                                    oldSortOrder,
+                                    subjectId,
+                                    projectNo);
+                        }
+                    }
+                } else {
+                    // 跨父节点，检查新父节点下是否有冲突
+                    boolean sortExists =
+                            sysMenuMapper.exists(
+                                    Wrappers.<SysMenu>lambdaQuery()
+                                            .eq(SysMenu::getPid, pid)
+                                            .eq(SysMenu::getSortOrder, req.getSortOrder())
+                                            .eq(SysMenu::getSubjectId, subjectId)
+                                            .eq(SysMenu::getProjectNo, projectNo));
+                    if (sortExists) {
+                        // 新父节点下排序值冲突，调整
+                        adjustSortOrderOnInsert(pid, req.getSortOrder(), subjectId, projectNo);
+                    }
+                }
+            }
+
             sysMenuMapper.updateById(entity);
         }
     }
@@ -164,11 +239,15 @@ public class SysMenuService implements SysMenuApi {
         sysMenuMapper.deleteByIds(ids);
     }
 
+    @Transactional
     @Override
     public void dragMenu(SysMenuDragReq req) {
         Long id = req.getId();
         Long targetPid = req.getTargetPid() == null ? ROOT_PID : req.getTargetPid();
+        Integer targetSortOrder = req.getSortOrder();
         String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+
         if (id == null) {
             throw new BusinessException("节点ID不能为空");
         }
@@ -176,7 +255,7 @@ public class SysMenuService implements SysMenuApi {
                 sysMenuMapper.selectOne(
                         Wrappers.<SysMenu>lambdaQuery()
                                 .eq(SysMenu::getId, id)
-                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getSubjectId, subjectId)
                                 .eq(SysMenu::getProjectNo, projectNo));
         if (node == null) {
             throw new BusinessException("菜单不存在");
@@ -187,12 +266,12 @@ public class SysMenuService implements SysMenuApi {
         }
         // 不能拖到自己的子节点下面（形成环）
         if (!targetPid.equals(ROOT_PID)) {
-            checkCycle(id, targetPid, AppContext.getSubjectId());
+            checkCycle(id, targetPid, subjectId);
             boolean exists =
                     sysMenuMapper.exists(
                             Wrappers.<SysMenu>lambdaQuery()
                                     .eq(SysMenu::getId, targetPid)
-                                    .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                    .eq(SysMenu::getSubjectId, subjectId)
                                     .eq(SysMenu::getProjectNo, projectNo));
             if (!exists) {
                 throw new BusinessException("目标父菜单不存在");
@@ -203,11 +282,216 @@ public class SysMenuService implements SysMenuApi {
             throw new BusinessException("一级菜单类型必须为导航");
         }
         // 校验同级名称是否重复
-        checkDuplicateTitle(
-                targetPid, node.getCategory(), node.getTitle(), AppContext.getSubjectId(), id);
+        checkDuplicateTitle(targetPid, node.getCategory(), node.getTitle(), subjectId, id);
 
+        Long oldPid = node.getPid();
+        Integer oldSortOrder = node.getSortOrder();
+
+        // 更新节点的父级和排序
         node.setPid(targetPid);
+        if (targetSortOrder != null) {
+            node.setSortOrder(targetSortOrder);
+        }
         sysMenuMapper.updateById(node);
+
+        // 更新同级节点的排序值
+        if (targetSortOrder != null) {
+            updateSiblingSortOrder(
+                    id, targetPid, targetSortOrder, oldPid, oldSortOrder, subjectId, projectNo);
+        }
+    }
+
+    /**
+     * 更新同级节点的排序值
+     *
+     * @param draggedId 被拖拽节点ID
+     * @param newPid 新父节点ID
+     * @param newSortOrder 新排序值
+     * @param oldPid 原父节点ID
+     * @param oldSortOrder 原排序值
+     * @param subjectId 主体ID
+     * @param projectNo 应用编码
+     */
+    private void updateSiblingSortOrder(
+            Long draggedId,
+            Long newPid,
+            Integer newSortOrder,
+            Long oldPid,
+            Integer oldSortOrder,
+            Long subjectId,
+            String projectNo) {
+        // 查询新父节点下的所有同级节点（排除被拖拽节点）
+        List<SysMenu> siblings =
+                sysMenuMapper.selectList(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getPid, newPid)
+                                .eq(SysMenu::getSubjectId, subjectId)
+                                .eq(SysMenu::getProjectNo, projectNo)
+                                .ne(SysMenu::getId, draggedId)
+                                .orderByAsc(SysMenu::getSortOrder)
+                                .orderByAsc(SysMenu::getId));
+
+        if (CollectionUtils.isEmpty(siblings)) {
+            return;
+        }
+
+        // 如果是同一父节点内拖拽
+        if (newPid.equals(oldPid)) {
+            // 向前拖拽：原位置之后、新位置之前的节点 sortOrder + 1
+            if (oldSortOrder != null && newSortOrder < oldSortOrder) {
+                for (SysMenu sibling : siblings) {
+                    Integer siblingSort = sibling.getSortOrder();
+                    if (siblingSort != null
+                            && siblingSort >= newSortOrder
+                            && siblingSort < oldSortOrder) {
+                        sibling.setSortOrder(siblingSort + 1);
+                        sysMenuMapper.updateById(sibling);
+                    }
+                }
+            }
+            // 向后拖拽：原位置之前、新位置之后的节点 sortOrder - 1
+            else if (oldSortOrder != null && newSortOrder > oldSortOrder) {
+                for (SysMenu sibling : siblings) {
+                    Integer siblingSort = sibling.getSortOrder();
+                    if (siblingSort != null
+                            && siblingSort > oldSortOrder
+                            && siblingSort <= newSortOrder) {
+                        sibling.setSortOrder(siblingSort - 1);
+                        sysMenuMapper.updateById(sibling);
+                    }
+                }
+            }
+        } else {
+            // 跨父节点拖拽：新位置及之后的节点 sortOrder + 1
+            for (SysMenu sibling : siblings) {
+                Integer siblingSort = sibling.getSortOrder();
+                if (siblingSort != null && siblingSort >= newSortOrder) {
+                    sibling.setSortOrder(siblingSort + 1);
+                    sysMenuMapper.updateById(sibling);
+                }
+            }
+
+            // 原父节点下的节点：原位置之后的节点 sortOrder - 1
+            if (oldSortOrder != null && !newPid.equals(oldPid)) {
+                List<SysMenu> oldSiblings =
+                        sysMenuMapper.selectList(
+                                Wrappers.<SysMenu>lambdaQuery()
+                                        .eq(SysMenu::getPid, oldPid)
+                                        .eq(SysMenu::getSubjectId, subjectId)
+                                        .eq(SysMenu::getProjectNo, projectNo)
+                                        .ne(SysMenu::getId, draggedId)
+                                        .gt(SysMenu::getSortOrder, oldSortOrder)
+                                        .orderByAsc(SysMenu::getSortOrder));
+                for (SysMenu oldSibling : oldSiblings) {
+                    Integer siblingSort = oldSibling.getSortOrder();
+                    if (siblingSort != null) {
+                        oldSibling.setSortOrder(siblingSort - 1);
+                        sysMenuMapper.updateById(oldSibling);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 获取指定父节点下的最大排序值
+     *
+     * @param pid 父节点ID
+     * @param subjectId 主体ID
+     * @param projectNo 应用编码
+     * @return 最大排序值，无数据时返回null
+     */
+    private Integer getMaxSortOrderByPid(Long pid, Long subjectId, String projectNo) {
+        List<SysMenu> menus =
+                sysMenuMapper.selectList(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getPid, pid)
+                                .eq(SysMenu::getSubjectId, subjectId)
+                                .eq(SysMenu::getProjectNo, projectNo)
+                                .orderByDesc(SysMenu::getSortOrder)
+                                .last("LIMIT 1"));
+        return menus.isEmpty() ? null : menus.get(0).getSortOrder();
+    }
+
+    /**
+     * 新增节点时调整排序值：将指定位置及之后的节点排序值+1
+     *
+     * @param pid 父节点ID
+     * @param insertSortOrder 插入位置的排序值
+     * @param subjectId 主体ID
+     * @param projectNo 应用编码
+     */
+    private void adjustSortOrderOnInsert(
+            Long pid, Integer insertSortOrder, Long subjectId, String projectNo) {
+        List<SysMenu> siblings =
+                sysMenuMapper.selectList(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getPid, pid)
+                                .eq(SysMenu::getSubjectId, subjectId)
+                                .eq(SysMenu::getProjectNo, projectNo)
+                                .ge(SysMenu::getSortOrder, insertSortOrder)
+                                .orderByAsc(SysMenu::getSortOrder));
+        for (SysMenu sibling : siblings) {
+            sibling.setSortOrder(sibling.getSortOrder() + 1);
+            sysMenuMapper.updateById(sibling);
+        }
+    }
+
+    /**
+     * 更新节点时调整排序值（同父节点内）
+     *
+     * @param menuId 被更新节点ID
+     * @param pid 父节点ID
+     * @param newSortOrder 新排序值
+     * @param oldSortOrder 原排序值
+     * @param subjectId 主体ID
+     * @param projectNo 应用编码
+     */
+    private void adjustSortOrderOnUpdate(
+            Long menuId,
+            Long pid,
+            Integer newSortOrder,
+            Integer oldSortOrder,
+            Long subjectId,
+            String projectNo) {
+        if (oldSortOrder == null) {
+            // 原来没有排序值，按插入处理
+            adjustSortOrderOnInsert(pid, newSortOrder, subjectId, projectNo);
+            return;
+        }
+
+        // 向前移动：原位置之后、新位置之前的节点 sortOrder + 1
+        if (newSortOrder < oldSortOrder) {
+            List<SysMenu> siblings =
+                    sysMenuMapper.selectList(
+                            Wrappers.<SysMenu>lambdaQuery()
+                                    .eq(SysMenu::getPid, pid)
+                                    .eq(SysMenu::getSubjectId, subjectId)
+                                    .eq(SysMenu::getProjectNo, projectNo)
+                                    .ne(SysMenu::getId, menuId)
+                                    .ge(SysMenu::getSortOrder, newSortOrder)
+                                    .lt(SysMenu::getSortOrder, oldSortOrder));
+            for (SysMenu sibling : siblings) {
+                sibling.setSortOrder(sibling.getSortOrder() + 1);
+                sysMenuMapper.updateById(sibling);
+            }
+        }
+        // 向后移动：原位置之前、新位置之后的节点 sortOrder - 1
+        else if (newSortOrder > oldSortOrder) {
+            List<SysMenu> siblings =
+                    sysMenuMapper.selectList(
+                            Wrappers.<SysMenu>lambdaQuery()
+                                    .eq(SysMenu::getPid, pid)
+                                    .eq(SysMenu::getSubjectId, subjectId)
+                                    .eq(SysMenu::getProjectNo, projectNo)
+                                    .ne(SysMenu::getId, menuId)
+                                    .gt(SysMenu::getSortOrder, oldSortOrder)
+                                    .le(SysMenu::getSortOrder, newSortOrder));
+            for (SysMenu sibling : siblings) {
+                sibling.setSortOrder(sibling.getSortOrder() - 1);
+                sysMenuMapper.updateById(sibling);
+            }
+        }
     }
 
     /** 校验同级菜单名称是否重复 */

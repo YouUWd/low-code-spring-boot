@@ -505,7 +505,12 @@ public class SysRoleService implements SysRoleApi {
                         Wrappers.<SysRole>lambdaQuery()
                                 .eq(SysRole::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysRole::getSubjectId, AppContext.getSubjectId()));
-        return BeanUtil.copyToList(sysRoles, RoleListResp.class);
+        List<RoleListResp> respList = BeanUtil.copyToList(sysRoles, RoleListResp.class);
+        // 添加序号
+        for (int i = 0; i < respList.size(); i++) {
+            respList.get(i).setXh(i + 1);
+        }
+        return respList;
     }
 
     private List<RoleSubjectResp> buildSubjectList(List<SysRoleSubject> subjects) {

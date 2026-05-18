@@ -6,6 +6,9 @@ import lombok.Data;
 
 @Data
 public class RoleListResp implements Serializable {
+    @Schema(description = "序号")
+    private Integer xh;
+
     @Schema(description = "角色ID")
     private Long id;
 
