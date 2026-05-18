@@ -39,6 +39,14 @@ public class SysModuleService implements SysModuleApi {
     private final SysModuleSimpleFieldMapper sysModuleSimpleFieldMapper;
     private final SysModuleCombineFieldMapper sysModuleCombineFieldMapper;
     private final SysModuleStatusMapper sysModuleStatusMapper;
+    private final SysMenuMapper sysMenuMapper;
+    private final SysFieldValueMapper sysFieldValueMapper;
+    private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
+    private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
+    private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
+    private final SysApprovalChainConfigMapper sysApprovalChainConfigMapper;
+    private final SysWechatTemplateMapper sysWechatTemplateMapper;
+    private final SysWechatTemplateParamMapper sysWechatTemplateParamMapper;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -277,28 +285,91 @@ public class SysModuleService implements SysModuleApi {
             throw new BusinessException(404, "模块不存在");
         }
 
+        // ========== 前置校验：检查外部依赖 ==========
+
+        // 检查子模块
+        Long childCount =
+                sysModuleMapper.selectCount(
+                        Wrappers.<SysModule>lambdaQuery().eq(SysModule::getParentId, moduleId));
+        if (childCount > 0) {
+            throw new BusinessException(400, "该模块下存在子模块，请先删除子模块");
+        }
+
+        // 检查菜单引用
+        Long menuCount =
+                sysMenuMapper.selectCount(
+                        Wrappers.<SysMenu>lambdaQuery().eq(SysMenu::getModuleId, moduleId));
+        if (menuCount > 0) {
+            throw new BusinessException(400, "该模块已被菜单引用，请先解除关联");
+        }
+
+        // 检查审批链引用
+        Long approvalCount =
+                sysApprovalChainTypeMapper.selectCount(
+                        Wrappers.<SysApprovalChainType>lambdaQuery()
+                                .eq(SysApprovalChainType::getModuleId, moduleId));
+        if (approvalCount > 0) {
+            throw new BusinessException(400, "该模块已配置审批链，请先删除审批链配置");
+        }
+
+        // 检查微信模板引用
+        Long templateCount =
+                sysWechatTemplateMapper.selectCount(
+                        Wrappers.<SysWechatTemplate>lambdaQuery()
+                                .eq(SysWechatTemplate::getModuleId, moduleId));
+        if (templateCount > 0) {
+            throw new BusinessException(400, "该模块已关联微信模板，请先删除模板配置");
+        }
+
+        // 检查字段值配置引用
+        Long fieldValueCount =
+                sysFieldValueMapper.selectCount(
+                        Wrappers.<SysFieldValue>lambdaQuery()
+                                .eq(SysFieldValue::getModuleId, moduleId));
+        if (fieldValueCount > 0) {
+            throw new BusinessException(400, "该模块已配置字段值，请先删除字段值配置");
+        }
+
+        // 检查交互权限引用
+        Long interactionPermissionCount =
+                sysInteractionPermissionMapper.selectCount(
+                        Wrappers.<SysInteractionPermission>lambdaQuery()
+                                .eq(SysInteractionPermission::getModuleId, moduleId));
+        if (interactionPermissionCount > 0) {
+            throw new BusinessException(400, "该模块已配置交互权限，请先删除交互权限配置");
+        }
+
+        // 检查角色字段权限引用
+        Long roleFieldPermissionCount =
+                sysRoleModuleFieldPermissionMapper.selectCount(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
+        if (roleFieldPermissionCount > 0) {
+            throw new BusinessException(400, "该模块已被角色字段权限引用，请先解除关联");
+        }
+
+        // ========== 级联删除：模块内部附属配置 ==========
+
         // 删除模块
         sysModuleMapper.deleteById(moduleId);
 
         // 删除关联表
-        LambdaQueryWrapper<SysModuleTable> tableWrapper = new LambdaQueryWrapper<>();
-        tableWrapper.eq(SysModuleTable::getModuleId, moduleId);
-        sysModuleTableMapper.delete(tableWrapper);
+        sysModuleTableMapper.delete(
+                Wrappers.<SysModuleTable>lambdaQuery().eq(SysModuleTable::getModuleId, moduleId));
 
         // 删除简单字段
-        LambdaQueryWrapper<SysModuleSimpleField> simpleFieldWrapper = new LambdaQueryWrapper<>();
-        simpleFieldWrapper.eq(SysModuleSimpleField::getModuleId, moduleId);
-        sysModuleSimpleFieldMapper.delete(simpleFieldWrapper);
+        sysModuleSimpleFieldMapper.delete(
+                Wrappers.<SysModuleSimpleField>lambdaQuery()
+                        .eq(SysModuleSimpleField::getModuleId, moduleId));
 
         // 删除组合字段
-        LambdaQueryWrapper<SysModuleCombineField> combineFieldWrapper = new LambdaQueryWrapper<>();
-        combineFieldWrapper.eq(SysModuleCombineField::getModuleId, moduleId);
-        sysModuleCombineFieldMapper.delete(combineFieldWrapper);
+        sysModuleCombineFieldMapper.delete(
+                Wrappers.<SysModuleCombineField>lambdaQuery()
+                        .eq(SysModuleCombineField::getModuleId, moduleId));
 
         // 删除状态
-        LambdaQueryWrapper<SysModuleStatus> statusWrapper = new LambdaQueryWrapper<>();
-        statusWrapper.eq(SysModuleStatus::getModuleId, moduleId);
-        sysModuleStatusMapper.delete(statusWrapper);
+        sysModuleStatusMapper.delete(
+                Wrappers.<SysModuleStatus>lambdaQuery().eq(SysModuleStatus::getModuleId, moduleId));
 
         // 更新父模块的叶子节点标记
         if (module.getParentId() != null && module.getParentId() > 0) {
