@@ -3,7 +3,6 @@ package com.jdec.platform.shared.datasource;
 import com.zaxxer.hikari.HikariDataSource;
 import java.util.HashMap;
 import java.util.Map;
-import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -27,11 +26,11 @@ public class DynamicDataSourceConfig {
 
     @Bean
     @Primary
-    public DataSource dataSource() {
+    public DynamicRoutingDataSource dataSource() {
         DynamicRoutingDataSource routingDataSource = new DynamicRoutingDataSource();
 
         Map<Object, Object> targetDataSources = new HashMap<>();
-        DataSource defaultDataSource = null;
+        javax.sql.DataSource defaultDataSource = null;
 
         for (Map.Entry<String, DynamicDataSourceProperties.DataSourceProperty> entry :
                 properties.getDatasources().entrySet()) {
@@ -61,7 +60,7 @@ public class DynamicDataSourceConfig {
         }
 
         if (defaultDataSource == null && !targetDataSources.isEmpty()) {
-            defaultDataSource = (DataSource) targetDataSources.values().iterator().next();
+            defaultDataSource = (javax.sql.DataSource) targetDataSources.values().iterator().next();
             log.warn("未找到名为 '{}' 的主数据源，使用第一个配置作为默认", properties.getPrimary());
         }
 
