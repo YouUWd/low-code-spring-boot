@@ -28,13 +28,13 @@ public class SaveRoleModuleFieldReq {
         @Schema(description = "字段ID")
         private Long fieldId;
 
-        @Schema(description = "是否可读")
+        @Schema(description = "是否可查看")
         private Integer readable;
 
-        @Schema(description = "是否可写")
+        @Schema(description = "是否可申请")
         private Integer writable;
 
-        @Schema(description = "是否可更新")
+        @Schema(description = "是否可编辑")
         private Integer updatable;
     }
 }

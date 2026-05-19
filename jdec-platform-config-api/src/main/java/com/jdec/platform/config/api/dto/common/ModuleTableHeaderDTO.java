@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api.dto.common;
 
+import com.jdec.platform.config.api.enums.SearchTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -31,11 +32,8 @@ public class ModuleTableHeaderDTO {
     private Integer sortOrder;
 
     /** 搜索类型 */
-    @Schema(
-            description = "搜索类型",
-            example = "text",
-            allowableValues = {"text", "number", "date", "select", "range", "none"})
-    private String searchType;
+    @Schema(description = "搜索类型", example = "input")
+    private SearchTypeEnum searchType;
 
     /** 固定列位置 */
     @Schema(
