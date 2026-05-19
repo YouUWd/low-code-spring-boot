@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jdec.platform.config.biz.mapper.SysRightMapper">
+
+    <!-- 分页查询权限节点（联合三张表） -->
+    <select id="selectRightPage" resultType="com.jdec.platform.config.api.dto.response.SysRightResp">
+        SELECT * FROM (
+            -- 数据权限类型表
+            SELECT
+                id,
+                0 AS pid,
+                name AS right_name,
+                code AS right_slug,
+                1 AS node_type,
+                description,
+                sort
+            FROM sys_data_permission_type
+            WHERE project_no = #{projectNo}
+              AND subject_id = #{subjectId}
+              <if test="rightName != null and rightName != ''">
+                  AND name LIKE CONCAT('%', #{rightName}, '%')
+              </if>
+
+            UNION ALL
+
+            -- 交互权限表
+            SELECT
+                id,
+                0 AS pid,
+                name AS right_name,
+                code AS right_slug,
+                2 AS node_type,
+                NULL AS description,
+                sort
+            FROM sys_interaction_permission
+            WHERE project_no = #{projectNo}
+              AND subject_id = #{subjectId}
+              <if test="rightName != null and rightName != ''">
+                  AND name LIKE CONCAT('%', #{rightName}, '%')
+              </if>
+
+            UNION ALL
+
+            -- 特殊权限表
+            SELECT
+                id,
+                0 AS pid,
+                name AS right_name,
+                code AS right_slug,
+                3 AS node_type,
+                description,
+                sort
+            FROM sys_special_permission
+            WHERE project_no = #{projectNo}
+              AND subject_id = #{subjectId}
+              <if test="rightName != null and rightName != ''">
+                  AND name LIKE CONCAT('%', #{rightName}, '%')
+              </if>
+        ) AS combined_rights
+        ORDER BY node_type ASC, sort ASC, id ASC
+    </select>
+
+</mapper>

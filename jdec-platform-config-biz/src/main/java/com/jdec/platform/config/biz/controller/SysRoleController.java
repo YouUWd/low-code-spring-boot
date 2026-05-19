@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysRoleApi;
+import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 public class SysRoleController {
 
     private final SysRoleApi sysRoleApi;
+    private final SysUserApi sysUserApi;
     private final UserApi userApi;
 
     @GetMapping("/get-user-tree")
@@ -34,6 +36,13 @@ public class SysRoleController {
     public ApiResponse<List<UserTreeNodeResp>> getUserTreeList(
             @Parameter(description = "用户类型", example = "1") @RequestParam Integer userType) {
         return ApiResponse.success(userApi.getUserTreeList(userType));
+    }
+
+    @GetMapping("/get-user-tree-for-search")
+    @Operation(summary = "获取人员架构树（用于下拉搜索）", description = "按照部门层级展示人员架构，仅包含 sys_user 表中存在的用户")
+    public ApiResponse<List<UserSearchTreeNodeResp>> getUserTreeListForSearch(
+            @Parameter(description = "用户类型", example = "1") @RequestParam Integer userType) {
+        return ApiResponse.success(sysUserApi.getUserTreeListForSearch(userType));
     }
 
     @PostMapping("/check-role-user")
@@ -44,9 +53,8 @@ public class SysRoleController {
 
     @PostMapping("/save-role-user")
     @Operation(summary = "保存角色及用户关联", description = "保存角色信息及其用户关联，id为空则新增，不为空则修改。force=true时强制覆盖")
-    public ApiResponse<Void> saveRoleUser(@RequestBody SaveRoleUserReq request) {
-        sysRoleApi.saveRoleUser(request);
-        return ApiResponse.success();
+    public ApiResponse<RoleConfigPageResp> saveRoleUser(@RequestBody SaveRoleUserReq request) {
+        return ApiResponse.success(sysRoleApi.saveRoleUser(request));
     }
 
     @GetMapping("/get-role-user-time")
@@ -66,9 +74,8 @@ public class SysRoleController {
     @GetMapping("/get-role-config-detail")
     @Operation(summary = "获取角色配置详情", description = "获取角色及其关联的用户、主体列表")
     public ApiResponse<RoleConfigDetailResp> getInsideInfo(
-            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
-            @Parameter(description = "用户类型", example = "1") @RequestParam Integer userType) {
-        return ApiResponse.success(sysRoleApi.getRoleConfigDetail(roleId, userType));
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
+        return ApiResponse.success(sysRoleApi.getRoleConfigDetail(roleId));
     }
 
     @DeleteMapping("/{roleId}")

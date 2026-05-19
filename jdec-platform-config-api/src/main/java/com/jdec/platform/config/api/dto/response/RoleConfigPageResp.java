@@ -11,7 +11,7 @@ import lombok.Data;
 public class RoleConfigPageResp {
 
     @Schema(description = "角色ID")
-    private Long roleId;
+    private Long id;
 
     @Schema(description = "角色名称")
     private String roleName;

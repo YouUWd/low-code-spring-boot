@@ -43,6 +43,9 @@ public class SysStatus implements Serializable {
     @Schema(description = "审批是否显示(1:显示。0：不显示)")
     private Integer approvalShowFlag;
 
+    @Schema(description = "排序值，从0开始")
+    private Integer sortOrder;
+
     @Schema(description = "应用编码")
     private String projectNo;
 

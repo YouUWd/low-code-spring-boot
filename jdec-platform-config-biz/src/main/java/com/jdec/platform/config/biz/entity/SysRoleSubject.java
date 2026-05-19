@@ -23,9 +23,6 @@ public class SysRoleSubject implements Serializable {
     @Schema(description = "主体ID")
     private Long subjectId;
 
-    @Schema(description = "主体名称")
-    private String subjectName;
-
     @Schema(description = "有效期开始")
     private LocalDate effectiveStartDate;
 

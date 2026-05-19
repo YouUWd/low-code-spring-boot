@@ -13,4 +13,7 @@ public class SysStatusDragReq {
 
     @Schema(description = "目标父节点ID，拖到顶层传0")
     private Long targetPid;
+
+    @Schema(description = "排序值，从0开始")
+    private Integer sortOrder;
 }

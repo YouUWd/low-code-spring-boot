@@ -21,13 +21,13 @@ public interface SysRoleApi {
 
     CheckRoleUserResp checkRoleUser(SaveRoleUserReq request);
 
-    void saveRoleUser(SaveRoleUserReq request);
+    RoleConfigPageResp saveRoleUser(SaveRoleUserReq request);
 
     RoleUserTimeResp getRoleUserTime(String userId, Long roleId);
 
     PageResult<RoleConfigPageResp> getRoleConfigPage(QueryRoleConfigPageReq query);
 
-    RoleConfigDetailResp getRoleConfigDetail(Long roleId, Integer userType);
+    RoleConfigDetailResp getRoleConfigDetail(Long roleId);
 
     void deleteRole(Long roleId);
 

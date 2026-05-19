@@ -34,6 +34,7 @@ public class SysStatusService implements SysStatusApi {
                         new LambdaQueryWrapper<SysStatus>()
                                 .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
+                                .orderByAsc(SysStatus::getSortOrder)
                                 .orderByAsc(SysStatus::getStatusValue)
                                 .orderByAsc(SysStatus::getId));
         if (CollectionUtils.isEmpty(list)) {
@@ -89,6 +90,8 @@ public class SysStatusService implements SysStatusApi {
             if (count > 0) {
                 throw new BusinessException("同级状态下名称已存在");
             }
+            // 处理排序值
+            handleSortOrderForInsert(entity);
             sysStatusMapper.insert(entity);
         } else {
             // 编辑
@@ -125,6 +128,8 @@ public class SysStatusService implements SysStatusApi {
                     throw new BusinessException("同级状态下名称已存在");
                 }
             }
+            // 处理排序值
+            handleSortOrderForUpdate(entity);
             sysStatusMapper.updateById(entity);
         }
     }
@@ -135,13 +140,13 @@ public class SysStatusService implements SysStatusApi {
         if (subjectId == null) {
             subjectId = 0L;
         }
-        boolean exists =
-                sysStatusMapper.exists(
+        SysStatus status =
+                sysStatusMapper.selectOne(
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getId, id)
                                 .eq(SysStatus::getSubjectId, subjectId)
                                 .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
-        if (!exists) {
+        if (status == null) {
             throw new BusinessException("状态不存在");
         }
         // 收集所有子节点ID
@@ -154,6 +159,9 @@ public class SysStatusService implements SysStatusApi {
         Set<Long> ids = new HashSet<>(childIds);
         ids.add(id);
         sysStatusMapper.deleteByIds(ids);
+
+        // 删除后重排同级节点的排序值
+        reorderSiblingsAfterDelete(status.getPid(), subjectId);
     }
 
     @Override
@@ -205,6 +213,8 @@ public class SysStatusService implements SysStatusApi {
             throw new BusinessException("同级状态下名称已存在");
         }
         node.setPid(targetPid);
+        // 处理排序值
+        handleSortOrderForDrag(node, req.getSortOrder());
         sysStatusMapper.updateById(node);
     }
 
@@ -261,5 +271,143 @@ public class SysStatusService implements SysStatusApi {
         for (SysStatus child : children) {
             checkCycle(child.getId(), targetPid, subjectId);
         }
+    }
+
+    /** 处理新增时的排序值 */
+    private void handleSortOrderForInsert(SysStatus entity) {
+        if (entity.getSortOrder() == null) {
+            // 前端未传排序值，自动分配为同级最大值+1
+            Integer maxSort =
+                    sysStatusMapper
+                            .selectList(
+                                    Wrappers.<SysStatus>lambdaQuery()
+                                            .eq(SysStatus::getPid, entity.getPid())
+                                            .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
+                                            .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
+                                            .orderByDesc(SysStatus::getSortOrder)
+                                            .last("LIMIT 1"))
+                            .stream()
+                            .findFirst()
+                            .map(SysStatus::getSortOrder)
+                            .orElse(-1);
+            entity.setSortOrder(maxSort + 1);
+        } else {
+            // 前端传了排序值，检查是否冲突
+            adjustSortOrderIfConflict(entity.getPid(), entity.getSortOrder(), null);
+        }
+    }
+
+    /** 处理更新时的排序值 */
+    private void handleSortOrderForUpdate(SysStatus entity) {
+        if (entity.getSortOrder() != null) {
+            // 前端传了排序值，检查是否冲突
+            adjustSortOrderIfConflict(entity.getPid(), entity.getSortOrder(), entity.getId());
+        }
+    }
+
+    /** 处理拖拽时的排序值 */
+    private void handleSortOrderForDrag(SysStatus entity, Integer targetIndex) {
+        if (targetIndex == null) {
+            // 前端未传顺序值，自动分配为同级最大值+1
+            Integer maxSort =
+                    sysStatusMapper
+                            .selectList(
+                                    Wrappers.<SysStatus>lambdaQuery()
+                                            .eq(SysStatus::getPid, entity.getPid())
+                                            .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
+                                            .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
+                                            .ne(SysStatus::getId, entity.getId())
+                                            .orderByDesc(SysStatus::getSortOrder)
+                                            .last("LIMIT 1"))
+                            .stream()
+                            .findFirst()
+                            .map(SysStatus::getSortOrder)
+                            .orElse(-1);
+            entity.setSortOrder(maxSort + 1);
+        } else {
+            // 前端传了顺序值（从0开始），需要调整同级节点的排序
+            adjustSortOrderForDrag(entity, targetIndex);
+        }
+    }
+
+    /** 调整同级节点的排序值，避免冲突 */
+    private void adjustSortOrderIfConflict(Long pid, Integer sortOrder, Long excludeId) {
+        // 查询同级是否存在相同排序值的节点
+        LambdaQueryWrapper<SysStatus> wrapper =
+                Wrappers.<SysStatus>lambdaQuery()
+                        .eq(SysStatus::getPid, pid)
+                        .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
+                        .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
+                        .ge(SysStatus::getSortOrder, sortOrder);
+        if (excludeId != null) {
+            wrapper.ne(SysStatus::getId, excludeId);
+        }
+        List<SysStatus> conflicts =
+                sysStatusMapper.selectList(wrapper.orderByAsc(SysStatus::getSortOrder));
+
+        if (!conflicts.isEmpty()) {
+            // 批量更新冲突节点的排序值（依次+1）
+            for (SysStatus conflict : conflicts) {
+                conflict.setSortOrder(conflict.getSortOrder() + 1);
+            }
+            sysStatusMapper.updateById(conflicts);
+        }
+    }
+
+    /**
+     * 处理拖拽时的排序调整
+     *
+     * @param entity 被拖拽的节点
+     * @param targetIndex 目标位置的顺序值（从0开始）
+     */
+    private void adjustSortOrderForDrag(SysStatus entity, Integer targetIndex) {
+        // 查询同级所有节点（排除当前拖拽节点）
+        List<SysStatus> siblings =
+                sysStatusMapper.selectList(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getPid, entity.getPid())
+                                .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
+                                .ne(SysStatus::getId, entity.getId())
+                                .orderByAsc(SysStatus::getSortOrder));
+
+        // 将拖拽节点插入到目标位置
+        siblings.add(targetIndex, entity);
+
+        // 批量更新所有节点的排序值（从0开始）
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setSortOrder(i);
+        }
+        // 使用 MyBatis-Plus 批量更新
+        if (!siblings.isEmpty()) {
+            sysStatusMapper.updateById(siblings);
+        }
+    }
+
+    /**
+     * 删除节点后重排同级节点的排序值
+     *
+     * @param pid 父节点ID
+     * @param subjectId 主体ID
+     */
+    private void reorderSiblingsAfterDelete(Long pid, Long subjectId) {
+        // 查询同级所有节点
+        List<SysStatus> siblings =
+                sysStatusMapper.selectList(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getPid, pid)
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
+                                .orderByAsc(SysStatus::getSortOrder));
+
+        if (siblings.isEmpty()) {
+            return;
+        }
+
+        // 重新分配排序值（从0开始）
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setSortOrder(i);
+        }
+        sysStatusMapper.updateById(siblings);
     }
 }

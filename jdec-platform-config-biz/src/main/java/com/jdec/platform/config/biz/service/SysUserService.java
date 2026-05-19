@@ -10,12 +10,15 @@ import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
 import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysUser;
 import com.jdec.platform.config.biz.mapper.SysRoleMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
+import com.jdec.platform.hr.api.DepartmentApi;
+import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -23,8 +26,7 @@ import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ public class SysUserService implements SysUserApi {
     private final SysUserMapper sysUserMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleMapper sysRoleMapper;
+    private final DepartmentApi departmentApi;
 
     @Override
     public PageResult<SysUserPageResp> getUserPage(QuerySysUserPageReq query) {
@@ -185,5 +188,106 @@ public class SysUserService implements SysUserApi {
                                 .in(SysUser::getId, userIds)
                                 .orderByDesc(SysUser::getCreatedDate));
         return users.stream().map(this::toUserPageResp).toList();
+    }
+
+    @Override
+    public List<UserSearchTreeNodeResp> getUserTreeListForSearch(Integer userType) {
+        // userType: 0=全部, 1=内部, 2=外部。当前项目仅支持内部用户树
+        if (userType != null && userType == 2) {
+            return Collections.emptyList();
+        }
+
+        // 2. 获取用户列表
+        List<SysRole> sysRoles =
+                sysRoleMapper.selectList(
+                        new LambdaQueryWrapper<SysRole>()
+                                .eq(SysRole::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysRole::getProjectNo, AppContext.getProjectNo()));
+        List<Long> roleIds = sysRoles.stream().map(SysRole::getId).toList();
+        List<SysRoleUser> sysRoleUsers =
+                sysRoleUserMapper.selectList(
+                        new LambdaQueryWrapper<SysRoleUser>().in(SysRoleUser::getRoleId, roleIds));
+        List<Long> roleUserIds = sysRoleUsers.stream().map(SysRoleUser::getUserId).toList();
+        List<SysUser> users =
+                sysUserMapper.selectList(
+                        new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, roleUserIds));
+
+        // 3. 将用户按部门分类
+        Map<String, List<UserSearchTreeNodeResp>> deptUsers = new LinkedHashMap<>();
+        for (SysUser user : users) {
+            String deptIds = user.getDepartIds();
+            if (deptIds == null || deptIds.isEmpty()) {
+                continue;
+            }
+            for (String deptId : deptIds.split(",")) {
+                deptId = deptId.trim();
+                if (deptId.isEmpty()) {
+                    continue;
+                }
+                UserSearchTreeNodeResp userNode =
+                        UserSearchTreeNodeResp.builder()
+                                .id("U" + user.getId())
+                                .sysId(user.getId())
+                                .label(user.getUserName())
+                                .departId("D" + deptId)
+                                .sex(user.getSex() != null ? user.getSex() : 1)
+                                .avatar(user.getUserAvatar())
+                                .workNumber(
+                                        user.getWorkNumber() != null ? user.getWorkNumber() : "")
+                                .type(3)
+                                .departName(
+                                        user.getDepartName() != null ? user.getDepartName() : "")
+                                .build();
+                deptUsers.computeIfAbsent("D" + deptId, k -> new ArrayList<>()).add(userNode);
+            }
+        }
+        // 1. 从人力获取部门列表
+        List<DepartmentBO> departmentList = departmentApi.getDepartmentList();
+        // 4. 构建部门节点并挂载用户
+        List<UserSearchTreeNodeResp> departListWithUsers = new ArrayList<>();
+        for (DepartmentBO dept : departmentList) {
+            String pid = (dept.getPid() != null && dept.getPid() != 0) ? "D" + dept.getPid() : "D0";
+            UserSearchTreeNodeResp node =
+                    UserSearchTreeNodeResp.builder()
+                            .id("D" + dept.getId())
+                            .label(dept.getName())
+                            .pid(pid)
+                            .type(dept.getType() != null ? dept.getType() : 1)
+                            .children(
+                                    new ArrayList<>(
+                                            deptUsers.getOrDefault(
+                                                    "D" + dept.getId(), new ArrayList<>())))
+                            .build();
+            departListWithUsers.add(node);
+        }
+
+        // 5. 构建嵌套树
+        return buildNestedTree(departListWithUsers, "D0");
+    }
+
+    private List<UserSearchTreeNodeResp> buildNestedTree(
+            List<UserSearchTreeNodeResp> items, String rootPid) {
+        Map<String, UserSearchTreeNodeResp> nodeMap = new LinkedHashMap<>();
+        for (UserSearchTreeNodeResp item : items) {
+            nodeMap.put(item.getId(), item);
+        }
+
+        List<UserSearchTreeNodeResp> tree = new ArrayList<>();
+        for (UserSearchTreeNodeResp item : items) {
+            String pid = item.getPid();
+            UserSearchTreeNodeResp parent = nodeMap.get(pid);
+            boolean isRoot = (pid == null || pid.equals(rootPid) || parent == null);
+            if (isRoot) {
+                tree.add(item);
+            } else {
+                List<UserSearchTreeNodeResp> children = parent.getChildren();
+                if (children == null) {
+                    children = new ArrayList<>();
+                    parent.setChildren(children);
+                }
+                children.add(item);
+            }
+        }
+        return tree;
     }
 }

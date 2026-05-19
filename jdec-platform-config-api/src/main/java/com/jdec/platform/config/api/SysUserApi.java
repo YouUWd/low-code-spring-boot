@@ -4,6 +4,7 @@ import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.List;
 
@@ -27,4 +28,6 @@ public interface SysUserApi {
      * <p>先查sys_role_user表根据projectNo过滤拿到用户id，再查sys_user表获取用户数据
      */
     List<SysUserPageResp> getUserList();
+
+    List<UserSearchTreeNodeResp> getUserTreeListForSearch(Integer userType);
 }

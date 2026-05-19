@@ -24,6 +24,7 @@ import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.hr.api.bo.UserBO;
+import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -81,10 +82,16 @@ public class SysRoleService implements SysRoleApi {
 
         // ========== 校验1：选择主体后，再选择该主体下的员工 ==========
         // 新增和更新都得校验
-        if (request.getSubjectId() != null && !allUserIds.isEmpty()) {
-            // 获取冲突的用户（主体下的用户）
-            List<UserBO> subjectUsers = userApi.listBySubjectId(request.getSubjectId());
-            List<String> conflictNames = checkSubjectUserConflict(subjectUsers, allUserIds);
+        if (request.getSubjectIds() != null
+                && !request.getSubjectIds().isEmpty()
+                && !allUserIds.isEmpty()) {
+            // 获取所有主体下的用户
+            List<UserBO> allSubjectUsers = new ArrayList<>();
+            for (Long subjectId : request.getSubjectIds()) {
+                List<UserBO> users = userApi.listBySubjectId(subjectId);
+                allSubjectUsers.addAll(users);
+            }
+            List<String> conflictNames = checkSubjectUserConflict(allSubjectUsers, allUserIds);
             if (!conflictNames.isEmpty()) {
                 if (isUpdate) {
                     // 更新时：检查冲突用户是否和任何角色绑定过
@@ -124,15 +131,17 @@ public class SysRoleService implements SysRoleApi {
 
         // ========== 校验2：更新时，授权主体后，是否需要覆盖已单独关联到该角色的主体下员工（可强制保存） ==========
         // 只有更新时需要校验，可强制保存
-        if (request.getSubjectId() != null) {
-            List<String> overlapNames = checkRoleHasSubjectUsers(roleId, request.getSubjectId());
-            if (!overlapNames.isEmpty()) {
-                resp.setNeedConfirm(true);
-                resp.setConfirmType(2); // 可强制保存，覆盖已关联的员工
-                resp.setMessage(
-                        String.format("\"%s\"已在该角色中，是否覆盖？", String.join("、", overlapNames)));
-                resp.setConflictNames(overlapNames);
-                return resp;
+        if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
+            for (Long subjectId : request.getSubjectIds()) {
+                List<String> overlapNames = checkRoleHasSubjectUsers(roleId, subjectId);
+                if (!overlapNames.isEmpty()) {
+                    resp.setNeedConfirm(true);
+                    resp.setConfirmType(2); // 可强制保存，覆盖已关联的员工
+                    resp.setMessage(
+                            String.format("\"%s\"已在该角色中，是否覆盖？", String.join("、", overlapNames)));
+                    resp.setConflictNames(overlapNames);
+                    return resp;
+                }
             }
         }
 
@@ -156,7 +165,7 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
-    public void saveRoleUser(SaveRoleUserReq request) {
+    public RoleConfigPageResp saveRoleUser(SaveRoleUserReq request) {
         autoDetectEffectiveType(request);
 
         Set<Long> allUserIds = collectUserIds(request);
@@ -165,21 +174,30 @@ public class SysRoleService implements SysRoleApi {
         Map<Long, UserBO> hrUserMap = new HashMap<>();
         Map<Long, DepartmentBO> deptMap = new HashMap<>();
         Map<Long, SubjectBO> subjectMap = new HashMap<>();
-        List<UserBO> subjectUsers = Collections.emptyList();
+        List<UserBO> allSubjectUsers = new ArrayList<>();
         if (!allUserIds.isEmpty()) {
             userApi.listByIds(allUserIds).forEach(u -> hrUserMap.put(u.getId(), u));
             departmentApi.getDepartmentList().forEach(d -> deptMap.put(d.getId(), d));
             subjectApi.getSubjectList().forEach(s -> subjectMap.put(s.getId(), s));
         }
-        if (request.getSubjectId() != null) {
-            subjectUsers = userApi.listBySubjectId(request.getSubjectId());
+        // 查询所有主体下的用户
+        if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
+            for (Long subjectId : request.getSubjectIds()) {
+                List<UserBO> users = userApi.listBySubjectId(subjectId);
+                allSubjectUsers.addAll(users);
+            }
         }
 
-        doSaveRoleUser(request, allUserIds, hrUserMap, deptMap, subjectMap, subjectUsers);
+        Long roleId =
+                doSaveRoleUser(
+                        request, allUserIds, hrUserMap, deptMap, subjectMap, allSubjectUsers);
+
+        // 查询并返回保存后的角色配置信息
+        return getRoleConfigById(roleId);
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void doSaveRoleUser(
+    public Long doSaveRoleUser(
             SaveRoleUserReq request,
             Set<Long> allUserIds,
             Map<Long, UserBO> hrUserMap,
@@ -191,7 +209,9 @@ public class SysRoleService implements SysRoleApi {
 
         // ========== 校验1：选择主体后，再选择该主体下的员工 ==========
         // 新增和更新都得校验
-        if (request.getSubjectId() != null && !allUserIds.isEmpty()) {
+        if (request.getSubjectIds() != null
+                && !request.getSubjectIds().isEmpty()
+                && !allUserIds.isEmpty()) {
             List<String> conflictNames = checkSubjectUserConflict(subjectUsers, allUserIds);
             if (!conflictNames.isEmpty()) {
                 if (isCreate) {
@@ -238,13 +258,17 @@ public class SysRoleService implements SysRoleApi {
 
             // ========== 校验2：更新时，授权主体后，是否需要覆盖已单独关联到该角色的主体下员工 ==========
             // 可强制保存，force=true时进行覆盖操作
-            if (request.getSubjectId() != null && !Boolean.TRUE.equals(request.getForce())) {
-                List<String> overlapNames =
-                        checkRoleHasSubjectUsers(roleId, request.getSubjectId());
-                if (!overlapNames.isEmpty()) {
-                    throw new BusinessException(
-                            ApiCodeEnum.WARNING.getCode(),
-                            String.format("\"%s\"已在该角色中，是否覆盖？", String.join("、", overlapNames)));
+            if (request.getSubjectIds() != null
+                    && !request.getSubjectIds().isEmpty()
+                    && !Boolean.TRUE.equals(request.getForce())) {
+                for (Long subjectId : request.getSubjectIds()) {
+                    List<String> overlapNames = checkRoleHasSubjectUsers(roleId, subjectId);
+                    if (!overlapNames.isEmpty()) {
+                        throw new BusinessException(
+                                ApiCodeEnum.WARNING.getCode(),
+                                String.format(
+                                        "\"%s\"已在该角色中，是否覆盖？", String.join("、", overlapNames)));
+                    }
                 }
             }
         }
@@ -283,8 +307,8 @@ public class SysRoleService implements SysRoleApi {
         }
 
         // 保存新的主体关联
-        if (request.getSubjectId() != null) {
-            saveRoleSubject(request, roleId);
+        if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
+            saveRoleSubjects(request, roleId);
         }
 
         // 保存新的单独用户关联（过滤掉属于该主体的用户）
@@ -306,6 +330,8 @@ public class SysRoleService implements SysRoleApi {
                 cleanupOrphanedUsers(removedUserIds);
             }
         }
+
+        return roleId;
     }
 
     @Override
@@ -352,7 +378,7 @@ public class SysRoleService implements SysRoleApi {
                         .map(
                                 role -> {
                                     RoleConfigPageResp resp = new RoleConfigPageResp();
-                                    resp.setRoleId(role.getId());
+                                    resp.setId(role.getId());
                                     resp.setRoleName(role.getRoleName());
 
                                     // 查询该角色的用户关联
@@ -411,7 +437,7 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
-    public RoleConfigDetailResp getRoleConfigDetail(Long roleId, Integer userType) {
+    public RoleConfigDetailResp getRoleConfigDetail(Long roleId) {
         SysRole role = sysRoleMapper.selectById(roleId);
         if (role == null) {
             throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色不存在");
@@ -438,14 +464,27 @@ public class SysRoleService implements SysRoleApi {
                                 .eq(SysRoleUser::getRoleId, roleId)
                                 .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         if (CollUtil.isNotEmpty(userList)) {
-            List<Long> userIds = userList.stream().map(SysRoleUser::getUserId).toList();
-            List<SysUser> users =
-                    sysUserMapper.selectList(
-                            Wrappers.<SysUser>lambdaQuery()
-                                    .in(SysUser::getUserId, userIds)
-                                    .eq(userType != null, SysUser::getUserType, userType));
-            List<String> userIdList = users.stream().map(user -> "U" + user.getUserId()).toList();
-            resp.setUserIds(userIdList);
+            // 区分内部和外部用户
+            List<String> insideIds = new ArrayList<>();
+            List<String> externalIds = new ArrayList<>();
+
+            for (SysRoleUser roleUser : userList) {
+                SysUser user =
+                        sysUserMapper.selectOne(
+                                Wrappers.<SysUser>lambdaQuery()
+                                        .eq(SysUser::getUserId, roleUser.getUserId()));
+                if (user != null) {
+                    String userId = "U" + user.getUserId();
+                    if (UserTypeEnum.INSIDE.getCode().equals(user.getUserType())) {
+                        insideIds.add(userId);
+                    } else if (UserTypeEnum.EXTERNAL.getCode().equals(user.getUserType())) {
+                        externalIds.add(userId);
+                    }
+                }
+            }
+
+            resp.setUserInsideIds(insideIds);
+            resp.setUserExternalIds(externalIds);
             resp.setEffectiveStartDate(userList.getFirst().getEffectiveStartDate());
             resp.setEffectiveEndDate(userList.getFirst().getEffectiveEndDate());
         }
@@ -498,6 +537,55 @@ public class SysRoleService implements SysRoleApi {
                 .toList();
     }
 
+    /** 根据角色ID查询角色配置信息 */
+    private RoleConfigPageResp getRoleConfigById(Long roleId) {
+        SysRole role = sysRoleMapper.selectById(roleId);
+        if (role == null) {
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色不存在");
+        }
+
+        RoleConfigPageResp resp = new RoleConfigPageResp();
+        resp.setId(role.getId());
+        resp.setRoleName(role.getRoleName());
+
+        // 查询该角色的用户关联
+        List<SysRoleUser> roleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getRoleId, role.getId())
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+
+        // 填充用户列表
+        List<RoleUserResp> userList = buildUserList(roleUsers);
+        resp.setUserList(userList);
+
+        // 查询该角色的主体关联
+        List<SysRoleSubject> subjects =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getRoleId, role.getId())
+                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
+        // 填充主体列表
+        List<RoleSubjectResp> subjectList = buildSubjectList(subjects);
+        resp.setSubjectList(subjectList);
+
+        // 取用户关联或主体关联的时效信息（优先取用户关联的）
+        if (!roleUsers.isEmpty()) {
+            SysRoleUser firstUser = roleUsers.getFirst();
+            resp.setEffectiveType(firstUser.getEffectiveType());
+            resp.setEffectiveStartDate(firstUser.getEffectiveStartDate());
+            resp.setEffectiveEndDate(firstUser.getEffectiveEndDate());
+        } else if (!subjects.isEmpty()) {
+            SysRoleSubject firstSubject = subjects.getFirst();
+            resp.setEffectiveType(firstSubject.getEffectiveType());
+            resp.setEffectiveStartDate(firstSubject.getEffectiveStartDate());
+            resp.setEffectiveEndDate(firstSubject.getEffectiveEndDate());
+        } else {
+            resp.setEffectiveType(EffectiveTypeEnum.PERMANENT.getCode());
+        }
+        return resp;
+    }
+
     @Override
     public List<RoleListResp> listRole() {
         List<SysRole> sysRoles =
@@ -517,11 +605,18 @@ public class SysRoleService implements SysRoleApi {
         if (subjects.isEmpty()) {
             return Collections.emptyList();
         }
+
+        // 查询所有主体信息并构建 Map
+        List<SubjectBO> allSubjects = subjectApi.getSubjectList();
+        Map<Long, String> subjectNameMap =
+                allSubjects.stream()
+                        .collect(Collectors.toMap(SubjectBO::getId, SubjectBO::getSubjectName));
+
         List<RoleSubjectResp> respList = new ArrayList<>();
         for (SysRoleSubject sysRoleSubject : subjects) {
             RoleSubjectResp vo = new RoleSubjectResp();
             vo.setSubjectId(sysRoleSubject.getSubjectId());
-            vo.setSubjectName(sysRoleSubject.getSubjectName());
+            vo.setSubjectName(subjectNameMap.get(sysRoleSubject.getSubjectId()));
             respList.add(vo);
         }
         return respList;
@@ -586,7 +681,6 @@ public class SysRoleService implements SysRoleApi {
         List<String> insideIdStrs = request.getUserInsideIds();
         List<String> externalIdStrs = request.getUserExternalIds();
         Set<Long> allUserIds = collectUserIds(request);
-        Long subjectId = request.getSubjectId();
 
         if (allUserIds.isEmpty()) {
             return;
@@ -602,9 +696,18 @@ public class SysRoleService implements SysRoleApi {
         if (insideIdStrs != null) {
             for (String idStr : insideIdStrs) {
                 Long userId = removeUPrefix(idStr);
-                // 过滤：只添加不属于该主体的用户
-                if (subjectId != null && isUserInSubject(userId, subjectId, userMap)) {
-                    continue;
+                // 过滤：只添加不属于任何主体的用户
+                if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
+                    boolean inAnySubject = false;
+                    for (Long subjectId : request.getSubjectIds()) {
+                        if (isUserInSubject(userId, subjectId, userMap)) {
+                            inAnySubject = true;
+                            break;
+                        }
+                    }
+                    if (inAnySubject) {
+                        continue;
+                    }
                 }
                 list.add(
                         buildRoleUser(
@@ -767,29 +870,33 @@ public class SysRoleService implements SysRoleApi {
         }
     }
 
-    /** 保存角色主体关联 */
-    private void saveRoleSubject(SaveRoleUserReq request, Long roleId) {
-        Long subjectId = request.getSubjectId();
-        SysRoleSubject old =
-                sysRoleSubjectMapper.selectOne(
-                        new LambdaQueryWrapper<SysRoleSubject>()
-                                .eq(SysRoleSubject::getRoleId, roleId)
-                                .eq(SysRoleSubject::getSubjectId, subjectId)
-                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
+    /** 保存角色主体关联（批量） */
+    private void saveRoleSubjects(SaveRoleUserReq request, Long roleId) {
+        if (request.getSubjectIds() == null || request.getSubjectIds().isEmpty()) {
+            return;
+        }
 
-        SysRoleSubject subject = new SysRoleSubject();
-        subject.setRoleId(roleId);
-        subject.setSubjectId(subjectId);
-        subject.setSubjectName(request.getSubjectName());
-        subject.setEffectiveStartDate(request.getEffectiveStartDate());
-        subject.setEffectiveEndDate(request.getEffectiveEndDate());
-        subject.setEffectiveType(request.getEffectiveType());
-        subject.setProjectNo(AppContext.getProjectNo());
-        if (old == null) {
-            sysRoleSubjectMapper.insert(subject);
-        } else {
-            subject.setId(old.getId());
-            sysRoleSubjectMapper.updateById(subject);
+        for (Long subjectId : request.getSubjectIds()) {
+            SysRoleSubject old =
+                    sysRoleSubjectMapper.selectOne(
+                            new LambdaQueryWrapper<SysRoleSubject>()
+                                    .eq(SysRoleSubject::getRoleId, roleId)
+                                    .eq(SysRoleSubject::getSubjectId, subjectId)
+                                    .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
+
+            SysRoleSubject subject = new SysRoleSubject();
+            subject.setRoleId(roleId);
+            subject.setSubjectId(subjectId);
+            subject.setEffectiveStartDate(request.getEffectiveStartDate());
+            subject.setEffectiveEndDate(request.getEffectiveEndDate());
+            subject.setEffectiveType(request.getEffectiveType());
+            subject.setProjectNo(AppContext.getProjectNo());
+            if (old == null) {
+                sysRoleSubjectMapper.insert(subject);
+            } else {
+                subject.setId(old.getId());
+                sysRoleSubjectMapper.updateById(subject);
+            }
         }
     }
 
@@ -964,5 +1071,109 @@ public class SysRoleService implements SysRoleApi {
                 .filter(user -> conflictIds.contains(user.getId()))
                 .map(UserBO::getUserName)
                 .toList();
+    }
+
+    /**
+     * 获取人员架构树（仅包含 sys_user 表中存在的用户）
+     *
+     * @param userType 用户类型 0=全部 1=内部 2=外部
+     * @return 人员架构树
+     */
+    public List<UserTreeNodeResp> getUserTreeListForSearch(Integer userType) {
+        // 1. 通过 DepartmentApi 获取部门列表
+        List<DepartmentBO> departments = departmentApi.getDepartmentList();
+        if (departments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 查询 sys_user 表中存在的用户
+        List<SysUser> sysUsers =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .eq(
+                                        userType != null && userType != 0,
+                                        SysUser::getUserType,
+                                        userType)
+                                .eq(SysUser::getSubjectId, AppContext.getSubjectId()));
+
+        // 3. 将用户按部门分类
+        Map<String, List<UserTreeNodeResp>> deptUsers = new LinkedHashMap<>();
+        for (SysUser user : sysUsers) {
+            String deptIds = user.getDepartIds();
+            if (deptIds == null || deptIds.isEmpty()) {
+                continue;
+            }
+            for (String deptId : deptIds.split(",")) {
+                deptId = deptId.trim();
+                if (deptId.isEmpty()) {
+                    continue;
+                }
+                UserTreeNodeResp userNode =
+                        UserTreeNodeResp.builder()
+                                .id("U" + user.getUserId())
+                                .sysId(user.getUserId())
+                                .label(user.getUserName())
+                                .departId("D" + deptId)
+                                .sex(user.getSex() != null ? user.getSex() : 1)
+                                .avatar(user.getUserAvatar())
+                                .workNumber(
+                                        user.getWorkNumber() != null ? user.getWorkNumber() : "")
+                                .type(3)
+                                .departName(
+                                        user.getDepartName() != null ? user.getDepartName() : "")
+                                .build();
+                deptUsers.computeIfAbsent("D" + deptId, k -> new ArrayList<>()).add(userNode);
+            }
+        }
+
+        // 4. 构建部门节点并挂载用户
+        List<UserTreeNodeResp> departListWithUsers = new ArrayList<>();
+        for (DepartmentBO dept : departments) {
+            String deptKey = "D" + dept.getId();
+            List<UserTreeNodeResp> users = deptUsers.get(deptKey);
+            // 只保留有用户的部门
+            if (users != null && !users.isEmpty()) {
+                String pid =
+                        (dept.getPid() != null && dept.getPid() != 0) ? "D" + dept.getPid() : "D0";
+                UserTreeNodeResp node =
+                        UserTreeNodeResp.builder()
+                                .id(deptKey)
+                                .label(dept.getName())
+                                .pid(pid)
+                                .type(dept.getType() != null ? dept.getType() : 1)
+                                .children(new ArrayList<>(users))
+                                .build();
+                departListWithUsers.add(node);
+            }
+        }
+
+        // 5. 构建嵌套树
+        return buildNestedTree(departListWithUsers, "D0");
+    }
+
+    /** 构建嵌套树结构 */
+    private List<UserTreeNodeResp> buildNestedTree(List<UserTreeNodeResp> items, String rootPid) {
+        Map<String, UserTreeNodeResp> nodeMap = new LinkedHashMap<>();
+        for (UserTreeNodeResp item : items) {
+            nodeMap.put(item.getId(), item);
+        }
+
+        List<UserTreeNodeResp> tree = new ArrayList<>();
+        for (UserTreeNodeResp item : items) {
+            String pid = item.getPid();
+            UserTreeNodeResp parent = nodeMap.get(pid);
+            boolean isRoot = (pid == null || pid.equals(rootPid) || parent == null);
+            if (isRoot) {
+                tree.add(item);
+            } else {
+                List<UserTreeNodeResp> children = parent.getChildren();
+                if (children == null) {
+                    children = new ArrayList<>();
+                    parent.setChildren(children);
+                }
+                children.add(item);
+            }
+        }
+        return tree;
     }
 }

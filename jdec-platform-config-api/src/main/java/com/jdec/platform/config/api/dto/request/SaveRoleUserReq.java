@@ -32,11 +32,8 @@ public class SaveRoleUserReq {
     @Schema(description = "外部用户ID列表", example = "[1]")
     private List<String> userExternalIds;
 
-    @Schema(description = "主体ID，有值则走角色主体关联逻辑", example = "100")
-    private Long subjectId;
-
-    @Schema(description = "主体名称", example = "测试主体")
-    private String subjectName;
+    @Schema(description = "主体ID列表，有值则走角色主体关联逻辑", example = "[100, 101]")
+    private List<Long> subjectIds;
 
     @Schema(description = "有效期开始", example = "2026-01-01")
     private LocalDate effectiveStartDate;

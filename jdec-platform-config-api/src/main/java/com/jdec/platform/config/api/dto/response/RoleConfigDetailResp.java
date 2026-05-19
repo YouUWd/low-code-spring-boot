@@ -23,6 +23,9 @@ public class RoleConfigDetailResp {
     @Schema(description = "生效结束日期")
     private LocalDate effectiveEndDate;
 
-    @Schema(description = "用户ID列表")
-    private List<String> userIds;
+    @Schema(description = "内部用户ID列表")
+    private List<String> userInsideIds;
+
+    @Schema(description = "外部用户ID列表")
+    private List<String> userExternalIds;
 }

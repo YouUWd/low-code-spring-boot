@@ -102,7 +102,7 @@ public class SysMenuService implements SysMenuApi {
             if (req.getSortOrder() == null) {
                 // 前端未传排序值，自动设置为同级最大值+1
                 Integer maxSortOrder = getMaxSortOrderByPid(pid, subjectId, projectNo);
-                entity.setSortOrder(maxSortOrder == null ? 1 : maxSortOrder + 1);
+                entity.setSortOrder(maxSortOrder == null ? 0 : maxSortOrder + 1);
             } else {
                 // 前端传了排序值，检查是否与同级冲突
                 boolean sortExists =
@@ -153,7 +153,7 @@ public class SysMenuService implements SysMenuApi {
                 if (!pid.equals(oldPid)) {
                     // 父节点变化，设置为新父节点下的最大值+1
                     Integer maxSortOrder = getMaxSortOrderByPid(pid, subjectId, projectNo);
-                    entity.setSortOrder(maxSortOrder == null ? 1 : maxSortOrder + 1);
+                    entity.setSortOrder(maxSortOrder == null ? 0 : maxSortOrder + 1);
                 }
                 // 父节点未变化，保持原排序值
             } else {
@@ -204,17 +204,18 @@ public class SysMenuService implements SysMenuApi {
     @Override
     public void deleteMenu(Long id, boolean force) {
         String projectNo = AppContext.getProjectNo();
-        boolean exists =
-                sysMenuMapper.exists(
+        Long subjectId = AppContext.getSubjectId();
+        SysMenu menu =
+                sysMenuMapper.selectOne(
                         Wrappers.<SysMenu>lambdaQuery()
                                 .eq(SysMenu::getId, id)
-                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getSubjectId, subjectId)
                                 .eq(SysMenu::getProjectNo, projectNo));
-        if (!exists) {
+        if (menu == null) {
             throw new BusinessException("菜单不存在");
         }
         // 收集本节点及所有子节点ID
-        Set<Long> ids = collectChildrenIds(id, AppContext.getSubjectId(), projectNo);
+        Set<Long> ids = collectChildrenIds(id, subjectId, projectNo);
         int childCount = ids.size();
         ids.add(id);
         // 查询角色关联数量
@@ -237,6 +238,9 @@ public class SysMenuService implements SysMenuApi {
                 Wrappers.<SysRoleMenu>lambdaQuery().in(SysRoleMenu::getMenuId, ids));
         // 删除菜单
         sysMenuMapper.deleteByIds(ids);
+
+        // 删除后重排同级节点的排序值
+        reorderSiblingsAfterDelete(menu.getPid(), subjectId, projectNo);
     }
 
     @Transactional
@@ -244,7 +248,7 @@ public class SysMenuService implements SysMenuApi {
     public void dragMenu(SysMenuDragReq req) {
         Long id = req.getId();
         Long targetPid = req.getTargetPid() == null ? ROOT_PID : req.getTargetPid();
-        Integer targetSortOrder = req.getSortOrder();
+        Integer targetIndex = req.getSortOrder();
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
 
@@ -284,112 +288,51 @@ public class SysMenuService implements SysMenuApi {
         // 校验同级名称是否重复
         checkDuplicateTitle(targetPid, node.getCategory(), node.getTitle(), subjectId, id);
 
-        Long oldPid = node.getPid();
-        Integer oldSortOrder = node.getSortOrder();
-
-        // 更新节点的父级和排序
+        // 更新节点的父级
         node.setPid(targetPid);
-        if (targetSortOrder != null) {
-            node.setSortOrder(targetSortOrder);
-        }
-        sysMenuMapper.updateById(node);
 
-        // 更新同级节点的排序值
-        if (targetSortOrder != null) {
-            updateSiblingSortOrder(
-                    id, targetPid, targetSortOrder, oldPid, oldSortOrder, subjectId, projectNo);
+        // 处理排序值
+        if (targetIndex == null) {
+            // 前端未传顺序值，自动分配为同级最大值+1
+            Integer maxSort = getMaxSortOrderByPid(targetPid, subjectId, projectNo);
+            node.setSortOrder(maxSort == null ? 0 : maxSort + 1);
+            sysMenuMapper.updateById(node);
+        } else {
+            // 前端传了顺序值（从0开始），重新分配所有同级节点的排序
+            adjustSortOrderForDrag(node, targetIndex, subjectId, projectNo);
         }
     }
 
     /**
-     * 更新同级节点的排序值
+     * 处理拖拽时的排序调整
      *
-     * @param draggedId 被拖拽节点ID
-     * @param newPid 新父节点ID
-     * @param newSortOrder 新排序值
-     * @param oldPid 原父节点ID
-     * @param oldSortOrder 原排序值
+     * @param entity 被拖拽的节点
+     * @param targetIndex 目标位置的顺序值（从0开始）
      * @param subjectId 主体ID
      * @param projectNo 应用编码
      */
-    private void updateSiblingSortOrder(
-            Long draggedId,
-            Long newPid,
-            Integer newSortOrder,
-            Long oldPid,
-            Integer oldSortOrder,
-            Long subjectId,
-            String projectNo) {
-        // 查询新父节点下的所有同级节点（排除被拖拽节点）
+    private void adjustSortOrderForDrag(
+            SysMenu entity, Integer targetIndex, Long subjectId, String projectNo) {
+        // 查询同级所有节点（排除当前拖拽节点）
         List<SysMenu> siblings =
                 sysMenuMapper.selectList(
                         Wrappers.<SysMenu>lambdaQuery()
-                                .eq(SysMenu::getPid, newPid)
+                                .eq(SysMenu::getPid, entity.getPid())
                                 .eq(SysMenu::getSubjectId, subjectId)
                                 .eq(SysMenu::getProjectNo, projectNo)
-                                .ne(SysMenu::getId, draggedId)
-                                .orderByAsc(SysMenu::getSortOrder)
-                                .orderByAsc(SysMenu::getId));
+                                .ne(SysMenu::getId, entity.getId())
+                                .orderByAsc(SysMenu::getSortOrder));
 
-        if (CollectionUtils.isEmpty(siblings)) {
-            return;
+        // 将拖拽节点插入到目标位置
+        siblings.add(targetIndex, entity);
+
+        // 批量更新所有节点的排序值（从0开始）
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setSortOrder(i);
         }
-
-        // 如果是同一父节点内拖拽
-        if (newPid.equals(oldPid)) {
-            // 向前拖拽：原位置之后、新位置之前的节点 sortOrder + 1
-            if (oldSortOrder != null && newSortOrder < oldSortOrder) {
-                for (SysMenu sibling : siblings) {
-                    Integer siblingSort = sibling.getSortOrder();
-                    if (siblingSort != null
-                            && siblingSort >= newSortOrder
-                            && siblingSort < oldSortOrder) {
-                        sibling.setSortOrder(siblingSort + 1);
-                        sysMenuMapper.updateById(sibling);
-                    }
-                }
-            }
-            // 向后拖拽：原位置之前、新位置之后的节点 sortOrder - 1
-            else if (oldSortOrder != null && newSortOrder > oldSortOrder) {
-                for (SysMenu sibling : siblings) {
-                    Integer siblingSort = sibling.getSortOrder();
-                    if (siblingSort != null
-                            && siblingSort > oldSortOrder
-                            && siblingSort <= newSortOrder) {
-                        sibling.setSortOrder(siblingSort - 1);
-                        sysMenuMapper.updateById(sibling);
-                    }
-                }
-            }
-        } else {
-            // 跨父节点拖拽：新位置及之后的节点 sortOrder + 1
-            for (SysMenu sibling : siblings) {
-                Integer siblingSort = sibling.getSortOrder();
-                if (siblingSort != null && siblingSort >= newSortOrder) {
-                    sibling.setSortOrder(siblingSort + 1);
-                    sysMenuMapper.updateById(sibling);
-                }
-            }
-
-            // 原父节点下的节点：原位置之后的节点 sortOrder - 1
-            if (oldSortOrder != null && !newPid.equals(oldPid)) {
-                List<SysMenu> oldSiblings =
-                        sysMenuMapper.selectList(
-                                Wrappers.<SysMenu>lambdaQuery()
-                                        .eq(SysMenu::getPid, oldPid)
-                                        .eq(SysMenu::getSubjectId, subjectId)
-                                        .eq(SysMenu::getProjectNo, projectNo)
-                                        .ne(SysMenu::getId, draggedId)
-                                        .gt(SysMenu::getSortOrder, oldSortOrder)
-                                        .orderByAsc(SysMenu::getSortOrder));
-                for (SysMenu oldSibling : oldSiblings) {
-                    Integer siblingSort = oldSibling.getSortOrder();
-                    if (siblingSort != null) {
-                        oldSibling.setSortOrder(siblingSort - 1);
-                        sysMenuMapper.updateById(oldSibling);
-                    }
-                }
-            }
+        // 使用 MyBatis-Plus 批量更新
+        if (!siblings.isEmpty()) {
+            sysMenuMapper.updateById(siblings);
         }
     }
 
@@ -544,5 +487,33 @@ public class SysMenuService implements SysMenuApi {
         for (SysMenu child : children) {
             checkCycle(child.getId(), targetPid, subjectId);
         }
+    }
+
+    /**
+     * 删除节点后重排同级节点的排序值
+     *
+     * @param pid 父节点ID
+     * @param subjectId 主体ID
+     * @param projectNo 应用编码
+     */
+    private void reorderSiblingsAfterDelete(Long pid, Long subjectId, String projectNo) {
+        // 查询同级所有节点
+        List<SysMenu> siblings =
+                sysMenuMapper.selectList(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getPid, pid)
+                                .eq(SysMenu::getSubjectId, subjectId)
+                                .eq(SysMenu::getProjectNo, projectNo)
+                                .orderByAsc(SysMenu::getSortOrder));
+
+        if (siblings.isEmpty()) {
+            return;
+        }
+
+        // 重新分配排序值（从0开始）
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setSortOrder(i);
+        }
+        sysMenuMapper.updateById(siblings);
     }
 }
