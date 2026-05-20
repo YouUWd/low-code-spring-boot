@@ -10,11 +10,15 @@ import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysFieldValue;
+import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysFieldValueMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.third.WordApiClient;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -37,7 +41,9 @@ public class SysFieldService implements SysFieldApi {
 
     private final SysFieldMapper sysFieldMapper;
     private final SysFieldValueMapper sysFieldValueMapper;
+    private final SysModuleMapper sysModuleMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final WordApiClient wordApiClient;
 
     // ==================== 元数据查询逻辑 ====================
 
@@ -245,6 +251,15 @@ public class SysFieldService implements SysFieldApi {
                 tableName,
                 req.getColumnName());
 
+        // 更新时查询旧的 relationBusinessNo
+        String oldBusinessNo = null;
+        if (req.getId() != null) {
+            SysField oldField = sysFieldMapper.selectById(req.getId());
+            if (oldField != null) {
+                oldBusinessNo = oldField.getRelationBusinessNo();
+            }
+        }
+
         SysField entity =
                 SysField.builder()
                         .id(req.getId())
@@ -267,6 +282,43 @@ public class SysFieldService implements SysFieldApi {
 
         Long fieldId = entity.getId();
         processFieldValues(fieldId, req.getFieldValues());
+
+        // 通知 Word 系统字段绑定关系变更
+        if (req.getRelationBusinessNo() != null && !req.getRelationBusinessNo().isBlank()) {
+            saveToWordSystem(oldBusinessNo, req.getRelationBusinessNo(), tableName, subjectId);
+        }
+    }
+
+    /** 将字段绑定关系同步到 Word 系统 */
+    private void saveToWordSystem(
+            String oldBusinessNo, String businessNo, String tableName, Long subjectId) {
+        try {
+            HashMap<String, Object> params = new HashMap<>();
+            params.put("old_business_no", oldBusinessNo);
+            params.put("business_no", businessNo);
+
+            SysModule sysModule =
+                    sysModuleMapper
+                            .selectList(
+                                    new LambdaQueryWrapper<SysModule>()
+                                            .eq(SysModule::getSubjectId, subjectId)
+                                            .eq(SysModule::getPrimaryTable, tableName))
+                            .stream()
+                            .findFirst()
+                            .orElse(null);
+
+            if (sysModule != null) {
+                params.put("module_slug", sysModule.getModuleCode());
+                params.put("module_name", sysModule.getModuleName());
+            }
+
+            params.put("type", 2);
+
+            wordApiClient.getBindOrCancel(params);
+            log.info("已同步字段绑定关系到 Word 系统: businessNo={}", businessNo);
+        } catch (Exception e) {
+            log.error("同步字段绑定关系到 Word 系统失败: businessNo={}", businessNo, e);
+        }
     }
 
     /** 处理字段扩展值的级联保存 */

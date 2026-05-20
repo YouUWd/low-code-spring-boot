@@ -141,3 +141,15 @@ oss:
   secret-key: 26rjzhZUKJ5vrIjy2rg6oTimKBPwJI2rsnUwem6D
   bucket-name: jdec-platform
   path-style-access: true
+
+# ===== 外部 API 配置 =====
+external-api:
+  apis:
+    word-api:
+      api-secret: N8nsg0WXB+B7K2WqUyg5ckf5NW/HbSl1MEJm9QutF9A=
+      enabled: true
+      base-url: http://119.36.78.123:9056/api/external
+      timeout: 5s
+      headers:
+        Content-Type: application/json
+        Accept: application/json
