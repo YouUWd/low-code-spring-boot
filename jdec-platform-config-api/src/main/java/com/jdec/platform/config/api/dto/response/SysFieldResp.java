@@ -44,4 +44,21 @@ public class SysFieldResp {
 
     @Schema(description = "字段业务配置值列表")
     private List<SysFieldValueResp> fieldValues;
+
+    @Schema(description = "关联的模块信息列表")
+    private List<SysFieldModuleResp> modules;
+
+    /** 字段关联模块信息 */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "字段关联模块信息")
+    public static class SysFieldModuleResp {
+        @Schema(description = "模块ID")
+        private Long moduleId;
+
+        @Schema(description = "模块名称")
+        private String moduleName;
+    }
 }

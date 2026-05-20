@@ -11,9 +11,11 @@ import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysFieldValue;
 import com.jdec.platform.config.biz.entity.SysModule;
+import com.jdec.platform.config.biz.entity.SysModuleSimpleField;
 import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysFieldValueMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleSimpleFieldMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.third.WordApiClient;
@@ -42,6 +44,7 @@ public class SysFieldService implements SysFieldApi {
     private final SysFieldMapper sysFieldMapper;
     private final SysFieldValueMapper sysFieldValueMapper;
     private final SysModuleMapper sysModuleMapper;
+    private final SysModuleSimpleFieldMapper sysModuleSimpleFieldMapper;
     private final JdbcTemplate jdbcTemplate;
     private final WordApiClient wordApiClient;
 
@@ -187,7 +190,48 @@ public class SysFieldService implements SysFieldApi {
         Map<String, SysField> configMap =
                 sysFields.stream().collect(Collectors.toMap(SysField::getColumnName, f -> f));
 
+        // 2.2 查询当前 projectNo + subjectId 下的所有模块并映射 simple field 关系
+        List<SysModule> modules =
+                sysModuleMapper.selectList(
+                        new LambdaQueryWrapper<SysModule>()
+                                .eq(SysModule::getProjectNo, projectNo)
+                                .eq(SysModule::getSubjectId, subjectId));
+
+        Map<String, List<SysFieldResp.SysFieldModuleResp>> columnModulesMap =
+                Collections.emptyMap();
+        if (!modules.isEmpty()) {
+            List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
+            List<SysModuleSimpleField> simpleFields =
+                    sysModuleSimpleFieldMapper.selectList(
+                            new LambdaQueryWrapper<SysModuleSimpleField>()
+                                    .in(SysModuleSimpleField::getModuleId, moduleIds)
+                                    .eq(SysModuleSimpleField::getTableName, tableName));
+
+            Map<Long, SysModule> moduleMap =
+                    modules.stream()
+                            .collect(Collectors.toMap(SysModule::getId, m -> m, (m1, m2) -> m1));
+
+            columnModulesMap =
+                    simpleFields.stream()
+                            .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
+                            .collect(
+                                    Collectors.groupingBy(
+                                            SysModuleSimpleField::getColumnName,
+                                            Collectors.mapping(
+                                                    sf -> {
+                                                        SysModule m =
+                                                                moduleMap.get(sf.getModuleId());
+                                                        return SysFieldResp.SysFieldModuleResp
+                                                                .builder()
+                                                                .moduleId(m.getId())
+                                                                .moduleName(m.getModuleName())
+                                                                .build();
+                                                    },
+                                                    Collectors.toList())));
+        }
+
         // 3. 以元数据驱动进行合并
+        Map<String, List<SysFieldResp.SysFieldModuleResp>> finalColumnModulesMap = columnModulesMap;
         return columnRows.stream()
                 .map(
                         row -> {
@@ -210,6 +254,9 @@ public class SysFieldService implements SysFieldApi {
                                         .fieldValues(
                                                 valueMap.getOrDefault(
                                                         config.getId(), Collections.emptyList()))
+                                        .modules(
+                                                finalColumnModulesMap.getOrDefault(
+                                                        columnName, Collections.emptyList()))
                                         .build();
                             } else {
                                 // 尚无配置，返回默认值
@@ -224,6 +271,9 @@ public class SysFieldService implements SysFieldApi {
                                                         : columnName)
                                         .encrypted(0)
                                         .fieldValues(Collections.emptyList())
+                                        .modules(
+                                                finalColumnModulesMap.getOrDefault(
+                                                        columnName, Collections.emptyList()))
                                         .build();
                             }
                         })
