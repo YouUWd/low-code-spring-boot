@@ -9,6 +9,7 @@ import com.jdec.platform.config.api.dto.response.SysInteractionPermissionDetailR
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionListResp;
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysModuleInteractionPermissionResp;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysRoleInteractionPermission;
@@ -41,15 +42,16 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     @Transactional
     @Override
-    public void saveInteractionPermission(SysInteractionPermissionSaveReq req) {
+    public SysRightResp saveInteractionPermission(SysInteractionPermissionSaveReq req) {
+        SysInteractionPermission entity;
         if (req.getId() == null) {
-            SysInteractionPermission entity = new SysInteractionPermission();
+            entity = new SysInteractionPermission();
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             sysInteractionPermissionMapper.insert(entity);
         } else {
-            SysInteractionPermission entity =
+            entity =
                     sysInteractionPermissionMapper.selectOne(
                             Wrappers.<SysInteractionPermission>lambdaQuery()
                                     .eq(SysInteractionPermission::getId, req.getId())
@@ -62,15 +64,35 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             if (entity == null) {
                 throw new BusinessException("交互权限不存在");
             }
-            entity.setType(req.getType());
             entity.setModuleId(req.getModuleId());
             entity.setModuleCode(req.getModuleCode());
+            entity.setType(req.getType());
             entity.setName(req.getName());
             entity.setCode(req.getCode());
             entity.setSort(req.getSort());
             entity.setStatus(req.getStatus());
             sysInteractionPermissionMapper.updateById(entity);
         }
+
+        // 构建返回对象
+        SysRightResp resp = new SysRightResp();
+        resp.setId(entity.getId());
+        resp.setRightName(entity.getName());
+        resp.setRightSlug(entity.getCode());
+        resp.setNodeType(2);
+        resp.setDescription(null);
+        resp.setType(entity.getType());
+
+        // 查询父级模块信息
+        if (entity.getModuleId() != null) {
+            SysModule module = sysModuleMapper.selectById(entity.getModuleId());
+            if (module != null) {
+                resp.setParentRightName(module.getModuleName());
+                resp.setParentRightSlug(module.getModuleCode());
+            }
+        }
+
+        return resp;
     }
 
     @Transactional
@@ -144,9 +166,9 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                             SysInteractionPermissionListResp resp =
                                     new SysInteractionPermissionListResp();
                             resp.setId(permission.getId());
-                            resp.setType(permission.getType());
                             resp.setModuleId(permission.getModuleId());
                             resp.setModuleCode(permission.getModuleCode());
+                            resp.setType(permission.getType());
                             resp.setName(permission.getName());
                             resp.setCode(permission.getCode());
                             resp.setSort(permission.getSort());
@@ -173,9 +195,9 @@ public class SysInteractionPermissionService implements SysInteractionPermission
         }
         SysInteractionPermissionDetailResp resp = new SysInteractionPermissionDetailResp();
         resp.setId(entity.getId());
-        resp.setType(entity.getType());
         resp.setModuleId(entity.getModuleId());
         resp.setModuleCode(entity.getModuleCode());
+        resp.setType(entity.getType());
         resp.setName(entity.getName());
         resp.setCode(entity.getCode());
         resp.setSort(entity.getSort());
@@ -211,7 +233,6 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                         entity -> {
                             SysInteractionPermissionResp resp = new SysInteractionPermissionResp();
                             resp.setId(entity.getId());
-                            resp.setType(entity.getType());
                             resp.setModuleId(entity.getModuleId());
                             resp.setModuleCode(entity.getModuleCode());
                             resp.setName(entity.getName());
@@ -256,7 +277,6 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                                     SysInteractionPermissionResp r =
                                                             new SysInteractionPermissionResp();
                                                     r.setId(p.getId());
-                                                    r.setType(p.getType());
                                                     r.setModuleId(p.getModuleId());
                                                     r.setModuleCode(p.getModuleCode());
                                                     r.setName(p.getName());

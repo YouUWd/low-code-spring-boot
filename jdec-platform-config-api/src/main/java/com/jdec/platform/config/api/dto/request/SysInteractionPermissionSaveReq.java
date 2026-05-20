@@ -13,10 +13,6 @@ public class SysInteractionPermissionSaveReq {
     @Schema(description = "主键ID，为空时新增")
     private Long id;
 
-    @Schema(description = "交互权限类型", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "交互权限类型不能为空")
-    private Integer type;
-
     @Schema(description = "模块id", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "模块id不能为空")
     private Long moduleId;
@@ -25,9 +21,9 @@ public class SysInteractionPermissionSaveReq {
     @NotBlank(message = "模块标识不能为空")
     private String moduleCode;
 
-    @Schema(description = "模块类型", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "模块类型不能为空")
-    private Integer moduleType;
+    @Schema(description = "交互权限类型.1:申请 2:编辑 3:查看", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "交互权限类型不能为空")
+    private Integer type;
 
     @Schema(description = "权限名称", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "权限名称不能为空")

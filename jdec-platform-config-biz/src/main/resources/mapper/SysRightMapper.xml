@@ -13,7 +13,10 @@
                 code AS right_slug,
                 1 AS node_type,
                 description,
-                sort
+                sort,
+                '' AS parent_right_name,
+                '' AS parent_right_slug,
+                NULL AS type
             FROM sys_data_permission_type
             WHERE project_no = #{projectNo}
               AND subject_id = #{subjectId}
@@ -25,18 +28,22 @@
 
             -- 交互权限表
             SELECT
-                id,
-                0 AS pid,
-                name AS right_name,
-                code AS right_slug,
+                sip.id,
+                sip.module_id AS pid,
+                sip.name AS right_name,
+                sip.code AS right_slug,
                 2 AS node_type,
                 NULL AS description,
-                sort
-            FROM sys_interaction_permission
-            WHERE project_no = #{projectNo}
-              AND subject_id = #{subjectId}
+                sip.sort,
+                sm.module_name AS parent_right_name,
+                sm.module_code AS parent_right_slug,
+                sip.type
+            FROM sys_interaction_permission sip
+            LEFT JOIN sys_module sm ON sip.module_id = sm.id
+            WHERE sip.project_no = #{projectNo}
+              AND sip.subject_id = #{subjectId}
               <if test="rightName != null and rightName != ''">
-                  AND name LIKE CONCAT('%', #{rightName}, '%')
+                  AND sip.name LIKE CONCAT('%', #{rightName}, '%')
               </if>
 
             UNION ALL
@@ -49,7 +56,10 @@
                 code AS right_slug,
                 3 AS node_type,
                 description,
-                sort
+                sort,
+                '' AS parent_right_name,
+                '' AS parent_right_slug,
+                NULL AS type
             FROM sys_special_permission
             WHERE project_no = #{projectNo}
               AND subject_id = #{subjectId}

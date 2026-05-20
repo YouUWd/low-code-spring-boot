@@ -8,6 +8,7 @@ import com.jdec.platform.config.api.dto.request.SysDataPermissionTypeSaveReq;
 import com.jdec.platform.config.api.dto.response.DataPermissionUserResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeResp;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.entity.SysDataPermissionTarget;
 import com.jdec.platform.config.biz.entity.SysDataPermissionType;
 import com.jdec.platform.config.biz.entity.SysRoleDataPermission;
@@ -42,7 +43,8 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
     private final UserApi userApi;
 
     @Override
-    public void saveDataPermissionType(SysDataPermissionTypeSaveReq req) {
+    public SysRightResp saveDataPermissionType(SysDataPermissionTypeSaveReq req) {
+        SysDataPermissionType entity;
         if (req.getId() == null) {
             // 校验编码唯一性
             boolean exists =
@@ -59,14 +61,14 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
                 throw new BusinessException("类型编码已存在");
             }
             // 新增
-            SysDataPermissionType entity = new SysDataPermissionType();
+            entity = new SysDataPermissionType();
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             entity.setTargetType("user");
             sysDataPermissionTypeMapper.insert(entity);
         } else {
-            SysDataPermissionType entity = sysDataPermissionTypeMapper.selectById(req.getId());
+            entity = sysDataPermissionTypeMapper.selectById(req.getId());
             if (entity == null) {
                 throw new BusinessException("数据权限类型不存在");
             }
@@ -94,6 +96,18 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
             entity.setStatus(req.getStatus());
             sysDataPermissionTypeMapper.updateById(entity);
         }
+
+        // 构建返回对象
+        SysRightResp resp = new SysRightResp();
+        resp.setId(entity.getId());
+        resp.setRightName(entity.getName());
+        resp.setRightSlug(entity.getCode());
+        resp.setNodeType(1);
+        resp.setDescription(entity.getDescription());
+        resp.setParentRightName(null);
+        resp.setParentRightSlug(null);
+        resp.setType(null);
+        return resp;
     }
 
     @Transactional

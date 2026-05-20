@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysSpecialPermissionApi;
 import com.jdec.platform.config.api.dto.request.QuerySysSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysSpecialPermissionSaveReq;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
 import com.jdec.platform.config.biz.entity.SysRoleSpecialPermission;
@@ -33,7 +34,8 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
 
     @Override
-    public void saveSpecialPermission(SysSpecialPermissionSaveReq req) {
+    public SysRightResp saveSpecialPermission(SysSpecialPermissionSaveReq req) {
+        SysSpecialPermission entity;
         if (req.getId() == null) {
             // 校验编码唯一性
             boolean exists =
@@ -50,14 +52,14 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
                 throw new BusinessException("权限编码已存在");
             }
             // 新增
-            SysSpecialPermission entity = new SysSpecialPermission();
+            entity = new SysSpecialPermission();
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             sysSpecialPermissionMapper.insert(entity);
         } else {
             // 编辑
-            SysSpecialPermission entity =
+            entity =
                     sysSpecialPermissionMapper.selectOne(
                             Wrappers.<SysSpecialPermission>lambdaQuery()
                                     .eq(SysSpecialPermission::getId, req.getId())
@@ -94,6 +96,18 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
             entity.setStatus(req.getStatus());
             sysSpecialPermissionMapper.updateById(entity);
         }
+
+        // 构建返回对象
+        SysRightResp resp = new SysRightResp();
+        resp.setId(entity.getId());
+        resp.setRightName(entity.getName());
+        resp.setRightSlug(entity.getCode());
+        resp.setNodeType(3);
+        resp.setDescription(entity.getDescription());
+        resp.setParentRightName(null);
+        resp.setParentRightSlug(null);
+        resp.setType(null);
+        return resp;
     }
 
     @Transactional

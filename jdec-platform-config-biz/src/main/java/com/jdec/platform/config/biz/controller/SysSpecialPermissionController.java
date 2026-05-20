@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysSpecialPermissionApi;
 import com.jdec.platform.config.api.dto.request.QuerySysSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysSpecialPermissionSaveReq;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -25,9 +26,8 @@ public class SysSpecialPermissionController {
 
     @PostMapping("/save")
     @Operation(summary = "新增/编辑特殊权限", description = "id为空则新增，不为空则修改")
-    public ApiResponse<Void> save(@Valid @RequestBody SysSpecialPermissionSaveReq request) {
-        sysSpecialPermissionApi.saveSpecialPermission(request);
-        return ApiResponse.success();
+    public ApiResponse<SysRightResp> save(@Valid @RequestBody SysSpecialPermissionSaveReq request) {
+        return ApiResponse.success(sysSpecialPermissionApi.saveSpecialPermission(request));
     }
 
     @DeleteMapping("/{id}")

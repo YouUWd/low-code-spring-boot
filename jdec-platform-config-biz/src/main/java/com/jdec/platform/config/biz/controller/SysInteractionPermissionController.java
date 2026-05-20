@@ -7,6 +7,7 @@ import com.jdec.platform.config.api.dto.response.SysInteractionPermissionDetailR
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionListResp;
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysModuleInteractionPermissionResp;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,9 +28,9 @@ public class SysInteractionPermissionController {
 
     @PostMapping("/save")
     @Operation(summary = "新增/编辑交互权限", description = "id为空则新增，不为空则修改")
-    public ApiResponse<Void> save(@Valid @RequestBody SysInteractionPermissionSaveReq request) {
-        sysInteractionPermissionApi.saveInteractionPermission(request);
-        return ApiResponse.success();
+    public ApiResponse<SysRightResp> save(
+            @Valid @RequestBody SysInteractionPermissionSaveReq request) {
+        return ApiResponse.success(sysInteractionPermissionApi.saveInteractionPermission(request));
     }
 
     @DeleteMapping("/{id}")
@@ -44,7 +45,7 @@ public class SysInteractionPermissionController {
     }
 
     @GetMapping("/list")
-    @Operation(summary = "查询交互权限列表", description = "支持交互权限名称、编码、状态、类型过滤")
+    @Operation(summary = "查询交互权限列表", description = "支持交互权限名称、编码、状态、交互权限类型过滤")
     public ApiResponse<List<SysInteractionPermissionListResp>> listInteractionPermission(
             QuerySysInteractionPermissionReq request) {
         return ApiResponse.success(sysInteractionPermissionApi.listInteractionPermission(request));

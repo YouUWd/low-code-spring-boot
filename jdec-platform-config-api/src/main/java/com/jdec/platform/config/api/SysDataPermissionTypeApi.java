@@ -4,13 +4,14 @@ import com.jdec.platform.config.api.dto.request.QuerySysDataPermissionTypeReq;
 import com.jdec.platform.config.api.dto.request.SysDataPermissionTypeSaveReq;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeResp;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import java.util.List;
 
 /** 数据权限类型 API */
 public interface SysDataPermissionTypeApi {
 
     /** 新增/编辑数据权限类型 */
-    void saveDataPermissionType(SysDataPermissionTypeSaveReq req);
+    SysRightResp saveDataPermissionType(SysDataPermissionTypeSaveReq req);
 
     /**
      * 删除数据权限类型

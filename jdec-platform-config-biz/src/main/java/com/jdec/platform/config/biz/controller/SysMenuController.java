@@ -26,9 +26,10 @@ public class SysMenuController {
     private final SysMenuApi sysMenuApi;
 
     @GetMapping("/tree")
-    @Operation(summary = "查询菜单树", description = "按菜单分类查询所有菜单的树形结构")
+    @Operation(summary = "查询菜单树", description = "按菜单分类查询所有菜单的树形结构，不传分类则返回所有菜单")
     public ApiResponse<List<SysMenuTreeResp>> tree(
-            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单", example = "1") @RequestParam
+            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单（可选）", example = "1")
+                    @RequestParam(required = false)
                     Integer category) {
         return ApiResponse.success(sysMenuApi.tree(category));
     }

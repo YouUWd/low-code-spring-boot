@@ -31,4 +31,7 @@ public class SysRightResp {
 
     @Schema(description = "父级权限节点标识")
     private String parentRightSlug;
+
+    @Schema(description = "交互权限类型.1:申请 2:编辑 3:查看（仅交互权限有效）")
+    private Integer type;
 }

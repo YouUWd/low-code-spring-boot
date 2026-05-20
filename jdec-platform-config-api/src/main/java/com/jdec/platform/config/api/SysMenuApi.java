@@ -10,7 +10,7 @@ public interface SysMenuApi {
     /**
      * 查询菜单树
      *
-     * @param category 菜单分类.1:业务菜单 2:系统菜单
+     * @param category 菜单分类.1:业务菜单 2:系统菜单（可选，为null时返回所有菜单）
      */
     List<SysMenuTreeResp> tree(Integer category);
 

@@ -42,7 +42,7 @@ public class SysMenuService implements SysMenuApi {
         List<SysMenu> list =
                 sysMenuMapper.selectList(
                         new LambdaQueryWrapper<SysMenu>()
-                                .eq(SysMenu::getCategory, category)
+                                .eq(category != null, SysMenu::getCategory, category)
                                 .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysMenu::getProjectNo, projectNo)
                                 .orderByAsc(SysMenu::getSortOrder)

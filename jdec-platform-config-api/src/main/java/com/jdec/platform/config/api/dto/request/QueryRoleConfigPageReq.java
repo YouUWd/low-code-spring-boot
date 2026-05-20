@@ -16,4 +16,7 @@ public class QueryRoleConfigPageReq extends PageRequest {
 
     @Schema(description = "角色名称")
     private String roleName;
+
+    @Schema(description = "用户ID")
+    private Long userId;
 }

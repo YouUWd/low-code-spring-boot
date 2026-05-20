@@ -7,6 +7,7 @@ import com.jdec.platform.config.api.SysApprovalChainTypeApi;
 import com.jdec.platform.config.api.dto.request.ApprovalChainTypePageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainTypeSaveReq;
 import com.jdec.platform.config.api.dto.response.ApprovalChainCascadeResp;
+import com.jdec.platform.config.api.dto.response.ApprovalChainTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.ApprovalChainTypePageResp;
 import com.jdec.platform.config.biz.entity.SysApprovalChainType;
 import com.jdec.platform.config.biz.entity.SysModule;
@@ -99,6 +100,31 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
                                                     })
                                             .collect(Collectors.toList());
                             resp.setChainTypes(options);
+                            return resp;
+                        })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ApprovalChainTypeOptionResp> listByModuleId(Long moduleId) {
+        List<SysApprovalChainType> chainTypes =
+                sysApprovalChainTypeMapper.selectList(
+                        new LambdaQueryWrapper<SysApprovalChainType>()
+                                .eq(SysApprovalChainType::getModuleId, moduleId)
+                                .eq(SysApprovalChainType::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysApprovalChainType::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysApprovalChainType::getEnabled, 1)
+                                .orderByAsc(SysApprovalChainType::getId));
+
+        return chainTypes.stream()
+                .map(
+                        type -> {
+                            ApprovalChainTypeOptionResp resp = new ApprovalChainTypeOptionResp();
+                            resp.setId(type.getId());
+                            resp.setTitle(type.getTitle());
+                            resp.setModuleId(type.getModuleId());
+                            resp.setDefaultFlag(type.getDefaultFlag());
+                            resp.setEnabled(type.getEnabled());
                             return resp;
                         })
                 .collect(Collectors.toList());

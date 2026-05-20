@@ -10,6 +10,7 @@ import com.jdec.platform.config.api.dto.response.ApprovalChainCascadeResp;
 import com.jdec.platform.config.api.dto.response.ApprovalChainConfigDetailResp;
 import com.jdec.platform.config.api.dto.response.ApprovalChainConfigPageResp;
 import com.jdec.platform.config.api.dto.response.ApprovalChainConfigSaveResp;
+import com.jdec.platform.config.api.dto.response.ApprovalChainTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.ApprovalChainTypePageResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
@@ -57,6 +58,13 @@ public class SysApprovalConfigController {
     @Operation(summary = "获取审批链分类级联下拉数据", description = "返回审批链分类表中所有模块及其对应的审批链分类列表")
     public ApiResponse<List<ApprovalChainCascadeResp>> getChainTypeCascadeOptions() {
         return ApiResponse.success(sysApprovalChainTypeApi.getCascadeOptions());
+    }
+
+    @GetMapping("/chain-type/list-by-module/{moduleId}")
+    @Operation(summary = "根据模块id获取审批链分类列表", description = "查询指定模块下所有启用的审批链分类")
+    public ApiResponse<List<ApprovalChainTypeOptionResp>> listChainTypeByModuleId(
+            @PathVariable Long moduleId) {
+        return ApiResponse.success(sysApprovalChainTypeApi.listByModuleId(moduleId));
     }
 
     @PostMapping("/chain-type/page")

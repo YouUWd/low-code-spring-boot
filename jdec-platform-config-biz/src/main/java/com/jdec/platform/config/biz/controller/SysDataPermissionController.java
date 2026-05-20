@@ -9,6 +9,7 @@ import com.jdec.platform.config.api.dto.request.SysDataPermissionTypeSaveReq;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTargetResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeResp;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -32,9 +33,9 @@ public class SysDataPermissionController {
 
     @PostMapping("/type/save")
     @Operation(summary = "新增/编辑数据权限类型", description = "id为空则新增，不为空则修改")
-    public ApiResponse<Void> saveType(@Valid @RequestBody SysDataPermissionTypeSaveReq request) {
-        sysDataPermissionTypeApi.saveDataPermissionType(request);
-        return ApiResponse.success();
+    public ApiResponse<SysRightResp> saveType(
+            @Valid @RequestBody SysDataPermissionTypeSaveReq request) {
+        return ApiResponse.success(sysDataPermissionTypeApi.saveDataPermissionType(request));
     }
 
     @DeleteMapping("/type/{id}")

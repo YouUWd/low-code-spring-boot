@@ -2,6 +2,7 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.QuerySysSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysSpecialPermissionSaveReq;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
 import java.util.List;
@@ -10,7 +11,7 @@ import java.util.List;
 public interface SysSpecialPermissionApi {
 
     /** 新增/编辑特殊权限 */
-    void saveSpecialPermission(SysSpecialPermissionSaveReq req);
+    SysRightResp saveSpecialPermission(SysSpecialPermissionSaveReq req);
 
     /**
      * 删除特殊权限

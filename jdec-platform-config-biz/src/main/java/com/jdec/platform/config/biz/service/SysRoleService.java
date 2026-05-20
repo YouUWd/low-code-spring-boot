@@ -336,10 +336,11 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public RoleUserTimeResp getRoleUserTime(String userId, Long roleId) {
+        Long userIdLong = Long.parseLong(userId);
         SysRoleUser user =
                 sysRoleUserMapper.selectOne(
                         Wrappers.<SysRoleUser>lambdaQuery()
-                                .eq(SysRoleUser::getUserId, removeUPrefix(userId))
+                                .eq(SysRoleUser::getUserId, userIdLong)
                                 .eq(SysRoleUser::getRoleId, roleId)
                                 .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         RoleUserTimeResp resp = new RoleUserTimeResp();
@@ -350,8 +351,7 @@ public class SysRoleService implements SysRoleApi {
         } else {
             SysUser sysUser =
                     sysUserMapper.selectOne(
-                            Wrappers.<SysUser>lambdaQuery()
-                                    .eq(SysUser::getUserId, removeUPrefix(userId)));
+                            Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUserId, userIdLong));
             if (sysUser != null) {
                 SysRoleSubject subject =
                         sysRoleSubjectMapper.selectOne(
@@ -371,6 +371,31 @@ public class SysRoleService implements SysRoleApi {
         Page<SysRole> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysRole::getProjectNo, AppContext.getProjectNo());
+        if (query.getRoleId() != null) {
+            wrapper.eq(SysRole::getId, query.getRoleId());
+        }
+        if (query.getUserId() != null) {
+            // 查询包含该用户的角色
+            List<Long> roleIds =
+                    sysRoleUserMapper
+                            .selectList(
+                                    Wrappers.<SysRoleUser>lambdaQuery()
+                                            .eq(SysRoleUser::getUserId, query.getUserId())
+                                            .eq(
+                                                    SysRoleUser::getProjectNo,
+                                                    AppContext.getProjectNo()))
+                            .stream()
+                            .map(SysRoleUser::getRoleId)
+                            .distinct()
+                            .toList();
+            if (!roleIds.isEmpty()) {
+                wrapper.in(SysRole::getId, roleIds);
+            } else {
+                // 如果没有找到任何角色，返回空结果
+                return PageResult.of(
+                        query.getPageNum(), query.getPageSize(), 0L, Collections.emptyList());
+            }
+        }
         IPage<SysRole> rolePage = sysRoleMapper.selectPage(page, wrapper);
 
         List<RoleConfigPageResp> respList =
@@ -474,7 +499,7 @@ public class SysRoleService implements SysRoleApi {
                                 Wrappers.<SysUser>lambdaQuery()
                                         .eq(SysUser::getUserId, roleUser.getUserId()));
                 if (user != null) {
-                    String userId = "U" + user.getUserId();
+                    String userId = String.valueOf(user.getUserId());
                     if (UserTypeEnum.INSIDE.getCode().equals(user.getUserType())) {
                         insideIds.add(userId);
                     } else if (UserTypeEnum.EXTERNAL.getCode().equals(user.getUserType())) {
@@ -640,7 +665,7 @@ public class SysRoleService implements SysRoleApi {
         for (SysUser sysUser : sysUsers) {
             RoleUserResp vo = new RoleUserResp();
             vo.setUserName(sysUser.getUserName());
-            vo.setUserId("U" + sysUser.getUserId());
+            vo.setUserId(String.valueOf(sysUser.getUserId()));
             vo.setUserAvatar(sysUser.getUserAvatar());
             vo.setWorkNumber(sysUser.getWorkNumber());
             userVOMap.put(sysUser.getUserId(), vo);
@@ -695,7 +720,7 @@ public class SysRoleService implements SysRoleApi {
         List<SysRoleUser> list = new ArrayList<>();
         if (insideIdStrs != null) {
             for (String idStr : insideIdStrs) {
-                Long userId = removeUPrefix(idStr);
+                Long userId = Long.parseLong(idStr);
                 // 过滤：只添加不属于任何主体的用户
                 if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
                     boolean inAnySubject = false;
@@ -716,7 +741,7 @@ public class SysRoleService implements SysRoleApi {
         }
         if (externalIdStrs != null) {
             for (String idStr : externalIdStrs) {
-                Long userId = removeUPrefix(idStr);
+                Long userId = Long.parseLong(idStr);
                 list.add(
                         buildRoleUser(
                                 request, roleId, userId, UserTypeEnum.EXTERNAL.getCode(), userMap));
@@ -771,7 +796,7 @@ public class SysRoleService implements SysRoleApi {
         Set<Long> insideIds = new HashSet<>();
         if (insideIdStrs != null) {
             for (String id : insideIdStrs) {
-                insideIds.add(removeUPrefix(id));
+                insideIds.add(Long.parseLong(id));
             }
         }
         List<SysUser> newUsers = new ArrayList<>();
@@ -1030,29 +1055,20 @@ public class SysRoleService implements SysRoleApi {
         }
     }
 
-    /** 收集所有用户ID（去掉U前缀） */
+    /** 收集所有用户ID */
     private Set<Long> collectUserIds(SaveRoleUserReq request) {
         Set<Long> allUserIds = new HashSet<>();
         if (request.getUserInsideIds() != null) {
             for (String id : request.getUserInsideIds()) {
-                allUserIds.add(removeUPrefix(id));
+                allUserIds.add(Long.parseLong(id));
             }
         }
         if (request.getUserExternalIds() != null) {
             for (String id : request.getUserExternalIds()) {
-                allUserIds.add(removeUPrefix(id));
+                allUserIds.add(Long.parseLong(id));
             }
         }
         return allUserIds;
-    }
-
-    /** 去掉ID的U前缀 */
-    private Long removeUPrefix(String id) {
-        if (id != null && id.startsWith("U")) {
-            return Long.parseLong(id.substring(1));
-        }
-        assert id != null;
-        return Long.parseLong(id);
     }
 
     /** 校验：授权主体时，是否有员工已单独配置在该角色中 通过 user 表查询主体下用户，与前端传入 userId 做对比 */

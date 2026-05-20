@@ -226,7 +226,7 @@ public class SysUserService implements SysUserApi {
                 }
                 UserSearchTreeNodeResp userNode =
                         UserSearchTreeNodeResp.builder()
-                                .id("U" + user.getId())
+                                .id("U" + user.getUserId())
                                 .sysId(user.getId())
                                 .label(user.getUserName())
                                 .departId("D" + deptId)
@@ -262,7 +262,10 @@ public class SysUserService implements SysUserApi {
         }
 
         // 5. 构建嵌套树
-        return buildNestedTree(departListWithUsers, "D0");
+        List<UserSearchTreeNodeResp> tree = buildNestedTree(departListWithUsers, "D0");
+
+        // 6. 过滤掉没有用户的部门
+        return filterEmptyDepartments(tree);
     }
 
     private List<UserSearchTreeNodeResp> buildNestedTree(
@@ -289,5 +292,45 @@ public class SysUserService implements SysUserApi {
             }
         }
         return tree;
+    }
+
+    private List<UserSearchTreeNodeResp> filterEmptyDepartments(
+            List<UserSearchTreeNodeResp> nodes) {
+        if (nodes == null || nodes.isEmpty()) {
+            return nodes;
+        }
+
+        List<UserSearchTreeNodeResp> filtered = new ArrayList<>();
+        for (UserSearchTreeNodeResp node : nodes) {
+            if (hasUsers(node)) {
+                // 递归过滤子节点
+                if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                    node.setChildren(filterEmptyDepartments(node.getChildren()));
+                }
+                filtered.add(node);
+            }
+        }
+        return filtered;
+    }
+
+    private boolean hasUsers(UserSearchTreeNodeResp node) {
+        // type=3 表示用户节点
+        if (node.getType() == 3) {
+            return true;
+        }
+
+        // 检查子节点
+        List<UserSearchTreeNodeResp> children = node.getChildren();
+        if (children == null || children.isEmpty()) {
+            return false;
+        }
+
+        // 递归检查子节点是否有用户
+        for (UserSearchTreeNodeResp child : children) {
+            if (hasUsers(child)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -11,9 +11,6 @@ public class SysInteractionPermissionResp {
     @Schema(description = "权限ID")
     private Long id;
 
-    @Schema(description = "交互权限类型")
-    private Integer type;
-
     @Schema(description = "模块id")
     private Long moduleId;
 
