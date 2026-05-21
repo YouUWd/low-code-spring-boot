@@ -22,12 +22,6 @@ public class SysRoleMenu implements Serializable {
     @Schema(description = "菜单id")
     private Long menuId;
 
-    @Schema(description = "所属主体")
-    private Long subjectId;
-
-    @Schema(description = "应用编码")
-    private String projectNo;
-
     @Schema(description = "模拟操作用户")
     @TableField(fill = FieldFill.INSERT)
     private Long createdBy;

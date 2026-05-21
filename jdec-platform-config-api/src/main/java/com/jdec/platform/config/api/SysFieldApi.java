@@ -33,9 +33,11 @@ public interface SysFieldApi {
      * @param projectNo 项目编码
      * @param subjectId 主体ID
      * @param tableName 表名
+     * @param columnName 列名（可选）
      * @return 字段配置列表
      */
-    List<SysFieldResp> querySysFields(String projectNo, Long subjectId, String tableName);
+    List<SysFieldResp> querySysFields(
+            String projectNo, Long subjectId, String tableName, String columnName);
 
     /**
      * 保存或更新字段配置
@@ -44,6 +46,8 @@ public interface SysFieldApi {
      * @param subjectId 主体ID
      * @param tableName 表名
      * @param req 保存请求
+     * @return 保存后的字段配置
      */
-    void saveSysField(String projectNo, Long subjectId, String tableName, SysFieldSaveReq req);
+    SysFieldResp saveSysField(
+            String projectNo, Long subjectId, String tableName, SysFieldSaveReq req);
 }

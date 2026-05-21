@@ -144,7 +144,8 @@ public class SysFieldService implements SysFieldApi {
     // ==================== 字段配置持久化逻辑 ====================
 
     @Override
-    public List<SysFieldResp> querySysFields(String projectNo, Long subjectId, String tableName) {
+    public List<SysFieldResp> querySysFields(
+            String projectNo, Long subjectId, String tableName, String columnName) {
         log.debug("查询项目 {} 主体 {} 表 {} 的完整字段配置列表", projectNo, subjectId, tableName);
 
         // 1. 获取数据库中该表所有的列名和注释
@@ -233,11 +234,16 @@ public class SysFieldService implements SysFieldApi {
         // 3. 以元数据驱动进行合并
         Map<String, List<SysFieldResp.SysFieldModuleResp>> finalColumnModulesMap = columnModulesMap;
         return columnRows.stream()
+                .filter(
+                        row ->
+                                columnName == null
+                                        || columnName.isBlank()
+                                        || columnName.equals(row.get("COLUMN_NAME")))
                 .map(
                         row -> {
-                            String columnName = (String) row.get("COLUMN_NAME");
+                            String colName = (String) row.get("COLUMN_NAME");
                             String columnComment = (String) row.get("COLUMN_COMMENT");
-                            SysField config = configMap.get(columnName);
+                            SysField config = configMap.get(colName);
 
                             if (config != null) {
                                 // 已有配置
@@ -246,7 +252,7 @@ public class SysFieldService implements SysFieldApi {
                                         .projectNo(projectNo)
                                         .subjectId(subjectId)
                                         .tableName(tableName)
-                                        .columnName(columnName)
+                                        .columnName(colName)
                                         .displayName(config.getDisplayName())
                                         .relationBusinessNo(config.getRelationBusinessNo())
                                         .relationName(config.getRelationName())
@@ -256,7 +262,7 @@ public class SysFieldService implements SysFieldApi {
                                                         config.getId(), Collections.emptyList()))
                                         .modules(
                                                 finalColumnModulesMap.getOrDefault(
-                                                        columnName, Collections.emptyList()))
+                                                        colName, Collections.emptyList()))
                                         .build();
                             } else {
                                 // 尚无配置，返回默认值
@@ -264,16 +270,16 @@ public class SysFieldService implements SysFieldApi {
                                         .projectNo(projectNo)
                                         .subjectId(subjectId)
                                         .tableName(tableName)
-                                        .columnName(columnName)
+                                        .columnName(colName)
                                         .displayName(
                                                 columnComment != null && !columnComment.isEmpty()
                                                         ? columnComment
-                                                        : columnName)
+                                                        : colName)
                                         .encrypted(0)
                                         .fieldValues(Collections.emptyList())
                                         .modules(
                                                 finalColumnModulesMap.getOrDefault(
-                                                        columnName, Collections.emptyList()))
+                                                        colName, Collections.emptyList()))
                                         .build();
                             }
                         })
@@ -292,7 +298,7 @@ public class SysFieldService implements SysFieldApi {
 
     @Override
     @Transactional
-    public void saveSysField(
+    public SysFieldResp saveSysField(
             String projectNo, Long subjectId, String tableName, SysFieldSaveReq req) {
         log.info(
                 "开始保存项目 {} 主体 {} 的字段配置: {}/{}",
@@ -337,6 +343,53 @@ public class SysFieldService implements SysFieldApi {
         if (req.getRelationBusinessNo() != null && !req.getRelationBusinessNo().isBlank()) {
             saveToWordSystem(oldBusinessNo, req.getRelationBusinessNo(), tableName, subjectId);
         }
+
+        // 查询并返回保存后的完整数据
+        return getSysFieldById(fieldId, projectNo, subjectId, tableName);
+    }
+
+    /** 根据字段ID查询完整的字段配置 */
+    private SysFieldResp getSysFieldById(
+            Long fieldId, String projectNo, Long subjectId, String tableName) {
+        SysField field = sysFieldMapper.selectById(fieldId);
+        if (field == null) {
+            return null;
+        }
+
+        // 查询关联的扩展值信息
+        List<SysFieldValueResp> fieldValues =
+                sysFieldValueMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysFieldValue>()
+                                        .eq(SysFieldValue::getFieldId, fieldId)
+                                        .eq(SysFieldValue::getDeleted, 0))
+                        .stream()
+                        .map(
+                                v ->
+                                        SysFieldValueResp.builder()
+                                                .id(v.getId())
+                                                .fieldId(v.getFieldId())
+                                                .moduleId(v.getModuleId())
+                                                .moduleName(v.getModuleName())
+                                                .fieldValue(v.getFieldValue())
+                                                .approvalChainTypeId(v.getApprovalChainTypeId())
+                                                .sortOrder(v.getSortOrder())
+                                                .enabled(v.getEnabled())
+                                                .build())
+                        .toList();
+
+        return SysFieldResp.builder()
+                .id(field.getId())
+                .projectNo(projectNo)
+                .subjectId(subjectId)
+                .tableName(tableName)
+                .columnName(field.getColumnName())
+                .displayName(field.getDisplayName())
+                .relationBusinessNo(field.getRelationBusinessNo())
+                .relationName(field.getRelationName())
+                .encrypted(field.getEncrypted())
+                .fieldValues(fieldValues)
+                .build();
     }
 
     /** 将字段绑定关系同步到 Word 系统 */

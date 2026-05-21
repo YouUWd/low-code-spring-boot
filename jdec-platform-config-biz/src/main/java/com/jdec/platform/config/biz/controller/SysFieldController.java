@@ -54,16 +54,20 @@ public class SysFieldController {
     @GetMapping("/tables/{tableName}/columns/settings")
     public ApiResponse<List<SysFieldResp>> querySysFields(
             @Parameter(description = "表名", example = "sys_module", required = true) @PathVariable
-                    String tableName) {
+                    String tableName,
+            @Parameter(description = "列名（可选）", example = "module_name")
+                    @RequestParam(required = false)
+                    String columnName) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
         log.info("查询项目 {} 主体 {} 的表 {} 的字段配置列表", projectNo, subjectId, tableName);
-        return ApiResponse.success(sysFieldApi.querySysFields(projectNo, subjectId, tableName));
+        return ApiResponse.success(
+                sysFieldApi.querySysFields(projectNo, subjectId, tableName, columnName));
     }
 
     @Operation(summary = "保存字段配置", description = "保存或更新单个字段的显示名称、关联关系等配置")
     @PostMapping("/tables/{tableName}/columns/settings")
-    public ApiResponse<Void> saveSysField(
+    public ApiResponse<SysFieldResp> saveSysField(
             @Parameter(description = "表名", example = "sys_module", required = true) @PathVariable
                     String tableName,
             @RequestBody SysFieldSaveReq req) {
@@ -75,7 +79,6 @@ public class SysFieldController {
                 subjectId,
                 tableName,
                 req.getColumnName());
-        sysFieldApi.saveSysField(projectNo, subjectId, tableName, req);
-        return ApiResponse.success();
+        return ApiResponse.success(sysFieldApi.saveSysField(projectNo, subjectId, tableName, req));
     }
 }
