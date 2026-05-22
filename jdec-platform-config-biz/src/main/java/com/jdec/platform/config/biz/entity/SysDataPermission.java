@@ -6,24 +6,27 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 import lombok.Data;
 
-/** 数据权限目标表 */
+/** 数据权限表 */
 @Data
-@TableName("sys_data_permission_target")
-@Schema(description = "数据权限目标")
-public class SysDataPermissionTarget implements Serializable {
+@TableName("sys_data_permission")
+@Schema(description = "数据权限")
+public class SysDataPermission implements Serializable {
 
     @Schema(description = "主键ID")
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Schema(description = "关联role_data_permission.id")
-    private Long roleDataPermissionId;
+    @Schema(description = "权限业务类型编码")
+    private String bizTypeCode;
 
-    @Schema(description = "目标类型 user/dept/company")
-    private String targetType;
+    @Schema(description = "权限业务类型名称")
+    private String bizTypeName;
 
-    @Schema(description = "目标ID（用户ID/部门ID等）")
-    private Long targetId;
+    @Schema(description = "业务ID")
+    private Long bizId;
+
+    @Schema(description = "业务名称")
+    private String bizName;
 
     @Schema(description = "模拟操作用户")
     @TableField(fill = FieldFill.INSERT)

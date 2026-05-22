@@ -15,9 +15,10 @@ public interface SysModuleApi {
      *
      * @param projectNo 项目编码
      * @param subjectId 主体ID
+     * @param availableOnly 是否仅查询可用模块（moduleStatus='active'），null 或 false 时返回所有模块
      * @return 模块列表
      */
-    List<SysModuleListResp> listModules(String projectNo, Long subjectId);
+    List<SysModuleListResp> listModules(String projectNo, Long subjectId, Boolean availableOnly);
 
     /**
      * 获取模块完整信息 包含模块基本信息、关联表、字段配置和状态

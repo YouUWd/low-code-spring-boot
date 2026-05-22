@@ -50,10 +50,15 @@ public class SysModuleService implements SysModuleApi {
     private final ObjectMapper objectMapper;
 
     @Override
-    public List<SysModuleListResp> listModules(String projectNo, Long subjectId) {
+    public List<SysModuleListResp> listModules(
+            String projectNo, Long subjectId, Boolean availableOnly) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getProjectNo, projectNo);
         wrapper.eq(SysModule::getSubjectId, subjectId);
+        // 可选筛选：仅查询可用模块
+        if (Boolean.TRUE.equals(availableOnly)) {
+            wrapper.eq(SysModule::getModuleStatus, "active");
+        }
         wrapper.orderByAsc(SysModule::getParentId).orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
