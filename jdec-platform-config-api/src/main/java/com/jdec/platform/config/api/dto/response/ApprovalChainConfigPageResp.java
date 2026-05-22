@@ -1,6 +1,7 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.Data;
 
 /** 审批链配置分页响应 */
@@ -68,6 +69,9 @@ public class ApprovalChainConfigPageResp {
     @Schema(description = "子模块集合ID")
     private String childModuleIds;
 
+    @Schema(description = "子模块名称列表（逗号拼接）")
+    private String childModuleNames;
+
     @Schema(description = "当前主状态ID")
     private Long currentStatusGroupId;
 
@@ -115,4 +119,56 @@ public class ApprovalChainConfigPageResp {
 
     @Schema(description = "是否默认，1：是，0：否")
     private Integer defaultFlag;
+
+    @Schema(description = "按钮配置列表")
+    private List<ButtonDetail> buttonDetails;
+
+    /** 按钮详情 */
+    @Data
+    @Schema(description = "按钮详情")
+    public static class ButtonDetail {
+        @Schema(description = "按钮配置ID")
+        private Long id;
+
+        @Schema(description = "按钮ID")
+        private Long buttonId;
+
+        @Schema(description = "按钮名称")
+        private String buttonTitle;
+
+        @Schema(description = "按钮别名")
+        private String buttonAlias;
+
+        @Schema(description = "日志图标")
+        private String icon;
+
+        @Schema(description = "日志名称")
+        private String logName;
+
+        @Schema(description = "消息模板ID集合")
+        private String msgTemplateIds;
+
+        @Schema(description = "消息模板列表")
+        private List<MessageTemplateDetail> messageTemplates;
+    }
+
+    /** 消息模板详情 */
+    @Data
+    @Schema(description = "消息模板详情")
+    public static class MessageTemplateDetail {
+        @Schema(description = "模板ID")
+        private Long id;
+
+        @Schema(description = "模板标题")
+        private String templateTitle;
+
+        @Schema(description = "模板内容")
+        private String templateContent;
+
+        @Schema(description = "模块ID")
+        private Long moduleId;
+
+        @Schema(description = "模块名称")
+        private String moduleName;
+    }
 }

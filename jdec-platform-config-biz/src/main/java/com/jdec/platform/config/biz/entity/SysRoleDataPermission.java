@@ -22,6 +22,9 @@ public class SysRoleDataPermission implements Serializable {
     @Schema(description = "数据权限类型ID")
     private Long dataPermissionTypeId;
 
+    @Schema(description = "业务ID")
+    private Long bizId;
+
     @Schema(description = "模拟操作用户")
     @TableField(fill = FieldFill.INSERT)
     private Long createdBy;

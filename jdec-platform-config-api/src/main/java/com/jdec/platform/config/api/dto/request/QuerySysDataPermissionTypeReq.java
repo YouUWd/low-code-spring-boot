@@ -8,6 +8,9 @@ import lombok.Data;
 @Schema(description = "数据权限类型列表查询请求")
 public class QuerySysDataPermissionTypeReq {
 
+    @Schema(description = "角色ID（用于查询角色关联的权限类型及数据权限）")
+    private Long roleId;
+
     @Schema(description = "类型名称（模糊查询）")
     private String name;
 

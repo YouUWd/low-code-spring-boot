@@ -12,9 +12,6 @@ public class SaveRoleDataPermissionReq {
     @Schema(description = "角色ID")
     private Long roleId;
 
-    @Schema(description = "数据权限类型ID")
-    private Long dataPermissionTypeId;
-
-    @Schema(description = "用户ID列表（hasTarget为1时必填）")
-    private List<Long> userIds;
+    @Schema(description = "权限ID列表（格式：permissionTypeId-bizId）")
+    private List<String> permissionIds;
 }

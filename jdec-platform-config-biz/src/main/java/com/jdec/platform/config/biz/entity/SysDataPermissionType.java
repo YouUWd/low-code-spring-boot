@@ -25,11 +25,8 @@ public class SysDataPermissionType implements Serializable {
     @Schema(description = "类型描述")
     private String description;
 
-    @Schema(description = "是否需要指定目标 1:是 0:否")
-    private Integer hasTarget;
-
-    @Schema(description = "目标类型 user/dept/company 等")
-    private String targetType;
+    @Schema(description = "权限业务类型编码")
+    private Integer bizTypeCode;
 
     @Schema(description = "排序")
     private Integer sort;

@@ -5,18 +5,16 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysDataPermissionTypeApi;
 import com.jdec.platform.config.api.dto.request.QuerySysDataPermissionTypeReq;
 import com.jdec.platform.config.api.dto.request.SysDataPermissionTypeSaveReq;
-import com.jdec.platform.config.api.dto.response.DataPermissionUserResp;
+import com.jdec.platform.config.api.dto.response.SysDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionTypeResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
-import com.jdec.platform.config.biz.entity.SysDataPermissionTarget;
+import com.jdec.platform.config.biz.entity.SysDataPermission;
 import com.jdec.platform.config.biz.entity.SysDataPermissionType;
 import com.jdec.platform.config.biz.entity.SysRoleDataPermission;
-import com.jdec.platform.config.biz.mapper.SysDataPermissionTargetMapper;
+import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionTypeMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleDataPermissionMapper;
-import com.jdec.platform.hr.api.UserApi;
-import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -24,6 +22,7 @@ import com.jdec.platform.shared.enums.CommonStatusEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -39,8 +38,7 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
 
     private final SysDataPermissionTypeMapper sysDataPermissionTypeMapper;
     private final SysRoleDataPermissionMapper sysRoleDataPermissionMapper;
-    private final SysDataPermissionTargetMapper sysDataPermissionTargetMapper;
-    private final UserApi userApi;
+    private final SysDataPermissionMapper sysDataPermissionMapper;
 
     @Override
     public SysRightResp saveDataPermissionType(SysDataPermissionTypeSaveReq req) {
@@ -65,7 +63,6 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
-            entity.setTargetType("user");
             sysDataPermissionTypeMapper.insert(entity);
         } else {
             entity = sysDataPermissionTypeMapper.selectById(req.getId());
@@ -133,25 +130,7 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
             throw new BusinessException(
                     "删除确认：该数据权限类型已被 "
                             + roleCount
-                            + " 个角色授权引用，删除后相关授权及其数据权限目标将被同步清除，请确认后携带 force=true 重新请求");
-        }
-        // 查出所有关联的 role_data_permission id
-        List<Long> roleDataPermissionIds =
-                sysRoleDataPermissionMapper
-                        .selectList(
-                                Wrappers.<SysRoleDataPermission>lambdaQuery()
-                                        .eq(SysRoleDataPermission::getDataPermissionTypeId, id)
-                                        .select(SysRoleDataPermission::getId))
-                        .stream()
-                        .map(SysRoleDataPermission::getId)
-                        .collect(Collectors.toList());
-        // 级联删除 sys_data_permission_target
-        if (!roleDataPermissionIds.isEmpty()) {
-            sysDataPermissionTargetMapper.delete(
-                    Wrappers.<SysDataPermissionTarget>lambdaQuery()
-                            .in(
-                                    SysDataPermissionTarget::getRoleDataPermissionId,
-                                    roleDataPermissionIds));
+                            + " 个角色授权引用，删除后相关授权将被同步清除，请确认后携带 force=true 重新请求");
         }
         // 级联删除 sys_role_data_permission
         sysRoleDataPermissionMapper.delete(
@@ -186,29 +165,105 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
     @Override
     public List<SysDataPermissionTypeResp> listDataPermissionType(
             QuerySysDataPermissionTypeReq req) {
-        List<SysDataPermissionType> list =
-                sysDataPermissionTypeMapper.selectList(
-                        new LambdaQueryWrapper<SysDataPermissionType>()
-                                .eq(SysDataPermissionType::getProjectNo, AppContext.getProjectNo())
-                                .eq(SysDataPermissionType::getSubjectId, AppContext.getSubjectId())
-                                .like(
-                                        StringUtils.hasText(req.getName()),
-                                        SysDataPermissionType::getName,
-                                        req.getName())
-                                .like(
-                                        StringUtils.hasText(req.getCode()),
-                                        SysDataPermissionType::getCode,
-                                        req.getCode())
-                                .eq(
-                                        SysDataPermissionType::getStatus,
-                                        CommonStatusEnum.ENABLE.getCode())
-                                .orderByAsc(SysDataPermissionType::getSort)
-                                .orderByAsc(SysDataPermissionType::getId));
+        List<SysDataPermissionType> list;
+
+        // 如果传入了 roleId，则查询该角色关联的权限类型
+        if (req.getRoleId() != null) {
+            // 1. 查询该角色关联的所有数据权限类型 ID
+            List<SysRoleDataPermission> roleDataPermissions =
+                    sysRoleDataPermissionMapper.selectList(
+                            Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                    .eq(SysRoleDataPermission::getRoleId, req.getRoleId())
+                                    .select(SysRoleDataPermission::getDataPermissionTypeId));
+
+            if (roleDataPermissions.isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            List<Long> permissionTypeIds =
+                    roleDataPermissions.stream()
+                            .map(SysRoleDataPermission::getDataPermissionTypeId)
+                            .distinct()
+                            .collect(Collectors.toList());
+
+            // 2. 根据权限类型 ID 批量查询权限类型信息
+            list =
+                    sysDataPermissionTypeMapper.selectList(
+                            new LambdaQueryWrapper<SysDataPermissionType>()
+                                    .in(SysDataPermissionType::getId, permissionTypeIds)
+                                    .eq(
+                                            SysDataPermissionType::getProjectNo,
+                                            AppContext.getProjectNo())
+                                    .eq(
+                                            SysDataPermissionType::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .like(
+                                            StringUtils.hasText(req.getName()),
+                                            SysDataPermissionType::getName,
+                                            req.getName())
+                                    .like(
+                                            StringUtils.hasText(req.getCode()),
+                                            SysDataPermissionType::getCode,
+                                            req.getCode())
+                                    .eq(
+                                            SysDataPermissionType::getStatus,
+                                            CommonStatusEnum.ENABLE.getCode())
+                                    .orderByAsc(SysDataPermissionType::getSort)
+                                    .orderByAsc(SysDataPermissionType::getId));
+        } else {
+            // 没有传 roleId，查询所有权限类型
+            list =
+                    sysDataPermissionTypeMapper.selectList(
+                            new LambdaQueryWrapper<SysDataPermissionType>()
+                                    .eq(
+                                            SysDataPermissionType::getProjectNo,
+                                            AppContext.getProjectNo())
+                                    .eq(
+                                            SysDataPermissionType::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .like(
+                                            StringUtils.hasText(req.getName()),
+                                            SysDataPermissionType::getName,
+                                            req.getName())
+                                    .like(
+                                            StringUtils.hasText(req.getCode()),
+                                            SysDataPermissionType::getCode,
+                                            req.getCode())
+                                    .eq(
+                                            SysDataPermissionType::getStatus,
+                                            CommonStatusEnum.ENABLE.getCode())
+                                    .orderByAsc(SysDataPermissionType::getSort)
+                                    .orderByAsc(SysDataPermissionType::getId));
+        }
+
         if (list.isEmpty()) {
             return new ArrayList<>();
         }
-        // todo: 有了登录以后，替换成登录用户的主体id
-        Long subjectId = 1L;
+
+        // 3. 收集所有权限类型的 bizTypeCode（转换为 String）
+        List<String> bizTypeCodes =
+                list.stream()
+                        .map(SysDataPermissionType::getBizTypeCode)
+                        .filter(bizTypeCode -> bizTypeCode != null)
+                        .map(String::valueOf)
+                        .distinct()
+                        .collect(Collectors.toList());
+
+        // 4. 根据 bizTypeCode 批量查询数据权限
+        List<SysDataPermission> allDataPermissions = new ArrayList<>();
+        if (!bizTypeCodes.isEmpty()) {
+            allDataPermissions =
+                    sysDataPermissionMapper.selectList(
+                            Wrappers.<SysDataPermission>lambdaQuery()
+                                    .in(SysDataPermission::getBizTypeCode, bizTypeCodes));
+        }
+
+        // 5. 按 bizTypeCode 分组数据权限
+        Map<String, List<SysDataPermission>> dataPermissionMap =
+                allDataPermissions.stream()
+                        .collect(Collectors.groupingBy(SysDataPermission::getBizTypeCode));
+
+        // 6. 构建响应，填充数据权限列表
         return list.stream()
                 .map(
                         type -> {
@@ -217,33 +272,36 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
                             resp.setCode(type.getCode());
                             resp.setName(type.getName());
                             resp.setDescription(type.getDescription());
-                            resp.setHasTarget(type.getHasTarget());
-                            resp.setTargetType(type.getTargetType());
                             resp.setSort(type.getSort());
                             resp.setStatus(type.getStatus());
-                            // hasTarget为1时，查询同一主体的用户列表
-                            if (type.getHasTarget() != null && type.getHasTarget() == 1) {
-                                List<UserBO> userList = userApi.listBySubjectId(subjectId);
-                                List<DataPermissionUserResp> children =
-                                        userList.stream()
-                                                .map(this::toDataPermissionUserResp)
+
+                            // 根据 bizTypeCode 填充关联的数据权限
+                            if (type.getBizTypeCode() != null) {
+                                String bizTypeCodeStr = String.valueOf(type.getBizTypeCode());
+                                List<SysDataPermission> permissions =
+                                        dataPermissionMap.getOrDefault(
+                                                bizTypeCodeStr, new ArrayList<>());
+                                List<SysDataPermissionResp> dataPermissions =
+                                        permissions.stream()
+                                                .map(
+                                                        dp -> {
+                                                            SysDataPermissionResp dpResp =
+                                                                    new SysDataPermissionResp();
+                                                            dpResp.setId(dp.getId());
+                                                            dpResp.setBizTypeCode(
+                                                                    dp.getBizTypeCode());
+                                                            dpResp.setBizTypeName(
+                                                                    dp.getBizTypeName());
+                                                            dpResp.setBizId(dp.getBizId());
+                                                            dpResp.setBizName(dp.getBizName());
+                                                            return dpResp;
+                                                        })
                                                 .collect(Collectors.toList());
-                                resp.setChildren(children);
+                                resp.setDataPermissions(dataPermissions);
                             }
                             return resp;
                         })
                 .collect(Collectors.toList());
-    }
-
-    private DataPermissionUserResp toDataPermissionUserResp(UserBO user) {
-        DataPermissionUserResp resp = new DataPermissionUserResp();
-        resp.setId(user.getId() != null ? user.getId() : null);
-        resp.setUserName(user.getUserName());
-        resp.setWorkNumber(user.getWorkNumber());
-        resp.setPhone(user.getPhone());
-        resp.setDepartmentName(user.getDepartmentName());
-        resp.setShortName(user.getShortName());
-        return resp;
     }
 
     @Override
@@ -264,8 +322,6 @@ public class SysDataPermissionTypeService implements SysDataPermissionTypeApi {
         resp.setCode(entity.getCode());
         resp.setName(entity.getName());
         resp.setDescription(entity.getDescription());
-        resp.setHasTarget(entity.getHasTarget());
-        resp.setTargetType(entity.getTargetType());
         resp.setSort(entity.getSort());
         resp.setStatus(entity.getStatus());
         return resp;

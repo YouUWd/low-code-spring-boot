@@ -26,7 +26,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
     private final SysRoleDataPermissionMapper sysRoleDataPermissionMapper;
-    private final SysDataPermissionTargetMapper sysDataPermissionTargetMapper;
+    private final SysDataPermissionMapper sysDataPermissionMapper;
     private final SysDataPermissionTypeMapper sysDataPermissionTypeMapper;
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
@@ -162,64 +162,44 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     @Override
     public void saveRoleDataPermission(SaveRoleDataPermissionReq request) {
         Long roleId = request.getRoleId();
-        Long dataPermissionTypeId = request.getDataPermissionTypeId();
-        List<Long> userIds = request.getUserIds();
+        List<String> permissionIds = request.getPermissionIds();
 
-        // 1. 查询数据权限类型，判断 hasTarget
-        SysDataPermissionType permissionType =
-                sysDataPermissionTypeMapper.selectById(dataPermissionTypeId);
-        if (permissionType == null) {
-            throw new BusinessException("数据权限类型不存在");
-        }
-        if (permissionType.getHasTarget() != null && permissionType.getHasTarget() == 1) {
-            List<SysRoleDataPermission> sysRoleDataPermissions =
-                    sysRoleDataPermissionMapper.selectList(
-                            Wrappers.<SysRoleDataPermission>lambdaQuery()
-                                    .eq(SysRoleDataPermission::getRoleId, roleId));
-            if (CollUtil.isNotEmpty(sysRoleDataPermissions)) {
-                List<Long> dataPermissionIds =
-                        sysRoleDataPermissions.stream().map(SysRoleDataPermission::getId).toList();
-                sysDataPermissionTargetMapper.delete(
-                        Wrappers.<SysDataPermissionTarget>lambdaQuery()
-                                .in(
-                                        SysDataPermissionTarget::getRoleDataPermissionId,
-                                        dataPermissionIds));
-            }
-        }
-        // 2. 清理旧数据：删除该角色与该数据权限类型的旧关联
+        // 1. 删除该角色的所有数据权限关联
         sysRoleDataPermissionMapper.delete(
                 Wrappers.<SysRoleDataPermission>lambdaQuery()
-                        .eq(SysRoleDataPermission::getRoleId, roleId)
-                        .eq(SysRoleDataPermission::getDataPermissionTypeId, dataPermissionTypeId));
+                        .eq(SysRoleDataPermission::getRoleId, roleId));
 
-        // 3. 插入新的 role_data_permission 记录
-        SysRoleDataPermission roleDataPermission = new SysRoleDataPermission();
-        roleDataPermission.setRoleId(roleId);
-        roleDataPermission.setDataPermissionTypeId(dataPermissionTypeId);
-        sysRoleDataPermissionMapper.insert(roleDataPermission);
+        // 2. 解析并插入新的权限关联
+        if (CollUtil.isNotEmpty(permissionIds)) {
+            List<SysRoleDataPermission> roleDataPermissions =
+                    permissionIds.stream()
+                            .map(
+                                    permissionId -> {
+                                        // 按 "-" 分割：permissionTypeId-dataPermissionId
+                                        String[] parts = permissionId.split("-");
+                                        if (parts.length != 2) {
+                                            throw new BusinessException(
+                                                    "权限ID格式错误，应为：permissionTypeId-bizId");
+                                        }
+                                        Long permissionTypeId = Long.parseLong(parts[0]);
+                                        Long bizId = Long.parseLong(parts[1]);
 
-        // 4. 如果 hasTarget 为 1，还需要插入 data_permission_target 表
-        if (permissionType.getHasTarget() != null && permissionType.getHasTarget() == 1) {
-            // 清理旧的 data_permission_target 关联（通过 role_data_permission_id）
-            // 先查询之前该角色和权限类型关联的 role_data_permission 记录对应的 target
-            // 由于上面已经删除了旧的 role_data_permission，但我们需要获取刚插入的 id
-            Long roleDataPermissionId = roleDataPermission.getId();
+                                        // 验证权限类型是否存在
+                                        SysDataPermissionType permissionType =
+                                                sysDataPermissionTypeMapper.selectById(
+                                                        permissionTypeId);
+                                        if (permissionType == null) {
+                                            throw new BusinessException("数据权限类型不存在");
+                                        }
 
-            if (CollUtil.isNotEmpty(userIds)) {
-                List<SysDataPermissionTarget> targets =
-                        userIds.stream()
-                                .map(
-                                        userId -> {
-                                            SysDataPermissionTarget target =
-                                                    new SysDataPermissionTarget();
-                                            target.setRoleDataPermissionId(roleDataPermissionId);
-                                            target.setTargetType("user");
-                                            target.setTargetId(userId);
-                                            return target;
-                                        })
-                                .toList();
-                sysDataPermissionTargetMapper.insert(targets);
-            }
+                                        SysRoleDataPermission rdp = new SysRoleDataPermission();
+                                        rdp.setRoleId(roleId);
+                                        rdp.setDataPermissionTypeId(permissionTypeId);
+                                        rdp.setBizId(bizId);
+                                        return rdp;
+                                    })
+                            .toList();
+            sysRoleDataPermissionMapper.insert(roleDataPermissions);
         }
     }
 
@@ -290,7 +270,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
 
     @Override
     public List<RoleDataPermissionResp> getRoleDataPermission(Long roleId) {
-        // 1. 查询角色数据权限关联
+        // 查询角色数据权限关联
         List<SysRoleDataPermission> roleDataPermissions =
                 sysRoleDataPermissionMapper.selectList(
                         Wrappers.<SysRoleDataPermission>lambdaQuery()
@@ -300,87 +280,18 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             return Collections.emptyList();
         }
 
-        // 2. 获取数据权限类型ID列表
-        List<Long> dataPermissionTypeIds =
-                roleDataPermissions.stream()
-                        .map(SysRoleDataPermission::getDataPermissionTypeId)
-                        .toList();
-
-        // 3. 查询数据权限类型信息
-        List<SysDataPermissionType> permissionTypes =
-                sysDataPermissionTypeMapper.selectList(
-                        Wrappers.<SysDataPermissionType>lambdaQuery()
-                                .in(SysDataPermissionType::getId, dataPermissionTypeIds));
-
-        // 4. 获取需要查询 target 的 role_data_permission ID 列表（hasTarget == 1）
-        List<Long> needTargetIds =
-                roleDataPermissions.stream()
-                        .filter(
-                                rdp -> {
-                                    SysDataPermissionType type =
-                                            permissionTypes.stream()
-                                                    .filter(
-                                                            pt ->
-                                                                    pt.getId()
-                                                                            .equals(
-                                                                                    rdp
-                                                                                            .getDataPermissionTypeId()))
-                                                    .findFirst()
-                                                    .orElse(null);
-                                    return type != null
-                                            && type.getHasTarget() != null
-                                            && type.getHasTarget() == 1;
-                                })
-                        .map(SysRoleDataPermission::getId)
-                        .toList();
-
-        // 5. 查询 data_permission_target 表
-        List<SysDataPermissionTarget> targets = Collections.emptyList();
-        if (CollUtil.isNotEmpty(needTargetIds)) {
-            targets =
-                    sysDataPermissionTargetMapper.selectList(
-                            Wrappers.<SysDataPermissionTarget>lambdaQuery()
-                                    .in(
-                                            SysDataPermissionTarget::getRoleDataPermissionId,
-                                            needTargetIds));
-        }
-
-        // 6. 构建响应
-        List<SysDataPermissionTarget> finalTargets = targets;
+        // 构建响应，拼接权限ID
         return roleDataPermissions.stream()
                 .map(
                         rdp -> {
                             RoleDataPermissionResp resp = new RoleDataPermissionResp();
                             resp.setId(rdp.getId());
                             resp.setRoleId(rdp.getRoleId());
-                            resp.setDataPermissionTypeId(rdp.getDataPermissionTypeId());
 
-                            SysDataPermissionType type =
-                                    permissionTypes.stream()
-                                            .filter(
-                                                    pt ->
-                                                            pt.getId()
-                                                                    .equals(
-                                                                            rdp
-                                                                                    .getDataPermissionTypeId()))
-                                            .findFirst()
-                                            .orElse(null);
-                            if (type != null) {
-                                resp.setDataPermissionTypeName(type.getName());
-                                resp.setHasTarget(type.getHasTarget());
-
-                                // hasTarget 为 1 时，查询对应的用户ID列表
-                                if (type.getHasTarget() != null && type.getHasTarget() == 1) {
-                                    List<Long> userIds =
-                                            finalTargets.stream()
-                                                    .filter(
-                                                            t ->
-                                                                    t.getRoleDataPermissionId()
-                                                                            .equals(rdp.getId()))
-                                                    .map(SysDataPermissionTarget::getTargetId)
-                                                    .toList();
-                                    resp.setUserIds(userIds);
-                                }
+                            // 拼接权限ID：permissionTypeId-dataPermissionId
+                            if (rdp.getDataPermissionTypeId() != null && rdp.getBizId() != null) {
+                                resp.setPermissionId(
+                                        rdp.getDataPermissionTypeId() + "-" + rdp.getBizId());
                             }
                             return resp;
                         })

@@ -20,11 +20,11 @@ public class SysDataPermissionTypeSaveReq {
     @NotBlank(message = "类型名称不能为空")
     private String name;
 
-    @Schema(description = "是否有目标", requiredMode = Schema.RequiredMode.REQUIRED)
-    private Integer hasTarget;
-
     @Schema(description = "类型描述")
     private String description;
+
+    @Schema(description = "权限业务类型编码")
+    private Integer bizTypeCode;
 
     @Schema(description = "排序")
     private Integer sort;

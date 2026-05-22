@@ -22,18 +22,12 @@ public class SysDataPermissionTypeResp {
     @Schema(description = "类型描述")
     private String description;
 
-    @Schema(description = "是否需要指定目标 1:是 0:否")
-    private Integer hasTarget;
-
-    @Schema(description = "目标类型 user/dept/company 等")
-    private String targetType;
-
     @Schema(description = "排序")
     private Integer sort;
 
     @Schema(description = "状态 1:启用 0:禁用")
     private Integer status;
 
-    @Schema(description = "目标用户列表（hasTarget为1时返回）")
-    private List<DataPermissionUserResp> children = new ArrayList<>();
+    @Schema(description = "关联的数据权限列表")
+    private List<SysDataPermissionResp> dataPermissions = new ArrayList<>();
 }
