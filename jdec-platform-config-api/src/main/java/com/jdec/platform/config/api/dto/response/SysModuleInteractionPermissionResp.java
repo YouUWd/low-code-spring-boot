@@ -18,8 +18,14 @@ public class SysModuleInteractionPermissionResp {
     @Schema(description = "模块编码")
     private String moduleCode;
 
-    @Schema(description = "该模块下的交互权限列表", nullable = true)
-    private List<SysInteractionPermissionResp> permissions;
+    @Schema(description = "申请类型权限列表（type=1）", nullable = true)
+    private List<SysInteractionPermissionResp> applyPermissions;
+
+    @Schema(description = "编辑类型权限列表（type=2）", nullable = true)
+    private List<SysInteractionPermissionResp> editPermissions;
+
+    @Schema(description = "查看类型权限列表（type=3）", nullable = true)
+    private List<SysInteractionPermissionResp> viewPermissions;
 
     @Schema(description = "子模块列表", nullable = true)
     private List<SysModuleInteractionPermissionResp> children;

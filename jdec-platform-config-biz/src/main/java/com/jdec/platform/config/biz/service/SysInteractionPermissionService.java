@@ -5,11 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysInteractionPermissionApi;
 import com.jdec.platform.config.api.dto.request.QuerySysInteractionPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysInteractionPermissionSaveReq;
-import com.jdec.platform.config.api.dto.response.SysInteractionPermissionDetailResp;
-import com.jdec.platform.config.api.dto.response.SysInteractionPermissionListResp;
-import com.jdec.platform.config.api.dto.response.SysInteractionPermissionResp;
-import com.jdec.platform.config.api.dto.response.SysModuleInteractionPermissionResp;
-import com.jdec.platform.config.api.dto.response.SysRightResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysRoleInteractionPermission;
@@ -173,6 +169,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                             resp.setCode(permission.getCode());
                             resp.setSort(permission.getSort());
                             resp.setStatus(permission.getStatus());
+                            resp.setType(permission.getType());
                             return resp;
                         })
                 .collect(Collectors.toList());
@@ -251,6 +248,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                 sysModuleMapper.selectList(
                         new LambdaQueryWrapper<SysModule>()
                                 .eq(SysModule::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
                                 .orderByAsc(SysModule::getSortOrder)
                                 .orderByAsc(SysModule::getId));
 
@@ -267,25 +265,28 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                 .orderByAsc(SysInteractionPermission::getSort)
                                 .orderByAsc(SysInteractionPermission::getId));
 
-        Map<Long, List<SysInteractionPermissionResp>> permissionMap =
+        // 转换为 DTO 并按 moduleId 和 type 分组
+        Map<Long, Map<Integer, List<SysInteractionPermissionResp>>> permissionMap =
                 allPermissions.stream()
+                        .map(
+                                p -> {
+                                    SysInteractionPermissionResp r =
+                                            new SysInteractionPermissionResp();
+                                    r.setId(p.getId());
+                                    r.setModuleId(p.getModuleId());
+                                    r.setModuleCode(p.getModuleCode());
+                                    r.setType(p.getType());
+                                    r.setName(p.getName());
+                                    r.setCode(p.getCode());
+                                    r.setSort(p.getSort());
+                                    r.setStatus(p.getStatus());
+                                    return r;
+                                })
                         .collect(
                                 Collectors.groupingBy(
-                                        SysInteractionPermission::getModuleId,
-                                        Collectors.mapping(
-                                                p -> {
-                                                    SysInteractionPermissionResp r =
-                                                            new SysInteractionPermissionResp();
-                                                    r.setId(p.getId());
-                                                    r.setModuleId(p.getModuleId());
-                                                    r.setModuleCode(p.getModuleCode());
-                                                    r.setName(p.getName());
-                                                    r.setCode(p.getCode());
-                                                    r.setSort(p.getSort());
-                                                    r.setStatus(p.getStatus());
-                                                    return r;
-                                                },
-                                                Collectors.toList())));
+                                        SysInteractionPermissionResp::getModuleId,
+                                        Collectors.groupingBy(
+                                                SysInteractionPermissionResp::getType)));
 
         // 3. 按 parentId 分组，用于构造树
         Map<Long, List<SysModule>> modulesByParent =
@@ -297,7 +298,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     private List<SysModuleInteractionPermissionResp> buildModuleTree(
             Map<Long, List<SysModule>> modulesByParent,
-            Map<Long, List<SysInteractionPermissionResp>> permissionMap,
+            Map<Long, Map<Integer, List<SysInteractionPermissionResp>>> permissionMap,
             Long parentId) {
         List<SysModule> children = modulesByParent.get(parentId);
         if (children == null || children.isEmpty()) {
@@ -309,7 +310,14 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             node.setModuleId(module.getId());
             node.setModuleName(module.getModuleName());
             node.setModuleCode(module.getModuleCode());
-            node.setPermissions(permissionMap.getOrDefault(module.getId(), new ArrayList<>()));
+
+            // 按类型分配权限列表
+            Map<Integer, List<SysInteractionPermissionResp>> typeMap =
+                    permissionMap.getOrDefault(module.getId(), new java.util.HashMap<>());
+            node.setApplyPermissions(typeMap.getOrDefault(1, new ArrayList<>()));
+            node.setEditPermissions(typeMap.getOrDefault(2, new ArrayList<>()));
+            node.setViewPermissions(typeMap.getOrDefault(3, new ArrayList<>()));
+
             node.setChildren(buildModuleTree(modulesByParent, permissionMap, module.getId()));
             result.add(node);
         }

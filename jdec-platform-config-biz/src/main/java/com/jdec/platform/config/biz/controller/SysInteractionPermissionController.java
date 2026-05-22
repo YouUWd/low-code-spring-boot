@@ -5,7 +5,6 @@ import com.jdec.platform.config.api.dto.request.QuerySysInteractionPermissionReq
 import com.jdec.platform.config.api.dto.request.SysInteractionPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionDetailResp;
 import com.jdec.platform.config.api.dto.response.SysInteractionPermissionListResp;
-import com.jdec.platform.config.api.dto.response.SysInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysModuleInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -56,12 +55,6 @@ public class SysInteractionPermissionController {
     public ApiResponse<SysInteractionPermissionDetailResp> getInteractionPermission(
             @Parameter(description = "交互权限ID", example = "1") @PathVariable Long id) {
         return ApiResponse.success(sysInteractionPermissionApi.getInteractionPermission(id));
-    }
-
-    @GetMapping("/all")
-    @Operation(summary = "查询所有交互权限（扁平化）")
-    public ApiResponse<List<SysInteractionPermissionResp>> listAllInteractionPermissions() {
-        return ApiResponse.success(sysInteractionPermissionApi.listAllInteractionPermissions());
     }
 
     @GetMapping("/module-tree")
