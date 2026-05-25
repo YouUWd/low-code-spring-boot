@@ -16,6 +16,7 @@ import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -39,6 +40,18 @@ public class SysWechatTemplateController {
         query.setProjectNo(AppContext.getProjectNo());
         log.info("查询项目 {} 的微信模板列表", query.getProjectNo());
         return ApiResponse.success(sysWechatTemplateService.listTemplates(query));
+    }
+
+    @Operation(summary = "根据模块ID查询微信模板列表")
+    @GetMapping("/module/{moduleId}")
+    public ApiResponse<List<WechatTemplateEntryResp>> listTemplatesByModuleId(
+            @Parameter(description = "模块ID", required = true) @PathVariable Long moduleId) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("根据模块ID查询微信模板列表: moduleId={}, projectNo={}", moduleId, projectNo);
+        List<WechatTemplateEntryResp> result =
+                sysWechatTemplateService.listTemplatesByModuleId(projectNo, subjectId, moduleId);
+        return ApiResponse.success(result);
     }
 
     @Operation(summary = "获取模板详情")

@@ -10,6 +10,7 @@ import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import com.jdec.platform.shared.model.PageResult;
+import java.util.List;
 
 /** 企业微信消息通知模板 API 接口 (含模板参数管理) */
 public interface SysWechatTemplateApi {
@@ -23,6 +24,17 @@ public interface SysWechatTemplateApi {
      * @return 模板列表分页结果
      */
     PageResult<WechatTemplateEntryResp> listTemplates(WechatTemplateQueryReq query);
+
+    /**
+     * 根据模块ID查询微信模板列表
+     *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
+     * @param moduleId 模块 ID
+     * @return 微信模板列表
+     */
+    List<WechatTemplateEntryResp> listTemplatesByModuleId(
+            String projectNo, Long subjectId, Long moduleId);
 
     /**
      * 获取模板详情

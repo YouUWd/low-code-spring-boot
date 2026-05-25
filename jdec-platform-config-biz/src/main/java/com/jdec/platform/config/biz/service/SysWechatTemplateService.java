@@ -69,6 +69,20 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    public List<WechatTemplateEntryResp> listTemplatesByModuleId(
+            String projectNo, Long subjectId, Long moduleId) {
+        LambdaQueryWrapper<SysWechatTemplate> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(SysWechatTemplate::getProjectNo, projectNo)
+                .eq(subjectId != null, SysWechatTemplate::getSubjectId, subjectId)
+                .eq(SysWechatTemplate::getModuleId, moduleId)
+                .eq(SysWechatTemplate::getDeleted, 0)
+                .orderByDesc(SysWechatTemplate::getCreatedDate);
+
+        List<SysWechatTemplate> list = sysWechatTemplateMapper.selectList(wrapper);
+        return list.stream().map(this::toTemplateEntryResp).toList();
+    }
+
+    @Override
     public WechatTemplateDetailResp getTemplateById(Long id) {
         SysWechatTemplate template = sysWechatTemplateMapper.selectById(id);
         if (template == null || template.getDeleted() == 1) {

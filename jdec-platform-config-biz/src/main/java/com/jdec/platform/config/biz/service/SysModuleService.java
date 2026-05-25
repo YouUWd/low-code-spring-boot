@@ -822,14 +822,11 @@ public class SysModuleService implements SysModuleApi {
 
     @Override
     public List<SysStatusTreeResp> getModuleStatusTree(
-            String projectNo, Long subjectId, String moduleCode) {
-        SysModule module =
-                sysModuleMapper.selectOne(
-                        Wrappers.<SysModule>lambdaQuery()
-                                .eq(SysModule::getProjectNo, projectNo)
-                                .eq(SysModule::getSubjectId, subjectId)
-                                .eq(SysModule::getModuleCode, moduleCode));
-        if (module == null) {
+            String projectNo, Long subjectId, Long moduleId) {
+        SysModule module = sysModuleMapper.selectById(moduleId);
+        if (module == null
+                || !Objects.equals(module.getProjectNo(), projectNo)
+                || !Objects.equals(module.getSubjectId(), subjectId)) {
             throw new BusinessException(404, "模块不存在");
         }
 

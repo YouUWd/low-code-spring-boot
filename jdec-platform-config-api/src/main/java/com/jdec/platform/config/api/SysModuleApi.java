@@ -65,9 +65,8 @@ public interface SysModuleApi {
      *
      * @param projectNo 项目编码
      * @param subjectId 主体ID
-     * @param moduleCode 模块编码
+     * @param moduleId 模块ID
      * @return 状态树形节点响应列表
      */
-    List<SysStatusTreeResp> getModuleStatusTree(
-            String projectNo, Long subjectId, String moduleCode);
+    List<SysStatusTreeResp> getModuleStatusTree(String projectNo, Long subjectId, Long moduleId);
 }
