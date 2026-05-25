@@ -4,6 +4,7 @@ import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
+import com.jdec.platform.config.api.dto.response.AllConfigResp;
 import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
 import com.jdec.platform.config.api.dto.response.SysConfigTreeNodeResp;
@@ -34,6 +35,12 @@ public class SysConfigCategoryController {
     @Operation(summary = "查询配置分类列表", description = "查询当前应用的所有配置分类")
     public ApiResponse<List<SysConfigCategoryResp>> list() {
         return ApiResponse.success(sysConfigCategoryApi.list());
+    }
+
+    @GetMapping("/allConfigs")
+    @Operation(summary = "查询所有通用配置", description = "查询所有配置分类及其配置项，按分类分组返回")
+    public ApiResponse<List<AllConfigResp>> allConfigs() {
+        return ApiResponse.success(sysConfigCategoryApi.getAllConfigs());
     }
 
     @GetMapping("/mixedTree")
