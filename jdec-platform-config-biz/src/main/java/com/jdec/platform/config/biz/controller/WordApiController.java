@@ -34,7 +34,7 @@ public class WordApiController {
     @Operation(summary = "获取关系详情")
     public ApiResponse<Object> getRelationInfo(
             @Parameter(description = "业务编号", required = true) @RequestParam String businessNo) {
-        Object data = wordApiClient.getRelationInfo(businessNo, new TypeReference<>() {});
+        Object data = wordApiClient.getRelationWord(businessNo, new TypeReference<>() {});
         return ApiResponse.success(data);
     }
 
