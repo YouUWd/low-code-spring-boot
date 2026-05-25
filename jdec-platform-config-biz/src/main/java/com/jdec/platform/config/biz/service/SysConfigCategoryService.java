@@ -6,6 +6,7 @@ import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
+import com.jdec.platform.config.api.dto.response.AllConfigResp;
 import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
 import com.jdec.platform.config.api.dto.response.SysConfigTreeNodeResp;
@@ -89,6 +90,81 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
 
         // 构建混合树
         return buildMixedTree(categories, items);
+    }
+
+    @Override
+    public List<AllConfigResp> getAllConfigs() {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+
+        // 查询所有分类
+        LambdaQueryWrapper<SysConfigCategory> categoryWrapper =
+                new LambdaQueryWrapper<SysConfigCategory>()
+                        .eq(SysConfigCategory::getProjectNo, projectNo)
+                        .orderByAsc(SysConfigCategory::getSort)
+                        .orderByAsc(SysConfigCategory::getId);
+        List<SysConfigCategory> categories = categoryMapper.selectList(categoryWrapper);
+
+        if (CollectionUtils.isEmpty(categories)) {
+            return Collections.emptyList();
+        }
+
+        // 查询所有配置项（按 categoryAlias 关联）
+        List<String> categoryAliases =
+                categories.stream()
+                        .map(SysConfigCategory::getCategoryAlias)
+                        .collect(Collectors.toList());
+        List<SysConfigItem> items =
+                itemMapper.selectList(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .in(SysConfigItem::getCategoryAlias, categoryAliases)
+                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                .orderByAsc(SysConfigItem::getSort)
+                                .orderByAsc(SysConfigItem::getId));
+
+        // 按分类分组配置项
+        Map<String, List<SysConfigItem>> itemsByCategory =
+                items.stream().collect(Collectors.groupingBy(SysConfigItem::getCategoryAlias));
+
+        // 构建响应
+        return categories.stream()
+                .map(
+                        category -> {
+                            AllConfigResp resp = new AllConfigResp();
+                            resp.setCategoryAlias(category.getCategoryAlias());
+                            resp.setFormat(category.getFormat());
+
+                            // 获取该分类下的配置项
+                            List<SysConfigItem> categoryItems =
+                                    itemsByCategory.getOrDefault(
+                                            category.getCategoryAlias(), Collections.emptyList());
+
+                            // 转换为 VO
+                            List<AllConfigResp.ConfigItemVO> itemVOs =
+                                    categoryItems.stream()
+                                            .map(
+                                                    item -> {
+                                                        AllConfigResp.ConfigItemVO vo =
+                                                                new AllConfigResp.ConfigItemVO();
+                                                        vo.setId(item.getId());
+                                                        vo.setPid(item.getPid());
+                                                        vo.setPath(item.getPath());
+                                                        vo.setDepth(item.getDepth());
+                                                        vo.setLabel(item.getLabel());
+                                                        vo.setValue(item.getValue());
+                                                        vo.setDescription(item.getDescription());
+                                                        vo.setExtra(item.getExtra());
+                                                        vo.setSort(item.getSort());
+                                                        vo.setStatus(item.getStatus());
+                                                        vo.setSubjectId(item.getSubjectId());
+                                                        return vo;
+                                                    })
+                                            .collect(Collectors.toList());
+
+                            resp.setItems(itemVOs);
+                            return resp;
+                        })
+                .collect(Collectors.toList());
     }
 
     /** 构建混合树（Category + Item） */

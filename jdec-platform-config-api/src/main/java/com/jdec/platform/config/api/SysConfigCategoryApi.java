@@ -3,6 +3,7 @@ package com.jdec.platform.config.api;
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
+import com.jdec.platform.config.api.dto.response.AllConfigResp;
 import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
 import com.jdec.platform.config.api.dto.response.SysConfigTreeNodeResp;
@@ -15,6 +16,9 @@ public interface SysConfigCategoryApi {
 
     /** 查询混合树（Category + Item） */
     List<SysConfigTreeNodeResp> mixedTree();
+
+    /** 查询所有通用配置（按分类分组） */
+    List<AllConfigResp> getAllConfigs();
 
     /**
      * 根据categoryAlias查询配置分类
