@@ -6,6 +6,7 @@ import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.MoveModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
+import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -65,6 +66,28 @@ public class SysModuleController {
         log.info("查询项目 {} (主体 {}) 的模块完整信息: moduleCode={}", projectNo, subjectId, moduleCode);
         SysModuleCompleteResp result =
                 sysModuleService.getModuleComplete(projectNo, subjectId, moduleCode);
+        return ApiResponse.success(result);
+    }
+
+    /**
+     * 查询模块下的状态组合的模块状态树
+     *
+     * <p>项目上下文通过 X-Project-No 请求头指定。
+     *
+     * @param moduleCode 模块编码
+     * @return 模块状态树列表
+     */
+    @Operation(summary = "查询模块下的状态树", description = "获取指定模块下关联的所有状态，并组合为状态树形结构")
+    @GetMapping("/{moduleCode}/status-tree")
+    public ApiResponse<List<SysStatusTreeResp>> getModuleStatusTree(
+            @Parameter(description = "模块编码", required = true, example = "MOD-STUDENT-DETAIL")
+                    @PathVariable
+                    String moduleCode) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} (主体 {}) 的模块状态树: moduleCode={}", projectNo, subjectId, moduleCode);
+        List<SysStatusTreeResp> result =
+                sysModuleService.getModuleStatusTree(projectNo, subjectId, moduleCode);
         return ApiResponse.success(result);
     }
 

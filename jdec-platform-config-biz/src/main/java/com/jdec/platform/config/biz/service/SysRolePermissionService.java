@@ -11,8 +11,11 @@ import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -310,6 +313,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
 
         // 2. 解析并批量插入新数据
         if (CollUtil.isNotEmpty(request.getFields())) {
+            List<SysRoleModuleFieldPermission> allEntities = new ArrayList<>();
             for (SaveRoleModuleFieldPermissionReq.ModuleFieldPermissionItem item :
                     request.getFields()) {
                 Long moduleId = item.getModuleId();
@@ -318,7 +322,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                 }
 
                 // 收集当前模块下所有涉及的 fieldId
-                java.util.Set<Long> fieldIds = new java.util.HashSet<>();
+                Set<Long> fieldIds = new HashSet<>();
                 if (CollUtil.isNotEmpty(item.getReadableFields())) {
                     fieldIds.addAll(item.getReadableFields());
                 }
@@ -368,11 +372,11 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                                         })
                                 .toList();
 
-                if (CollUtil.isNotEmpty(entities)) {
-                    for (SysRoleModuleFieldPermission entity : entities) {
-                        sysRoleModuleFieldPermissionMapper.insert(entity);
-                    }
-                }
+                allEntities.addAll(entities);
+            }
+
+            if (CollUtil.isNotEmpty(allEntities)) {
+                sysRoleModuleFieldPermissionMapper.insert(allEntities);
             }
         }
     }

@@ -13,6 +13,7 @@ import com.jdec.platform.config.api.dto.request.SaveModuleReq.SaveSysModuleReq;
 import com.jdec.platform.config.api.dto.response.MoveModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
+import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
@@ -38,6 +39,7 @@ public class SysModuleService implements SysModuleApi {
     private final SysModuleTableMapper sysModuleTableMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysModuleStatusMapper sysModuleStatusMapper;
+    private final SysStatusMapper sysStatusMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysFieldValueMapper sysFieldValueMapper;
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
@@ -816,5 +818,80 @@ public class SysModuleService implements SysModuleApi {
             log.error("sourceMapping 解析失败: {}", sourceMappingJson, e);
             return new ArrayList<>();
         }
+    }
+
+    @Override
+    public List<SysStatusTreeResp> getModuleStatusTree(
+            String projectNo, Long subjectId, String moduleCode) {
+        SysModule module =
+                sysModuleMapper.selectOne(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(SysModule::getProjectNo, projectNo)
+                                .eq(SysModule::getSubjectId, subjectId)
+                                .eq(SysModule::getModuleCode, moduleCode));
+        if (module == null) {
+            throw new BusinessException(404, "模块不存在");
+        }
+
+        // 1. 获取关联的模块状态关系
+        List<SysModuleStatus> moduleStatuses =
+                sysModuleStatusMapper.selectList(
+                        Wrappers.<SysModuleStatus>lambdaQuery()
+                                .eq(SysModuleStatus::getModuleId, module.getId()));
+        if (CollectionUtils.isEmpty(moduleStatuses)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 提取 statusId
+        List<Long> statusIds =
+                moduleStatuses.stream()
+                        .map(SysModuleStatus::getStatusId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(statusIds)) {
+            return Collections.emptyList();
+        }
+
+        // 3. 查询实际的状态记录详情
+        List<SysStatus> statuses =
+                sysStatusMapper.selectList(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .in(SysStatus::getId, statusIds)
+                                .eq(SysStatus::getProjectNo, projectNo)
+                                .eq(SysStatus::getSubjectId, subjectId)
+                                .orderByAsc(SysStatus::getSortOrder)
+                                .orderByAsc(SysStatus::getStatusValue)
+                                .orderByAsc(SysStatus::getId));
+        if (CollectionUtils.isEmpty(statuses)) {
+            return Collections.emptyList();
+        }
+
+        // 4. 构建节点映射
+        Map<Long, SysStatusTreeResp> nodeMap = new LinkedHashMap<>();
+        for (SysStatus status : statuses) {
+            SysStatusTreeResp resp = new SysStatusTreeResp();
+            org.springframework.beans.BeanUtils.copyProperties(status, resp);
+            resp.setChildren(new ArrayList<>());
+            nodeMap.put(status.getId(), resp);
+        }
+
+        // 5. 组装状态树
+        List<SysStatusTreeResp> tree = new ArrayList<>();
+        for (SysStatus status : statuses) {
+            SysStatusTreeResp node = nodeMap.get(status.getId());
+            Long pid = status.getPid();
+            // 如果父状态ID为空、为0，或者当前模块的被选状态中不包含其父状态，则作为当前模块的树根节点
+            if (pid == null || pid == 0L || !nodeMap.containsKey(pid)) {
+                tree.add(node);
+            } else {
+                SysStatusTreeResp parent = nodeMap.get(pid);
+                if (parent != null && parent.getChildren() != null) {
+                    parent.getChildren().add(node);
+                } else {
+                    tree.add(node);
+                }
+            }
+        }
+        return tree;
     }
 }

@@ -5,6 +5,7 @@ import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.MoveModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
+import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import java.util.List;
 
 /** 模块管理 API 接口 提供模块完整信息的 CRUD 操作 */
@@ -58,4 +59,15 @@ public interface SysModuleApi {
      * @return 移动模块结果
      */
     MoveModuleResp moveModule(MoveModuleReq request);
+
+    /**
+     * 查询模块下的状态，组合为一个模块状态树
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @param moduleCode 模块编码
+     * @return 状态树形节点响应列表
+     */
+    List<SysStatusTreeResp> getModuleStatusTree(
+            String projectNo, Long subjectId, String moduleCode);
 }
