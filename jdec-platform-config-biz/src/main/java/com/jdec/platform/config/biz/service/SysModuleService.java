@@ -36,8 +36,7 @@ public class SysModuleService implements SysModuleApi {
 
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleTableMapper sysModuleTableMapper;
-    private final SysModuleSimpleFieldMapper sysModuleSimpleFieldMapper;
-    private final SysModuleCombineFieldMapper sysModuleCombineFieldMapper;
+    private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysModuleStatusMapper sysModuleStatusMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysFieldValueMapper sysFieldValueMapper;
@@ -167,41 +166,36 @@ public class SysModuleService implements SysModuleApi {
                         .collect(Collectors.toList());
         resp.setModuleTables(tableInfos);
 
-        // 获取简单字段
-        LambdaQueryWrapper<SysModuleSimpleField> simpleFieldWrapper = new LambdaQueryWrapper<>();
-        simpleFieldWrapper
-                .eq(SysModuleSimpleField::getModuleId, moduleId)
-                .orderByAsc(SysModuleSimpleField::getId);
-        List<SysModuleSimpleField> simpleFields =
-                sysModuleSimpleFieldMapper.selectList(simpleFieldWrapper);
+        // 获取模块字段配置并分流
+        List<SysModuleField> allFields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .eq(SysModuleField::getModuleId, moduleId));
+
         List<ModuleSimpleFieldDTO> simpleFieldInfos =
-                simpleFields.stream()
+                allFields.stream()
+                        .filter(f -> "SIMPLE".equals(f.getFieldType()))
                         .map(
                                 f -> {
                                     ModuleSimpleFieldDTO info = new ModuleSimpleFieldDTO();
                                     info.setId(f.getId());
                                     info.setTableName(f.getTableName());
-                                    info.setColumnName(f.getColumnName());
+                                    info.setColumnName(f.getFieldCode());
                                     info.setTransformer(f.getTransformer());
                                     return info;
                                 })
                         .collect(Collectors.toList());
         resp.setSimpleFields(simpleFieldInfos);
 
-        // 获取组合字段
-        LambdaQueryWrapper<SysModuleCombineField> combineFieldWrapper = new LambdaQueryWrapper<>();
-        combineFieldWrapper
-                .eq(SysModuleCombineField::getModuleId, moduleId)
-                .orderByAsc(SysModuleCombineField::getId);
-        List<SysModuleCombineField> combineFields =
-                sysModuleCombineFieldMapper.selectList(combineFieldWrapper);
         List<ModuleCombineFieldDTO> combineFieldInfos =
-                combineFields.stream()
+                allFields.stream()
+                        .filter(f -> "COMBINE".equals(f.getFieldType()))
+                        .sorted(Comparator.comparing(SysModuleField::getId))
                         .map(
                                 f -> {
                                     ModuleCombineFieldDTO info = new ModuleCombineFieldDTO();
                                     info.setId(f.getId());
-                                    info.setLogicalField(f.getLogicalField());
+                                    info.setLogicalField(f.getFieldCode());
                                     info.setDisplayName(f.getDisplayName());
                                     info.setSourceMapping(parseSourceMapping(f.getSourceMapping()));
                                     info.setTransformer(f.getTransformer());
@@ -362,15 +356,9 @@ public class SysModuleService implements SysModuleApi {
         sysModuleTableMapper.delete(
                 Wrappers.<SysModuleTable>lambdaQuery().eq(SysModuleTable::getModuleId, moduleId));
 
-        // 删除简单字段
-        sysModuleSimpleFieldMapper.delete(
-                Wrappers.<SysModuleSimpleField>lambdaQuery()
-                        .eq(SysModuleSimpleField::getModuleId, moduleId));
-
-        // 删除组合字段
-        sysModuleCombineFieldMapper.delete(
-                Wrappers.<SysModuleCombineField>lambdaQuery()
-                        .eq(SysModuleCombineField::getModuleId, moduleId));
+        // 删除模块字段配置
+        sysModuleFieldMapper.delete(
+                Wrappers.<SysModuleField>lambdaQuery().eq(SysModuleField::getModuleId, moduleId));
 
         // 删除状态
         sysModuleStatusMapper.delete(
@@ -699,35 +687,37 @@ public class SysModuleService implements SysModuleApi {
 
     private void saveSimpleFields(Long moduleId, List<ModuleSimpleFieldDTO> fields) {
         // 先删除旧字段
-        LambdaQueryWrapper<SysModuleSimpleField> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModuleSimpleField::getModuleId, moduleId);
-        sysModuleSimpleFieldMapper.delete(wrapper);
+        LambdaQueryWrapper<SysModuleField> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModuleField::getModuleId, moduleId)
+                .eq(SysModuleField::getFieldType, "SIMPLE");
+        sysModuleFieldMapper.delete(wrapper);
 
         // 重新保存
         for (ModuleSimpleFieldDTO info : fields) {
-            SysModuleSimpleField f = new SysModuleSimpleField();
+            SysModuleField f = new SysModuleField();
             f.setModuleId(moduleId);
+            f.setFieldType("SIMPLE");
+            f.setFieldCode(info.getColumnName());
             f.setTableName(info.getTableName());
-            f.setColumnName(info.getColumnName());
             f.setTransformer(info.getTransformer());
-            LocalDateTime now = LocalDateTime.now();
-            f.setCreatedDate(now);
-            f.setUpdatedDate(now);
-            sysModuleSimpleFieldMapper.insert(f);
+            sysModuleFieldMapper.insert(f);
         }
     }
 
     private void saveCombineFields(Long moduleId, List<ModuleCombineFieldDTO> fields) {
         // 先删除旧字段
-        LambdaQueryWrapper<SysModuleCombineField> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModuleCombineField::getModuleId, moduleId);
-        sysModuleCombineFieldMapper.delete(wrapper);
+        LambdaQueryWrapper<SysModuleField> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModuleField::getModuleId, moduleId)
+                .eq(SysModuleField::getFieldType, "COMBINE");
+        sysModuleFieldMapper.delete(wrapper);
 
         // 重新保存
         for (ModuleCombineFieldDTO info : fields) {
-            SysModuleCombineField f = new SysModuleCombineField();
+            SysModuleField f = new SysModuleField();
             f.setModuleId(moduleId);
-            f.setLogicalField(info.getLogicalField());
+            f.setFieldType("COMBINE");
+            f.setFieldCode(info.getLogicalField());
+            f.setTableName("*"); // 统一存储唯一逻辑表名标识，提效联合索引且隔离
             f.setDisplayName(info.getDisplayName());
             try {
                 f.setSourceMapping(objectMapper.writeValueAsString(info.getSourceMapping()));
@@ -736,10 +726,7 @@ public class SysModuleService implements SysModuleApi {
             }
             f.setTransformer(info.getTransformer());
             f.setEnabled(info.getEnabled() != null ? info.getEnabled() : 1);
-            LocalDateTime now = LocalDateTime.now();
-            f.setCreatedDate(now);
-            f.setUpdatedDate(now);
-            sysModuleCombineFieldMapper.insert(f);
+            sysModuleFieldMapper.insert(f);
         }
     }
 

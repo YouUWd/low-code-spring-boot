@@ -4,12 +4,12 @@ import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.SaveRoleDataPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleInteractionPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleModuleFieldReq;
+import com.jdec.platform.config.api.dto.request.SaveRoleModuleFieldPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleMenuResp;
-import com.jdec.platform.config.api.dto.response.RoleModuleFieldResp;
+import com.jdec.platform.config.api.dto.response.RoleModuleFieldPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleSpecialPermissionResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -89,20 +89,18 @@ public class SysRolePermissionController {
         return ApiResponse.success();
     }
 
-    @GetMapping("/get-role-module-field-permission")
-    @Operation(summary = "查询角色模块字段权限", description = "根据角色ID和模块ID查询该角色关联的字段权限列表")
-    public ApiResponse<List<RoleModuleFieldResp>> getRoleModuleFieldPermission(
-            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
-            @Parameter(description = "模块ID", example = "1") @RequestParam Long moduleId) {
-        return ApiResponse.success(
-                sysRolePermissionApi.getRoleModuleFieldPermission(roleId, moduleId));
-    }
-
     @PostMapping("/save-role-module-field-permission")
     @Operation(summary = "保存角色模块字段权限", description = "保存角色与模块字段权限的关联关系")
     public ApiResponse<Void> saveRoleModuleFieldPermission(
-            @RequestBody SaveRoleModuleFieldReq request) {
+            @RequestBody SaveRoleModuleFieldPermissionReq request) {
         sysRolePermissionApi.saveRoleModuleFieldPermission(request);
         return ApiResponse.success();
+    }
+
+    @GetMapping("/get-role-module-field-permission")
+    @Operation(summary = "查询角色模块字段权限列表", description = "根据角色ID查询该角色已分配的模块字段权限列表")
+    public ApiResponse<List<RoleModuleFieldPermissionResp>> getRoleModuleFieldPermission(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
+        return ApiResponse.success(sysRolePermissionApi.getRoleModuleFieldPermission(roleId));
     }
 }

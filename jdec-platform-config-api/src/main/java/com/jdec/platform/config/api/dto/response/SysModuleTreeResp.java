@@ -34,4 +34,7 @@ public class SysModuleTreeResp {
 
     /** 子模块列表 */
     private List<SysModuleTreeResp> children;
+
+    /** 关联的表列表 */
+    private List<ModuleTableTreeResp> tables;
 }

@@ -1,0 +1,43 @@
+package com.jdec.platform.config.biz.controller;
+
+import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
+import com.jdec.platform.config.api.dto.response.SysModuleFieldTreeResp;
+import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.model.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/** 模块字段管理控制器 提供获取包含物理表、复合表及其字段的纯净树形展示端点 */
+@Slf4j
+@Tag(name = "模块字段权限管理", description = "提供模块、表和字段展示 the 树形关系端点")
+@RestController
+@RequestMapping("/api/config/sys/module-field-permission")
+@RequiredArgsConstructor
+public class SysModuleFieldPermissionController {
+
+    private final SysModuleFieldPermissionApi sysModuleFieldPermissionService;
+
+    /**
+     * 获取纯净的模块表字段树
+     *
+     * <p>项目上下文通过 X-Project-No 请求头指定，主体上下文通过 X-Subject-Id 指定。
+     *
+     * @return 包含物理表、复合表以及其下字段的纯净树形结构
+     */
+    @Operation(summary = "获取纯净模块字段树", description = "高性能全批量装配输出模块-表（简单物理表与复合表）-字段树")
+    @GetMapping("/tree")
+    public ApiResponse<List<SysModuleFieldTreeResp>> getModuleTableFieldTree() {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("获取项目 {} 主体 {} 下的纯净模块表字段树", projectNo, subjectId);
+        List<SysModuleFieldTreeResp> result =
+                sysModuleFieldPermissionService.getModuleTableFieldTree(projectNo, subjectId);
+        return ApiResponse.success(result);
+    }
+}

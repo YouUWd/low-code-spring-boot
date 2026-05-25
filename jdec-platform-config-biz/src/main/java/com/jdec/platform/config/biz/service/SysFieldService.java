@@ -11,11 +11,11 @@ import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysFieldValue;
 import com.jdec.platform.config.biz.entity.SysModule;
-import com.jdec.platform.config.biz.entity.SysModuleSimpleField;
+import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysFieldValueMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleSimpleFieldMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.third.WordApiClient;
@@ -44,7 +44,7 @@ public class SysFieldService implements SysFieldApi {
     private final SysFieldMapper sysFieldMapper;
     private final SysFieldValueMapper sysFieldValueMapper;
     private final SysModuleMapper sysModuleMapper;
-    private final SysModuleSimpleFieldMapper sysModuleSimpleFieldMapper;
+    private final SysModuleFieldMapper sysModuleFieldMapper;
     private final JdbcTemplate jdbcTemplate;
     private final WordApiClient wordApiClient;
 
@@ -202,11 +202,12 @@ public class SysFieldService implements SysFieldApi {
                 Collections.emptyMap();
         if (!modules.isEmpty()) {
             List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
-            List<SysModuleSimpleField> simpleFields =
-                    sysModuleSimpleFieldMapper.selectList(
-                            new LambdaQueryWrapper<SysModuleSimpleField>()
-                                    .in(SysModuleSimpleField::getModuleId, moduleIds)
-                                    .eq(SysModuleSimpleField::getTableName, tableName));
+            List<SysModuleField> simpleFields =
+                    sysModuleFieldMapper.selectList(
+                            new LambdaQueryWrapper<SysModuleField>()
+                                    .in(SysModuleField::getModuleId, moduleIds)
+                                    .eq(SysModuleField::getTableName, tableName)
+                                    .eq(SysModuleField::getFieldType, "SIMPLE"));
 
             Map<Long, SysModule> moduleMap =
                     modules.stream()
@@ -217,7 +218,7 @@ public class SysFieldService implements SysFieldApi {
                             .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
                             .collect(
                                     Collectors.groupingBy(
-                                            SysModuleSimpleField::getColumnName,
+                                            SysModuleField::getFieldCode,
                                             Collectors.mapping(
                                                     sf -> {
                                                         SysModule m =

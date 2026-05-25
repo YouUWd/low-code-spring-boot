@@ -26,9 +26,6 @@ public class SysRoleModuleFieldPermission implements Serializable {
     /** 模块ID */
     private Long moduleId;
 
-    /** 字段类型: simple-简单字段, combine-组合字段 */
-    private String fieldType;
-
     /** 字段ID */
     private Long fieldId;
 

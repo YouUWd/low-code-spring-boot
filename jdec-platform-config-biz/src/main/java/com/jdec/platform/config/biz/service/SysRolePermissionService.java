@@ -298,57 +298,76 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                 .toList();
     }
 
+    @Transactional(rollbackFor = Exception.class)
     @Override
-    public List<RoleModuleFieldResp> getRoleModuleFieldPermission(Long roleId, Long moduleId) {
-        List<SysRoleModuleFieldPermission> list =
-                sysRoleModuleFieldPermissionMapper.selectList(
-                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
-                                .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
-
-        return list.stream()
-                .map(
-                        e ->
-                                RoleModuleFieldResp.builder()
-                                        .id(e.getId())
-                                        .fieldType(e.getFieldType())
-                                        .fieldId(e.getFieldId())
-                                        .readable(e.getReadable())
-                                        .writable(e.getWritable())
-                                        .updatable(e.getUpdatable())
-                                        .build())
-                .toList();
-    }
-
-    @Transactional
-    @Override
-    public void saveRoleModuleFieldPermission(SaveRoleModuleFieldReq request) {
+    public void saveRoleModuleFieldPermission(SaveRoleModuleFieldPermissionReq request) {
         Long roleId = request.getRoleId();
         Long moduleId = request.getModuleId();
 
-        // 1. 删除该角色在该模块下的旧权限
+        // 1. 精准删除该角色在当前指定模块下的旧字段权限记录
         sysRoleModuleFieldPermissionMapper.delete(
                 Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
                         .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
                         .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
 
-        // 2. 批量插入新权限
-        if (CollUtil.isNotEmpty(request.getPermissions())) {
+        // 2. 过滤并装配有实际权限的新数据进行批量插入
+        if (CollUtil.isNotEmpty(request.getFields())) {
             List<SysRoleModuleFieldPermission> entities =
-                    request.getPermissions().stream()
+                    request.getFields().stream()
+                            .filter(
+                                    item ->
+                                            (item.getReadable() != null && item.getReadable() == 1)
+                                                    || (item.getWritable() != null
+                                                            && item.getWritable() == 1)
+                                                    || (item.getUpdatable() != null
+                                                            && item.getUpdatable() == 1))
                             .map(
                                     item ->
                                             SysRoleModuleFieldPermission.builder()
                                                     .roleId(roleId)
                                                     .moduleId(moduleId)
-                                                    .fieldType(item.getFieldType())
                                                     .fieldId(item.getFieldId())
                                                     .readable(item.getReadable())
                                                     .writable(item.getWritable())
                                                     .updatable(item.getUpdatable())
                                                     .build())
                             .toList();
-            sysRoleModuleFieldPermissionMapper.insert(entities);
+
+            if (CollUtil.isNotEmpty(entities)) {
+                for (SysRoleModuleFieldPermission entity : entities) {
+                    sysRoleModuleFieldPermissionMapper.insert(entity);
+                }
+            }
         }
+    }
+
+    @Override
+    public List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(Long roleId) {
+        // 1. 直接查询该角色已分配的模块字段权限配置列表
+        List<SysRoleModuleFieldPermission> allocatedList =
+                sysRoleModuleFieldPermissionMapper.selectList(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
+
+        if (CollUtil.isEmpty(allocatedList)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 转换为 DTO 扁平列表
+        return allocatedList.stream()
+                .map(
+                        p -> {
+                            RoleModuleFieldPermissionResp resp =
+                                    new RoleModuleFieldPermissionResp();
+                            resp.setId(p.getId());
+                            resp.setRoleId(p.getRoleId());
+                            resp.setModuleId(p.getModuleId());
+                            resp.setFieldId(p.getFieldId());
+                            resp.setReadable(p.getReadable());
+                            resp.setWritable(p.getWritable());
+                            resp.setUpdatable(p.getUpdatable());
+                            return resp;
+                        })
+                .toList();
     }
 }
