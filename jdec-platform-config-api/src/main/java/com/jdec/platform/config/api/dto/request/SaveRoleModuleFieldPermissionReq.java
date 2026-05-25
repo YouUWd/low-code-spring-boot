@@ -15,28 +15,24 @@ public class SaveRoleModuleFieldPermissionReq implements Serializable {
     @NotNull(message = "角色ID不能为空")
     private Long roleId;
 
-    @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "模块ID不能为空")
-    private Long moduleId;
-
-    @Schema(description = "字段权限配置明细列表")
-    private List<FieldPermissionItem> fields;
+    @Schema(description = "所有模块的字段权限配置列表")
+    private List<ModuleFieldPermissionItem> fields;
 
     @Data
-    @Schema(description = "字段权限明细")
-    public static class FieldPermissionItem implements Serializable {
+    @Schema(description = "单个模块的字段权限配置明细")
+    public static class ModuleFieldPermissionItem implements Serializable {
 
-        @Schema(description = "字段ID", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotNull(message = "字段ID不能为空")
-        private Long fieldId;
+        @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
+        @NotNull(message = "模块ID不能为空")
+        private Long moduleId;
 
-        @Schema(description = "是否可查看 (0-否, 1-是)")
-        private Integer readable;
+        @Schema(description = "可读字段ID列表")
+        private List<Long> readableFields;
 
-        @Schema(description = "是否可申请 (0-否, 1-是)")
-        private Integer writable;
+        @Schema(description = "可写(新增)字段ID列表")
+        private List<Long> writableFields;
 
-        @Schema(description = "是否可编辑 (0-否, 1-是)")
-        private Integer updatable;
+        @Schema(description = "可更新字段ID列表")
+        private List<Long> updatableFields;
     }
 }

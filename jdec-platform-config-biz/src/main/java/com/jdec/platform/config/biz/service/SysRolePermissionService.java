@@ -302,40 +302,76 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     @Override
     public void saveRoleModuleFieldPermission(SaveRoleModuleFieldPermissionReq request) {
         Long roleId = request.getRoleId();
-        Long moduleId = request.getModuleId();
 
-        // 1. 精准删除该角色在当前指定模块下的旧字段权限记录
+        // 1. 删除该角色下的所有旧字段权限记录
         sysRoleModuleFieldPermissionMapper.delete(
                 Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                        .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
-                        .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
+                        .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
 
-        // 2. 过滤并装配有实际权限的新数据进行批量插入
+        // 2. 解析并批量插入新数据
         if (CollUtil.isNotEmpty(request.getFields())) {
-            List<SysRoleModuleFieldPermission> entities =
-                    request.getFields().stream()
-                            .filter(
-                                    item ->
-                                            (item.getReadable() != null && item.getReadable() == 1)
-                                                    || (item.getWritable() != null
-                                                            && item.getWritable() == 1)
-                                                    || (item.getUpdatable() != null
-                                                            && item.getUpdatable() == 1))
-                            .map(
-                                    item ->
-                                            SysRoleModuleFieldPermission.builder()
+            for (SaveRoleModuleFieldPermissionReq.ModuleFieldPermissionItem item :
+                    request.getFields()) {
+                Long moduleId = item.getModuleId();
+                if (moduleId == null) {
+                    continue;
+                }
+
+                // 收集当前模块下所有涉及的 fieldId
+                java.util.Set<Long> fieldIds = new java.util.HashSet<>();
+                if (CollUtil.isNotEmpty(item.getReadableFields())) {
+                    fieldIds.addAll(item.getReadableFields());
+                }
+                if (CollUtil.isNotEmpty(item.getWritableFields())) {
+                    fieldIds.addAll(item.getWritableFields());
+                }
+                if (CollUtil.isNotEmpty(item.getUpdatableFields())) {
+                    fieldIds.addAll(item.getUpdatableFields());
+                }
+
+                if (fieldIds.isEmpty()) {
+                    continue;
+                }
+
+                // 为每个 fieldId 构建一条权限记录
+                List<SysRoleModuleFieldPermission> entities =
+                        fieldIds.stream()
+                                .map(
+                                        fieldId -> {
+                                            Integer readable =
+                                                    (item.getReadableFields() != null
+                                                                    && item.getReadableFields()
+                                                                            .contains(fieldId))
+                                                            ? 1
+                                                            : 0;
+                                            Integer writable =
+                                                    (item.getWritableFields() != null
+                                                                    && item.getWritableFields()
+                                                                            .contains(fieldId))
+                                                            ? 1
+                                                            : 0;
+                                            Integer updatable =
+                                                    (item.getUpdatableFields() != null
+                                                                    && item.getUpdatableFields()
+                                                                            .contains(fieldId))
+                                                            ? 1
+                                                            : 0;
+
+                                            return SysRoleModuleFieldPermission.builder()
                                                     .roleId(roleId)
                                                     .moduleId(moduleId)
-                                                    .fieldId(item.getFieldId())
-                                                    .readable(item.getReadable())
-                                                    .writable(item.getWritable())
-                                                    .updatable(item.getUpdatable())
-                                                    .build())
-                            .toList();
+                                                    .fieldId(fieldId)
+                                                    .readable(readable)
+                                                    .writable(writable)
+                                                    .updatable(updatable)
+                                                    .build();
+                                        })
+                                .toList();
 
-            if (CollUtil.isNotEmpty(entities)) {
-                for (SysRoleModuleFieldPermission entity : entities) {
-                    sysRoleModuleFieldPermissionMapper.insert(entity);
+                if (CollUtil.isNotEmpty(entities)) {
+                    for (SysRoleModuleFieldPermission entity : entities) {
+                        sysRoleModuleFieldPermissionMapper.insert(entity);
+                    }
                 }
             }
         }
