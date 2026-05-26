@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.dto.request.SysFieldSaveReq;
 import com.jdec.platform.config.api.dto.request.SysFieldValueSaveReq;
@@ -164,6 +165,51 @@ public class SysFieldService implements SysFieldApi {
 
         // 2.1 获取关联的扩展值信息
         List<Long> fieldIds = sysFields.stream().map(SysField::getId).toList();
+
+        // 2.1.1 查询并缓存 relationBusinessNo 的词云映射
+        Map<String, Map<String, String>> wordMapsByBusinessNo = new HashMap<>();
+        for (SysField field : sysFields) {
+            String relationBusinessNo = field.getRelationBusinessNo();
+            if (relationBusinessNo != null && !relationBusinessNo.isBlank()) {
+                wordMapsByBusinessNo.computeIfAbsent(
+                        relationBusinessNo,
+                        k -> {
+                            try {
+                                List<Map<String, Object>> relationWords =
+                                        wordApiClient.getRelationWord(k, new TypeReference<>() {});
+                                if (relationWords != null) {
+                                    Map<String, String> wordMap = new HashMap<>();
+                                    for (Map<String, Object> word : relationWords) {
+                                        Object wordNo = word.get("word_no");
+                                        Object wordName = word.get("word_name");
+                                        if (wordNo != null) {
+                                            wordMap.put(
+                                                    wordNo.toString(),
+                                                    wordName != null ? wordName.toString() : "");
+                                        }
+                                    }
+                                    return wordMap;
+                                }
+                            } catch (Exception e) {
+                                log.warn("获取关系词列表失败: businessNo={}", k, e);
+                            }
+                            return Collections.emptyMap();
+                        });
+            }
+        }
+
+        Map<Long, String> fieldRelationMap =
+                sysFields.stream()
+                        .filter(
+                                f ->
+                                        f.getRelationBusinessNo() != null
+                                                && !f.getRelationBusinessNo().isBlank())
+                        .collect(
+                                Collectors.toMap(
+                                        SysField::getId,
+                                        SysField::getRelationBusinessNo,
+                                        (v1, v2) -> v1));
+
         Map<Long, List<SysFieldValueResp>> valueMap =
                 fieldIds.isEmpty()
                         ? Collections.emptyMap()
@@ -174,18 +220,28 @@ public class SysFieldService implements SysFieldApi {
                                                 .eq(SysFieldValue::getDeleted, 0))
                                 .stream()
                                 .map(
-                                        v ->
-                                                SysFieldValueResp.builder()
-                                                        .id(v.getId())
-                                                        .fieldId(v.getFieldId())
-                                                        .moduleId(v.getModuleId())
-                                                        .moduleName(v.getModuleName())
-                                                        .fieldValue(v.getFieldValue())
-                                                        .approvalChainTypeId(
-                                                                v.getApprovalChainTypeId())
-                                                        .sortOrder(v.getSortOrder())
-                                                        .enabled(v.getEnabled())
-                                                        .build())
+                                        v -> {
+                                            String rNo = fieldRelationMap.get(v.getFieldId());
+                                            String desc = null;
+                                            if (rNo != null) {
+                                                Map<String, String> wordMap =
+                                                        wordMapsByBusinessNo.get(rNo);
+                                                if (wordMap != null) {
+                                                    desc = wordMap.get(v.getFieldValue());
+                                                }
+                                            }
+                                            return SysFieldValueResp.builder()
+                                                    .id(v.getId())
+                                                    .fieldId(v.getFieldId())
+                                                    .moduleId(v.getModuleId())
+                                                    .moduleName(v.getModuleName())
+                                                    .fieldValue(v.getFieldValue())
+                                                    .fieldValueDesc(desc)
+                                                    .approvalChainTypeId(v.getApprovalChainTypeId())
+                                                    .sortOrder(v.getSortOrder())
+                                                    .enabled(v.getEnabled())
+                                                    .build();
+                                        })
                                 .collect(Collectors.groupingBy(SysFieldValueResp::getFieldId));
 
         Map<String, SysField> configMap =
@@ -357,6 +413,30 @@ public class SysFieldService implements SysFieldApi {
             return null;
         }
 
+        String rNo = field.getRelationBusinessNo();
+        Map<String, String> wordMap = null;
+        if (rNo != null && !rNo.isBlank()) {
+            try {
+                List<Map<String, Object>> relationWords =
+                        wordApiClient.getRelationWord(rNo, new TypeReference<>() {});
+                if (relationWords != null) {
+                    wordMap = new HashMap<>();
+                    for (Map<String, Object> word : relationWords) {
+                        Object wordNo = word.get("word_no");
+                        Object wordName = word.get("word_name");
+                        if (wordNo != null) {
+                            wordMap.put(
+                                    wordNo.toString(), wordName != null ? wordName.toString() : "");
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("获取关系词列表失败: businessNo={}", rNo, e);
+            }
+        }
+
+        final Map<String, String> finalWordMap = wordMap;
+
         // 查询关联的扩展值信息
         List<SysFieldValueResp> fieldValues =
                 sysFieldValueMapper
@@ -366,17 +446,23 @@ public class SysFieldService implements SysFieldApi {
                                         .eq(SysFieldValue::getDeleted, 0))
                         .stream()
                         .map(
-                                v ->
-                                        SysFieldValueResp.builder()
-                                                .id(v.getId())
-                                                .fieldId(v.getFieldId())
-                                                .moduleId(v.getModuleId())
-                                                .moduleName(v.getModuleName())
-                                                .fieldValue(v.getFieldValue())
-                                                .approvalChainTypeId(v.getApprovalChainTypeId())
-                                                .sortOrder(v.getSortOrder())
-                                                .enabled(v.getEnabled())
-                                                .build())
+                                v -> {
+                                    String desc = null;
+                                    if (finalWordMap != null) {
+                                        desc = finalWordMap.get(v.getFieldValue());
+                                    }
+                                    return SysFieldValueResp.builder()
+                                            .id(v.getId())
+                                            .fieldId(v.getFieldId())
+                                            .moduleId(v.getModuleId())
+                                            .moduleName(v.getModuleName())
+                                            .fieldValue(v.getFieldValue())
+                                            .fieldValueDesc(desc)
+                                            .approvalChainTypeId(v.getApprovalChainTypeId())
+                                            .sortOrder(v.getSortOrder())
+                                            .enabled(v.getEnabled())
+                                            .build();
+                                })
                         .toList();
 
         return SysFieldResp.builder()
