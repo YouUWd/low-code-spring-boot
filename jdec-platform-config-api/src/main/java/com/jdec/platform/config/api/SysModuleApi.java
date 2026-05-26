@@ -5,6 +5,7 @@ import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.MoveModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
+import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import java.util.List;
 
@@ -69,4 +70,13 @@ public interface SysModuleApi {
      * @return 状态树形节点响应列表
      */
     List<SysStatusTreeResp> getModuleStatusTree(String projectNo, Long subjectId, Long moduleId);
+
+    /**
+     * 获取所有可用模块的模块树，树中仅包含模块id, moduleCode和moduleName
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @return 简易模块树响应列表
+     */
+    List<SysModuleSimpleTreeResp> getAvailableModuleTree(String projectNo, Long subjectId);
 }

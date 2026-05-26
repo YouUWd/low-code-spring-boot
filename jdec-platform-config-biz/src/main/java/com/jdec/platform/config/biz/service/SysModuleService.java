@@ -13,6 +13,7 @@ import com.jdec.platform.config.api.dto.request.SaveModuleReq.SaveSysModuleReq;
 import com.jdec.platform.config.api.dto.response.MoveModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
+import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import com.jdec.platform.config.biz.entity.*;
@@ -883,6 +884,49 @@ public class SysModuleService implements SysModuleApi {
             } else {
                 SysStatusTreeResp parent = nodeMap.get(pid);
                 if (parent != null && parent.getChildren() != null) {
+                    parent.getChildren().add(node);
+                } else {
+                    tree.add(node);
+                }
+            }
+        }
+        return tree;
+    }
+
+    @Override
+    public List<SysModuleSimpleTreeResp> getAvailableModuleTree(String projectNo, Long subjectId) {
+        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModule::getProjectNo, projectNo);
+        wrapper.eq(SysModule::getSubjectId, subjectId);
+        wrapper.eq(SysModule::getModuleStatus, "active");
+        wrapper.orderByAsc(SysModule::getSortOrder);
+        List<SysModule> modules = sysModuleMapper.selectList(wrapper);
+
+        if (CollectionUtils.isEmpty(modules)) {
+            return Collections.emptyList();
+        }
+
+        // 1. 构建节点映射
+        Map<Long, SysModuleSimpleTreeResp> nodeMap = new LinkedHashMap<>();
+        for (SysModule module : modules) {
+            SysModuleSimpleTreeResp node = new SysModuleSimpleTreeResp();
+            node.setId(module.getId());
+            node.setModuleCode(module.getModuleCode());
+            node.setModuleName(module.getModuleName());
+            node.setChildren(new ArrayList<>());
+            nodeMap.put(module.getId(), node);
+        }
+
+        // 2. 组装模块树
+        List<SysModuleSimpleTreeResp> tree = new ArrayList<>();
+        for (SysModule module : modules) {
+            SysModuleSimpleTreeResp node = nodeMap.get(module.getId());
+            Long parentId = module.getParentId();
+            if (parentId == null || parentId == 0L || !nodeMap.containsKey(parentId)) {
+                tree.add(node);
+            } else {
+                SysModuleSimpleTreeResp parent = nodeMap.get(parentId);
+                if (parent != null) {
                     parent.getChildren().add(node);
                 } else {
                     tree.add(node);
