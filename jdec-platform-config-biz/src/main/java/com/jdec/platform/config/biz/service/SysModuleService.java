@@ -24,6 +24,7 @@ import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,9 +47,7 @@ public class SysModuleService implements SysModuleApi {
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
-    private final SysApprovalChainConfigMapper sysApprovalChainConfigMapper;
     private final SysWechatTemplateMapper sysWechatTemplateMapper;
-    private final SysWechatTemplateParamMapper sysWechatTemplateParamMapper;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -479,7 +478,7 @@ public class SysModuleService implements SysModuleApi {
             sysModuleMapper.updateById(modulePartial);
 
             // 3. 新父组：从 DB 拉取当前子节点（已包含刚写入 of module），
-            //    移除 module 后在目标位置插入，完整重编号
+            // 移除 module 后在目标位置插入，完整重编号
             List<SysModule> newChildren = getChildrenSorted(targetParentId);
             newChildren.removeIf(s -> s.getId().equals(moduleId));
             int insertPos = Math.min(targetSortOrder, newChildren.size());
@@ -840,11 +839,12 @@ public class SysModuleService implements SysModuleApi {
             return Collections.emptyList();
         }
 
-        // 2. 提取 statusId
+        // 2. 提取 statusId 和 statusPid
         List<Long> statusIds =
                 moduleStatuses.stream()
-                        .map(SysModuleStatus::getStatusId)
-                        .filter(Objects::nonNull)
+                        .flatMap(ms -> Stream.of(ms.getStatusId(), ms.getStatusPid()))
+                        .filter(id -> id != null && id != 0L)
+                        .distinct()
                         .collect(Collectors.toList());
         if (CollectionUtils.isEmpty(statusIds)) {
             return Collections.emptyList();
