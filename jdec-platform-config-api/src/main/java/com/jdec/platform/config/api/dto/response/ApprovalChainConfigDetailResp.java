@@ -51,17 +51,17 @@ public class ApprovalChainConfigDetailResp {
     @Schema(description = "子模块集合ID, 英文逗号分隔")
     private String childModuleIds;
 
-    @Schema(description = "当前主状态ID")
-    private Long currentStatusGroupId;
+    @Schema(description = "当前状态ID")
+    private Long currentStatusId;
 
-    @Schema(description = "当前子状态ID")
-    private Long currentStatusChildId;
+    @Schema(description = "当前状态链路（从根节点到当前节点）")
+    private List<StatusNode> currentStatusChain;
 
-    @Schema(description = "下一主状态ID")
-    private Long nextStatusGroupId;
+    @Schema(description = "下一状态ID")
+    private Long nextStatusId;
 
-    @Schema(description = "下一子状态ID")
-    private Long nextStatusChildId;
+    @Schema(description = "下一状态链路（从根节点到当前节点）")
+    private List<StatusNode> nextStatusChain;
 
     @Schema(description = "1:自动审批，0:不能自动审批")
     private Integer autoApproved;
@@ -89,6 +89,30 @@ public class ApprovalChainConfigDetailResp {
 
     @Schema(description = "按钮配置列表")
     private List<ButtonConfigDetail> buttonConfigs;
+
+    /** 状态节点 */
+    @Data
+    @Schema(description = "状态节点")
+    public static class StatusNode {
+
+        @Schema(description = "状态ID")
+        private Long id;
+
+        @Schema(description = "父状态ID")
+        private Long pid;
+
+        @Schema(description = "状态名称")
+        private String title;
+
+        @Schema(description = "状态值")
+        private Integer statusValue;
+
+        @Schema(description = "背景色")
+        private String statusBackground;
+
+        @Schema(description = "字体色")
+        private String statusFontColor;
+    }
 
     /** 按钮配置详情 */
     @Data

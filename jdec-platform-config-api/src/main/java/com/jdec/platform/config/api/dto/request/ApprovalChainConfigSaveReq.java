@@ -54,19 +54,13 @@ public class ApprovalChainConfigSaveReq {
     @Schema(description = "子模块集合ID, 英文逗号分隔")
     private String childModuleIds;
 
-    @Schema(description = "当前主状态ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "当前主状态ID不能为空")
-    private Long currentStatusGroupId;
+    @Schema(description = "当前状态ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "当前状态ID不能为空")
+    private Long currentStatusId;
 
-    @Schema(description = "当前子状态ID")
-    private Long currentStatusChildId;
-
-    @Schema(description = "下一主状态ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "下一主状态ID不能为空")
-    private Long nextStatusGroupId;
-
-    @Schema(description = "下一子状态ID")
-    private Long nextStatusChildId;
+    @Schema(description = "下一状态ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "下一状态ID不能为空")
+    private Long nextStatusId;
 
     @Schema(description = "1:自动审批，0:不能自动审批")
     private Integer autoApproved;

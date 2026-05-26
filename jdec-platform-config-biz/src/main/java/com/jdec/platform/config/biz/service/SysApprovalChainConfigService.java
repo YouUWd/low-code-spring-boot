@@ -44,7 +44,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
     @Override
     public List<ApprovalChainCascadeResp> getCascadeOptions() {
-        // 查询当前主体和应用下所有审批链配置中使用的模块ID
         List<SysApprovalChainConfig> configs =
                 sysApprovalChainConfigMapper.selectList(
                         new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -57,7 +56,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             return Collections.emptyList();
         }
 
-        // 提取模块ID列表
         Set<Long> moduleIds =
                 configs.stream()
                         .map(SysApprovalChainConfig::getModuleId)
@@ -68,7 +66,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             return Collections.emptyList();
         }
 
-        // 查询模块信息
         List<SysModule> modules =
                 sysModuleMapper.selectList(
                         new LambdaQueryWrapper<SysModule>()
@@ -77,7 +74,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                 .eq(SysModule::getProjectNo, AppContext.getProjectNo())
                                 .orderByAsc(SysModule::getSortOrder));
 
-        // 查询所有审批链分类
         List<SysApprovalChainType> chainTypes =
                 sysApprovalChainTypeMapper.selectList(
                         new LambdaQueryWrapper<SysApprovalChainType>()
@@ -86,12 +82,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                 .eq(SysApprovalChainType::getEnabled, 1)
                                 .in(SysApprovalChainType::getModuleId, moduleIds));
 
-        // 按模块ID分组审批链分类
         Map<Long, List<SysApprovalChainType>> chainTypeMap =
                 chainTypes.stream()
                         .collect(Collectors.groupingBy(SysApprovalChainType::getModuleId));
 
-        // 构建响应
         return modules.stream()
                 .map(
                         module -> {
@@ -146,13 +140,11 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         IPage<SysApprovalChainConfig> configPage =
                 sysApprovalChainConfigMapper.selectPage(page, wrapper);
 
-        // 收集所有需要查询的ID
         Set<Long> moduleIds = new HashSet<>();
         Set<Long> childModuleIds = new HashSet<>();
         Set<Long> chainTypeIds = new HashSet<>();
         Set<Long> roleIds = new HashSet<>();
         Set<Long> userIds = new HashSet<>();
-        Set<Long> statusIds = new HashSet<>();
         Set<String> approvalRuleValues = new HashSet<>();
         Set<Long> buttonConfigIds = new HashSet<>();
 
@@ -163,18 +155,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             if (config.getApproveRoleId() != null) roleIds.add(config.getApproveRoleId());
             if (config.getApproverId() != null) userIds.add(config.getApproverId());
             if (config.getDelegateApproverId() != null) userIds.add(config.getDelegateApproverId());
-            if (config.getCurrentStatusGroupId() != null)
-                statusIds.add(config.getCurrentStatusGroupId());
-            if (config.getCurrentStatusChildId() != null)
-                statusIds.add(config.getCurrentStatusChildId());
-            if (config.getNextStatusGroupId() != null) statusIds.add(config.getNextStatusGroupId());
-            if (config.getNextStatusChildId() != null) statusIds.add(config.getNextStatusChildId());
             if (config.getApprovalRule() != null) approvalRuleValues.add(config.getApprovalRule());
 
-            // 收集子模块ID
             if (config.getChildModuleIds() != null && !config.getChildModuleIds().isEmpty()) {
-                String[] ids = config.getChildModuleIds().split(",");
-                for (String id : ids) {
+                for (String id : config.getChildModuleIds().split(",")) {
                     try {
                         childModuleIds.add(Long.parseLong(id.trim()));
                     } catch (NumberFormatException ignored) {
@@ -182,10 +166,8 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 }
             }
 
-            // 收集按钮配置ID
             if (config.getButtonList() != null && !config.getButtonList().isEmpty()) {
-                String[] ids = config.getButtonList().split(",");
-                for (String id : ids) {
+                for (String id : config.getButtonList().split(",")) {
                     try {
                         buttonConfigIds.add(Long.parseLong(id.trim()));
                     } catch (NumberFormatException ignored) {
@@ -194,30 +176,23 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             }
         }
 
-        // 批量查询关联数据
         Map<Long, String> moduleMap = batchQueryModules(moduleIds);
         Map<Long, String> childModuleMap = batchQueryModules(childModuleIds);
         Map<Long, String> chainTypeMap = batchQueryChainTypes(chainTypeIds);
         Map<Long, String> roleMap = batchQueryRoles(roleIds);
         Map<Long, String> userMap = batchQueryUsers(userIds);
-        Map<Long, String> statusMap = batchQueryStatuses(statusIds);
         Map<String, String> approvalRuleMap = batchQueryApprovalRules(approvalRuleValues);
-
-        // 批量查询按钮配置
+        Map<Long, SysStatus> allStatusMap = loadAllStatuses();
         Map<Long, SysApprovalChainConfigButton> buttonConfigMap =
                 batchQueryButtonConfigs(buttonConfigIds);
 
-        // 收集按钮ID和消息模板ID
         Set<Long> buttonIds = new HashSet<>();
         Set<Long> msgTemplateIds = new HashSet<>();
         for (SysApprovalChainConfigButton buttonConfig : buttonConfigMap.values()) {
-            if (buttonConfig.getButtonId() != null) {
-                buttonIds.add(buttonConfig.getButtonId());
-            }
+            if (buttonConfig.getButtonId() != null) buttonIds.add(buttonConfig.getButtonId());
             if (buttonConfig.getMsgTemplateIds() != null
                     && !buttonConfig.getMsgTemplateIds().isEmpty()) {
-                String[] ids = buttonConfig.getMsgTemplateIds().split(",");
-                for (String id : ids) {
+                for (String id : buttonConfig.getMsgTemplateIds().split(",")) {
                     try {
                         msgTemplateIds.add(Long.parseLong(id.trim()));
                     } catch (NumberFormatException ignored) {
@@ -226,11 +201,9 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             }
         }
 
-        // 批量查询按钮和消息模板
         Map<Long, SysButton> buttonMap = batchQueryButtons(buttonIds);
         Map<Long, SysWechatTemplate> msgTemplateMap = batchQueryMsgTemplates(msgTemplateIds);
 
-        // 构建响应
         List<ApprovalChainConfigPageResp> respList =
                 configPage.getRecords().stream()
                         .map(
@@ -261,147 +234,121 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                     resp.setShowed(config.getShowed());
                                     resp.setChildModuleIds(config.getChildModuleIds());
 
-                                    // 构建子模块名称列表
                                     if (config.getChildModuleIds() != null
                                             && !config.getChildModuleIds().isEmpty()) {
-                                        String[] ids = config.getChildModuleIds().split(",");
                                         List<String> names = new ArrayList<>();
-                                        for (String id : ids) {
+                                        for (String id : config.getChildModuleIds().split(",")) {
                                             try {
-                                                Long moduleId = Long.parseLong(id.trim());
-                                                String name = childModuleMap.get(moduleId);
-                                                if (name != null) {
-                                                    names.add(name);
-                                                }
+                                                String name =
+                                                        childModuleMap.get(
+                                                                Long.parseLong(id.trim()));
+                                                if (name != null) names.add(name);
                                             } catch (NumberFormatException ignored) {
                                             }
                                         }
                                         resp.setChildModuleNames(String.join(",", names));
                                     }
 
-                                    resp.setCurrentStatusGroupId(config.getCurrentStatusGroupId());
-                                    resp.setCurrentStatusGroupName(
-                                            statusMap.get(config.getCurrentStatusGroupId()));
-                                    resp.setCurrentStatusChildId(config.getCurrentStatusChildId());
-                                    resp.setCurrentStatusChildName(
-                                            statusMap.get(config.getCurrentStatusChildId()));
-                                    resp.setNextStatusGroupId(config.getNextStatusGroupId());
-                                    resp.setNextStatusGroupName(
-                                            statusMap.get(config.getNextStatusGroupId()));
-                                    resp.setNextStatusChildId(config.getNextStatusChildId());
-                                    resp.setNextStatusChildName(
-                                            statusMap.get(config.getNextStatusChildId()));
+                                    resp.setCurrentStatusId(config.getCurrentStatusId());
+                                    resp.setCurrentStatusChain(
+                                            buildStatusChain(
+                                                    config.getCurrentStatusId(),
+                                                    allStatusMap,
+                                                    ApprovalChainConfigPageResp.StatusNode.class));
+                                    resp.setNextStatusId(config.getNextStatusId());
+                                    resp.setNextStatusChain(
+                                            buildStatusChain(
+                                                    config.getNextStatusId(),
+                                                    allStatusMap,
+                                                    ApprovalChainConfigPageResp.StatusNode.class));
                                     resp.setAutoApproved(config.getAutoApproved());
                                     resp.setAutoApprovedTime(config.getAutoApprovedTime());
                                     resp.setDeadlineTime(config.getDeadlineTime());
                                     resp.setButtonList(config.getButtonList());
 
-                                    // 构建按钮详情列表
                                     if (config.getButtonList() != null
                                             && !config.getButtonList().isEmpty()) {
-                                        String[] buttonConfigIdStrs =
-                                                config.getButtonList().split(",");
                                         List<ApprovalChainConfigPageResp.ButtonDetail>
                                                 buttonDetails = new ArrayList<>();
-
-                                        for (String buttonConfigIdStr : buttonConfigIdStrs) {
+                                        for (String buttonConfigIdStr :
+                                                config.getButtonList().split(",")) {
                                             try {
-                                                Long buttonConfigId =
-                                                        Long.parseLong(buttonConfigIdStr.trim());
                                                 SysApprovalChainConfigButton buttonConfig =
-                                                        buttonConfigMap.get(buttonConfigId);
+                                                        buttonConfigMap.get(
+                                                                Long.parseLong(
+                                                                        buttonConfigIdStr.trim()));
+                                                if (buttonConfig == null) continue;
 
-                                                if (buttonConfig != null) {
-                                                    ApprovalChainConfigPageResp.ButtonDetail
-                                                            buttonDetail =
-                                                                    new ApprovalChainConfigPageResp
-                                                                            .ButtonDetail();
-                                                    buttonDetail.setId(buttonConfig.getId());
-                                                    buttonDetail.setButtonId(
-                                                            buttonConfig.getButtonId());
-                                                    buttonDetail.setIcon(buttonConfig.getIcon());
-                                                    buttonDetail.setLogName(
-                                                            buttonConfig.getLogName());
-                                                    buttonDetail.setMsgTemplateIds(
-                                                            buttonConfig.getMsgTemplateIds());
+                                                ApprovalChainConfigPageResp.ButtonDetail
+                                                        buttonDetail =
+                                                                new ApprovalChainConfigPageResp
+                                                                        .ButtonDetail();
+                                                buttonDetail.setId(buttonConfig.getId());
+                                                buttonDetail.setButtonId(
+                                                        buttonConfig.getButtonId());
+                                                buttonDetail.setIcon(buttonConfig.getIcon());
+                                                buttonDetail.setLogName(buttonConfig.getLogName());
+                                                buttonDetail.setMsgTemplateIds(
+                                                        buttonConfig.getMsgTemplateIds());
 
-                                                    // 填充按钮信息
-                                                    if (buttonConfig.getButtonId() != null) {
-                                                        SysButton button =
-                                                                buttonMap.get(
-                                                                        buttonConfig.getButtonId());
-                                                        if (button != null) {
-                                                            buttonDetail.setButtonTitle(
-                                                                    button.getTitle());
-                                                            buttonDetail.setButtonAlias(
-                                                                    button.getAlias());
-                                                        }
+                                                if (buttonConfig.getButtonId() != null) {
+                                                    SysButton button =
+                                                            buttonMap.get(
+                                                                    buttonConfig.getButtonId());
+                                                    if (button != null) {
+                                                        buttonDetail.setButtonTitle(
+                                                                button.getTitle());
+                                                        buttonDetail.setButtonAlias(
+                                                                button.getAlias());
                                                     }
-
-                                                    // 构建消息模板列表
-                                                    if (buttonConfig.getMsgTemplateIds() != null
-                                                            && !buttonConfig
-                                                                    .getMsgTemplateIds()
-                                                                    .isEmpty()) {
-                                                        String[] msgTemplateIdStrs =
-                                                                buttonConfig
-                                                                        .getMsgTemplateIds()
-                                                                        .split(",");
-                                                        List<
-                                                                        ApprovalChainConfigPageResp
-                                                                                .MessageTemplateDetail>
-                                                                msgTemplateDetails =
-                                                                        new ArrayList<>();
-
-                                                        for (String msgTemplateIdStr :
-                                                                msgTemplateIdStrs) {
-                                                            try {
-                                                                Long msgTemplateId =
-                                                                        Long.parseLong(
-                                                                                msgTemplateIdStr
-                                                                                        .trim());
-                                                                SysWechatTemplate msgTemplate =
-                                                                        msgTemplateMap.get(
-                                                                                msgTemplateId);
-
-                                                                if (msgTemplate != null) {
-                                                                    ApprovalChainConfigPageResp
-                                                                                    .MessageTemplateDetail
-                                                                            msgDetail =
-                                                                                    new ApprovalChainConfigPageResp
-                                                                                            .MessageTemplateDetail();
-                                                                    msgDetail.setId(
-                                                                            msgTemplate.getId());
-                                                                    msgDetail.setTemplateTitle(
-                                                                            msgTemplate
-                                                                                    .getTemplateTitle());
-                                                                    msgDetail.setTemplateContent(
-                                                                            msgTemplate
-                                                                                    .getTemplateContent());
-                                                                    msgDetail.setModuleId(
-                                                                            msgTemplate
-                                                                                    .getModuleId());
-                                                                    msgDetail.setModuleName(
-                                                                            msgTemplate
-                                                                                    .getModuleName());
-                                                                    msgTemplateDetails.add(
-                                                                            msgDetail);
-                                                                }
-                                                            } catch (
-                                                                    NumberFormatException ignored) {
-                                                            }
-                                                        }
-
-                                                        buttonDetail.setMessageTemplates(
-                                                                msgTemplateDetails);
-                                                    }
-
-                                                    buttonDetails.add(buttonDetail);
                                                 }
+
+                                                if (buttonConfig.getMsgTemplateIds() != null
+                                                        && !buttonConfig
+                                                                .getMsgTemplateIds()
+                                                                .isEmpty()) {
+                                                    List<
+                                                                    ApprovalChainConfigPageResp
+                                                                            .MessageTemplateDetail>
+                                                            msgTemplateDetails = new ArrayList<>();
+                                                    for (String msgTemplateIdStr :
+                                                            buttonConfig
+                                                                    .getMsgTemplateIds()
+                                                                    .split(",")) {
+                                                        try {
+                                                            SysWechatTemplate msgTemplate =
+                                                                    msgTemplateMap.get(
+                                                                            Long.parseLong(
+                                                                                    msgTemplateIdStr
+                                                                                            .trim()));
+                                                            if (msgTemplate == null) continue;
+                                                            ApprovalChainConfigPageResp
+                                                                            .MessageTemplateDetail
+                                                                    msgDetail =
+                                                                            new ApprovalChainConfigPageResp
+                                                                                    .MessageTemplateDetail();
+                                                            msgDetail.setId(msgTemplate.getId());
+                                                            msgDetail.setTemplateTitle(
+                                                                    msgTemplate.getTemplateTitle());
+                                                            msgDetail.setTemplateContent(
+                                                                    msgTemplate
+                                                                            .getTemplateContent());
+                                                            msgDetail.setModuleId(
+                                                                    msgTemplate.getModuleId());
+                                                            msgDetail.setModuleName(
+                                                                    msgTemplate.getModuleName());
+                                                            msgTemplateDetails.add(msgDetail);
+                                                        } catch (NumberFormatException ignored) {
+                                                        }
+                                                    }
+                                                    buttonDetail.setMessageTemplates(
+                                                            msgTemplateDetails);
+                                                }
+
+                                                buttonDetails.add(buttonDetail);
                                             } catch (NumberFormatException ignored) {
                                             }
                                         }
-
                                         resp.setButtonDetails(buttonDetails);
                                     }
 
@@ -415,6 +362,64 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
         return PageResult.of(
                 request.getPageNum(), request.getPageSize(), configPage.getTotal(), respList);
+    }
+
+    /** 加载全量 sys_status，返回 id -> SysStatus 的 Map */
+    private Map<Long, SysStatus> loadAllStatuses() {
+        return sysStatusMapper.selectList(new LambdaQueryWrapper<SysStatus>()).stream()
+                .collect(Collectors.toMap(SysStatus::getId, s -> s));
+    }
+
+    /**
+     * 根据 statusId 沿 pid 向上追溯，构建从根到当前节点的状态链路。
+     *
+     * @param statusId 起始状态ID
+     * @param allStatusMap 全量状态 map
+     * @param nodeClass 目标节点类型
+     */
+    private <T> List<T> buildStatusChain(
+            Long statusId, Map<Long, SysStatus> allStatusMap, Class<T> nodeClass) {
+        if (statusId == null || statusId == 0) {
+            return Collections.emptyList();
+        }
+        LinkedList<SysStatus> chain = new LinkedList<>();
+        Set<Long> visited = new HashSet<>();
+        Long current = statusId;
+        while (current != null && current != 0 && !visited.contains(current)) {
+            SysStatus status = allStatusMap.get(current);
+            if (status == null) break;
+            chain.addFirst(status);
+            visited.add(current);
+            current = (status.getPid() != null && status.getPid() != 0) ? status.getPid() : null;
+        }
+        return chain.stream()
+                .map(s -> convertStatusNode(s, nodeClass))
+                .collect(Collectors.toList());
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T convertStatusNode(SysStatus s, Class<T> nodeClass) {
+        if (nodeClass == ApprovalChainConfigPageResp.StatusNode.class) {
+            ApprovalChainConfigPageResp.StatusNode node =
+                    new ApprovalChainConfigPageResp.StatusNode();
+            node.setId(s.getId());
+            node.setPid(s.getPid());
+            node.setTitle(s.getTitle());
+            node.setStatusValue(s.getStatusValue());
+            node.setStatusBackground(s.getStatusBackground());
+            node.setStatusFontColor(s.getStatusFontColor());
+            return (T) node;
+        } else {
+            ApprovalChainConfigDetailResp.StatusNode node =
+                    new ApprovalChainConfigDetailResp.StatusNode();
+            node.setId(s.getId());
+            node.setPid(s.getPid());
+            node.setTitle(s.getTitle());
+            node.setStatusValue(s.getStatusValue());
+            node.setStatusBackground(s.getStatusBackground());
+            node.setStatusFontColor(s.getStatusFontColor());
+            return (T) node;
+        }
     }
 
     private Map<Long, String> batchQueryModules(Set<Long> ids) {
@@ -451,14 +456,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 .selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getId, ids))
                 .stream()
                 .collect(Collectors.toMap(SysUser::getId, SysUser::getUserName));
-    }
-
-    private Map<Long, String> batchQueryStatuses(Set<Long> ids) {
-        if (ids.isEmpty()) return Collections.emptyMap();
-        return sysStatusMapper
-                .selectList(new LambdaQueryWrapper<SysStatus>().in(SysStatus::getId, ids))
-                .stream()
-                .collect(Collectors.toMap(SysStatus::getId, SysStatus::getTitle));
     }
 
     private Map<String, String> batchQueryApprovalRules(Set<String> values) {
@@ -503,19 +500,18 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
     @Override
     public ApprovalChainConfigDetailResp getDetail(Long id) {
-        // 查询配置
         SysApprovalChainConfig config = sysApprovalChainConfigMapper.selectById(id);
         if (config == null) {
             throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
         }
 
-        // 查询按钮配置
         List<SysApprovalChainConfigButton> buttons =
                 sysApprovalChainConfigButtonMapper.selectList(
                         new LambdaQueryWrapper<SysApprovalChainConfigButton>()
                                 .eq(SysApprovalChainConfigButton::getPid, id));
 
-        // 构建响应
+        Map<Long, SysStatus> allStatusMap = loadAllStatuses();
+
         ApprovalChainConfigDetailResp resp = new ApprovalChainConfigDetailResp();
         resp.setId(config.getId());
         resp.setModuleId(config.getModuleId());
@@ -531,10 +527,18 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         resp.setSkipped(config.getSkipped());
         resp.setShowed(config.getShowed());
         resp.setChildModuleIds(config.getChildModuleIds());
-        resp.setCurrentStatusGroupId(config.getCurrentStatusGroupId());
-        resp.setCurrentStatusChildId(config.getCurrentStatusChildId());
-        resp.setNextStatusGroupId(config.getNextStatusGroupId());
-        resp.setNextStatusChildId(config.getNextStatusChildId());
+        resp.setCurrentStatusId(config.getCurrentStatusId());
+        resp.setCurrentStatusChain(
+                buildStatusChain(
+                        config.getCurrentStatusId(),
+                        allStatusMap,
+                        ApprovalChainConfigDetailResp.StatusNode.class));
+        resp.setNextStatusId(config.getNextStatusId());
+        resp.setNextStatusChain(
+                buildStatusChain(
+                        config.getNextStatusId(),
+                        allStatusMap,
+                        ApprovalChainConfigDetailResp.StatusNode.class));
         resp.setAutoApproved(config.getAutoApproved());
         resp.setAutoApprovedTime(config.getAutoApprovedTime());
         resp.setDeadlineTime(config.getDeadlineTime());
@@ -544,7 +548,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         resp.setMsgTemplateIds(config.getMsgTemplateIds());
         resp.setDefaultFlag(config.getDefaultFlag());
 
-        // 转换按钮配置
         if (!buttons.isEmpty()) {
             List<ApprovalChainConfigDetailResp.ButtonConfigDetail> buttonDetails =
                     buttons.stream()
@@ -573,43 +576,27 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
     public ApprovalChainConfigSaveResp save(ApprovalChainConfigSaveReq request) {
         Long id = request.getId();
 
-        // 设置默认值
-        if (request.getUpStep() == null) {
-            request.setUpStep(0);
-        }
-        if (request.getDefaultFlag() == null) {
-            request.setDefaultFlag(0);
-        }
-        if (request.getAutoApproved() == null) {
-            request.setAutoApproved(0);
-        }
-        if (request.getSkipped() == null) {
-            request.setSkipped(0);
-        }
-        if (request.getShowed() == null) {
-            request.setShowed(0);
-        }
+        if (request.getUpStep() == null) request.setUpStep(0);
+        if (request.getDefaultFlag() == null) request.setDefaultFlag(0);
+        if (request.getAutoApproved() == null) request.setAutoApproved(0);
+        if (request.getSkipped() == null) request.setSkipped(0);
+        if (request.getShowed() == null) request.setShowed(0);
 
-        // 计算步骤
         request.setCurrentStep(request.getUpStep() + 1);
         if (request.getNextStep() == null) {
             request.setNextStep(request.getCurrentStep() + 1);
         }
 
-        // 校验：当前主状态不能与下一主状态相同
-        if (request.getCurrentStatusGroupId().equals(request.getNextStatusGroupId())) {
-            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "当前主状态不能与下一主状态相同，请重新选择");
+        if (request.getCurrentStatusId().equals(request.getNextStatusId())) {
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "当前状态不能与下一状态相同，请重新选择");
         }
 
-        // 准备实体数据
         SysApprovalChainConfig config = convertToEntity(request);
 
         SysApprovalChainConfig upConfig;
         SysApprovalChainConfig nextConfig;
 
         if (id == null || id == 0) {
-            // 新增逻辑
-            // 唯一性检查：同类型+当前主状态+下一主状态
             SysApprovalChainConfig exist =
                     sysApprovalChainConfigMapper.selectOne(
                             new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -623,16 +610,15 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                             SysApprovalChainConfig::getApprovalChainTypeId,
                                             config.getApprovalChainTypeId())
                                     .eq(
-                                            SysApprovalChainConfig::getCurrentStatusGroupId,
-                                            config.getCurrentStatusGroupId())
+                                            SysApprovalChainConfig::getCurrentStatusId,
+                                            config.getCurrentStatusId())
                                     .eq(
-                                            SysApprovalChainConfig::getNextStatusGroupId,
-                                            config.getNextStatusGroupId()));
+                                            SysApprovalChainConfig::getNextStatusId,
+                                            config.getNextStatusId()));
             if (exist != null) {
                 throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "当前步骤已存在，请重新选择");
             }
 
-            // 插入审批链配置（不包含 buttonList）
             config.setId(null);
             config.setButtonList(null);
             config.setSubjectId(AppContext.getSubjectId());
@@ -640,7 +626,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             sysApprovalChainConfigMapper.insert(config);
             id = config.getId();
 
-            // 查询上一步
             upConfig =
                     sysApprovalChainConfigMapper.selectOne(
                             new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -656,7 +641,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                             SysApprovalChainConfig::getApprovalChainTypeId,
                                             config.getApprovalChainTypeId()));
 
-            // 查询下一步
             nextConfig =
                     sysApprovalChainConfigMapper.selectOne(
                             new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -676,17 +660,14 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                             config.getApprovalChainTypeId()));
 
         } else {
-            // 修改逻辑
             SysApprovalChainConfig exist = sysApprovalChainConfigMapper.selectById(id);
             if (exist == null) {
                 throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
             }
 
-            // 根据 buttonList 删除旧按钮配置
             if (exist.getButtonList() != null && !exist.getButtonList().isEmpty()) {
-                String[] buttonConfigIds = exist.getButtonList().split(",");
                 List<Long> idsToDelete = new ArrayList<>();
-                for (String buttonConfigId : buttonConfigIds) {
+                for (String buttonConfigId : exist.getButtonList().split(",")) {
                     try {
                         idsToDelete.add(Long.parseLong(buttonConfigId.trim()));
                     } catch (NumberFormatException ignored) {
@@ -699,7 +680,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 }
             }
 
-            // 查询上一步
             upConfig =
                     sysApprovalChainConfigMapper.selectOne(
                             new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -715,7 +695,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                             exist.getApprovalChainTypeId())
                                     .eq(SysApprovalChainConfig::getCurrentStep, exist.getUpStep()));
 
-            // 查询下一步
             nextConfig =
                     sysApprovalChainConfigMapper.selectOne(
                             new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -733,16 +712,12 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                             SysApprovalChainConfig::getCurrentStep,
                                             exist.getNextStep()));
 
-            // 更新审批链配置（不包含 buttonList）
             config.setId(id);
             config.setButtonList(null);
             sysApprovalChainConfigMapper.updateById(config);
         }
 
-        // 处理按钮配置并更新 buttonList
-        String buttonListIds = null;
         if (request.getButtonConfigs() != null && !request.getButtonConfigs().isEmpty()) {
-            // 批量插入新按钮
             Long finalId = id;
             List<SysApprovalChainConfigButton> buttons =
                     request.getButtonConfigs().stream()
@@ -762,23 +737,19 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                     })
                             .collect(Collectors.toList());
 
-            // 使用 Db.saveBatch 批量插入
             Db.saveBatch(buttons);
 
-            // 收集插入后的按钮配置 ID，以逗号拼接
-            buttonListIds =
+            String buttonListIds =
                     buttons.stream()
                             .map(btn -> String.valueOf(btn.getId()))
                             .collect(Collectors.joining(","));
 
-            // 更新审批链配置的 buttonList 字段
             SysApprovalChainConfig updateConfig = new SysApprovalChainConfig();
             updateConfig.setId(id);
             updateConfig.setButtonList(buttonListIds);
             sysApprovalChainConfigMapper.updateById(updateConfig);
         }
 
-        // 调整步骤关联
         rearrangeStepsAfterSave(config, id, upConfig, nextConfig);
 
         return new ApprovalChainConfigSaveResp(id, 1);
@@ -800,10 +771,8 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         config.setSkipped(request.getSkipped());
         config.setShowed(request.getShowed());
         config.setChildModuleIds(request.getChildModuleIds());
-        config.setCurrentStatusGroupId(request.getCurrentStatusGroupId());
-        config.setCurrentStatusChildId(request.getCurrentStatusChildId());
-        config.setNextStatusGroupId(request.getNextStatusGroupId());
-        config.setNextStatusChildId(request.getNextStatusChildId());
+        config.setCurrentStatusId(request.getCurrentStatusId());
+        config.setNextStatusId(request.getNextStatusId());
         config.setAutoApproved(request.getAutoApproved());
         config.setAutoApprovedTime(request.getAutoApprovedTime());
         config.setDeadlineTime(request.getDeadlineTime());
@@ -824,57 +793,44 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         Long oldModuleId = 0L;
         Long oldApprovalChainTypeId = 0L;
 
-        // 1. 处理上一步（如果存在）
         if (upConfig != null) {
             oldModuleId = upConfig.getModuleId();
             oldApprovalChainTypeId = upConfig.getApprovalChainTypeId();
 
-            // 校验冲突：上一步的当前主状态不能等于当前步骤的当前主状态
-            if (upConfig.getCurrentStatusGroupId()
-                    .equals(currentConfig.getCurrentStatusGroupId())) {
+            if (upConfig.getCurrentStatusId().equals(currentConfig.getCurrentStatusId())) {
                 throw new BusinessException(
-                        ApiCodeEnum.WARNING.getCode(), "当前步骤当前主状态与上一步骤主状态冲突，请重新选择");
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤当前状态与上一步骤状态冲突，请重新选择");
             }
-            // 上一步的当前主状态不能等于当前步骤的下一主状态
-            if (upConfig.getCurrentStatusGroupId().equals(currentConfig.getNextStatusGroupId())) {
+            if (upConfig.getCurrentStatusId().equals(currentConfig.getNextStatusId())) {
                 throw new BusinessException(
-                        ApiCodeEnum.WARNING.getCode(), "当前步骤之后主状态与上一步骤当前主状态冲突，请重新选择");
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤之后状态与上一步骤当前状态冲突，请重新选择");
             }
 
-            // 更新上一步的下一状态为当前步骤的当前状态
-            upConfig.setNextStatusGroupId(currentConfig.getCurrentStatusGroupId());
-            upConfig.setNextStatusChildId(currentConfig.getCurrentStatusChildId());
+            upConfig.setNextStatusId(currentConfig.getCurrentStatusId());
             sysApprovalChainConfigMapper.updateById(upConfig);
         }
 
-        // 2. 处理下一步（如果存在）
         if (nextConfig != null) {
             oldModuleId = nextConfig.getModuleId();
             oldApprovalChainTypeId = nextConfig.getApprovalChainTypeId();
 
-            // 校验冲突：下一步的下一主状态不能等于当前步骤的当前主状态
-            if (nextConfig.getNextStatusGroupId().equals(currentConfig.getCurrentStatusGroupId())) {
+            if (nextConfig.getNextStatusId().equals(currentConfig.getCurrentStatusId())) {
                 throw new BusinessException(
-                        ApiCodeEnum.WARNING.getCode(), "当前步骤当前主状态与下一步骤之后主状态冲突，请重新选择");
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤当前状态与下一步骤之后状态冲突，请重新选择");
             }
-            // 下一步的下一主状态不能等于当前步骤的下一主状态
-            if (nextConfig.getNextStatusGroupId().equals(currentConfig.getNextStatusGroupId())) {
+            if (nextConfig.getNextStatusId().equals(currentConfig.getNextStatusId())) {
                 throw new BusinessException(
-                        ApiCodeEnum.WARNING.getCode(), "当前步骤之后主状态与下一步骤之后主状态冲突，请重新选择");
+                        ApiCodeEnum.WARNING.getCode(), "当前步骤之后状态与下一步骤之后状态冲突，请重新选择");
             }
 
-            // 更新下一步的当前状态为当前步骤的下一状态
-            nextConfig.setCurrentStatusGroupId(currentConfig.getNextStatusGroupId());
-            nextConfig.setCurrentStatusChildId(currentConfig.getNextStatusChildId());
+            nextConfig.setCurrentStatusId(currentConfig.getNextStatusId());
             sysApprovalChainConfigMapper.updateById(nextConfig);
         }
 
-        // 3. 如果分类或模块改变，需要更新同模块同类型下所有记录的module_id和type
         if ((oldModuleId > 0 && oldApprovalChainTypeId > 0)
                 && (!oldModuleId.equals(currentConfig.getModuleId())
                         || !oldApprovalChainTypeId.equals(
                                 currentConfig.getApprovalChainTypeId()))) {
-            // 查询该模块下所有记录
             List<SysApprovalChainConfig> allList =
                     sysApprovalChainConfigMapper.selectList(
                             new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -898,8 +854,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             }
         }
 
-        // 4. 重新编号当前步骤之后的所有步骤（如果当前步骤位置发生变化）
-        // 查询所有步骤中，current_step > up_step 的记录（排除当前id）
         List<SysApprovalChainConfig> laterSteps =
                 sysApprovalChainConfigMapper.selectList(
                         new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -917,12 +871,9 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         if (!laterSteps.isEmpty()) {
             for (int i = 0; i < laterSteps.size(); i++) {
                 SysApprovalChainConfig step = laterSteps.get(i);
-                int newCurrentStep = currentConfig.getCurrentStep() + 1 + i;
-                int newNextStep = currentConfig.getNextStep() + 1 + i;
-                int newUpStep = currentConfig.getUpStep() + 1 + i;
-                step.setCurrentStep(newCurrentStep);
-                step.setNextStep(newNextStep);
-                step.setUpStep(newUpStep);
+                step.setCurrentStep(currentConfig.getCurrentStep() + 1 + i);
+                step.setNextStep(currentConfig.getNextStep() + 1 + i);
+                step.setUpStep(currentConfig.getUpStep() + 1 + i);
                 sysApprovalChainConfigMapper.updateById(step);
             }
         }
@@ -931,13 +882,11 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        // 查询要删除的配置
         SysApprovalChainConfig deletedConfig = sysApprovalChainConfigMapper.selectById(id);
         if (deletedConfig == null) {
             throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
         }
 
-        // 查询上一步配置
         SysApprovalChainConfig upStepConfig =
                 sysApprovalChainConfigMapper.selectOne(
                         new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -953,7 +902,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                         SysApprovalChainConfig::getCurrentStep,
                                         deletedConfig.getUpStep()));
 
-        // 查询下一步配置
         SysApprovalChainConfig nextStepConfig =
                 sysApprovalChainConfigMapper.selectOne(
                         new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -969,37 +917,24 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                         SysApprovalChainConfig::getCurrentStep,
                                         deletedConfig.getNextStep()));
 
-        // 删除配置
         sysApprovalChainConfigMapper.deleteById(id);
 
-        // 删除关联的按钮配置
         sysApprovalChainConfigButtonMapper.delete(
                 new LambdaQueryWrapper<SysApprovalChainConfigButton>()
                         .eq(SysApprovalChainConfigButton::getPid, id));
 
-        // 重新编排步骤顺序
         rearrangeStepsAfterDelete(deletedConfig, upStepConfig, nextStepConfig);
     }
 
-    /**
-     * 删除后重新编排步骤顺序
-     *
-     * @param deletedConfig 被删除的配置
-     * @param upStepConfig 上一步配置（可为空）
-     * @param nextStepConfig 下一步配置（可为空）
-     */
     private void rearrangeStepsAfterDelete(
             SysApprovalChainConfig deletedConfig,
             SysApprovalChainConfig upStepConfig,
             SysApprovalChainConfig nextStepConfig) {
-        // 如果上一步和下一步都存在，则把下一步的当前状态改为上一步的下一状态（衔接）
         if (upStepConfig != null && nextStepConfig != null) {
-            nextStepConfig.setCurrentStatusGroupId(upStepConfig.getNextStatusGroupId());
-            nextStepConfig.setCurrentStatusChildId(upStepConfig.getNextStatusChildId());
+            nextStepConfig.setCurrentStatusId(upStepConfig.getNextStatusId());
             sysApprovalChainConfigMapper.updateById(nextStepConfig);
         }
 
-        // 查询该模块下所有配置，按current_step升序排序
         List<SysApprovalChainConfig> allList =
                 sysApprovalChainConfigMapper.selectList(
                         new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -1014,13 +949,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                 .orderByAsc(SysApprovalChainConfig::getCurrentStep));
 
         if (!allList.isEmpty()) {
-            // 重新编号：从1开始，依次递增
             for (int i = 0; i < allList.size(); i++) {
                 SysApprovalChainConfig item = allList.get(i);
-                int newStep = i + 1;
-                int newNextStep = i + 2;
-                item.setCurrentStep(newStep);
-                item.setNextStep(newNextStep);
+                item.setCurrentStep(i + 1);
+                item.setNextStep(i + 2);
                 item.setUpStep(i);
                 sysApprovalChainConfigMapper.updateById(item);
             }

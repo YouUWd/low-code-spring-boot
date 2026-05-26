@@ -55,17 +55,11 @@ public class SysApprovalChainConfig implements Serializable {
     @Schema(description = "子模块集合ID, 英文逗号分隔")
     private String childModuleIds;
 
-    @Schema(description = "当前主状态ID")
-    private Long currentStatusGroupId;
+    @Schema(description = "当前状态ID")
+    private Long currentStatusId;
 
-    @Schema(description = "当前子状态ID")
-    private Long currentStatusChildId;
-
-    @Schema(description = "下一主状态ID")
-    private Long nextStatusGroupId;
-
-    @Schema(description = "下一子状态ID")
-    private Long nextStatusChildId;
+    @Schema(description = "下一状态ID")
+    private Long nextStatusId;
 
     @Schema(description = "1:自动审批，0:不能自动审批，默认为0")
     private Integer autoApproved;
