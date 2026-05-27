@@ -153,3 +153,12 @@ external-api:
       headers:
         Content-Type: application/json
         Accept: application/json
+    project-api:
+      api-secret: N8nsg0WXB+B7K2WqUyg5ckf5NW/HbSl1MEJm9QutF9A=
+      api-key: P260525095218 # dev system_no
+      enabled: true
+      base-url: http://192.168.60.250:9077/api/external
+      timeout: 5s
+      headers:
+        Content-Type: application/json
+        Accept: application/json

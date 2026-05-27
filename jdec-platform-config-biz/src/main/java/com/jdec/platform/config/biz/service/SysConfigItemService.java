@@ -72,6 +72,7 @@ public class SysConfigItemService {
         return list.stream().map(this::toResp).collect(Collectors.toList());
     }
 
+    @Transactional
     public void saveItem(SysConfigItemSaveReq req) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
@@ -134,6 +135,19 @@ public class SysConfigItemService {
             // 如果父节点变了，需要更新所有子节点的 path
             if (!existing.getPid().equals(pid)) {
                 updateChildrenPath(req.getId(), subjectId);
+            }
+
+            // 停用时级联停用所有子节点
+            if (Integer.valueOf(0).equals(req.getStatus())
+                    && !Integer.valueOf(0).equals(existing.getStatus())) {
+                Set<Long> childIds = collectChildrenIds(req.getId(), subjectId);
+                if (!childIds.isEmpty()) {
+                    itemMapper.update(
+                            null,
+                            Wrappers.<SysConfigItem>lambdaUpdate()
+                                    .set(SysConfigItem::getStatus, 0)
+                                    .in(SysConfigItem::getId, childIds));
+                }
             }
         }
     }

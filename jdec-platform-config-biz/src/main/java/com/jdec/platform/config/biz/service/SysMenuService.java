@@ -197,6 +197,19 @@ public class SysMenuService implements SysMenuApi {
             }
 
             sysMenuMapper.updateById(entity);
+
+            // 停用时级联停用所有子节点
+            if (Integer.valueOf(0).equals(req.getEnabled())
+                    && !Integer.valueOf(0).equals(oldEntity.getEnabled())) {
+                Set<Long> childIds = collectChildrenIds(req.getId(), subjectId, projectNo);
+                if (!childIds.isEmpty()) {
+                    sysMenuMapper.update(
+                            null,
+                            Wrappers.<SysMenu>lambdaUpdate()
+                                    .set(SysMenu::getEnabled, 0)
+                                    .in(SysMenu::getId, childIds));
+                }
+            }
         }
     }
 

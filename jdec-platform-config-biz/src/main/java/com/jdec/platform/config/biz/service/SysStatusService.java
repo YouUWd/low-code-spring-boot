@@ -68,6 +68,7 @@ public class SysStatusService implements SysStatusApi {
         return tree;
     }
 
+    @Transactional
     @Override
     public void saveStatus(SysStatusSaveReq req) {
         if (req.getId() == null) {
@@ -104,6 +105,7 @@ public class SysStatusService implements SysStatusApi {
             if (!exists) {
                 throw new BusinessException("状态不存在");
             }
+            SysStatus oldEntity = sysStatusMapper.selectById(req.getId());
             SysStatus entity = new SysStatus();
             BeanUtils.copyProperties(req, entity);
             entity.setId(req.getId());
@@ -131,6 +133,29 @@ public class SysStatusService implements SysStatusApi {
             // 处理排序值
             handleSortOrderForUpdate(entity);
             sysStatusMapper.updateById(entity);
+
+            // 停用时级联停用所有子节点（enabled / approvalShowFlag）
+            Long subjectId = AppContext.getSubjectId();
+            Set<Long> childIds = collectChildrenIds(req.getId(), subjectId);
+            if (!childIds.isEmpty()) {
+                boolean disableEnabled =
+                        Integer.valueOf(0).equals(req.getEnabled())
+                                && !Integer.valueOf(0).equals(oldEntity.getEnabled());
+                boolean disableApproval =
+                        Integer.valueOf(0).equals(req.getApprovalShowFlag())
+                                && !Integer.valueOf(0).equals(oldEntity.getApprovalShowFlag());
+                if (disableEnabled || disableApproval) {
+                    var updateWrapper =
+                            Wrappers.<SysStatus>lambdaUpdate().in(SysStatus::getId, childIds);
+                    if (disableEnabled) {
+                        updateWrapper.set(SysStatus::getEnabled, 0);
+                    }
+                    if (disableApproval) {
+                        updateWrapper.set(SysStatus::getApprovalShowFlag, 0);
+                    }
+                    sysStatusMapper.update(null, updateWrapper);
+                }
+            }
         }
     }
 

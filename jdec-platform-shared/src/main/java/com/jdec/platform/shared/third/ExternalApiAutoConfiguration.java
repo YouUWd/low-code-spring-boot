@@ -30,4 +30,17 @@ public class ExternalApiAutoConfiguration {
         log.info("初始化 WordApiClient, baseUrl={}", properties.getApi("word-api").getBaseUrl());
         return new WordApiClient(externalApiHttpClient, properties, objectMapper);
     }
+
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "external-api.apis.project-api",
+            name = "enabled",
+            havingValue = "true")
+    public ProjectApiClient projectApiClient(
+            HttpClient externalApiHttpClient,
+            ExternalApiProperties properties,
+            ObjectMapper objectMapper) {
+        log.info("初始化 ProjectApiClient, baseUrl={}", properties.getApi("project-api").getBaseUrl());
+        return new ProjectApiClient(externalApiHttpClient, properties, objectMapper);
+    }
 }

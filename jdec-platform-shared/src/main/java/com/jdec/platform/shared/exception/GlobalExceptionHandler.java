@@ -2,10 +2,12 @@ package com.jdec.platform.shared.exception;
 
 import com.jdec.platform.shared.model.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -53,6 +55,23 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理参数校验失败异常（@Valid / @Validated）
+     *
+     * @param e 参数校验异常
+     * @return 400 响应，拼接所有字段校验错误信息
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValidException(
+            MethodArgumentNotValidException e) {
+        String message =
+                e.getBindingResult().getFieldErrors().stream()
+                        .map(err -> err.getField() + ": " + err.getDefaultMessage())
+                        .collect(Collectors.joining("; "));
+        log.warn("参数校验失败: {}", message);
+        return ResponseEntity.status(HttpStatus.OK).body(ApiResponse.error(500, message));
+    }
+
+    /**
      * 处理数据库唯一约束冲突异常
      *
      * @param e 重复键异常
@@ -96,7 +115,7 @@ public class GlobalExceptionHandler {
             }
         }
 
-        ApiResponse<Void> response = ApiResponse.error(400, message);
+        ApiResponse<Void> response = ApiResponse.error(500, message);
 
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }

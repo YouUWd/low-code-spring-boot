@@ -263,6 +263,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         return resp;
     }
 
+    @Transactional
     @Override
     public void saveCategory(SysConfigCategorySaveReq req) {
         String projectNo = AppContext.getProjectNo();
@@ -300,9 +301,20 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             }
             // 校验 categoryAlias 是否重复
             checkDuplicateAlias(req.getCategoryAlias(), projectNo, req.getId());
+            SysConfigCategory oldEntity = categoryMapper.selectById(req.getId());
             SysConfigCategory entity = new SysConfigCategory();
             BeanUtils.copyProperties(req, entity);
             categoryMapper.updateById(entity);
+
+            // 分类停用时，级联停用该分类下所有配置项
+            if (Integer.valueOf(0).equals(req.getStatus())
+                    && !Integer.valueOf(0).equals(oldEntity.getStatus())) {
+                itemMapper.update(
+                        null,
+                        Wrappers.<SysConfigItem>lambdaUpdate()
+                                .set(SysConfigItem::getStatus, 0)
+                                .eq(SysConfigItem::getCategoryAlias, oldEntity.getCategoryAlias()));
+            }
         }
     }
 

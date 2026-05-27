@@ -38,6 +38,8 @@ public class ExternalApiProperties {
         /** API 密钥（用于签名等） */
         private String apiSecret;
 
+        private String apiKey;
+
         /** 是否启用 */
         private boolean enabled = true;
 
