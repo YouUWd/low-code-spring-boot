@@ -306,10 +306,22 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     public void saveRoleModuleFieldPermission(SaveRoleModuleFieldPermissionReq request) {
         Long roleId = request.getRoleId();
 
-        // 1. 删除该角色下的所有旧字段权限记录
-        sysRoleModuleFieldPermissionMapper.delete(
-                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                        .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
+        // 1. 删除该角色下 request 中模块列表的旧字段权限记录
+        if (CollUtil.isNotEmpty(request.getFields())) {
+            List<Long> moduleIds =
+                    request.getFields().stream()
+                            .map(
+                                    SaveRoleModuleFieldPermissionReq.ModuleFieldPermissionItem
+                                            ::getModuleId)
+                            .filter(java.util.Objects::nonNull)
+                            .toList();
+            if (CollUtil.isNotEmpty(moduleIds)) {
+                sysRoleModuleFieldPermissionMapper.delete(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .in(SysRoleModuleFieldPermission::getModuleId, moduleIds));
+            }
+        }
 
         // 2. 解析并批量插入新数据
         if (CollUtil.isNotEmpty(request.getFields())) {
