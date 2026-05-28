@@ -12,6 +12,12 @@ spring:
     resources:
       add-mappings: false
 
+  # ===== 文件上传限制 =====
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
   # ===== 禁用 Spring Modulith 自动配置 =====
   autoconfigure:
     exclude:
