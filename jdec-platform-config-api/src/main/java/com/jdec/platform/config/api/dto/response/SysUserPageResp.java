@@ -45,6 +45,9 @@ public class SysUserPageResp {
     @Schema(description = "部门名称")
     private String departName;
 
+    @Schema(description = "部门领导人")
+    private String leaderName;
+
     @Schema(description = "职位名称")
     private String positionName;
 

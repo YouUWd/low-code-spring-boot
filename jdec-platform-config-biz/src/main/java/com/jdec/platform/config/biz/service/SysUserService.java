@@ -72,7 +72,7 @@ public class SysUserService implements SysUserApi {
         Page<SysUser> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysUser> wrapper =
                 new LambdaQueryWrapper<SysUser>()
-                        .in(SysUser::getId, userIds)
+                        .in(SysUser::getUserId, userIds)
                         .like(
                                 StrUtil.isNotBlank(query.getUserName()),
                                 SysUser::getUserName,
@@ -185,7 +185,7 @@ public class SysUserService implements SysUserApi {
         List<SysUser> users =
                 sysUserMapper.selectList(
                         Wrappers.<SysUser>lambdaQuery()
-                                .in(SysUser::getId, userIds)
+                                .in(SysUser::getUserId, userIds)
                                 .orderByDesc(SysUser::getCreatedDate));
         return users.stream().map(this::toUserPageResp).toList();
     }

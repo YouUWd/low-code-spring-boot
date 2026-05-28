@@ -61,10 +61,12 @@ spring:
 jdec:
   project:
     datasource-mapping:
-      primary: primary
-      school: school
-      hr_manage: hr_manage
+      primary: mysql
+      auth_center: auth_center
       config_center: config_center
+      hr_manage: hr_manage
+      third: third
+      school: school
 
 # ===== MyBatis-Plus 开发模式 =====
 mybatis-plus:
