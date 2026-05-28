@@ -15,6 +15,9 @@ public class ApprovalChainConfigDetailResp {
     @Schema(description = "所属模块ID")
     private Long moduleId;
 
+    @Schema(description = "所属模块名称")
+    private String moduleName;
+
     @Schema(description = "上一步步骤")
     private Integer upStep;
 
@@ -26,6 +29,9 @@ public class ApprovalChainConfigDetailResp {
 
     @Schema(description = "审批链分类ID")
     private Long approvalChainTypeId;
+
+    @Schema(description = "审批链分类名称")
+    private String approvalChainTypeName;
 
     @Schema(description = "审批规则")
     private String approvalRule;
@@ -128,6 +134,42 @@ public class ApprovalChainConfigDetailResp {
         @Schema(description = "按钮ID")
         private Long buttonId;
 
+        @Schema(description = "按钮名称")
+        private String buttonTitle;
+
+        @Schema(description = "按钮别名")
+        private String buttonAlias;
+
+        @Schema(description = "按钮描述")
+        private String buttonDescription;
+
+        @Schema(description = "默认背景颜色")
+        private String defaultBgColor;
+
+        @Schema(description = "默认字体颜色")
+        private String defaultFontColor;
+
+        @Schema(description = "悬浮背景颜色")
+        private String levitateBgColor;
+
+        @Schema(description = "悬浮字体颜色")
+        private String levitateFontColor;
+
+        @Schema(description = "选中背景颜色")
+        private String selectedBgColor;
+
+        @Schema(description = "选中字体颜色")
+        private String selectedFontColor;
+
+        @Schema(description = "按钮排序")
+        private Integer buttonSortOrder;
+
+        @Schema(description = "按钮显示状态 1:显示 0:隐藏")
+        private Integer buttonShowed;
+
+        @Schema(description = "按钮启用状态 1:启用 0:不启用")
+        private Integer buttonEnabled;
+
         @Schema(description = "日志对应图标")
         private String icon;
 
@@ -136,5 +178,29 @@ public class ApprovalChainConfigDetailResp {
 
         @Schema(description = "消息模板ID集合")
         private String msgTemplateIds;
+
+        @Schema(description = "消息模板列表")
+        private List<MessageTemplateDetail> messageTemplates;
+    }
+
+    /** 消息模板详情 */
+    @Data
+    @Schema(description = "消息模板详情")
+    public static class MessageTemplateDetail {
+
+        @Schema(description = "模板ID")
+        private Long id;
+
+        @Schema(description = "模板标题")
+        private String templateTitle;
+
+        @Schema(description = "模板内容")
+        private String templateContent;
+
+        @Schema(description = "模块ID")
+        private Long moduleId;
+
+        @Schema(description = "模块名称")
+        private String moduleName;
     }
 }

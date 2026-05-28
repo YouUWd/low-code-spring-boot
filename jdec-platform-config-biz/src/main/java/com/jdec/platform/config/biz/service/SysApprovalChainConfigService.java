@@ -268,7 +268,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
                                     if (config.getButtonList() != null
                                             && !config.getButtonList().isEmpty()) {
-                                        List<ApprovalChainConfigPageResp.ButtonDetail>
+                                        List<ApprovalChainConfigPageResp.ButtonConfig>
                                                 buttonDetails = new ArrayList<>();
                                         for (String buttonConfigIdStr :
                                                 config.getButtonList().split(",")) {
@@ -279,11 +279,13 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                                         buttonConfigIdStr.trim()));
                                                 if (buttonConfig == null) continue;
 
-                                                ApprovalChainConfigPageResp.ButtonDetail
+                                                ApprovalChainConfigPageResp.ButtonConfig
                                                         buttonDetail =
                                                                 new ApprovalChainConfigPageResp
-                                                                        .ButtonDetail();
+                                                                        .ButtonConfig();
                                                 buttonDetail.setId(buttonConfig.getId());
+                                                buttonDetail.setButtonTypeId(
+                                                        buttonConfig.getButtonTypeId());
                                                 buttonDetail.setButtonId(
                                                         buttonConfig.getButtonId());
                                                 buttonDetail.setIcon(buttonConfig.getIcon());
@@ -291,6 +293,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                 buttonDetail.setMsgTemplateIds(
                                                         buttonConfig.getMsgTemplateIds());
 
+                                                // 设置按钮详细信息
                                                 if (buttonConfig.getButtonId() != null) {
                                                     SysButton button =
                                                             buttonMap.get(
@@ -300,6 +303,26 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                                 button.getTitle());
                                                         buttonDetail.setButtonAlias(
                                                                 button.getAlias());
+                                                        buttonDetail.setButtonDescription(
+                                                                button.getDescription());
+                                                        buttonDetail.setDefaultBgColor(
+                                                                button.getDefaultBgColor());
+                                                        buttonDetail.setDefaultFontColor(
+                                                                button.getDefaultFontColor());
+                                                        buttonDetail.setLevitateBgColor(
+                                                                button.getLevitateBgColor());
+                                                        buttonDetail.setLevitateFontColor(
+                                                                button.getLevitateFontColor());
+                                                        buttonDetail.setSelectedBgColor(
+                                                                button.getSelectedBgColor());
+                                                        buttonDetail.setSelectedFontColor(
+                                                                button.getSelectedFontColor());
+                                                        buttonDetail.setButtonSortOrder(
+                                                                button.getSortOrder());
+                                                        buttonDetail.setButtonShowed(
+                                                                button.getShowed());
+                                                        buttonDetail.setButtonEnabled(
+                                                                button.getEnabled());
                                                     }
                                                 }
 
@@ -349,12 +372,11 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                             } catch (NumberFormatException ignored) {
                                             }
                                         }
-                                        resp.setButtonDetails(buttonDetails);
+                                        resp.setButtonConfigs(buttonDetails);
                                     }
 
                                     resp.setCollaborated(config.getCollaborated());
                                     resp.setRepeated(config.getRepeated());
-                                    resp.setMsgTemplateIds(config.getMsgTemplateIds());
                                     resp.setDefaultFlag(config.getDefaultFlag());
                                     return resp;
                                 })
@@ -499,76 +521,289 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
     }
 
     @Override
-    public ApprovalChainConfigDetailResp getDetail(Long id) {
+    public List<ApprovalChainConfigDetailResp> getDetail(Long id) {
         SysApprovalChainConfig config = sysApprovalChainConfigMapper.selectById(id);
         if (config == null) {
             throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
         }
 
-        List<SysApprovalChainConfigButton> buttons =
-                sysApprovalChainConfigButtonMapper.selectList(
-                        new LambdaQueryWrapper<SysApprovalChainConfigButton>()
-                                .eq(SysApprovalChainConfigButton::getPid, id));
+        // 查询同模块同类型的所有审批链配置（按步骤升序）
+        List<SysApprovalChainConfig> chainConfigs =
+                sysApprovalChainConfigMapper.selectList(
+                        new LambdaQueryWrapper<SysApprovalChainConfig>()
+                                .eq(SysApprovalChainConfig::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysApprovalChainConfig::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysApprovalChainConfig::getModuleId, config.getModuleId())
+                                .eq(
+                                        SysApprovalChainConfig::getApprovalChainTypeId,
+                                        config.getApprovalChainTypeId())
+                                .orderByAsc(SysApprovalChainConfig::getCurrentStep));
 
-        Map<Long, SysStatus> allStatusMap = loadAllStatuses();
-
-        ApprovalChainConfigDetailResp resp = new ApprovalChainConfigDetailResp();
-        resp.setId(config.getId());
-        resp.setModuleId(config.getModuleId());
-        resp.setUpStep(config.getUpStep());
-        resp.setCurrentStep(config.getCurrentStep());
-        resp.setNextStep(config.getNextStep());
-        resp.setApprovalChainTypeId(config.getApprovalChainTypeId());
-        resp.setApprovalRule(config.getApprovalRule());
-        resp.setRoleApprovalPercent(config.getRoleApprovalPercent());
-        resp.setApproveRoleId(config.getApproveRoleId());
-        resp.setApproverId(config.getApproverId());
-        resp.setDelegateApproverId(config.getDelegateApproverId());
-        resp.setSkipped(config.getSkipped());
-        resp.setShowed(config.getShowed());
-        resp.setChildModuleIds(config.getChildModuleIds());
-        resp.setCurrentStatusId(config.getCurrentStatusId());
-        resp.setCurrentStatusChain(
-                buildStatusChain(
-                        config.getCurrentStatusId(),
-                        allStatusMap,
-                        ApprovalChainConfigDetailResp.StatusNode.class));
-        resp.setNextStatusId(config.getNextStatusId());
-        resp.setNextStatusChain(
-                buildStatusChain(
-                        config.getNextStatusId(),
-                        allStatusMap,
-                        ApprovalChainConfigDetailResp.StatusNode.class));
-        resp.setAutoApproved(config.getAutoApproved());
-        resp.setAutoApprovedTime(config.getAutoApprovedTime());
-        resp.setDeadlineTime(config.getDeadlineTime());
-        resp.setButtonList(config.getButtonList());
-        resp.setCollaborated(config.getCollaborated());
-        resp.setRepeated(config.getRepeated());
-        resp.setMsgTemplateIds(config.getMsgTemplateIds());
-        resp.setDefaultFlag(config.getDefaultFlag());
-
-        if (!buttons.isEmpty()) {
-            List<ApprovalChainConfigDetailResp.ButtonConfigDetail> buttonDetails =
-                    buttons.stream()
-                            .map(
-                                    btn -> {
-                                        ApprovalChainConfigDetailResp.ButtonConfigDetail detail =
-                                                new ApprovalChainConfigDetailResp
-                                                        .ButtonConfigDetail();
-                                        detail.setId(btn.getId());
-                                        detail.setButtonTypeId(btn.getButtonTypeId());
-                                        detail.setButtonId(btn.getButtonId());
-                                        detail.setIcon(btn.getIcon());
-                                        detail.setLogName(btn.getLogName());
-                                        detail.setMsgTemplateIds(btn.getMsgTemplateIds());
-                                        return detail;
-                                    })
-                            .collect(Collectors.toList());
-            resp.setButtonConfigs(buttonDetails);
+        if (chainConfigs.isEmpty()) {
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "未找到审批链配置");
         }
 
-        return resp;
+        // 收集所有配置的ID，用于批量查询按钮配置
+        Set<Long> configIds =
+                chainConfigs.stream()
+                        .map(SysApprovalChainConfig::getId)
+                        .collect(Collectors.toSet());
+
+        // 批量查询所有配置的按钮配置
+        Map<Long, List<SysApprovalChainConfigButton>> buttonConfigMap = new HashMap<>();
+        if (!configIds.isEmpty()) {
+            List<SysApprovalChainConfigButton> allButtons =
+                    sysApprovalChainConfigButtonMapper.selectList(
+                            new LambdaQueryWrapper<SysApprovalChainConfigButton>()
+                                    .in(SysApprovalChainConfigButton::getPid, configIds));
+            buttonConfigMap =
+                    allButtons.stream()
+                            .collect(Collectors.groupingBy(SysApprovalChainConfigButton::getPid));
+        }
+
+        // 收集所有按钮ID和消息模板ID
+        Set<Long> buttonIds = new HashSet<>();
+        Set<Long> msgTemplateIds = new HashSet<>();
+        for (List<SysApprovalChainConfigButton> buttons : buttonConfigMap.values()) {
+            for (SysApprovalChainConfigButton buttonConfig : buttons) {
+                if (buttonConfig.getButtonId() != null) {
+                    buttonIds.add(buttonConfig.getButtonId());
+                }
+                if (buttonConfig.getMsgTemplateIds() != null
+                        && !buttonConfig.getMsgTemplateIds().isEmpty()) {
+                    for (String templateId : buttonConfig.getMsgTemplateIds().split(",")) {
+                        try {
+                            msgTemplateIds.add(Long.parseLong(templateId.trim()));
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+            }
+        }
+
+        // 批量查询按钮和消息模板
+        Map<Long, SysButton> buttonMap = batchQueryButtons(buttonIds);
+        Map<Long, SysWechatTemplate> msgTemplateMap = batchQueryMsgTemplates(msgTemplateIds);
+        Map<Long, SysStatus> allStatusMap = loadAllStatuses();
+
+        // 批量查询模块名称和审批链分类名称
+        Set<Long> moduleIds = new HashSet<>();
+        Set<Long> chainTypeIds = new HashSet<>();
+        for (SysApprovalChainConfig chainConfig : chainConfigs) {
+            if (chainConfig.getModuleId() != null) {
+                moduleIds.add(chainConfig.getModuleId());
+            }
+            if (chainConfig.getApprovalChainTypeId() != null) {
+                chainTypeIds.add(chainConfig.getApprovalChainTypeId());
+            }
+        }
+        Map<Long, String> moduleMap = batchQueryModules(moduleIds);
+        Map<Long, String> chainTypeMap = batchQueryChainTypes(chainTypeIds);
+
+        // 构建响应列表
+        Map<Long, List<SysApprovalChainConfigButton>> finalButtonConfigMap = buttonConfigMap;
+        Map<Long, SysButton> finalButtonMap = buttonMap;
+        Map<Long, SysWechatTemplate> finalMsgTemplateMap = msgTemplateMap;
+        Map<Long, String> finalModuleMap = moduleMap;
+        Map<Long, String> finalChainTypeMap = chainTypeMap;
+
+        return chainConfigs.stream()
+                .map(
+                        chainConfig -> {
+                            ApprovalChainConfigDetailResp resp =
+                                    new ApprovalChainConfigDetailResp();
+                            resp.setId(chainConfig.getId());
+                            resp.setModuleId(chainConfig.getModuleId());
+                            resp.setModuleName(finalModuleMap.get(chainConfig.getModuleId()));
+                            resp.setUpStep(chainConfig.getUpStep());
+                            resp.setCurrentStep(chainConfig.getCurrentStep());
+                            resp.setNextStep(chainConfig.getNextStep());
+                            resp.setApprovalChainTypeId(chainConfig.getApprovalChainTypeId());
+                            resp.setApprovalChainTypeName(
+                                    finalChainTypeMap.get(chainConfig.getApprovalChainTypeId()));
+                            resp.setApprovalRule(chainConfig.getApprovalRule());
+                            resp.setRoleApprovalPercent(chainConfig.getRoleApprovalPercent());
+                            resp.setApproveRoleId(chainConfig.getApproveRoleId());
+                            resp.setApproverId(chainConfig.getApproverId());
+                            resp.setDelegateApproverId(chainConfig.getDelegateApproverId());
+                            resp.setSkipped(chainConfig.getSkipped());
+                            resp.setShowed(chainConfig.getShowed());
+                            resp.setChildModuleIds(chainConfig.getChildModuleIds());
+                            resp.setCurrentStatusId(chainConfig.getCurrentStatusId());
+                            resp.setCurrentStatusChain(
+                                    buildStatusChain(
+                                            chainConfig.getCurrentStatusId(),
+                                            allStatusMap,
+                                            ApprovalChainConfigDetailResp.StatusNode.class));
+                            resp.setNextStatusId(chainConfig.getNextStatusId());
+                            resp.setNextStatusChain(
+                                    buildStatusChain(
+                                            chainConfig.getNextStatusId(),
+                                            allStatusMap,
+                                            ApprovalChainConfigDetailResp.StatusNode.class));
+                            resp.setAutoApproved(chainConfig.getAutoApproved());
+                            resp.setAutoApprovedTime(chainConfig.getAutoApprovedTime());
+                            resp.setDeadlineTime(chainConfig.getDeadlineTime());
+                            resp.setButtonList(chainConfig.getButtonList());
+                            resp.setCollaborated(chainConfig.getCollaborated());
+                            resp.setRepeated(chainConfig.getRepeated());
+                            resp.setMsgTemplateIds(chainConfig.getMsgTemplateIds());
+                            resp.setDefaultFlag(chainConfig.getDefaultFlag());
+
+                            // 设置按钮配置（包含按钮详情和消息模板）
+                            List<SysApprovalChainConfigButton> buttons =
+                                    finalButtonConfigMap.getOrDefault(
+                                            chainConfig.getId(), Collections.emptyList());
+                            if (!buttons.isEmpty()) {
+                                List<ApprovalChainConfigDetailResp.ButtonConfigDetail>
+                                        buttonDetails =
+                                                buttons.stream()
+                                                        .map(
+                                                                btn -> {
+                                                                    ApprovalChainConfigDetailResp
+                                                                                    .ButtonConfigDetail
+                                                                            detail =
+                                                                                    new ApprovalChainConfigDetailResp
+                                                                                            .ButtonConfigDetail();
+                                                                    detail.setId(btn.getId());
+                                                                    detail.setButtonTypeId(
+                                                                            btn.getButtonTypeId());
+                                                                    detail.setButtonId(
+                                                                            btn.getButtonId());
+                                                                    detail.setIcon(btn.getIcon());
+                                                                    detail.setLogName(
+                                                                            btn.getLogName());
+                                                                    detail.setMsgTemplateIds(
+                                                                            btn
+                                                                                    .getMsgTemplateIds());
+
+                                                                    // 设置按钮详细信息
+                                                                    if (btn.getButtonId() != null) {
+                                                                        SysButton button =
+                                                                                finalButtonMap.get(
+                                                                                        btn
+                                                                                                .getButtonId());
+                                                                        if (button != null) {
+                                                                            detail.setButtonTitle(
+                                                                                    button
+                                                                                            .getTitle());
+                                                                            detail.setButtonAlias(
+                                                                                    button
+                                                                                            .getAlias());
+                                                                            detail
+                                                                                    .setButtonDescription(
+                                                                                            button
+                                                                                                    .getDescription());
+                                                                            detail
+                                                                                    .setDefaultBgColor(
+                                                                                            button
+                                                                                                    .getDefaultBgColor());
+                                                                            detail
+                                                                                    .setDefaultFontColor(
+                                                                                            button
+                                                                                                    .getDefaultFontColor());
+                                                                            detail
+                                                                                    .setLevitateBgColor(
+                                                                                            button
+                                                                                                    .getLevitateBgColor());
+                                                                            detail
+                                                                                    .setLevitateFontColor(
+                                                                                            button
+                                                                                                    .getLevitateFontColor());
+                                                                            detail
+                                                                                    .setSelectedBgColor(
+                                                                                            button
+                                                                                                    .getSelectedBgColor());
+                                                                            detail
+                                                                                    .setSelectedFontColor(
+                                                                                            button
+                                                                                                    .getSelectedFontColor());
+                                                                            detail
+                                                                                    .setButtonSortOrder(
+                                                                                            button
+                                                                                                    .getSortOrder());
+                                                                            detail.setButtonShowed(
+                                                                                    button
+                                                                                            .getShowed());
+                                                                            detail.setButtonEnabled(
+                                                                                    button
+                                                                                            .getEnabled());
+                                                                        }
+                                                                    }
+
+                                                                    // 设置消息模板列表
+                                                                    if (btn.getMsgTemplateIds()
+                                                                                    != null
+                                                                            && !btn.getMsgTemplateIds()
+                                                                                    .isEmpty()) {
+                                                                        List<
+                                                                                        ApprovalChainConfigDetailResp
+                                                                                                .MessageTemplateDetail>
+                                                                                msgTemplateDetails =
+                                                                                        new ArrayList<>();
+                                                                        for (String
+                                                                                msgTemplateIdStr :
+                                                                                        btn.getMsgTemplateIds()
+                                                                                                .split(
+                                                                                                        ",")) {
+                                                                            try {
+                                                                                SysWechatTemplate
+                                                                                        msgTemplate =
+                                                                                                finalMsgTemplateMap
+                                                                                                        .get(
+                                                                                                                Long
+                                                                                                                        .parseLong(
+                                                                                                                                msgTemplateIdStr
+                                                                                                                                        .trim()));
+                                                                                if (msgTemplate
+                                                                                        == null)
+                                                                                    continue;
+
+                                                                                ApprovalChainConfigDetailResp
+                                                                                                .MessageTemplateDetail
+                                                                                        msgDetail =
+                                                                                                new ApprovalChainConfigDetailResp
+                                                                                                        .MessageTemplateDetail();
+                                                                                msgDetail.setId(
+                                                                                        msgTemplate
+                                                                                                .getId());
+                                                                                msgDetail
+                                                                                        .setTemplateTitle(
+                                                                                                msgTemplate
+                                                                                                        .getTemplateTitle());
+                                                                                msgDetail
+                                                                                        .setTemplateContent(
+                                                                                                msgTemplate
+                                                                                                        .getTemplateContent());
+                                                                                msgDetail
+                                                                                        .setModuleId(
+                                                                                                msgTemplate
+                                                                                                        .getModuleId());
+                                                                                msgDetail
+                                                                                        .setModuleName(
+                                                                                                msgTemplate
+                                                                                                        .getModuleName());
+                                                                                msgTemplateDetails
+                                                                                        .add(
+                                                                                                msgDetail);
+                                                                            } catch (
+                                                                                    NumberFormatException
+                                                                                            ignored) {
+                                                                            }
+                                                                        }
+                                                                        detail.setMessageTemplates(
+                                                                                msgTemplateDetails);
+                                                                    }
+
+                                                                    return detail;
+                                                                })
+                                                        .collect(Collectors.toList());
+                                resp.setButtonConfigs(buttonDetails);
+                            }
+
+                            return resp;
+                        })
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -719,6 +954,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
         if (request.getButtonConfigs() != null && !request.getButtonConfigs().isEmpty()) {
             Long finalId = id;
+            // 删除旧的按钮记录，再重新插入
+            sysApprovalChainConfigButtonMapper.delete(
+                    new LambdaQueryWrapper<SysApprovalChainConfigButton>()
+                            .eq(SysApprovalChainConfigButton::getPid, finalId));
             List<SysApprovalChainConfigButton> buttons =
                     request.getButtonConfigs().stream()
                             .map(

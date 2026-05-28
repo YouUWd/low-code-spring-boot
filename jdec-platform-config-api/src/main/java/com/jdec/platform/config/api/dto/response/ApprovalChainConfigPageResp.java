@@ -102,21 +102,21 @@ public class ApprovalChainConfigPageResp {
     @Schema(description = "是否可以重复提交 0:否 1:是")
     private Integer repeated;
 
-    @Schema(description = "消息模板ID集合")
-    private String msgTemplateIds;
-
     @Schema(description = "是否默认，1：是，0：否")
     private Integer defaultFlag;
 
     @Schema(description = "按钮配置列表")
-    private List<ButtonDetail> buttonDetails;
+    private List<ButtonConfig> buttonConfigs;
 
-    /** 按钮详情 */
+    /** 按钮配置 */
     @Data
-    @Schema(description = "按钮详情")
-    public static class ButtonDetail {
+    @Schema(description = "按钮配置")
+    public static class ButtonConfig {
         @Schema(description = "按钮配置ID")
         private Long id;
+
+        @Schema(description = "操作类型ID")
+        private Long buttonTypeId;
 
         @Schema(description = "按钮ID")
         private Long buttonId;
@@ -126,6 +126,36 @@ public class ApprovalChainConfigPageResp {
 
         @Schema(description = "按钮别名")
         private String buttonAlias;
+
+        @Schema(description = "按钮描述")
+        private String buttonDescription;
+
+        @Schema(description = "默认背景颜色")
+        private String defaultBgColor;
+
+        @Schema(description = "默认字体颜色")
+        private String defaultFontColor;
+
+        @Schema(description = "悬浮背景颜色")
+        private String levitateBgColor;
+
+        @Schema(description = "悬浮字体颜色")
+        private String levitateFontColor;
+
+        @Schema(description = "选中背景颜色")
+        private String selectedBgColor;
+
+        @Schema(description = "选中字体颜色")
+        private String selectedFontColor;
+
+        @Schema(description = "按钮排序")
+        private Integer buttonSortOrder;
+
+        @Schema(description = "按钮显示状态 1:显示 0:隐藏")
+        private Integer buttonShowed;
+
+        @Schema(description = "按钮启用状态 1:启用 0:不启用")
+        private Integer buttonEnabled;
 
         @Schema(description = "日志图标")
         private String icon;

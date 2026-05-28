@@ -18,8 +18,8 @@ public interface SysApprovalChainConfigApi {
     /** 分页查询审批链配置 */
     PageResult<ApprovalChainConfigPageResp> getPage(ApprovalChainConfigPageReq request);
 
-    /** 查询审批链配置详情 */
-    ApprovalChainConfigDetailResp getDetail(Long id);
+    /** 查询审批链配置详情（返回同模块同类型的所有配置） */
+    List<ApprovalChainConfigDetailResp> getDetail(Long id);
 
     /** 新增或编辑审批链配置 */
     ApprovalChainConfigSaveResp save(ApprovalChainConfigSaveReq request);

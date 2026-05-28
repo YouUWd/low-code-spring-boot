@@ -49,8 +49,8 @@ public class SysApprovalConfigController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "查询审批链配置详情", description = "根据ID查询审批链配置详情，包含所有关联数据和按钮配置")
-    public ApiResponse<ApprovalChainConfigDetailResp> getDetail(@PathVariable Long id) {
+    @Operation(summary = "查询审批链配置详情", description = "根据ID查询同模块同类型的所有审批链配置（按步骤升序）")
+    public ApiResponse<List<ApprovalChainConfigDetailResp>> getDetail(@PathVariable Long id) {
         return ApiResponse.success(sysApprovalChainConfigApi.getDetail(id));
     }
 
