@@ -1,9 +1,9 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigPageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
@@ -809,7 +809,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ApprovalChainConfigSaveResp save(ApprovalChainConfigSaveReq request) {
-        Long id = request.getId();
+        Long id = request.getTargetId();
 
         if (request.getUpStep() == null) request.setUpStep(0);
         if (request.getDefaultFlag() == null) request.setDefaultFlag(0);
@@ -826,7 +826,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "当前状态不能与下一状态相同，请重新选择");
         }
 
-        SysApprovalChainConfig config = convertToEntity(request);
+        SysApprovalChainConfig config = BeanUtil.toBean(request, SysApprovalChainConfig.class);
 
         SysApprovalChainConfig upConfig;
         SysApprovalChainConfig nextConfig;
@@ -961,7 +961,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                     })
                             .collect(Collectors.toList());
 
-            Db.saveBatch(buttons);
+            sysApprovalChainConfigButtonMapper.insert(buttons);
 
             String buttonListIds =
                     buttons.stream()
@@ -977,35 +977,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         rearrangeStepsAfterSave(config, id, upConfig, nextConfig);
 
         return new ApprovalChainConfigSaveResp(id, 1);
-    }
-
-    private SysApprovalChainConfig convertToEntity(ApprovalChainConfigSaveReq request) {
-        SysApprovalChainConfig config = new SysApprovalChainConfig();
-        config.setId(request.getId());
-        config.setModuleId(request.getModuleId());
-        config.setUpStep(request.getUpStep());
-        config.setCurrentStep(request.getCurrentStep());
-        config.setNextStep(request.getNextStep());
-        config.setApprovalChainTypeId(request.getApprovalChainTypeId());
-        config.setApprovalRule(request.getApprovalRule());
-        config.setRoleApprovalPercent(request.getRoleApprovalPercent());
-        config.setApproveRoleId(request.getApproveRoleId());
-        config.setApproverId(request.getApproverId());
-        config.setDelegateApproverId(request.getDelegateApproverId());
-        config.setSkipped(request.getSkipped());
-        config.setShowed(request.getShowed());
-        config.setChildModuleIds(request.getChildModuleIds());
-        config.setCurrentStatusId(request.getCurrentStatusId());
-        config.setNextStatusId(request.getNextStatusId());
-        config.setAutoApproved(request.getAutoApproved());
-        config.setAutoApprovedTime(request.getAutoApprovedTime());
-        config.setDeadlineTime(request.getDeadlineTime());
-        config.setButtonList(request.getButtonList());
-        config.setCollaborated(request.getCollaborated());
-        config.setRepeated(request.getRepeated());
-        config.setMsgTemplateIds(request.getMsgTemplateIds());
-        config.setDefaultFlag(request.getDefaultFlag());
-        return config;
     }
 
     private void rearrangeStepsAfterSave(

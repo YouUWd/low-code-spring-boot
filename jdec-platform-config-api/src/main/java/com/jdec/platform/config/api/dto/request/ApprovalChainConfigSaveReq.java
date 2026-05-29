@@ -13,6 +13,9 @@ public class ApprovalChainConfigSaveReq {
     @Schema(description = "主键ID（编辑时必填，新增时为空）")
     private Long id;
 
+    @Schema(description = "需要衔接的目标审批链id")
+    private Long targetId;
+
     @Schema(description = "所属模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "模块ID不能为空")
     private Long moduleId;
