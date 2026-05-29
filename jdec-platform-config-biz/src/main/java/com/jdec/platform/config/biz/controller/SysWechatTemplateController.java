@@ -100,6 +100,18 @@ public class SysWechatTemplateController {
         return ApiResponse.success(sysWechatTemplateService.listParams(query));
     }
 
+    @Operation(summary = "根据模块ID查询微信模板参数列表")
+    @GetMapping("/params/module/{moduleId}")
+    public ApiResponse<List<WechatTemplateParamEntryResp>> listParamsByModuleId(
+            @Parameter(description = "模块ID", required = true) @PathVariable Long moduleId) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("根据模块ID查询微信模板参数列表: moduleId={}, projectNo={}", moduleId, projectNo);
+        List<WechatTemplateParamEntryResp> result =
+                sysWechatTemplateService.listParamsByModuleId(projectNo, subjectId, moduleId);
+        return ApiResponse.success(result);
+    }
+
     @Operation(summary = "获取参数详情")
     @GetMapping("/params/{id}")
     public ApiResponse<WechatTemplateParamEntryResp> getParamById(

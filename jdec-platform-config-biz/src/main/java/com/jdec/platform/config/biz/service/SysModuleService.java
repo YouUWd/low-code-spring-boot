@@ -259,21 +259,21 @@ public class SysModuleService implements SysModuleApi {
             sysModuleMapper.updateById(module);
         }
 
-        if (!CollectionUtils.isEmpty(request.getModuleTables())) {
+        if (request.getModuleTables() != null) {
             saveModuleTables(moduleId, request.getModuleTables());
         }
 
-        if (!CollectionUtils.isEmpty(request.getSimpleFields())) {
+        if (request.getSimpleFields() != null) {
             saveSimpleFields(moduleId, request.getSimpleFields());
         }
 
-        if (!CollectionUtils.isEmpty(request.getCombineFields())) {
+        if (request.getCombineFields() != null) {
             saveCombineFields(moduleId, request.getCombineFields());
         }
 
         // 仅DETAIL类型模块保存状态信息
         if (ModuleTypeEnum.DETAIL == module.getModuleType()
-                && !CollectionUtils.isEmpty(request.getModuleStatuses())) {
+                && request.getModuleStatuses() != null) {
             saveModuleStatuses(moduleId, request.getModuleStatuses());
         }
 

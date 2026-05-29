@@ -78,6 +78,17 @@ public interface SysWechatTemplateApi {
     PageResult<WechatTemplateParamEntryResp> listParams(WechatTemplateParamQueryReq query);
 
     /**
+     * 根据模块ID查询微信模板参数列表
+     *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
+     * @param moduleId 模块 ID
+     * @return 微信模板参数列表
+     */
+    List<WechatTemplateParamEntryResp> listParamsByModuleId(
+            String projectNo, Long subjectId, Long moduleId);
+
+    /**
      * 获取微信模板参数详情
      *
      * @param id 参数 ID

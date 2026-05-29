@@ -25,6 +25,7 @@ import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -148,6 +149,20 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         Page<SysWechatTemplateParam> result =
                 sysWechatTemplateParamMapper.selectPage(page, wrapper);
         return PageResultUtils.of(result.convert(this::toParamEntryResp));
+    }
+
+    @Override
+    public List<WechatTemplateParamEntryResp> listParamsByModuleId(
+            String projectNo, Long subjectId, Long moduleId) {
+        LambdaQueryWrapper<SysWechatTemplateParam> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(SysWechatTemplateParam::getProjectNo, projectNo)
+                .eq(subjectId != null, SysWechatTemplateParam::getSubjectId, subjectId)
+                .eq(moduleId != null, SysWechatTemplateParam::getModuleId, moduleId)
+                .eq(SysWechatTemplateParam::getDeleted, 0)
+                .orderByDesc(SysWechatTemplateParam::getCreatedDate);
+
+        List<SysWechatTemplateParam> list = sysWechatTemplateParamMapper.selectList(wrapper);
+        return list.stream().map(this::toParamEntryResp).collect(Collectors.toList());
     }
 
     @Override

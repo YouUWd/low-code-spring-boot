@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api;
 
+import com.jdec.platform.config.api.dto.response.PermissionTableGroupResp;
 import com.jdec.platform.config.api.dto.response.SysModuleFieldTreeResp;
 import java.util.List;
 
@@ -14,4 +15,16 @@ public interface SysModuleFieldPermissionApi {
      * @return 模块表字段树列表
      */
     List<SysModuleFieldTreeResp> getModuleTableFieldTree(String projectNo, Long subjectId);
+
+    /**
+     * 按表和权限类型分组查询角色模块字段权限集合
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @param roleId 角色ID
+     * @param moduleId 模块ID
+     * @return 包含表维度的可读、可写、可更新分组字段集合的响应
+     */
+    List<PermissionTableGroupResp> getRoleModuleFieldPermissions(
+            String projectNo, Long subjectId, Long roleId, Long moduleId);
 }
