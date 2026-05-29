@@ -40,6 +40,7 @@
         <jackson.version>2.18.2</jackson.version>
         <sa-token.version>1.45.0</sa-token.version>
         <jooq.version>3.19.15</jooq.version>
+        <druid.version>1.2.23</druid.version>
     </properties>
 
     <!-- ==================== 版本管理 ==================== -->
@@ -173,6 +174,12 @@
                 <groupId>org.jooq</groupId>
                 <artifactId>jooq</artifactId>
                 <version>${jooq.version}</version>
+            </dependency>
+            <!-- Druid 数据源 + 监控 -->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>druid-spring-boot-3-starter</artifactId>
+                <version>${druid.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
