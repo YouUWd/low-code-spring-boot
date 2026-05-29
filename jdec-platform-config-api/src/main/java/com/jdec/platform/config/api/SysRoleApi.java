@@ -32,4 +32,13 @@ public interface SysRoleApi {
     void deleteRole(Long roleId);
 
     List<SubjectOptionResp> listSubjectOptions();
+
+    /**
+     * 根据用户ID和主体ID查询用户有哪些角色
+     *
+     * @param userId 用户ID
+     * @param subjectId 主体ID
+     * @return 角色列表（仅返回在有效期内的角色）
+     */
+    List<UserRoleListResp> getUserRolesByUserIdAndSubjectId(Long userId, Long subjectId);
 }

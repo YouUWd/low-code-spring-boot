@@ -626,6 +626,129 @@ public class SysRoleService implements SysRoleApi {
         return respList;
     }
 
+    @Override
+    public List<UserRoleListResp> getUserRolesByUserIdAndSubjectId(Long userId, Long subjectId) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<UserRoleListResp> result = new ArrayList<>();
+
+        // 1. 先查询用户角色关系表
+        List<SysRoleUser> roleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getUserId, userId)
+                                .eq(SysRoleUser::getSubjectId, subjectId)
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+
+        if (!roleUsers.isEmpty()) {
+            // 有用户角色关联记录，返回这些角色（需要校验时间）
+            for (SysRoleUser roleUser : roleUsers) {
+                // 时间有效期校验
+                if (!isEffectiveDateValid(
+                        roleUser.getEffectiveType(),
+                        roleUser.getEffectiveStartDate(),
+                        roleUser.getEffectiveEndDate(),
+                        today)) {
+                    continue;
+                }
+
+                // 查询角色信息
+                SysRole role = sysRoleMapper.selectById(roleUser.getRoleId());
+                if (role != null) {
+                    UserRoleListResp resp = new UserRoleListResp();
+                    resp.setRoleId(role.getId());
+                    resp.setRoleName(role.getRoleName());
+                    resp.setRoleSlug(role.getRoleSlug());
+                    resp.setSubjectId(roleUser.getSubjectId());
+                    resp.setEffectiveType(roleUser.getEffectiveType());
+                    resp.setEffectiveStartDate(roleUser.getEffectiveStartDate());
+                    resp.setEffectiveEndDate(roleUser.getEffectiveEndDate());
+                    resp.setRoleSource(1); // 用户直接关联
+                    result.add(resp);
+                }
+            }
+            return result;
+        }
+
+        // 2. 如果用户角色关系表中没有记录，查询角色主体绑定关系表
+        List<SysRoleSubject> roleSubjects =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getSubjectId, subjectId)
+                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
+
+        for (SysRoleSubject roleSubject : roleSubjects) {
+            // 时间有效期校验
+            if (!isEffectiveDateValid(
+                    roleSubject.getEffectiveType(),
+                    roleSubject.getEffectiveStartDate(),
+                    roleSubject.getEffectiveEndDate(),
+                    today)) {
+                continue;
+            }
+
+            // 查询角色信息
+            SysRole role = sysRoleMapper.selectById(roleSubject.getRoleId());
+            if (role != null) {
+                UserRoleListResp resp = new UserRoleListResp();
+                resp.setRoleId(role.getId());
+                resp.setRoleName(role.getRoleName());
+                resp.setRoleSlug(role.getRoleSlug());
+                resp.setSubjectId(roleSubject.getSubjectId());
+                resp.setEffectiveType(roleSubject.getEffectiveType());
+                resp.setEffectiveStartDate(roleSubject.getEffectiveStartDate());
+                resp.setEffectiveEndDate(roleSubject.getEffectiveEndDate());
+                resp.setRoleSource(2); // 主体关联
+                result.add(resp);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 校验时间有效期
+     *
+     * @param effectiveType 有效期类型：1-永久，2-自定义
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param today 当前日期
+     * @return true-有效，false-无效
+     */
+    private boolean isEffectiveDateValid(
+            Integer effectiveType,
+            java.time.LocalDate startDate,
+            java.time.LocalDate endDate,
+            java.time.LocalDate today) {
+        // 永久有效
+        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
+            return true;
+        }
+
+        // 自定义时间
+        if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
+            // 开始时间和结束时间都为空，视为永久有效
+            if (startDate == null && endDate == null) {
+                return true;
+            }
+
+            // 只有开始时间，检查是否已开始
+            if (startDate != null && endDate == null) {
+                return !today.isBefore(startDate);
+            }
+
+            // 只有结束时间，检查是否未结束
+            if (startDate == null && endDate != null) {
+                return !today.isAfter(endDate);
+            }
+
+            // 开始时间和结束时间都有，检查是否在范围内
+            return !today.isBefore(startDate) && !today.isAfter(endDate);
+        }
+
+        // 其他情况视为无效
+        return false;
+    }
+
     private List<RoleSubjectResp> buildSubjectList(List<SysRoleSubject> subjects) {
         if (subjects.isEmpty()) {
             return Collections.emptyList();

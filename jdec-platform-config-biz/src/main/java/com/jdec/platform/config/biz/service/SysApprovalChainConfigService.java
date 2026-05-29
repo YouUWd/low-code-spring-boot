@@ -900,21 +900,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
             }
 
-            if (exist.getButtonList() != null && !exist.getButtonList().isEmpty()) {
-                List<Long> idsToDelete = new ArrayList<>();
-                for (String buttonConfigId : exist.getButtonList().split(",")) {
-                    try {
-                        idsToDelete.add(Long.parseLong(buttonConfigId.trim()));
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-                if (!idsToDelete.isEmpty()) {
-                    sysApprovalChainConfigButtonMapper.delete(
-                            new LambdaQueryWrapper<SysApprovalChainConfigButton>()
-                                    .in(SysApprovalChainConfigButton::getId, idsToDelete));
-                }
-            }
-
             upConfig =
                     sysApprovalChainConfigMapper.selectOne(
                             new LambdaQueryWrapper<SysApprovalChainConfig>()
@@ -952,12 +937,12 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
             sysApprovalChainConfigMapper.updateById(config);
         }
 
+        // 处理按钮列表：先删除该配置的所有旧按钮，再根据请求重新插入
+        Long finalId = id;
+        sysApprovalChainConfigButtonMapper.delete(
+                new LambdaQueryWrapper<SysApprovalChainConfigButton>()
+                        .eq(SysApprovalChainConfigButton::getPid, finalId));
         if (request.getButtonConfigs() != null && !request.getButtonConfigs().isEmpty()) {
-            Long finalId = id;
-            // 删除旧的按钮记录，再重新插入
-            sysApprovalChainConfigButtonMapper.delete(
-                    new LambdaQueryWrapper<SysApprovalChainConfigButton>()
-                            .eq(SysApprovalChainConfigButton::getPid, finalId));
             List<SysApprovalChainConfigButton> buttons =
                     request.getButtonConfigs().stream()
                             .map(
@@ -1102,6 +1087,9 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                 .eq(
                                         SysApprovalChainConfig::getModuleId,
                                         currentConfig.getModuleId())
+                                .eq(
+                                        SysApprovalChainConfig::getApprovalChainTypeId,
+                                        currentConfig.getApprovalChainTypeId())
                                 .gt(
                                         SysApprovalChainConfig::getCurrentStep,
                                         currentConfig.getUpStep())

@@ -106,14 +106,13 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
     }
 
     @Override
-    public List<ApprovalChainTypeOptionResp> listByModuleId(Long moduleId) {
+    public List<ApprovalChainTypeOptionResp> options(Long moduleId) {
         List<SysApprovalChainType> chainTypes =
                 sysApprovalChainTypeMapper.selectList(
                         new LambdaQueryWrapper<SysApprovalChainType>()
-                                .eq(SysApprovalChainType::getModuleId, moduleId)
+                                .eq(moduleId != null, SysApprovalChainType::getModuleId, moduleId)
                                 .eq(SysApprovalChainType::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysApprovalChainType::getProjectNo, AppContext.getProjectNo())
-                                .eq(SysApprovalChainType::getEnabled, 1)
                                 .orderByAsc(SysApprovalChainType::getId));
 
         return chainTypes.stream()
