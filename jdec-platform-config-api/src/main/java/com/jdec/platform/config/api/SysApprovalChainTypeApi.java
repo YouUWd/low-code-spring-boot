@@ -15,7 +15,7 @@ public interface SysApprovalChainTypeApi {
     List<ApprovalChainCascadeResp> getCascadeOptions();
 
     /** 根据模块id获取审批链分类列表 */
-    List<ApprovalChainTypeOptionResp> listByModuleId(Long moduleId);
+    List<ApprovalChainTypeOptionResp> options(Long moduleId);
 
     /** 分页查询审批链分类 */
     PageResult<ApprovalChainTypePageResp> getPage(ApprovalChainTypePageReq request);

@@ -6,15 +6,11 @@ import com.jdec.platform.config.api.dto.request.ApprovalChainConfigPageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainTypePageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainTypeSaveReq;
-import com.jdec.platform.config.api.dto.response.ApprovalChainCascadeResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigDetailResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigPageResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigSaveResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainTypeOptionResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainTypePageResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -60,11 +56,13 @@ public class SysApprovalConfigController {
         return ApiResponse.success(sysApprovalChainTypeApi.getCascadeOptions());
     }
 
-    @GetMapping("/chain-type/list-by-module/{moduleId}")
-    @Operation(summary = "根据模块id获取审批链分类列表", description = "查询指定模块下所有启用的审批链分类")
-    public ApiResponse<List<ApprovalChainTypeOptionResp>> listChainTypeByModuleId(
-            @PathVariable Long moduleId) {
-        return ApiResponse.success(sysApprovalChainTypeApi.listByModuleId(moduleId));
+    @GetMapping("/chain-type/options")
+    @Operation(summary = "获取审批链分类列表", description = "查询所有审批链分类")
+    public ApiResponse<List<ApprovalChainTypeOptionResp>> chainTypeOptions(
+            @Parameter(description = "模块ID，可选参数。传入时返回该模块下的审批链分类，不传则返回所有审批链分类")
+                    @RequestParam(value = "moduleId", required = false)
+                    Long moduleId) {
+        return ApiResponse.success(sysApprovalChainTypeApi.options(moduleId));
     }
 
     @PostMapping("/chain-type/page")
