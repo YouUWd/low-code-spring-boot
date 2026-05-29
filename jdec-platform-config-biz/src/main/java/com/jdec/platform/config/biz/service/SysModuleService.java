@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysModuleApi;
@@ -48,6 +49,7 @@ public class SysModuleService implements SysModuleApi {
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
     private final SysWechatTemplateMapper sysWechatTemplateMapper;
+    private final SysWechatTemplateParamMapper sysWechatTemplateParamMapper;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -687,39 +689,119 @@ public class SysModuleService implements SysModuleApi {
         }
     }
 
-    private void saveSimpleFields(Long moduleId, List<ModuleSimpleFieldDTO> fields) {
-        // 先删除旧字段
-        LambdaQueryWrapper<SysModuleField> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModuleField::getModuleId, moduleId)
-                .eq(SysModuleField::getFieldType, "SIMPLE");
-        sysModuleFieldMapper.delete(wrapper);
+    /** 清理字段的外部业务表引用关系（级联清理） */
+    private void cleanFieldReferences(List<Long> deleteIds) {
+        if (CollectionUtils.isEmpty(deleteIds)) {
+            return;
+        }
 
-        // 重新保存
+        // 1. 清理角色模块字段权限
+        sysRoleModuleFieldPermissionMapper.delete(
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .in(SysRoleModuleFieldPermission::getFieldId, deleteIds));
+
+        // 2. 逻辑删除微信模板参数配置记录（实体上包含 @TableLogic 注解）
+        sysWechatTemplateParamMapper.delete(
+                Wrappers.<SysWechatTemplateParam>lambdaQuery()
+                        .in(SysWechatTemplateParam::getFieldId, deleteIds));
+    }
+
+    private void saveSimpleFields(Long moduleId, List<ModuleSimpleFieldDTO> fields) {
+        // 1. 查询已有的字段配置
+        List<SysModuleField> existFields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .eq(SysModuleField::getModuleId, moduleId)
+                                .eq(SysModuleField::getFieldType, "SIMPLE"));
+        Map<Long, SysModuleField> existFieldMap =
+                existFields.stream().collect(Collectors.toMap(SysModuleField::getId, f -> f));
+
+        // 2. 收集请求中提交的有效 ID
+        Set<Long> keepIds =
+                fields.stream()
+                        .map(ModuleSimpleFieldDTO::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        // 3. 计算需要删除的孤儿 ID 并执行级联删除
+        List<Long> deleteIds =
+                existFields.stream()
+                        .map(SysModuleField::getId)
+                        .filter(id -> !keepIds.contains(id))
+                        .collect(Collectors.toList());
+
+        if (!deleteIds.isEmpty()) {
+            sysModuleFieldMapper.deleteBatchIds(deleteIds);
+            // 级联清理角色权限表与微信参数表的引用
+            cleanFieldReferences(deleteIds);
+        }
+
+        // 4. 组装待批量保存/更新的列表
+        List<SysModuleField> saveOrUpdateList = new ArrayList<>();
         for (ModuleSimpleFieldDTO info : fields) {
-            SysModuleField f = new SysModuleField();
-            f.setModuleId(moduleId);
-            f.setFieldType("SIMPLE");
+            SysModuleField f;
+            if (info.getId() != null && existFieldMap.containsKey(info.getId())) {
+                f = existFieldMap.get(info.getId());
+            } else {
+                f = new SysModuleField();
+                f.setModuleId(moduleId);
+                f.setFieldType("SIMPLE");
+            }
             f.setFieldCode(info.getColumnName());
             f.setTableName(info.getTableName());
             f.setTransformer(info.getTransformer());
-            sysModuleFieldMapper.insert(f);
+            saveOrUpdateList.add(f);
+        }
+
+        if (!saveOrUpdateList.isEmpty()) {
+            // 使用 MyBatis-Plus 批量更新/插入工具
+            Db.saveOrUpdateBatch(saveOrUpdateList);
         }
     }
 
     private void saveCombineFields(Long moduleId, List<ModuleCombineFieldDTO> fields) {
-        // 先删除旧字段
-        LambdaQueryWrapper<SysModuleField> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModuleField::getModuleId, moduleId)
-                .eq(SysModuleField::getFieldType, "COMBINE");
-        sysModuleFieldMapper.delete(wrapper);
+        // 1. 查询已有的字段配置
+        List<SysModuleField> existFields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .eq(SysModuleField::getModuleId, moduleId)
+                                .eq(SysModuleField::getFieldType, "COMBINE"));
+        Map<Long, SysModuleField> existFieldMap =
+                existFields.stream().collect(Collectors.toMap(SysModuleField::getId, f -> f));
 
-        // 重新保存
+        // 2. 收集请求中提交的有效 ID
+        Set<Long> keepIds =
+                fields.stream()
+                        .map(ModuleCombineFieldDTO::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        // 3. 计算需要删除的孤儿 ID 并执行级联删除
+        List<Long> deleteIds =
+                existFields.stream()
+                        .map(SysModuleField::getId)
+                        .filter(id -> !keepIds.contains(id))
+                        .collect(Collectors.toList());
+
+        if (!deleteIds.isEmpty()) {
+            sysModuleFieldMapper.deleteBatchIds(deleteIds);
+            // 级联清理角色权限表与微信参数表的引用
+            cleanFieldReferences(deleteIds);
+        }
+
+        // 4. 组装待批量保存/更新的列表
+        List<SysModuleField> saveOrUpdateList = new ArrayList<>();
         for (ModuleCombineFieldDTO info : fields) {
-            SysModuleField f = new SysModuleField();
-            f.setModuleId(moduleId);
-            f.setFieldType("COMBINE");
+            SysModuleField f;
+            if (info.getId() != null && existFieldMap.containsKey(info.getId())) {
+                f = existFieldMap.get(info.getId());
+            } else {
+                f = new SysModuleField();
+                f.setModuleId(moduleId);
+                f.setFieldType("COMBINE");
+            }
             f.setFieldCode(info.getLogicalField());
-            f.setTableName("*"); // 统一存储唯一逻辑表名标识，提效联合索引且隔离
+            f.setTableName("*");
             f.setDisplayName(info.getDisplayName());
             try {
                 f.setSourceMapping(objectMapper.writeValueAsString(info.getSourceMapping()));
@@ -728,7 +810,11 @@ public class SysModuleService implements SysModuleApi {
             }
             f.setTransformer(info.getTransformer());
             f.setEnabled(info.getEnabled() != null ? info.getEnabled() : 1);
-            sysModuleFieldMapper.insert(f);
+            saveOrUpdateList.add(f);
+        }
+
+        if (!saveOrUpdateList.isEmpty()) {
+            Db.saveOrUpdateBatch(saveOrUpdateList);
         }
     }
 

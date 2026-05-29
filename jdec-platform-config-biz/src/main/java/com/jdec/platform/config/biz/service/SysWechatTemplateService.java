@@ -195,24 +195,17 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
     private WechatTemplateEntryResp toTemplateEntryResp(SysWechatTemplate entity) {
         WechatTemplateEntryResp resp = new WechatTemplateEntryResp();
-        resp.setId(entity.getId());
-        resp.setProjectNo(entity.getProjectNo());
-        resp.setSubjectId(entity.getSubjectId());
-        resp.setTemplateTitle(entity.getTemplateTitle());
-        resp.setTemplateSendType(entity.getTemplateSendType());
-        resp.setTemplateAcceptType(parseJsonList(entity.getTemplateAcceptType()));
-        resp.setTemplateTriggerType(entity.getTemplateTriggerType());
-        resp.setModuleId(entity.getModuleId());
-        resp.setModuleName(entity.getModuleName());
-        resp.setApprovalFlag(entity.getApprovalFlag());
-        resp.setCreatedName(entity.getCreatedName());
-        resp.setCreatedDate(entity.getCreatedDate());
-        resp.setUpdatedDate(entity.getUpdatedDate());
+        populateTemplateResp(entity, resp);
         return resp;
     }
 
     private WechatTemplateDetailResp toTemplateDetailResp(SysWechatTemplate entity) {
         WechatTemplateDetailResp resp = new WechatTemplateDetailResp();
+        populateTemplateResp(entity, resp);
+        return resp;
+    }
+
+    private void populateTemplateResp(SysWechatTemplate entity, WechatTemplateEntryResp resp) {
         resp.setId(entity.getId());
         resp.setProjectNo(entity.getProjectNo());
         resp.setSubjectId(entity.getSubjectId());
@@ -223,14 +216,16 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         resp.setModuleId(entity.getModuleId());
         resp.setModuleName(entity.getModuleName());
         resp.setApprovalFlag(entity.getApprovalFlag());
-        resp.setCreatedName(entity.getCreatedName());
-        resp.setCreatedDate(entity.getCreatedDate());
-        resp.setUpdatedDate(entity.getUpdatedDate());
         resp.setTemplateContent(entity.getTemplateContent());
         resp.setExtraReceiverIds(parseJsonList(entity.getExtraReceiverIds()));
         resp.setExtraReceiverNames(entity.getExtraReceiverNames());
         resp.setConfigParamIds(parseJsonList(entity.getConfigParamIds()));
-        return resp;
+        resp.setCreatedBy(entity.getCreatedBy());
+        resp.setCreatedName(entity.getCreatedName());
+        resp.setCreatedDate(entity.getCreatedDate());
+        resp.setUpdatedBy(entity.getUpdatedBy());
+        resp.setUpdatedDate(entity.getUpdatedDate());
+        resp.setUpdatedName(entity.getUpdatedName());
     }
 
     private void copyTemplateProperties(CreateWechatTemplateReq req, SysWechatTemplate entity) {
