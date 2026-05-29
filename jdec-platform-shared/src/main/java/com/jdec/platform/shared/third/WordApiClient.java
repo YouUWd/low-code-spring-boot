@@ -58,6 +58,21 @@ public class WordApiClient extends BaseApiClient {
     }
 
     /**
+     * 获取关系详情树。
+     *
+     * @param businessNo 业务编号
+     * @param dataType 返回数据类型
+     * @return InnerApiResponse 中的 data
+     */
+    public <T> T getRelationInfoTree(String businessNo, TypeReference<T> dataType) {
+        Map<String, Object> body = new HashMap<>();
+        Map<String, Object> params = new HashMap<>();
+        params.put("business_no", businessNo);
+        body.put("param", objectMapperToJson(params));
+        return invokeAndUnwrap("getRelationInfoTree", body, dataType);
+    }
+
+    /**
      * 获取关系详情。
      *
      * @param businessNo 业务编号

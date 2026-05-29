@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.dto.request.SysFieldSaveReq;
@@ -9,10 +10,12 @@ import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
+import com.jdec.platform.config.biz.entity.SysApprovalChainType;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysFieldValue;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
+import com.jdec.platform.config.biz.mapper.SysApprovalChainTypeMapper;
 import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysFieldValueMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
@@ -24,6 +27,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +51,7 @@ public class SysFieldService implements SysFieldApi {
     private final SysFieldValueMapper sysFieldValueMapper;
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
+    private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
     private final JdbcTemplate jdbcTemplate;
     private final WordApiClient wordApiClient;
 
@@ -57,11 +63,11 @@ public class SysFieldService implements SysFieldApi {
 
         String sql =
                 """
-            SELECT TABLE_NAME, TABLE_COMMENT
-            FROM INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA = ?
-            ORDER BY TABLE_NAME
-            """;
+                                SELECT TABLE_NAME, TABLE_COMMENT
+                                FROM INFORMATION_SCHEMA.TABLES
+                                WHERE TABLE_SCHEMA = ?
+                                ORDER BY TABLE_NAME
+                                """;
 
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, projectNo);
@@ -86,11 +92,11 @@ public class SysFieldService implements SysFieldApi {
 
         String sql =
                 """
-            SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT, IS_NULLABLE, COLUMN_KEY, EXTRA
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-            ORDER BY ORDINAL_POSITION
-            """;
+                                SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT, IS_NULLABLE, COLUMN_KEY, EXTRA
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                                ORDER BY ORDINAL_POSITION
+                                """;
 
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, projectNo, tableName);
@@ -152,11 +158,11 @@ public class SysFieldService implements SysFieldApi {
         // 1. 获取数据库中该表所有的列名和注释
         String sql =
                 """
-            SELECT COLUMN_NAME, COLUMN_COMMENT
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-            ORDER BY ORDINAL_POSITION
-            """;
+                                SELECT COLUMN_NAME, COLUMN_COMMENT
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                                ORDER BY ORDINAL_POSITION
+                                """;
 
         List<Map<String, Object>> columnRows = jdbcTemplate.queryForList(sql, projectNo, tableName);
 
@@ -210,39 +216,64 @@ public class SysFieldService implements SysFieldApi {
                                         SysField::getRelationBusinessNo,
                                         (v1, v2) -> v1));
 
-        Map<Long, List<SysFieldValueResp>> valueMap =
+        List<SysFieldValue> dbValues =
                 fieldIds.isEmpty()
-                        ? Collections.emptyMap()
-                        : sysFieldValueMapper
-                                .selectList(
-                                        new LambdaQueryWrapper<SysFieldValue>()
-                                                .in(SysFieldValue::getFieldId, fieldIds)
-                                                .eq(SysFieldValue::getDeleted, 0))
-                                .stream()
-                                .map(
-                                        v -> {
-                                            String rNo = fieldRelationMap.get(v.getFieldId());
-                                            String desc = null;
-                                            if (rNo != null) {
-                                                Map<String, String> wordMap =
-                                                        wordMapsByBusinessNo.get(rNo);
-                                                if (wordMap != null) {
-                                                    desc = wordMap.get(v.getFieldValue());
-                                                }
-                                            }
-                                            return SysFieldValueResp.builder()
-                                                    .id(v.getId())
-                                                    .fieldId(v.getFieldId())
-                                                    .moduleId(v.getModuleId())
-                                                    .moduleName(v.getModuleName())
-                                                    .fieldValue(v.getFieldValue())
-                                                    .fieldValueDesc(desc)
-                                                    .approvalChainTypeId(v.getApprovalChainTypeId())
-                                                    .sortOrder(v.getSortOrder())
-                                                    .enabled(v.getEnabled())
-                                                    .build();
-                                        })
-                                .collect(Collectors.groupingBy(SysFieldValueResp::getFieldId));
+                        ? Collections.emptyList()
+                        : sysFieldValueMapper.selectList(
+                                new LambdaQueryWrapper<SysFieldValue>()
+                                        .in(SysFieldValue::getFieldId, fieldIds)
+                                        .eq(SysFieldValue::getDeleted, 0));
+
+        Set<Long> chainTypeIds =
+                dbValues.stream()
+                        .map(SysFieldValue::getApprovalChainTypeId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        Map<Long, String> chainTypeMap = Collections.emptyMap();
+        if (!chainTypeIds.isEmpty()) {
+            chainTypeMap =
+                    sysApprovalChainTypeMapper
+                            .selectList(
+                                    Wrappers.<SysApprovalChainType>lambdaQuery()
+                                            .in(SysApprovalChainType::getId, chainTypeIds))
+                            .stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            SysApprovalChainType::getId,
+                                            SysApprovalChainType::getTitle));
+        }
+
+        final Map<Long, String> finalChainTypeMap = chainTypeMap;
+
+        Map<Long, List<SysFieldValueResp>> valueMap =
+                dbValues.stream()
+                        .map(
+                                v -> {
+                                    String rNo = fieldRelationMap.get(v.getFieldId());
+                                    String desc = null;
+                                    if (rNo != null) {
+                                        Map<String, String> wordMap = wordMapsByBusinessNo.get(rNo);
+                                        if (wordMap != null) {
+                                            desc = wordMap.get(v.getFieldValue());
+                                        }
+                                    }
+                                    return SysFieldValueResp.builder()
+                                            .id(v.getId())
+                                            .fieldId(v.getFieldId())
+                                            .moduleId(v.getModuleId())
+                                            .moduleName(v.getModuleName())
+                                            .fieldValue(v.getFieldValue())
+                                            .fieldValueDesc(desc)
+                                            .approvalChainTypeId(v.getApprovalChainTypeId())
+                                            .approvalChainTypeName(
+                                                    finalChainTypeMap.get(
+                                                            v.getApprovalChainTypeId()))
+                                            .sortOrder(v.getSortOrder())
+                                            .enabled(v.getEnabled())
+                                            .build();
+                                })
+                        .collect(Collectors.groupingBy(SysFieldValueResp::getFieldId));
 
         Map<String, SysField> configMap =
                 sysFields.stream().collect(Collectors.toMap(SysField::getColumnName, f -> f));
@@ -437,14 +468,37 @@ public class SysFieldService implements SysFieldApi {
 
         final Map<String, String> finalWordMap = wordMap;
 
+        List<SysFieldValue> dbValues =
+                sysFieldValueMapper.selectList(
+                        new LambdaQueryWrapper<SysFieldValue>()
+                                .eq(SysFieldValue::getFieldId, fieldId)
+                                .eq(SysFieldValue::getDeleted, 0));
+
+        Set<Long> chainTypeIds =
+                dbValues.stream()
+                        .map(SysFieldValue::getApprovalChainTypeId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        Map<Long, String> chainTypeMap = Collections.emptyMap();
+        if (!chainTypeIds.isEmpty()) {
+            chainTypeMap =
+                    sysApprovalChainTypeMapper
+                            .selectList(
+                                    Wrappers.<SysApprovalChainType>lambdaQuery()
+                                            .in(SysApprovalChainType::getId, chainTypeIds))
+                            .stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            SysApprovalChainType::getId,
+                                            SysApprovalChainType::getTitle));
+        }
+
+        final Map<Long, String> finalChainTypeMap = chainTypeMap;
+
         // 查询关联的扩展值信息
         List<SysFieldValueResp> fieldValues =
-                sysFieldValueMapper
-                        .selectList(
-                                new LambdaQueryWrapper<SysFieldValue>()
-                                        .eq(SysFieldValue::getFieldId, fieldId)
-                                        .eq(SysFieldValue::getDeleted, 0))
-                        .stream()
+                dbValues.stream()
                         .map(
                                 v -> {
                                     String desc = null;
@@ -459,6 +513,9 @@ public class SysFieldService implements SysFieldApi {
                                             .fieldValue(v.getFieldValue())
                                             .fieldValueDesc(desc)
                                             .approvalChainTypeId(v.getApprovalChainTypeId())
+                                            .approvalChainTypeName(
+                                                    finalChainTypeMap.get(
+                                                            v.getApprovalChainTypeId()))
                                             .sortOrder(v.getSortOrder())
                                             .enabled(v.getEnabled())
                                             .build();
