@@ -636,23 +636,38 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectList(
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getUserId, userId)
-                                .eq(SysRoleUser::getSubjectId, subjectId)
                                 .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
 
         if (!roleUsers.isEmpty()) {
             // 有用户角色关联记录，返回这些角色（需要校验时间）
-            for (SysRoleUser roleUser : roleUsers) {
-                // 时间有效期校验
-                if (!isEffectiveDateValid(
-                        roleUser.getEffectiveType(),
-                        roleUser.getEffectiveStartDate(),
-                        roleUser.getEffectiveEndDate(),
-                        today)) {
-                    continue;
-                }
+            // 先过滤有效期内的记录
+            List<SysRoleUser> validRoleUsers =
+                    roleUsers.stream()
+                            .filter(
+                                    roleUser ->
+                                            isEffectiveDateValid(
+                                                    roleUser.getEffectiveType(),
+                                                    roleUser.getEffectiveStartDate(),
+                                                    roleUser.getEffectiveEndDate(),
+                                                    today))
+                            .toList();
 
-                // 查询角色信息
-                SysRole role = sysRoleMapper.selectById(roleUser.getRoleId());
+            if (validRoleUsers.isEmpty()) {
+                return result;
+            }
+
+            // 批量查询角色信息
+            List<Long> roleIds =
+                    validRoleUsers.stream().map(SysRoleUser::getRoleId).distinct().toList();
+            List<SysRole> roles =
+                    sysRoleMapper.selectList(
+                            Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
+            Map<Long, SysRole> roleMap =
+                    roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
+
+            // 构建响应
+            for (SysRoleUser roleUser : validRoleUsers) {
+                SysRole role = roleMap.get(roleUser.getRoleId());
                 if (role != null) {
                     UserRoleListResp resp = new UserRoleListResp();
                     resp.setRoleId(role.getId());
@@ -676,18 +691,34 @@ public class SysRoleService implements SysRoleApi {
                                 .eq(SysRoleSubject::getSubjectId, subjectId)
                                 .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
 
-        for (SysRoleSubject roleSubject : roleSubjects) {
-            // 时间有效期校验
-            if (!isEffectiveDateValid(
-                    roleSubject.getEffectiveType(),
-                    roleSubject.getEffectiveStartDate(),
-                    roleSubject.getEffectiveEndDate(),
-                    today)) {
-                continue;
-            }
+        // 先过滤有效期内的记录
+        List<SysRoleSubject> validRoleSubjects =
+                roleSubjects.stream()
+                        .filter(
+                                roleSubject ->
+                                        isEffectiveDateValid(
+                                                roleSubject.getEffectiveType(),
+                                                roleSubject.getEffectiveStartDate(),
+                                                roleSubject.getEffectiveEndDate(),
+                                                today))
+                        .toList();
 
-            // 查询角色信息
-            SysRole role = sysRoleMapper.selectById(roleSubject.getRoleId());
+        if (validRoleSubjects.isEmpty()) {
+            return result;
+        }
+
+        // 批量查询角色信息
+        List<Long> roleIds =
+                validRoleSubjects.stream().map(SysRoleSubject::getRoleId).distinct().toList();
+        List<SysRole> roles =
+                sysRoleMapper.selectList(
+                        Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
+        Map<Long, SysRole> roleMap =
+                roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
+
+        // 构建响应
+        for (SysRoleSubject roleSubject : validRoleSubjects) {
+            SysRole role = roleMap.get(roleSubject.getRoleId());
             if (role != null) {
                 UserRoleListResp resp = new UserRoleListResp();
                 resp.setRoleId(role.getId());
@@ -805,22 +836,25 @@ public class SysRoleService implements SysRoleApi {
             return;
         }
 
-        for (Long userId : userIds) {
-            // 检查该用户是否还有其他角色绑定
-            boolean hasOtherRole =
-                    sysRoleUserMapper.selectCount(
-                                    new LambdaQueryWrapper<SysRoleUser>()
-                                            .eq(SysRoleUser::getUserId, userId)
-                                            .eq(
-                                                    SysRoleUser::getProjectNo,
-                                                    AppContext.getProjectNo()))
-                            > 0;
+        // 批量查询这些用户的角色绑定情况
+        List<SysRoleUser> roleUsers =
+                sysRoleUserMapper.selectList(
+                        new LambdaQueryWrapper<SysRoleUser>()
+                                .in(SysRoleUser::getUserId, userIds)
+                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
 
-            if (!hasOtherRole) {
-                // 该用户没有任何角色绑定，删除sys_user记录
-                sysUserMapper.delete(
-                        new LambdaQueryWrapper<SysUser>().eq(SysUser::getUserId, userId));
-            }
+        // 收集有角色绑定的用户ID
+        Set<Long> usersWithRoles =
+                roleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toSet());
+
+        // 找出没有任何角色绑定的用户ID
+        Set<Long> orphanedUserIds = new HashSet<>(userIds);
+        orphanedUserIds.removeAll(usersWithRoles);
+
+        // 批量删除孤立用户
+        if (!orphanedUserIds.isEmpty()) {
+            sysUserMapper.delete(
+                    new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, orphanedUserIds));
         }
     }
 

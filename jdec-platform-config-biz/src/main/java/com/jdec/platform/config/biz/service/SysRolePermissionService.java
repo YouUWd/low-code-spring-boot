@@ -57,13 +57,27 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .eq(SysMenu::getProjectNo, projectNo);
         List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
 
-        // 构建响应
+        // 构建响应，包含所有菜单字段
         return menus.stream()
                 .map(
                         menu -> {
                             RoleMenuResp resp = new RoleMenuResp();
                             resp.setMenuId(menu.getId());
                             resp.setMenuTitle(menu.getTitle());
+                            resp.setPid(menu.getPid());
+                            resp.setParam(menu.getParam());
+                            resp.setMenuType(menu.getMenuType());
+                            resp.setCategory(menu.getCategory());
+                            resp.setImgDefault(menu.getImgDefault());
+                            resp.setImgActive(menu.getImgActive());
+                            resp.setModuleId(menu.getModuleId());
+                            resp.setSortOrder(menu.getSortOrder());
+                            resp.setShowed(menu.getShowed());
+                            resp.setEnabled(menu.getEnabled());
+                            resp.setDocUrl(menu.getDocUrl());
+                            resp.setDocName(menu.getDocName());
+                            resp.setVideoUrl(menu.getVideoUrl());
+                            resp.setVideoName(menu.getVideoName());
                             return resp;
                         })
                 .toList();
