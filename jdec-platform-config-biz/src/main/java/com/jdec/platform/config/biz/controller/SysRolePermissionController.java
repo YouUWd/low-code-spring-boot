@@ -37,6 +37,18 @@ public class SysRolePermissionController {
         return ApiResponse.success(sysRolePermissionApi.getRoleMenu(roleId, subjectId, projectNo));
     }
 
+    @GetMapping("/get-role-menu-by-category")
+    @Operation(summary = "根据菜单分类查询角色菜单", description = "根据角色ID和菜单分类查询该角色关联的菜单列表")
+    public ApiResponse<List<RoleMenuResp>> getRoleMenuByCategory(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
+            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单", example = "1") @RequestParam
+                    Integer category) {
+        Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
+        return ApiResponse.success(
+                sysRolePermissionApi.getRoleMenuByCategory(roleId, category, subjectId, projectNo));
+    }
+
     @PostMapping("/save-role-menu")
     @Operation(summary = "保存角色菜单", description = "保存角色与菜单的关联关系")
     public ApiResponse<Void> saveRoleMenu(@RequestBody SaveRoleMenuReq request) {

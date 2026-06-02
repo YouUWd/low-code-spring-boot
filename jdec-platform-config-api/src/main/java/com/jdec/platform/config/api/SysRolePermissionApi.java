@@ -24,6 +24,18 @@ public interface SysRolePermissionApi {
     List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo);
 
     /**
+     * 根据角色ID和菜单分类查询菜单列表
+     *
+     * @param roleId 角色ID
+     * @param category 菜单分类(1:业务菜单 2:系统菜单)
+     * @param subjectId 主体ID
+     * @param projectNo 项目编号
+     * @return 角色菜单列表
+     */
+    List<RoleMenuResp> getRoleMenuByCategory(
+            Long roleId, Integer category, Long subjectId, String projectNo);
+
+    /**
      * 保存角色菜单关联
      *
      * @param request 保存请求

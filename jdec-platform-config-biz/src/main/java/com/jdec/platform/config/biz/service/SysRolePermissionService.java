@@ -84,6 +84,56 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
+    public List<RoleMenuResp> getRoleMenuByCategory(
+            Long roleId, Integer category, Long subjectId, String projectNo) {
+        // 查询角色菜单关联
+        List<SysRoleMenu> roleMenus =
+                sysRoleMenuMapper.selectList(
+                        Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
+
+        if (roleMenus.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 获取菜单ID列表
+        List<Long> menuIds = roleMenus.stream().map(SysRoleMenu::getMenuId).toList();
+
+        // 查询菜单信息，增加菜单分类过滤
+        LambdaQueryWrapper<SysMenu> menuWrapper =
+                new LambdaQueryWrapper<SysMenu>()
+                        .in(SysMenu::getId, menuIds)
+                        .eq(SysMenu::getSubjectId, subjectId)
+                        .eq(SysMenu::getProjectNo, projectNo)
+                        .eq(SysMenu::getCategory, category);
+        List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
+
+        // 构建响应，包含所有菜单字段
+        return menus.stream()
+                .map(
+                        menu -> {
+                            RoleMenuResp resp = new RoleMenuResp();
+                            resp.setMenuId(menu.getId());
+                            resp.setMenuTitle(menu.getTitle());
+                            resp.setPid(menu.getPid());
+                            resp.setParam(menu.getParam());
+                            resp.setMenuType(menu.getMenuType());
+                            resp.setCategory(menu.getCategory());
+                            resp.setImgDefault(menu.getImgDefault());
+                            resp.setImgActive(menu.getImgActive());
+                            resp.setModuleId(menu.getModuleId());
+                            resp.setSortOrder(menu.getSortOrder());
+                            resp.setShowed(menu.getShowed());
+                            resp.setEnabled(menu.getEnabled());
+                            resp.setDocUrl(menu.getDocUrl());
+                            resp.setDocName(menu.getDocName());
+                            resp.setVideoUrl(menu.getVideoUrl());
+                            resp.setVideoName(menu.getVideoName());
+                            return resp;
+                        })
+                .toList();
+    }
+
+    @Override
     public void saveRoleMenu(SaveRoleMenuReq request) {
         Long roleId = request.getRoleId();
         List<Long> menuIds = request.getMenuIds();
