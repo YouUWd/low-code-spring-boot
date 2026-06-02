@@ -34,9 +34,6 @@ public class SysWechatTemplateParam {
     /** 关联字段 ID */
     private Long fieldId;
 
-    /** 字段类型: 1-简单字段, 2-组合字段 */
-    private Integer fieldType;
-
     /** 是否需要转换: 0-否, 1-是 */
     private Integer convertFlag;
 

@@ -30,11 +30,14 @@ public class WechatTemplateParamEntryResp {
     @Schema(description = "关联模块 ID")
     private Long moduleId;
 
+    @Schema(description = "关联模块名称")
+    private String moduleName;
+
     @Schema(description = "关联字段 ID")
     private Long fieldId;
 
-    @Schema(description = "字段类型: 1-简单字段, 2-组合字段")
-    private Integer fieldType;
+    @Schema(description = "关联字段显示名称")
+    private String fieldName;
 
     @Schema(description = "是否需要转换: 0-否, 1-是")
     private Integer convertFlag;

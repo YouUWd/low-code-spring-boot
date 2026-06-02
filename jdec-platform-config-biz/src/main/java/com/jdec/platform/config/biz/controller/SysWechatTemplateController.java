@@ -37,9 +37,11 @@ public class SysWechatTemplateController {
     @PostMapping("/page")
     public ApiResponse<PageResult<WechatTemplateEntryResp>> listTemplates(
             @RequestBody WechatTemplateQueryReq query) {
-        query.setProjectNo(AppContext.getProjectNo());
-        log.info("查询项目 {} 的微信模板列表", query.getProjectNo());
-        return ApiResponse.success(sysWechatTemplateService.listTemplates(query));
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 的微信模板列表", projectNo);
+        return ApiResponse.success(
+                sysWechatTemplateService.listTemplates(projectNo, subjectId, query));
     }
 
     @Operation(summary = "根据模块ID查询微信模板列表")
@@ -66,18 +68,22 @@ public class SysWechatTemplateController {
     @PostMapping
     public ApiResponse<WechatTemplateDetailResp> createTemplate(
             @RequestBody CreateWechatTemplateReq req) {
-        req.setProjectNo(AppContext.getProjectNo());
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         log.info("创建微信模板: title={}", req.getTemplateTitle());
-        return ApiResponse.success("创建成功", sysWechatTemplateService.createTemplate(req));
+        return ApiResponse.success(
+                "创建成功", sysWechatTemplateService.createTemplate(projectNo, subjectId, req));
     }
 
     @Operation(summary = "更新模板")
     @PutMapping
     public ApiResponse<WechatTemplateDetailResp> updateTemplate(
             @RequestBody UpdateWechatTemplateReq req) {
-        req.setProjectNo(AppContext.getProjectNo());
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         log.info("更新微信模板: id={}, title={}", req.getId(), req.getTemplateTitle());
-        return ApiResponse.success("更新成功", sysWechatTemplateService.updateTemplate(req));
+        return ApiResponse.success(
+                "更新成功", sysWechatTemplateService.updateTemplate(projectNo, subjectId, req));
     }
 
     @Operation(summary = "删除模板")
@@ -95,9 +101,11 @@ public class SysWechatTemplateController {
     @PostMapping("/params/page")
     public ApiResponse<PageResult<WechatTemplateParamEntryResp>> listParams(
             @RequestBody WechatTemplateParamQueryReq query) {
-        query.setProjectNo(AppContext.getProjectNo());
-        log.info("查询项目 {} 的微信模板参数列表", query.getProjectNo());
-        return ApiResponse.success(sysWechatTemplateService.listParams(query));
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 的微信模板参数列表", projectNo);
+        return ApiResponse.success(
+                sysWechatTemplateService.listParams(projectNo, subjectId, query));
     }
 
     @Operation(summary = "根据模块ID查询微信模板参数列表")
@@ -124,18 +132,22 @@ public class SysWechatTemplateController {
     @PostMapping("/params")
     public ApiResponse<WechatTemplateParamEntryResp> createParam(
             @RequestBody CreateWechatTemplateParamReq req) {
-        req.setProjectNo(AppContext.getProjectNo());
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         log.info("创建微信模板参数: name={}", req.getTemplateParamName());
-        return ApiResponse.success("创建成功", sysWechatTemplateService.createParam(req));
+        return ApiResponse.success(
+                "创建成功", sysWechatTemplateService.createParam(projectNo, subjectId, req));
     }
 
     @Operation(summary = "更新参数")
     @PutMapping("/params")
     public ApiResponse<WechatTemplateParamEntryResp> updateParam(
             @RequestBody UpdateWechatTemplateParamReq req) {
-        req.setProjectNo(AppContext.getProjectNo());
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         log.info("更新微信模板参数: id={}, name={}", req.getId(), req.getTemplateParamName());
-        return ApiResponse.success("更新成功", sysWechatTemplateService.updateParam(req));
+        return ApiResponse.success(
+                "更新成功", sysWechatTemplateService.updateParam(projectNo, subjectId, req));
     }
 
     @Operation(summary = "删除参数")
