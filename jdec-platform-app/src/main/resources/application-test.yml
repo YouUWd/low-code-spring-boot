@@ -71,6 +71,7 @@ jdec:
       hr_manage: hr_manage
       third: third
       school: school
+      student: student_manage
 
 # ===== MyBatis-Plus 测试模式 =====
 mybatis-plus:
