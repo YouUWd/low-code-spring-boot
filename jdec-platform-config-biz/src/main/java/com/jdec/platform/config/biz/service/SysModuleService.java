@@ -115,6 +115,18 @@ public class SysModuleService implements SysModuleApi {
         return buildModuleCompleteResp(module);
     }
 
+    @Override
+    public SysModuleCompleteResp getModuleCompleteById(
+            String projectNo, Long subjectId, Long moduleId) {
+        SysModule module = sysModuleMapper.selectById(moduleId);
+        if (module == null
+                || !Objects.equals(module.getProjectNo(), projectNo)
+                || !Objects.equals(module.getSubjectId(), subjectId)) {
+            return null;
+        }
+        return buildModuleCompleteResp(module);
+    }
+
     /** 构建模块完整信息响应 */
     private SysModuleCompleteResp buildModuleCompleteResp(SysModule module) {
         SysModuleCompleteResp resp = new SysModuleCompleteResp();
