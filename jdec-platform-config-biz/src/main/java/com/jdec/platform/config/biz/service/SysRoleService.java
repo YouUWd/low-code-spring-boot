@@ -1001,6 +1001,7 @@ public class SysRoleService implements SysRoleApi {
                     sysUser.setLeaderName(managerName);
                     sysUser.setPositionName(u.getJobName());
                     sysUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
+                    sysUser.setDeleted(0);
                     sysUser.setEmployedStatus(EmployedStatusEnum.EMPLOYED_STATUS_ENABLED.getCode());
                 } else {
                     sysUser.setUserName("用户" + userId);

@@ -29,6 +29,7 @@ public class DepartmentService implements DepartmentApi {
                         new LambdaQueryWrapper<Department>()
                                 .select(
                                         Department::getId,
+                                        Department::getPid,
                                         Department::getName,
                                         Department::getManagerId,
                                         Department::getManagerName));

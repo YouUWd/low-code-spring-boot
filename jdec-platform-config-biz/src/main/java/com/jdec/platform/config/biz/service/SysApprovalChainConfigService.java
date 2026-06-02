@@ -827,6 +827,17 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
 
         SysApprovalChainConfig config = BeanUtil.toBean(request, SysApprovalChainConfig.class);
 
+        // 处理自动审批字段的互斥逻辑
+        if (config.getAutoApproved() != null) {
+            if (config.getAutoApproved() == 1) {
+                // 当 autoApproved 为 1 时，清空 deadlineTime
+                config.setDeadlineTime(null);
+            } else if (config.getAutoApproved() == 0) {
+                // 当 autoApproved 为 0 时，清空 autoApprovedTime
+                config.setAutoApprovedTime(null);
+            }
+        }
+
         SysApprovalChainConfig upConfig;
         SysApprovalChainConfig nextConfig;
 

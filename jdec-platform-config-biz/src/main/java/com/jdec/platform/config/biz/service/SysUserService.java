@@ -272,9 +272,9 @@ public class SysUserService implements SysUserApi {
 
         // 5. 构建嵌套树
         List<UserSearchTreeNodeResp> tree = buildNestedTree(departListWithUsers, "D0");
-
+        return tree;
         // 6. 过滤掉没有用户的部门
-        return filterEmptyDepartments(tree);
+        //        return filterEmptyDepartments(tree);
     }
 
     private List<UserSearchTreeNodeResp> buildNestedTree(
