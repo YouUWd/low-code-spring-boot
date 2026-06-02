@@ -14,32 +14,32 @@ spring:
       datasources:
         # 主数据源 — mysql 无业务使用
         primary:
-          url: jdbc:mysql://${DB_PRIMARY_HOST:119.36.78.123}:${DB_PRIMARY_PORT:5506}/${DB_PRIMARY_NAME:mysql}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_PRIMARY_HOST:119.36.78.123}:${DB_PRIMARY_PORT:5016}/${DB_PRIMARY_NAME:mysql}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_PRIMARY_USERNAME:root}
           password: ${DB_PRIMARY_PASSWORD:mysql-platform}
         # auth_center 数据源
         auth_center:
-          url: jdbc:mysql://${DB_AUTH_CENTER_HOST:119.36.78.123}:${DB_AUTH_CENTER_PORT:5506}/${DB_AUTH_CENTER_NAME:auth_center}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_AUTH_CENTER_HOST:119.36.78.123}:${DB_AUTH_CENTER_PORT:5016}/${DB_AUTH_CENTER_NAME:auth_center}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_AUTH_CENTER_USERNAME:root}
           password: ${DB_AUTH_CENTER_PASSWORD:mysql-platform}
         # config_center 数据源
         config_center:
-          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:119.36.78.123}:${DB_CONFIG_CENTER_PORT:5506}/${DB_CONFIG_CENTER_NAME:config_center}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:119.36.78.123}:${DB_CONFIG_CENTER_PORT:5016}/${DB_CONFIG_CENTER_NAME:config_center}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_CONFIG_CENTER_USERNAME:root}
           password: ${DB_CONFIG_CENTER_PASSWORD:mysql-platform}
         # hr_manage 人力平台数据源
         hr_manage:
-          url: jdbc:mysql://${DB_HR_MANAGE_HOST:119.36.78.123}:${DB_HR_MANAGE_PORT:5506}/${DB_HR_MANAGE_NAME:hr_manage}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_HR_MANAGE_HOST:119.36.78.123}:${DB_HR_MANAGE_PORT:5016}/${DB_HR_MANAGE_NAME:hr_manage}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_HR_MANAGE_USERNAME:root}
           password: ${DB_HR_MANAGE_PASSWORD:mysql-platform}
         # third 数据源
         third:
-          url: jdbc:mysql://${DB_THIRD_HOST:119.36.78.123}:${DB_THIRD_PORT:5506}/${DB_THIRD_NAME:third}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_THIRD_HOST:119.36.78.123}:${DB_THIRD_PORT:5016}/${DB_THIRD_NAME:third}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_THIRD_USERNAME:root}
           password: ${DB_THIRD_PASSWORD:mysql-platform}
         # school 数据源
         school:
-          url: jdbc:mysql://${DB_SCHOOL_HOST:119.36.78.123}:${DB_SCHOOL_PORT:5506}/${DB_SCHOOL_NAME:school}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_SCHOOL_HOST:119.36.78.123}:${DB_SCHOOL_PORT:5016}/${DB_SCHOOL_NAME:school}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_SCHOOL_USERNAME:root}
           password: ${DB_SCHOOL_PASSWORD:mysql-platform}
   # ===== Redis 配置 =====
