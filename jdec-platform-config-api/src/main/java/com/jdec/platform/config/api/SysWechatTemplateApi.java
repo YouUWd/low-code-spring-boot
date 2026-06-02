@@ -20,10 +20,13 @@ public interface SysWechatTemplateApi {
     /**
      * 分页查询消息通知模板
      *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
      * @param query 查询参数
      * @return 模板列表分页结果
      */
-    PageResult<WechatTemplateEntryResp> listTemplates(WechatTemplateQueryReq query);
+    PageResult<WechatTemplateEntryResp> listTemplates(
+            String projectNo, Long subjectId, WechatTemplateQueryReq query);
 
     /**
      * 根据模块ID查询微信模板列表
@@ -47,18 +50,24 @@ public interface SysWechatTemplateApi {
     /**
      * 创建消息通知模板
      *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
      * @param req 创建请求
      * @return 创建后的模板详情响应
      */
-    WechatTemplateDetailResp createTemplate(CreateWechatTemplateReq req);
+    WechatTemplateDetailResp createTemplate(
+            String projectNo, Long subjectId, CreateWechatTemplateReq req);
 
     /**
      * 更新消息通知模板
      *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
      * @param req 更新请求
      * @return 更新后的模板详情响应
      */
-    WechatTemplateDetailResp updateTemplate(UpdateWechatTemplateReq req);
+    WechatTemplateDetailResp updateTemplate(
+            String projectNo, Long subjectId, UpdateWechatTemplateReq req);
 
     /**
      * 删除消息通知模板 (逻辑删除)
@@ -72,10 +81,13 @@ public interface SysWechatTemplateApi {
     /**
      * 分页查询微信模板参数
      *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
      * @param query 查询请求
      * @return 分页结果
      */
-    PageResult<WechatTemplateParamEntryResp> listParams(WechatTemplateParamQueryReq query);
+    PageResult<WechatTemplateParamEntryResp> listParams(
+            String projectNo, Long subjectId, WechatTemplateParamQueryReq query);
 
     /**
      * 根据模块ID查询微信模板参数列表
@@ -99,18 +111,24 @@ public interface SysWechatTemplateApi {
     /**
      * 创建微信模板参数
      *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
      * @param req 创建请求
      * @return 创建后的参数详情
      */
-    WechatTemplateParamEntryResp createParam(CreateWechatTemplateParamReq req);
+    WechatTemplateParamEntryResp createParam(
+            String projectNo, Long subjectId, CreateWechatTemplateParamReq req);
 
     /**
      * 更新微信模板参数
      *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
      * @param req 更新请求
      * @return 更新后的参数详情
      */
-    WechatTemplateParamEntryResp updateParam(UpdateWechatTemplateParamReq req);
+    WechatTemplateParamEntryResp updateParam(
+            String projectNo, Long subjectId, UpdateWechatTemplateParamReq req);
 
     /**
      * 删除微信模板参数 (逻辑删除)

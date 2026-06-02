@@ -9,12 +9,6 @@ import lombok.Data;
 @Schema(description = "创建企业微信消息通知模板请求")
 public class CreateWechatTemplateReq {
 
-    @Schema(description = "项目编号", requiredMode = Schema.RequiredMode.REQUIRED, example = "P2024001")
-    private String projectNo;
-
-    @Schema(description = "主体 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
-    private Long subjectId;
-
     @Schema(description = "消息标题", requiredMode = Schema.RequiredMode.REQUIRED, example = "审批提醒")
     private String templateTitle;
 

@@ -15,8 +15,12 @@ import com.jdec.platform.config.api.dto.request.WechatTemplateQueryReq;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
+import com.jdec.platform.config.biz.entity.SysModule;
+import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysWechatTemplate;
 import com.jdec.platform.config.biz.entity.SysWechatTemplateParam;
+import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysWechatTemplateMapper;
 import com.jdec.platform.config.biz.mapper.SysWechatTemplateParamMapper;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -24,7 +28,7 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,19 +45,19 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
     private final SysWechatTemplateMapper sysWechatTemplateMapper;
     private final SysWechatTemplateParamMapper sysWechatTemplateParamMapper;
+    private final SysModuleMapper sysModuleMapper;
+    private final SysModuleFieldMapper sysModuleFieldMapper;
     private final ObjectMapper objectMapper;
 
     // --- 模板主表实现 ---
 
     @Override
-    public PageResult<WechatTemplateEntryResp> listTemplates(WechatTemplateQueryReq query) {
+    public PageResult<WechatTemplateEntryResp> listTemplates(
+            String projectNo, Long subjectId, WechatTemplateQueryReq query) {
         Page<SysWechatTemplate> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysWechatTemplate> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(SysWechatTemplate::getProjectNo, query.getProjectNo())
-                .eq(
-                        query.getSubjectId() != null,
-                        SysWechatTemplate::getSubjectId,
-                        query.getSubjectId())
+        wrapper.eq(SysWechatTemplate::getProjectNo, projectNo)
+                .eq(subjectId != null, SysWechatTemplate::getSubjectId, subjectId)
                 .eq(
                         query.getModuleId() != null,
                         SysWechatTemplate::getModuleId,
@@ -94,9 +98,10 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
     @Override
     @Transactional
-    public WechatTemplateDetailResp createTemplate(CreateWechatTemplateReq req) {
+    public WechatTemplateDetailResp createTemplate(
+            String projectNo, Long subjectId, CreateWechatTemplateReq req) {
         SysWechatTemplate template = new SysWechatTemplate();
-        copyTemplateProperties(req, template);
+        copyTemplateProperties(projectNo, subjectId, req, template);
         template.setDeleted(0);
         sysWechatTemplateMapper.insert(template);
         return toTemplateDetailResp(template);
@@ -104,12 +109,13 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
     @Override
     @Transactional
-    public WechatTemplateDetailResp updateTemplate(UpdateWechatTemplateReq req) {
+    public WechatTemplateDetailResp updateTemplate(
+            String projectNo, Long subjectId, UpdateWechatTemplateReq req) {
         SysWechatTemplate template = sysWechatTemplateMapper.selectById(req.getId());
         if (template == null || template.getDeleted() == 1) {
             throw new BusinessException(404, "模板不存在");
         }
-        copyTemplateProperties(req, template);
+        copyTemplateProperties(projectNo, subjectId, req, template);
         sysWechatTemplateMapper.updateById(template);
         return toTemplateDetailResp(template);
     }
@@ -127,14 +133,12 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     // --- 模板参数实现 ---
 
     @Override
-    public PageResult<WechatTemplateParamEntryResp> listParams(WechatTemplateParamQueryReq query) {
+    public PageResult<WechatTemplateParamEntryResp> listParams(
+            String projectNo, Long subjectId, WechatTemplateParamQueryReq query) {
         Page<SysWechatTemplateParam> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysWechatTemplateParam> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(SysWechatTemplateParam::getProjectNo, query.getProjectNo())
-                .eq(
-                        query.getSubjectId() != null,
-                        SysWechatTemplateParam::getSubjectId,
-                        query.getSubjectId())
+        wrapper.eq(SysWechatTemplateParam::getProjectNo, projectNo)
+                .eq(subjectId != null, SysWechatTemplateParam::getSubjectId, subjectId)
                 .eq(
                         query.getModuleId() != null,
                         SysWechatTemplateParam::getModuleId,
@@ -148,7 +152,14 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
         Page<SysWechatTemplateParam> result =
                 sysWechatTemplateParamMapper.selectPage(page, wrapper);
-        return PageResultUtils.of(result.convert(this::toParamEntryResp));
+
+        List<SysWechatTemplateParam> records = result.getRecords();
+        List<WechatTemplateParamEntryResp> dtoList = convertToParamEntryRespList(records);
+
+        Page<WechatTemplateParamEntryResp> convertedPage =
+                new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
+        convertedPage.setRecords(dtoList);
+        return PageResultUtils.of(convertedPage);
     }
 
     @Override
@@ -162,7 +173,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
                 .orderByDesc(SysWechatTemplateParam::getCreatedDate);
 
         List<SysWechatTemplateParam> list = sysWechatTemplateParamMapper.selectList(wrapper);
-        return list.stream().map(this::toParamEntryResp).collect(Collectors.toList());
+        return convertToParamEntryRespList(list);
     }
 
     @Override
@@ -171,29 +182,51 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (param == null || param.getDeleted() == 1) {
             throw new BusinessException(404, "参数不存在");
         }
-        return toParamEntryResp(param);
+
+        WechatTemplateParamEntryResp resp = toParamEntryResp(param);
+
+        // 装配单个详情的模块名与字段名
+        if (param.getModuleId() != null) {
+            SysModule module = sysModuleMapper.selectById(param.getModuleId());
+            if (module != null) {
+                resp.setModuleName(module.getModuleName());
+            }
+        }
+        if (param.getFieldId() != null) {
+            SysModuleField field = sysModuleFieldMapper.selectById(param.getFieldId());
+            if (field != null) {
+                resp.setFieldName(
+                        field.getDisplayName() != null
+                                ? field.getDisplayName()
+                                : field.getFieldCode());
+            }
+        }
+
+        return resp;
     }
 
     @Override
     @Transactional
-    public WechatTemplateParamEntryResp createParam(CreateWechatTemplateParamReq req) {
+    public WechatTemplateParamEntryResp createParam(
+            String projectNo, Long subjectId, CreateWechatTemplateParamReq req) {
         SysWechatTemplateParam param = new SysWechatTemplateParam();
-        copyParamProperties(req, param);
+        copyParamProperties(projectNo, subjectId, req, param);
         param.setDeleted(0);
         sysWechatTemplateParamMapper.insert(param);
-        return toParamEntryResp(param);
+        return getParamById(param.getId());
     }
 
     @Override
     @Transactional
-    public WechatTemplateParamEntryResp updateParam(UpdateWechatTemplateParamReq req) {
+    public WechatTemplateParamEntryResp updateParam(
+            String projectNo, Long subjectId, UpdateWechatTemplateParamReq req) {
         SysWechatTemplateParam param = sysWechatTemplateParamMapper.selectById(req.getId());
         if (param == null || param.getDeleted() == 1) {
             throw new BusinessException(404, "参数不存在");
         }
-        copyParamProperties(req, param);
+        copyParamProperties(projectNo, subjectId, req, param);
         sysWechatTemplateParamMapper.updateById(param);
-        return toParamEntryResp(param);
+        return getParamById(param.getId());
     }
 
     @Override
@@ -243,9 +276,13 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         resp.setUpdatedName(entity.getUpdatedName());
     }
 
-    private void copyTemplateProperties(CreateWechatTemplateReq req, SysWechatTemplate entity) {
-        entity.setProjectNo(req.getProjectNo());
-        entity.setSubjectId(req.getSubjectId());
+    private void copyTemplateProperties(
+            String projectNo,
+            Long subjectId,
+            CreateWechatTemplateReq req,
+            SysWechatTemplate entity) {
+        entity.setProjectNo(projectNo);
+        entity.setSubjectId(subjectId);
         entity.setTemplateTitle(req.getTemplateTitle());
         entity.setTemplateSendType(req.getTemplateSendType());
         entity.setTemplateAcceptType(toJsonString(req.getTemplateAcceptType()));
@@ -269,7 +306,6 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         resp.setTemplateParamDesc(entity.getTemplateParamDesc());
         resp.setModuleId(entity.getModuleId());
         resp.setFieldId(entity.getFieldId());
-        resp.setFieldType(entity.getFieldType());
         resp.setConvertFlag(entity.getConvertFlag());
         resp.setTemplateParamConvertMethod(entity.getTemplateParamConvertMethod());
         resp.setCreatedName(entity.getCreatedName());
@@ -279,17 +315,76 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     private void copyParamProperties(
-            CreateWechatTemplateParamReq req, SysWechatTemplateParam entity) {
-        entity.setProjectNo(req.getProjectNo());
-        entity.setSubjectId(req.getSubjectId());
+            String projectNo,
+            Long subjectId,
+            CreateWechatTemplateParamReq req,
+            SysWechatTemplateParam entity) {
+        entity.setProjectNo(projectNo);
+        entity.setSubjectId(subjectId);
         entity.setTemplateParamName(req.getTemplateParamName());
         entity.setTemplateParamSlug(req.getTemplateParamSlug());
         entity.setTemplateParamDesc(req.getTemplateParamDesc());
         entity.setModuleId(req.getModuleId());
         entity.setFieldId(req.getFieldId());
-        entity.setFieldType(req.getFieldType());
         entity.setConvertFlag(req.getConvertFlag());
         entity.setTemplateParamConvertMethod(req.getTemplateParamConvertMethod());
+    }
+
+    private List<WechatTemplateParamEntryResp> convertToParamEntryRespList(
+            List<SysWechatTemplateParam> records) {
+        if (records == null || records.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 1. 批量收集 IDs
+        Set<Long> moduleIds =
+                records.stream()
+                        .map(SysWechatTemplateParam::getModuleId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+        Set<Long> fieldIds =
+                records.stream()
+                        .map(SysWechatTemplateParam::getFieldId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        // 2. 批量查询 DB
+        Map<Long, String> moduleNameMap = new HashMap<>();
+        if (!moduleIds.isEmpty()) {
+            List<SysModule> modules = sysModuleMapper.selectBatchIds(moduleIds);
+            if (modules != null) {
+                modules.forEach(m -> moduleNameMap.put(m.getId(), m.getModuleName()));
+            }
+        }
+
+        Map<Long, String> fieldNameMap = new HashMap<>();
+        if (!fieldIds.isEmpty()) {
+            List<SysModuleField> fields = sysModuleFieldMapper.selectBatchIds(fieldIds);
+            if (fields != null) {
+                fields.forEach(
+                        f ->
+                                fieldNameMap.put(
+                                        f.getId(),
+                                        f.getDisplayName() != null
+                                                ? f.getDisplayName()
+                                                : f.getFieldCode()));
+            }
+        }
+
+        // 3. 高速组装 DTO List
+        return records.stream()
+                .map(
+                        param -> {
+                            WechatTemplateParamEntryResp resp = toParamEntryResp(param);
+                            if (param.getModuleId() != null) {
+                                resp.setModuleName(moduleNameMap.get(param.getModuleId()));
+                            }
+                            if (param.getFieldId() != null) {
+                                resp.setFieldName(fieldNameMap.get(param.getFieldId()));
+                            }
+                            return resp;
+                        })
+                .collect(Collectors.toList());
     }
 
     private String toJsonString(Object obj) {
