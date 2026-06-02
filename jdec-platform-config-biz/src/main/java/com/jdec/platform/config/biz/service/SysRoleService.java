@@ -293,6 +293,7 @@ public class SysRoleService implements SysRoleApi {
             SysRole role = new SysRole();
             role.setRoleName(request.getRoleName());
             role.setRoleSlug(request.getRoleName());
+            role.setSubjectId(AppContext.getSubjectId());
             role.setProjectNo(AppContext.getProjectNo());
             sysRoleMapper.insert(role);
             roleId = role.getId();
@@ -351,7 +352,9 @@ public class SysRoleService implements SysRoleApi {
         } else {
             SysUser sysUser =
                     sysUserMapper.selectOne(
-                            Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUserId, userIdLong));
+                            Wrappers.<SysUser>lambdaQuery()
+                                    .eq(SysUser::getUserId, userIdLong)
+                                    .eq(SysUser::getDeleted, 0));
             if (sysUser != null) {
                 SysRoleSubject subject =
                         sysRoleSubjectMapper.selectOne(
@@ -497,7 +500,8 @@ public class SysRoleService implements SysRoleApi {
                 SysUser user =
                         sysUserMapper.selectOne(
                                 Wrappers.<SysUser>lambdaQuery()
-                                        .eq(SysUser::getUserId, roleUser.getUserId()));
+                                        .eq(SysUser::getUserId, roleUser.getUserId())
+                                        .eq(SysUser::getDeleted, 0));
                 if (user != null) {
                     String userId = String.valueOf(user.getUserId());
                     if (UserTypeEnum.INSIDE.getCode().equals(user.getUserType())) {
@@ -815,7 +819,9 @@ public class SysRoleService implements SysRoleApi {
 
         List<SysUser> sysUsers =
                 sysUserMapper.selectList(
-                        Wrappers.<SysUser>lambdaQuery().in(SysUser::getUserId, userIds));
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, userIds)
+                                .eq(SysUser::getDeleted, 0));
         for (SysUser sysUser : sysUsers) {
             RoleUserResp vo = new RoleUserResp();
             vo.setUserName(sysUser.getUserName());
@@ -851,10 +857,15 @@ public class SysRoleService implements SysRoleApi {
         Set<Long> orphanedUserIds = new HashSet<>(userIds);
         orphanedUserIds.removeAll(usersWithRoles);
 
-        // 批量删除孤立用户
+        // 批量逻辑删除孤立用户
         if (!orphanedUserIds.isEmpty()) {
-            sysUserMapper.delete(
-                    new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, orphanedUserIds));
+            SysUser updateEntity = new SysUser();
+            updateEntity.setDeleted(1);
+            sysUserMapper.update(
+                    updateEntity,
+                    new LambdaQueryWrapper<SysUser>()
+                            .in(SysUser::getUserId, orphanedUserIds)
+                            .eq(SysUser::getDeleted, 0));
         }
     }
 
@@ -870,7 +881,9 @@ public class SysRoleService implements SysRoleApi {
 
         List<SysUser> users =
                 sysUserMapper.selectList(
-                        Wrappers.<SysUser>lambdaQuery().in(SysUser::getUserId, allUserIds));
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, allUserIds)
+                                .eq(SysUser::getDeleted, 0));
         Map<Long, SysUser> userMap =
                 users.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
 
@@ -946,7 +959,9 @@ public class SysRoleService implements SysRoleApi {
             Map<Long, SubjectBO> subjectMap) {
         List<SysUser> existingUsers =
                 sysUserMapper.selectList(
-                        Wrappers.<SysUser>lambdaQuery().in(SysUser::getUserId, allUserIds));
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, allUserIds)
+                                .eq(SysUser::getDeleted, 0));
         Set<Long> existingUserIds =
                 existingUsers.stream().map(SysUser::getUserId).collect(Collectors.toSet());
 
@@ -1162,7 +1177,9 @@ public class SysRoleService implements SysRoleApi {
         // 查询这些用户中属于指定主体的用户
         List<SysUser> users =
                 sysUserMapper.selectList(
-                        new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, subjectUserIds));
+                        new LambdaQueryWrapper<SysUser>()
+                                .in(SysUser::getUserId, subjectUserIds)
+                                .eq(SysUser::getDeleted, 0));
         return users.stream().map(SysUser::getUserName).toList();
     }
 
@@ -1199,7 +1216,9 @@ public class SysRoleService implements SysRoleApi {
         // 查询这些用户的名称
         List<SysUser> users =
                 sysUserMapper.selectList(
-                        Wrappers.<SysUser>lambdaQuery().in(SysUser::getUserId, boundUserIds));
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, boundUserIds)
+                                .eq(SysUser::getDeleted, 0));
         return users.stream().map(SysUser::getUserName).toList();
     }
 
@@ -1267,7 +1286,8 @@ public class SysRoleService implements SysRoleApi {
                                         userType != null && userType != 0,
                                         SysUser::getUserType,
                                         userType)
-                                .eq(SysUser::getSubjectId, AppContext.getSubjectId()));
+                                .eq(SysUser::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysUser::getDeleted, 0));
 
         // 3. 将用户按部门分类
         Map<String, List<UserTreeNodeResp>> deptUsers = new LinkedHashMap<>();

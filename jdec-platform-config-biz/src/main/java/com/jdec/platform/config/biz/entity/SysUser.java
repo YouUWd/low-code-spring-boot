@@ -76,6 +76,9 @@ public class SysUser implements Serializable {
     @Schema(description = "是否超级人员 0-否 1-是")
     private Integer superFlag;
 
+    @Schema(description = "逻辑删除标识 0-未删除 1-已删除")
+    private Integer deleted;
+
     @Schema(description = "模拟操作用户")
     @TableField(fill = FieldFill.INSERT)
     private Long createdBy;

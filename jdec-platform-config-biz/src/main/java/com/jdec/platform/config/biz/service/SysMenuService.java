@@ -95,6 +95,7 @@ public class SysMenuService implements SysMenuApi {
             SysMenu entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
             entity.setProjectNo(projectNo);
+            entity.setProjectNo(projectNo);
             // 校验同级名称是否重复（按父级、分类、主体、应用隔离）
             checkDuplicateTitle(pid, req.getCategory(), req.getTitle(), subjectId, null);
 

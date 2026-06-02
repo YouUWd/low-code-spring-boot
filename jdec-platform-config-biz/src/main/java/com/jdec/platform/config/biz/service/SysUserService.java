@@ -103,6 +103,7 @@ public class SysUserService implements SysUserApi {
                                 StrUtil.isNotBlank(query.getSubjectName()),
                                 SysUser::getSubjectName,
                                 query.getSubjectName())
+                        .eq(SysUser::getDeleted, Boolean.FALSE)
                         .orderByDesc(SysUser::getCreatedDate);
         Page<SysUser> result = sysUserMapper.selectPage(page, wrapper);
         return PageResultUtils.of(result.convert(this::toUserPageResp));
@@ -187,6 +188,7 @@ public class SysUserService implements SysUserApi {
                 sysUserMapper.selectList(
                         Wrappers.<SysUser>lambdaQuery()
                                 .in(SysUser::getUserId, userIds)
+                                .eq(SysUser::getDeleted, Boolean.FALSE)
                                 .orderByDesc(SysUser::getCreatedDate));
         return users.stream().map(this::toUserPageResp).toList();
     }
