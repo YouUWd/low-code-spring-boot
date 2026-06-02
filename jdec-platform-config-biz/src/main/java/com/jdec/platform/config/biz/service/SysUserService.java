@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -204,10 +205,16 @@ public class SysUserService implements SysUserApi {
                                 .eq(SysRole::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysRole::getProjectNo, AppContext.getProjectNo()));
         List<Long> roleIds = sysRoles.stream().map(SysRole::getId).toList();
+        if (CollUtil.isEmpty(roleIds)) {
+            return Collections.emptyList();
+        }
         List<SysRoleUser> sysRoleUsers =
                 sysRoleUserMapper.selectList(
                         new LambdaQueryWrapper<SysRoleUser>().in(SysRoleUser::getRoleId, roleIds));
         List<Long> roleUserIds = sysRoleUsers.stream().map(SysRoleUser::getUserId).toList();
+        if (CollUtil.isEmpty(roleUserIds)) {
+            return Collections.emptyList();
+        }
         List<SysUser> users =
                 sysUserMapper.selectList(
                         new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, roleUserIds));

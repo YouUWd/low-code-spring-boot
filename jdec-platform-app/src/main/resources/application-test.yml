@@ -42,6 +42,11 @@ spring:
           url: jdbc:mysql://${DB_SCHOOL_HOST:119.36.78.123}:${DB_SCHOOL_PORT:5016}/${DB_SCHOOL_NAME:school}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_SCHOOL_USERNAME:root}
           password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
+        # school 数据源
+        student_manage:
+          url: jdbc:mysql://${DB_SCHOOL_HOST:119.36.78.123}:${DB_SCHOOL_PORT:5016}/${DB_SCHOOL_NAME:student_manage}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_SCHOOL_USERNAME:root}
+          password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
   # ===== Redis 配置 =====
   data:
     redis:
@@ -67,6 +72,7 @@ jdec:
       hr_manage: hr_manage
       third: third
       school: school
+      student_manage: student_manage
 
 # ===== MyBatis-Plus 测试模式 =====
 mybatis-plus:
