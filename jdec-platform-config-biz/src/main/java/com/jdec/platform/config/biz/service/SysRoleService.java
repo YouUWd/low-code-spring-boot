@@ -8,6 +8,8 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
+import com.jdec.platform.config.api.dto.request.RoleSubjectReq;
+import com.jdec.platform.config.api.dto.request.RoleUserReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.SysRole;
@@ -56,21 +58,86 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public Long getUserRoleCount(Long id, Long subjectId, String projectNo) {
-        Long count =
-                sysRoleUserMapper.selectCount(
-                        Wrappers.<SysRoleUser>lambdaQuery()
-                                .eq(SysRoleUser::getUserId, id)
-                                .eq(SysRoleUser::getProjectNo, projectNo));
-        Long count1 =
-                sysRoleSubjectMapper.selectCount(
-                        Wrappers.<SysRoleSubject>lambdaQuery()
-                                .eq(SysRoleSubject::getSubjectId, subjectId)
-                                .eq(SysRoleSubject::getProjectNo, projectNo));
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
+        long count =
+                filterValidRoleUsers(
+                                sysRoleUserMapper.selectList(
+                                        Wrappers.<SysRoleUser>lambdaQuery()
+                                                .eq(SysRoleUser::getUserId, id)
+                                                .eq(SysRoleUser::getStatus, 0)))
+                        .size();
+        long count1 =
+                filterValidRoleSubjects(
+                                sysRoleSubjectMapper.selectList(
+                                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                                .eq(SysRoleSubject::getSubjectId, subjectId)
+                                                .eq(SysRoleSubject::getStatus, 0)))
+                        .size();
         return count + count1;
+    }
+
+    /** 更新已时效的关联状态 检查所有角色-用户和角色-主体关联，如果时效期已过，将状态置为1（失效） */
+    private void updateExpiredRelations() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        // 1. 更新用户关联表中已时效的记录
+        List<SysRoleUser> validRoleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery().eq(SysRoleUser::getStatus, 0));
+
+        List<Long> expiredUserRelationIds = new ArrayList<>();
+        for (SysRoleUser roleUser : validRoleUsers) {
+            if (!isEffectiveDateValid(
+                    roleUser.getEffectiveType(),
+                    roleUser.getEffectiveStartDate(),
+                    roleUser.getEffectiveEndDate(),
+                    today)) {
+                expiredUserRelationIds.add(roleUser.getId());
+            }
+        }
+
+        if (!expiredUserRelationIds.isEmpty()) {
+            SysRoleUser updateEntity = new SysRoleUser();
+            updateEntity.setStatus(1);
+            sysRoleUserMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleUser>lambdaQuery()
+                            .in(SysRoleUser::getId, expiredUserRelationIds));
+        }
+
+        // 2. 更新主体关联表中已时效的记录
+        List<SysRoleSubject> validRoleSubjects =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery().eq(SysRoleSubject::getStatus, 0));
+
+        List<Long> expiredSubjectRelationIds = new ArrayList<>();
+        for (SysRoleSubject roleSubject : validRoleSubjects) {
+            if (!isEffectiveDateValid(
+                    roleSubject.getEffectiveType(),
+                    roleSubject.getEffectiveStartDate(),
+                    roleSubject.getEffectiveEndDate(),
+                    today)) {
+                expiredSubjectRelationIds.add(roleSubject.getId());
+            }
+        }
+
+        if (!expiredSubjectRelationIds.isEmpty()) {
+            SysRoleSubject updateEntity = new SysRoleSubject();
+            updateEntity.setStatus(1);
+            sysRoleSubjectMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleSubject>lambdaQuery()
+                            .in(SysRoleSubject::getId, expiredSubjectRelationIds));
+        }
     }
 
     @Override
     public CheckRoleUserResp checkRoleUser(SaveRoleUserReq request) {
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
         autoDetectEffectiveType(request);
 
         CheckRoleUserResp resp = new CheckRoleUserResp();
@@ -82,13 +149,13 @@ public class SysRoleService implements SysRoleApi {
 
         // ========== 校验1：选择主体后，再选择该主体下的员工 ==========
         // 新增和更新都得校验
-        if (request.getSubjectIds() != null
-                && !request.getSubjectIds().isEmpty()
+        if (request.getSubjects() != null
+                && !request.getSubjects().isEmpty()
                 && !allUserIds.isEmpty()) {
             // 获取所有主体下的用户
             List<UserBO> allSubjectUsers = new ArrayList<>();
-            for (Long subjectId : request.getSubjectIds()) {
-                List<UserBO> users = userApi.listBySubjectId(subjectId);
+            for (RoleSubjectReq subjectReq : request.getSubjects()) {
+                List<UserBO> users = userApi.listBySubjectId(subjectReq.getSubjectId());
                 allSubjectUsers.addAll(users);
             }
             List<String> conflictNames = checkSubjectUserConflict(allSubjectUsers, allUserIds);
@@ -131,9 +198,10 @@ public class SysRoleService implements SysRoleApi {
 
         // ========== 校验2：更新时，授权主体后，是否需要覆盖已单独关联到该角色的主体下员工（可强制保存） ==========
         // 只有更新时需要校验，可强制保存
-        if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
-            for (Long subjectId : request.getSubjectIds()) {
-                List<String> overlapNames = checkRoleHasSubjectUsers(roleId, subjectId);
+        if (request.getSubjects() != null && !request.getSubjects().isEmpty()) {
+            for (RoleSubjectReq subjectReq : request.getSubjects()) {
+                List<String> overlapNames =
+                        checkRoleHasSubjectUsers(roleId, subjectReq.getSubjectId());
                 if (!overlapNames.isEmpty()) {
                     resp.setNeedConfirm(true);
                     resp.setConfirmType(2); // 可强制保存，覆盖已关联的员工
@@ -166,6 +234,9 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public RoleConfigPageResp saveRoleUser(SaveRoleUserReq request) {
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
         autoDetectEffectiveType(request);
 
         Set<Long> allUserIds = collectUserIds(request);
@@ -181,9 +252,9 @@ public class SysRoleService implements SysRoleApi {
             subjectApi.getSubjectList().forEach(s -> subjectMap.put(s.getId(), s));
         }
         // 查询所有主体下的用户
-        if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
-            for (Long subjectId : request.getSubjectIds()) {
-                List<UserBO> users = userApi.listBySubjectId(subjectId);
+        if (request.getSubjects() != null && !request.getSubjects().isEmpty()) {
+            for (RoleSubjectReq subjectReq : request.getSubjects()) {
+                List<UserBO> users = userApi.listBySubjectId(subjectReq.getSubjectId());
                 allSubjectUsers.addAll(users);
             }
         }
@@ -249,8 +320,7 @@ public class SysRoleService implements SysRoleApi {
             List<SysRoleUser> previousRoleUsers =
                     sysRoleUserMapper.selectList(
                             new LambdaQueryWrapper<SysRoleUser>()
-                                    .eq(SysRoleUser::getRoleId, roleId)
-                                    .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                                    .eq(SysRoleUser::getRoleId, roleId));
             previousUserIds =
                     previousRoleUsers.stream()
                             .map(SysRoleUser::getUserId)
@@ -278,18 +348,24 @@ public class SysRoleService implements SysRoleApi {
             // 删除该角色之前的所有关联数据（只删除关联表）
             // 删除角色-主体关联
             sysRoleSubjectMapper.delete(
-                    new LambdaQueryWrapper<SysRoleSubject>()
-                            .eq(SysRoleSubject::getRoleId, roleId)
-                            .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
+                    new LambdaQueryWrapper<SysRoleSubject>().eq(SysRoleSubject::getRoleId, roleId));
             // 删除角色-用户关联
             sysRoleUserMapper.delete(
-                    new LambdaQueryWrapper<SysRoleUser>()
-                            .eq(SysRoleUser::getRoleId, roleId)
-                            .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                    new LambdaQueryWrapper<SysRoleUser>().eq(SysRoleUser::getRoleId, roleId));
         }
 
         // 保存角色
         if (isCreate) {
+            // 新增：校验角色名称唯一性（只检查有效的角色）
+            long count =
+                    sysRoleMapper.selectCount(
+                            Wrappers.<SysRole>lambdaQuery()
+                                    .eq(SysRole::getRoleName, request.getRoleName())
+                                    .eq(SysRole::getSubjectId, AppContext.getSubjectId())
+                                    .eq(SysRole::getProjectNo, AppContext.getProjectNo()));
+            if (count > 0) {
+                throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色名称已存在");
+            }
             SysRole role = new SysRole();
             role.setRoleName(request.getRoleName());
             role.setRoleSlug(request.getRoleName());
@@ -303,19 +379,38 @@ public class SysRoleService implements SysRoleApi {
             if (role == null) {
                 throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色不存在");
             }
+            // 编辑：校验角色名称唯一性（排除自己）
+            long count =
+                    sysRoleMapper.selectCount(
+                            Wrappers.<SysRole>lambdaQuery()
+                                    .eq(SysRole::getRoleName, request.getRoleName())
+                                    .eq(SysRole::getSubjectId, AppContext.getSubjectId())
+                                    .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                    .ne(SysRole::getId, roleId));
+            if (count > 0) {
+                throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色名称已存在");
+            }
             role.setRoleName(request.getRoleName());
             sysRoleMapper.updateById(role);
         }
 
         // 保存新的主体关联
-        if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
+        if (request.getSubjects() != null && !request.getSubjects().isEmpty()) {
             saveRoleSubjects(request, roleId);
         }
 
         // 保存新的单独用户关联（过滤掉属于该主体的用户）
         if (!allUserIds.isEmpty()) {
-            batchEnsureUsersExist(
-                    allUserIds, request.getUserInsideIds(), hrUserMap, deptMap, subjectMap);
+            // 收集内部用户ID用于判断用户类型
+            Set<Long> insideUserIds = new HashSet<>();
+            if (request.getUsers() != null) {
+                insideUserIds =
+                        request.getUsers().stream()
+                                .filter(u -> UserTypeEnum.INSIDE.getCode().equals(u.getUserType()))
+                                .map(u -> Long.parseLong(u.getUserId()))
+                                .collect(Collectors.toSet());
+            }
+            batchEnsureUsersExist(allUserIds, insideUserIds, hrUserMap, deptMap, subjectMap);
             saveUserRelations(request, roleId);
         }
 
@@ -342,8 +437,7 @@ public class SysRoleService implements SysRoleApi {
                 sysRoleUserMapper.selectOne(
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getUserId, userIdLong)
-                                .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                                .eq(SysRoleUser::getRoleId, roleId));
         RoleUserTimeResp resp = new RoleUserTimeResp();
         resp.setUserId(userId);
         if (user != null) {
@@ -371,6 +465,9 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public PageResult<RoleConfigPageResp> getRoleConfigPage(QueryRoleConfigPageReq query) {
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
         Page<SysRole> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysRole::getProjectNo, AppContext.getProjectNo());
@@ -378,19 +475,18 @@ public class SysRoleService implements SysRoleApi {
             wrapper.eq(SysRole::getId, query.getRoleId());
         }
         if (query.getUserId() != null) {
-            // 查询包含该用户的角色
+            // 查询包含该用户的角色，且关联必须状态有效且在时效范围内
             List<Long> roleIds =
-                    sysRoleUserMapper
-                            .selectList(
-                                    Wrappers.<SysRoleUser>lambdaQuery()
-                                            .eq(SysRoleUser::getUserId, query.getUserId())
-                                            .eq(
-                                                    SysRoleUser::getProjectNo,
-                                                    AppContext.getProjectNo()))
+                    filterValidRoleUsers(
+                                    sysRoleUserMapper.selectList(
+                                            Wrappers.<SysRoleUser>lambdaQuery()
+                                                    .eq(SysRoleUser::getUserId, query.getUserId())
+                                                    .eq(SysRoleUser::getStatus, 0)))
                             .stream()
                             .map(SysRoleUser::getRoleId)
                             .distinct()
                             .toList();
+
             if (!roleIds.isEmpty()) {
                 wrapper.in(SysRole::getId, roleIds);
             } else {
@@ -409,53 +505,39 @@ public class SysRoleService implements SysRoleApi {
                                     resp.setId(role.getId());
                                     resp.setRoleName(role.getRoleName());
 
-                                    // 查询该角色的用户关联
+                                    // 查询该角色的用户关联（只查询有效且在时效内的）
                                     List<SysRoleUser> roleUsers =
-                                            sysRoleUserMapper.selectList(
-                                                    Wrappers.<SysRoleUser>lambdaQuery()
-                                                            .eq(
-                                                                    SysRoleUser::getRoleId,
-                                                                    role.getId())
-                                                            .eq(
-                                                                    SysRoleUser::getProjectNo,
-                                                                    AppContext.getProjectNo()));
+                                            filterValidRoleUsers(
+                                                    sysRoleUserMapper.selectList(
+                                                            Wrappers.<SysRoleUser>lambdaQuery()
+                                                                    .eq(
+                                                                            SysRoleUser::getRoleId,
+                                                                            role.getId())
+                                                                    .eq(
+                                                                            SysRoleUser::getStatus,
+                                                                            0)));
 
-                                    // 填充用户列表
+                                    // 填充用户列表（每个用户带时效信息）
                                     List<RoleUserResp> userList = buildUserList(roleUsers);
                                     resp.setUserList(userList);
 
-                                    // 查询该角色的主体关联
+                                    // 查询该角色的主体关联（只查询有效且在时效内的）
                                     List<SysRoleSubject> subjects =
-                                            sysRoleSubjectMapper.selectList(
-                                                    Wrappers.<SysRoleSubject>lambdaQuery()
-                                                            .eq(
-                                                                    SysRoleSubject::getRoleId,
-                                                                    role.getId())
-                                                            .eq(
-                                                                    SysRoleSubject::getProjectNo,
-                                                                    AppContext.getProjectNo()));
-                                    // 填充主体列表
+                                            filterValidRoleSubjects(
+                                                    sysRoleSubjectMapper.selectList(
+                                                            Wrappers.<SysRoleSubject>lambdaQuery()
+                                                                    .eq(
+                                                                            SysRoleSubject
+                                                                                    ::getRoleId,
+                                                                            role.getId())
+                                                                    .eq(
+                                                                            SysRoleSubject
+                                                                                    ::getStatus,
+                                                                            0)));
+                                    // 填充主体列表（每个主体带时效信息）
                                     List<RoleSubjectResp> subjectList = buildSubjectList(subjects);
                                     resp.setSubjectList(subjectList);
 
-                                    // 取用户关联或主体关联的时效信息（优先取用户关联的）
-                                    if (!roleUsers.isEmpty()) {
-                                        SysRoleUser firstUser = roleUsers.getFirst();
-                                        resp.setEffectiveType(firstUser.getEffectiveType());
-                                        resp.setEffectiveStartDate(
-                                                firstUser.getEffectiveStartDate());
-                                        resp.setEffectiveEndDate(firstUser.getEffectiveEndDate());
-                                    } else if (!subjects.isEmpty()) {
-                                        SysRoleSubject firstSubject = subjects.getFirst();
-                                        resp.setEffectiveType(firstSubject.getEffectiveType());
-                                        resp.setEffectiveStartDate(
-                                                firstSubject.getEffectiveStartDate());
-                                        resp.setEffectiveEndDate(
-                                                firstSubject.getEffectiveEndDate());
-                                    } else {
-                                        resp.setEffectiveType(
-                                                EffectiveTypeEnum.PERMANENT.getCode());
-                                    }
                                     return resp;
                                 })
                         .collect(Collectors.toList());
@@ -466,6 +548,9 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public RoleConfigDetailResp getRoleConfigDetail(Long roleId) {
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
         SysRole role = sysRoleMapper.selectById(roleId);
         if (role == null) {
             throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色不存在");
@@ -473,28 +558,40 @@ public class SysRoleService implements SysRoleApi {
         RoleConfigDetailResp resp = new RoleConfigDetailResp();
         resp.setId(role.getId());
         resp.setRoleName(role.getRoleName());
-        // 查询角色主体关联表
+        // 查询角色主体关联表（只查询有效且在时效内的）
         List<SysRoleSubject> subjectList =
-                sysRoleSubjectMapper.selectList(
-                        Wrappers.<SysRoleSubject>lambdaQuery()
-                                .eq(SysRoleSubject::getRoleId, roleId)
-                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
+                filterValidRoleSubjects(
+                        sysRoleSubjectMapper.selectList(
+                                Wrappers.<SysRoleSubject>lambdaQuery()
+                                        .eq(SysRoleSubject::getRoleId, roleId)
+                                        .eq(SysRoleSubject::getStatus, 0)));
         if (CollUtil.isNotEmpty(subjectList)) {
             List<Long> subjectIds = subjectList.stream().map(SysRoleSubject::getSubjectId).toList();
-            resp.setEffectiveStartDate(subjectList.getFirst().getEffectiveStartDate());
-            resp.setEffectiveEndDate(subjectList.getFirst().getEffectiveEndDate());
             resp.setSubjectIds(subjectIds);
+            List<RoleSubjectReq> subjectReqs = new ArrayList<>();
+            for (SysRoleSubject rs : subjectList) {
+                RoleSubjectReq req = new RoleSubjectReq();
+                req.setSubjectId(rs.getSubjectId());
+                req.setEffectiveType(rs.getEffectiveType());
+                req.setEffectiveStartDate(rs.getEffectiveStartDate());
+                req.setEffectiveEndDate(rs.getEffectiveEndDate());
+                subjectReqs.add(req);
+            }
+            resp.setSubjects(subjectReqs);
         }
-        // 查询角色用户关联表
+        // 查询角色用户关联表（只查询有效且在时效内的）
         List<SysRoleUser> userList =
-                sysRoleUserMapper.selectList(
-                        Wrappers.<SysRoleUser>lambdaQuery()
-                                .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                filterValidRoleUsers(
+                        sysRoleUserMapper.selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .eq(SysRoleUser::getRoleId, roleId)
+                                        .eq(SysRoleUser::getStatus, 0)));
         if (CollUtil.isNotEmpty(userList)) {
-            // 区分内部和外部用户
+            // 区分内部和外部用户，并携带各自时效
             List<String> insideIds = new ArrayList<>();
             List<String> externalIds = new ArrayList<>();
+            List<RoleUserReq> insideUsers = new ArrayList<>();
+            List<RoleUserReq> externalUsers = new ArrayList<>();
 
             for (SysRoleUser roleUser : userList) {
                 SysUser user =
@@ -504,18 +601,27 @@ public class SysRoleService implements SysRoleApi {
                                         .eq(SysUser::getDeleted, 0));
                 if (user != null) {
                     String userId = String.valueOf(user.getUserId());
+                    RoleUserReq userReq = new RoleUserReq();
+                    userReq.setUserId(userId);
+                    userReq.setEffectiveType(roleUser.getEffectiveType());
+                    userReq.setEffectiveStartDate(roleUser.getEffectiveStartDate());
+                    userReq.setEffectiveEndDate(roleUser.getEffectiveEndDate());
                     if (UserTypeEnum.INSIDE.getCode().equals(user.getUserType())) {
                         insideIds.add(userId);
+                        userReq.setUserType(UserTypeEnum.INSIDE.getCode());
+                        insideUsers.add(userReq);
                     } else if (UserTypeEnum.EXTERNAL.getCode().equals(user.getUserType())) {
                         externalIds.add(userId);
+                        userReq.setUserType(UserTypeEnum.EXTERNAL.getCode());
+                        externalUsers.add(userReq);
                     }
                 }
             }
 
             resp.setUserInsideIds(insideIds);
             resp.setUserExternalIds(externalIds);
-            resp.setEffectiveStartDate(userList.getFirst().getEffectiveStartDate());
-            resp.setEffectiveEndDate(userList.getFirst().getEffectiveEndDate());
+            resp.setInsideUsers(insideUsers);
+            resp.setExternalUsers(externalUsers);
         }
         return resp;
     }
@@ -525,23 +631,17 @@ public class SysRoleService implements SysRoleApi {
         // 1. 获取该角色关联的所有用户ID（用于后续检查是否需要删除sys_user记录）
         List<SysRoleUser> roleUsers =
                 sysRoleUserMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleUser>()
-                                .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                        new LambdaQueryWrapper<SysRoleUser>().eq(SysRoleUser::getRoleId, roleId));
         Set<Long> userIds =
                 roleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toSet());
 
         // 2. 删除角色主体关联 (sys_role_subject)
         sysRoleSubjectMapper.delete(
-                new LambdaQueryWrapper<SysRoleSubject>()
-                        .eq(SysRoleSubject::getRoleId, roleId)
-                        .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
+                new LambdaQueryWrapper<SysRoleSubject>().eq(SysRoleSubject::getRoleId, roleId));
 
         // 3. 删除角色用户关联 (sys_role_user)
         sysRoleUserMapper.delete(
-                new LambdaQueryWrapper<SysRoleUser>()
-                        .eq(SysRoleUser::getRoleId, roleId)
-                        .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                new LambdaQueryWrapper<SysRoleUser>().eq(SysRoleUser::getRoleId, roleId));
 
         // 4. 对于每个用户，检查是否还关联其他角色，如果没有则删除sys_user记录
         if (!userIds.isEmpty()) {
@@ -577,46 +677,37 @@ public class SysRoleService implements SysRoleApi {
         resp.setId(role.getId());
         resp.setRoleName(role.getRoleName());
 
-        // 查询该角色的用户关联
+        // 查询该角色的用户关联（只查询有效且在时效内的）
         List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        Wrappers.<SysRoleUser>lambdaQuery()
-                                .eq(SysRoleUser::getRoleId, role.getId())
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                filterValidRoleUsers(
+                        sysRoleUserMapper.selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .eq(SysRoleUser::getRoleId, role.getId())
+                                        .eq(SysRoleUser::getStatus, 0)));
 
-        // 填充用户列表
+        // 填充用户列表（每个用户带时效信息）
         List<RoleUserResp> userList = buildUserList(roleUsers);
         resp.setUserList(userList);
 
-        // 查询该角色的主体关联
+        // 查询该角色的主体关联（只查询有效且在时效内的）
         List<SysRoleSubject> subjects =
-                sysRoleSubjectMapper.selectList(
-                        Wrappers.<SysRoleSubject>lambdaQuery()
-                                .eq(SysRoleSubject::getRoleId, role.getId())
-                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
-        // 填充主体列表
+                filterValidRoleSubjects(
+                        sysRoleSubjectMapper.selectList(
+                                Wrappers.<SysRoleSubject>lambdaQuery()
+                                        .eq(SysRoleSubject::getRoleId, role.getId())
+                                        .eq(SysRoleSubject::getStatus, 0)));
+        // 填充主体列表（每个主体带时效信息）
         List<RoleSubjectResp> subjectList = buildSubjectList(subjects);
         resp.setSubjectList(subjectList);
 
-        // 取用户关联或主体关联的时效信息（优先取用户关联的）
-        if (!roleUsers.isEmpty()) {
-            SysRoleUser firstUser = roleUsers.getFirst();
-            resp.setEffectiveType(firstUser.getEffectiveType());
-            resp.setEffectiveStartDate(firstUser.getEffectiveStartDate());
-            resp.setEffectiveEndDate(firstUser.getEffectiveEndDate());
-        } else if (!subjects.isEmpty()) {
-            SysRoleSubject firstSubject = subjects.getFirst();
-            resp.setEffectiveType(firstSubject.getEffectiveType());
-            resp.setEffectiveStartDate(firstSubject.getEffectiveStartDate());
-            resp.setEffectiveEndDate(firstSubject.getEffectiveEndDate());
-        } else {
-            resp.setEffectiveType(EffectiveTypeEnum.PERMANENT.getCode());
-        }
         return resp;
     }
 
     @Override
     public List<RoleListResp> listRole() {
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
         List<SysRole> sysRoles =
                 sysRoleMapper.selectList(
                         Wrappers.<SysRole>lambdaQuery()
@@ -632,34 +723,21 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public List<UserRoleListResp> getUserRolesByUserIdAndSubjectId(Long userId, Long subjectId) {
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
         java.time.LocalDate today = java.time.LocalDate.now();
         List<UserRoleListResp> result = new ArrayList<>();
 
-        // 1. 先查询用户角色关系表
-        List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        Wrappers.<SysRoleUser>lambdaQuery()
-                                .eq(SysRoleUser::getUserId, userId)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+        // 1. 先查询用户角色关系表（状态有效且在时效内）
+        List<SysRoleUser> validRoleUsers =
+                filterValidRoleUsers(
+                        sysRoleUserMapper.selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .eq(SysRoleUser::getUserId, userId)
+                                        .eq(SysRoleUser::getStatus, 0)));
 
-        if (!roleUsers.isEmpty()) {
-            // 有用户角色关联记录，返回这些角色（需要校验时间）
-            // 先过滤有效期内的记录
-            List<SysRoleUser> validRoleUsers =
-                    roleUsers.stream()
-                            .filter(
-                                    roleUser ->
-                                            isEffectiveDateValid(
-                                                    roleUser.getEffectiveType(),
-                                                    roleUser.getEffectiveStartDate(),
-                                                    roleUser.getEffectiveEndDate(),
-                                                    today))
-                            .toList();
-
-            if (validRoleUsers.isEmpty()) {
-                return result;
-            }
-
+        if (!validRoleUsers.isEmpty()) {
             // 批量查询角色信息
             List<Long> roleIds =
                     validRoleUsers.stream().map(SysRoleUser::getRoleId).distinct().toList();
@@ -688,24 +766,13 @@ public class SysRoleService implements SysRoleApi {
             return result;
         }
 
-        // 2. 如果用户角色关系表中没有记录，查询角色主体绑定关系表
-        List<SysRoleSubject> roleSubjects =
-                sysRoleSubjectMapper.selectList(
-                        Wrappers.<SysRoleSubject>lambdaQuery()
-                                .eq(SysRoleSubject::getSubjectId, subjectId)
-                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
-
-        // 先过滤有效期内的记录
+        // 2. 如果用户角色关系表中没有记录，查询角色主体绑定关系表（状态有效且在时效内）
         List<SysRoleSubject> validRoleSubjects =
-                roleSubjects.stream()
-                        .filter(
-                                roleSubject ->
-                                        isEffectiveDateValid(
-                                                roleSubject.getEffectiveType(),
-                                                roleSubject.getEffectiveStartDate(),
-                                                roleSubject.getEffectiveEndDate(),
-                                                today))
-                        .toList();
+                filterValidRoleSubjects(
+                        sysRoleSubjectMapper.selectList(
+                                Wrappers.<SysRoleSubject>lambdaQuery()
+                                        .eq(SysRoleSubject::getSubjectId, subjectId)
+                                        .eq(SysRoleSubject::getStatus, 0)));
 
         if (validRoleSubjects.isEmpty()) {
             return result;
@@ -738,6 +805,34 @@ public class SysRoleService implements SysRoleApi {
         }
 
         return result;
+    }
+
+    /** 过滤出时效内的用户关联记录（永久有效，或当前时间在自定义时效范围内） */
+    private List<SysRoleUser> filterValidRoleUsers(List<SysRoleUser> roleUsers) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        return roleUsers.stream()
+                .filter(
+                        ru ->
+                                isEffectiveDateValid(
+                                        ru.getEffectiveType(),
+                                        ru.getEffectiveStartDate(),
+                                        ru.getEffectiveEndDate(),
+                                        today))
+                .collect(Collectors.toList());
+    }
+
+    /** 过滤出时效内的主体关联记录（永久有效，或当前时间在自定义时效范围内） */
+    private List<SysRoleSubject> filterValidRoleSubjects(List<SysRoleSubject> subjects) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        return subjects.stream()
+                .filter(
+                        s ->
+                                isEffectiveDateValid(
+                                        s.getEffectiveType(),
+                                        s.getEffectiveStartDate(),
+                                        s.getEffectiveEndDate(),
+                                        today))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -800,12 +895,16 @@ public class SysRoleService implements SysRoleApi {
             RoleSubjectResp vo = new RoleSubjectResp();
             vo.setSubjectId(sysRoleSubject.getSubjectId());
             vo.setSubjectName(subjectNameMap.get(sysRoleSubject.getSubjectId()));
+            vo.setEffectiveType(sysRoleSubject.getEffectiveType());
+            vo.setEffectiveStartDate(sysRoleSubject.getEffectiveStartDate());
+            vo.setEffectiveEndDate(sysRoleSubject.getEffectiveEndDate());
+            vo.setStatus(sysRoleSubject.getStatus());
             respList.add(vo);
         }
         return respList;
     }
 
-    /** 构建用户VO列表 */
+    /** 构建用户VO列表（每个用户携带各自的时效信息） */
     private List<RoleUserResp> buildUserList(List<SysRoleUser> roleUsers) {
         if (roleUsers.isEmpty()) {
             return Collections.emptyList();
@@ -814,26 +913,36 @@ public class SysRoleService implements SysRoleApi {
         List<Long> userIds =
                 roleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toList());
 
-        // 查询用户信息（内部用户用SysUser，外部用户用User表）
-        Map<Long, RoleUserResp> userVOMap = new HashMap<>();
-
+        // 查询用户基础信息
+        Map<Long, SysUser> sysUserMap = new HashMap<>();
         List<SysUser> sysUsers =
                 sysUserMapper.selectList(
                         Wrappers.<SysUser>lambdaQuery()
                                 .in(SysUser::getUserId, userIds)
                                 .eq(SysUser::getDeleted, 0));
         for (SysUser sysUser : sysUsers) {
+            sysUserMap.put(sysUser.getUserId(), sysUser);
+        }
+
+        // 按 roleUsers 顺序构建，保留每个用户关联的时效信息
+        List<RoleUserResp> respList = new ArrayList<>();
+        for (SysRoleUser roleUser : roleUsers) {
+            SysUser sysUser = sysUserMap.get(roleUser.getUserId());
+            if (sysUser == null) {
+                continue;
+            }
             RoleUserResp vo = new RoleUserResp();
             vo.setUserName(sysUser.getUserName());
             vo.setUserId(String.valueOf(sysUser.getUserId()));
             vo.setUserAvatar(sysUser.getUserAvatar());
             vo.setWorkNumber(sysUser.getWorkNumber());
-            userVOMap.put(sysUser.getUserId(), vo);
+            vo.setEffectiveType(roleUser.getEffectiveType());
+            vo.setEffectiveStartDate(roleUser.getEffectiveStartDate());
+            vo.setEffectiveEndDate(roleUser.getEffectiveEndDate());
+            vo.setStatus(roleUser.getStatus());
+            respList.add(vo);
         }
-        return userIds.stream()
-                .map(userVOMap::get)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        return respList;
     }
 
     /** 清理孤立用户：检查用户是否没有任何角色绑定，如果有则删除sys_user记录 */
@@ -845,9 +954,7 @@ public class SysRoleService implements SysRoleApi {
         // 批量查询这些用户的角色绑定情况
         List<SysRoleUser> roleUsers =
                 sysRoleUserMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleUser>()
-                                .in(SysRoleUser::getUserId, userIds)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                        new LambdaQueryWrapper<SysRoleUser>().in(SysRoleUser::getUserId, userIds));
 
         // 收集有角色绑定的用户ID
         Set<Long> usersWithRoles =
@@ -871,8 +978,6 @@ public class SysRoleService implements SysRoleApi {
 
     /** 保存单独用户授权关系 注意：只添加不属于该主体的用户，属于该主体的用户无需再和角色进行关联 */
     private void saveUserRelations(SaveRoleUserReq request, Long roleId) {
-        List<String> insideIdStrs = request.getUserInsideIds();
-        List<String> externalIdStrs = request.getUserExternalIds();
         Set<Long> allUserIds = collectUserIds(request);
 
         if (allUserIds.isEmpty()) {
@@ -888,9 +993,11 @@ public class SysRoleService implements SysRoleApi {
                 users.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
 
         List<SysRoleUser> list = new ArrayList<>();
-        if (insideIdStrs != null) {
-            for (String idStr : insideIdStrs) {
-                Long userId = Long.parseLong(idStr);
+
+        // 处理内部用户列表
+        if (request.getUserInsideList() != null) {
+            for (RoleUserReq userReq : request.getUserInsideList()) {
+                Long userId = Long.parseLong(userReq.getUserId());
                 // 过滤：只添加不属于任何主体的用户
                 if (request.getSubjectIds() != null && !request.getSubjectIds().isEmpty()) {
                     boolean inAnySubject = false;
@@ -906,15 +1013,17 @@ public class SysRoleService implements SysRoleApi {
                 }
                 list.add(
                         buildRoleUser(
-                                request, roleId, userId, UserTypeEnum.INSIDE.getCode(), userMap));
+                                userReq, roleId, userId, UserTypeEnum.INSIDE.getCode(), userMap));
             }
         }
-        if (externalIdStrs != null) {
-            for (String idStr : externalIdStrs) {
-                Long userId = Long.parseLong(idStr);
+
+        // 处理外部用户列表
+        if (request.getUserExternalList() != null) {
+            for (RoleUserReq userReq : request.getUserExternalList()) {
+                Long userId = Long.parseLong(userReq.getUserId());
                 list.add(
                         buildRoleUser(
-                                request, roleId, userId, UserTypeEnum.EXTERNAL.getCode(), userMap));
+                                userReq, roleId, userId, UserTypeEnum.EXTERNAL.getCode(), userMap));
             }
         }
 
@@ -924,7 +1033,7 @@ public class SysRoleService implements SysRoleApi {
     }
 
     private SysRoleUser buildRoleUser(
-            SaveRoleUserReq request,
+            RoleUserReq userReq,
             Long roleId,
             Long userId,
             Integer userType,
@@ -937,10 +1046,10 @@ public class SysRoleService implements SysRoleApi {
         ru.setCurrentFlag(1);
         ru.setSubjectId(user.getSubjectId());
         ru.setOriginalUserId(user.getUserId());
-        ru.setEffectiveStartDate(request.getEffectiveStartDate());
-        ru.setEffectiveEndDate(request.getEffectiveEndDate());
-        ru.setEffectiveType(request.getEffectiveType());
-        ru.setProjectNo(AppContext.getProjectNo());
+        ru.setEffectiveStartDate(userReq.getEffectiveStartDate());
+        ru.setEffectiveEndDate(userReq.getEffectiveEndDate());
+        ru.setEffectiveType(userReq.getEffectiveType());
+        ru.setStatus(0); // 初始状态为有效
         return ru;
     }
 
@@ -953,7 +1062,7 @@ public class SysRoleService implements SysRoleApi {
     /** 批量检查并创建不存在的用户 */
     private void batchEnsureUsersExist(
             Set<Long> allUserIds,
-            List<String> insideIdStrs,
+            Set<Long> insideIds,
             Map<Long, UserBO> userMap,
             Map<Long, DepartmentBO> deptMap,
             Map<Long, SubjectBO> subjectMap) {
@@ -965,11 +1074,8 @@ public class SysRoleService implements SysRoleApi {
         Set<Long> existingUserIds =
                 existingUsers.stream().map(SysUser::getUserId).collect(Collectors.toSet());
 
-        Set<Long> insideIds = new HashSet<>();
-        if (insideIdStrs != null) {
-            for (String id : insideIdStrs) {
-                insideIds.add(Long.parseLong(id));
-            }
+        if (insideIds == null) {
+            insideIds = new HashSet<>();
         }
         List<SysUser> newUsers = new ArrayList<>();
         for (Long userId : allUserIds) {
@@ -1070,31 +1176,24 @@ public class SysRoleService implements SysRoleApi {
 
     /** 保存角色主体关联（批量） */
     private void saveRoleSubjects(SaveRoleUserReq request, Long roleId) {
-        if (request.getSubjectIds() == null || request.getSubjectIds().isEmpty()) {
+        if (request.getSubjectList() == null || request.getSubjectList().isEmpty()) {
             return;
         }
 
-        for (Long subjectId : request.getSubjectIds()) {
-            SysRoleSubject old =
-                    sysRoleSubjectMapper.selectOne(
-                            new LambdaQueryWrapper<SysRoleSubject>()
-                                    .eq(SysRoleSubject::getRoleId, roleId)
-                                    .eq(SysRoleSubject::getSubjectId, subjectId)
-                                    .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
-
+        List<SysRoleSubject> subjectsToInsert = new ArrayList<>();
+        for (RoleSubjectReq subjectReq : request.getSubjectList()) {
             SysRoleSubject subject = new SysRoleSubject();
             subject.setRoleId(roleId);
-            subject.setSubjectId(subjectId);
-            subject.setEffectiveStartDate(request.getEffectiveStartDate());
-            subject.setEffectiveEndDate(request.getEffectiveEndDate());
-            subject.setEffectiveType(request.getEffectiveType());
-            subject.setProjectNo(AppContext.getProjectNo());
-            if (old == null) {
-                sysRoleSubjectMapper.insert(subject);
-            } else {
-                subject.setId(old.getId());
-                sysRoleSubjectMapper.updateById(subject);
-            }
+            subject.setSubjectId(subjectReq.getSubjectId());
+            subject.setEffectiveStartDate(subjectReq.getEffectiveStartDate());
+            subject.setEffectiveEndDate(subjectReq.getEffectiveEndDate());
+            subject.setEffectiveType(subjectReq.getEffectiveType());
+            subject.setStatus(0); // 初始状态为有效
+            subjectsToInsert.add(subject);
+        }
+
+        if (!subjectsToInsert.isEmpty()) {
+            sysRoleSubjectMapper.insert(subjectsToInsert);
         }
     }
 
@@ -1106,19 +1205,40 @@ public class SysRoleService implements SysRoleApi {
                         new LambdaQueryWrapper<SysRoleUser>()
                                 .eq(SysRoleUser::getRoleId, roleId)
                                 .in(SysRoleUser::getUserId, userIds)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                                .eq(SysRoleUser::getStatus, 0));
 
         if (existing.isEmpty()) {
             return false;
         }
 
+        // 构建 userId -> RoleUserReq 的映射
+        Map<Long, RoleUserReq> userReqMap = new HashMap<>();
+        if (request.getUserInsideList() != null) {
+            for (RoleUserReq userReq : request.getUserInsideList()) {
+                if (userReq.getUserId() != null) {
+                    userReqMap.put(Long.parseLong(userReq.getUserId()), userReq);
+                }
+            }
+        }
+        if (request.getUserExternalList() != null) {
+            for (RoleUserReq userReq : request.getUserExternalList()) {
+                if (userReq.getUserId() != null) {
+                    userReqMap.put(Long.parseLong(userReq.getUserId()), userReq);
+                }
+            }
+        }
+
         for (SysRoleUser ru : existing) {
+            RoleUserReq userReq = userReqMap.get(ru.getUserId());
+            if (userReq == null) {
+                continue;
+            }
             boolean typeChanged =
-                    !Objects.equals(ru.getEffectiveType(), request.getEffectiveType());
+                    !Objects.equals(ru.getEffectiveType(), userReq.getEffectiveType());
             boolean startChanged =
-                    !Objects.equals(ru.getEffectiveStartDate(), request.getEffectiveStartDate());
+                    !Objects.equals(ru.getEffectiveStartDate(), userReq.getEffectiveStartDate());
             boolean endChanged =
-                    !Objects.equals(ru.getEffectiveEndDate(), request.getEffectiveEndDate());
+                    !Objects.equals(ru.getEffectiveEndDate(), userReq.getEffectiveEndDate());
             if (typeChanged || startChanged || endChanged) {
                 return true;
             }
@@ -1128,26 +1248,26 @@ public class SysRoleService implements SysRoleApi {
 
     /** 当前角色中是否已有员工设置过自定义时间 */
     private boolean hasCustomTimeInRole(Long roleId) {
-        List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleUser>()
-                                .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
         boolean userCustom =
-                roleUsers.stream()
+                filterValidRoleUsers(
+                                sysRoleUserMapper.selectList(
+                                        new LambdaQueryWrapper<SysRoleUser>()
+                                                .eq(SysRoleUser::getRoleId, roleId)
+                                                .eq(SysRoleUser::getStatus, 0)))
+                        .stream()
                         .anyMatch(
                                 ru ->
                                         EffectiveTypeEnum.CUSTOM
                                                 .getCode()
                                                 .equals(ru.getEffectiveType()));
 
-        List<SysRoleSubject> subjects =
-                sysRoleSubjectMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleSubject>()
-                                .eq(SysRoleSubject::getRoleId, roleId)
-                                .eq(SysRoleSubject::getProjectNo, AppContext.getProjectNo()));
         boolean subjectCustom =
-                subjects.stream()
+                filterValidRoleSubjects(
+                                sysRoleSubjectMapper.selectList(
+                                        new LambdaQueryWrapper<SysRoleSubject>()
+                                                .eq(SysRoleSubject::getRoleId, roleId)
+                                                .eq(SysRoleSubject::getStatus, 0)))
+                        .stream()
                         .anyMatch(
                                 s ->
                                         EffectiveTypeEnum.CUSTOM
@@ -1159,12 +1279,13 @@ public class SysRoleService implements SysRoleApi {
 
     /** 校验：更新时，授权主体后，角色是否已经单独关联了属于该主体的员工 返回这些员工的名称列表，用于提示"是否覆盖" */
     private List<String> checkRoleHasSubjectUsers(Long roleId, Long subjectId) {
-        // 查询该角色下单独关联的用户
+        // 查询该角色下单独关联的用户（只查有效且在时效内的）
         List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleUser>()
-                                .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                filterValidRoleUsers(
+                        sysRoleUserMapper.selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .eq(SysRoleUser::getRoleId, roleId)
+                                        .eq(SysRoleUser::getStatus, 0)));
 
         if (roleUsers.isEmpty()) {
             return Collections.emptyList();
@@ -1189,12 +1310,12 @@ public class SysRoleService implements SysRoleApi {
         LambdaQueryWrapper<SysRoleUser> wrapper =
                 new LambdaQueryWrapper<SysRoleUser>()
                         .in(SysRoleUser::getUserId, userIds)
-                        .eq(SysRoleUser::getEffectiveType, EffectiveTypeEnum.CUSTOM.getCode())
-                        .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo());
+                        .eq(SysRoleUser::getStatus, 0)
+                        .eq(SysRoleUser::getEffectiveType, EffectiveTypeEnum.CUSTOM.getCode());
         if (currentRoleId != null) {
             wrapper.ne(SysRoleUser::getRoleId, currentRoleId);
         }
-        return !sysRoleUserMapper.selectList(wrapper).isEmpty();
+        return !filterValidRoleUsers(sysRoleUserMapper.selectList(wrapper)).isEmpty();
     }
 
     /** 获取用户中，之前已经和任何角色绑定的用户名称列表 */
@@ -1202,9 +1323,7 @@ public class SysRoleService implements SysRoleApi {
         // 查询这些用户中，已经和任何角色绑定过的用户
         List<SysRoleUser> boundUsers =
                 sysRoleUserMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleUser>()
-                                .in(SysRoleUser::getUserId, userIds)
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo()));
+                        new LambdaQueryWrapper<SysRoleUser>().in(SysRoleUser::getUserId, userIds));
 
         if (boundUsers.isEmpty()) {
             return Collections.emptyList();
@@ -1223,26 +1342,61 @@ public class SysRoleService implements SysRoleApi {
         return users.stream().map(SysUser::getUserName).toList();
     }
 
-    /** 自动判断有效期类型 */
+    /** 自动判断有效期类型：对每个 RoleUserReq 和 RoleSubjectReq 单独判断 */
     private void autoDetectEffectiveType(SaveRoleUserReq request) {
-        if (request.getEffectiveStartDate() != null || request.getEffectiveEndDate() != null) {
-            request.setEffectiveType(EffectiveTypeEnum.CUSTOM.getCode());
-        } else {
-            request.setEffectiveType(EffectiveTypeEnum.PERMANENT.getCode());
+        if (request.getUserInsideList() != null) {
+            for (RoleUserReq userReq : request.getUserInsideList()) {
+                if (userReq.getEffectiveType() == null) {
+                    if (userReq.getEffectiveStartDate() != null
+                            || userReq.getEffectiveEndDate() != null) {
+                        userReq.setEffectiveType(EffectiveTypeEnum.CUSTOM.getCode());
+                    } else {
+                        userReq.setEffectiveType(EffectiveTypeEnum.PERMANENT.getCode());
+                    }
+                }
+            }
+        }
+        if (request.getUserExternalList() != null) {
+            for (RoleUserReq userReq : request.getUserExternalList()) {
+                if (userReq.getEffectiveType() == null) {
+                    if (userReq.getEffectiveStartDate() != null
+                            || userReq.getEffectiveEndDate() != null) {
+                        userReq.setEffectiveType(EffectiveTypeEnum.CUSTOM.getCode());
+                    } else {
+                        userReq.setEffectiveType(EffectiveTypeEnum.PERMANENT.getCode());
+                    }
+                }
+            }
+        }
+        if (request.getSubjectList() != null) {
+            for (RoleSubjectReq subjectReq : request.getSubjectList()) {
+                if (subjectReq.getEffectiveType() == null) {
+                    if (subjectReq.getEffectiveStartDate() != null
+                            || subjectReq.getEffectiveEndDate() != null) {
+                        subjectReq.setEffectiveType(EffectiveTypeEnum.CUSTOM.getCode());
+                    } else {
+                        subjectReq.setEffectiveType(EffectiveTypeEnum.PERMANENT.getCode());
+                    }
+                }
+            }
         }
     }
 
     /** 收集所有用户ID */
     private Set<Long> collectUserIds(SaveRoleUserReq request) {
         Set<Long> allUserIds = new HashSet<>();
-        if (request.getUserInsideIds() != null) {
-            for (String id : request.getUserInsideIds()) {
-                allUserIds.add(Long.parseLong(id));
+        if (request.getUserInsideList() != null) {
+            for (RoleUserReq userReq : request.getUserInsideList()) {
+                if (userReq.getUserId() != null) {
+                    allUserIds.add(Long.parseLong(userReq.getUserId()));
+                }
             }
         }
-        if (request.getUserExternalIds() != null) {
-            for (String id : request.getUserExternalIds()) {
-                allUserIds.add(Long.parseLong(id));
+        if (request.getUserExternalList() != null) {
+            for (RoleUserReq userReq : request.getUserExternalList()) {
+                if (userReq.getUserId() != null) {
+                    allUserIds.add(Long.parseLong(userReq.getUserId()));
+                }
             }
         }
         return allUserIds;

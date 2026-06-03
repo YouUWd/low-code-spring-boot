@@ -2,8 +2,8 @@ package com.jdec.platform.config.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -26,24 +26,56 @@ public class SaveRoleUserReq {
     @Schema(description = "角色名称", example = "这就不好说了")
     private String roleName;
 
-    @Schema(description = "内部用户ID列表", example = "[1,2]")
-    private List<String> userInsideIds;
+    @Schema(description = "内部用户列表")
+    private List<RoleUserReq> userInsideList;
 
-    @Schema(description = "外部用户ID列表", example = "[1]")
-    private List<String> userExternalIds;
+    @Schema(description = "外部用户列表")
+    private List<RoleUserReq> userExternalList;
 
-    @Schema(description = "主体ID列表，有值则走角色主体关联逻辑", example = "[100, 101]")
-    private List<Long> subjectIds;
-
-    @Schema(description = "有效期开始", example = "2026-01-01")
-    private LocalDate effectiveStartDate;
-
-    @Schema(description = "有效期结束", example = "2026-12-31")
-    private LocalDate effectiveEndDate;
-
-    @Schema(description = "有效期类型 1-永久 2-自定义", example = "1")
-    private Integer effectiveType;
+    @Schema(description = "主体列表")
+    private List<RoleSubjectReq> subjectList;
 
     @Schema(description = "是否强制覆盖", example = "false")
     private Boolean force;
+
+    /** 获取所有内部用户ID列表 (字符串格式) */
+    public List<String> getUserInsideIds() {
+        if (userInsideList == null) {
+            return null;
+        }
+        return userInsideList.stream().map(RoleUserReq::getUserId).collect(Collectors.toList());
+    }
+
+    /** 获取所有外部用户ID列表 (字符串格式) */
+    public List<String> getUserExternalIds() {
+        if (userExternalList == null) {
+            return null;
+        }
+        return userExternalList.stream().map(RoleUserReq::getUserId).collect(Collectors.toList());
+    }
+
+    /** 获取所有主体ID列表 */
+    public List<Long> getSubjectIds() {
+        if (subjectList == null) {
+            return null;
+        }
+        return subjectList.stream().map(RoleSubjectReq::getSubjectId).collect(Collectors.toList());
+    }
+
+    /** 辅助方法：获取主体列表的别名，兼容旧代码 */
+    public List<RoleSubjectReq> getSubjects() {
+        return subjectList;
+    }
+
+    /** 获取所有用户列表（内部+外部） */
+    public List<RoleUserReq> getUsers() {
+        List<RoleUserReq> allUsers = new java.util.ArrayList<>();
+        if (userInsideList != null) {
+            allUsers.addAll(userInsideList);
+        }
+        if (userExternalList != null) {
+            allUsers.addAll(userExternalList);
+        }
+        return allUsers;
+    }
 }

@@ -16,6 +16,7 @@ import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -142,10 +143,37 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
         entity.setProjectNo(AppContext.getProjectNo());
 
         if (request.getId() == null) {
-            // 新增
+            // 新增：校验名称唯一性
+            long count =
+                    sysApprovalChainTypeMapper.selectCount(
+                            new LambdaQueryWrapper<SysApprovalChainType>()
+                                    .eq(SysApprovalChainType::getTitle, request.getTitle())
+                                    .eq(
+                                            SysApprovalChainType::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysApprovalChainType::getProjectNo,
+                                            AppContext.getProjectNo()));
+            if (count > 0) {
+                throw new BusinessException("审批链类型名称已存在");
+            }
             sysApprovalChainTypeMapper.insert(entity);
         } else {
-            // 编辑
+            // 编辑：校验名称唯一性（排除自己）
+            long count =
+                    sysApprovalChainTypeMapper.selectCount(
+                            new LambdaQueryWrapper<SysApprovalChainType>()
+                                    .eq(SysApprovalChainType::getTitle, request.getTitle())
+                                    .eq(
+                                            SysApprovalChainType::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysApprovalChainType::getProjectNo,
+                                            AppContext.getProjectNo())
+                                    .ne(SysApprovalChainType::getId, request.getId()));
+            if (count > 0) {
+                throw new BusinessException("审批链类型名称已存在");
+            }
             sysApprovalChainTypeMapper.updateById(entity);
         }
     }

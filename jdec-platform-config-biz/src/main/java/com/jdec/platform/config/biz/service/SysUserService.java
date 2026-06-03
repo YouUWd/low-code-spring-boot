@@ -56,20 +56,30 @@ public class SysUserService implements SysUserApi {
                     query.getPageNum(), query.getPageSize(), 0L, Collections.emptyList());
         }
 
-        // 2. 根据角色 ID 列表查询关联的用户 ID
+        // 2. 根据角色 ID 列表查询关联的用户 ID（过滤状态有效且在时效范围内的记录）
         List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
-        List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        Wrappers.<SysRoleUser>lambdaQuery()
-                                .in(SysRoleUser::getRoleId, roleIds)
-                                .select(SysRoleUser::getUserId));
-        if (roleUsers.isEmpty()) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<Long> userIds =
+                sysRoleUserMapper
+                        .selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .in(SysRoleUser::getRoleId, roleIds)
+                                        .eq(SysRoleUser::getStatus, 0))
+                        .stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        if (userIds.isEmpty()) {
             return PageResult.of(
                     query.getPageNum(), query.getPageSize(), 0L, Collections.emptyList());
         }
-
-        // 3. 根据用户 ID 列表分页查询用户
-        List<Long> userIds = roleUsers.stream().map(SysRoleUser::getUserId).distinct().toList();
         Page<SysUser> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysUser> wrapper =
                 new LambdaQueryWrapper<SysUser>()
@@ -172,17 +182,40 @@ public class SysUserService implements SysUserApi {
 
     @Override
     public List<SysUserPageResp> getUserList() {
-        // 1. 根据projectNo查询sys_role_user表获取用户id列表
+        // 1. 根据 projectNo + subjectId 查询角色列表
+        List<SysRole> roles =
+                sysRoleMapper.selectList(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysRole::getSubjectId, AppContext.getSubjectId())
+                                .select(SysRole::getId));
+        if (roles.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 根据角色 ID 查询中间表，过滤状态有效且在时效范围内的记录
+        List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
+        java.time.LocalDate today = java.time.LocalDate.now();
         List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        Wrappers.<SysRoleUser>lambdaQuery()
-                                .eq(SysRoleUser::getProjectNo, AppContext.getProjectNo())
-                                .select(SysRoleUser::getUserId));
+                sysRoleUserMapper
+                        .selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .in(SysRoleUser::getRoleId, roleIds)
+                                        .eq(SysRoleUser::getStatus, 0))
+                        .stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .toList();
         if (roleUsers.isEmpty()) {
             return Collections.emptyList();
         }
 
-        // 2. 根据用户id列表查询sys_user表
+        // 3. 根据用户 ID 列表查询用户表
         List<Long> userIds = roleUsers.stream().map(SysRoleUser::getUserId).distinct().toList();
         List<SysUser> users =
                 sysUserMapper.selectList(
@@ -191,6 +224,31 @@ public class SysUserService implements SysUserApi {
                                 .eq(SysUser::getDeleted, Boolean.FALSE)
                                 .orderByDesc(SysUser::getCreatedDate));
         return users.stream().map(this::toUserPageResp).toList();
+    }
+
+    private boolean isEffectiveDateValid(
+            Integer effectiveType,
+            java.time.LocalDate startDate,
+            java.time.LocalDate endDate,
+            java.time.LocalDate today) {
+        if (effectiveType == null) {
+            return true;
+        }
+        // 1-永久有效
+        if (effectiveType == 1) {
+            return true;
+        }
+        // 2-自定义时效
+        if (startDate == null && endDate == null) {
+            return true;
+        }
+        if (startDate != null && endDate == null) {
+            return !today.isBefore(startDate);
+        }
+        if (startDate == null) {
+            return !today.isAfter(endDate);
+        }
+        return !today.isBefore(startDate) && !today.isAfter(endDate);
     }
 
     @Override
@@ -210,10 +268,24 @@ public class SysUserService implements SysUserApi {
         if (CollUtil.isEmpty(roleIds)) {
             return Collections.emptyList();
         }
-        List<SysRoleUser> sysRoleUsers =
-                sysRoleUserMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleUser>().in(SysRoleUser::getRoleId, roleIds));
-        List<Long> roleUserIds = sysRoleUsers.stream().map(SysRoleUser::getUserId).toList();
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<Long> roleUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .in(SysRoleUser::getRoleId, roleIds)
+                                        .eq(SysRoleUser::getStatus, 0))
+                        .stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
         if (CollUtil.isEmpty(roleUserIds)) {
             return Collections.emptyList();
         }

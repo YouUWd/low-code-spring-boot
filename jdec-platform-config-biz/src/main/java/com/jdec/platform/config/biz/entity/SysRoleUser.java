@@ -32,9 +32,6 @@ public class SysRoleUser implements Serializable {
     @Schema(description = "原始用户ID")
     private Long originalUserId;
 
-    @Schema(description = "应用编码")
-    private String projectNo;
-
     @Schema(description = "是否当前用户 0否 1是")
     private Integer currentFlag;
 
@@ -68,4 +65,7 @@ public class SysRoleUser implements Serializable {
 
     @Schema(description = "有效期类型：1-永久，2-自定义")
     private Integer effectiveType;
+
+    @Schema(description = "状态(0-有效，1失效)")
+    private Integer status;
 }

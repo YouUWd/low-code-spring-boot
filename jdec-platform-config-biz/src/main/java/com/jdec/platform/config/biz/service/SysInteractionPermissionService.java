@@ -41,6 +41,20 @@ public class SysInteractionPermissionService implements SysInteractionPermission
     public SysRightResp saveInteractionPermission(SysInteractionPermissionSaveReq req) {
         SysInteractionPermission entity;
         if (req.getId() == null) {
+            // 新增：校验名称唯一性
+            boolean exists =
+                    sysInteractionPermissionMapper.exists(
+                            Wrappers.<SysInteractionPermission>lambdaQuery()
+                                    .eq(SysInteractionPermission::getName, req.getName())
+                                    .eq(
+                                            SysInteractionPermission::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysInteractionPermission::getProjectNo,
+                                            AppContext.getProjectNo()));
+            if (exists) {
+                throw new BusinessException("交互权限名称已存在");
+            }
             entity = new SysInteractionPermission();
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(AppContext.getSubjectId());
@@ -59,6 +73,23 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                             AppContext.getProjectNo()));
             if (entity == null) {
                 throw new BusinessException("交互权限不存在");
+            }
+            // 编辑：校验名称唯一性（排除自己）
+            if (!entity.getName().equals(req.getName())) {
+                boolean exists =
+                        sysInteractionPermissionMapper.exists(
+                                Wrappers.<SysInteractionPermission>lambdaQuery()
+                                        .eq(SysInteractionPermission::getName, req.getName())
+                                        .ne(SysInteractionPermission::getId, req.getId())
+                                        .eq(
+                                                SysInteractionPermission::getSubjectId,
+                                                AppContext.getSubjectId())
+                                        .eq(
+                                                SysInteractionPermission::getProjectNo,
+                                                AppContext.getProjectNo()));
+                if (exists) {
+                    throw new BusinessException("交互权限名称已存在");
+                }
             }
             entity.setModuleId(req.getModuleId());
             entity.setModuleCode(req.getModuleCode());

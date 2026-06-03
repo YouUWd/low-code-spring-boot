@@ -31,27 +31,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
         log.warn("业务异常: code={}, message={}", e.getCode(), e.getMessage());
 
-        // 根据错误码自动判断错误类型
-        String errorType = determineErrorType(e.getCode());
-        ApiResponse<Void> response = ApiResponse.error(e.getCode(), e.getMessage(), errorType);
+        ApiResponse<Void> response = ApiResponse.error(e.getCode(), e.getMessage());
 
         return ResponseEntity.status(HttpStatus.OK).body(response);
-    }
-
-    /**
-     * 根据错误码自动判断错误类型
-     *
-     * @param code 错误码
-     * @return 错误类型
-     */
-    private String determineErrorType(int code) {
-        return switch (code) {
-            case 401 -> ErrorType.REDIRECT_LOGIN.getValue(); // 登录过期
-            case 600 -> ErrorType.MODAL.getValue(); // 权限变动
-            case 701 -> ErrorType.MODAL.getValue(); // 异常（带弹框）
-            case 801, 802 -> ErrorType.MODAL.getValue(); // 用户重置相关
-            default -> ErrorType.TOAST.getValue(); // 默认 toast 提示
-        };
     }
 
     /**
