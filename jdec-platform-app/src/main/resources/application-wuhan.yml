@@ -29,7 +29,7 @@ spring:
           password: ${DB_CONFIG_CENTER_PASSWORD:jdec_platform123}
         # hr_manage 人力平台数据源
         hr_manage:
-          url: jdbc:mysql://${DB_HR_MANAGE_HOST:119.36.78.123}:${DB_HR_MANAGE_PORT:5016}/${DB_HR_MANAGE_NAME:hr_center}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_HR_MANAGE_HOST:119.36.78.123}:${DB_HR_MANAGE_PORT:5016}/${DB_HR_MANAGE_NAME:hr_manage}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_HR_MANAGE_USERNAME:root}
           password: ${DB_HR_MANAGE_PASSWORD:jdec_platform123}
         # third 数据源
