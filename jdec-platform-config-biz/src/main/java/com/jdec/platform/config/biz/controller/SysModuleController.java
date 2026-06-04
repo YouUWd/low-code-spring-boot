@@ -91,6 +91,31 @@ public class SysModuleController {
     }
 
     /**
+     * 根据模块ID查询模块完整信息 包含模块基本信息、关联表、字段配置和状态
+     *
+     * @param moduleId 模块ID
+     * @return 模块完整信息
+     */
+    @Operation(
+            summary = "根据模块ID查询模块完整信息",
+            description = "根据模块ID获取模块的所有配置信息，包括基本信息、关联表、简单字段、组合字段和状态配置")
+    @GetMapping("/complete/{moduleId}")
+    public ApiResponse<SysModuleCompleteResp> getModuleCompleteById(
+            @Parameter(description = "模块ID", required = true, example = "1") @PathVariable
+                    Long moduleId) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info(
+                "根据ID查询模块完整信息: moduleId={}, projectNo={}, subjectId={}",
+                moduleId,
+                projectNo,
+                subjectId);
+        SysModuleCompleteResp result =
+                sysModuleService.getModuleCompleteById(projectNo, subjectId, moduleId);
+        return ApiResponse.success(result);
+    }
+
+    /**
      * 查询模块下的状态组合的模块状态树
      *
      * <p>项目上下文通过 X-Project-No 请求头指定。
