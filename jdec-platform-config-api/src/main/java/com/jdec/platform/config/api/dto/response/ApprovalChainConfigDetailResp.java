@@ -45,6 +45,9 @@ public class ApprovalChainConfigDetailResp {
     @Schema(description = "审批人ID")
     private Long approverId;
 
+    @Schema(description = "审批人姓名")
+    private String approverName;
+
     @Schema(description = "审批人工号")
     private String approverWorkNumber;
 

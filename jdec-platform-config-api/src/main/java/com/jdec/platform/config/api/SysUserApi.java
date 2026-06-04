@@ -33,4 +33,7 @@ public interface SysUserApi {
 
     /** 根据角色ID查询用户列表 */
     List<SysUserPageResp> getUsersByRoleId(Long roleId);
+
+    /** 根据用户ID反查关联的主体ID列表 */
+    List<Long> getSubjectIdsByUserId(Long userId);
 }

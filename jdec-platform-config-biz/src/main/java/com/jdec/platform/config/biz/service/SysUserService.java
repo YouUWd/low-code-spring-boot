@@ -440,6 +440,45 @@ public class SysUserService implements SysUserApi {
         return filtered;
     }
 
+    @Override
+    public List<Long> getSubjectIdsByUserId(Long userId) {
+        // 1. 根据用户ID查询关联的角色ID（过滤状态有效且在时效范围内）
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<Long> roleIds =
+                sysRoleUserMapper
+                        .selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .eq(SysRoleUser::getUserId, userId)
+                                        .eq(SysRoleUser::getStatus, 0))
+                        .stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleUser::getRoleId)
+                        .distinct()
+                        .toList();
+        if (roleIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 根据角色ID查询主体ID（只按projectNo过滤，不过滤subjectId）
+        return sysRoleMapper
+                .selectList(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .in(SysRole::getId, roleIds)
+                                .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                .select(SysRole::getId, SysRole::getSubjectId))
+                .stream()
+                .map(SysRole::getSubjectId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
     private boolean hasUsers(UserSearchTreeNodeResp node) {
         // type=3 表示用户节点
         if (node.getType() == 3) {

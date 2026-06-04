@@ -646,6 +646,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                 SysUser approver =
                                         finalApproverMap.get(chainConfig.getApproverId());
                                 if (approver != null) {
+                                    resp.setApproverName(approver.getUserName());
                                     resp.setApproverWorkNumber(approver.getWorkNumber());
                                 }
                             }

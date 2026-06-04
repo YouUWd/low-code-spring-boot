@@ -4,13 +4,17 @@ import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.hr.api.SubjectApi;
+import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 public class SysUserController {
 
     private final SysUserApi sysUserApi;
+    private final SubjectApi subjectApi;
 
     @GetMapping("/page")
     @Operation(summary = "分页查询用户列表", description = "支持按用户名、工号、手机号、状态等条件分页查询")
@@ -57,5 +62,22 @@ public class SysUserController {
             @Parameter(description = "角色ID", required = true, example = "1") @PathVariable
                     Long roleId) {
         return ApiResponse.success(sysUserApi.getUsersByRoleId(roleId));
+    }
+
+    @GetMapping("/subjects/{userId}")
+    @Operation(summary = "根据用户ID查询关联主体列表", description = "根据用户ID反查角色，再反查角色关联的主体ID，最后查询HR模块的主体信息返回")
+    public ApiResponse<List<SubjectBO>> getSubjectsByUserId(
+            @Parameter(description = "用户ID", required = true, example = "1") @PathVariable
+                    Long userId) {
+        List<Long> subjectIds = sysUserApi.getSubjectIdsByUserId(userId);
+        if (subjectIds.isEmpty()) {
+            return ApiResponse.success(List.of());
+        }
+        Set<Long> subjectIdSet = new HashSet<>(subjectIds);
+        List<SubjectBO> subjects =
+                subjectApi.getSubjectList().stream()
+                        .filter(s -> subjectIdSet.contains(s.getId()))
+                        .toList();
+        return ApiResponse.success(subjects);
     }
 }
