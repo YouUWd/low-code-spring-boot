@@ -15,19 +15,24 @@ import com.jdec.platform.config.api.dto.request.WechatTemplateQueryReq;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
+import com.jdec.platform.config.biz.entity.SysMessageRecord;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysWechatTemplate;
 import com.jdec.platform.config.biz.entity.SysWechatTemplateParam;
+import com.jdec.platform.config.biz.mapper.SysMessageRecordMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysWechatTemplateMapper;
 import com.jdec.platform.config.biz.mapper.SysWechatTemplateParamMapper;
+import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
+import com.jdec.platform.shared.wechat.WeChatWorkService;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +53,9 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final ObjectMapper objectMapper;
+    private final UserApi userApi;
+    private final WeChatWorkService weChatWorkService;
+    private final SysMessageRecordMapper sysMessageRecordMapper;
 
     // --- 模板主表实现 ---
 
@@ -130,6 +138,87 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         }
     }
 
+    @Override
+    public boolean testSendMessage(String projectNo, Long subjectId, Long id) {
+        SysWechatTemplate template = sysWechatTemplateMapper.selectById(id);
+        if (template == null || template.getDeleted() == 1) {
+            throw new BusinessException(404, "模板不存在");
+        }
+        if (!Objects.equals(template.getProjectNo(), projectNo)
+                || (subjectId != null && !Objects.equals(template.getSubjectId(), subjectId))) {
+            throw new BusinessException(403, "无权访问此模板");
+        }
+        //        LoginUser loginUser = SecurityUtils.getLoginUserOrThrow();
+        String phone = "19008612557";
+        if (!StringUtils.hasText(phone)) {
+            throw new BusinessException(400, "当前用户未绑定手机号");
+        }
+        String wechatUserId =
+                userApi.getWeChatUserIdByPhone(phone)
+                        .orElseThrow(() -> new BusinessException(400, "当前用户未绑定企业微信账号"));
+
+        // 获取参数集
+        LambdaQueryWrapper<SysWechatTemplateParam> paramWrapper = Wrappers.lambdaQuery();
+        paramWrapper
+                .eq(SysWechatTemplateParam::getProjectNo, projectNo)
+                .eq(subjectId != null, SysWechatTemplateParam::getSubjectId, subjectId)
+                .eq(SysWechatTemplateParam::getModuleId, template.getModuleId())
+                .eq(SysWechatTemplateParam::getDeleted, 0);
+        List<SysWechatTemplateParam> params = sysWechatTemplateParamMapper.selectList(paramWrapper);
+
+        String content = formatContent(template.getTemplateContent(), params);
+
+        // 创建发送日志记录并初始化写入
+        SysMessageRecord record =
+                SysMessageRecord.builder()
+                        .projectNo(projectNo)
+                        .subjectId(template.getSubjectId())
+                        .receiver(wechatUserId)
+                        .messageType("markdown")
+                        .messageTitle(template.getTemplateTitle())
+                        .messageContent(content)
+                        .sendStatus(998) // 默认未发送成功/等待发送
+                        .responseData("sending...")
+                        .createdDate(LocalDateTime.now())
+                        .updatedDate(LocalDateTime.now())
+                        .deleted(0)
+                        .build();
+        sysMessageRecordMapper.insert(record);
+
+        try {
+            weChatWorkService.sendMarkdownMessage(template.getSubjectId(), wechatUserId, content);
+            record.setSendStatus(0);
+            record.setResponseData("{\"errcode\":0,\"errmsg\":\"ok\"}");
+        } catch (Exception e) {
+            log.error("测试发送微信模板消息失败", e);
+            record.setSendStatus(997);
+            record.setResponseData(e.getMessage());
+        } finally {
+            record.setUpdatedDate(LocalDateTime.now());
+            sysMessageRecordMapper.updateById(record);
+        }
+
+        return record.getSendStatus() == 0;
+    }
+
+    private String formatContent(String content, List<SysWechatTemplateParam> params) {
+        if (!StringUtils.hasText(content)) {
+            return "";
+        }
+        if (params == null || params.isEmpty()) {
+            return content;
+        }
+        String formatted = content;
+        for (SysWechatTemplateParam param : params) {
+            String slug = param.getTemplateParamSlug();
+            String name = param.getTemplateParamName();
+            if (StringUtils.hasText(slug) && StringUtils.hasText(name)) {
+                formatted = formatted.replace(slug, name);
+            }
+        }
+        return formatted;
+    }
+
     // --- 模板参数实现 ---
 
     @Override
@@ -144,9 +233,17 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
                         SysWechatTemplateParam::getModuleId,
                         query.getModuleId())
                 .like(
-                        StringUtils.hasText(query.getTemplateParamName()),
+                        StringUtils.hasText(query.getKeyword()),
                         SysWechatTemplateParam::getTemplateParamName,
-                        query.getTemplateParamName())
+                        query.getKeyword())
+                .like(
+                        StringUtils.hasText(query.getKeyword()),
+                        SysWechatTemplateParam::getTemplateParamSlug,
+                        query.getKeyword())
+                .like(
+                        StringUtils.hasText(query.getKeyword()),
+                        SysWechatTemplateParam::getTemplateParamDesc,
+                        query.getKeyword())
                 .eq(SysWechatTemplateParam::getDeleted, 0)
                 .orderByDesc(SysWechatTemplateParam::getCreatedDate);
 

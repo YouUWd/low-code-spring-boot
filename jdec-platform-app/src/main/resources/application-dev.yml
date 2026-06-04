@@ -147,7 +147,6 @@ knife4j:
 # ===== 企业微信配置 - 开发环境 =====
 wechat:
   work:
-    api-base-url: http://192.168.60.101:5555
     subjects:
       # 主体1: environment (环保公司)
       environment:

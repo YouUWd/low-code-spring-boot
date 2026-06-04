@@ -76,6 +76,16 @@ public interface SysWechatTemplateApi {
      */
     void deleteTemplate(Long id);
 
+    /**
+     * 测试发送微信模板消息 (向当前登录用户发送模板消息预览)
+     *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
+     * @param id 模板 ID
+     * @return 是否成功
+     */
+    boolean testSendMessage(String projectNo, Long subjectId, Long id);
+
     // --- 模板参数管理 ---
 
     /**

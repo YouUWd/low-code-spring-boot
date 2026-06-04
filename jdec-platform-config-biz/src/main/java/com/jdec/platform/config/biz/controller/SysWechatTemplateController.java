@@ -95,6 +95,17 @@ public class SysWechatTemplateController {
         return ApiResponse.success("删除成功", null);
     }
 
+    @Operation(summary = "测试发送微信模板消息")
+    @PostMapping("/send-test/{id}")
+    public ApiResponse<Boolean> testSendMessage(
+            @Parameter(description = "模板ID", required = true) @PathVariable Long id) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("测试发送微信模板消息: id={}, projectNo={}", id, projectNo);
+        boolean result = sysWechatTemplateService.testSendMessage(projectNo, subjectId, id);
+        return ApiResponse.success("发送测试消息成功", result);
+    }
+
     // --- 模板参数管理 ---
 
     @Operation(summary = "查询参数分页列表")
