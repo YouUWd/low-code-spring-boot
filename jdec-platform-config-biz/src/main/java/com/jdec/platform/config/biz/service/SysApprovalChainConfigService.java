@@ -480,6 +480,14 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 .collect(Collectors.toMap(SysUser::getUserId, SysUser::getUserName));
     }
 
+    private Map<Long, SysUser> batchQueryUserMap(Set<Long> ids) {
+        if (ids.isEmpty()) return Collections.emptyMap();
+        return sysUserMapper
+                .selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, ids))
+                .stream()
+                .collect(Collectors.toMap(SysUser::getUserId, u -> u));
+    }
+
     private Map<String, String> batchQueryApprovalRules(Set<String> values) {
         if (values.isEmpty()) return Collections.emptyMap();
         return sysConfigItemMapper
@@ -599,12 +607,22 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         Map<Long, String> moduleMap = batchQueryModules(moduleIds);
         Map<Long, String> chainTypeMap = batchQueryChainTypes(chainTypeIds);
 
+        // 批量查询审批人信息
+        Set<Long> approverIds = new HashSet<>();
+        for (SysApprovalChainConfig chainConfig : chainConfigs) {
+            if (chainConfig.getApproverId() != null) {
+                approverIds.add(chainConfig.getApproverId());
+            }
+        }
+        Map<Long, SysUser> approverMap = batchQueryUserMap(approverIds);
+
         // 构建响应列表
         Map<Long, List<SysApprovalChainConfigButton>> finalButtonConfigMap = buttonConfigMap;
         Map<Long, SysButton> finalButtonMap = buttonMap;
         Map<Long, SysWechatTemplate> finalMsgTemplateMap = msgTemplateMap;
         Map<Long, String> finalModuleMap = moduleMap;
         Map<Long, String> finalChainTypeMap = chainTypeMap;
+        Map<Long, SysUser> finalApproverMap = approverMap;
 
         return chainConfigs.stream()
                 .map(
@@ -624,6 +642,13 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                             resp.setRoleApprovalPercent(chainConfig.getRoleApprovalPercent());
                             resp.setApproveRoleId(chainConfig.getApproveRoleId());
                             resp.setApproverId(chainConfig.getApproverId());
+                            if (chainConfig.getApproverId() != null) {
+                                SysUser approver =
+                                        finalApproverMap.get(chainConfig.getApproverId());
+                                if (approver != null) {
+                                    resp.setApproverWorkNumber(approver.getWorkNumber());
+                                }
+                            }
                             resp.setDelegateApproverId(chainConfig.getDelegateApproverId());
                             resp.setSkipped(chainConfig.getSkipped());
                             resp.setShowed(chainConfig.getShowed());

@@ -226,6 +226,52 @@ public class SysUserService implements SysUserApi {
         return users.stream().map(this::toUserPageResp).toList();
     }
 
+    @Override
+    public List<SysUserPageResp> getUsersByRoleId(Long roleId) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+
+        // 验证角色属于当前项目和主体
+        SysRole role =
+                sysRoleMapper.selectOne(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .eq(SysRole::getId, roleId)
+                                .eq(SysRole::getProjectNo, projectNo)
+                                .eq(SysRole::getSubjectId, subjectId));
+        if (role == null) {
+            return Collections.emptyList();
+        }
+
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<Long> userIds =
+                sysRoleUserMapper
+                        .selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .eq(SysRoleUser::getRoleId, roleId)
+                                        .eq(SysRoleUser::getStatus, 0))
+                        .stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        if (userIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<SysUser> users =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, userIds)
+                                .eq(SysUser::getDeleted, Boolean.FALSE)
+                                .orderByDesc(SysUser::getCreatedDate));
+        return users.stream().map(this::toUserPageResp).toList();
+    }
+
     private boolean isEffectiveDateValid(
             Integer effectiveType,
             java.time.LocalDate startDate,

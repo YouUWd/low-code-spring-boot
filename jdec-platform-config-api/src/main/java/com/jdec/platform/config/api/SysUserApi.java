@@ -30,4 +30,7 @@ public interface SysUserApi {
     List<SysUserPageResp> getUserList();
 
     List<UserSearchTreeNodeResp> getUserTreeListForSearch(Integer userType);
+
+    /** 根据角色ID查询用户列表 */
+    List<SysUserPageResp> getUsersByRoleId(Long roleId);
 }

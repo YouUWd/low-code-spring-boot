@@ -50,4 +50,12 @@ public class SysUserController {
     public ApiResponse<List<SysUserPageResp>> getUserList() {
         return ApiResponse.success(sysUserApi.getUserList());
     }
+
+    @GetMapping("/role/{roleId}")
+    @Operation(summary = "根据角色ID查询用户列表", description = "查询指定角色关联的所有有效用户")
+    public ApiResponse<List<SysUserPageResp>> getUsersByRoleId(
+            @Parameter(description = "角色ID", required = true, example = "1") @PathVariable
+                    Long roleId) {
+        return ApiResponse.success(sysUserApi.getUsersByRoleId(roleId));
+    }
 }

@@ -337,7 +337,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                 allFields.stream()
                         .filter(
                                 f ->
-                                        "*".equals(f.getFieldType())
+                                        "COMBINE".equals(f.getFieldType())
                                                 && Integer.valueOf(1).equals(f.getEnabled()))
                         .toList();
 
@@ -515,7 +515,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         // B. 装配虚拟组合表
         if (!cfields.isEmpty()) {
             PermissionTableGroupResp combineTableResp = new PermissionTableGroupResp();
-            combineTableResp.setTableName("*");
+            combineTableResp.setTableName("virtual_combine");
             combineTableResp.setTableDesc("组合字段");
             combineTableResp.setTableType("COMBINE");
 
