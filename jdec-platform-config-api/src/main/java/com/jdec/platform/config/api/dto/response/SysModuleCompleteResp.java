@@ -90,6 +90,9 @@ public class SysModuleCompleteResp {
         @Schema(description = "列表表头配置")
         private List<ModuleTableHeaderDTO> tableHeader;
 
+        @Schema(description = "数据来源主体")
+        private List<SubjectInfo> sourceSubjects;
+
         @Schema(description = "创建人ID", example = "1")
         private Long createdBy;
 
@@ -107,5 +110,16 @@ public class SysModuleCompleteResp {
 
         @Schema(description = "更新人姓名", example = "李四")
         private String updatedName;
+    }
+
+    /** 主体简要信息 */
+    @Data
+    @Schema(description = "主体简要信息")
+    public static class SubjectInfo {
+        @Schema(description = "主体ID", example = "1")
+        private Long id;
+
+        @Schema(description = "主体名称", example = "某某主体")
+        private String subjectName;
     }
 }

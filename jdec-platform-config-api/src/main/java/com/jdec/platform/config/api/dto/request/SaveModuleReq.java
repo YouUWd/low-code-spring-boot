@@ -80,5 +80,9 @@ public class SaveModuleReq {
         /** 列表表头配置（仅LIST类型模块需要） */
         @Schema(description = "列表表头配置（仅LIST类型模块需要）")
         private List<ModuleTableHeaderDTO> tableHeader;
+
+        /** 数据来源主体，存储主体 ID 的数组 */
+        @Schema(description = "数据来源主体")
+        private List<Long> sourceSubjects;
     }
 }

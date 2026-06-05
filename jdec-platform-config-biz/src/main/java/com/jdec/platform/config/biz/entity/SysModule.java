@@ -58,6 +58,9 @@ public class SysModule {
     /** 列表表头配置（JSON格式） */
     private String tableHeader;
 
+    /** 数据来源主体，内容为主体名字的数组（JSON格式） */
+    private String sourceSubjects;
+
     /** 创建人 ID */
     private Long createdBy;
 

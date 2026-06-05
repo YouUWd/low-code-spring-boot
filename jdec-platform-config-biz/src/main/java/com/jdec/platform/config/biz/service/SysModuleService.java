@@ -19,6 +19,8 @@ import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.hr.api.SubjectApi;
+import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -56,6 +58,7 @@ public class SysModuleService implements SysModuleApi {
     private final SysFieldMapper sysFieldMapper;
     private final DataSourceResolver dataSourceResolver;
     private final ObjectMapper objectMapper;
+    private final SubjectApi subjectApi;
 
     @Override
     public List<SysModuleListResp> listModules(
@@ -154,6 +157,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setLeafFlag(module.getLeafFlag());
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setTableHeader(parseTableHeader(module.getTableHeader()));
+        moduleInfo.setSourceSubjects(buildSubjectInfos(module.getSourceSubjects()));
         moduleInfo.setCreatedBy(module.getCreatedBy());
         moduleInfo.setCreatedDate(module.getCreatedDate());
         moduleInfo.setCreatedName(module.getCreatedName());
@@ -736,6 +740,15 @@ public class SysModuleService implements SysModuleApi {
             }
         }
 
+        if (request.getSourceSubjects() != null && !request.getSourceSubjects().isEmpty()) {
+            try {
+                module.setSourceSubjects(
+                        objectMapper.writeValueAsString(request.getSourceSubjects()));
+            } catch (Exception e) {
+                throw new BusinessException(500, "sourceSubjects 序列化失败", e);
+            }
+        }
+
         LocalDateTime now = LocalDateTime.now();
         module.setCreatedDate(now);
         module.setUpdatedDate(now);
@@ -931,6 +944,16 @@ public class SysModuleService implements SysModuleApi {
             }
         }
 
+        // 更新 sourceSubjects
+        if (request.getSourceSubjects() != null && !request.getSourceSubjects().isEmpty()) {
+            try {
+                module.setSourceSubjects(
+                        objectMapper.writeValueAsString(request.getSourceSubjects()));
+            } catch (Exception e) {
+                throw new BusinessException(500, "sourceSubjects 序列化失败", e);
+            }
+        }
+
         module.setUpdatedDate(LocalDateTime.now());
     }
 
@@ -953,6 +976,62 @@ public class SysModuleService implements SysModuleApi {
         } catch (IllegalArgumentException e) {
             throw new BusinessException(
                     400, String.format("无效的模块类型: %s，允许的值为: LIST, DETAIL", moduleType), e);
+        }
+    }
+
+    /** 将数据来源主体 JSON 字符串解析为 List */
+    private List<Long> parseSourceSubjects(String sourceSubjectsJson) {
+        if (sourceSubjectsJson == null || sourceSubjectsJson.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            return objectMapper.readValue(sourceSubjectsJson, new TypeReference<List<Long>>() {});
+        } catch (Exception e) {
+            log.error("sourceSubjects 解析失败: {}", sourceSubjectsJson, e);
+            return new ArrayList<>();
+        }
+    }
+
+    /** 获取主体详细列表 */
+    private List<SysModuleCompleteResp.SubjectInfo> buildSubjectInfos(String sourceSubjectsJson) {
+        List<Long> subjectIds = parseSourceSubjects(sourceSubjectsJson);
+        if (CollectionUtils.isEmpty(subjectIds)) {
+            return Collections.emptyList();
+        }
+        try {
+            List<SubjectBO> allSubjects = subjectApi.getSubjectList();
+            Map<Long, String> subjectMap =
+                    CollectionUtils.isNotEmpty(allSubjects)
+                            ? allSubjects.stream()
+                                    .filter(s -> s.getId() != null)
+                                    .collect(
+                                            Collectors.toMap(
+                                                    SubjectBO::getId,
+                                                    SubjectBO::getSubjectName,
+                                                    (a, b) -> a))
+                            : Collections.emptyMap();
+            return subjectIds.stream()
+                    .map(
+                            id -> {
+                                SysModuleCompleteResp.SubjectInfo info =
+                                        new SysModuleCompleteResp.SubjectInfo();
+                                info.setId(id);
+                                info.setSubjectName(subjectMap.getOrDefault(id, ""));
+                                return info;
+                            })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("获取数据来源主体列表失败: {}", sourceSubjectsJson, e);
+            return subjectIds.stream()
+                    .map(
+                            id -> {
+                                SysModuleCompleteResp.SubjectInfo info =
+                                        new SysModuleCompleteResp.SubjectInfo();
+                                info.setId(id);
+                                info.setSubjectName("");
+                                return info;
+                            })
+                    .collect(Collectors.toList());
         }
     }
 
