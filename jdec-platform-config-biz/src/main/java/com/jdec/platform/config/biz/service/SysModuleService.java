@@ -19,23 +19,26 @@ import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
-import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /** 模块管理业务实现类 负责模块、关联表、字段配置和状态配置的完整生命周期管理 */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@com.jdec.platform.shared.datasource.DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysModuleService implements SysModuleApi {
 
     private final SysModuleMapper sysModuleMapper;
@@ -50,6 +53,8 @@ public class SysModuleService implements SysModuleApi {
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
     private final SysWechatTemplateMapper sysWechatTemplateMapper;
     private final SysWechatTemplateParamMapper sysWechatTemplateParamMapper;
+    private final SysFieldMapper sysFieldMapper;
+    private final DataSourceResolver dataSourceResolver;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -188,6 +193,61 @@ public class SysModuleService implements SysModuleApi {
                         Wrappers.<SysModuleField>lambdaQuery()
                                 .eq(SysModuleField::getModuleId, moduleId));
 
+        Map<String, List<SysModuleField>> simpleFieldsByTable =
+                allFields.stream()
+                        .filter(f -> "SIMPLE".equals(f.getFieldType()))
+                        .collect(Collectors.groupingBy(SysModuleField::getTableName));
+
+        Map<String, Map<String, String>> tableColumnDisplayNameMap = new HashMap<>();
+
+        for (Map.Entry<String, List<SysModuleField>> entry : simpleFieldsByTable.entrySet()) {
+            String tableName = entry.getKey();
+            if (tableName == null || tableName.isBlank()) {
+                continue;
+            }
+            Map<String, String> columnDisplayNameMap = new HashMap<>();
+
+            // 1. Get SysField configurations
+            List<SysField> sysFields =
+                    sysFieldMapper.selectList(
+                            Wrappers.<SysField>lambdaQuery()
+                                    .eq(SysField::getProjectNo, module.getProjectNo())
+                                    .eq(SysField::getSubjectId, module.getSubjectId())
+                                    .eq(SysField::getTableName, tableName)
+                                    .eq(SysField::getDeleted, 0));
+            for (SysField sf : sysFields) {
+                if (StringUtils.hasText(sf.getDisplayName())) {
+                    columnDisplayNameMap.put(sf.getColumnName(), sf.getDisplayName());
+                }
+            }
+
+            // 2. Query schema comments for fields not resolved by SysField
+            try {
+                DataSource dataSource = dataSourceResolver.resolve(module.getProjectNo());
+                JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+                String sql =
+                        """
+                        SELECT COLUMN_NAME, COLUMN_COMMENT
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                        """;
+                List<Map<String, Object>> rows =
+                        jdbcTemplate.queryForList(sql, module.getProjectNo(), tableName);
+                for (Map<String, Object> row : rows) {
+                    String colName = (String) row.get("COLUMN_NAME");
+                    String colComment = (String) row.get("COLUMN_COMMENT");
+                    if (!columnDisplayNameMap.containsKey(colName)
+                            && StringUtils.hasText(colComment)) {
+                        columnDisplayNameMap.put(colName, colComment);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Query column comments failed for table: {}", tableName, e);
+            }
+
+            tableColumnDisplayNameMap.put(tableName, columnDisplayNameMap);
+        }
+
         List<ModuleSimpleFieldDTO> simpleFieldInfos =
                 allFields.stream()
                         .filter(f -> "SIMPLE".equals(f.getFieldType()))
@@ -198,6 +258,12 @@ public class SysModuleService implements SysModuleApi {
                                     info.setTableName(f.getTableName());
                                     info.setColumnName(f.getFieldCode());
                                     info.setTransformer(f.getTransformer());
+
+                                    Map<String, String> colMap =
+                                            tableColumnDisplayNameMap.get(f.getTableName());
+                                    if (colMap != null) {
+                                        info.setDisplayName(colMap.get(f.getFieldCode()));
+                                    }
                                     return info;
                                 })
                         .collect(Collectors.toList());

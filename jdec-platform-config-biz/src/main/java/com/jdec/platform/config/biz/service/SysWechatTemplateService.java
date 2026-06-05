@@ -232,18 +232,20 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
                         query.getModuleId() != null,
                         SysWechatTemplateParam::getModuleId,
                         query.getModuleId())
-                .like(
+                .and(
                         StringUtils.hasText(query.getKeyword()),
-                        SysWechatTemplateParam::getTemplateParamName,
-                        query.getKeyword())
-                .like(
-                        StringUtils.hasText(query.getKeyword()),
-                        SysWechatTemplateParam::getTemplateParamSlug,
-                        query.getKeyword())
-                .like(
-                        StringUtils.hasText(query.getKeyword()),
-                        SysWechatTemplateParam::getTemplateParamDesc,
-                        query.getKeyword())
+                        q ->
+                                q.like(
+                                                SysWechatTemplateParam::getTemplateParamName,
+                                                query.getKeyword())
+                                        .or()
+                                        .like(
+                                                SysWechatTemplateParam::getTemplateParamSlug,
+                                                query.getKeyword())
+                                        .or()
+                                        .like(
+                                                SysWechatTemplateParam::getTemplateParamDesc,
+                                                query.getKeyword()))
                 .eq(SysWechatTemplateParam::getDeleted, 0)
                 .orderByDesc(SysWechatTemplateParam::getCreatedDate);
 

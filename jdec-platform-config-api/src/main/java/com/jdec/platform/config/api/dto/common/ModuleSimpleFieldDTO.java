@@ -23,6 +23,9 @@ public class ModuleSimpleFieldDTO {
     @Schema(description = "列名", requiredMode = Schema.RequiredMode.REQUIRED, example = "student_no")
     private String columnName;
 
+    @Schema(description = "字段显示名称", example = "学生编号")
+    private String displayName;
+
     @Schema(description = "转换表达式", example = "UPPER(${student_no})")
     private String transformer;
 }
