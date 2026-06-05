@@ -29,7 +29,7 @@ spring:
           password: ${DB_CONFIG_CENTER_PASSWORD:jdec_platform123}
         # hr_manage 人力平台数据源
         hr_manage:
-          url: jdbc:mysql://${DB_HR_MANAGE_HOST:192.168.60.101}:${DB_HR_MANAGE_PORT:3306}/${DB_HR_MANAGE_NAME:hr_center}?useUnicode=true&characterEncoding=UTF8
+          url: jdbc:mysql://${DB_HR_MANAGE_HOST:192.168.60.101}:${DB_HR_MANAGE_PORT:3306}/${DB_HR_MANAGE_NAME:hr_manage}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_HR_MANAGE_USERNAME:root}
           password: ${DB_HR_MANAGE_PASSWORD:jdec_platform123}
         # third 数据源
@@ -99,7 +99,7 @@ jdec:
       primary: mysql
       auth_center: auth_center
       config_center: config_center
-      hr_center: hr_center
+      hr_manage: hr_manage
       third: third
       school: school
       student_manage: student_manage
