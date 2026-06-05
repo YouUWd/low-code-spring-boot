@@ -84,5 +84,9 @@ public class SaveModuleReq {
         /** 数据来源主体，存储主体 ID 的数组 */
         @Schema(description = "数据来源主体")
         private List<Long> sourceSubjects;
+
+        /** 主表外键关联字段 */
+        @Schema(description = "主表外键关联字段", example = "user_id")
+        private String relateSearchField;
     }
 }

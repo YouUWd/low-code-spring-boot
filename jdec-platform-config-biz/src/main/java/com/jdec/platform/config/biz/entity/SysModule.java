@@ -40,6 +40,9 @@ public class SysModule {
     /** 主表名称 */
     private String primaryTable;
 
+    /** 主表外键关联字段 */
+    private String relateSearchField;
+
     /** 模块类型 */
     private ModuleTypeEnum moduleType;
 
