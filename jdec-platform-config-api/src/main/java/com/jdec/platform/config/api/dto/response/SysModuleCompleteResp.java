@@ -110,6 +110,9 @@ public class SysModuleCompleteResp {
 
         @Schema(description = "更新人姓名", example = "李四")
         private String updatedName;
+
+        @Schema(description = "主表外键关联字段", example = "user_id")
+        private String relateSearchField;
     }
 
     /** 主体简要信息 */

@@ -96,6 +96,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setApprovalRequired(module.getApprovalRequired());
         resp.setLeafFlag(module.getLeafFlag());
         resp.setSortOrder(module.getSortOrder());
+        resp.setRelateSearchField(module.getRelateSearchField());
         resp.setCreatedBy(module.getCreatedBy());
         resp.setCreatedName(module.getCreatedName());
         resp.setCreatedDate(
@@ -156,6 +157,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setApprovalRequired(module.getApprovalRequired());
         moduleInfo.setLeafFlag(module.getLeafFlag());
         moduleInfo.setSortOrder(module.getSortOrder());
+        moduleInfo.setRelateSearchField(module.getRelateSearchField());
         moduleInfo.setTableHeader(parseTableHeader(module.getTableHeader()));
         moduleInfo.setSourceSubjects(buildSubjectInfos(module.getSourceSubjects()));
         moduleInfo.setCreatedBy(module.getCreatedBy());
@@ -690,6 +692,7 @@ public class SysModuleService implements SysModuleApi {
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
+        module.setRelateSearchField(request.getRelateSearchField());
         module.setModuleStatus("active");
         module.setLeafFlag(1); // 默认新节点是叶子节点
 
@@ -934,6 +937,7 @@ public class SysModuleService implements SysModuleApi {
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
+        module.setRelateSearchField(request.getRelateSearchField());
 
         // 更新 tableHeader
         if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {

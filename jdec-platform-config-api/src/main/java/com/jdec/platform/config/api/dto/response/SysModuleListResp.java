@@ -73,4 +73,7 @@ public class SysModuleListResp {
 
     @Schema(description = "更新时间", example = "2024-01-01T00:00:00")
     private String updatedDate;
+
+    @Schema(description = "主表外键关联字段", example = "user_id")
+    private String relateSearchField;
 }
