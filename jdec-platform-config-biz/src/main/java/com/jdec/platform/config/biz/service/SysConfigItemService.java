@@ -107,6 +107,27 @@ public class SysConfigItemService {
             entity.setCategoryAlias(categoryAlias);
             entity.setSubjectId(subjectId);
             calculatePathAndDepth(entity, pid);
+
+            // 处理排序值
+            if (req.getSort() == null) {
+                // 前端未传排序值，自动设置为同级最大值+1
+                Integer maxSort = getMaxSortByPid(categoryAlias, pid, subjectId);
+                entity.setSort(maxSort == null ? 0 : maxSort + 1);
+            } else {
+                // 前端传了排序值，检查是否与同级冲突
+                boolean sortExists =
+                        itemMapper.exists(
+                                Wrappers.<SysConfigItem>lambdaQuery()
+                                        .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                        .eq(SysConfigItem::getPid, pid)
+                                        .eq(SysConfigItem::getSort, req.getSort())
+                                        .eq(SysConfigItem::getSubjectId, subjectId));
+                if (sortExists) {
+                    // 排序值冲突，将该位置及之后的节点排序值+1
+                    adjustSortOnInsert(categoryAlias, pid, req.getSort(), subjectId);
+                }
+            }
+
             itemMapper.insert(entity);
         } else {
             // 编辑
@@ -126,10 +147,63 @@ public class SysConfigItemService {
                 throw new BusinessException("不能修改配置项的分类，子级必须跟随父级分类");
             }
 
+            Long oldPid = existing.getPid();
+            Integer oldSort = existing.getSort();
+
             SysConfigItem entity = new SysConfigItem();
             BeanUtils.copyProperties(req, entity);
             entity.setCategoryAlias(categoryAlias);
             calculatePathAndDepth(entity, pid);
+
+            // 处理排序值
+            if (req.getSort() == null) {
+                // 前端未传排序值
+                if (!pid.equals(oldPid)) {
+                    // 父节点变化，设置为新父节点下的最大值+1
+                    Integer maxSort = getMaxSortByPid(categoryAlias, pid, subjectId);
+                    entity.setSort(maxSort == null ? 0 : maxSort + 1);
+                }
+                // 父节点未变化，保持原排序值
+            } else {
+                // 前端传了排序值
+                if (pid.equals(oldPid)) {
+                    // 同父节点内，排序值变化
+                    if (!req.getSort().equals(oldSort)) {
+                        boolean sortExists =
+                                itemMapper.exists(
+                                        Wrappers.<SysConfigItem>lambdaQuery()
+                                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                                .eq(SysConfigItem::getPid, pid)
+                                                .eq(SysConfigItem::getSort, req.getSort())
+                                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                                .ne(SysConfigItem::getId, req.getId()));
+                        if (sortExists) {
+                            // 排序值冲突，调整其他节点
+                            adjustSortOnUpdate(
+                                    req.getId(),
+                                    categoryAlias,
+                                    pid,
+                                    req.getSort(),
+                                    oldSort,
+                                    subjectId);
+                        }
+                    }
+                } else {
+                    // 跨父节点，检查新父节点下是否有冲突
+                    boolean sortExists =
+                            itemMapper.exists(
+                                    Wrappers.<SysConfigItem>lambdaQuery()
+                                            .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                            .eq(SysConfigItem::getPid, pid)
+                                            .eq(SysConfigItem::getSort, req.getSort())
+                                            .eq(SysConfigItem::getSubjectId, subjectId));
+                    if (sortExists) {
+                        // 新父节点下排序值冲突，调整
+                        adjustSortOnInsert(categoryAlias, pid, req.getSort(), subjectId);
+                    }
+                }
+            }
+
             itemMapper.updateById(entity);
 
             // 如果父节点变了，需要更新所有子节点的 path
@@ -204,6 +278,9 @@ public class SysConfigItemService {
             itemMapper.deleteByIds(childIds);
         }
         itemMapper.deleteById(id);
+
+        // 删除后重排同级节点的排序值
+        reorderSiblingsAfterDelete(item.getCategoryAlias(), item.getPid(), subjectId);
     }
 
     private List<SysConfigItem> queryItemsByCategory(Long categoryId, String categoryAlias) {
@@ -328,7 +405,8 @@ public class SysConfigItemService {
     public void dragItem(SysConfigItemDragReq req) {
         Long subjectId = AppContext.getSubjectId();
         Long dragId = req.getDragId();
-        Long targetPid = req.getTargetPid();
+        Long targetPid = req.getTargetPid() == null ? ROOT_PID : req.getTargetPid();
+        Integer targetSort = req.getTargetSort();
 
         // 校验：被拖拽节点必须存在
         SysConfigItem dragItem = itemMapper.selectById(dragId);
@@ -342,7 +420,7 @@ public class SysConfigItemService {
         }
 
         // 校验：目标父节点必须是 item（不能是 category）
-        if (targetPid != null && !targetPid.equals(ROOT_PID)) {
+        if (!targetPid.equals(ROOT_PID)) {
             SysConfigItem targetParent = itemMapper.selectById(targetPid);
             if (targetParent == null || !targetParent.getSubjectId().equals(subjectId)) {
                 throw new BusinessException("目标父节点不存在");
@@ -358,17 +436,181 @@ public class SysConfigItemService {
         }
 
         // 更新被拖拽节点的父节点
-        dragItem.setPid(targetPid == null ? ROOT_PID : targetPid);
-        calculatePathAndDepth(dragItem, dragItem.getPid());
+        dragItem.setPid(targetPid);
+        calculatePathAndDepth(dragItem, targetPid);
 
-        // 如果指定了排序值，更新排序
-        if (req.getTargetSort() != null) {
-            dragItem.setSort(req.getTargetSort());
+        // 处理排序值
+        if (targetSort == null) {
+            // 前端未传顺序值，自动分配为同级最大值+1
+            Integer maxSort = getMaxSortByPid(dragItem.getCategoryAlias(), targetPid, subjectId);
+            dragItem.setSort(maxSort == null ? 0 : maxSort + 1);
+            itemMapper.updateById(dragItem);
+        } else {
+            // 前端传了顺序值（从0开始），重新分配所有同级节点的排序
+            adjustSortForDrag(dragItem, targetSort, subjectId);
         }
-
-        itemMapper.updateById(dragItem);
 
         // 更新所有子节点的 path 和 depth
         updateChildrenPath(dragId, subjectId);
+    }
+
+    /**
+     * 处理拖拽时的排序调整
+     *
+     * @param entity 被拖拽的节点
+     * @param targetIndex 目标位置的顺序值（从0开始）
+     * @param subjectId 主体ID
+     */
+    private void adjustSortForDrag(SysConfigItem entity, Integer targetIndex, Long subjectId) {
+        // 查询同级所有节点（排除当前拖拽节点）
+        List<SysConfigItem> siblings =
+                itemMapper.selectList(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getCategoryAlias, entity.getCategoryAlias())
+                                .eq(SysConfigItem::getPid, entity.getPid())
+                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                .ne(SysConfigItem::getId, entity.getId())
+                                .orderByAsc(SysConfigItem::getSort));
+
+        // 将拖拽节点插入到目标位置
+        siblings.add(targetIndex, entity);
+
+        // 批量更新所有节点的排序值（从0开始）
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setSort(i);
+        }
+        // 使用 MyBatis-Plus 批量更新
+        if (!siblings.isEmpty()) {
+            itemMapper.updateById(siblings);
+        }
+    }
+
+    /**
+     * 获取指定分类、指定父节点下的最大排序值
+     *
+     * @param categoryAlias 分类别名
+     * @param pid 父节点ID
+     * @param subjectId 主体ID
+     * @return 最大排序值，无数据时返回null
+     */
+    private Integer getMaxSortByPid(String categoryAlias, Long pid, Long subjectId) {
+        List<SysConfigItem> items =
+                itemMapper.selectList(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                .eq(SysConfigItem::getPid, pid)
+                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                .orderByDesc(SysConfigItem::getSort)
+                                .last("LIMIT 1"));
+        return items.isEmpty() ? null : items.get(0).getSort();
+    }
+
+    /**
+     * 新增节点时调整排序值：将指定位置及之后的节点排序值+1
+     *
+     * @param categoryAlias 分类别名
+     * @param pid 父节点ID
+     * @param insertSort 插入位置的排序值
+     * @param subjectId 主体ID
+     */
+    private void adjustSortOnInsert(
+            String categoryAlias, Long pid, Integer insertSort, Long subjectId) {
+        List<SysConfigItem> siblings =
+                itemMapper.selectList(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                .eq(SysConfigItem::getPid, pid)
+                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                .ge(SysConfigItem::getSort, insertSort)
+                                .orderByAsc(SysConfigItem::getSort));
+        for (SysConfigItem sibling : siblings) {
+            sibling.setSort(sibling.getSort() + 1);
+            itemMapper.updateById(sibling);
+        }
+    }
+
+    /**
+     * 更新节点时调整排序值（同父节点内）
+     *
+     * @param itemId 被更新节点ID
+     * @param categoryAlias 分类别名
+     * @param pid 父节点ID
+     * @param newSort 新排序值
+     * @param oldSort 原排序值
+     * @param subjectId 主体ID
+     */
+    private void adjustSortOnUpdate(
+            Long itemId,
+            String categoryAlias,
+            Long pid,
+            Integer newSort,
+            Integer oldSort,
+            Long subjectId) {
+        if (oldSort == null) {
+            // 原来没有排序值，按插入处理
+            adjustSortOnInsert(categoryAlias, pid, newSort, subjectId);
+            return;
+        }
+
+        // 向前移动：原位置之后、新位置之前的节点 sort + 1
+        if (newSort < oldSort) {
+            List<SysConfigItem> siblings =
+                    itemMapper.selectList(
+                            Wrappers.<SysConfigItem>lambdaQuery()
+                                    .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                    .eq(SysConfigItem::getPid, pid)
+                                    .eq(SysConfigItem::getSubjectId, subjectId)
+                                    .ne(SysConfigItem::getId, itemId)
+                                    .ge(SysConfigItem::getSort, newSort)
+                                    .lt(SysConfigItem::getSort, oldSort));
+            for (SysConfigItem sibling : siblings) {
+                sibling.setSort(sibling.getSort() + 1);
+                itemMapper.updateById(sibling);
+            }
+        }
+        // 向后移动：原位置之前、新位置之后的节点 sort - 1
+        else if (newSort > oldSort) {
+            List<SysConfigItem> siblings =
+                    itemMapper.selectList(
+                            Wrappers.<SysConfigItem>lambdaQuery()
+                                    .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                    .eq(SysConfigItem::getPid, pid)
+                                    .eq(SysConfigItem::getSubjectId, subjectId)
+                                    .ne(SysConfigItem::getId, itemId)
+                                    .gt(SysConfigItem::getSort, oldSort)
+                                    .le(SysConfigItem::getSort, newSort));
+            for (SysConfigItem sibling : siblings) {
+                sibling.setSort(sibling.getSort() - 1);
+                itemMapper.updateById(sibling);
+            }
+        }
+    }
+
+    /**
+     * 删除节点后重排同级节点的排序值
+     *
+     * @param categoryAlias 分类别名
+     * @param pid 父节点ID
+     * @param subjectId 主体ID
+     */
+    private void reorderSiblingsAfterDelete(String categoryAlias, Long pid, Long subjectId) {
+        // 查询同级所有节点
+        List<SysConfigItem> siblings =
+                itemMapper.selectList(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                .eq(SysConfigItem::getPid, pid)
+                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                .orderByAsc(SysConfigItem::getSort));
+
+        if (siblings.isEmpty()) {
+            return;
+        }
+
+        // 重新分配排序值（从0开始）
+        for (int i = 0; i < siblings.size(); i++) {
+            siblings.get(i).setSort(i);
+        }
+        itemMapper.updateById(siblings);
     }
 }
