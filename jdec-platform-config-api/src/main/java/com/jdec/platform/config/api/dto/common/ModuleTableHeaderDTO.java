@@ -18,6 +18,10 @@ public class ModuleTableHeaderDTO {
     @Schema(description = "列名称", example = "学号")
     private String name;
 
+    /** 列名称 */
+    @Schema(description = "表名称", example = "student")
+    private String table;
+
     /** 关联字段 */
     @Schema(description = "关联字段", example = "student_no")
     private String field;
