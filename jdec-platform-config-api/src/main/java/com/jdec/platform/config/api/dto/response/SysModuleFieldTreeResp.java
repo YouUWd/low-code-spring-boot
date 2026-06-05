@@ -19,6 +19,9 @@ public class SysModuleFieldTreeResp implements Serializable {
     @Schema(description = "模块编码")
     private String moduleCode;
 
+    @Schema(description = "数据来源主体ID集合")
+    private String sourceSubjects;
+
     @Schema(description = "模块下的表和字段列表")
     private List<ModuleTableTreeResp> tables;
 

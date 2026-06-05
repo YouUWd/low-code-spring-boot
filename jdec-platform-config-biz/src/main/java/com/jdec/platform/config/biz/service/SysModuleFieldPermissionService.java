@@ -180,6 +180,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                     dto.setModuleId(m.getId());
                                     dto.setModuleName(m.getModuleName());
                                     dto.setModuleCode(m.getModuleCode());
+                                    dto.setSourceSubjects(m.getSourceSubjects());
                                     dto.setChildren(new ArrayList<>());
 
                                     List<SysModuleField> sFields =
