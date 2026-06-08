@@ -330,7 +330,7 @@ public class SysModuleService implements SysModuleApi {
         // 如果 ID 为空则创建新模块，否则编辑现有模块
         if (request.getModule().getId() == null) {
             // 创建新模块
-            module = createOrUpdateModule(projectNo, subjectId, request.getModule());
+            module = createModule(projectNo, subjectId, request.getModule());
             moduleId = module.getId();
         } else {
             moduleId = request.getModule().getId();
@@ -680,8 +680,7 @@ public class SysModuleService implements SysModuleApi {
         sysModuleMapper.updateById(partial);
     }
 
-    private SysModule createOrUpdateModule(
-            String projectNo, Long subjectId, SaveSysModuleReq request) {
+    private SysModule createModule(String projectNo, Long subjectId, SaveSysModuleReq request) {
         SysModule module = new SysModule();
         module.setProjectNo(projectNo);
         module.setSubjectId(subjectId);
@@ -735,21 +734,22 @@ public class SysModuleService implements SysModuleApi {
             module.setModulePath(module.getModuleCode());
         }
 
-        if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {
-            try {
-                module.setTableHeader(objectMapper.writeValueAsString(request.getTableHeader()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "tableHeader 序列化失败", e);
-            }
+        try {
+            module.setTableHeader(
+                    request.getTableHeader() != null
+                            ? objectMapper.writeValueAsString(request.getTableHeader())
+                            : null);
+        } catch (Exception e) {
+            throw new BusinessException(500, "tableHeader 序列化失败", e);
         }
 
-        if (request.getSourceSubjects() != null && !request.getSourceSubjects().isEmpty()) {
-            try {
-                module.setSourceSubjects(
-                        objectMapper.writeValueAsString(request.getSourceSubjects()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "sourceSubjects 序列化失败", e);
-            }
+        try {
+            module.setSourceSubjects(
+                    request.getSourceSubjects() != null
+                            ? objectMapper.writeValueAsString(request.getSourceSubjects())
+                            : null);
+        } catch (Exception e) {
+            throw new BusinessException(500, "sourceSubjects 序列化失败", e);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -940,22 +940,23 @@ public class SysModuleService implements SysModuleApi {
         module.setRelateSearchField(request.getRelateSearchField());
 
         // 更新 tableHeader
-        if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {
-            try {
-                module.setTableHeader(objectMapper.writeValueAsString(request.getTableHeader()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "tableHeader 序列化失败", e);
-            }
+        try {
+            module.setTableHeader(
+                    request.getTableHeader() != null
+                            ? objectMapper.writeValueAsString(request.getTableHeader())
+                            : null);
+        } catch (Exception e) {
+            throw new BusinessException(500, "tableHeader 序列化失败", e);
         }
 
         // 更新 sourceSubjects
-        if (request.getSourceSubjects() != null && !request.getSourceSubjects().isEmpty()) {
-            try {
-                module.setSourceSubjects(
-                        objectMapper.writeValueAsString(request.getSourceSubjects()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "sourceSubjects 序列化失败", e);
-            }
+        try {
+            module.setSourceSubjects(
+                    request.getSourceSubjects() != null
+                            ? objectMapper.writeValueAsString(request.getSourceSubjects())
+                            : null);
+        } catch (Exception e) {
+            throw new BusinessException(500, "sourceSubjects 序列化失败", e);
         }
 
         module.setUpdatedDate(LocalDateTime.now());
