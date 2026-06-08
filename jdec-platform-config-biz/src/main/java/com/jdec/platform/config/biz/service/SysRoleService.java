@@ -759,7 +759,7 @@ public class SysRoleService implements SysRoleApi {
                     resp.setRoleId(role.getId());
                     resp.setRoleName(role.getRoleName());
                     resp.setRoleSlug(role.getRoleSlug());
-                    resp.setSubjectId(roleUser.getSubjectId());
+                    resp.setSubjectId(role.getSubjectId());
                     resp.setEffectiveType(roleUser.getEffectiveType());
                     resp.setEffectiveStartDate(roleUser.getEffectiveStartDate());
                     resp.setEffectiveEndDate(roleUser.getEffectiveEndDate());
@@ -800,7 +800,7 @@ public class SysRoleService implements SysRoleApi {
                 resp.setRoleId(role.getId());
                 resp.setRoleName(role.getRoleName());
                 resp.setRoleSlug(role.getRoleSlug());
-                resp.setSubjectId(roleSubject.getSubjectId());
+                resp.setSubjectId(role.getSubjectId());
                 resp.setEffectiveType(roleSubject.getEffectiveType());
                 resp.setEffectiveStartDate(roleSubject.getEffectiveStartDate());
                 resp.setEffectiveEndDate(roleSubject.getEffectiveEndDate());
