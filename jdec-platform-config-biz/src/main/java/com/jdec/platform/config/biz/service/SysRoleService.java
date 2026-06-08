@@ -726,7 +726,9 @@ public class SysRoleService implements SysRoleApi {
         // 先更新已时效的关联状态
         updateExpiredRelations();
 
-        java.time.LocalDate today = java.time.LocalDate.now();
+        // 从请求头获取当前主体ID，用于过滤角色
+        Long currentSubjectId = AppContext.getSubjectId();
+
         List<UserRoleListResp> result = new ArrayList<>();
 
         // 1. 先查询用户角色关系表（状态有效且在时效内）
@@ -738,12 +740,14 @@ public class SysRoleService implements SysRoleApi {
                                         .eq(SysRoleUser::getStatus, 0)));
 
         if (!validRoleUsers.isEmpty()) {
-            // 批量查询角色信息
+            // 批量查询角色信息，并根据当前主体进行过滤
             List<Long> roleIds =
                     validRoleUsers.stream().map(SysRoleUser::getRoleId).distinct().toList();
             List<SysRole> roles =
                     sysRoleMapper.selectList(
-                            Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
+                            Wrappers.<SysRole>lambdaQuery()
+                                    .in(SysRole::getId, roleIds)
+                                    .eq(SysRole::getSubjectId, currentSubjectId));
             Map<Long, SysRole> roleMap =
                     roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
 
@@ -763,7 +767,6 @@ public class SysRoleService implements SysRoleApi {
                     result.add(resp);
                 }
             }
-            return result;
         }
 
         // 2. 如果用户角色关系表中没有记录，查询角色主体绑定关系表（状态有效且在时效内）
@@ -778,12 +781,14 @@ public class SysRoleService implements SysRoleApi {
             return result;
         }
 
-        // 批量查询角色信息
+        // 批量查询角色信息，并根据当前主体进行过滤
         List<Long> roleIds =
                 validRoleSubjects.stream().map(SysRoleSubject::getRoleId).distinct().toList();
         List<SysRole> roles =
                 sysRoleMapper.selectList(
-                        Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
+                        Wrappers.<SysRole>lambdaQuery()
+                                .in(SysRole::getId, roleIds)
+                                .eq(SysRole::getSubjectId, currentSubjectId));
         Map<Long, SysRole> roleMap =
                 roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
 
