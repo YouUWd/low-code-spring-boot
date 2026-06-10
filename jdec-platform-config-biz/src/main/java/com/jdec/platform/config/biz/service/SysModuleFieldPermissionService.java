@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
+import com.jdec.platform.config.api.constant.ConfigConstants;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysModule;
@@ -80,13 +81,15 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
 
         // 3. 内存分流简单物理字段与复合组合字段
         List<SysModuleField> simpleFields =
-                allFields.stream().filter(f -> "SIMPLE".equals(f.getFieldType())).toList();
+                allFields.stream()
+                        .filter(f -> ConfigConstants.FIELD_TYPE_SIMPLE.equals(f.getFieldType()))
+                        .toList();
 
         List<SysModuleField> combineFields =
                 allFields.stream()
                         .filter(
                                 f ->
-                                        "COMBINE".equals(f.getFieldType())
+                                        ConfigConstants.FIELD_TYPE_COMBINE.equals(f.getFieldType())
                                                 && Integer.valueOf(1).equals(f.getEnabled()))
                         .sorted(Comparator.comparing(SysModuleField::getId))
                         .toList();
@@ -268,7 +271,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         for (String tableName : orderedTables) {
             ModuleTableTreeResp tableResp = new ModuleTableTreeResp();
             tableResp.setTableName(tableName);
-            tableResp.setTableType("SIMPLE");
+            tableResp.setTableType(ConfigConstants.TABLE_TYPE_SIMPLE);
             Map<String, Integer> readOnlyMap = moduleTableReadOnlyMap.get(moduleId);
             Integer readOnly =
                     (readOnlyMap != null)
@@ -314,9 +317,9 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         // 装配虚拟复合表及字段
         if (!cfields.isEmpty()) {
             ModuleTableTreeResp combineTableResp = new ModuleTableTreeResp();
-            combineTableResp.setTableName("*");
-            combineTableResp.setTableDesc("组合字段");
-            combineTableResp.setTableType("COMBINE");
+            combineTableResp.setTableName(ConfigConstants.TABLE_NAME_COMBINE);
+            combineTableResp.setTableDesc(ConfigConstants.TABLE_DESC_COMBINE);
+            combineTableResp.setTableType(ConfigConstants.TABLE_TYPE_COMBINE);
             combineTableResp.setReadOnly(0);
 
             List<ModuleFieldTreeResp> fields = new ArrayList<>();
@@ -362,12 +365,14 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                 .eq(SysModuleField::getModuleId, moduleId));
 
         List<SysModuleField> sfields =
-                allFields.stream().filter(f -> "SIMPLE".equals(f.getFieldType())).toList();
+                allFields.stream()
+                        .filter(f -> ConfigConstants.FIELD_TYPE_SIMPLE.equals(f.getFieldType()))
+                        .toList();
         List<SysModuleField> cfields =
                 allFields.stream()
                         .filter(
                                 f ->
-                                        "COMBINE".equals(f.getFieldType())
+                                        ConfigConstants.FIELD_TYPE_COMBINE.equals(f.getFieldType())
                                                 && Integer.valueOf(1).equals(f.getEnabled()))
                         .toList();
 
@@ -484,7 +489,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         for (String tableName : orderedTables) {
             PermissionTableGroupResp tableResp = new PermissionTableGroupResp();
             tableResp.setTableName(tableName);
-            tableResp.setTableType("SIMPLE");
+            tableResp.setTableType(ConfigConstants.TABLE_TYPE_SIMPLE);
             String tComment = tableCommentMap.get(tableName.toLowerCase());
             tableResp.setTableDesc(
                     (tComment != null && !tComment.isEmpty()) ? tComment : tableName);
@@ -545,9 +550,9 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         // B. 装配虚拟组合表
         if (!cfields.isEmpty()) {
             PermissionTableGroupResp combineTableResp = new PermissionTableGroupResp();
-            combineTableResp.setTableName("virtual_combine");
-            combineTableResp.setTableDesc("组合字段");
-            combineTableResp.setTableType("COMBINE");
+            combineTableResp.setTableName(ConfigConstants.TABLE_NAME_COMBINE);
+            combineTableResp.setTableDesc(ConfigConstants.TABLE_DESC_COMBINE);
+            combineTableResp.setTableType(ConfigConstants.TABLE_TYPE_COMBINE);
 
             List<PermissionFieldInfo> readableFields = new ArrayList<>();
             List<PermissionFieldInfo> writableFields = new ArrayList<>();
