@@ -35,6 +35,9 @@ public class ModuleTableDTO {
             allowableValues = {"1:1", "1:N", "N:1"})
     private String relationType;
 
+    @Schema(description = "关联表是否只读（0=否，1=是）", example = "0")
+    private Integer readOnly;
+
     @Schema(description = "排序顺序", example = "1")
     private Integer sortOrder;
 }

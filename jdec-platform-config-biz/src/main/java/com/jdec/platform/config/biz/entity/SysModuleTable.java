@@ -33,6 +33,9 @@ public class SysModuleTable {
     /** 关系类型 */
     private String relationType;
 
+    /** 关联表是否只读：0-否, 1-是 */
+    private Integer readOnly;
+
     /** 排序顺序 */
     private Integer sortOrder;
 

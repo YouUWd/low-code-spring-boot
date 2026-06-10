@@ -187,6 +187,7 @@ public class SysModuleService implements SysModuleApi {
                                     info.setJoinLeftField(t.getJoinLeftField());
                                     info.setJoinRightField(t.getJoinRightField());
                                     info.setRelationType(t.getRelationType());
+                                    info.setReadOnly(t.getReadOnly());
                                     info.setSortOrder(t.getSortOrder());
                                     return info;
                                 })
@@ -775,6 +776,7 @@ public class SysModuleService implements SysModuleApi {
             t.setJoinLeftField(info.getJoinLeftField());
             t.setJoinRightField(info.getJoinRightField());
             t.setRelationType(info.getRelationType());
+            t.setReadOnly(info.getReadOnly());
             t.setSortOrder(info.getSortOrder() != null ? info.getSortOrder() : i);
             LocalDateTime now = LocalDateTime.now();
             t.setCreatedDate(now);
