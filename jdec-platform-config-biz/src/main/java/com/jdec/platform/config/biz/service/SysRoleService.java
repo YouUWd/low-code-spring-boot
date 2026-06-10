@@ -184,14 +184,6 @@ public class SysRoleService implements SysRoleApi {
             }
         }
 
-        // 校验4：当前选定的角色中绑定的用户是否在别的角色中已经设置过自定义时间（新增和更新都需要）
-        if (!allUserIds.isEmpty() && hasCustomTimeInOtherRoles(roleId, allUserIds)) {
-            resp.setNeedConfirm(true);
-            resp.setConfirmType(1);
-            resp.setMessage("该角色中存在员工设置过权限时间，是否覆盖？");
-            return resp;
-        }
-
         if (roleId == null) {
             return resp;
         }
@@ -213,15 +205,8 @@ public class SysRoleService implements SysRoleApi {
             }
         }
 
-        // 校验3：该角色中是否已有员工设置过自定义时间
-        if (hasCustomTimeInRole(roleId)) {
-            resp.setNeedConfirm(true);
-            resp.setConfirmType(1);
-            resp.setMessage("该角色中存在员工设置过权限时间，是否覆盖？");
-            return resp;
-        }
-
-        // 校验5：更新时，是否对已有用户记录进行覆盖（时间改变）
+        // ========== 校验1：更新时，当前角色中的用户时效时间被修改，提示是否覆盖 ==========
+        // 只有更新时需要校验：检查当前角色中已有用户的时效时间是否发生改变
         if (!allUserIds.isEmpty() && hasExistingUserTimeChanged(roleId, allUserIds, request)) {
             resp.setNeedConfirm(true);
             resp.setConfirmType(1);
@@ -303,13 +288,6 @@ public class SysRoleService implements SysRoleApi {
                     // 有之前绑定过任何角色的员工，可强制保存（跳过校验，继续执行）
                 }
             }
-        }
-
-        // 校验4：当前选定的角色中绑定的用户是否在别的角色中已经设置过自定义时间（新增和更新都需要）
-        if (!Boolean.TRUE.equals(request.getForce())
-                && !allUserIds.isEmpty()
-                && hasCustomTimeInOtherRoles(roleId, allUserIds)) {
-            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "该角色中存在员工设置过权限时间，是否覆盖？");
         }
 
         // ========== 更新逻辑 ==========
@@ -593,16 +571,27 @@ public class SysRoleService implements SysRoleApi {
             List<RoleUserReq> insideUsers = new ArrayList<>();
             List<RoleUserReq> externalUsers = new ArrayList<>();
 
+            // 批量查询所有用户信息，避免N+1查询
+            List<Long> userIds =
+                    userList.stream().map(SysRoleUser::getUserId).collect(Collectors.toList());
+            List<SysUser> sysUsers =
+                    sysUserMapper.selectList(
+                            Wrappers.<SysUser>lambdaQuery()
+                                    .in(SysUser::getUserId, userIds)
+                                    .eq(SysUser::getDeleted, 0));
+            Map<Long, SysUser> userMap =
+                    sysUsers.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
+
             for (SysRoleUser roleUser : userList) {
-                SysUser user =
-                        sysUserMapper.selectOne(
-                                Wrappers.<SysUser>lambdaQuery()
-                                        .eq(SysUser::getUserId, roleUser.getUserId())
-                                        .eq(SysUser::getDeleted, 0));
+                SysUser user = userMap.get(roleUser.getUserId());
                 if (user != null) {
                     String userId = String.valueOf(user.getUserId());
                     RoleUserReq userReq = new RoleUserReq();
                     userReq.setUserId(userId);
+                    userReq.setUserName(user.getUserName());
+                    userReq.setUserAvatar(user.getUserAvatar());
+                    userReq.setWorkNumber(user.getWorkNumber());
+                    userReq.setSex(user.getSex());
                     userReq.setEffectiveType(roleUser.getEffectiveType());
                     userReq.setEffectiveStartDate(roleUser.getEffectiveStartDate());
                     userReq.setEffectiveEndDate(roleUser.getEffectiveEndDate());
@@ -941,6 +930,7 @@ public class SysRoleService implements SysRoleApi {
             vo.setUserId(String.valueOf(sysUser.getUserId()));
             vo.setUserAvatar(sysUser.getUserAvatar());
             vo.setWorkNumber(sysUser.getWorkNumber());
+            vo.setSex(sysUser.getSex());
             vo.setEffectiveType(roleUser.getEffectiveType());
             vo.setEffectiveStartDate(roleUser.getEffectiveStartDate());
             vo.setEffectiveEndDate(roleUser.getEffectiveEndDate());
@@ -1308,19 +1298,6 @@ public class SysRoleService implements SysRoleApi {
                                 .in(SysUser::getUserId, subjectUserIds)
                                 .eq(SysUser::getDeleted, 0));
         return users.stream().map(SysUser::getUserName).toList();
-    }
-
-    /** 当前选定的角色中绑定的用户是否在别的角色中已经设置过自定义时间 currentRoleId 为 null 时表示新增角色，查询所有角色 */
-    private boolean hasCustomTimeInOtherRoles(Long currentRoleId, Set<Long> userIds) {
-        LambdaQueryWrapper<SysRoleUser> wrapper =
-                new LambdaQueryWrapper<SysRoleUser>()
-                        .in(SysRoleUser::getUserId, userIds)
-                        .eq(SysRoleUser::getStatus, 0)
-                        .eq(SysRoleUser::getEffectiveType, EffectiveTypeEnum.CUSTOM.getCode());
-        if (currentRoleId != null) {
-            wrapper.ne(SysRoleUser::getRoleId, currentRoleId);
-        }
-        return !filterValidRoleUsers(sysRoleUserMapper.selectList(wrapper)).isEmpty();
     }
 
     /** 获取用户中，之前已经和任何角色绑定的用户名称列表 */

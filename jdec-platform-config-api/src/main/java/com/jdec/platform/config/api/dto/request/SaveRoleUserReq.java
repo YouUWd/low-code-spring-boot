@@ -39,6 +39,7 @@ public class SaveRoleUserReq {
     private Boolean force;
 
     /** 获取所有内部用户ID列表 (字符串格式) */
+    @Schema(hidden = true)
     public List<String> getUserInsideIds() {
         if (userInsideList == null) {
             return null;
@@ -47,6 +48,7 @@ public class SaveRoleUserReq {
     }
 
     /** 获取所有外部用户ID列表 (字符串格式) */
+    @Schema(hidden = true)
     public List<String> getUserExternalIds() {
         if (userExternalList == null) {
             return null;
@@ -55,6 +57,7 @@ public class SaveRoleUserReq {
     }
 
     /** 获取所有主体ID列表 */
+    @Schema(hidden = true)
     public List<Long> getSubjectIds() {
         if (subjectList == null) {
             return null;
@@ -63,11 +66,13 @@ public class SaveRoleUserReq {
     }
 
     /** 辅助方法：获取主体列表的别名，兼容旧代码 */
+    @Schema(hidden = true)
     public List<RoleSubjectReq> getSubjects() {
         return subjectList;
     }
 
     /** 获取所有用户列表（内部+外部） */
+    @Schema(hidden = true)
     public List<RoleUserReq> getUsers() {
         List<RoleUserReq> allUsers = new java.util.ArrayList<>();
         if (userInsideList != null) {
