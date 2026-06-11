@@ -41,6 +41,10 @@ public class SysConfigCategory implements Serializable {
     @TableField(fill = FieldFill.INSERT)
     private String projectNo;
 
+    @Schema(description = "主体ID，0表示全局")
+    @TableField(fill = FieldFill.INSERT)
+    private Long subjectId;
+
     @Schema(description = "模拟操作用户")
     @TableField(fill = FieldFill.INSERT)
     private Long createdBy;
