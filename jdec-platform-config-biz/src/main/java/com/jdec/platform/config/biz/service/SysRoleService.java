@@ -449,6 +449,7 @@ public class SysRoleService implements SysRoleApi {
         Page<SysRole> page = new Page<>(query.getPageNum(), query.getPageSize());
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysRole::getProjectNo, AppContext.getProjectNo());
+        wrapper.eq(SysRole::getSubjectId, AppContext.getSubjectId());
         if (query.getRoleId() != null) {
             wrapper.eq(SysRole::getId, query.getRoleId());
         }
