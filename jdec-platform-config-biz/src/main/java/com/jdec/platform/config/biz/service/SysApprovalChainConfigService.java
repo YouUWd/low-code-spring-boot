@@ -494,6 +494,8 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 .selectList(
                         new LambdaQueryWrapper<SysConfigItem>()
                                 .eq(SysConfigItem::getCategoryAlias, "approvalRule")
+                                .eq(SysConfigItem::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysConfigItem::getProjectNo, AppContext.getProjectNo())
                                 .in(SysConfigItem::getValue, values))
                 .stream()
                 .collect(Collectors.toMap(SysConfigItem::getValue, SysConfigItem::getLabel));

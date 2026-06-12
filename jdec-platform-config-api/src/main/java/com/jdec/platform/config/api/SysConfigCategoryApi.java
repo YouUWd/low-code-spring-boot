@@ -27,8 +27,8 @@ public interface SysConfigCategoryApi {
      */
     SysConfigCategoryResp getByCategoryAlias(String categoryAlias);
 
-    /** 新增/编辑配置分类 */
-    void saveCategory(SysConfigCategorySaveReq req);
+    /** 新增/编辑配置分类，新增时返回新记录ID */
+    Long saveCategory(SysConfigCategorySaveReq req);
 
     /**
      * 删除配置分类
@@ -58,8 +58,8 @@ public interface SysConfigCategoryApi {
      */
     List<SysConfigItemTreeResp> getItemsByCategoryAlias(String categoryAlias);
 
-    /** 新增/编辑配置项 */
-    void saveItem(SysConfigItemSaveReq req);
+    /** 新增/编辑配置项，新增时返回新记录ID */
+    Long saveItem(SysConfigItemSaveReq req);
 
     /**
      * 删除配置项

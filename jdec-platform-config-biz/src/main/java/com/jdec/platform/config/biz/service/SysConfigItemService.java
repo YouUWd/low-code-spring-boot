@@ -39,8 +39,14 @@ public class SysConfigItemService {
      */
     public List<SysConfigItemTreeResp> getItemsByCategory(Long categoryId) {
         String projectNo = AppContext.getProjectNo();
-        SysConfigCategory category = categoryMapper.selectById(categoryId);
-        if (category == null || !category.getProjectNo().equals(projectNo)) {
+        Long subjectId = AppContext.getSubjectId();
+        SysConfigCategory category =
+                categoryMapper.selectOne(
+                        Wrappers.<SysConfigCategory>lambdaQuery()
+                                .eq(SysConfigCategory::getId, categoryId)
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
+        if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
 
@@ -55,11 +61,13 @@ public class SysConfigItemService {
      */
     public List<SysConfigItemTreeResp> getItemsByCategoryAlias(String categoryAlias) {
         String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         SysConfigCategory category =
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
                                 .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
-                                .eq(SysConfigCategory::getProjectNo, projectNo));
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
         if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
@@ -73,7 +81,7 @@ public class SysConfigItemService {
     }
 
     @Transactional
-    public void saveItem(SysConfigItemSaveReq req) {
+    public Long saveItem(SysConfigItemSaveReq req) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
         Long pid = req.getPid() == null ? ROOT_PID : req.getPid();
@@ -92,7 +100,8 @@ public class SysConfigItemService {
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
                                 .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
-                                .eq(SysConfigCategory::getProjectNo, projectNo));
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
         if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
@@ -130,6 +139,7 @@ public class SysConfigItemService {
             }
 
             itemMapper.insert(entity);
+            return entity.getId();
         } else {
             // 编辑
             SysConfigItem existing = itemMapper.selectById(req.getId());
@@ -227,10 +237,10 @@ public class SysConfigItemService {
                                     .in(SysConfigItem::getId, childIds));
                 }
             }
+            return null;
         }
     }
 
-    /** 确定 categoryAlias：如果有父节点，从父节点继承；否则必须指定 */
     private String determineCategoryAlias(SysConfigItemSaveReq req, Long pid, Long subjectId) {
         if (pid != null && !pid.equals(ROOT_PID)) {
             // 有父节点，从父节点继承 categoryAlias
@@ -302,8 +312,13 @@ public class SysConfigItemService {
 
         // 如果传入 categoryId，需要先查询对应的 alias
         if (categoryId != null) {
-            SysConfigCategory category = categoryMapper.selectById(categoryId);
-            if (category == null || !category.getProjectNo().equals(projectNo)) {
+            SysConfigCategory category =
+                    categoryMapper.selectOne(
+                            Wrappers.<SysConfigCategory>lambdaQuery()
+                                    .eq(SysConfigCategory::getId, categoryId)
+                                    .eq(SysConfigCategory::getProjectNo, projectNo)
+                                    .eq(SysConfigCategory::getSubjectId, subjectId));
+            if (category == null) {
                 throw new BusinessException("配置分类不存在");
             }
             categoryAlias = category.getCategoryAlias();

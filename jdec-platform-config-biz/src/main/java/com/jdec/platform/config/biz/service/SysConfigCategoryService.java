@@ -273,7 +273,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
 
     @Transactional
     @Override
-    public void saveCategory(SysConfigCategorySaveReq req) {
+    public Long saveCategory(SysConfigCategorySaveReq req) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
 
@@ -299,6 +299,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             entity.setProjectNo(projectNo);
             entity.setSubjectId(subjectId);
             categoryMapper.insert(entity);
+            return entity.getId();
         } else {
             // 编辑
             boolean exists =
@@ -325,8 +326,10 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         Wrappers.<SysConfigItem>lambdaUpdate()
                                 .set(SysConfigItem::getStatus, 0)
                                 .eq(SysConfigItem::getCategoryAlias, oldEntity.getCategoryAlias())
-                                .eq(SysConfigItem::getProjectNo, projectNo));
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId));
             }
+            return null;
         }
     }
 
@@ -354,7 +357,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                 itemMapper.selectCount(
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
-                                .eq(SysConfigItem::getProjectNo, projectNo));
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId));
         if (!force && itemCount > 0) {
             throw new BusinessException("删除确认：该分类下有 " + itemCount + " 个配置项将被同步删除；请确认后重新请求");
         }
@@ -362,7 +366,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         itemMapper.delete(
                 Wrappers.<SysConfigItem>lambdaQuery()
                         .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
-                        .eq(SysConfigItem::getProjectNo, projectNo));
+                        .eq(SysConfigItem::getProjectNo, projectNo)
+                        .eq(SysConfigItem::getSubjectId, subjectId));
         // 删除分类
         categoryMapper.deleteById(id);
     }
@@ -397,8 +402,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     }
 
     @Override
-    public void saveItem(SysConfigItemSaveReq req) {
-        itemService.saveItem(req);
+    public Long saveItem(SysConfigItemSaveReq req) {
+        return itemService.saveItem(req);
     }
 
     @Override
