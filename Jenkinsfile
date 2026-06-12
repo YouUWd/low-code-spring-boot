@@ -30,7 +30,7 @@ pipeline {
                 script {
                     // 1. 定义关键路径变量
                     //    注意: 这里的 /app 是容器内路径，必须与你第一步中挂载的容器内路径一致
-                    def containerName = 'jdec'
+                    def containerName = 'jdec-setting'
                     def hostDeployDir = '/data/jdec-setting'
                     def containerDeployDir = '/app'
 
