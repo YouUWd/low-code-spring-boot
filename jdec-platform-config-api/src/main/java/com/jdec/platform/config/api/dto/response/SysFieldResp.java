@@ -30,6 +30,9 @@ public class SysFieldResp {
     @Schema(description = "列名")
     private String columnName;
 
+    @Schema(description = "列类型")
+    private String columnType;
+
     @Schema(description = "前端显示名称")
     private String displayName;
 

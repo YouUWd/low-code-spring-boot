@@ -155,10 +155,10 @@ public class SysFieldService implements SysFieldApi {
             String projectNo, Long subjectId, String tableName, String columnName) {
         log.debug("查询项目 {} 主体 {} 表 {} 的完整字段配置列表", projectNo, subjectId, tableName);
 
-        // 1. 获取数据库中该表所有的列名和注释
+        // 1. 获取数据库中该表所有的列名、列类型和注释
         String sql =
                 """
-                                SELECT COLUMN_NAME, COLUMN_COMMENT
+                                SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT
                                 FROM INFORMATION_SCHEMA.COLUMNS
                                 WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
                                 ORDER BY ORDINAL_POSITION
@@ -331,6 +331,7 @@ public class SysFieldService implements SysFieldApi {
                         row -> {
                             String colName = (String) row.get("COLUMN_NAME");
                             String columnComment = (String) row.get("COLUMN_COMMENT");
+                            String columnType = (String) row.get("COLUMN_TYPE");
                             SysField config = configMap.get(colName);
 
                             if (config != null) {
@@ -341,6 +342,7 @@ public class SysFieldService implements SysFieldApi {
                                         .subjectId(subjectId)
                                         .tableName(tableName)
                                         .columnName(colName)
+                                        .columnType(columnType)
                                         .displayName(config.getDisplayName())
                                         .relationBusinessNo(config.getRelationBusinessNo())
                                         .relationName(config.getRelationName())
@@ -359,6 +361,7 @@ public class SysFieldService implements SysFieldApi {
                                         .subjectId(subjectId)
                                         .tableName(tableName)
                                         .columnName(colName)
+                                        .columnType(columnType)
                                         .displayName(
                                                 columnComment != null && !columnComment.isEmpty()
                                                         ? columnComment
@@ -522,12 +525,33 @@ public class SysFieldService implements SysFieldApi {
                                 })
                         .toList();
 
+        String columnType = null;
+        try {
+            String typeSql =
+                    """
+                                    SELECT COLUMN_TYPE
+                                    FROM INFORMATION_SCHEMA.COLUMNS
+                                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?
+                                    """;
+            columnType =
+                    jdbcTemplate.queryForObject(
+                            typeSql, String.class, projectNo, tableName, field.getColumnName());
+        } catch (Exception e) {
+            log.warn(
+                    "获取列类型失败: projectNo={}, tableName={}, columnName={}",
+                    projectNo,
+                    tableName,
+                    field.getColumnName(),
+                    e);
+        }
+
         return SysFieldResp.builder()
                 .id(field.getId())
                 .projectNo(projectNo)
                 .subjectId(subjectId)
                 .tableName(tableName)
                 .columnName(field.getColumnName())
+                .columnType(columnType)
                 .displayName(field.getDisplayName())
                 .relationBusinessNo(field.getRelationBusinessNo())
                 .relationName(field.getRelationName())

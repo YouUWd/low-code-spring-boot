@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -88,6 +89,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setModuleName(module.getModuleName());
         resp.setModuleDesc(module.getModuleDesc());
         resp.setParentId(module.getParentId());
+        resp.setDetailModuleId(module.getDetailModuleId());
         resp.setModuleLevel(module.getModuleLevel());
         resp.setModulePath(module.getModulePath());
         resp.setPrimaryTable(module.getPrimaryTable());
@@ -149,6 +151,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setModuleName(module.getModuleName());
         moduleInfo.setModuleDesc(module.getModuleDesc());
         moduleInfo.setParentId(module.getParentId());
+        moduleInfo.setDetailModuleId(module.getDetailModuleId());
         moduleInfo.setModuleLevel(module.getModuleLevel());
         moduleInfo.setModulePath(module.getModulePath());
         moduleInfo.setPrimaryTable(module.getPrimaryTable());
@@ -187,6 +190,7 @@ public class SysModuleService implements SysModuleApi {
                                     info.setJoinLeftField(t.getJoinLeftField());
                                     info.setJoinRightField(t.getJoinRightField());
                                     info.setRelationType(t.getRelationType());
+                                    info.setReadOnly(t.getReadOnly());
                                     info.setSortOrder(t.getSortOrder());
                                     return info;
                                 })
@@ -330,7 +334,7 @@ public class SysModuleService implements SysModuleApi {
         // 如果 ID 为空则创建新模块，否则编辑现有模块
         if (request.getModule().getId() == null) {
             // 创建新模块
-            module = createOrUpdateModule(projectNo, subjectId, request.getModule());
+            module = createModule(projectNo, subjectId, request.getModule());
             moduleId = module.getId();
         } else {
             moduleId = request.getModule().getId();
@@ -352,6 +356,38 @@ public class SysModuleService implements SysModuleApi {
         }
 
         if (request.getCombineFields() != null) {
+            // 校验：组合字段中映射的表（entity）必须是主表或关联表
+            Set<String> validTables = new HashSet<>();
+            if (StringUtils.hasText(request.getModule().getPrimaryTable())) {
+                validTables.add(request.getModule().getPrimaryTable().toLowerCase().trim());
+            }
+            if (request.getModuleTables() != null) {
+                for (ModuleTableDTO t : request.getModuleTables()) {
+                    if (StringUtils.hasText(t.getTableName())) {
+                        validTables.add(t.getTableName().toLowerCase().trim());
+                    }
+                }
+            }
+
+            for (ModuleCombineFieldDTO cf : request.getCombineFields()) {
+                if (cf.getSourceMapping() != null) {
+                    for (ModuleSourceMappingDTO mapping : cf.getSourceMapping()) {
+                        if (mapping.getEntity() != null) {
+                            String entityTable = mapping.getEntity().toLowerCase().trim();
+                            if (!validTables.contains(entityTable)) {
+                                throw new BusinessException(
+                                        400,
+                                        "组合字段 ["
+                                                + cf.getLogicalField()
+                                                + "] 中的映射物理表 '"
+                                                + mapping.getEntity()
+                                                + "' 必须是该模块的主表或关联表");
+                            }
+                        }
+                    }
+                }
+            }
+
             saveCombineFields(moduleId, request.getCombineFields());
         }
 
@@ -627,11 +663,6 @@ public class SysModuleService implements SysModuleApi {
         SysModule target = sysModuleMapper.selectById(targetId);
         if (target == null) return false;
 
-        String path = target.getModulePath();
-        // path 结构通常为 "PARENT/MODULE"
-        // 简单通过 path 包含关系判断（需注意边界，或在 path 中包含 ID 以提高准确度）
-        // 这里假设 moduleCode 是唯一的，或者 path 中包含模块 ID
-        // 实际上更稳健的方式是递归向上查 parentId
         Long currentId = targetId;
         while (currentId != null && currentId > 0) {
             SysModule current = sysModuleMapper.selectById(currentId);
@@ -680,8 +711,7 @@ public class SysModuleService implements SysModuleApi {
         sysModuleMapper.updateById(partial);
     }
 
-    private SysModule createOrUpdateModule(
-            String projectNo, Long subjectId, SaveSysModuleReq request) {
+    private SysModule createModule(String projectNo, Long subjectId, SaveSysModuleReq request) {
         SysModule module = new SysModule();
         module.setProjectNo(projectNo);
         module.setSubjectId(subjectId);
@@ -689,6 +719,7 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
         module.setParentId(request.getParentId() != null ? request.getParentId() : 0L);
+        module.setDetailModuleId(request.getDetailModuleId());
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
@@ -735,22 +766,7 @@ public class SysModuleService implements SysModuleApi {
             module.setModulePath(module.getModuleCode());
         }
 
-        if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {
-            try {
-                module.setTableHeader(objectMapper.writeValueAsString(request.getTableHeader()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "tableHeader 序列化失败", e);
-            }
-        }
-
-        if (request.getSourceSubjects() != null && !request.getSourceSubjects().isEmpty()) {
-            try {
-                module.setSourceSubjects(
-                        objectMapper.writeValueAsString(request.getSourceSubjects()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "sourceSubjects 序列化失败", e);
-            }
-        }
+        requestToTableHeader(request, module);
 
         LocalDateTime now = LocalDateTime.now();
         module.setCreatedDate(now);
@@ -759,28 +775,144 @@ public class SysModuleService implements SysModuleApi {
         return module;
     }
 
-    private void saveModuleTables(Long moduleId, List<ModuleTableDTO> tables) {
-        // 先删除旧的关联表
-        LambdaQueryWrapper<SysModuleTable> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModuleTable::getModuleId, moduleId);
-        sysModuleTableMapper.delete(wrapper);
+    private void requestToTableHeader(SaveSysModuleReq request, SysModule module) {
+        try {
+            module.setTableHeader(
+                    request.getTableHeader() != null
+                            ? objectMapper.writeValueAsString(request.getTableHeader())
+                            : null);
+        } catch (Exception e) {
+            throw new BusinessException(500, "tableHeader 序列化失败", e);
+        }
 
-        // 重新保存
+        try {
+            module.setSourceSubjects(
+                    request.getSourceSubjects() != null
+                            ? objectMapper.writeValueAsString(request.getSourceSubjects())
+                            : null);
+        } catch (Exception e) {
+            throw new BusinessException(500, "sourceSubjects 序列化失败", e);
+        }
+    }
+
+    private void saveModuleTables(Long moduleId, List<ModuleTableDTO> tables) {
+        // 1. 查询已有的关联表
+        List<SysModuleTable> existTables =
+                sysModuleTableMapper.selectList(
+                        Wrappers.<SysModuleTable>lambdaQuery()
+                                .eq(SysModuleTable::getModuleId, moduleId));
+        Map<Long, SysModuleTable> existTableMap =
+                existTables.stream().collect(Collectors.toMap(SysModuleTable::getId, t -> t));
+
+        // 2. 收集请求中提交的有效 ID
+        Set<Long> keepIds =
+                tables.stream()
+                        .map(ModuleTableDTO::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        // 3. 计算需要删除的关联表
+        List<SysModuleTable> deleteTables =
+                existTables.stream()
+                        .filter(t -> !keepIds.contains(t.getId()))
+                        .collect(Collectors.toList());
+
+        if (!deleteTables.isEmpty()) {
+            List<String> deleteTableNames =
+                    deleteTables.stream()
+                            .map(SysModuleTable::getTableName)
+                            .filter(Objects::nonNull)
+                            .toList();
+
+            if (!deleteTableNames.isEmpty()) {
+                // 级联删除属于这些被删除关联表的简单物理字段及相关权限
+                List<SysModuleField> fieldsToDelete =
+                        sysModuleFieldMapper.selectList(
+                                Wrappers.<SysModuleField>lambdaQuery()
+                                        .eq(SysModuleField::getModuleId, moduleId)
+                                        .eq(SysModuleField::getFieldType, "SIMPLE")
+                                        .in(SysModuleField::getTableName, deleteTableNames));
+                List<Long> deleteFieldIds =
+                        fieldsToDelete.stream().map(SysModuleField::getId).toList();
+                if (!deleteFieldIds.isEmpty()) {
+                    sysModuleFieldMapper.deleteByIds(deleteFieldIds);
+                    cleanFieldReferences(deleteFieldIds);
+                }
+            }
+
+            // 删除关联表记录
+            List<Long> deleteTableIds = deleteTables.stream().map(SysModuleTable::getId).toList();
+            sysModuleTableMapper.deleteByIds(deleteTableIds);
+        }
+
+        // 4. 保存或更新关联表
         for (int i = 0; i < tables.size(); i++) {
             ModuleTableDTO info = tables.get(i);
-            SysModuleTable t = new SysModuleTable();
-            t.setModuleId(moduleId);
+            SysModuleTable t;
+            boolean isUpdate = false;
+            if (info.getId() != null && existTableMap.containsKey(info.getId())) {
+                t = existTableMap.get(info.getId());
+                isUpdate = true;
+            } else {
+                t = new SysModuleTable();
+                t.setModuleId(moduleId);
+                t.setCreatedDate(LocalDateTime.now());
+            }
+            Integer oldReadOnly = t.getReadOnly();
             t.setTableName(info.getTableName());
             t.setTableDesc(info.getTableDesc());
             t.setJoinLeftField(info.getJoinLeftField());
             t.setJoinRightField(info.getJoinRightField());
             t.setRelationType(info.getRelationType());
+            t.setReadOnly(info.getReadOnly());
             t.setSortOrder(info.getSortOrder() != null ? info.getSortOrder() : i);
-            LocalDateTime now = LocalDateTime.now();
-            t.setCreatedDate(now);
-            t.setUpdatedDate(now);
-            sysModuleTableMapper.insert(t);
+            t.setUpdatedDate(LocalDateTime.now());
+
+            if (isUpdate) {
+                // 如果只读属性由非只读变更为只读，重置该关联表字段的可写与更新权限为0
+                if (Objects.equals(info.getReadOnly(), 1) && !Objects.equals(oldReadOnly, 1)) {
+                    resetTableFieldPermissions(moduleId, info.getTableName());
+                }
+                sysModuleTableMapper.updateById(t);
+            } else {
+                sysModuleTableMapper.insert(t);
+            }
         }
+    }
+
+    /** 重置指定模块下的所有字段的角色权限（写和更新权限设为0） */
+    private void resetModuleFieldPermissions(Long moduleId) {
+        SysRoleModuleFieldPermission updatePerm = new SysRoleModuleFieldPermission();
+        updatePerm.setWritable(0);
+        updatePerm.setUpdatable(0);
+        sysRoleModuleFieldPermissionMapper.update(
+                updatePerm,
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
+    }
+
+    /** 重置指定关联表下的所有物理字段的角色权限 */
+    private void resetTableFieldPermissions(Long moduleId, String tableName) {
+        if (tableName == null) {
+            return;
+        }
+        List<SysModuleField> fields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .eq(SysModuleField::getModuleId, moduleId)
+                                .eq(SysModuleField::getFieldType, "SIMPLE")
+                                .eq(SysModuleField::getTableName, tableName));
+        List<Long> fieldIds = fields.stream().map(SysModuleField::getId).toList();
+        if (fieldIds.isEmpty()) {
+            return;
+        }
+        SysRoleModuleFieldPermission updatePerm = new SysRoleModuleFieldPermission();
+        updatePerm.setWritable(0);
+        updatePerm.setUpdatable(0);
+        sysRoleModuleFieldPermissionMapper.update(
+                updatePerm,
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .in(SysRoleModuleFieldPermission::getFieldId, fieldIds));
     }
 
     /** 清理字段的外部业务表引用关系（级联清理） */
@@ -825,7 +957,7 @@ public class SysModuleService implements SysModuleApi {
                         .collect(Collectors.toList());
 
         if (!deleteIds.isEmpty()) {
-            sysModuleFieldMapper.deleteBatchIds(deleteIds);
+            sysModuleFieldMapper.deleteByIds(deleteIds);
             // 级联清理角色权限表与微信参数表的引用
             cleanFieldReferences(deleteIds);
         }
@@ -878,7 +1010,7 @@ public class SysModuleService implements SysModuleApi {
                         .collect(Collectors.toList());
 
         if (!deleteIds.isEmpty()) {
-            sysModuleFieldMapper.deleteBatchIds(deleteIds);
+            sysModuleFieldMapper.deleteByIds(deleteIds);
             // 级联清理角色权限表与微信参数表的引用
             cleanFieldReferences(deleteIds);
         }
@@ -938,25 +1070,14 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
         module.setRelateSearchField(request.getRelateSearchField());
-
+        module.setDetailModuleId(request.getDetailModuleId());
+        // 如果配置了数据来源主体或者，或者模块类型为LIST，则将该模块下所有角色的字段写和更新权限设为0
+        if (convertToModuleTypeEnum(request.getModuleType()).equals(ModuleTypeEnum.LIST)
+                || CollectionUtil.isNotEmpty(request.getSourceSubjects())) {
+            resetModuleFieldPermissions(module.getId());
+        }
         // 更新 tableHeader
-        if (request.getTableHeader() != null && !request.getTableHeader().isEmpty()) {
-            try {
-                module.setTableHeader(objectMapper.writeValueAsString(request.getTableHeader()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "tableHeader 序列化失败", e);
-            }
-        }
-
-        // 更新 sourceSubjects
-        if (request.getSourceSubjects() != null && !request.getSourceSubjects().isEmpty()) {
-            try {
-                module.setSourceSubjects(
-                        objectMapper.writeValueAsString(request.getSourceSubjects()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "sourceSubjects 序列化失败", e);
-            }
-        }
+        requestToTableHeader(request, module);
 
         module.setUpdatedDate(LocalDateTime.now());
     }

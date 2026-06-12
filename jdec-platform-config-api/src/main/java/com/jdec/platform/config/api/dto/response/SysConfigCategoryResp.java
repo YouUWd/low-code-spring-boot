@@ -34,4 +34,7 @@ public class SysConfigCategoryResp {
 
     @Schema(description = "应用编码")
     private String projectNo;
+
+    @Schema(description = "主体ID，0表示全局")
+    private Long subjectId;
 }

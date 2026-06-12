@@ -70,7 +70,7 @@ public class SysStatusService implements SysStatusApi {
 
     @Transactional
     @Override
-    public void saveStatus(SysStatusSaveReq req) {
+    public Long saveStatus(SysStatusSaveReq req) {
         if (req.getId() == null) {
             // 新增
             SysStatus entity = new SysStatus();
@@ -94,6 +94,7 @@ public class SysStatusService implements SysStatusApi {
             // 处理排序值
             handleSortOrderForInsert(entity);
             sysStatusMapper.insert(entity);
+            return entity.getId();
         } else {
             // 编辑
             boolean exists =
@@ -156,6 +157,7 @@ public class SysStatusService implements SysStatusApi {
                     sysStatusMapper.update(null, updateWrapper);
                 }
             }
+            return null;
         }
     }
 

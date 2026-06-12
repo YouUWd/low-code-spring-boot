@@ -39,9 +39,11 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     @Override
     public List<SysConfigCategoryResp> list() {
         String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         LambdaQueryWrapper<SysConfigCategory> wrapper =
                 new LambdaQueryWrapper<SysConfigCategory>()
                         .eq(SysConfigCategory::getProjectNo, projectNo)
+                        .eq(SysConfigCategory::getSubjectId, subjectId)
                         .orderByAsc(SysConfigCategory::getSort)
                         .orderByAsc(SysConfigCategory::getId);
         List<SysConfigCategory> list = categoryMapper.selectList(wrapper);
@@ -67,6 +69,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         LambdaQueryWrapper<SysConfigCategory> categoryWrapper =
                 new LambdaQueryWrapper<SysConfigCategory>()
                         .eq(SysConfigCategory::getProjectNo, projectNo)
+                        .eq(SysConfigCategory::getSubjectId, subjectId)
                         .orderByAsc(SysConfigCategory::getSort)
                         .orderByAsc(SysConfigCategory::getId);
         List<SysConfigCategory> categories = categoryMapper.selectList(categoryWrapper);
@@ -85,6 +88,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .in(SysConfigItem::getCategoryAlias, categoryAliases)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .orderByAsc(SysConfigItem::getSort)
                                 .orderByAsc(SysConfigItem::getId));
 
@@ -101,6 +105,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         LambdaQueryWrapper<SysConfigCategory> categoryWrapper =
                 new LambdaQueryWrapper<SysConfigCategory>()
                         .eq(SysConfigCategory::getProjectNo, projectNo)
+                        .eq(SysConfigCategory::getSubjectId, subjectId)
                         .orderByAsc(SysConfigCategory::getSort)
                         .orderByAsc(SysConfigCategory::getId);
         List<SysConfigCategory> categories = categoryMapper.selectList(categoryWrapper);
@@ -119,6 +124,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .in(SysConfigItem::getCategoryAlias, categoryAliases)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .orderByAsc(SysConfigItem::getSort)
                                 .orderByAsc(SysConfigItem::getId));
 
@@ -250,11 +256,13 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     @Override
     public SysConfigCategoryResp getByCategoryAlias(String categoryAlias) {
         String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         SysConfigCategory entity =
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
                                 .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
-                                .eq(SysConfigCategory::getProjectNo, projectNo));
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
         if (entity == null) {
             return null;
         }
@@ -265,8 +273,9 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
 
     @Transactional
     @Override
-    public void saveCategory(SysConfigCategorySaveReq req) {
+    public Long saveCategory(SysConfigCategorySaveReq req) {
         String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
 
         // 校验：name 和 alias 不能为空
         if (req.getLabel() == null || req.getLabel().trim().isEmpty()) {
@@ -284,23 +293,26 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         if (req.getId() == null) {
             // 新增
             // 校验 categoryAlias 是否重复
-            checkDuplicateAlias(req.getCategoryAlias(), projectNo, null);
+            checkDuplicateAlias(req.getCategoryAlias(), projectNo, subjectId, null);
             SysConfigCategory entity = new SysConfigCategory();
             BeanUtils.copyProperties(req, entity);
             entity.setProjectNo(projectNo);
+            entity.setSubjectId(subjectId);
             categoryMapper.insert(entity);
+            return entity.getId();
         } else {
             // 编辑
             boolean exists =
                     categoryMapper.exists(
                             Wrappers.<SysConfigCategory>lambdaQuery()
                                     .eq(SysConfigCategory::getId, req.getId())
-                                    .eq(SysConfigCategory::getProjectNo, projectNo));
+                                    .eq(SysConfigCategory::getProjectNo, projectNo)
+                                    .eq(SysConfigCategory::getSubjectId, subjectId));
             if (!exists) {
                 throw new BusinessException("配置分类不存在");
             }
             // 校验 categoryAlias 是否重复
-            checkDuplicateAlias(req.getCategoryAlias(), projectNo, req.getId());
+            checkDuplicateAlias(req.getCategoryAlias(), projectNo, subjectId, req.getId());
             SysConfigCategory oldEntity = categoryMapper.selectById(req.getId());
             SysConfigCategory entity = new SysConfigCategory();
             BeanUtils.copyProperties(req, entity);
@@ -313,8 +325,11 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         null,
                         Wrappers.<SysConfigItem>lambdaUpdate()
                                 .set(SysConfigItem::getStatus, 0)
-                                .eq(SysConfigItem::getCategoryAlias, oldEntity.getCategoryAlias()));
+                                .eq(SysConfigItem::getCategoryAlias, oldEntity.getCategoryAlias())
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId));
             }
+            return null;
         }
     }
 
@@ -322,11 +337,13 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     @Override
     public void deleteCategory(Long id, boolean force) {
         String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         boolean exists =
                 categoryMapper.exists(
                         Wrappers.<SysConfigCategory>lambdaQuery()
                                 .eq(SysConfigCategory::getId, id)
-                                .eq(SysConfigCategory::getProjectNo, projectNo));
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
         if (!exists) {
             throw new BusinessException("配置分类不存在");
         }
@@ -339,24 +356,30 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         long itemCount =
                 itemMapper.selectCount(
                         Wrappers.<SysConfigItem>lambdaQuery()
-                                .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias()));
+                                .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId));
         if (!force && itemCount > 0) {
             throw new BusinessException("删除确认：该分类下有 " + itemCount + " 个配置项将被同步删除；请确认后重新请求");
         }
         // 级联删除配置项（通过 categoryAlias）
         itemMapper.delete(
                 Wrappers.<SysConfigItem>lambdaQuery()
-                        .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias()));
+                        .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
+                        .eq(SysConfigItem::getProjectNo, projectNo)
+                        .eq(SysConfigItem::getSubjectId, subjectId));
         // 删除分类
         categoryMapper.deleteById(id);
     }
 
     /** 校验 categoryAlias 是否重复 */
-    private void checkDuplicateAlias(String alias, String projectNo, Long excludeId) {
+    private void checkDuplicateAlias(
+            String alias, String projectNo, Long subjectId, Long excludeId) {
         LambdaQueryWrapper<SysConfigCategory> wrapper =
                 new LambdaQueryWrapper<SysConfigCategory>()
                         .eq(SysConfigCategory::getCategoryAlias, alias)
-                        .eq(SysConfigCategory::getProjectNo, projectNo);
+                        .eq(SysConfigCategory::getProjectNo, projectNo)
+                        .eq(SysConfigCategory::getSubjectId, subjectId);
         if (excludeId != null) {
             wrapper.ne(SysConfigCategory::getId, excludeId);
         }
@@ -379,8 +402,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     }
 
     @Override
-    public void saveItem(SysConfigItemSaveReq req) {
-        itemService.saveItem(req);
+    public Long saveItem(SysConfigItemSaveReq req) {
+        return itemService.saveItem(req);
     }
 
     @Override

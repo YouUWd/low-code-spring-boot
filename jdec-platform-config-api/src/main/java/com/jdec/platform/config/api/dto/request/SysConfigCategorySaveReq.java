@@ -31,4 +31,7 @@ public class SysConfigCategorySaveReq {
 
     @Schema(description = "1启用 0禁用")
     private Integer status;
+
+    @Schema(description = "主体ID，0表示全局")
+    private Long subjectId;
 }

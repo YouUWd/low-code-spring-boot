@@ -39,8 +39,14 @@ public class SysConfigItemService {
      */
     public List<SysConfigItemTreeResp> getItemsByCategory(Long categoryId) {
         String projectNo = AppContext.getProjectNo();
-        SysConfigCategory category = categoryMapper.selectById(categoryId);
-        if (category == null || !category.getProjectNo().equals(projectNo)) {
+        Long subjectId = AppContext.getSubjectId();
+        SysConfigCategory category =
+                categoryMapper.selectOne(
+                        Wrappers.<SysConfigCategory>lambdaQuery()
+                                .eq(SysConfigCategory::getId, categoryId)
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
+        if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
 
@@ -55,11 +61,13 @@ public class SysConfigItemService {
      */
     public List<SysConfigItemTreeResp> getItemsByCategoryAlias(String categoryAlias) {
         String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
         SysConfigCategory category =
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
                                 .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
-                                .eq(SysConfigCategory::getProjectNo, projectNo));
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
         if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
@@ -73,7 +81,7 @@ public class SysConfigItemService {
     }
 
     @Transactional
-    public void saveItem(SysConfigItemSaveReq req) {
+    public Long saveItem(SysConfigItemSaveReq req) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
         Long pid = req.getPid() == null ? ROOT_PID : req.getPid();
@@ -92,13 +100,14 @@ public class SysConfigItemService {
                 categoryMapper.selectOne(
                         Wrappers.<SysConfigCategory>lambdaQuery()
                                 .eq(SysConfigCategory::getCategoryAlias, categoryAlias)
-                                .eq(SysConfigCategory::getProjectNo, projectNo));
+                                .eq(SysConfigCategory::getProjectNo, projectNo)
+                                .eq(SysConfigCategory::getSubjectId, subjectId));
         if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
 
         // 校验：同一分类下，同一父节点下，label 不能重复
-        checkDuplicateLabel(categoryAlias, pid, req.getLabel(), subjectId, req.getId());
+        checkDuplicateLabel(categoryAlias, pid, req.getLabel(), subjectId, projectNo, req.getId());
 
         if (req.getId() == null) {
             // 新增
@@ -106,6 +115,7 @@ public class SysConfigItemService {
             BeanUtils.copyProperties(req, entity);
             entity.setCategoryAlias(categoryAlias);
             entity.setSubjectId(subjectId);
+            entity.setProjectNo(projectNo);
             calculatePathAndDepth(entity, pid);
 
             // 处理排序值
@@ -129,10 +139,13 @@ public class SysConfigItemService {
             }
 
             itemMapper.insert(entity);
+            return entity.getId();
         } else {
             // 编辑
             SysConfigItem existing = itemMapper.selectById(req.getId());
-            if (existing == null || !existing.getSubjectId().equals(subjectId)) {
+            if (existing == null
+                    || !existing.getSubjectId().equals(subjectId)
+                    || !existing.getProjectNo().equals(projectNo)) {
                 throw new BusinessException("配置项不存在");
             }
             if (req.getId().equals(pid)) {
@@ -153,6 +166,7 @@ public class SysConfigItemService {
             SysConfigItem entity = new SysConfigItem();
             BeanUtils.copyProperties(req, entity);
             entity.setCategoryAlias(categoryAlias);
+            entity.setProjectNo(projectNo);
             calculatePathAndDepth(entity, pid);
 
             // 处理排序值
@@ -223,10 +237,10 @@ public class SysConfigItemService {
                                     .in(SysConfigItem::getId, childIds));
                 }
             }
+            return null;
         }
     }
 
-    /** 确定 categoryAlias：如果有父节点，从父节点继承；否则必须指定 */
     private String determineCategoryAlias(SysConfigItemSaveReq req, Long pid, Long subjectId) {
         if (pid != null && !pid.equals(ROOT_PID)) {
             // 有父节点，从父节点继承 categoryAlias
@@ -246,13 +260,19 @@ public class SysConfigItemService {
 
     /** 校验同一分类下、同一父节点下，label 是否重复 */
     private void checkDuplicateLabel(
-            String categoryAlias, Long pid, String label, Long subjectId, Long excludeId) {
+            String categoryAlias,
+            Long pid,
+            String label,
+            Long subjectId,
+            String projectNo,
+            Long excludeId) {
         LambdaQueryWrapper<SysConfigItem> wrapper =
                 new LambdaQueryWrapper<SysConfigItem>()
                         .eq(SysConfigItem::getCategoryAlias, categoryAlias)
                         .eq(SysConfigItem::getPid, pid)
                         .eq(SysConfigItem::getLabel, label)
-                        .eq(SysConfigItem::getSubjectId, subjectId);
+                        .eq(SysConfigItem::getSubjectId, subjectId)
+                        .eq(SysConfigItem::getProjectNo, projectNo);
         if (excludeId != null) {
             wrapper.ne(SysConfigItem::getId, excludeId);
         }
@@ -265,8 +285,11 @@ public class SysConfigItemService {
     @Transactional
     public void deleteItem(Long id, boolean force) {
         Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
         SysConfigItem item = itemMapper.selectById(id);
-        if (item == null || !item.getSubjectId().equals(subjectId)) {
+        if (item == null
+                || !item.getSubjectId().equals(subjectId)
+                || !item.getProjectNo().equals(projectNo)) {
             throw new BusinessException("配置项不存在");
         }
         Set<Long> childIds = collectChildrenIds(id, subjectId);
@@ -289,8 +312,13 @@ public class SysConfigItemService {
 
         // 如果传入 categoryId，需要先查询对应的 alias
         if (categoryId != null) {
-            SysConfigCategory category = categoryMapper.selectById(categoryId);
-            if (category == null || !category.getProjectNo().equals(projectNo)) {
+            SysConfigCategory category =
+                    categoryMapper.selectOne(
+                            Wrappers.<SysConfigCategory>lambdaQuery()
+                                    .eq(SysConfigCategory::getId, categoryId)
+                                    .eq(SysConfigCategory::getProjectNo, projectNo)
+                                    .eq(SysConfigCategory::getSubjectId, subjectId));
+            if (category == null) {
                 throw new BusinessException("配置分类不存在");
             }
             categoryAlias = category.getCategoryAlias();
@@ -302,6 +330,7 @@ public class SysConfigItemService {
                 new LambdaQueryWrapper<SysConfigItem>()
                         .eq(SysConfigItem::getCategoryAlias, categoryAlias)
                         .eq(SysConfigItem::getSubjectId, subjectId)
+                        .eq(SysConfigItem::getProjectNo, projectNo)
                         .orderByAsc(SysConfigItem::getSort)
                         .orderByAsc(SysConfigItem::getId);
         return itemMapper.selectList(wrapper);
@@ -404,13 +433,16 @@ public class SysConfigItemService {
     @Transactional
     public void dragItem(SysConfigItemDragReq req) {
         Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
         Long dragId = req.getDragId();
         Long targetPid = req.getTargetPid() == null ? ROOT_PID : req.getTargetPid();
         Integer targetSort = req.getTargetSort();
 
         // 校验：被拖拽节点必须存在
         SysConfigItem dragItem = itemMapper.selectById(dragId);
-        if (dragItem == null || !dragItem.getSubjectId().equals(subjectId)) {
+        if (dragItem == null
+                || !dragItem.getSubjectId().equals(subjectId)
+                || !dragItem.getProjectNo().equals(projectNo)) {
             throw new BusinessException("被拖拽的配置项不存在");
         }
 
@@ -422,7 +454,9 @@ public class SysConfigItemService {
         // 校验：目标父节点必须是 item（不能是 category）
         if (!targetPid.equals(ROOT_PID)) {
             SysConfigItem targetParent = itemMapper.selectById(targetPid);
-            if (targetParent == null || !targetParent.getSubjectId().equals(subjectId)) {
+            if (targetParent == null
+                    || !targetParent.getSubjectId().equals(subjectId)
+                    || !targetParent.getProjectNo().equals(projectNo)) {
                 throw new BusinessException("目标父节点不存在");
             }
 

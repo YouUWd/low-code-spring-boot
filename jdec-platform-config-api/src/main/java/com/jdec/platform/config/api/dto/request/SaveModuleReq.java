@@ -58,6 +58,10 @@ public class SaveModuleReq {
         @Schema(description = "父模块ID（NULL表示根模块）", example = "1")
         private Long parentId;
 
+        /** 详情模块 ID */
+        @Schema(description = "详情模块ID", example = "2")
+        private Long detailModuleId;
+
         /** 主表名称，folder 类型可为空 */
         @Schema(description = "主表名称", example = "student")
         private String primaryTable;

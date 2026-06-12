@@ -25,6 +25,18 @@ public class RoleUserReq {
     @Schema(description = "用户类型 1-内部用户 2-外部用户", example = "1")
     private Integer userType;
 
+    @Schema(description = "用户名称", example = "张三")
+    private String userName;
+
+    @Schema(description = "用户头像")
+    private String userAvatar;
+
+    @Schema(description = "用户工号", example = "EMP001")
+    private String workNumber;
+
+    @Schema(description = "性别 1-男 2-女", example = "1")
+    private Integer sex;
+
     @Schema(description = "有效期开始", example = "2026-01-01")
     private LocalDate effectiveStartDate;
 

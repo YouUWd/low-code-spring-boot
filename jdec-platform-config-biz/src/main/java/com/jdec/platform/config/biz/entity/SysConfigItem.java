@@ -46,6 +46,10 @@ public class SysConfigItem implements Serializable {
     @Schema(description = "1启用 0禁用")
     private Integer status;
 
+    @Schema(description = "应用编码")
+    @TableField(fill = FieldFill.INSERT)
+    private String projectNo;
+
     @Schema(description = "主体ID，0=不区分主体/全局")
     private Long subjectId;
 

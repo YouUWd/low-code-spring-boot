@@ -3,14 +3,17 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
+import com.jdec.platform.config.api.constant.ConfigConstants;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
+import com.jdec.platform.config.biz.entity.SysModuleTable;
 import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleTableMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -31,6 +34,7 @@ import org.springframework.stereotype.Service;
 public class SysModuleFieldPermissionService implements SysModuleFieldPermissionApi {
 
     private final SysModuleMapper sysModuleMapper;
+    private final SysModuleTableMapper sysModuleTableMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysFieldMapper sysFieldMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
@@ -55,6 +59,21 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
 
         List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
 
+        // 2.2 批量拉取所有关联表的 readOnly 属性并构建 Map: moduleId -> (tableName -> readOnly)
+        LambdaQueryWrapper<SysModuleTable> moduleTableWrapper = new LambdaQueryWrapper<>();
+        moduleTableWrapper.in(SysModuleTable::getModuleId, moduleIds);
+        List<SysModuleTable> moduleTables = sysModuleTableMapper.selectList(moduleTableWrapper);
+        Map<Long, Map<String, Integer>> moduleTableReadOnlyMap =
+                moduleTables.stream()
+                        .filter(t -> t.getTableName() != null)
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysModuleTable::getModuleId,
+                                        Collectors.toMap(
+                                                t -> t.getTableName().toLowerCase(),
+                                                t -> t.getReadOnly() != null ? t.getReadOnly() : 0,
+                                                (v1, v2) -> v1)));
+
         // 2. 批量拉取所有模块下关联的字段配置
         LambdaQueryWrapper<SysModuleField> fieldWrapper = new LambdaQueryWrapper<>();
         fieldWrapper.in(SysModuleField::getModuleId, moduleIds);
@@ -62,13 +81,15 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
 
         // 3. 内存分流简单物理字段与复合组合字段
         List<SysModuleField> simpleFields =
-                allFields.stream().filter(f -> "SIMPLE".equals(f.getFieldType())).toList();
+                allFields.stream()
+                        .filter(f -> ConfigConstants.FIELD_TYPE_SIMPLE.equals(f.getFieldType()))
+                        .toList();
 
         List<SysModuleField> combineFields =
                 allFields.stream()
                         .filter(
                                 f ->
-                                        "COMBINE".equals(f.getFieldType())
+                                        ConfigConstants.FIELD_TYPE_COMBINE.equals(f.getFieldType())
                                                 && Integer.valueOf(1).equals(f.getEnabled()))
                         .sorted(Comparator.comparing(SysModuleField::getId))
                         .toList();
@@ -180,6 +201,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                     dto.setModuleId(m.getId());
                                     dto.setModuleName(m.getModuleName());
                                     dto.setModuleCode(m.getModuleCode());
+                                    dto.setModuleType(m.getModuleType());
                                     dto.setSourceSubjects(m.getSourceSubjects());
                                     dto.setChildren(new ArrayList<>());
 
@@ -193,11 +215,13 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                     // 装配模块下的表和字段（单路，免克隆和权限判定）
                                     dto.setTables(
                                             buildTableTree(
+                                                    m.getId(),
                                                     sFields,
                                                     cFields,
                                                     tableCommentMap,
                                                     physicalColumnCommentMap,
-                                                    translationMap));
+                                                    translationMap,
+                                                    moduleTableReadOnlyMap));
 
                                     return dto;
                                 })
@@ -227,11 +251,13 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
     }
 
     private List<ModuleTableTreeResp> buildTableTree(
+            Long moduleId,
             List<SysModuleField> sfields,
             List<SysModuleField> cfields,
             Map<String, String> tableCommentMap,
             Map<String, Map<String, String>> physicalColumnCommentMap,
-            Map<String, Map<String, String>> translationMap) {
+            Map<String, Map<String, String>> translationMap,
+            Map<Long, Map<String, Integer>> moduleTableReadOnlyMap) {
 
         List<ModuleTableTreeResp> tablesList = new ArrayList<>();
 
@@ -246,7 +272,13 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         for (String tableName : orderedTables) {
             ModuleTableTreeResp tableResp = new ModuleTableTreeResp();
             tableResp.setTableName(tableName);
-            tableResp.setTableType("SIMPLE");
+            tableResp.setTableType(ConfigConstants.TABLE_TYPE_SIMPLE);
+            Map<String, Integer> readOnlyMap = moduleTableReadOnlyMap.get(moduleId);
+            Integer readOnly =
+                    (readOnlyMap != null)
+                            ? readOnlyMap.getOrDefault(tableName.toLowerCase(), 0)
+                            : 0;
+            tableResp.setReadOnly(readOnly);
 
             String tComment = tableCommentMap.get(tableName.toLowerCase());
             tableResp.setTableDesc(
@@ -286,9 +318,10 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         // 装配虚拟复合表及字段
         if (!cfields.isEmpty()) {
             ModuleTableTreeResp combineTableResp = new ModuleTableTreeResp();
-            combineTableResp.setTableName("*");
-            combineTableResp.setTableDesc("组合字段");
-            combineTableResp.setTableType("COMBINE");
+            combineTableResp.setTableName(ConfigConstants.TABLE_NAME_COMBINE);
+            combineTableResp.setTableDesc(ConfigConstants.TABLE_DESC_COMBINE);
+            combineTableResp.setTableType(ConfigConstants.TABLE_TYPE_COMBINE);
+            combineTableResp.setReadOnly(0);
 
             List<ModuleFieldTreeResp> fields = new ArrayList<>();
             for (SysModuleField cf : cfields) {
@@ -333,12 +366,14 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                 .eq(SysModuleField::getModuleId, moduleId));
 
         List<SysModuleField> sfields =
-                allFields.stream().filter(f -> "SIMPLE".equals(f.getFieldType())).toList();
+                allFields.stream()
+                        .filter(f -> ConfigConstants.FIELD_TYPE_SIMPLE.equals(f.getFieldType()))
+                        .toList();
         List<SysModuleField> cfields =
                 allFields.stream()
                         .filter(
                                 f ->
-                                        "COMBINE".equals(f.getFieldType())
+                                        ConfigConstants.FIELD_TYPE_COMBINE.equals(f.getFieldType())
                                                 && Integer.valueOf(1).equals(f.getEnabled()))
                         .toList();
 
@@ -455,7 +490,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         for (String tableName : orderedTables) {
             PermissionTableGroupResp tableResp = new PermissionTableGroupResp();
             tableResp.setTableName(tableName);
-            tableResp.setTableType("SIMPLE");
+            tableResp.setTableType(ConfigConstants.TABLE_TYPE_SIMPLE);
             String tComment = tableCommentMap.get(tableName.toLowerCase());
             tableResp.setTableDesc(
                     (tComment != null && !tComment.isEmpty()) ? tComment : tableName);
@@ -516,9 +551,9 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         // B. 装配虚拟组合表
         if (!cfields.isEmpty()) {
             PermissionTableGroupResp combineTableResp = new PermissionTableGroupResp();
-            combineTableResp.setTableName("virtual_combine");
-            combineTableResp.setTableDesc("组合字段");
-            combineTableResp.setTableType("COMBINE");
+            combineTableResp.setTableName(ConfigConstants.TABLE_NAME_COMBINE);
+            combineTableResp.setTableDesc(ConfigConstants.TABLE_DESC_COMBINE);
+            combineTableResp.setTableType(ConfigConstants.TABLE_TYPE_COMBINE);
 
             List<PermissionFieldInfo> readableFields = new ArrayList<>();
             List<PermissionFieldInfo> writableFields = new ArrayList<>();

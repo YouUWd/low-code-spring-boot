@@ -1,16 +1,8 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.dto.request.SaveRoleDataPermissionReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleInteractionPermissionReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleModuleFieldPermissionReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleSpecialPermissionReq;
-import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
-import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
-import com.jdec.platform.config.api.dto.response.RoleMenuResp;
-import com.jdec.platform.config.api.dto.response.RoleModuleFieldPermissionResp;
-import com.jdec.platform.config.api.dto.response.RoleSpecialPermissionResp;
+import com.jdec.platform.config.api.dto.request.*;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,7 +33,8 @@ public class SysRolePermissionController {
     @Operation(summary = "根据菜单分类查询角色菜单", description = "根据角色ID和菜单分类查询该角色关联的菜单列表")
     public ApiResponse<List<RoleMenuResp>> getRoleMenuByCategory(
             @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
-            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单", example = "1") @RequestParam
+            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单", example = "1")
+                    @RequestParam(required = false)
                     Integer category) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();

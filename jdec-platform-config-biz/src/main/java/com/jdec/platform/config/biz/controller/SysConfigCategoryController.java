@@ -58,10 +58,9 @@ public class SysConfigCategoryController {
     }
 
     @PostMapping("/save")
-    @Operation(summary = "新增/编辑配置分类", description = "id为空则新增，不为空则修改")
-    public ApiResponse<Void> save(@RequestBody SysConfigCategorySaveReq request) {
-        sysConfigCategoryApi.saveCategory(request);
-        return ApiResponse.success();
+    @Operation(summary = "新增/编辑配置分类", description = "id为空则新增，不为空则修改；新增时返回新记录ID")
+    public ApiResponse<Long> save(@RequestBody SysConfigCategorySaveReq request) {
+        return ApiResponse.success(sysConfigCategoryApi.saveCategory(request));
     }
 
     @DeleteMapping("/{id}")
@@ -95,10 +94,9 @@ public class SysConfigCategoryController {
     }
 
     @PostMapping("/item/save")
-    @Operation(summary = "新增/编辑配置项", description = "id为空则新增，不为空则修改")
-    public ApiResponse<Void> saveItem(@RequestBody SysConfigItemSaveReq request) {
-        sysConfigCategoryApi.saveItem(request);
-        return ApiResponse.success();
+    @Operation(summary = "新增/编辑配置项", description = "id为空则新增，不为空则修改；新增时返回新记录ID")
+    public ApiResponse<Long> saveItem(@RequestBody SysConfigItemSaveReq request) {
+        return ApiResponse.success(sysConfigCategoryApi.saveItem(request));
     }
 
     @DeleteMapping("/item/{id}")

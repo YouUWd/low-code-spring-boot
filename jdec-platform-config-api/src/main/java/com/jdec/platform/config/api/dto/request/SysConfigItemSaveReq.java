@@ -37,4 +37,7 @@ public class SysConfigItemSaveReq {
 
     @Schema(description = "1启用 0禁用")
     private Integer status;
+
+    @Schema(description = "应用编码")
+    private String projectNo;
 }

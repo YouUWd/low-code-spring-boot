@@ -21,6 +21,9 @@ public class RoleUserResp {
     @Schema(description = "用户工号")
     private String workNumber;
 
+    @Schema(description = "性别 1-男 2-女")
+    private Integer sex;
+
     @Schema(description = "有效期类型：1-永久，2-自定义")
     private Integer effectiveType;
 

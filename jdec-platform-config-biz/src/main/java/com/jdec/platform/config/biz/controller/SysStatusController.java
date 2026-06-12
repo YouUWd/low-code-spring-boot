@@ -32,10 +32,9 @@ public class SysStatusController {
     }
 
     @PostMapping("/save")
-    @Operation(summary = "新增/编辑状态", description = "id为空则新增，不为空则修改")
-    public ApiResponse<Void> save(@RequestBody SysStatusSaveReq request) {
-        sysStatusApi.saveStatus(request);
-        return ApiResponse.success();
+    @Operation(summary = "新增/编辑状态", description = "id为空则新增，不为空则修改；新增时返回新记录ID")
+    public ApiResponse<Long> save(@RequestBody SysStatusSaveReq request) {
+        return ApiResponse.success(sysStatusApi.saveStatus(request));
     }
 
     @DeleteMapping("/{id}")
