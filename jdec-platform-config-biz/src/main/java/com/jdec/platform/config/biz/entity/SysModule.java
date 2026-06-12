@@ -31,6 +31,9 @@ public class SysModule {
     /** 父模块 ID */
     private Long parentId;
 
+    /** 详情模块 ID */
+    private Long detailModuleId;
+
     /** 模块层级 */
     private Integer moduleLevel;
 

@@ -9,6 +9,9 @@ public class UpdateSysModuleReq {
     /** 模块 ID */
     private Long id;
 
+    /** 详情模块 ID */
+    private Long detailModuleId;
+
     /** 模块名称 */
     private String moduleName;
 

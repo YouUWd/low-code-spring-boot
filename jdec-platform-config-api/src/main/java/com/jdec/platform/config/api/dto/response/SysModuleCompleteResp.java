@@ -57,6 +57,9 @@ public class SysModuleCompleteResp {
         @Schema(description = "父模块ID", example = "1")
         private Long parentId;
 
+        @Schema(description = "详情模块ID", example = "2")
+        private Long detailModuleId;
+
         @Schema(description = "模块层级", example = "1")
         private Integer moduleLevel;
 

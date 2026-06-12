@@ -20,6 +20,9 @@ public class SysModuleTreeResp {
     /** 模块类型: LIST-列表, DETAIL-详情 */
     private ModuleTypeEnum moduleType;
 
+    /** 详情模块 ID */
+    private Long detailModuleId;
+
     /** 是否启用审批: 0-否, 1-是 */
     private Integer approvalRequired;
 

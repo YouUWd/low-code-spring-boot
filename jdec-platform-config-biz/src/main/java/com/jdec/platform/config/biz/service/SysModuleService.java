@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -88,6 +89,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setModuleName(module.getModuleName());
         resp.setModuleDesc(module.getModuleDesc());
         resp.setParentId(module.getParentId());
+        resp.setDetailModuleId(module.getDetailModuleId());
         resp.setModuleLevel(module.getModuleLevel());
         resp.setModulePath(module.getModulePath());
         resp.setPrimaryTable(module.getPrimaryTable());
@@ -149,6 +151,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setModuleName(module.getModuleName());
         moduleInfo.setModuleDesc(module.getModuleDesc());
         moduleInfo.setParentId(module.getParentId());
+        moduleInfo.setDetailModuleId(module.getDetailModuleId());
         moduleInfo.setModuleLevel(module.getModuleLevel());
         moduleInfo.setModulePath(module.getModulePath());
         moduleInfo.setPrimaryTable(module.getPrimaryTable());
@@ -392,17 +395,6 @@ public class SysModuleService implements SysModuleApi {
         if (ModuleTypeEnum.DETAIL == module.getModuleType()
                 && request.getModuleStatuses() != null) {
             saveModuleStatuses(moduleId, request.getModuleStatuses());
-        }
-
-        // 如果配置了数据来源主体，则将该模块下所有角色的字段写和更新权限设为0
-        if (request.getModule().getSourceSubjects() != null) {
-            SysRoleModuleFieldPermission updatePerm = new SysRoleModuleFieldPermission();
-            updatePerm.setWritable(0);
-            updatePerm.setUpdatable(0);
-            sysRoleModuleFieldPermissionMapper.update(
-                    updatePerm,
-                    Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                            .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
         }
 
         return moduleId;
@@ -671,11 +663,6 @@ public class SysModuleService implements SysModuleApi {
         SysModule target = sysModuleMapper.selectById(targetId);
         if (target == null) return false;
 
-        String path = target.getModulePath();
-        // path 结构通常为 "PARENT/MODULE"
-        // 简单通过 path 包含关系判断（需注意边界，或在 path 中包含 ID 以提高准确度）
-        // 这里假设 moduleCode 是唯一的，或者 path 中包含模块 ID
-        // 实际上更稳健的方式是递归向上查 parentId
         Long currentId = targetId;
         while (currentId != null && currentId > 0) {
             SysModule current = sysModuleMapper.selectById(currentId);
@@ -732,6 +719,7 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
         module.setParentId(request.getParentId() != null ? request.getParentId() : 0L);
+        module.setDetailModuleId(request.getDetailModuleId());
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
@@ -778,6 +766,16 @@ public class SysModuleService implements SysModuleApi {
             module.setModulePath(module.getModuleCode());
         }
 
+        requestToTableHeader(request, module);
+
+        LocalDateTime now = LocalDateTime.now();
+        module.setCreatedDate(now);
+        module.setUpdatedDate(now);
+        sysModuleMapper.insert(module);
+        return module;
+    }
+
+    private void requestToTableHeader(SaveSysModuleReq request, SysModule module) {
         try {
             module.setTableHeader(
                     request.getTableHeader() != null
@@ -795,12 +793,6 @@ public class SysModuleService implements SysModuleApi {
         } catch (Exception e) {
             throw new BusinessException(500, "sourceSubjects 序列化失败", e);
         }
-
-        LocalDateTime now = LocalDateTime.now();
-        module.setCreatedDate(now);
-        module.setUpdatedDate(now);
-        sysModuleMapper.insert(module);
-        return module;
     }
 
     private void saveModuleTables(Long moduleId, List<ModuleTableDTO> tables) {
@@ -886,6 +878,17 @@ public class SysModuleService implements SysModuleApi {
                 sysModuleTableMapper.insert(t);
             }
         }
+    }
+
+    /** 重置指定模块下的所有字段的角色权限（写和更新权限设为0） */
+    private void resetModuleFieldPermissions(Long moduleId) {
+        SysRoleModuleFieldPermission updatePerm = new SysRoleModuleFieldPermission();
+        updatePerm.setWritable(0);
+        updatePerm.setUpdatable(0);
+        sysRoleModuleFieldPermissionMapper.update(
+                updatePerm,
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
     }
 
     /** 重置指定关联表下的所有物理字段的角色权限 */
@@ -1067,26 +1070,14 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
         module.setRelateSearchField(request.getRelateSearchField());
-
+        module.setDetailModuleId(request.getDetailModuleId());
+        // 如果配置了数据来源主体或者，或者模块类型为LIST，则将该模块下所有角色的字段写和更新权限设为0
+        if (convertToModuleTypeEnum(request.getModuleType()).equals(ModuleTypeEnum.LIST)
+                || CollectionUtil.isNotEmpty(request.getSourceSubjects())) {
+            resetModuleFieldPermissions(module.getId());
+        }
         // 更新 tableHeader
-        try {
-            module.setTableHeader(
-                    request.getTableHeader() != null
-                            ? objectMapper.writeValueAsString(request.getTableHeader())
-                            : null);
-        } catch (Exception e) {
-            throw new BusinessException(500, "tableHeader 序列化失败", e);
-        }
-
-        // 更新 sourceSubjects
-        try {
-            module.setSourceSubjects(
-                    request.getSourceSubjects() != null
-                            ? objectMapper.writeValueAsString(request.getSourceSubjects())
-                            : null);
-        } catch (Exception e) {
-            throw new BusinessException(500, "sourceSubjects 序列化失败", e);
-        }
+        requestToTableHeader(request, module);
 
         module.setUpdatedDate(LocalDateTime.now());
     }
