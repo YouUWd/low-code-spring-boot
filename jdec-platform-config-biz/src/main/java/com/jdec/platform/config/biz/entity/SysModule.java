@@ -26,12 +26,14 @@ public class SysModule {
     private String moduleName;
 
     /** 模块描述 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String moduleDesc;
 
     /** 父模块 ID */
     private Long parentId;
 
     /** 详情模块 ID */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long detailModuleId;
 
     /** 模块层级 */
@@ -44,6 +46,7 @@ public class SysModule {
     private String primaryTable;
 
     /** 主表外键关联字段 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String relateSearchField;
 
     /** 模块类型 */
@@ -62,9 +65,11 @@ public class SysModule {
     private Integer sortOrder;
 
     /** 列表表头配置（JSON格式） */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String tableHeader;
 
     /** 数据来源主体，内容为主体名字的数组（JSON格式） */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String sourceSubjects;
 
     /** 创建人 ID */
