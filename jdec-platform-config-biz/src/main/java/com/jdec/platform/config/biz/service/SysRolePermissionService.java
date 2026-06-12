@@ -11,11 +11,7 @@ import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -104,7 +100,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .in(SysMenu::getId, menuIds)
                         .eq(SysMenu::getSubjectId, subjectId)
                         .eq(SysMenu::getProjectNo, projectNo)
-                        .eq(SysMenu::getCategory, category);
+                        .eq(category != null, SysMenu::getCategory, category);
         List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
 
         // 构建响应，包含所有菜单字段
