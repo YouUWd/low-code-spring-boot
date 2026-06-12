@@ -88,6 +88,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .in(SysConfigItem::getCategoryAlias, categoryAliases)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .orderByAsc(SysConfigItem::getSort)
                                 .orderByAsc(SysConfigItem::getId));
 
@@ -123,6 +124,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .in(SysConfigItem::getCategoryAlias, categoryAliases)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .orderByAsc(SysConfigItem::getSort)
                                 .orderByAsc(SysConfigItem::getId));
 
@@ -322,7 +324,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
                         null,
                         Wrappers.<SysConfigItem>lambdaUpdate()
                                 .set(SysConfigItem::getStatus, 0)
-                                .eq(SysConfigItem::getCategoryAlias, oldEntity.getCategoryAlias()));
+                                .eq(SysConfigItem::getCategoryAlias, oldEntity.getCategoryAlias())
+                                .eq(SysConfigItem::getProjectNo, projectNo));
             }
         }
     }
@@ -350,14 +353,16 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         long itemCount =
                 itemMapper.selectCount(
                         Wrappers.<SysConfigItem>lambdaQuery()
-                                .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias()));
+                                .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
+                                .eq(SysConfigItem::getProjectNo, projectNo));
         if (!force && itemCount > 0) {
             throw new BusinessException("删除确认：该分类下有 " + itemCount + " 个配置项将被同步删除；请确认后重新请求");
         }
         // 级联删除配置项（通过 categoryAlias）
         itemMapper.delete(
                 Wrappers.<SysConfigItem>lambdaQuery()
-                        .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias()));
+                        .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
+                        .eq(SysConfigItem::getProjectNo, projectNo));
         // 删除分类
         categoryMapper.deleteById(id);
     }
