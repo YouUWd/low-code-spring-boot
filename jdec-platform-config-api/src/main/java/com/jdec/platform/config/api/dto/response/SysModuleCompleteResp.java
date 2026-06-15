@@ -78,6 +78,9 @@ public class SysModuleCompleteResp {
         @Schema(description = "是否启用审批", example = "0")
         private Integer approvalRequired;
 
+        @Schema(description = "是否模块业务定义", example = "0")
+        private Integer bizDefFlag;
+
         @Schema(
                 description = "模块状态",
                 example = "active",

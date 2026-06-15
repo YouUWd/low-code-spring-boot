@@ -72,6 +72,9 @@ public class SysModule {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String sourceSubjects;
 
+    /** 是否模块业务定义 */
+    private Integer bizDefFlag;
+
     /** 创建人 ID */
     private Long createdBy;
 

@@ -96,6 +96,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setModuleType(module.getModuleType() != null ? module.getModuleType().name() : null);
         resp.setModuleStatus(module.getModuleStatus());
         resp.setApprovalRequired(module.getApprovalRequired());
+        resp.setBizDefFlag(module.getBizDefFlag());
         resp.setLeafFlag(module.getLeafFlag());
         resp.setSortOrder(module.getSortOrder());
         resp.setRelateSearchField(module.getRelateSearchField());
@@ -158,6 +159,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setModuleType(module.getModuleType());
         moduleInfo.setModuleStatus(module.getModuleStatus());
         moduleInfo.setApprovalRequired(module.getApprovalRequired());
+        moduleInfo.setBizDefFlag(module.getBizDefFlag());
         moduleInfo.setLeafFlag(module.getLeafFlag());
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setRelateSearchField(module.getRelateSearchField());
@@ -723,6 +725,7 @@ public class SysModuleService implements SysModuleApi {
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
+        module.setBizDefFlag(request.getBizDefFlag());
         module.setRelateSearchField(request.getRelateSearchField());
         module.setModuleStatus("active");
         module.setLeafFlag(1); // 默认新节点是叶子节点
@@ -1069,6 +1072,7 @@ public class SysModuleService implements SysModuleApi {
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
+        module.setBizDefFlag(request.getBizDefFlag());
         module.setRelateSearchField(request.getRelateSearchField());
         module.setDetailModuleId(request.getDetailModuleId());
         // 如果配置了数据来源主体或者，或者模块类型为LIST，则将该模块下所有角色的字段写和更新权限设为0

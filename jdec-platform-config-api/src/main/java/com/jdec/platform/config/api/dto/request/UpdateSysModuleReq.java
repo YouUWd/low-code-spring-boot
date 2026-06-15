@@ -27,6 +27,9 @@ public class UpdateSysModuleReq {
     /** 是否启用审批: 0-否, 1-是 */
     private Integer approvalRequired;
 
+    /** 是否模块业务定义: 0-否, 1-是 */
+    private Integer bizDefFlag;
+
     /** 模块状态: active-启用, inactive-禁用, archived-归档 */
     private String moduleStatus;
 
