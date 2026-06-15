@@ -78,6 +78,15 @@ public class SysModuleCompleteResp {
         @Schema(description = "是否启用审批", example = "0")
         private Integer approvalRequired;
 
+        @Schema(description = "是否模块业务定义", example = "0")
+        private Integer bizDefFlag;
+
+        @Schema(description = "主表被设置为bizDefFlag的模块表信息集合")
+        private List<TableModule> bizDefTables;
+
+        @Schema(description = "子表被设置为readOnly=0的模块表信息集合")
+        private List<TableModule> writableRelationTables;
+
         @Schema(
                 description = "模块状态",
                 example = "active",
@@ -127,5 +136,16 @@ public class SysModuleCompleteResp {
 
         @Schema(description = "主体名称", example = "某某主体")
         private String subjectName;
+    }
+
+    /** 模块表信息 */
+    @Data
+    @Schema(description = "模块表信息")
+    public static class TableModule {
+        @Schema(description = "表名", example = "sys_user")
+        private String tableName;
+
+        @Schema(description = "模块ID", example = "1")
+        private Long moduleId;
     }
 }

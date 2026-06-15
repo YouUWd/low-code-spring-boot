@@ -96,6 +96,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setModuleType(module.getModuleType() != null ? module.getModuleType().name() : null);
         resp.setModuleStatus(module.getModuleStatus());
         resp.setApprovalRequired(module.getApprovalRequired());
+        resp.setBizDefFlag(module.getBizDefFlag());
         resp.setLeafFlag(module.getLeafFlag());
         resp.setSortOrder(module.getSortOrder());
         resp.setRelateSearchField(module.getRelateSearchField());
@@ -113,17 +114,18 @@ public class SysModuleService implements SysModuleApi {
     @Override
     public SysModuleCompleteResp getModuleComplete(
             String projectNo, Long subjectId, String moduleCode) {
-        SysModule module =
-                sysModuleMapper.selectOne(
-                        Wrappers.<SysModule>lambdaQuery()
-                                .eq(SysModule::getProjectNo, projectNo)
-                                .eq(SysModule::getSubjectId, subjectId)
-                                .eq(SysModule::getModuleCode, moduleCode));
-        if (module == null) {
-            return null;
-        }
-
-        return buildModuleCompleteResp(module);
+        //        SysModule module =
+        //                sysModuleMapper.selectOne(
+        //                        Wrappers.<SysModule>lambdaQuery()
+        //                                .eq(SysModule::getProjectNo, projectNo)
+        //                                .eq(SysModule::getSubjectId, subjectId)
+        //                                .eq(SysModule::getModuleCode, moduleCode));
+        //        if (module == null) {
+        //            return null;
+        //        }
+        //
+        //        return buildModuleCompleteResp(module);
+        return null;
     }
 
     @Override
@@ -158,6 +160,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setModuleType(module.getModuleType());
         moduleInfo.setModuleStatus(module.getModuleStatus());
         moduleInfo.setApprovalRequired(module.getApprovalRequired());
+        moduleInfo.setBizDefFlag(module.getBizDefFlag());
         moduleInfo.setLeafFlag(module.getLeafFlag());
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setRelateSearchField(module.getRelateSearchField());
@@ -169,6 +172,9 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setUpdatedBy(module.getUpdatedBy());
         moduleInfo.setUpdatedDate(module.getUpdatedDate());
         moduleInfo.setUpdatedName(module.getUpdatedName());
+
+        populateTableModuleCollections(module, moduleInfo);
+
         resp.setModule(moduleInfo);
 
         Long moduleId = module.getId();
@@ -319,6 +325,74 @@ public class SysModuleService implements SysModuleApi {
         }
 
         return resp;
+    }
+
+    private void populateTableModuleCollections(
+            SysModule module, SysModuleCompleteResp.ModuleInfo moduleInfo) {
+        LambdaQueryWrapper<SysModule> moduleQuery = new LambdaQueryWrapper<>();
+        moduleQuery.eq(SysModule::getProjectNo, module.getProjectNo());
+        moduleQuery.eq(SysModule::getSubjectId, module.getSubjectId());
+        List<SysModule> allModulesInSubject = sysModuleMapper.selectList(moduleQuery);
+
+        List<SysModuleCompleteResp.TableModule> bizDefTables =
+                new ArrayList<>(
+                        allModulesInSubject.stream()
+                                .filter(
+                                        m ->
+                                                m.getBizDefFlag() != null
+                                                        && m.getBizDefFlag() == 1
+                                                        && StringUtils.hasText(m.getPrimaryTable()))
+                                .map(
+                                        m -> {
+                                            SysModuleCompleteResp.TableModule tm =
+                                                    new SysModuleCompleteResp.TableModule();
+                                            tm.setTableName(
+                                                    m.getPrimaryTable().toLowerCase().trim());
+                                            tm.setModuleId(m.getId());
+                                            return tm;
+                                        })
+                                .collect(
+                                        Collectors.toMap(
+                                                SysModuleCompleteResp.TableModule::getTableName,
+                                                tm -> tm,
+                                                (existing, replacement) -> existing))
+                                .values());
+        moduleInfo.setBizDefTables(bizDefTables);
+
+        List<SysModuleCompleteResp.TableModule> writableRelationTables = new ArrayList<>();
+        if (!allModulesInSubject.isEmpty()) {
+            List<Long> moduleIds =
+                    allModulesInSubject.stream().map(SysModule::getId).collect(Collectors.toList());
+            LambdaQueryWrapper<SysModuleTable> moduleTableQuery = new LambdaQueryWrapper<>();
+            moduleTableQuery.in(SysModuleTable::getModuleId, moduleIds);
+            List<SysModuleTable> allModuleTables =
+                    sysModuleTableMapper.selectList(moduleTableQuery);
+            writableRelationTables =
+                    new ArrayList<>(
+                            allModuleTables.stream()
+                                    .filter(
+                                            mt ->
+                                                    mt.getReadOnly() != null
+                                                            && mt.getReadOnly() == 0
+                                                            && StringUtils.hasText(
+                                                                    mt.getTableName()))
+                                    .map(
+                                            mt -> {
+                                                SysModuleCompleteResp.TableModule tm =
+                                                        new SysModuleCompleteResp.TableModule();
+                                                tm.setTableName(
+                                                        mt.getTableName().toLowerCase().trim());
+                                                tm.setModuleId(mt.getModuleId());
+                                                return tm;
+                                            })
+                                    .collect(
+                                            Collectors.toMap(
+                                                    SysModuleCompleteResp.TableModule::getTableName,
+                                                    tm -> tm,
+                                                    (existing, replacement) -> existing))
+                                    .values());
+        }
+        moduleInfo.setWritableRelationTables(writableRelationTables);
     }
 
     @Override
@@ -723,6 +797,7 @@ public class SysModuleService implements SysModuleApi {
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
+        module.setBizDefFlag(request.getBizDefFlag());
         module.setRelateSearchField(request.getRelateSearchField());
         module.setModuleStatus("active");
         module.setLeafFlag(1); // 默认新节点是叶子节点
@@ -1069,12 +1144,25 @@ public class SysModuleService implements SysModuleApi {
         module.setPrimaryTable(request.getPrimaryTable());
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
+        module.setBizDefFlag(request.getBizDefFlag());
         module.setRelateSearchField(request.getRelateSearchField());
         module.setDetailModuleId(request.getDetailModuleId());
         // 如果配置了数据来源主体或者，或者模块类型为LIST，则将该模块下所有角色的字段写和更新权限设为0
         if (convertToModuleTypeEnum(request.getModuleType()).equals(ModuleTypeEnum.LIST)
-                || CollectionUtil.isNotEmpty(request.getSourceSubjects())) {
+                || CollectionUtil.isNotEmpty(request.getSourceSubjects())
+                || (request.getBizDefFlag() != null && request.getBizDefFlag() == 0)) {
             resetModuleFieldPermissions(module.getId());
+            // 换成业务定义，需要将当前模块的主表在关联表设置为只读
+            if (request.getBizDefFlag() != null && request.getBizDefFlag() == 1) {
+                SysModuleTable updatePerm = new SysModuleTable();
+                updatePerm.setReadOnly(1);
+                sysModuleTableMapper.update(
+                        updatePerm,
+                        Wrappers.<SysModuleTable>lambdaQuery()
+                                .eq(SysModuleTable::getModuleId, request.getId())
+                                .eq(SysModuleTable::getTableName, request.getPrimaryTable()));
+                resetTableFieldPermissions(request.getId(), request.getPrimaryTable());
+            }
         }
         // 更新 tableHeader
         requestToTableHeader(request, module);
