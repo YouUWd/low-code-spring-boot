@@ -651,10 +651,11 @@ public class SysModuleService implements SysModuleApi {
                 // 更新目标父模块的叶子节点标记（仅更新 leafFlag 字段）
                 if (targetParent.getLeafFlag() == 1) {
                     targetParent.setLeafFlag(0);
-                    SysModule leafPartial = new SysModule();
-                    leafPartial.setId(targetParent.getId());
-                    leafPartial.setLeafFlag(0);
-                    sysModuleMapper.updateById(leafPartial);
+                    sysModuleMapper.update(
+                            null,
+                            Wrappers.<SysModule>lambdaUpdate()
+                                    .eq(SysModule::getId, targetParent.getId())
+                                    .set(SysModule::getLeafFlag, 0));
                 }
             } else {
                 // 移动到根级
@@ -724,10 +725,12 @@ public class SysModuleService implements SysModuleApi {
             SysModule node = nodes.get(i);
             if (node.getSortOrder() == null || node.getSortOrder() != i) {
                 node.setSortOrder(i);
-                SysModule partial = new SysModule();
-                partial.setId(node.getId());
-                partial.setSortOrder(i);
-                sysModuleMapper.updateById(partial);
+                final int sortOrder = i;
+                sysModuleMapper.update(
+                        null,
+                        Wrappers.<SysModule>lambdaUpdate()
+                                .eq(SysModule::getId, node.getId())
+                                .set(SysModule::getSortOrder, sortOrder));
             }
         }
     }
@@ -762,11 +765,12 @@ public class SysModuleService implements SysModuleApi {
             child.setModulePath(newPath);
             child.setModuleLevel(newLevel);
 
-            SysModule partial = new SysModule();
-            partial.setId(child.getId());
-            partial.setModulePath(newPath);
-            partial.setModuleLevel(newLevel);
-            sysModuleMapper.updateById(partial);
+            sysModuleMapper.update(
+                    null,
+                    Wrappers.<SysModule>lambdaUpdate()
+                            .eq(SysModule::getId, child.getId())
+                            .set(SysModule::getModulePath, newPath)
+                            .set(SysModule::getModuleLevel, newLevel));
 
             // 递归更新孙子节点
             updateDescendantPathsAndLevels(child.getId(), oldPath, newPath, levelDelta);
@@ -779,10 +783,11 @@ public class SysModuleService implements SysModuleApi {
                         Wrappers.<SysModule>lambdaQuery().eq(SysModule::getParentId, moduleId));
         int leafFlag = count > 0 ? 0 : 1;
 
-        SysModule partial = new SysModule();
-        partial.setId(moduleId);
-        partial.setLeafFlag(leafFlag);
-        sysModuleMapper.updateById(partial);
+        sysModuleMapper.update(
+                null,
+                Wrappers.<SysModule>lambdaUpdate()
+                        .eq(SysModule::getId, moduleId)
+                        .set(SysModule::getLeafFlag, leafFlag));
     }
 
     private SysModule createModule(String projectNo, Long subjectId, SaveSysModuleReq request) {
@@ -827,10 +832,11 @@ public class SysModuleService implements SysModuleApi {
 
                 // 更新父节点 leafFlag
                 if (parent.getLeafFlag() == 1) {
-                    SysModule parentUpdate = new SysModule();
-                    parentUpdate.setId(parent.getId());
-                    parentUpdate.setLeafFlag(0);
-                    sysModuleMapper.updateById(parentUpdate);
+                    sysModuleMapper.update(
+                            null,
+                            Wrappers.<SysModule>lambdaUpdate()
+                                    .eq(SysModule::getId, parent.getId())
+                                    .set(SysModule::getLeafFlag, 0));
                 }
             } else {
                 module.setModuleLevel(1);
@@ -1152,16 +1158,50 @@ public class SysModuleService implements SysModuleApi {
                 || CollectionUtil.isNotEmpty(request.getSourceSubjects())
                 || (request.getBizDefFlag() != null && request.getBizDefFlag() == 0)) {
             resetModuleFieldPermissions(module.getId());
-            // 换成业务定义，需要将当前模块的主表在关联表设置为只读
-            if (request.getBizDefFlag() != null && request.getBizDefFlag() == 1) {
-                SysModuleTable updatePerm = new SysModuleTable();
-                updatePerm.setReadOnly(1);
-                sysModuleTableMapper.update(
-                        updatePerm,
-                        Wrappers.<SysModuleTable>lambdaQuery()
-                                .eq(SysModuleTable::getModuleId, request.getId())
-                                .eq(SysModuleTable::getTableName, request.getPrimaryTable()));
-                resetTableFieldPermissions(request.getId(), request.getPrimaryTable());
+            // 换成业务定义，需要将当前主体和project下所有引用该主表的关联表设置为只读并重置字段权限
+            if (request.getBizDefFlag() != null && request.getBizDefFlag() == 1
+                    && StringUtils.hasText(request.getPrimaryTable())) {
+                // 1. 查出当前 projectNo + subjectId 下所有模块 ID
+                List<Long> moduleIdsInSubject =
+                        sysModuleMapper
+                                .selectList(
+                                        Wrappers.<SysModule>lambdaQuery()
+                                                .eq(SysModule::getProjectNo, module.getProjectNo())
+                                                .eq(SysModule::getSubjectId, module.getSubjectId())
+                                                .select(SysModule::getId))
+                                .stream()
+                                .map(SysModule::getId)
+                                .collect(Collectors.toList());
+
+                if (!moduleIdsInSubject.isEmpty()) {
+                    // 2. 找出这些模块中 tableName = primaryTable 的所有关联表记录
+                    List<SysModuleTable> affectedTables =
+                            sysModuleTableMapper.selectList(
+                                    Wrappers.<SysModuleTable>lambdaQuery()
+                                            .in(SysModuleTable::getModuleId, moduleIdsInSubject)
+                                            .eq(
+                                                    SysModuleTable::getTableName,
+                                                    request.getPrimaryTable()));
+
+                    if (!affectedTables.isEmpty()) {
+                        // 3. 批量将这些关联表记录设置为只读
+                        SysModuleTable updatePerm = new SysModuleTable();
+                        updatePerm.setReadOnly(1);
+                        sysModuleTableMapper.update(
+                                updatePerm,
+                                Wrappers.<SysModuleTable>lambdaQuery()
+                                        .in(SysModuleTable::getModuleId, moduleIdsInSubject)
+                                        .eq(
+                                                SysModuleTable::getTableName,
+                                                request.getPrimaryTable()));
+
+                        // 4. 逐个重置对应模块下该关联表的字段权限
+                        for (SysModuleTable affectedTable : affectedTables) {
+                            resetTableFieldPermissions(
+                                    affectedTable.getModuleId(), affectedTable.getTableName());
+                        }
+                    }
+                }
             }
         }
         // 更新 tableHeader
