@@ -402,23 +402,49 @@ public class SysModuleService implements SysModuleApi {
             throw new BusinessException(400, "模块信息不能为空");
         }
 
+        SaveModuleReq.SaveSysModuleReq req = request.getModule();
+
+        // 前置校验：LIST 类型或配置了 sourceSubjects 时，bizDefFlag 必须为 0
+        boolean isListOrHasSource =
+                "LIST".equalsIgnoreCase(req.getModuleType())
+                        || CollectionUtil.isNotEmpty(req.getSourceSubjects());
+        if (isListOrHasSource && req.getBizDefFlag() != null && req.getBizDefFlag() != 0) {
+            throw new BusinessException(
+                    400, "LIST类型或配置了数据来源主体的模块，bizDefFlag 必须为 0");
+        }
+
         SysModule module;
         Long moduleId;
 
         // 如果 ID 为空则创建新模块，否则编辑现有模块
-        if (request.getModule().getId() == null) {
+        if (req.getId() == null) {
             // 创建新模块
-            module = createModule(projectNo, subjectId, request.getModule());
+            module = createModule(projectNo, subjectId, req);
             moduleId = module.getId();
         } else {
-            moduleId = request.getModule().getId();
+            moduleId = req.getId();
             module = sysModuleMapper.selectById(moduleId);
             if (module == null) {
                 throw new BusinessException(404, "模块不存在");
             }
-            // 编辑现有模块
-            updateModuleInfo(module, request.getModule());
+            // 记录修改前的旧值，用于判断是否真的发生了方向性变化（对齐 saveModuleTables 的 readOnly 变更检测）
+            Integer oldBizDefFlag = module.getBizDefFlag();
+
+            // Phase 1: 纯字段赋值，无副作用
+            updateModuleInfo(module, req);
             sysModuleMapper.updateById(module);
+
+            // Phase 1.5: 权限重置 —— 仅当 bizDefFlag 由非0变为0时触发（可写->只读）
+            if (req.getBizDefFlag() != null && req.getBizDefFlag() == 0
+                    && !Objects.equals(oldBizDefFlag, 0)) {
+                resetModuleFieldPermissions(moduleId);
+            }
+
+            // Phase 3: bizDefFlag=1 时跨模块传播只读 —— 仅当 bizDefFlag 由非1（只读）变为1（可写）时触发
+            if (req.getBizDefFlag() != null && req.getBizDefFlag() == 1
+                    && !Objects.equals(oldBizDefFlag, 1)) {
+                applyBizDefReadOnlyToSubject(module, req.getPrimaryTable());
+            }
         }
 
         if (request.getModuleTables() != null) {
@@ -1144,6 +1170,7 @@ public class SysModuleService implements SysModuleApi {
         }
     }
 
+    /** 仅做实体字段赋值，不包含任何 DB 副作用。 */
     private void updateModuleInfo(SysModule module, SaveSysModuleReq request) {
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
@@ -1153,61 +1180,60 @@ public class SysModuleService implements SysModuleApi {
         module.setBizDefFlag(request.getBizDefFlag());
         module.setRelateSearchField(request.getRelateSearchField());
         module.setDetailModuleId(request.getDetailModuleId());
-        // 如果配置了数据来源主体或者，或者模块类型为LIST，则将该模块下所有角色的字段写和更新权限设为0
-        if (convertToModuleTypeEnum(request.getModuleType()).equals(ModuleTypeEnum.LIST)
-                || CollectionUtil.isNotEmpty(request.getSourceSubjects())
-                || (request.getBizDefFlag() != null && request.getBizDefFlag() == 0)) {
-            resetModuleFieldPermissions(module.getId());
-            // 换成业务定义，需要将当前主体和project下所有引用该主表的关联表设置为只读并重置字段权限
-            if (request.getBizDefFlag() != null && request.getBizDefFlag() == 1
-                    && StringUtils.hasText(request.getPrimaryTable())) {
-                // 1. 查出当前 projectNo + subjectId 下所有模块 ID
-                List<Long> moduleIdsInSubject =
-                        sysModuleMapper
-                                .selectList(
-                                        Wrappers.<SysModule>lambdaQuery()
-                                                .eq(SysModule::getProjectNo, module.getProjectNo())
-                                                .eq(SysModule::getSubjectId, module.getSubjectId())
-                                                .select(SysModule::getId))
-                                .stream()
-                                .map(SysModule::getId)
-                                .collect(Collectors.toList());
-
-                if (!moduleIdsInSubject.isEmpty()) {
-                    // 2. 找出这些模块中 tableName = primaryTable 的所有关联表记录
-                    List<SysModuleTable> affectedTables =
-                            sysModuleTableMapper.selectList(
-                                    Wrappers.<SysModuleTable>lambdaQuery()
-                                            .in(SysModuleTable::getModuleId, moduleIdsInSubject)
-                                            .eq(
-                                                    SysModuleTable::getTableName,
-                                                    request.getPrimaryTable()));
-
-                    if (!affectedTables.isEmpty()) {
-                        // 3. 批量将这些关联表记录设置为只读
-                        SysModuleTable updatePerm = new SysModuleTable();
-                        updatePerm.setReadOnly(1);
-                        sysModuleTableMapper.update(
-                                updatePerm,
-                                Wrappers.<SysModuleTable>lambdaQuery()
-                                        .in(SysModuleTable::getModuleId, moduleIdsInSubject)
-                                        .eq(
-                                                SysModuleTable::getTableName,
-                                                request.getPrimaryTable()));
-
-                        // 4. 逐个重置对应模块下该关联表的字段权限
-                        for (SysModuleTable affectedTable : affectedTables) {
-                            resetTableFieldPermissions(
-                                    affectedTable.getModuleId(), affectedTable.getTableName());
-                        }
-                    }
-                }
-            }
-        }
-        // 更新 tableHeader
         requestToTableHeader(request, module);
-
         module.setUpdatedDate(LocalDateTime.now());
+    }
+
+    /**
+     * bizDefFlag=1 时，将当前主体和项目下（排除当前模块自身）所有引用了 primaryTable
+     * 的关联表设置为只读，并重置对应字段权限。当前模块的关联表由 saveModuleTables 处理。
+     */
+    private void applyBizDefReadOnlyToSubject(SysModule module, String primaryTable) {
+        if (!StringUtils.hasText(primaryTable)) {
+            return;
+        }
+
+        // 1. 查出同 projectNo + subjectId 下其他模块的 ID（排除当前模块）
+        List<Long> otherModuleIds =
+                sysModuleMapper
+                        .selectList(
+                                Wrappers.<SysModule>lambdaQuery()
+                                        .eq(SysModule::getProjectNo, module.getProjectNo())
+                                        .eq(SysModule::getSubjectId, module.getSubjectId())
+                                        .ne(SysModule::getId, module.getId())
+                                        .select(SysModule::getId))
+                        .stream()
+                        .map(SysModule::getId)
+                        .collect(Collectors.toList());
+
+        if (otherModuleIds.isEmpty()) {
+            return;
+        }
+
+        // 2. 找出这些模块中 tableName = primaryTable 的关联表记录
+        List<SysModuleTable> affectedTables =
+                sysModuleTableMapper.selectList(
+                        Wrappers.<SysModuleTable>lambdaQuery()
+                                .in(SysModuleTable::getModuleId, otherModuleIds)
+                                .eq(SysModuleTable::getTableName, primaryTable));
+
+        if (affectedTables.isEmpty()) {
+            return;
+        }
+
+        // 3. 批量将这些关联表记录设置为只读
+        SysModuleTable updatePerm = new SysModuleTable();
+        updatePerm.setReadOnly(1);
+        sysModuleTableMapper.update(
+                updatePerm,
+                Wrappers.<SysModuleTable>lambdaQuery()
+                        .in(SysModuleTable::getModuleId, otherModuleIds)
+                        .eq(SysModuleTable::getTableName, primaryTable));
+
+        // 4. 逐个重置对应模块下该关联表的字段权限
+        for (SysModuleTable t : affectedTables) {
+            resetTableFieldPermissions(t.getModuleId(), t.getTableName());
+        }
     }
 
     /**
