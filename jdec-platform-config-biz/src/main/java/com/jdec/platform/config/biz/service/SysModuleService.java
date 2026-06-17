@@ -409,8 +409,7 @@ public class SysModuleService implements SysModuleApi {
                 "LIST".equalsIgnoreCase(req.getModuleType())
                         || CollectionUtil.isNotEmpty(req.getSourceSubjects());
         if (isListOrHasSource && req.getBizDefFlag() != null && req.getBizDefFlag() != 0) {
-            throw new BusinessException(
-                    400, "LIST类型或配置了数据来源主体的模块，bizDefFlag 必须为 0");
+            throw new BusinessException(400, "LIST类型或配置了数据来源主体的模块，bizDefFlag 必须为 0");
         }
 
         SysModule module;
@@ -435,13 +434,15 @@ public class SysModuleService implements SysModuleApi {
             sysModuleMapper.updateById(module);
 
             // Phase 1.5: 权限重置 —— 仅当 bizDefFlag 由非0变为0时触发（可写->只读）
-            if (req.getBizDefFlag() != null && req.getBizDefFlag() == 0
+            if (req.getBizDefFlag() != null
+                    && req.getBizDefFlag() == 0
                     && !Objects.equals(oldBizDefFlag, 0)) {
                 resetModuleFieldPermissions(moduleId);
             }
 
             // Phase 3: bizDefFlag=1 时跨模块传播只读 —— 仅当 bizDefFlag 由非1（只读）变为1（可写）时触发
-            if (req.getBizDefFlag() != null && req.getBizDefFlag() == 1
+            if (req.getBizDefFlag() != null
+                    && req.getBizDefFlag() == 1
                     && !Objects.equals(oldBizDefFlag, 1)) {
                 applyBizDefReadOnlyToSubject(module, req.getPrimaryTable());
             }
@@ -1185,8 +1186,8 @@ public class SysModuleService implements SysModuleApi {
     }
 
     /**
-     * bizDefFlag=1 时，将当前主体和项目下（排除当前模块自身）所有引用了 primaryTable
-     * 的关联表设置为只读，并重置对应字段权限。当前模块的关联表由 saveModuleTables 处理。
+     * bizDefFlag=1 时，将当前主体和项目下（排除当前模块自身）所有引用了 primaryTable 的关联表设置为只读，并重置对应字段权限。当前模块的关联表由
+     * saveModuleTables 处理。
      */
     private void applyBizDefReadOnlyToSubject(SysModule module, String primaryTable) {
         if (!StringUtils.hasText(primaryTable)) {
