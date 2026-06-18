@@ -386,12 +386,43 @@ public class SysModuleService implements SysModuleApi {
     @Override
     @Transactional
     public Long saveModule(String projectNo, Long subjectId, SaveModuleReq request) {
-        if (request.getModule() == null) {
+        SaveModuleReq.SaveSysModuleReq req = request.getModule();
+        if (req == null) {
             throw new BusinessException(400, "模块信息不能为空");
         }
 
-        SaveModuleReq.SaveSysModuleReq req = request.getModule();
+        // 1. 前置校验
+        validateSaveRequest(req);
 
+        // 2. 保存/更新模块主体信息
+        SysModule module = saveOrUpdateModuleEntity(projectNo, subjectId, req);
+        Long moduleId = module.getId();
+
+        // 3. 保存关联表
+        if (request.getModuleTables() != null) {
+            saveModuleTables(moduleId, request.getModuleTables());
+        }
+
+        // 4. 保存简单字段
+        if (request.getSimpleFields() != null) {
+            saveSimpleFields(moduleId, request.getSimpleFields());
+        }
+
+        // 5. 校验并保存组合字段
+        if (request.getCombineFields() != null) {
+            validateAndSaveCombineFields(moduleId, request);
+        }
+
+        // 6. 仅 DETAIL 类型模块保存状态信息
+        if (ModuleTypeEnum.DETAIL == module.getModuleType()
+                && request.getModuleStatuses() != null) {
+            saveModuleStatuses(moduleId, request.getModuleStatuses());
+        }
+
+        return moduleId;
+    }
+
+    private void validateSaveRequest(SaveModuleReq.SaveSysModuleReq req) {
         // 前置校验：LIST 类型或配置了 sourceSubjects 时，bizDefFlag 必须为 0
         boolean isListOrHasSource =
                 "LIST".equalsIgnoreCase(req.getModuleType())
@@ -399,22 +430,20 @@ public class SysModuleService implements SysModuleApi {
         if (isListOrHasSource && req.getBizDefFlag() != null && req.getBizDefFlag() != 0) {
             throw new BusinessException(400, "LIST类型或配置了数据来源主体的模块，bizDefFlag 必须为 0");
         }
+    }
 
+    private SysModule saveOrUpdateModuleEntity(
+            String projectNo, Long subjectId, SaveModuleReq.SaveSysModuleReq req) {
         SysModule module;
-        Long moduleId;
-
-        // 如果 ID 为空则创建新模块，否则编辑现有模块
         if (req.getId() == null) {
             // 创建新模块
             module = createModule(projectNo, subjectId, req);
-            moduleId = module.getId();
         } else {
-            moduleId = req.getId();
-            module = sysModuleMapper.selectById(moduleId);
+            // 编辑现有模块
+            module = sysModuleMapper.selectById(req.getId());
             if (module == null) {
                 throw new BusinessException(404, "模块不存在");
             }
-            // 记录修改前的旧值，用于判断是否真的发生了方向性变化（对齐 saveModuleTables 的 readOnly 变更检测）
             Integer oldBizDefFlag = module.getBizDefFlag();
 
             // Phase 1: 纯字段赋值，无副作用
@@ -425,7 +454,7 @@ public class SysModuleService implements SysModuleApi {
             if (req.getBizDefFlag() != null
                     && req.getBizDefFlag() == 0
                     && !Objects.equals(oldBizDefFlag, 0)) {
-                resetModuleFieldPermissions(moduleId);
+                resetModuleFieldPermissions(module.getId());
             }
 
             // Phase 3: bizDefFlag=1 时跨模块传播只读 —— 仅当 bizDefFlag 由非1（只读）变为1（可写）时触发
@@ -435,58 +464,43 @@ public class SysModuleService implements SysModuleApi {
                 applyBizDefReadOnlyToSubject(module, req.getPrimaryTable());
             }
         }
+        return module;
+    }
 
+    private void validateAndSaveCombineFields(Long moduleId, SaveModuleReq request) {
+        // 校验：组合字段中映射的表（entity）必须是主表或关联表
+        Set<String> validTables = new HashSet<>();
+        if (StringUtils.hasText(request.getModule().getPrimaryTable())) {
+            validTables.add(request.getModule().getPrimaryTable().toLowerCase().trim());
+        }
         if (request.getModuleTables() != null) {
-            saveModuleTables(moduleId, request.getModuleTables());
-        }
-
-        if (request.getSimpleFields() != null) {
-            saveSimpleFields(moduleId, request.getSimpleFields());
-        }
-
-        if (request.getCombineFields() != null) {
-            // 校验：组合字段中映射的表（entity）必须是主表或关联表
-            Set<String> validTables = new HashSet<>();
-            if (StringUtils.hasText(request.getModule().getPrimaryTable())) {
-                validTables.add(request.getModule().getPrimaryTable().toLowerCase().trim());
-            }
-            if (request.getModuleTables() != null) {
-                for (ModuleTableDTO t : request.getModuleTables()) {
-                    if (StringUtils.hasText(t.getTableName())) {
-                        validTables.add(t.getTableName().toLowerCase().trim());
-                    }
+            for (ModuleTableDTO t : request.getModuleTables()) {
+                if (StringUtils.hasText(t.getTableName())) {
+                    validTables.add(t.getTableName().toLowerCase().trim());
                 }
             }
+        }
 
-            for (ModuleCombineFieldDTO cf : request.getCombineFields()) {
-                if (cf.getSourceMapping() != null) {
-                    for (ModuleSourceMappingDTO mapping : cf.getSourceMapping()) {
-                        if (mapping.getEntity() != null) {
-                            String entityTable = mapping.getEntity().toLowerCase().trim();
-                            if (!validTables.contains(entityTable)) {
-                                throw new BusinessException(
-                                        400,
-                                        "组合字段 ["
-                                                + cf.getLogicalField()
-                                                + "] 中的映射物理表 '"
-                                                + mapping.getEntity()
-                                                + "' 必须是该模块的主表或关联表");
-                            }
+        for (ModuleCombineFieldDTO cf : request.getCombineFields()) {
+            if (cf.getSourceMapping() != null) {
+                for (ModuleSourceMappingDTO mapping : cf.getSourceMapping()) {
+                    if (mapping.getEntity() != null) {
+                        String entityTable = mapping.getEntity().toLowerCase().trim();
+                        if (!validTables.contains(entityTable)) {
+                            throw new BusinessException(
+                                    400,
+                                    "组合字段 ["
+                                            + cf.getLogicalField()
+                                            + "] 中的映射物理表 '"
+                                            + mapping.getEntity()
+                                            + "' 必须是该模块的主表或关联表");
                         }
                     }
                 }
             }
-
-            saveCombineFields(moduleId, request.getCombineFields());
         }
 
-        // 仅DETAIL类型模块保存状态信息
-        if (ModuleTypeEnum.DETAIL == module.getModuleType()
-                && request.getModuleStatuses() != null) {
-            saveModuleStatuses(moduleId, request.getModuleStatuses());
-        }
-
-        return moduleId;
+        saveCombineFields(moduleId, request.getCombineFields());
     }
 
     @Override
@@ -1017,21 +1031,51 @@ public class SysModuleService implements SysModuleApi {
     }
 
     private void saveModuleStatuses(Long moduleId, List<ModuleStatusDTO> statuses) {
-        // 先删除旧状态
-        LambdaQueryWrapper<SysModuleStatus> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysModuleStatus::getModuleId, moduleId);
-        sysModuleStatusMapper.delete(wrapper);
+        // 1. 查询已有的状态配置
+        List<SysModuleStatus> existStatuses =
+                sysModuleStatusMapper.selectList(
+                        Wrappers.<SysModuleStatus>lambdaQuery()
+                                .eq(SysModuleStatus::getModuleId, moduleId));
+        Map<Long, SysModuleStatus> existStatusMap =
+                existStatuses.stream().collect(Collectors.toMap(SysModuleStatus::getId, s -> s));
 
-        // 重新保存
+        // 2. 收集请求中提交的有效 ID
+        Set<Long> keepIds =
+                statuses.stream()
+                        .map(ModuleStatusDTO::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        // 3. 计算并删除需要删除的状态
+        List<Long> deleteIds =
+                existStatuses.stream()
+                        .map(SysModuleStatus::getId)
+                        .filter(id -> !keepIds.contains(id))
+                        .collect(Collectors.toList());
+
+        if (!deleteIds.isEmpty()) {
+            sysModuleStatusMapper.deleteByIds(deleteIds);
+        }
+
+        // 4. 组装待保存/更新的状态列表
+        List<SysModuleStatus> saveOrUpdateList = new ArrayList<>();
         for (ModuleStatusDTO info : statuses) {
-            SysModuleStatus s = new SysModuleStatus();
-            s.setModuleId(moduleId);
+            SysModuleStatus s;
+            if (info.getId() != null && existStatusMap.containsKey(info.getId())) {
+                s = existStatusMap.get(info.getId());
+            } else {
+                s = new SysModuleStatus();
+                s.setModuleId(moduleId);
+                s.setCreatedDate(LocalDateTime.now());
+            }
             s.setStatusPid(info.getStatusPid());
             s.setStatusId(info.getStatusId());
-            LocalDateTime now = LocalDateTime.now();
-            s.setCreatedDate(now);
-            s.setUpdatedDate(now);
-            sysModuleStatusMapper.insert(s);
+            s.setUpdatedDate(LocalDateTime.now());
+            saveOrUpdateList.add(s);
+        }
+
+        if (!saveOrUpdateList.isEmpty()) {
+            Db.saveOrUpdateBatch(saveOrUpdateList);
         }
     }
 
