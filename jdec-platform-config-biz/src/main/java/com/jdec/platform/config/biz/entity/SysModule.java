@@ -36,12 +36,6 @@ public class SysModule {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long detailModuleId;
 
-    /** 模块层级 */
-    private Integer moduleLevel;
-
-    /** 模块路径 */
-    private String modulePath;
-
     /** 主表名称 */
     private String primaryTable;
 
@@ -54,12 +48,6 @@ public class SysModule {
 
     /** 是否启用审批 * */
     private Integer approvalRequired;
-
-    /** 模块状态 */
-    private String moduleStatus;
-
-    /** 是否叶子节点 */
-    private Integer leafFlag;
 
     /** 排序顺序 */
     private Integer sortOrder;

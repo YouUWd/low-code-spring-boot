@@ -60,12 +60,6 @@ public class SysModuleCompleteResp {
         @Schema(description = "详情模块ID", example = "2")
         private Long detailModuleId;
 
-        @Schema(description = "模块层级", example = "1")
-        private Integer moduleLevel;
-
-        @Schema(description = "模块路径", example = "/1/3/5/")
-        private String modulePath;
-
         @Schema(description = "主表名称", example = "student")
         private String primaryTable;
 
@@ -86,15 +80,6 @@ public class SysModuleCompleteResp {
 
         @Schema(description = "子表被设置为readOnly=0的模块表信息集合")
         private List<TableModule> writableRelationTables;
-
-        @Schema(
-                description = "模块状态",
-                example = "active",
-                allowableValues = {"active", "inactive", "archived"})
-        private String moduleStatus;
-
-        @Schema(description = "是否叶子节点", example = "1")
-        private Integer leafFlag;
 
         @Schema(description = "排序顺序", example = "1")
         private Integer sortOrder;

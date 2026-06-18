@@ -30,9 +30,6 @@ public class UpdateSysModuleReq {
     /** 是否模块业务定义: 0-否, 1-是 */
     private Integer bizDefFlag;
 
-    /** 模块状态: active-启用, inactive-禁用, archived-归档 */
-    private String moduleStatus;
-
     /** 同级排序顺序，数字越小越靠前 */
     private Integer sortOrder;
 

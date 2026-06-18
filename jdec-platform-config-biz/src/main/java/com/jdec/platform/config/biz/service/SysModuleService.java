@@ -67,10 +67,6 @@ public class SysModuleService implements SysModuleApi {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getProjectNo, projectNo);
         wrapper.eq(SysModule::getSubjectId, subjectId);
-        // 可选筛选：仅查询可用模块
-        if (Boolean.TRUE.equals(availableOnly)) {
-            wrapper.eq(SysModule::getModuleStatus, "active");
-        }
         wrapper.orderByAsc(SysModule::getParentId).orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
@@ -90,14 +86,10 @@ public class SysModuleService implements SysModuleApi {
         resp.setModuleDesc(module.getModuleDesc());
         resp.setParentId(module.getParentId());
         resp.setDetailModuleId(module.getDetailModuleId());
-        resp.setModuleLevel(module.getModuleLevel());
-        resp.setModulePath(module.getModulePath());
         resp.setPrimaryTable(module.getPrimaryTable());
         resp.setModuleType(module.getModuleType() != null ? module.getModuleType().name() : null);
-        resp.setModuleStatus(module.getModuleStatus());
         resp.setApprovalRequired(module.getApprovalRequired());
         resp.setBizDefFlag(module.getBizDefFlag());
-        resp.setLeafFlag(module.getLeafFlag());
         resp.setSortOrder(module.getSortOrder());
         resp.setRelateSearchField(module.getRelateSearchField());
         resp.setCreatedBy(module.getCreatedBy());
@@ -154,14 +146,10 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setModuleDesc(module.getModuleDesc());
         moduleInfo.setParentId(module.getParentId());
         moduleInfo.setDetailModuleId(module.getDetailModuleId());
-        moduleInfo.setModuleLevel(module.getModuleLevel());
-        moduleInfo.setModulePath(module.getModulePath());
         moduleInfo.setPrimaryTable(module.getPrimaryTable());
         moduleInfo.setModuleType(module.getModuleType());
-        moduleInfo.setModuleStatus(module.getModuleStatus());
         moduleInfo.setApprovalRequired(module.getApprovalRequired());
         moduleInfo.setBizDefFlag(module.getBizDefFlag());
-        moduleInfo.setLeafFlag(module.getLeafFlag());
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setRelateSearchField(module.getRelateSearchField());
         moduleInfo.setTableHeader(parseTableHeader(module.getTableHeader()));
@@ -588,11 +576,6 @@ public class SysModuleService implements SysModuleApi {
         // 删除状态
         sysModuleStatusMapper.delete(
                 Wrappers.<SysModuleStatus>lambdaQuery().eq(SysModuleStatus::getModuleId, moduleId));
-
-        // 更新父模块的叶子节点标记
-        if (module.getParentId() != null && module.getParentId() > 0) {
-            updateLeafFlag(module.getParentId());
-        }
     }
 
     @Override
@@ -656,48 +639,15 @@ public class SysModuleService implements SysModuleApi {
             oldChildren.removeIf(s -> s.getId().equals(moduleId));
             reshuffleAndUpdate(oldChildren);
 
-            // 2. 更新被移动模块自身的 parentId / moduleLevel / modulePath
-            String oldModulePath = module.getModulePath();
-            int oldModuleLevel = module.getModuleLevel() != null ? module.getModuleLevel() : 1;
-
+            // 2. 更新被移动模块自身的 parentId
             module.setParentId(targetParentId);
 
-            if (targetParent != null) {
-                int newLevel =
-                        (targetParent.getModuleLevel() != null ? targetParent.getModuleLevel() : 0)
-                                + 1;
-                module.setModuleLevel(newLevel);
-                String parentPath =
-                        targetParent.getModulePath() != null ? targetParent.getModulePath() : "";
-                String newPath =
-                        parentPath.isEmpty()
-                                ? module.getModuleCode()
-                                : parentPath + "/" + module.getModuleCode();
-                module.setModulePath(newPath);
-
-                // 更新目标父模块的叶子节点标记（仅更新 leafFlag 字段）
-                if (targetParent.getLeafFlag() == 1) {
-                    targetParent.setLeafFlag(0);
-                    sysModuleMapper.update(
-                            null,
-                            Wrappers.<SysModule>lambdaUpdate()
-                                    .eq(SysModule::getId, targetParent.getId())
-                                    .set(SysModule::getLeafFlag, 0));
-                }
-            } else {
-                // 移动到根级
-                module.setModuleLevel(1);
-                module.setModulePath(module.getModuleCode());
-            }
-
-            // 仅更新跨父移动涉及的字段：parentId / moduleLevel / modulePath / updatedDate
+            // 仅更新跨父移动涉及的字段：parentId / updatedDate
             LocalDateTime now = LocalDateTime.now();
             module.setUpdatedDate(now);
             SysModule modulePartial = new SysModule();
             modulePartial.setId(module.getId());
             modulePartial.setParentId(module.getParentId());
-            modulePartial.setModuleLevel(module.getModuleLevel());
-            modulePartial.setModulePath(module.getModulePath());
             modulePartial.setUpdatedDate(now);
             sysModuleMapper.updateById(modulePartial);
 
@@ -708,18 +658,6 @@ public class SysModuleService implements SysModuleApi {
             int insertPos = Math.min(targetSortOrder, newChildren.size());
             newChildren.add(insertPos, module);
             reshuffleAndUpdate(newChildren);
-
-            // 4. 级联更新所有子孙节点的 modulePath 和 moduleLevel
-            updateDescendantPathsAndLevels(
-                    moduleId,
-                    oldModulePath,
-                    module.getModulePath(),
-                    module.getModuleLevel() - oldModuleLevel);
-
-            // 5. 更新旧父模块的叶子节点标记
-            if (oldParentId > 0) {
-                updateLeafFlag(oldParentId);
-            }
         }
 
         // 重新查询最新状态并构造精简响应
@@ -727,8 +665,6 @@ public class SysModuleService implements SysModuleApi {
         MoveModuleResp resp = new MoveModuleResp();
         resp.setId(latest.getId());
         resp.setParentId(latest.getParentId());
-        resp.setModuleLevel(latest.getModuleLevel());
-        resp.setModulePath(latest.getModulePath());
         resp.setSortOrder(latest.getSortOrder());
         resp.setUpdatedDate(latest.getUpdatedDate());
         return resp;
@@ -777,46 +713,6 @@ public class SysModuleService implements SysModuleApi {
         return false;
     }
 
-    private void updateDescendantPathsAndLevels(
-            Long parentId, String oldParentPath, String newParentPath, int levelDelta) {
-        List<SysModule> children =
-                sysModuleMapper.selectList(
-                        Wrappers.<SysModule>lambdaQuery().eq(SysModule::getParentId, parentId));
-
-        for (SysModule child : children) {
-            String oldPath = child.getModulePath();
-            String newPath = oldPath.replaceFirst(oldParentPath, newParentPath);
-            int newLevel =
-                    (child.getModuleLevel() != null ? child.getModuleLevel() : 1) + levelDelta;
-
-            child.setModulePath(newPath);
-            child.setModuleLevel(newLevel);
-
-            sysModuleMapper.update(
-                    null,
-                    Wrappers.<SysModule>lambdaUpdate()
-                            .eq(SysModule::getId, child.getId())
-                            .set(SysModule::getModulePath, newPath)
-                            .set(SysModule::getModuleLevel, newLevel));
-
-            // 递归更新孙子节点
-            updateDescendantPathsAndLevels(child.getId(), oldPath, newPath, levelDelta);
-        }
-    }
-
-    private void updateLeafFlag(Long moduleId) {
-        Long count =
-                sysModuleMapper.selectCount(
-                        Wrappers.<SysModule>lambdaQuery().eq(SysModule::getParentId, moduleId));
-        int leafFlag = count > 0 ? 0 : 1;
-
-        sysModuleMapper.update(
-                null,
-                Wrappers.<SysModule>lambdaUpdate()
-                        .eq(SysModule::getId, moduleId)
-                        .set(SysModule::getLeafFlag, leafFlag));
-    }
-
     private SysModule createModule(String projectNo, Long subjectId, SaveSysModuleReq request) {
         SysModule module = new SysModule();
         module.setProjectNo(projectNo);
@@ -831,9 +727,6 @@ public class SysModuleService implements SysModuleApi {
         module.setApprovalRequired(request.getApprovalRequired());
         module.setBizDefFlag(request.getBizDefFlag());
         module.setRelateSearchField(request.getRelateSearchField());
-        module.setModuleStatus("active");
-        module.setLeafFlag(1); // 默认新节点是叶子节点
-
         // 处理排序顺序
         if (request.getSortOrder() == null) {
             Long count =
@@ -843,35 +736,6 @@ public class SysModuleService implements SysModuleApi {
             module.setSortOrder(count.intValue());
         } else {
             module.setSortOrder(request.getSortOrder());
-        }
-
-        // 计算层级和路径
-        if (module.getParentId() > 0) {
-            SysModule parent = sysModuleMapper.selectById(module.getParentId());
-            if (parent != null) {
-                module.setModuleLevel(
-                        (parent.getModuleLevel() != null ? parent.getModuleLevel() : 0) + 1);
-                String parentPath = parent.getModulePath() != null ? parent.getModulePath() : "";
-                module.setModulePath(
-                        parentPath.isEmpty()
-                                ? module.getModuleCode()
-                                : parentPath + "/" + module.getModuleCode());
-
-                // 更新父节点 leafFlag
-                if (parent.getLeafFlag() == 1) {
-                    sysModuleMapper.update(
-                            null,
-                            Wrappers.<SysModule>lambdaUpdate()
-                                    .eq(SysModule::getId, parent.getId())
-                                    .set(SysModule::getLeafFlag, 0));
-                }
-            } else {
-                module.setModuleLevel(1);
-                module.setModulePath(module.getModuleCode());
-            }
-        } else {
-            module.setModuleLevel(1);
-            module.setModulePath(module.getModuleCode());
         }
 
         requestToTableHeader(request, module);
@@ -1421,7 +1285,6 @@ public class SysModuleService implements SysModuleApi {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getProjectNo, projectNo);
         wrapper.eq(SysModule::getSubjectId, subjectId);
-        wrapper.eq(SysModule::getModuleStatus, "active");
         wrapper.orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 

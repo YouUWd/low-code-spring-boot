@@ -32,12 +32,6 @@ public class SysModuleListResp {
     @Schema(description = "详情模块ID", example = "2")
     private Long detailModuleId;
 
-    @Schema(description = "模块层级", example = "1")
-    private Integer moduleLevel;
-
-    @Schema(description = "模块路径", example = "1/2/3")
-    private String modulePath;
-
     @Schema(description = "主表名", example = "sys_user")
     private String primaryTable;
 
@@ -52,12 +46,6 @@ public class SysModuleListResp {
 
     @Schema(description = "是否模块业务定义", example = "0")
     private Integer bizDefFlag;
-
-    @Schema(description = "模块状态", example = "active")
-    private String moduleStatus;
-
-    @Schema(description = "是否叶子节点（0=否，1=是）", example = "1")
-    private Integer leafFlag;
 
     @Schema(description = "排序顺序", example = "1")
     private Integer sortOrder;

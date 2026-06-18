@@ -15,12 +15,6 @@ public class MoveModuleResp {
     @Schema(description = "父模块ID", example = "2")
     private Long parentId;
 
-    @Schema(description = "模块层级", example = "2")
-    private Integer moduleLevel;
-
-    @Schema(description = "模块路径", example = "ROOT/PARENT/MODULE")
-    private String modulePath;
-
     @Schema(description = "排序顺序", example = "1")
     private Integer sortOrder;
 
