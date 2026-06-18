@@ -43,11 +43,10 @@ public class SysStatusController {
             description = "删除指定状态。force=false 时若有子状态则返回提示；force=true 时级联删除所有子状态")
     public ApiResponse<Void> delete(
             @Parameter(description = "状态ID", example = "1") @PathVariable Long id,
-            @RequestParam(required = false, defaultValue = "0") Long subjectId,
             @Parameter(description = "是否强制删除", example = "false")
                     @RequestParam(defaultValue = "false")
                     boolean force) {
-        sysStatusApi.deleteStatus(id, subjectId, force);
+        sysStatusApi.deleteStatus(id, force);
         return ApiResponse.success();
     }
 

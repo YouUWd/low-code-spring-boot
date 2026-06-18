@@ -163,21 +163,18 @@ public class SysStatusService implements SysStatusApi {
 
     @Transactional
     @Override
-    public void deleteStatus(Long id, Long subjectId, boolean force) {
-        if (subjectId == null) {
-            subjectId = 0L;
-        }
+    public void deleteStatus(Long id, boolean force) {
         SysStatus status =
                 sysStatusMapper.selectOne(
                         Wrappers.<SysStatus>lambdaQuery()
                                 .eq(SysStatus::getId, id)
-                                .eq(SysStatus::getSubjectId, subjectId)
+                                .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
         if (status == null) {
             throw new BusinessException("状态不存在");
         }
         // 收集所有子节点ID
-        Set<Long> childIds = collectChildrenIds(id, subjectId);
+        Set<Long> childIds = collectChildrenIds(id, AppContext.getSubjectId());
         int childCount = childIds.size();
         if (!force && childCount > 0) {
             throw new BusinessException(
@@ -188,7 +185,7 @@ public class SysStatusService implements SysStatusApi {
         sysStatusMapper.deleteByIds(ids);
 
         // 删除后重排同级节点的排序值
-        reorderSiblingsAfterDelete(status.getPid(), subjectId);
+        reorderSiblingsAfterDelete(status.getPid(), AppContext.getSubjectId());
     }
 
     @Override
