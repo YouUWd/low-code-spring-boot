@@ -8,8 +8,11 @@ import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.shared.annotation.ConfigChangeNotify;
+import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +33,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
+    private final SysRoleUserMapper sysRoleUserMapper;
+    private final SysRoleSubjectMapper sysRoleSubjectMapper;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -130,6 +135,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
+    @ConfigChangeNotify(changeType = ChangeType.ROLE_MENU_CHANGED, roleIdExpr = "#request.roleId")
     public void saveRoleMenu(SaveRoleMenuReq request) {
         Long roleId = request.getRoleId();
         List<Long> menuIds = request.getMenuIds();
@@ -152,6 +158,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             .toList();
             sysRoleMenuMapper.insert(roleMenus);
         }
+
+        setAffectedContext(roleId);
     }
 
     @Override
@@ -195,6 +203,9 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_INTERACTION_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId")
     public void saveRoleInteractionPermission(SaveRoleInteractionPermissionReq request) {
         Long roleId = request.getRoleId();
         List<Long> permissionIds = request.getPermissionIds();
@@ -219,10 +230,15 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             .toList();
             sysRoleInteractionPermissionMapper.insert(rolePermissions);
         }
+
+        setAffectedContext(roleId);
     }
 
     @Transactional
     @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_DATA_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId")
     public void saveRoleDataPermission(SaveRoleDataPermissionReq request) {
         Long roleId = request.getRoleId();
         List<String> permissionIds = request.getPermissionIds();
@@ -264,6 +280,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             .toList();
             sysRoleDataPermissionMapper.insert(roleDataPermissions);
         }
+
+        setAffectedContext(roleId);
     }
 
     @Override
@@ -305,6 +323,9 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_SPECIAL_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId")
     public void saveRoleSpecialPermission(SaveRoleSpecialPermissionReq request) {
         Long roleId = request.getRoleId();
         List<Long> specialPermissionIds = request.getSpecialPermissionIds();
@@ -329,6 +350,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             .toList();
             sysRoleSpecialPermissionMapper.insert(roleSpecialPermissions);
         }
+
+        setAffectedContext(roleId);
     }
 
     @Override
@@ -363,6 +386,10 @@ public class SysRolePermissionService implements SysRolePermissionApi {
 
     @Transactional(rollbackFor = Exception.class)
     @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_MODULE_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId",
+            moduleIdExpr = "#request.fields[0].moduleId")
     public void saveRoleModuleFieldPermission(SaveRoleModuleFieldPermissionReq request) {
         Long roleId = request.getRoleId();
 
@@ -451,6 +478,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                 sysRoleModuleFieldPermissionMapper.insert(allEntities);
             }
         }
+
+        setAffectedContext(request.getRoleId());
     }
 
     @Override
@@ -481,5 +510,32 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             return resp;
                         })
                 .toList();
+    }
+
+    /**
+     * 查询角色关联的用户/主体 ID，写入 ConfigChangeContext，供 Aspect 追加到 payload
+     *
+     * <p>所有权限变更方法（菜单、交互权限、数据权限、特殊权限、模块字段权限）在操作完成后统一调用此方法
+     */
+    private void setAffectedContext(Long roleId) {
+        List<Long> affectedUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .eq(SysRoleUser::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleSubject>()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds);
     }
 }

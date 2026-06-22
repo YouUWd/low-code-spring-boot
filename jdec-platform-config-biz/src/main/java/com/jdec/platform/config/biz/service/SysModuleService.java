@@ -22,8 +22,10 @@ import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.bo.SubjectBO;
+import com.jdec.platform.shared.annotation.ConfigChangeNotify;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
+import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -377,6 +379,7 @@ public class SysModuleService implements SysModuleApi {
 
     @Override
     @Transactional
+    @ConfigChangeNotify(changeType = ChangeType.MODULE_CHANGED, moduleIdExpr = "#request.module.id")
     public Long saveModule(String projectNo, Long subjectId, SaveModuleReq request) {
         SaveModuleReq.SaveSysModuleReq req = request.getModule();
         if (req == null) {
@@ -514,6 +517,7 @@ public class SysModuleService implements SysModuleApi {
 
     @Override
     @Transactional
+    @ConfigChangeNotify(changeType = ChangeType.MODULE_CHANGED, moduleIdExpr = "#moduleId")
     public void deleteModuleComplete(Long moduleId) {
         SysModule module = sysModuleMapper.selectById(moduleId);
         if (module == null) {
