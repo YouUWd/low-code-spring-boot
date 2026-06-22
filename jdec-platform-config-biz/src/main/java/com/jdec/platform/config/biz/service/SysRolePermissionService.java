@@ -15,6 +15,7 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
+import java.util.Comparator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,6 +82,10 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             resp.setVideoName(menu.getVideoName());
                             return resp;
                         })
+                .sorted(
+                        Comparator.comparing(
+                                RoleMenuResp::getSortOrder,
+                                Comparator.nullsLast(Integer::compareTo)))
                 .toList();
     }
 
@@ -131,6 +136,10 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             resp.setVideoName(menu.getVideoName());
                             return resp;
                         })
+                .sorted(
+                        Comparator.comparing(
+                                RoleMenuResp::getSortOrder,
+                                Comparator.nullsLast(Integer::compareTo)))
                 .toList();
     }
 
