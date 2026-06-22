@@ -27,13 +27,12 @@ import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
+import com.jdec.platform.shared.annotation.ConfigChangeNotify;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import com.jdec.platform.shared.enums.EffectiveTypeEnum;
-import com.jdec.platform.shared.enums.EmployedStatusEnum;
-import com.jdec.platform.shared.enums.UserStatusFlagEnum;
-import com.jdec.platform.shared.enums.UserTypeEnum;
+import com.jdec.platform.shared.enums.*;
 import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
@@ -218,6 +217,7 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
+    @ConfigChangeNotify(changeType = ChangeType.ROLE_CONFIG_CHANGED, roleIdExpr = "#result.id")
     public RoleConfigPageResp saveRoleUser(SaveRoleUserReq request) {
         // 先更新已时效的关联状态
         updateExpiredRelations();
@@ -247,6 +247,27 @@ public class SysRoleService implements SysRoleApi {
         Long roleId =
                 doSaveRoleUser(
                         request, allUserIds, hrUserMap, deptMap, subjectMap, allSubjectUsers);
+
+        // 操作完成后查询关联表，收集受影响的用户/主体 ID，供 Aspect 追加到 payload
+        List<Long> affectedUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .eq(SysRoleUser::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                Wrappers.<SysRoleSubject>lambdaQuery()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds);
 
         // 查询并返回保存后的角色配置信息
         return getRoleConfigById(roleId);
@@ -617,13 +638,25 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
+    @ConfigChangeNotify(changeType = ChangeType.ROLE_CONFIG_CHANGED, roleIdExpr = "#roleId")
     public void deleteRole(Long roleId) {
-        // 1. 获取该角色关联的所有用户ID（用于后续检查是否需要删除sys_user记录）
+        // 1. 删除前收集受影响的用户/主体 ID（删除后数据已不存在，无法再查）
         List<SysRoleUser> roleUsers =
                 sysRoleUserMapper.selectList(
                         new LambdaQueryWrapper<SysRoleUser>().eq(SysRoleUser::getRoleId, roleId));
         Set<Long> userIds =
                 roleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toSet());
+
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleSubject>()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(new ArrayList<>(userIds), affectedSubjectIds);
 
         // 2. 删除角色主体关联 (sys_role_subject)
         sysRoleSubjectMapper.delete(
@@ -1293,11 +1326,15 @@ public class SysRoleService implements SysRoleApi {
                         .map(SysRoleUser::getUserId)
                         .toList();
         // 查询这些用户中属于指定主体的用户
-        List<SysUser> users =
-                sysUserMapper.selectList(
-                        new LambdaQueryWrapper<SysUser>()
-                                .in(SysUser::getUserId, subjectUserIds)
-                                .eq(SysUser::getDeleted, 0));
+        List<SysUser> users = new ArrayList<>();
+        if (CollUtil.isNotEmpty(subjectUserIds)) {
+            users =
+                    sysUserMapper.selectList(
+                            new LambdaQueryWrapper<SysUser>()
+                                    .in(SysUser::getUserId, subjectUserIds)
+                                    .eq(SysUser::getDeleted, 0));
+        }
+
         return users.stream().map(SysUser::getUserName).toList();
     }
 
