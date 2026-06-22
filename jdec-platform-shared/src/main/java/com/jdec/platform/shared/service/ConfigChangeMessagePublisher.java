@@ -62,21 +62,17 @@ public class ConfigChangeMessagePublisher {
     public void publish(
             Long subjectId, String projectNo, String changeType, Map<String, Object> payload) {
         try {
-            // 构建 channel
-            String channel = ConfigChangeChannelUtil.buildChannel(subjectId, projectNo);
+            // 构建 channel（changeType 放到 channel 中）
+            String channel = ConfigChangeChannelUtil.buildChannel(subjectId, projectNo, changeType);
 
-            // 构建消息体
-            ConfigChangeMessage message = buildMessage(subjectId, projectNo, changeType, payload);
+            // 构建消息体（不再包含 changeType）
+            ConfigChangeMessage message = buildMessage(subjectId, projectNo, payload);
 
             // 序列化并发布
             String messageJson = objectMapper.writeValueAsString(message);
             redisTemplate.convertAndSend(channel, messageJson);
 
-            log.info(
-                    "配置变更消息发布成功: channel={}, changeType={}, payload={}",
-                    channel,
-                    changeType,
-                    payload);
+            log.info("配置变更消息发布成功: channel={}, payload={}", channel, payload);
             log.debug("完整消息内容: {}", messageJson);
         } catch (Exception e) {
             log.error(
@@ -91,14 +87,13 @@ public class ConfigChangeMessagePublisher {
 
     /** 构建完整消息体 */
     private ConfigChangeMessage buildMessage(
-            Long subjectId, String projectNo, String changeType, Map<String, Object> payload) {
+            Long subjectId, String projectNo, Map<String, Object> payload) {
         ConfigChangeMessage message = new ConfigChangeMessage();
         message.setMessageId(generateMessageId());
         message.setPublishTime(
                 LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         message.setSubjectId(subjectId);
         message.setProjectNo(projectNo);
-        message.setChangeType(changeType);
         message.setPayload(payload);
 
         // 添加操作人信息

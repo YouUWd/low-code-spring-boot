@@ -26,10 +26,7 @@ public class ConfigChangeMessage {
     /** 项目编码 */
     private String projectNo;
 
-    /** 变更类型 */
-    private String changeType;
-
-    /** 变更内容（业务系统根据 changeType 自行解析） */
+    /** 变更内容（业务系统根据 channel 中的 changeType 自行解析） */
     private Map<String, Object> payload;
 
     /** 操作人信息 */
