@@ -25,20 +25,20 @@ public class DataQueryController {
     /**
      * 根据模块编码执行动态查询
      *
-     * @param moduleCode 模块编码
+     * @param moduleId 模块Id
      * @param request 查询请求参数
      * @return 分页查询结果
      */
-    @PostMapping("/{moduleCode}")
+    @PostMapping("/{moduleId}")
     @Operation(summary = "执行动态查询", description = "根据模块配置动态构建SQL并执行查询，支持多种过滤操作符和多字段排序")
     public ApiResponse<PageResult<Map<String, Object>>> executeQuery(
             @PathVariable @Parameter(description = "模块编码", example = "MOD-STUDENT-LIST")
-                    String moduleCode,
+                    Long moduleId,
             @RequestBody DataQueryReq request) {
 
         PageResult<Map<String, Object>> result =
                 dataQueryApi.executeQuery(
-                        moduleCode, AppContext.getProjectNo(), AppContext.getSubjectId(), request);
+                        moduleId, AppContext.getProjectNo(), AppContext.getSubjectId(), request);
         return ApiResponse.success(result);
     }
 }
