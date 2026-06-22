@@ -70,27 +70,6 @@ public class SysModuleController {
     }
 
     /**
-     * 查询模块完整信息 包含模块基本信息、关联表、字段配置和状态
-     *
-     * <p>项目上下文通过 X-Project-No 请求头指定。
-     *
-     * @param moduleCode 模块编码
-     * @return 模块完整信息
-     */
-    @Operation(summary = "查询模块完整信息", description = "获取模块的所有配置信息，包括基本信息、关联表、简单字段、组合字段和状态配置")
-    @GetMapping("/{moduleCode}/complete")
-    public ApiResponse<SysModuleCompleteResp> getModuleComplete(
-            @Parameter(description = "模块编码", required = true, example = "1") @PathVariable
-                    String moduleCode) {
-        String projectNo = AppContext.getProjectNo();
-        Long subjectId = AppContext.getSubjectId();
-        log.info("查询项目 {} (主体 {}) 的模块完整信息: moduleCode={}", projectNo, subjectId, moduleCode);
-        SysModuleCompleteResp result =
-                sysModuleService.getModuleComplete(projectNo, subjectId, moduleCode);
-        return ApiResponse.success(result);
-    }
-
-    /**
      * 根据模块ID查询模块完整信息 包含模块基本信息、关联表、字段配置和状态
      *
      * @param moduleId 模块ID

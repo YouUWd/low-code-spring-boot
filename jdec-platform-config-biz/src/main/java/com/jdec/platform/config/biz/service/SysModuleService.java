@@ -44,6 +44,15 @@ import org.springframework.util.StringUtils;
 @com.jdec.platform.shared.datasource.DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysModuleService implements SysModuleApi {
 
+    // 权限变更类型位掩码
+    private static final int PERM_CHANGE_MODULE_RESET = 1; // 1: 重置整个模块的字段权限
+    private static final int PERM_CHANGE_TABLE_RESET = 1 << 1; // 2: 重置只读关联表物理字段的权限
+    private static final int PERM_CHANGE_TABLE_CLEAN = 1 << 2; // 4: 清理删除表相关字段的角色权限
+    private static final int PERM_CHANGE_SIMPLE_CLEAN = 1 << 3; // 8: 清理删除简单物理字段的角色权限
+    private static final int PERM_CHANGE_COMBINE_CLEAN = 1 << 4; // 16: 清理删除组合字段的角色权限
+
+    private static final ThreadLocal<Integer> PERMISSION_CHANGES = ThreadLocal.withInitial(() -> 0);
+
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleTableMapper sysModuleTableMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
@@ -101,23 +110,6 @@ public class SysModuleService implements SysModuleApi {
         resp.setUpdatedDate(
                 module.getUpdatedDate() != null ? module.getUpdatedDate().toString() : null);
         return resp;
-    }
-
-    @Override
-    public SysModuleCompleteResp getModuleComplete(
-            String projectNo, Long subjectId, String moduleCode) {
-        //        SysModule module =
-        //                sysModuleMapper.selectOne(
-        //                        Wrappers.<SysModule>lambdaQuery()
-        //                                .eq(SysModule::getProjectNo, projectNo)
-        //                                .eq(SysModule::getSubjectId, subjectId)
-        //                                .eq(SysModule::getModuleCode, moduleCode));
-        //        if (module == null) {
-        //            return null;
-        //        }
-        //
-        //        return buildModuleCompleteResp(module);
-        return null;
     }
 
     @Override
@@ -394,32 +386,48 @@ public class SysModuleService implements SysModuleApi {
         // 1. 前置校验
         validateSaveRequest(req);
 
-        // 2. 保存/更新模块主体信息
-        SysModule module = saveOrUpdateModuleEntity(projectNo, subjectId, req);
-        Long moduleId = module.getId();
+        PERMISSION_CHANGES.set(0);
+        try {
+            // 2. 保存/更新模块主体信息
+            SysModule module = saveOrUpdateModuleEntity(projectNo, subjectId, req);
+            Long moduleId = module.getId();
 
-        // 3. 保存关联表
-        if (request.getModuleTables() != null) {
-            saveModuleTables(moduleId, request.getModuleTables());
+            // 3. 保存关联表
+            if (request.getModuleTables() != null) {
+                saveModuleTables(moduleId, request.getModuleTables());
+            }
+
+            // 4. 保存简单字段
+            if (request.getSimpleFields() != null) {
+                saveSimpleFields(moduleId, request.getSimpleFields());
+            }
+
+            // 5. 校验并保存组合字段
+            if (request.getCombineFields() != null) {
+                validateAndSaveCombineFields(moduleId, request);
+            }
+
+            // 6. 仅 DETAIL 类型模块保存状态信息
+            if (ModuleTypeEnum.DETAIL == module.getModuleType()
+                    && request.getModuleStatuses() != null) {
+                saveModuleStatuses(moduleId, request.getModuleStatuses());
+            }
+
+            int changeMask = PERMISSION_CHANGES.get();
+            if (changeMask > 0) {
+                log.info(
+                        "模块ID {} 保存成功，发生了权限变更，掩码值为: {} (二进制: {})",
+                        moduleId,
+                        changeMask,
+                        Integer.toBinaryString(changeMask));
+            } else {
+                log.info("模块ID {} 保存成功，无权限变更", moduleId);
+            }
+
+            return moduleId;
+        } finally {
+            PERMISSION_CHANGES.remove();
         }
-
-        // 4. 保存简单字段
-        if (request.getSimpleFields() != null) {
-            saveSimpleFields(moduleId, request.getSimpleFields());
-        }
-
-        // 5. 校验并保存组合字段
-        if (request.getCombineFields() != null) {
-            validateAndSaveCombineFields(moduleId, request);
-        }
-
-        // 6. 仅 DETAIL 类型模块保存状态信息
-        if (ModuleTypeEnum.DETAIL == module.getModuleType()
-                && request.getModuleStatuses() != null) {
-            saveModuleStatuses(moduleId, request.getModuleStatuses());
-        }
-
-        return moduleId;
     }
 
     private void validateSaveRequest(SaveModuleReq.SaveSysModuleReq req) {
@@ -455,6 +463,7 @@ public class SysModuleService implements SysModuleApi {
                     && req.getBizDefFlag() == 0
                     && !Objects.equals(oldBizDefFlag, 0)) {
                 resetModuleFieldPermissions(module.getId());
+                PERMISSION_CHANGES.set(PERMISSION_CHANGES.get() | PERM_CHANGE_MODULE_RESET);
             }
 
             // Phase 3: bizDefFlag=1 时跨模块传播只读 —— 仅当 bizDefFlag 由非1（只读）变为1（可写）时触发
@@ -823,6 +832,7 @@ public class SysModuleService implements SysModuleApi {
                 if (!deleteFieldIds.isEmpty()) {
                     sysModuleFieldMapper.deleteByIds(deleteFieldIds);
                     cleanFieldReferences(deleteFieldIds);
+                    PERMISSION_CHANGES.set(PERMISSION_CHANGES.get() | PERM_CHANGE_TABLE_CLEAN);
                 }
             }
 
@@ -858,6 +868,7 @@ public class SysModuleService implements SysModuleApi {
                 // 如果只读属性由非只读变更为只读，重置该关联表字段的可写与更新权限为0
                 if (Objects.equals(info.getReadOnly(), 1) && !Objects.equals(oldReadOnly, 1)) {
                     resetTableFieldPermissions(moduleId, info.getTableName());
+                    PERMISSION_CHANGES.set(PERMISSION_CHANGES.get() | PERM_CHANGE_TABLE_RESET);
                 }
                 sysModuleTableMapper.updateById(t);
             } else {
@@ -946,6 +957,7 @@ public class SysModuleService implements SysModuleApi {
             sysModuleFieldMapper.deleteByIds(deleteIds);
             // 级联清理角色权限表与微信参数表的引用
             cleanFieldReferences(deleteIds);
+            PERMISSION_CHANGES.set(PERMISSION_CHANGES.get() | PERM_CHANGE_SIMPLE_CLEAN);
         }
 
         // 4. 组装待批量保存/更新的列表
@@ -999,6 +1011,7 @@ public class SysModuleService implements SysModuleApi {
             sysModuleFieldMapper.deleteByIds(deleteIds);
             // 级联清理角色权限表与微信参数表的引用
             cleanFieldReferences(deleteIds);
+            PERMISSION_CHANGES.set(PERMISSION_CHANGES.get() | PERM_CHANGE_COMBINE_CLEAN);
         }
 
         // 4. 组装待批量保存/更新的列表

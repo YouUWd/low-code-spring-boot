@@ -23,16 +23,6 @@ public interface SysModuleApi {
     List<SysModuleListResp> listModules(String projectNo, Long subjectId, Boolean availableOnly);
 
     /**
-     * 获取模块完整信息 包含模块基本信息、关联表、字段配置和状态
-     *
-     * @param projectNo 项目编码
-     * @param subjectId 主体ID
-     * @param moduleCode 模块编码
-     * @return 模块完整信息响应
-     */
-    SysModuleCompleteResp getModuleComplete(String projectNo, Long subjectId, String moduleCode);
-
-    /**
      * 根据模块ID获取模块完整信息 包含模块基本信息、关联表、字段配置和状态
      *
      * @param projectNo 项目编码
