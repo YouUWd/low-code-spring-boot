@@ -83,7 +83,7 @@ spring:
       host: ${REDIS_HOST:192.168.60.101}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:jdec_platform123}
-      database: ${REDIS_DATABASE:8}
+      database: ${REDIS_DATABASE:3}
       timeout: 3000ms
       lettuce:
         pool:
