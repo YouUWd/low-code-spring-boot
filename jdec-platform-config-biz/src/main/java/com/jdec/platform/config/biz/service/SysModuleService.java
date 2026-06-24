@@ -632,9 +632,16 @@ public class SysModuleService implements SysModuleApi {
         // 提前查询目标父模块，后续复用，避免重复查询
         SysModule targetParent = null;
         if (targetParentId > 0) {
+            if (moduleId.equals(targetParentId)) {
+                throw new BusinessException(400, "不能将模块移动到自身下");
+            }
             targetParent = sysModuleMapper.selectById(targetParentId);
             if (targetParent == null) {
                 throw new BusinessException(404, "目标父模块不存在");
+            }
+            if (!Objects.equals(targetParent.getProjectNo(), module.getProjectNo())
+                    || !Objects.equals(targetParent.getSubjectId(), module.getSubjectId())) {
+                throw new BusinessException(400, "不能跨项目或主体移动模块");
             }
             // 检查是否试图将模块移动到其子模块下（防止循环）
             if (isDescendant(moduleId, targetParentId)) {
@@ -643,12 +650,12 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 判断是否为同父模块拖拽
-        assert oldParentId != null;
-        if (oldParentId.equals(targetParentId)) {
+        if (Objects.equals(oldParentId, targetParentId)) {
             // 同父拖拽：全量洗牌。
             // 取出该组全部子节点，移除被拖模块后插入目标位置，然后从 0 开始完整重编号。
             // 相比增量移位，全量洗牌确保 sortOrder 无论 DB 原始状态如何都连续无断层。
-            List<SysModule> siblings = getChildrenSorted(oldParentId);
+            List<SysModule> siblings =
+                    getChildrenSorted(oldParentId, module.getProjectNo(), module.getSubjectId());
             siblings.removeIf(s -> s.getId().equals(moduleId));
 
             // clamp 目标位置到合法范围 [0, siblings.size()]
@@ -662,7 +669,8 @@ public class SysModuleService implements SysModuleApi {
             // 跨父移动
 
             // 1. 旧父组：移除被移动模块后完整重编号，确保旧父排序连续
-            List<SysModule> oldChildren = getChildrenSorted(oldParentId);
+            List<SysModule> oldChildren =
+                    getChildrenSorted(oldParentId, module.getProjectNo(), module.getSubjectId());
             oldChildren.removeIf(s -> s.getId().equals(moduleId));
             reshuffleAndUpdate(oldChildren);
 
@@ -672,15 +680,17 @@ public class SysModuleService implements SysModuleApi {
             // 仅更新跨父移动涉及的字段：parentId / updatedDate
             LocalDateTime now = LocalDateTime.now();
             module.setUpdatedDate(now);
-            SysModule modulePartial = new SysModule();
-            modulePartial.setId(module.getId());
-            modulePartial.setParentId(module.getParentId());
-            modulePartial.setUpdatedDate(now);
-            sysModuleMapper.updateById(modulePartial);
+            sysModuleMapper.update(
+                    null,
+                    Wrappers.<SysModule>lambdaUpdate()
+                            .eq(SysModule::getId, module.getId())
+                            .set(SysModule::getParentId, module.getParentId())
+                            .set(SysModule::getUpdatedDate, module.getUpdatedDate()));
 
             // 3. 新父组：从 DB 拉取当前子节点（已包含刚写入 of module），
             // 移除 module 后在目标位置插入，完整重编号
-            List<SysModule> newChildren = getChildrenSorted(targetParentId);
+            List<SysModule> newChildren =
+                    getChildrenSorted(targetParentId, module.getProjectNo(), module.getSubjectId());
             newChildren.removeIf(s -> s.getId().equals(moduleId));
             int insertPos = Math.min(targetSortOrder, newChildren.size());
             newChildren.add(insertPos, module);
@@ -701,10 +711,14 @@ public class SysModuleService implements SysModuleApi {
      * 查询指定父节点下的所有直接子节点，按 sortOrder 升序排列，返回可变列表。
      *
      * @param parentId 父节点 ID（null 表示根节点）
+     * @param projectNo 项目编号
+     * @param subjectId 主体ID
      */
-    private List<SysModule> getChildrenSorted(Long parentId) {
+    private List<SysModule> getChildrenSorted(Long parentId, String projectNo, Long subjectId) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getParentId, parentId != null ? parentId : 0L);
+        wrapper.eq(SysModule::getProjectNo, projectNo);
+        wrapper.eq(SysModule::getSubjectId, subjectId);
         wrapper.orderByAsc(SysModule::getSortOrder);
         return new ArrayList<>(sysModuleMapper.selectList(wrapper));
     }
@@ -734,7 +748,7 @@ public class SysModuleService implements SysModuleApi {
         while (currentId != null && currentId > 0) {
             SysModule current = sysModuleMapper.selectById(currentId);
             if (current == null) break;
-            if (current.getParentId().equals(moduleId)) return true;
+            if (Objects.equals(current.getParentId(), moduleId)) return true;
             currentId = current.getParentId();
         }
         return false;
