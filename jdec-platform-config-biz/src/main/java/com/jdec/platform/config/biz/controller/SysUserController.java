@@ -5,6 +5,7 @@ import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -91,5 +92,16 @@ public class SysUserController {
             @Parameter(description = "手机号", required = true, example = "13800138000") @RequestParam
                     String phone) {
         return ApiResponse.success(sysUserApi.checkUserPermissionByPhone(phone));
+    }
+
+    @GetMapping("/detail/{userId}")
+    @Operation(
+            summary = "根据用户ID获取用户详情",
+            description =
+                    "检查逻辑：1. 先查sys_user表 2. 未查到则调用人力UserApi 3. 校验权限（系统设置或主体设置），无权限则抛出异常 4. 返回用户详情")
+    public ApiResponse<UserDetailResp> getUserDetailByUserId(
+            @Parameter(description = "用户ID", required = true, example = "1") @PathVariable
+                    Long userId) {
+        return ApiResponse.success(sysUserApi.getUserDetailByUserId(userId));
     }
 }

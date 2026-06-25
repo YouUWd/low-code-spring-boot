@@ -5,6 +5,7 @@ import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.List;
@@ -55,4 +56,23 @@ public interface SysUserApi {
      * @return 权限检查结果
      */
     CheckUserPermissionByPhoneResp checkUserPermissionByPhone(String phone);
+
+    /**
+     * 根据用户ID获取用户详情
+     *
+     * <p>逻辑：
+     *
+     * <ol>
+     *   <li>先从sys_user表根据userId查询用户
+     *   <li>如果未查到，调用人力模块UserApi根据userId查询
+     *   <li>如果人力模块也未查到，抛出异常
+     *   <li>检查权限（系统设置或主体设置）
+     *   <li>如果没有权限，抛出异常
+     *   <li>如果有权限，返回用户详情
+     * </ol>
+     *
+     * @param userId 用户ID
+     * @return 用户详情
+     */
+    UserDetailResp getUserDetailByUserId(Long userId);
 }

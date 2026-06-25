@@ -12,6 +12,7 @@ import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
 import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleSubject;
@@ -24,6 +25,7 @@ import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
+import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -522,6 +524,7 @@ public class SysUserService implements SysUserApi {
 
         Long userId;
         Long subjectId;
+        UserBasicInfoResp hrUser = null;
 
         if (sysUser != null) {
             // 配置中心找到用户
@@ -534,7 +537,7 @@ public class SysUserService implements SysUserApi {
                 return CheckUserPermissionByPhoneResp.builder().hasPermission(false).build();
             }
 
-            UserBasicInfoResp hrUser = hrUserOpt.get();
+            hrUser = hrUserOpt.get();
             userId = hrUser.getId();
             subjectId = hrUser.getSubjectId() != null ? hrUser.getSubjectId().longValue() : null;
         }
@@ -601,9 +604,192 @@ public class SysUserService implements SysUserApi {
             }
         }
 
-        // 5. 只要系统设置或主体设置有一个有权限，就返回有权限
-        return CheckUserPermissionByPhoneResp.builder()
-                .hasPermission(hasSystemPermission || hasSubjectPermission)
-                .build();
+        // 5. 判断是否有权限
+        boolean hasPermission = hasSystemPermission || hasSubjectPermission;
+
+        // 6. 构建响应，只有有权限时才填充用户信息
+        if (!hasPermission) {
+            return CheckUserPermissionByPhoneResp.builder().hasPermission(false).build();
+        }
+
+        return buildCheckUserPermissionResp(sysUser, hrUser, true);
+    }
+
+    private CheckUserPermissionByPhoneResp buildCheckUserPermissionResp(
+            SysUser sysUser, UserBasicInfoResp hrUser, boolean hasPermission) {
+        CheckUserPermissionByPhoneResp.CheckUserPermissionByPhoneRespBuilder builder =
+                CheckUserPermissionByPhoneResp.builder().hasPermission(hasPermission);
+
+        if (sysUser != null) {
+            builder.id(sysUser.getId())
+                    .userId(sysUser.getUserId())
+                    .companyId(sysUser.getCompanyId())
+                    .subjectId(sysUser.getSubjectId())
+                    .userType(sysUser.getUserType())
+                    .userName(sysUser.getUserName())
+                    .workNumber(sysUser.getWorkNumber())
+                    .userAvatar(sysUser.getUserAvatar())
+                    .phone(sysUser.getPhone())
+                    .sex(sysUser.getSex())
+                    .companyName(sysUser.getCompanyName())
+                    .departName(sysUser.getDepartName())
+                    .leaderName(sysUser.getLeaderName())
+                    .positionName(sysUser.getPositionName())
+                    .subjectName(sysUser.getSubjectName())
+                    .statusFlag(sysUser.getStatusFlag())
+                    .employedStatus(sysUser.getEmployedStatus())
+                    .superFlag(sysUser.getSuperFlag())
+                    .createdDate(sysUser.getCreatedDate());
+        } else if (hrUser != null) {
+            builder.userId(hrUser.getId())
+                    .userName(hrUser.getUserName())
+                    .workNumber(hrUser.getWorkNumber())
+                    .phone(hrUser.getPhone())
+                    .subjectId(
+                            hrUser.getSubjectId() != null
+                                    ? hrUser.getSubjectId().longValue()
+                                    : null)
+                    .departName(hrUser.getDepartmentName());
+        }
+
+        return builder.build();
+    }
+
+    @Override
+    public UserDetailResp getUserDetailByUserId(Long userId) {
+        String projectNo = AppContext.getProjectNo();
+        LocalDate today = LocalDate.now();
+
+        // 1. 先从 sys_user 表根据 userId 查询用户
+        SysUser sysUser =
+                sysUserMapper.selectOne(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .eq(SysUser::getUserId, userId)
+                                .eq(SysUser::getDeleted, Boolean.FALSE));
+
+        Long subjectId;
+        UserBO hrUser = null;
+
+        if (sysUser != null) {
+            // 配置中心找到用户
+            subjectId = sysUser.getSubjectId();
+        } else {
+            // 2. 配置中心未找到，从人力模块查询用户
+            List<UserBO> hrUsers = userApi.listByIds(Set.of(userId));
+            if (hrUsers.isEmpty()) {
+                throw new BusinessException("用户不存在");
+            }
+
+            hrUser = hrUsers.getFirst();
+            subjectId = hrUser.getSubjectId() != null ? hrUser.getSubjectId().longValue() : null;
+        }
+
+        // 3. 检查系统设置：userId -> sys_role_user -> sys_role
+        boolean hasSystemPermission = false;
+        List<Long> systemRoleIds =
+                sysRoleUserMapper
+                        .selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .eq(SysRoleUser::getUserId, userId)
+                                        .eq(SysRoleUser::getStatus, 0))
+                        .stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleUser::getRoleId)
+                        .distinct()
+                        .toList();
+
+        if (!systemRoleIds.isEmpty()) {
+            long validRoleCount =
+                    sysRoleMapper.selectCount(
+                            Wrappers.<SysRole>lambdaQuery()
+                                    .in(SysRole::getId, systemRoleIds)
+                                    .eq(SysRole::getProjectNo, projectNo));
+            hasSystemPermission = validRoleCount > 0;
+        }
+
+        // 4. 检查主体设置：subjectId -> sys_role_subject -> sys_role
+        boolean hasSubjectPermission = false;
+        if (subjectId != null) {
+            List<Long> subjectRoleIds =
+                    sysRoleSubjectMapper
+                            .selectList(
+                                    Wrappers.<SysRoleSubject>lambdaQuery()
+                                            .eq(SysRoleSubject::getSubjectId, subjectId)
+                                            .eq(SysRoleSubject::getStatus, 0))
+                            .stream()
+                            .filter(
+                                    rs ->
+                                            isEffectiveDateValid(
+                                                    rs.getEffectiveType(),
+                                                    rs.getEffectiveStartDate(),
+                                                    rs.getEffectiveEndDate(),
+                                                    today))
+                            .map(SysRoleSubject::getRoleId)
+                            .distinct()
+                            .toList();
+
+            if (!subjectRoleIds.isEmpty()) {
+                long validRoleCount =
+                        sysRoleMapper.selectCount(
+                                Wrappers.<SysRole>lambdaQuery()
+                                        .in(SysRole::getId, subjectRoleIds)
+                                        .eq(SysRole::getProjectNo, projectNo));
+                hasSubjectPermission = validRoleCount > 0;
+            }
+        }
+
+        // 5. 判断是否有权限
+        boolean hasPermission = hasSystemPermission || hasSubjectPermission;
+        if (!hasPermission) {
+            throw new BusinessException("用户不存在");
+        }
+
+        // 6. 返回用户详情
+        return buildUserDetailResp(sysUser, hrUser);
+    }
+
+    private UserDetailResp buildUserDetailResp(SysUser sysUser, UserBO hrUser) {
+        UserDetailResp.UserDetailRespBuilder builder = UserDetailResp.builder();
+
+        if (sysUser != null) {
+            builder.id(sysUser.getId())
+                    .userId(sysUser.getUserId())
+                    .companyId(sysUser.getCompanyId())
+                    .subjectId(sysUser.getSubjectId())
+                    .userType(sysUser.getUserType())
+                    .userName(sysUser.getUserName())
+                    .workNumber(sysUser.getWorkNumber())
+                    .userAvatar(sysUser.getUserAvatar())
+                    .phone(sysUser.getPhone())
+                    .sex(sysUser.getSex())
+                    .companyName(sysUser.getCompanyName())
+                    .departName(sysUser.getDepartName())
+                    .leaderName(sysUser.getLeaderName())
+                    .positionName(sysUser.getPositionName())
+                    .subjectName(sysUser.getSubjectName())
+                    .statusFlag(sysUser.getStatusFlag())
+                    .employedStatus(sysUser.getEmployedStatus())
+                    .superFlag(sysUser.getSuperFlag())
+                    .createdDate(sysUser.getCreatedDate());
+        } else if (hrUser != null) {
+            builder.userId(hrUser.getId())
+                    .userName(hrUser.getUserName())
+                    .workNumber(hrUser.getWorkNumber())
+                    .phone(hrUser.getPhone())
+                    .subjectId(
+                            hrUser.getSubjectId() != null
+                                    ? hrUser.getSubjectId().longValue()
+                                    : null)
+                    .sex(hrUser.getSex())
+                    .userAvatar(hrUser.getUserAvatar())
+                    .departName(hrUser.getDepartmentName());
+        }
+        return builder.build();
     }
 }
