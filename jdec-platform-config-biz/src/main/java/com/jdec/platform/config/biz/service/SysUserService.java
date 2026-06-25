@@ -10,16 +10,21 @@ import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
+import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
 import com.jdec.platform.config.biz.entity.SysRole;
+import com.jdec.platform.config.biz.entity.SysRoleSubject;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysUser;
 import com.jdec.platform.config.biz.mapper.SysRoleMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.hr.api.DepartmentApi;
+import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
+import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -27,6 +32,7 @@ import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
+import java.time.LocalDate;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -40,7 +46,9 @@ public class SysUserService implements SysUserApi {
     private final SysUserMapper sysUserMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleMapper sysRoleMapper;
+    private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final DepartmentApi departmentApi;
+    private final UserApi userApi;
 
     @Override
     public PageResult<SysUserPageResp> getUserPage(QuerySysUserPageReq query) {
@@ -498,5 +506,104 @@ public class SysUserService implements SysUserApi {
             }
         }
         return false;
+    }
+
+    @Override
+    public CheckUserPermissionByPhoneResp checkUserPermissionByPhone(String phone) {
+        String projectNo = AppContext.getProjectNo();
+        LocalDate today = LocalDate.now();
+
+        // 1. 先从 sys_user 表查询用户
+        SysUser sysUser =
+                sysUserMapper.selectOne(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .eq(SysUser::getPhone, phone)
+                                .eq(SysUser::getDeleted, Boolean.FALSE));
+
+        Long userId;
+        Long subjectId;
+
+        if (sysUser != null) {
+            // 配置中心找到用户
+            userId = sysUser.getUserId();
+            subjectId = sysUser.getSubjectId();
+        } else {
+            // 2. 配置中心未找到，从人力模块查询用户
+            Optional<UserBasicInfoResp> hrUserOpt = userApi.getUserBasicInfoByPhone(phone);
+            if (hrUserOpt.isEmpty()) {
+                return CheckUserPermissionByPhoneResp.builder().hasPermission(false).build();
+            }
+
+            UserBasicInfoResp hrUser = hrUserOpt.get();
+            userId = hrUser.getId();
+            subjectId = hrUser.getSubjectId() != null ? hrUser.getSubjectId().longValue() : null;
+        }
+
+        // 3. 检查系统设置：userId -> sys_role_user -> sys_role
+        boolean hasSystemPermission = false;
+        if (userId != null) {
+            List<Long> systemRoleIds =
+                    sysRoleUserMapper
+                            .selectList(
+                                    Wrappers.<SysRoleUser>lambdaQuery()
+                                            .eq(SysRoleUser::getUserId, userId)
+                                            .eq(SysRoleUser::getStatus, 0))
+                            .stream()
+                            .filter(
+                                    ru ->
+                                            isEffectiveDateValid(
+                                                    ru.getEffectiveType(),
+                                                    ru.getEffectiveStartDate(),
+                                                    ru.getEffectiveEndDate(),
+                                                    today))
+                            .map(SysRoleUser::getRoleId)
+                            .distinct()
+                            .toList();
+
+            if (!systemRoleIds.isEmpty()) {
+                long validRoleCount =
+                        sysRoleMapper.selectCount(
+                                Wrappers.<SysRole>lambdaQuery()
+                                        .in(SysRole::getId, systemRoleIds)
+                                        .eq(SysRole::getProjectNo, projectNo));
+                hasSystemPermission = validRoleCount > 0;
+            }
+        }
+
+        // 4. 检查主体设置：subjectId -> sys_role_subject -> sys_role
+        boolean hasSubjectPermission = false;
+        if (subjectId != null) {
+            List<Long> subjectRoleIds =
+                    sysRoleSubjectMapper
+                            .selectList(
+                                    Wrappers.<SysRoleSubject>lambdaQuery()
+                                            .eq(SysRoleSubject::getSubjectId, subjectId)
+                                            .eq(SysRoleSubject::getStatus, 0))
+                            .stream()
+                            .filter(
+                                    rs ->
+                                            isEffectiveDateValid(
+                                                    rs.getEffectiveType(),
+                                                    rs.getEffectiveStartDate(),
+                                                    rs.getEffectiveEndDate(),
+                                                    today))
+                            .map(SysRoleSubject::getRoleId)
+                            .distinct()
+                            .toList();
+
+            if (!subjectRoleIds.isEmpty()) {
+                long validRoleCount =
+                        sysRoleMapper.selectCount(
+                                Wrappers.<SysRole>lambdaQuery()
+                                        .in(SysRole::getId, subjectRoleIds)
+                                        .eq(SysRole::getProjectNo, projectNo));
+                hasSubjectPermission = validRoleCount > 0;
+            }
+        }
+
+        // 5. 只要系统设置或主体设置有一个有权限，就返回有权限
+        return CheckUserPermissionByPhoneResp.builder()
+                .hasPermission(hasSystemPermission || hasSubjectPermission)
+                .build();
     }
 }

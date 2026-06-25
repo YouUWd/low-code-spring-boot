@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
+import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.bo.SubjectBO;
@@ -79,5 +80,16 @@ public class SysUserController {
                         .filter(s -> subjectIdSet.contains(s.getId()))
                         .toList();
         return ApiResponse.success(subjects);
+    }
+
+    @GetMapping("/check-permission")
+    @Operation(
+            summary = "通过手机号检查用户权限",
+            description =
+                    "检查逻辑：1. 先查sys_user表 2. 未查到则调用人力UserApi 3. 根据用户subjectId查sys_role_user表并校验时效性")
+    public ApiResponse<CheckUserPermissionByPhoneResp> checkUserPermissionByPhone(
+            @Parameter(description = "手机号", required = true, example = "13800138000") @RequestParam
+                    String phone) {
+        return ApiResponse.success(sysUserApi.checkUserPermissionByPhone(phone));
     }
 }
