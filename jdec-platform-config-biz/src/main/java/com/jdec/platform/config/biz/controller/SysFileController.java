@@ -1,6 +1,5 @@
 package com.jdec.platform.config.biz.controller;
 
-import cn.dev33.satoken.annotation.SaIgnore;
 import com.jdec.platform.config.api.SysFileApi;
 import com.jdec.platform.config.api.dto.response.SysFileUploadResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -23,7 +22,6 @@ public class SysFileController {
 
     @Operation(summary = "上传文件", description = "通用的文件上传接口，返回可访问的完整URL")
     @PostMapping(value = "/upload", consumes = "multipart/form-data")
-    @SaIgnore
     public ApiResponse<SysFileUploadResp> uploadFile(@RequestPart("file") MultipartFile file) {
         return ApiResponse.success(sysFileService.uploadFile(file));
     }

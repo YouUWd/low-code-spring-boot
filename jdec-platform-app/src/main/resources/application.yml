@@ -52,10 +52,10 @@ mybatis-plus:
 
 # ===== JWT 配置 =====
 jwt:
-  # 签名密钥（生产环境请通过环境变量注入，至少 32 字节）
-  secret: jdec-platform-jwt-secret-key-2026-change-in-production
-  # 令牌过期时间（毫秒），默认 24 小时
-  expiration-ms: 86400000
+  secret: ${JWT_SECRET:fslpbyMEFrukCpH6j1uizt_F7cya2NfWXJuiWqEMU9PwT_664CIOnZmpFsQT6nEv}
+  expiration: ${JWT_EXPIRATION:604800000}  # 一周(毫秒)
+  header: Authorization
+  prefix: "Bearer "
 
 # ===== 企业微信配置 - 公共配置 =====
 wechat:

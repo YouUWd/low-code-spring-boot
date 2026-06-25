@@ -23,7 +23,7 @@ public class JwtTokenProvider {
 
     public JwtTokenProvider(
             @Value("${jwt.secret}") String secret,
-            @Value("${jwt.expiration-ms:86400000}") long expirationMs) {
+            @Value("${jwt.expiration:86400000}") long expirationMs) {
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
     }
@@ -33,10 +33,12 @@ public class JwtTokenProvider {
      *
      * @param userId 用户 ID
      * @param username 用户名
+     * @param phone 手机号
      * @param extra 额外声明（可选）
      * @return JWT 字符串
      */
-    public String generateToken(Long userId, String username, Map<String, Object> extra) {
+    public String generateToken(
+            Long userId, String username, String phone, Map<String, Object> extra) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
@@ -44,6 +46,7 @@ public class JwtTokenProvider {
                 Jwts.builder()
                         .subject(String.valueOf(userId))
                         .claim("username", username)
+                        .claim("phone", phone)
                         .issuedAt(now)
                         .expiration(expiry);
 
@@ -55,8 +58,8 @@ public class JwtTokenProvider {
     }
 
     /** 签发 JWT 令牌（无额外声明）。 */
-    public String generateToken(Long userId, String username) {
-        return generateToken(userId, username, null);
+    public String generateToken(Long userId, String username, String phone) {
+        return generateToken(userId, username, phone, null);
     }
 
     /**
@@ -90,6 +93,12 @@ public class JwtTokenProvider {
     public String getUsername(String token) {
         Claims claims = parseToken(token);
         return claims != null ? claims.get("username", String.class) : null;
+    }
+
+    /** 从令牌中获取手机号。 */
+    public String getPhone(String token) {
+        Claims claims = parseToken(token);
+        return claims != null ? claims.get("phone", String.class) : null;
     }
 
     /** 校验令牌是否有效（可解析且未过期）。 */

@@ -1,7 +1,5 @@
 package com.jdec.platform.auth.biz.service;
 
-import cn.dev33.satoken.stp.StpUtil;
-import cn.dev33.satoken.stp.parameter.SaLoginParameter;
 import com.jdec.platform.auth.api.AuthApi;
 import com.jdec.platform.auth.api.dto.request.LoginReq;
 import com.jdec.platform.auth.api.dto.request.SendCodeReq;
@@ -10,14 +8,16 @@ import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.shared.constants.RedisConstant;
 import com.jdec.platform.shared.constants.SystemConstant;
-import com.jdec.platform.shared.enums.DeviceTypeEnum;
 import com.jdec.platform.shared.enums.UserEmployeeStatusEnum;
 import com.jdec.platform.shared.enums.UserStatusFlagEnum;
 import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.security.JwtTokenProvider;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.security.model.LoginUser;
 import com.jdec.platform.shared.wechat.WeChatWorkService;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +36,7 @@ public class AuthService implements AuthApi {
     private final SysUserApi sysUserApi;
     private final StringRedisTemplate stringRedisTemplate;
     private final WeChatWorkService weChatWorkService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     @Override
     public LoginResp login(LoginReq request) {
@@ -63,28 +64,34 @@ public class AuthService implements AuthApi {
                 throw new BusinessException(ApiCodeEnum.OVERDUE.getCode(), "验证码错误，请重新输入");
             }
         }
-        // 4. Sa-Token 登录
+
+        // 4. 生成 JWT token
         String projectNo =
                 StringUtils.hasText(request.getProjectNo())
                         ? request.getProjectNo()
                         : SystemConstant.DEFAULT_PROJECT_NO;
 
-        StpUtil.login(
-                user.getId(),
-                new SaLoginParameter()
-                        .setDeviceType(DeviceTypeEnum.PC.getValue())
-                        .setExtra("username", user.getUserName())
-                        .setExtra("projectNo", projectNo));
+        Map<String, Object> extraClaims = new HashMap<>();
+        extraClaims.put("superAdmin", user.getSuperFlag() != null && user.getSuperFlag() == 1);
+        extraClaims.put("projectNo", projectNo);
 
-        // 5. 构建并存储 LoginUser
-        LoginUser loginUser = buildLoginUser(user, projectNo);
-        SecurityUtils.setLoginUser(loginUser);
+        String token =
+                jwtTokenProvider.generateToken(
+                        user.getId(), user.getUserName(), user.getPhone(), extraClaims);
 
-        log.info("用户登录成功: username={}, projectNo={}", user.getUserName(), projectNo);
+        // 5. 将 token 存入 Redis，key 为 token:{phone}
+        String redisKey = "token:" + user.getPhone();
+        stringRedisTemplate.opsForValue().set(redisKey, token, 24, TimeUnit.HOURS); // 与 JWT 过期时间一致
+
+        log.info(
+                "用户登录成功: username={}, phone={}, projectNo={}",
+                user.getUserName(),
+                user.getPhone(),
+                projectNo);
 
         return LoginResp.builder()
-                .token(StpUtil.getTokenValue())
-                .tokenName(StpUtil.getTokenName())
+                .token(token)
+                .tokenName("Authorization")
                 .userId(user.getId())
                 .username(user.getUserName())
                 .phone(user.getPhone())
@@ -94,20 +101,15 @@ public class AuthService implements AuthApi {
                 .build();
     }
 
-    private LoginUser buildLoginUser(SysUserBO user, String projectNo) {
-        // TODO: 后续完善角色、权限加载
-        return LoginUser.builder()
-                .userId(user.getId())
-                .username(user.getUserName())
-                .phone(user.getPhone())
-                .avatar(user.getUserAvatar())
-                .superAdmin(user.getSuperFlag() != null && user.getSuperFlag() == 1)
-                .build();
-    }
-
     @Override
     public void logout() {
-        StpUtil.logout();
+        LoginUser loginUser = SecurityUtils.getLoginUser();
+        if (loginUser != null && loginUser.getPhone() != null) {
+            // 从 Redis 中删除 token
+            String redisKey = "token:" + loginUser.getPhone();
+            stringRedisTemplate.delete(redisKey);
+            log.info("用户登出成功: phone={}", loginUser.getPhone());
+        }
     }
 
     @Override
