@@ -35,7 +35,9 @@ public class SysDataPermissionMappingService implements SysDataPermissionMapping
             boolean exists =
                     sysDataPermissionMappingMapper.exists(
                             Wrappers.<SysDataPermissionMapping>lambdaQuery()
-                                    .eq(SysDataPermissionMapping::getDataCode, req.getDataCode())
+                                    .eq(
+                                            SysDataPermissionMapping::getDataPermissionCode,
+                                            req.getDataPermissionCode())
                                     .eq(SysDataPermissionMapping::getBizId, req.getBizId()));
             if (exists) {
                 throw new BusinessException("该数据权限已存在");
@@ -55,7 +57,9 @@ public class SysDataPermissionMappingService implements SysDataPermissionMapping
             boolean exists =
                     sysDataPermissionMappingMapper.exists(
                             Wrappers.<SysDataPermissionMapping>lambdaQuery()
-                                    .eq(SysDataPermissionMapping::getDataCode, req.getDataCode())
+                                    .eq(
+                                            SysDataPermissionMapping::getDataPermissionCode,
+                                            req.getDataPermissionCode())
                                     .eq(SysDataPermissionMapping::getBizId, req.getBizId())
                                     .ne(SysDataPermissionMapping::getId, req.getId()));
             if (exists) {
@@ -98,9 +102,9 @@ public class SysDataPermissionMappingService implements SysDataPermissionMapping
                 sysDataPermissionMappingMapper.selectList(
                         new LambdaQueryWrapper<SysDataPermissionMapping>()
                                 .eq(
-                                        StringUtils.hasText(req.getDataCode()),
-                                        SysDataPermissionMapping::getDataCode,
-                                        req.getDataCode())
+                                        StringUtils.hasText(req.getDataPermissionCode()),
+                                        SysDataPermissionMapping::getDataPermissionCode,
+                                        req.getDataPermissionCode())
                                 .eq(
                                         req.getBizId() != null,
                                         SysDataPermissionMapping::getBizId,
@@ -114,7 +118,7 @@ public class SysDataPermissionMappingService implements SysDataPermissionMapping
                         permission -> {
                             SysDataPermissionMappingResp resp = new SysDataPermissionMappingResp();
                             resp.setId(permission.getId());
-                            resp.setDataCode(permission.getDataCode());
+                            resp.setDataPermissionCode(permission.getDataPermissionCode());
                             resp.setBizId(permission.getBizId());
                             resp.setBizName(permission.getBizName());
                             return resp;
@@ -130,7 +134,7 @@ public class SysDataPermissionMappingService implements SysDataPermissionMapping
         }
         SysDataPermissionMappingResp resp = new SysDataPermissionMappingResp();
         resp.setId(entity.getId());
-        resp.setDataCode(entity.getDataCode());
+        resp.setDataPermissionCode(entity.getDataPermissionCode());
         resp.setBizId(entity.getBizId());
         resp.setBizName(entity.getBizName());
         return resp;
@@ -151,7 +155,7 @@ public class SysDataPermissionMappingService implements SysDataPermissionMapping
         return list.stream()
                 .collect(
                         Collectors.toMap(
-                                SysDataPermissionMapping::getDataCode,
+                                SysDataPermissionMapping::getDataPermissionCode,
                                 p -> p,
                                 (existing, replacement) -> existing))
                 .values()
@@ -159,7 +163,7 @@ public class SysDataPermissionMappingService implements SysDataPermissionMapping
                 .map(
                         permission -> {
                             SysDataPermissionMappingResp resp = new SysDataPermissionMappingResp();
-                            resp.setDataCode(permission.getDataCode());
+                            resp.setDataPermissionCode(permission.getDataPermissionCode());
                             return resp;
                         })
                 .collect(Collectors.toList());

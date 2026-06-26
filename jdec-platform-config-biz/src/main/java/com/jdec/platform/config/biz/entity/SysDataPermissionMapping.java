@@ -17,7 +17,7 @@ public class SysDataPermissionMapping implements Serializable {
     private Long id;
 
     @Schema(description = "数据权限编码")
-    private String dataCode;
+    private String dataPermissionCode;
 
     @Schema(description = "业务ID")
     private Long bizId;

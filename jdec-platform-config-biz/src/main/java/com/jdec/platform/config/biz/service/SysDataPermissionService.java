@@ -232,7 +232,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
             return new ArrayList<>();
         }
 
-        // 3. 收集所有权限节点的 dataCode（转换为 String）
+        // 3. 收集所有权限节点的 dataPermissionCode（转换为 String）
         List<String> dataCodes =
                 list.stream()
                         .map(SysDataPermission::getCode)
@@ -247,13 +247,17 @@ public class SysDataPermissionService implements SysDataPermissionApi {
             allDataPermissions =
                     sysDataPermissionMappingMapper.selectList(
                             Wrappers.<SysDataPermissionMapping>lambdaQuery()
-                                    .in(SysDataPermissionMapping::getDataCode, dataCodes));
+                                    .in(
+                                            SysDataPermissionMapping::getDataPermissionCode,
+                                            dataCodes));
         }
 
         // 5. 按 Code 分组数据权限
         Map<String, List<SysDataPermissionMapping>> dataPermissionMappingMap =
                 allDataPermissions.stream()
-                        .collect(Collectors.groupingBy(SysDataPermissionMapping::getDataCode));
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysDataPermissionMapping::getDataPermissionCode));
 
         // 6. 构建响应，填充数据权限列表
         return list.stream()
@@ -280,7 +284,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                                                             SysDataPermissionMappingResp dpResp =
                                                                     new SysDataPermissionMappingResp();
                                                             dpResp.setId(dp.getId());
-                                                            dpResp.setDataCode(dp.getDataCode());
+                                                            dpResp.setDataPermissionCode(
+                                                                    dp.getDataPermissionCode());
                                                             dpResp.setBizId(dp.getBizId());
                                                             dpResp.setBizName(dp.getBizName());
                                                             return dpResp;

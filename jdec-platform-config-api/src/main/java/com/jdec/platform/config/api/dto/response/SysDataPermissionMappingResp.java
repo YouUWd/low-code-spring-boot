@@ -12,7 +12,7 @@ public class SysDataPermissionMappingResp {
     private Long id;
 
     @Schema(description = "权限节点编码")
-    private String dataCode;
+    private String dataPermissionCode;
 
     @Schema(description = "业务ID")
     private Long bizId;

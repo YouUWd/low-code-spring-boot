@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
 import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
+import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysRoleMenu;
@@ -75,6 +76,30 @@ public class SysMenuService implements SysMenuApi {
             }
         }
         return tree;
+    }
+
+    @Override
+    public List<SysMenuResp> list(Integer category) {
+        String projectNo = AppContext.getProjectNo();
+        List<SysMenu> list =
+                sysMenuMapper.selectList(
+                        new LambdaQueryWrapper<SysMenu>()
+                                .eq(category != null, SysMenu::getCategory, category)
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, projectNo)
+                                .orderByAsc(SysMenu::getSortOrder)
+                                .orderByAsc(SysMenu::getId));
+        if (CollectionUtils.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        // 转换为 DTO
+        List<SysMenuResp> result = new ArrayList<>();
+        for (SysMenu menu : list) {
+            SysMenuResp resp = new SysMenuResp();
+            BeanUtils.copyProperties(menu, resp);
+            result.add(resp);
+        }
+        return result;
     }
 
     @Transactional

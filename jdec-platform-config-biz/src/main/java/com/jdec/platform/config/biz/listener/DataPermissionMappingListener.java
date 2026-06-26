@@ -51,7 +51,10 @@ public class DataPermissionMappingListener implements MessageListener {
             // 处理消息
             handleMessage(msg);
 
-            log.info("数据权限映射消息处理成功，dataCode: {}, operate: {}", msg.getDataCode(), msg.getOperate());
+            log.info(
+                    "数据权限映射消息处理成功，dataPermissionCode: {}, operate: {}",
+                    msg.getDataPermissionCode(),
+                    msg.getOperate());
         } catch (Exception e) {
             log.error("处理数据权限映射消息失败", e);
         }
@@ -62,8 +65,8 @@ public class DataPermissionMappingListener implements MessageListener {
         if (msg == null) {
             return false;
         }
-        if (msg.getDataCode() == null || msg.getDataCode().isEmpty()) {
-            log.warn("dataCode 不能为空");
+        if (msg.getDataPermissionCode() == null || msg.getDataPermissionCode().isEmpty()) {
+            log.warn("dataPermissionCode 不能为空");
             return false;
         }
         if (msg.getSubjectId() == null) {
@@ -113,7 +116,9 @@ public class DataPermissionMappingListener implements MessageListener {
             // 检查是否已存在
             LambdaQueryWrapper<SysDataPermissionMapping> wrapper =
                     Wrappers.<SysDataPermissionMapping>lambdaQuery()
-                            .eq(SysDataPermissionMapping::getDataCode, msg.getDataCode())
+                            .eq(
+                                    SysDataPermissionMapping::getDataPermissionCode,
+                                    msg.getDataPermissionCode())
                             .eq(SysDataPermissionMapping::getBizId, item.getBizId())
                             .eq(SysDataPermissionMapping::getSubjectId, msg.getSubjectId());
 
@@ -124,22 +129,25 @@ public class DataPermissionMappingListener implements MessageListener {
             boolean exists = mappingMapper.exists(wrapper);
             if (exists) {
                 log.warn(
-                        "数据权限映射已存在，跳过新增: dataCode={}, bizId={}",
-                        msg.getDataCode(),
+                        "数据权限映射已存在，跳过新增: dataPermissionCode={}, bizId={}",
+                        msg.getDataPermissionCode(),
                         item.getBizId());
                 continue;
             }
 
             // 新增
             SysDataPermissionMapping entity = new SysDataPermissionMapping();
-            entity.setDataCode(msg.getDataCode());
+            entity.setDataPermissionCode(msg.getDataPermissionCode());
             entity.setBizId(item.getBizId());
             entity.setBizName(item.getBizName());
             entity.setSubjectId(msg.getSubjectId());
             entity.setProjectNo(msg.getProjectNo());
 
             mappingMapper.insert(entity);
-            log.info("新增数据权限映射成功: dataCode={}, bizId={}", msg.getDataCode(), item.getBizId());
+            log.info(
+                    "新增数据权限映射成功: dataPermissionCode={}, bizId={}",
+                    msg.getDataPermissionCode(),
+                    item.getBizId());
         }
     }
 
@@ -149,7 +157,9 @@ public class DataPermissionMappingListener implements MessageListener {
             // 查找已存在的记录
             LambdaQueryWrapper<SysDataPermissionMapping> wrapper =
                     Wrappers.<SysDataPermissionMapping>lambdaQuery()
-                            .eq(SysDataPermissionMapping::getDataCode, msg.getDataCode())
+                            .eq(
+                                    SysDataPermissionMapping::getDataPermissionCode,
+                                    msg.getDataPermissionCode())
                             .eq(SysDataPermissionMapping::getBizId, item.getBizId())
                             .eq(SysDataPermissionMapping::getSubjectId, msg.getSubjectId());
 
@@ -160,8 +170,8 @@ public class DataPermissionMappingListener implements MessageListener {
             SysDataPermissionMapping entity = mappingMapper.selectOne(wrapper);
             if (entity == null) {
                 log.warn(
-                        "数据权限映射不存在，无法更新: dataCode={}, bizId={}",
-                        msg.getDataCode(),
+                        "数据权限映射不存在，无法更新: dataPermissionCode={}, bizId={}",
+                        msg.getDataPermissionCode(),
                         item.getBizId());
                 continue;
             }
@@ -169,7 +179,10 @@ public class DataPermissionMappingListener implements MessageListener {
             // 更新
             entity.setBizName(item.getBizName());
             mappingMapper.updateById(entity);
-            log.info("更新数据权限映射成功: dataCode={}, bizId={}", msg.getDataCode(), item.getBizId());
+            log.info(
+                    "更新数据权限映射成功: dataPermissionCode={}, bizId={}",
+                    msg.getDataPermissionCode(),
+                    item.getBizId());
         }
     }
 
@@ -179,7 +192,9 @@ public class DataPermissionMappingListener implements MessageListener {
             // 删除记录
             LambdaQueryWrapper<SysDataPermissionMapping> wrapper =
                     Wrappers.<SysDataPermissionMapping>lambdaQuery()
-                            .eq(SysDataPermissionMapping::getDataCode, msg.getDataCode())
+                            .eq(
+                                    SysDataPermissionMapping::getDataPermissionCode,
+                                    msg.getDataPermissionCode())
                             .eq(SysDataPermissionMapping::getBizId, item.getBizId())
                             .eq(SysDataPermissionMapping::getSubjectId, msg.getSubjectId());
 
@@ -190,14 +205,14 @@ public class DataPermissionMappingListener implements MessageListener {
             int deleted = mappingMapper.delete(wrapper);
             if (deleted > 0) {
                 log.info(
-                        "删除数据权限映射成功: dataCode={}, bizId={}, 删除数量={}",
-                        msg.getDataCode(),
+                        "删除数据权限映射成功: dataPermissionCode={}, bizId={}, 删除数量={}",
+                        msg.getDataPermissionCode(),
                         item.getBizId(),
                         deleted);
             } else {
                 log.warn(
-                        "数据权限映射不存在，无法删除: dataCode={}, bizId={}",
-                        msg.getDataCode(),
+                        "数据权限映射不存在，无法删除: dataPermissionCode={}, bizId={}",
+                        msg.getDataPermissionCode(),
                         item.getBizId());
             }
         }

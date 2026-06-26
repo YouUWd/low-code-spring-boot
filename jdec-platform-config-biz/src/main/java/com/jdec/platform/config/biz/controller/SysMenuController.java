@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
 import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
+import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +25,15 @@ import org.springframework.web.bind.annotation.*;
 public class SysMenuController {
 
     private final SysMenuApi sysMenuApi;
+
+    @GetMapping("/list")
+    @Operation(summary = "查询菜单列表", description = "按菜单分类查询菜单平铺列表，不传分类则返回所有菜单")
+    public ApiResponse<List<SysMenuResp>> list(
+            @Parameter(description = "菜单分类.1:业务菜单 2:系统菜单（可选）", example = "1")
+                    @RequestParam(required = false)
+                    Integer category) {
+        return ApiResponse.success(sysMenuApi.list(category));
+    }
 
     @GetMapping("/tree")
     @Operation(summary = "查询菜单树", description = "按菜单分类查询所有菜单的树形结构，不传分类则返回所有菜单")

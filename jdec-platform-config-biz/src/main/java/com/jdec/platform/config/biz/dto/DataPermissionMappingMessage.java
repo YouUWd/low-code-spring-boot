@@ -9,7 +9,7 @@ import lombok.Data;
 public class DataPermissionMappingMessage implements Serializable {
 
     /** 数据权限编码 */
-    private String dataCode;
+    private String dataPermissionCode;
 
     /** 主体ID */
     private Long subjectId;

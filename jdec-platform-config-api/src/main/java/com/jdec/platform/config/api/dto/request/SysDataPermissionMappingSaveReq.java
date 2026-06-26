@@ -14,7 +14,7 @@ public class SysDataPermissionMappingSaveReq {
 
     @Schema(description = "权限节点编码", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "权限节点编码不能为空")
-    private String dataCode;
+    private String dataPermissionCode;
 
     @Schema(description = "业务ID")
     private Long bizId;
