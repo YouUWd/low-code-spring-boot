@@ -9,6 +9,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.jdec.platform.shared.annotation.RedisTopicListener;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -74,8 +75,10 @@ public class RedisConfig {
 
         // 自动扫描并注册带有 @RedisTopicListener 注解的监听器
         for (MessageListener listener : listeners) {
-            RedisTopicListener annotation =
-                    listener.getClass().getAnnotation(RedisTopicListener.class);
+            // 获取真实的目标类（处理 Spring 代理）
+            Class<?> targetClass = AopUtils.getTargetClass(listener);
+            RedisTopicListener annotation = targetClass.getAnnotation(RedisTopicListener.class);
+
             if (annotation != null) {
                 // 解析 topic（支持配置占位符）
                 String topicValue = environment.resolvePlaceholders(annotation.topic());
@@ -89,7 +92,7 @@ public class RedisConfig {
                 container.addMessageListener(listener, topic);
                 log.info(
                         "注册 Redis 监听器: {} -> {} (pattern: {})",
-                        listener.getClass().getSimpleName(),
+                        targetClass.getSimpleName(),
                         topicValue,
                         annotation.pattern());
             }
