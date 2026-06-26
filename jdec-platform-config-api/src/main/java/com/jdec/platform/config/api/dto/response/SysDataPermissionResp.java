@@ -1,25 +1,33 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Data;
 
-/** 数据权限列表响应 */
+/** 数据权限类型列表响应 */
 @Data
-@Schema(description = "数据权限列表响应")
+@Schema(description = "数据权限类型列表响应")
 public class SysDataPermissionResp {
 
-    @Schema(description = "主键ID")
+    @Schema(description = "类型ID")
     private Long id;
 
-    @Schema(description = "权限业务类型编码")
-    private String bizTypeCode;
+    @Schema(description = "类型编码")
+    private String code;
 
-    @Schema(description = "权限业务类型名称")
-    private String bizTypeName;
+    @Schema(description = "类型名称")
+    private String name;
 
-    @Schema(description = "业务ID")
-    private Long bizId;
+    @Schema(description = "类型描述")
+    private String description;
 
-    @Schema(description = "业务名称")
-    private String bizName;
+    @Schema(description = "排序")
+    private Integer sort;
+
+    @Schema(description = "状态 1:启用 0:禁用")
+    private Integer status;
+
+    @Schema(description = "关联的数据权限列表")
+    private List<SysDataPermissionMappingResp> dataPermissions = new ArrayList<>();
 }

@@ -17,7 +17,7 @@
                 '' AS parent_right_name,
                 '' AS parent_right_slug,
                 NULL AS type
-            FROM sys_data_permission_type
+            FROM sys_data_permission
             WHERE project_no = #{projectNo}
               AND subject_id = #{subjectId}
               <if test="rightName != null and rightName != ''">

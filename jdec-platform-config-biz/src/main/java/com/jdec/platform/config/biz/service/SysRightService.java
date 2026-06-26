@@ -9,7 +9,7 @@ import com.jdec.platform.config.api.dto.request.SysRightSaveReq;
 import com.jdec.platform.config.api.dto.response.SysRightOptionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.entity.SysRight;
-import com.jdec.platform.config.biz.mapper.SysDataPermissionTypeMapper;
+import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRightMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
@@ -34,7 +34,7 @@ public class SysRightService implements SysRightApi {
 
     private final SysRightMapper sysRightMapper;
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
-    private final SysDataPermissionTypeMapper sysDataPermissionTypeMapper;
+    private final SysDataPermissionMapper sysDataPermissionTypeMapper;
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
 
     @Override

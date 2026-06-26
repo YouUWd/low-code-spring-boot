@@ -6,7 +6,7 @@ import lombok.Data;
 /** 数据权限类型下拉选项响应 */
 @Data
 @Schema(description = "数据权限类型下拉选项响应")
-public class SysDataPermissionTypeOptionResp {
+public class SysDataPermissionOptionResp {
 
     @Schema(description = "主键ID")
     private Long id;

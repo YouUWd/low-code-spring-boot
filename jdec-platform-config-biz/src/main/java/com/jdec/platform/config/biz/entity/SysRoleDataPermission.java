@@ -20,7 +20,7 @@ public class SysRoleDataPermission implements Serializable {
     private Long roleId;
 
     @Schema(description = "数据权限类型ID")
-    private Long dataPermissionTypeId;
+    private Long dataPermissionId;
 
     @Schema(description = "业务ID")
     private Long bizId;

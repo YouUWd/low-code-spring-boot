@@ -14,6 +14,6 @@ public class RoleDataPermissionResp {
     @Schema(description = "角色ID")
     private Long roleId;
 
-    @Schema(description = "拼接后的权限ID（格式：permissionTypeId-bizId）")
+    @Schema(description = "拼接后的权限ID（格式：permissionId-bizId）")
     private String permissionId;
 }
