@@ -45,6 +45,10 @@ public class SysFieldResp {
     @Schema(description = "是否加密存储: 0-否, 1-是")
     private Integer encrypted;
 
+    /** 是否生成权限节点.0--否,1--是 */
+    @Schema(description = "是否生成权限节点: 0-否, 1-是", example = "0")
+    private Integer dataRightFlag;
+
     @Schema(description = "字段业务配置值列表")
     private List<SysFieldValueResp> fieldValues;
 

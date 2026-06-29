@@ -42,6 +42,9 @@ public class SysField {
     /** 关联关系名称 */
     private String relationName;
 
+    /** 是否生成权限节点.0--否,1--是 */
+    private Integer dataRightFlag;
+
     /** 是否加密存储: 0-否, 1-是 */
     private Integer encrypted;
 

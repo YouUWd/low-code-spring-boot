@@ -10,25 +10,13 @@ import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
-import com.jdec.platform.config.biz.entity.SysApprovalChainType;
-import com.jdec.platform.config.biz.entity.SysField;
-import com.jdec.platform.config.biz.entity.SysFieldValue;
-import com.jdec.platform.config.biz.entity.SysModule;
-import com.jdec.platform.config.biz.entity.SysModuleField;
-import com.jdec.platform.config.biz.mapper.SysApprovalChainTypeMapper;
-import com.jdec.platform.config.biz.mapper.SysFieldMapper;
-import com.jdec.platform.config.biz.mapper.SysFieldValueMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.third.WordApiClient;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +42,7 @@ public class SysFieldService implements SysFieldApi {
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
     private final JdbcTemplate jdbcTemplate;
     private final WordApiClient wordApiClient;
+    private final SysDataPermissionMapper sysDataPermissionMapper;
 
     // ==================== 元数据查询逻辑 ====================
 
@@ -63,11 +52,11 @@ public class SysFieldService implements SysFieldApi {
 
         String sql =
                 """
-                                SELECT TABLE_NAME, TABLE_COMMENT
-                                FROM INFORMATION_SCHEMA.TABLES
-                                WHERE TABLE_SCHEMA = ?
-                                ORDER BY TABLE_NAME
-                                """;
+                        SELECT TABLE_NAME, TABLE_COMMENT
+                        FROM INFORMATION_SCHEMA.TABLES
+                        WHERE TABLE_SCHEMA = ?
+                        ORDER BY TABLE_NAME
+                        """;
 
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, projectNo);
@@ -92,11 +81,11 @@ public class SysFieldService implements SysFieldApi {
 
         String sql =
                 """
-                                SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT, IS_NULLABLE, COLUMN_KEY, EXTRA
-                                FROM INFORMATION_SCHEMA.COLUMNS
-                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                                ORDER BY ORDINAL_POSITION
-                                """;
+                        SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT, IS_NULLABLE, COLUMN_KEY, EXTRA
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                        ORDER BY ORDINAL_POSITION
+                        """;
 
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, projectNo, tableName);
@@ -158,11 +147,11 @@ public class SysFieldService implements SysFieldApi {
         // 1. 获取数据库中该表所有的列名、列类型和注释
         String sql =
                 """
-                                SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT
-                                FROM INFORMATION_SCHEMA.COLUMNS
-                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                                ORDER BY ORDINAL_POSITION
-                                """;
+                        SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                        ORDER BY ORDINAL_POSITION
+                        """;
 
         List<Map<String, Object>> columnRows = jdbcTemplate.queryForList(sql, projectNo, tableName);
 
@@ -347,6 +336,7 @@ public class SysFieldService implements SysFieldApi {
                                         .relationBusinessNo(config.getRelationBusinessNo())
                                         .relationName(config.getRelationName())
                                         .encrypted(config.getEncrypted())
+                                        .dataRightFlag(config.getDataRightFlag())
                                         .fieldValues(
                                                 valueMap.getOrDefault(
                                                         config.getId(), Collections.emptyList()))
@@ -366,6 +356,7 @@ public class SysFieldService implements SysFieldApi {
                                                 columnComment != null && !columnComment.isEmpty()
                                                         ? columnComment
                                                         : colName)
+                                        .encrypted(0)
                                         .encrypted(0)
                                         .fieldValues(Collections.emptyList())
                                         .modules(
@@ -418,6 +409,7 @@ public class SysFieldService implements SysFieldApi {
                         .relationBusinessNo(req.getRelationBusinessNo())
                         .relationName(req.getRelationName())
                         .encrypted(req.getEncrypted())
+                        .dataRightFlag(req.getDataRightFlag())
                         .deleted(0)
                         .build();
 
@@ -426,7 +418,23 @@ public class SysFieldService implements SysFieldApi {
         } else {
             sysFieldMapper.updateById(entity);
         }
-
+        sysDataPermissionMapper.delete(
+                new LambdaQueryWrapper<SysDataPermission>()
+                        .eq(
+                                SysDataPermission::getCode,
+                                entity.getTableName() + "*" + entity.getColumnName())
+                        .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
+                        .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo()));
+        if (entity.getDataRightFlag() == 1) {
+            // 生成权限节点
+            SysDataPermission permission = new SysDataPermission();
+            permission.setCode(entity.getTableName() + "*" + entity.getColumnName());
+            permission.setName(entity.getColumnName());
+            permission.setStatus(1);
+            permission.setSubjectId(AppContext.getSubjectId());
+            permission.setProjectNo(projectNo);
+            sysDataPermissionMapper.insert(permission);
+        }
         Long fieldId = entity.getId();
         processFieldValues(fieldId, req.getFieldValues());
 
@@ -529,10 +537,10 @@ public class SysFieldService implements SysFieldApi {
         try {
             String typeSql =
                     """
-                                    SELECT COLUMN_TYPE
-                                    FROM INFORMATION_SCHEMA.COLUMNS
-                                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?
-                                    """;
+                            SELECT COLUMN_TYPE
+                            FROM INFORMATION_SCHEMA.COLUMNS
+                            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?
+                            """;
             columnType =
                     jdbcTemplate.queryForObject(
                             typeSql, String.class, projectNo, tableName, field.getColumnName());
