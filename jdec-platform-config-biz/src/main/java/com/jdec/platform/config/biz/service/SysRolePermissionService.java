@@ -520,6 +520,28 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                 .toList();
     }
 
+    @Override
+    public boolean checkUserHasPermission(Long userId, Long subjectId, String projectNo) {
+        // 1. 查询用户在指定主体和项目下的角色ID列表
+        List<SysRoleUser> roleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery().eq(SysRoleUser::getUserId, userId));
+
+        if (roleUsers.isEmpty()) {
+            return false;
+        }
+
+        List<Long> roleIds = roleUsers.stream().map(SysRoleUser::getRoleId).distinct().toList();
+
+        // 2. 查询这些角色在 sys_role_module_field_permission 表中是否有记录
+        long count =
+                sysRoleModuleFieldPermissionMapper.selectCount(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .in(SysRoleModuleFieldPermission::getRoleId, roleIds));
+
+        return count > 0;
+    }
+
     /**
      * 查询角色关联的用户/主体 ID，写入 ConfigChangeContext，供 Aspect 追加到 payload
      *

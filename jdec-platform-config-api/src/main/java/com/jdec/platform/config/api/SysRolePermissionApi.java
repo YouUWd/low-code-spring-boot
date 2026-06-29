@@ -101,4 +101,14 @@ public interface SysRolePermissionApi {
      * @return 角色模块字段权限列表
      */
     List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(Long roleId);
+
+    /**
+     * 检查用户是否有模块字段权限
+     *
+     * @param userId 用户ID
+     * @param subjectId 主体ID
+     * @param projectNo 项目编号
+     * @return 是否有权限
+     */
+    boolean checkUserHasPermission(Long userId, Long subjectId, String projectNo);
 }
