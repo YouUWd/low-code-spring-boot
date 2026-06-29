@@ -41,4 +41,12 @@ public interface SysRoleApi {
      * @return 角色列表（仅返回在有效期内的角色）
      */
     List<UserRoleListResp> getUserRolesByUserIdAndSubjectId(Long userId, Long subjectId);
+
+    /**
+     * 查询用户切换所需的数据
+     *
+     * @param userName 用户名称（模糊查询）
+     * @return 用户切换数据
+     */
+    UserSwitchDataResp getUserSwitchData(String userName);
 }
