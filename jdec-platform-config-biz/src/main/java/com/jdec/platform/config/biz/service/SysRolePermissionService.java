@@ -521,23 +521,12 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
-    public boolean checkUserHasPermission(Long userId, Long subjectId, String projectNo) {
-        // 1. 查询用户在指定主体和项目下的角色ID列表
-        List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        Wrappers.<SysRoleUser>lambdaQuery().eq(SysRoleUser::getUserId, userId));
-
-        if (roleUsers.isEmpty()) {
-            return false;
-        }
-
-        List<Long> roleIds = roleUsers.stream().map(SysRoleUser::getRoleId).distinct().toList();
-
-        // 2. 查询这些角色在 sys_role_module_field_permission 表中是否有记录
+    public boolean checkRoleHasPermission(Long roleId, Long subjectId, String projectNo) {
+        // 查询该角色在 sys_role_module_field_permission 表中是否有记录
         long count =
                 sysRoleModuleFieldPermissionMapper.selectCount(
                         Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .in(SysRoleModuleFieldPermission::getRoleId, roleIds));
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
 
         return count > 0;
     }

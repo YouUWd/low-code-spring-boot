@@ -109,13 +109,13 @@ public class SysRolePermissionController {
         return ApiResponse.success(sysRolePermissionApi.getRoleModuleFieldPermission(roleId));
     }
 
-    @GetMapping("/check-user-permission")
-    @Operation(summary = "检查用户是否有模块字段权限", description = "根据用户ID查询是否有模块字段权限，通过上下文获取主体ID和项目编码")
-    public ApiResponse<Boolean> checkUserHasPermission(
-            @Parameter(description = "用户ID", example = "1") @RequestParam Long userId) {
+    @GetMapping("/check-role-permission")
+    @Operation(summary = "检查角色是否有模块字段权限", description = "根据角色ID查询是否有模块字段权限，通过上下文获取主体ID和项目编码")
+    public ApiResponse<Boolean> checkRoleHasPermission(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
         return ApiResponse.success(
-                sysRolePermissionApi.checkUserHasPermission(userId, subjectId, projectNo));
+                sysRolePermissionApi.checkRoleHasPermission(roleId, subjectId, projectNo));
     }
 }
