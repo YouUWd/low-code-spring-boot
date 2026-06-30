@@ -617,10 +617,10 @@ public class SysUserService implements SysUserApi {
     }
 
     /**
-     * 格式化部门ID，在每个ID前添加"I"前缀
+     * 格式化部门ID，在每个ID前添加"D"前缀
      *
      * @param deptIds 逗号分隔的部门ID字符串，例如 "1,2,3"
-     * @return 格式化后的部门ID字符串，例如 "I1,I2,I3"
+     * @return 格式化后的部门ID字符串，例如 "D1,D2,D3"
      */
     private String formatDeptIds(String deptIds) {
         if (deptIds == null || deptIds.isEmpty()) {
@@ -629,7 +629,7 @@ public class SysUserService implements SysUserApi {
         return Arrays.stream(deptIds.split(","))
                 .map(String::trim)
                 .filter(id -> !id.isEmpty())
-                .map(id -> "I" + id)
+                .map(id -> "D" + id)
                 .collect(Collectors.joining(","));
     }
 
