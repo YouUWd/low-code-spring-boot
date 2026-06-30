@@ -144,6 +144,7 @@ public class UserService implements UserApi {
                 .shortName(user.getShortName())
                 .workNumber(user.getWorkNumber())
                 .departmentName(user.getDepartmentName())
+                .deptIds(user.getDepartmentId())
                 .userStatus(user.getUserStatus())
                 .build();
     }

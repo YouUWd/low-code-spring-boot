@@ -36,6 +36,7 @@ import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.utils.PageResultUtils;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -615,6 +616,23 @@ public class SysUserService implements SysUserApi {
         return buildCheckUserPermissionResp(sysUser, hrUser, true);
     }
 
+    /**
+     * 格式化部门ID，在每个ID前添加"I"前缀
+     *
+     * @param deptIds 逗号分隔的部门ID字符串，例如 "1,2,3"
+     * @return 格式化后的部门ID字符串，例如 "I1,I2,I3"
+     */
+    private String formatDeptIds(String deptIds) {
+        if (deptIds == null || deptIds.isEmpty()) {
+            return deptIds;
+        }
+        return Arrays.stream(deptIds.split(","))
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .map(id -> "I" + id)
+                .collect(Collectors.joining(","));
+    }
+
     private CheckUserPermissionByPhoneResp buildCheckUserPermissionResp(
             SysUser sysUser, UserBasicInfoResp hrUser, boolean hasPermission) {
         CheckUserPermissionByPhoneResp.CheckUserPermissionByPhoneRespBuilder builder =
@@ -632,6 +650,7 @@ public class SysUserService implements SysUserApi {
                     .phone(sysUser.getPhone())
                     .sex(sysUser.getSex())
                     .companyName(sysUser.getCompanyName())
+                    .deptIds(formatDeptIds(sysUser.getDepartIds()))
                     .departName(sysUser.getDepartName())
                     .leaderName(sysUser.getLeaderName())
                     .positionName(sysUser.getPositionName())
@@ -645,6 +664,7 @@ public class SysUserService implements SysUserApi {
                     .userName(hrUser.getUserName())
                     .workNumber(hrUser.getWorkNumber())
                     .phone(hrUser.getPhone())
+                    .deptIds(formatDeptIds(hrUser.getDeptIds()))
                     .subjectId(
                             hrUser.getSubjectId() != null
                                     ? hrUser.getSubjectId().longValue()

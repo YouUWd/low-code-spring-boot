@@ -32,6 +32,9 @@ public class UserBasicInfoResp {
     /** 部门名称 */
     private String departmentName;
 
+    /** 部门id */
+    private String deptIds;
+
     /** 用户状态 */
     private Integer userStatus;
 }

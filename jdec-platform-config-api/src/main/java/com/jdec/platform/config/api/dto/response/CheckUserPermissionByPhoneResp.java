@@ -54,6 +54,9 @@ public class CheckUserPermissionByPhoneResp {
     @Schema(description = "部门名称")
     private String departName;
 
+    @Schema(description = "部门id")
+    private String deptIds;
+
     @Schema(description = "部门领导人")
     private String leaderName;
 
