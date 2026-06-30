@@ -41,7 +41,19 @@
         <jooq.version>3.19.15</jooq.version>
         <druid.version>1.2.23</druid.version>
     </properties>
-
+    <!-- 配置云效私服仓库 -->
+    <repositories>
+        <repository>
+            <id>repo-jqily</id>
+            <url>https://packages.aliyun.com/69b28dc14a29923eb360faa3/maven/repo-jqily</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
     <!-- ==================== 版本管理 ==================== -->
     <dependencyManagement>
         <dependencies>
@@ -155,20 +167,20 @@
         </dependencies>
     </dependencyManagement>
 
-    <repositories>
+<!--    <repositories>
         <repository>
             <id>aliyunmaven</id>
             <url>https://maven.aliyun.com/repository/public</url>
             <releases>
                 <enabled>true</enabled>
-                <!-- 忽略校验失败警告 -->
+                &lt;!&ndash; 忽略校验失败警告 &ndash;&gt;
                 <checksumPolicy>ignore</checksumPolicy>
             </releases>
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
         </repository>
-    </repositories>
+    </repositories>-->
 
     <pluginRepositories>
         <pluginRepository>

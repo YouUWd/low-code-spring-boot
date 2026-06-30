@@ -28,9 +28,4 @@ public class Department extends BaseHrEntity {
     private Integer withOrg;
     private Integer sortOrder;
     private String description;
-    private Integer createdBy;
-    private Integer updatedBy;
-    private Integer createdDate;
-    private Integer updatedDate;
-    private Integer isDelete;
 }
