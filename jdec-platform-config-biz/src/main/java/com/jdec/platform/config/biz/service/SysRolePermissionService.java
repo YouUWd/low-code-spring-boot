@@ -211,6 +211,84 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
+    public RoleInteractionPermissionByModuleResp getRoleInteractionPermissionByModule(
+            Long roleId, Long moduleId) {
+        // 1. 查询角色交互权限关联
+        List<SysRoleInteractionPermission> rolePermissions =
+                sysRoleInteractionPermissionMapper.selectList(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(SysRoleInteractionPermission::getRoleId, roleId));
+
+        if (rolePermissions.isEmpty()) {
+            return buildEmptyResponse();
+        }
+
+        // 2. 获取交互权限ID列表
+        List<Long> permissionIds =
+                rolePermissions.stream()
+                        .map(SysRoleInteractionPermission::getPermissionId)
+                        .toList();
+
+        // 3. 查询交互权限信息，过滤指定模块ID
+        List<SysInteractionPermission> permissions =
+                sysInteractionPermissionMapper.selectList(
+                        Wrappers.<SysInteractionPermission>lambdaQuery()
+                                .in(SysInteractionPermission::getId, permissionIds)
+                                .eq(SysInteractionPermission::getModuleId, moduleId)
+                                .orderByAsc(SysInteractionPermission::getSort));
+
+        if (permissions.isEmpty()) {
+            return buildEmptyResponse();
+        }
+
+        // 4. 按类型分组
+        RoleInteractionPermissionByModuleResp response =
+                new RoleInteractionPermissionByModuleResp();
+
+        List<RoleInteractionPermissionByModuleResp.InteractionPermissionItem> applyList =
+                new ArrayList<>();
+        List<RoleInteractionPermissionByModuleResp.InteractionPermissionItem> editList =
+                new ArrayList<>();
+        List<RoleInteractionPermissionByModuleResp.InteractionPermissionItem> viewList =
+                new ArrayList<>();
+
+        for (SysInteractionPermission permission : permissions) {
+            RoleInteractionPermissionByModuleResp.InteractionPermissionItem item =
+                    new RoleInteractionPermissionByModuleResp.InteractionPermissionItem();
+            item.setPermissionId(permission.getId());
+            item.setPermissionName(permission.getName());
+            item.setPermissionCode(permission.getCode());
+            item.setModuleId(permission.getModuleId());
+            item.setType(permission.getType());
+            item.setSort(permission.getSort());
+
+            Integer type = permission.getType();
+            if (type != null) {
+                switch (type) {
+                    case 1 -> applyList.add(item); // 申请
+                    case 2 -> editList.add(item); // 编辑
+                    case 3 -> viewList.add(item); // 查看
+                }
+            }
+        }
+
+        response.setApplyPermissions(applyList);
+        response.setEditPermissions(editList);
+        response.setViewPermissions(viewList);
+
+        return response;
+    }
+
+    private RoleInteractionPermissionByModuleResp buildEmptyResponse() {
+        RoleInteractionPermissionByModuleResp response =
+                new RoleInteractionPermissionByModuleResp();
+        response.setApplyPermissions(Collections.emptyList());
+        response.setEditPermissions(Collections.emptyList());
+        response.setViewPermissions(Collections.emptyList());
+        return response;
+    }
+
+    @Override
     @ConfigChangeNotify(
             changeType = ChangeType.ROLE_INTERACTION_PERMISSION_CHANGED,
             roleIdExpr = "#request.roleId")

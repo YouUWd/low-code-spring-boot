@@ -627,4 +627,76 @@ public class SysFieldService implements SysFieldApi {
         }
         log.debug("已完成字段 {} 的 {} 条扩展配置保存", fieldId, valueReqs.size());
     }
+
+    @Override
+    public List<SysFieldResp> getDataPermissionFields(String projectNo, Long subjectId) {
+        log.debug("查询项目 {} 主体 {} 的数据权限字段列表", projectNo, subjectId);
+
+        // 查询 dataRightFlag=1 的字段
+        List<SysField> fields =
+                sysFieldMapper.selectList(
+                        new LambdaQueryWrapper<SysField>()
+                                .eq(SysField::getProjectNo, projectNo)
+                                .eq(SysField::getSubjectId, subjectId)
+                                .eq(SysField::getDataRightFlag, 1)
+                                .eq(SysField::getDeleted, 0));
+
+        if (fields.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 获取所有字段对应的列类型
+        Map<String, String> columnTypeMap = new HashMap<>();
+        for (SysField field : fields) {
+            try {
+                String typeSql =
+                        """
+                                SELECT COLUMN_TYPE
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?
+                                """;
+                String columnType =
+                        jdbcTemplate.queryForObject(
+                                typeSql,
+                                String.class,
+                                projectNo,
+                                field.getTableName(),
+                                field.getColumnName());
+                if (columnType != null) {
+                    columnTypeMap.put(
+                            field.getTableName() + "." + field.getColumnName(), columnType);
+                }
+            } catch (Exception e) {
+                log.warn(
+                        "获取列类型失败: tableName={}, columnName={}",
+                        field.getTableName(),
+                        field.getColumnName());
+            }
+        }
+
+        // 转换为响应对象
+        return fields.stream()
+                .map(
+                        field -> {
+                            String columnType =
+                                    columnTypeMap.get(
+                                            field.getTableName() + "." + field.getColumnName());
+                            return SysFieldResp.builder()
+                                    .id(field.getId())
+                                    .projectNo(field.getProjectNo())
+                                    .subjectId(field.getSubjectId())
+                                    .tableName(field.getTableName())
+                                    .columnName(field.getColumnName())
+                                    .columnType(columnType)
+                                    .displayName(field.getDisplayName())
+                                    .relationBusinessNo(field.getRelationBusinessNo())
+                                    .relationName(field.getRelationName())
+                                    .encrypted(field.getEncrypted())
+                                    .dataRightFlag(field.getDataRightFlag())
+                                    .fieldValues(Collections.emptyList())
+                                    .modules(Collections.emptyList())
+                                    .build();
+                        })
+                .toList();
+    }
 }

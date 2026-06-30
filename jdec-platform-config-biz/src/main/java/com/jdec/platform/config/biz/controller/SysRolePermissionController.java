@@ -56,6 +56,15 @@ public class SysRolePermissionController {
         return ApiResponse.success(sysRolePermissionApi.getRoleInteractionPermission(roleId));
     }
 
+    @GetMapping("/get-role-interaction-permission-by-module")
+    @Operation(summary = "按模块查询角色交互权限", description = "根据角色ID和模块ID查询该角色关联的交互权限列表，按类型分组返回")
+    public ApiResponse<RoleInteractionPermissionByModuleResp> getRoleInteractionPermissionByModule(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
+            @Parameter(description = "模块ID", example = "1") @RequestParam Long moduleId) {
+        return ApiResponse.success(
+                sysRolePermissionApi.getRoleInteractionPermissionByModule(roleId, moduleId));
+    }
+
     @PostMapping("/save-role-interaction-permission")
     @Operation(summary = "保存角色交互权限", description = "保存角色与交互权限的关联关系")
     public ApiResponse<Void> saveRoleInteractionPermission(

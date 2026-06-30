@@ -50,4 +50,13 @@ public interface SysFieldApi {
      */
     SysFieldResp saveSysField(
             String projectNo, Long subjectId, String tableName, SysFieldSaveReq req);
+
+    /**
+     * 查询被设置为生成数据权限节点的字段列表
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @return 数据权限字段列表（dataRightFlag=1）
+     */
+    List<SysFieldResp> getDataPermissionFields(String projectNo, Long subjectId);
 }

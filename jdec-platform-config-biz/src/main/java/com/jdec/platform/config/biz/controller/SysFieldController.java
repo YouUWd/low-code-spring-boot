@@ -81,4 +81,13 @@ public class SysFieldController {
                 req.getColumnName());
         return ApiResponse.success(sysFieldApi.saveSysField(projectNo, subjectId, tableName, req));
     }
+
+    @Operation(summary = "查询数据权限字段列表", description = "查询被设置为生成数据权限节点的字段记录列表（dataRightFlag=1）")
+    @GetMapping("/data-permission-fields")
+    public ApiResponse<List<SysFieldResp>> getDataPermissionFields() {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 主体 {} 的数据权限字段列表", projectNo, subjectId);
+        return ApiResponse.success(sysFieldApi.getDataPermissionFields(projectNo, subjectId));
+    }
 }
