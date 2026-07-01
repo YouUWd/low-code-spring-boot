@@ -83,7 +83,7 @@ spring:
       host: ${REDIS_HOST:192.168.60.101}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:jdec_platform123}
-      database: ${REDIS_DATABASE:3}
+      database: ${REDIS_DATABASE:8}
       timeout: 3000ms
       lettuce:
         pool:
@@ -176,3 +176,12 @@ external-api:
       headers:
         Content-Type: application/json
         Accept: application/json
+
+# ===== 业务系统配置 =====
+biz:
+  system:
+    data-permission:
+      urls:
+        student_manage: http://119.36.78.123:5020/api/config/sys/data-permission/list
+        # config_center: http://localhost:8080/api/data-permission
+        # auth_center: http://localhost:8080/api/data-permission

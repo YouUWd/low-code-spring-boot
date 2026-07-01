@@ -91,7 +91,8 @@ public class SysUserController {
     public ApiResponse<CheckUserPermissionByPhoneResp> checkUserPermissionByPhone(
             @Parameter(description = "手机号", required = true, example = "13800138000") @RequestParam
                     String phone) {
-        return ApiResponse.success(sysUserApi.checkUserPermissionByPhone(phone));
+        CheckUserPermissionByPhoneResp resp = sysUserApi.checkUserPermissionByPhone(phone);
+        return ApiResponse.success(resp);
     }
 
     @GetMapping("/detail/{userId}")

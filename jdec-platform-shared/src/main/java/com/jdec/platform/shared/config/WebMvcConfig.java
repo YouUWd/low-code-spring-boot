@@ -22,7 +22,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(jwtAuthenticationInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(
-                        "/api/**",
+                        //                        "/api/**",
                         "/api/auth/**", // 认证接口
                         "/api/config/sso/**", // SSO 接口
                         "/actuator/**", // 监控接口

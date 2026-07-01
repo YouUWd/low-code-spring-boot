@@ -1,7 +1,6 @@
 package com.jdec.platform.shared.security;
 
 import com.jdec.platform.shared.exception.BusinessException;
-import com.jdec.platform.shared.security.model.LoginUser;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -67,10 +66,7 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
         }
 
         // 5. 构建 LoginUser 并存入 UserContext
-        LoginUser loginUser = buildLoginUser(claims);
-        UserContext.setLoginUser(loginUser);
-
-        log.debug("JWT 认证通过, userId={}, phone={}", loginUser.getUserId(), phone);
+        log.debug("JWT 认证通过, phone={}", phone);
         return true;
     }
 
@@ -79,22 +75,5 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
             HttpServletRequest request,
             HttpServletResponse response,
             Object handler,
-            Exception ex) {
-        // 清理 ThreadLocal
-        UserContext.remove();
-    }
-
-    private LoginUser buildLoginUser(Claims claims) {
-        Long userId = Long.parseLong(claims.getSubject());
-        String username = claims.get("username", String.class);
-        String phone = claims.get("phone", String.class);
-        Boolean superAdmin = claims.get("superAdmin", Boolean.class);
-
-        return LoginUser.builder()
-                .userId(userId)
-                .username(username)
-                .phone(phone)
-                .superAdmin(superAdmin != null && superAdmin)
-                .build();
-    }
+            Exception ex) {}
 }

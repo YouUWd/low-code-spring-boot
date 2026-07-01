@@ -5,6 +5,7 @@ import com.jdec.platform.config.api.dto.request.SaveRoleInteractionPermissionReq
 import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleModuleFieldPermissionReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleSpecialPermissionReq;
+import com.jdec.platform.config.api.dto.response.RoleDataPermissionDetailResp;
 import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionByModuleResp;
 import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
@@ -82,6 +83,14 @@ public interface SysRolePermissionApi {
      * @return 角色数据权限列表
      */
     List<RoleDataPermissionResp> getRoleDataPermission(Long roleId);
+
+    /**
+     * 根据角色ID查询数据权限详情（包含业务数据列表）
+     *
+     * @param roleId 角色ID
+     * @return 角色数据权限详情列表
+     */
+    List<RoleDataPermissionDetailResp> getRoleDataPermissionDetail(Long roleId);
 
     /**
      * 根据角色ID查询特殊权限列表

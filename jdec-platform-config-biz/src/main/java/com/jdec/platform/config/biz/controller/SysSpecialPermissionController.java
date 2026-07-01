@@ -1,8 +1,10 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysSpecialPermissionApi;
+import com.jdec.platform.config.api.dto.request.CheckUserSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.QuerySysSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysSpecialPermissionSaveReq;
+import com.jdec.platform.config.api.dto.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
@@ -59,5 +61,12 @@ public class SysSpecialPermissionController {
     public ApiResponse<SysSpecialPermissionResp> getSpecialPermission(
             @Parameter(description = "特殊权限ID", example = "1") @PathVariable Long id) {
         return ApiResponse.success(sysSpecialPermissionApi.getSpecialPermission(id));
+    }
+
+    @PostMapping("/check")
+    @Operation(summary = "检查用户是否拥有特殊权限", description = "根据用户ID和特殊权限编码，检查用户在当前主体下是否拥有该特殊权限，并验证时效性")
+    public ApiResponse<CheckUserSpecialPermissionResp> checkUserSpecialPermission(
+            @Valid @RequestBody CheckUserSpecialPermissionReq request) {
+        return ApiResponse.success(sysSpecialPermissionApi.checkUserSpecialPermission(request));
     }
 }

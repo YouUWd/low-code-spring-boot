@@ -3,20 +3,28 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysSpecialPermissionApi;
+import com.jdec.platform.config.api.dto.request.CheckUserSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.QuerySysSpecialPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysSpecialPermissionSaveReq;
+import com.jdec.platform.config.api.dto.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
 import com.jdec.platform.config.biz.entity.SysRoleSpecialPermission;
+import com.jdec.platform.config.biz.entity.SysRoleSubject;
+import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysSpecialPermission;
 import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
-import java.util.*;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -32,6 +40,8 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
 
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
+    private final SysRoleUserMapper sysRoleUserMapper;
+    private final SysRoleSubjectMapper sysRoleSubjectMapper;
 
     @Override
     public SysRightResp saveSpecialPermission(SysSpecialPermissionSaveReq req) {
@@ -219,5 +229,127 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
         resp.setSort(entity.getSort());
         resp.setStatus(entity.getStatus());
         return resp;
+    }
+
+    @Override
+    public CheckUserSpecialPermissionResp checkUserSpecialPermission(
+            CheckUserSpecialPermissionReq req) {
+        Long subjectId = AppContext.getSubjectId();
+        if (subjectId == null) {
+            throw new BusinessException("缺少主体id");
+        }
+
+        // 1. 根据特殊权限编码查询特殊权限ID
+        SysSpecialPermission specialPermission =
+                sysSpecialPermissionMapper.selectOne(
+                        Wrappers.<SysSpecialPermission>lambdaQuery()
+                                .eq(SysSpecialPermission::getCode, req.getRightCode())
+                                .eq(SysSpecialPermission::getSubjectId, subjectId)
+                                .eq(SysSpecialPermission::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysSpecialPermission::getStatus, 1));
+        if (specialPermission == null) {
+            throw new BusinessException("特殊权限编码不存在");
+        }
+
+        // 2. 根据用户ID和主体ID查询用户角色关联（状态有效且时效有效）
+        LocalDate today = LocalDate.now();
+        List<SysRoleUser> roleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getUserId, req.getUserId())
+                                .eq(SysRoleUser::getStatus, 0));
+
+        // 过滤时效有效的记录
+        List<Long> validRoleIds =
+                roleUsers.stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleUser::getRoleId)
+                        .distinct()
+                        .toList();
+
+        if (validRoleIds.isEmpty()) {
+            return CheckUserSpecialPermissionResp.builder().hasPermission(false).build();
+        }
+        Long count =
+                sysRoleSpecialPermissionMapper.selectCount(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleSpecialPermission::getSpecialPermissionId,
+                                        specialPermission.getId())
+                                .in(SysRoleSpecialPermission::getRoleId, validRoleIds));
+        if (count > 0) {
+            return CheckUserSpecialPermissionResp.builder().hasPermission(true).build();
+        }
+        // 3. 查询角色主体关联表，进一步过滤角色（状态有效且时效有效）
+        List<SysRoleSubject> roleSubjects =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getSubjectId, subjectId)
+                                .eq(SysRoleSubject::getStatus, 0));
+
+        // 过滤时效有效的角色
+        validRoleIds =
+                roleSubjects.stream()
+                        .filter(
+                                rs ->
+                                        isEffectiveDateValid(
+                                                rs.getEffectiveType(),
+                                                rs.getEffectiveStartDate(),
+                                                rs.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleSubject::getRoleId)
+                        .distinct()
+                        .toList();
+
+        if (validRoleIds.isEmpty()) {
+            return CheckUserSpecialPermissionResp.builder().hasPermission(false).build();
+        }
+        count =
+                sysRoleSpecialPermissionMapper.selectCount(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleSpecialPermission::getSpecialPermissionId,
+                                        specialPermission.getId())
+                                .in(SysRoleSpecialPermission::getRoleId, validRoleIds));
+        if (count > 0) {
+            return CheckUserSpecialPermissionResp.builder().hasPermission(true).build();
+        }
+        // 4. 查询角色特殊权限关联表
+        return CheckUserSpecialPermissionResp.builder().hasPermission(false).build();
+    }
+
+    /**
+     * 验证时效性
+     *
+     * @param effectiveType 时效类型：1-永久，2-自定义
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param today 当前日期
+     * @return 是否有效
+     */
+    private boolean isEffectiveDateValid(
+            Integer effectiveType, LocalDate startDate, LocalDate endDate, LocalDate today) {
+        if (effectiveType == null) {
+            return true;
+        }
+        // 1-永久有效
+        if (effectiveType == 1) {
+            return true;
+        }
+        // 2-自定义时间，需要校验时间范围
+        if (effectiveType == 2) {
+            if (startDate == null || endDate == null) {
+                return false;
+            }
+            return (today.isEqual(startDate) || today.isAfter(startDate))
+                    && (today.isEqual(endDate) || today.isBefore(endDate));
+        }
+        return false;
     }
 }

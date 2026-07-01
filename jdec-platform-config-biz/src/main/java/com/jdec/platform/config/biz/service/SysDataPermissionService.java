@@ -207,4 +207,64 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                         })
                 .collect(Collectors.toList());
     }
+
+    /**
+     * 根据数据权限列表获取业务数据
+     *
+     * @param dataPermissions 数据权限列表
+     * @return key 为 dataPermissionCode，value 为业务数据列表
+     */
+    public Map<String, List<BizDataItem>> fetchBizDataByPermissions(
+            List<SysDataPermission> dataPermissions) {
+        if (CollUtil.isEmpty(dataPermissions)) {
+            return new HashMap<>();
+        }
+
+        // 1. 收集所有 code 并转换为查询参数
+        List<DataPermissionQueryItem> queryItems = new ArrayList<>();
+        for (SysDataPermission permission : dataPermissions) {
+            if (permission.getCode() != null && permission.getCode().contains("*")) {
+                String[] parts = permission.getCode().split("\\*");
+                if (parts.length == 2) {
+                    DataPermissionQueryItem item = new DataPermissionQueryItem();
+                    item.setTableName(parts[0]);
+                    item.setColumn(parts[1]);
+                    queryItems.add(item);
+                }
+            }
+        }
+
+        if (CollUtil.isEmpty(queryItems)) {
+            return new HashMap<>();
+        }
+
+        // 2. 根据项目编码获取接口地址并调用
+        String projectNo = AppContext.getProjectNo();
+        String bizSystemUrl = bizSystemUrls.get(projectNo);
+
+        if (bizSystemUrl == null) {
+            log.warn("未配置项目 {} 的业务系统接口地址", projectNo);
+            return new HashMap<>();
+        }
+
+        try {
+            BizSystemResponse response =
+                    restTemplate.postForObject(bizSystemUrl, queryItems, BizSystemResponse.class);
+            if (response != null
+                    && response.getStatus() == 200
+                    && CollUtil.isNotEmpty(response.getData())) {
+                // 转换为 Map，key 为 dataPermissionCode
+                return response.getData().stream()
+                        .collect(
+                                Collectors.toMap(
+                                        BizDataPermissionResp::getDataPermissionCode,
+                                        BizDataPermissionResp::getDataList,
+                                        (v1, v2) -> v1));
+            }
+        } catch (Exception e) {
+            log.error("调用业务系统接口失败: {}", bizSystemUrl, e);
+        }
+
+        return new HashMap<>();
+    }
 }
