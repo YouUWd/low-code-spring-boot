@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 public class CheckUserPermissionByPhoneResp {
 
     @Schema(description = "是否有权限")
-    private Boolean hasPermission;
+    private Boolean permissionFlag;
 
     @Schema(description = "用户ID")
     private Long id;

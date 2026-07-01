@@ -1,7 +1,6 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.util.ArrayList;
 import java.util.List;
 import lombok.Data;
 
@@ -29,5 +28,5 @@ public class SysDataPermissionResp {
     private Integer status;
 
     @Schema(description = "关联的数据权限列表")
-    private List<SysDataPermissionMappingResp> dataPermissions = new ArrayList<>();
+    private List<BizDataItem> dataList;
 }

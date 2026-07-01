@@ -28,7 +28,6 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
     private final SysRoleDataPermissionMapper sysRoleDataPermissionMapper;
-    private final SysDataPermissionMappingMapper sysDataPermissionMapper;
     private final SysDataPermissionMapper sysDataPermissionTypeMapper;
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
@@ -460,7 +459,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             resp.setId(rdp.getId());
                             resp.setRoleId(rdp.getRoleId());
 
-                            // 拼接权限ID：permissionTypeId-dataPermissionId
+                            // 拼接权限ID：permissionId-dataPermissionId
                             if (rdp.getDataPermissionId() != null && rdp.getBizId() != null) {
                                 resp.setPermissionId(
                                         rdp.getDataPermissionId() + "-" + rdp.getBizId());

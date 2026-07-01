@@ -535,7 +535,7 @@ public class SysUserService implements SysUserApi {
             // 2. 配置中心未找到，从人力模块查询用户
             Optional<UserBasicInfoResp> hrUserOpt = userApi.getUserBasicInfoByPhone(phone);
             if (hrUserOpt.isEmpty()) {
-                return CheckUserPermissionByPhoneResp.builder().hasPermission(false).build();
+                return CheckUserPermissionByPhoneResp.builder().permissionFlag(false).build();
             }
 
             hrUser = hrUserOpt.get();
@@ -610,7 +610,7 @@ public class SysUserService implements SysUserApi {
 
         // 6. 构建响应，只有有权限时才填充用户信息
         if (!hasPermission) {
-            return CheckUserPermissionByPhoneResp.builder().hasPermission(false).build();
+            return CheckUserPermissionByPhoneResp.builder().permissionFlag(false).build();
         }
 
         return buildCheckUserPermissionResp(sysUser, hrUser, true);
@@ -636,7 +636,7 @@ public class SysUserService implements SysUserApi {
     private CheckUserPermissionByPhoneResp buildCheckUserPermissionResp(
             SysUser sysUser, UserBasicInfoResp hrUser, boolean hasPermission) {
         CheckUserPermissionByPhoneResp.CheckUserPermissionByPhoneRespBuilder builder =
-                CheckUserPermissionByPhoneResp.builder().hasPermission(hasPermission);
+                CheckUserPermissionByPhoneResp.builder().permissionFlag(hasPermission);
 
         if (sysUser != null) {
             builder.id(sysUser.getId())

@@ -42,7 +42,7 @@
         </dependency>
 
 
-        <!--<dependency>
+<!--        <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-monitor-starter</artifactId>
             <version>1.0.0-SNAPSHOT</version>
