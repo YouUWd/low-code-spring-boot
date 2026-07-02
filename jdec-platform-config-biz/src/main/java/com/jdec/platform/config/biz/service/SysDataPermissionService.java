@@ -8,10 +8,11 @@ import com.jdec.platform.config.api.dto.request.DataPermissionQueryItem;
 import com.jdec.platform.config.api.dto.request.QuerySysDataPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysDataPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.config.BizSystemConfig;
 import com.jdec.platform.config.biz.entity.SysDataPermission;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
-import com.jdec.platform.config.biz.mapper.SysRoleDataPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.CommonStatusEnum;
@@ -24,7 +25,8 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
@@ -37,11 +39,8 @@ import org.springframework.web.client.RestTemplate;
 public class SysDataPermissionService implements SysDataPermissionApi {
 
     private final SysDataPermissionMapper sysDataPermissionMapper;
-    private final SysRoleDataPermissionMapper sysRoleDataPermissionMapper;
     private final RestTemplate restTemplate;
-
-    @Value("#{${biz.system.data-permission.urls:{:}}}")
-    private Map<String, String> bizSystemUrls;
+    private final BizSystemConfig bizSystemConfig;
 
     @Override
     public SysRightResp saveDataPermission(SysDataPermissionSaveReq req) {
@@ -152,16 +151,35 @@ public class SysDataPermissionService implements SysDataPermissionApi {
             Map<String, List<BizDataItem>> tempMap = new HashMap<>();
             // 根据项目编码获取接口地址
             String projectNo = AppContext.getProjectNo();
-            String bizSystemUrl = bizSystemUrls.get(projectNo);
+            String bizSystemUrl = bizSystemConfig.getUrls().get(projectNo);
 
             if (bizSystemUrl == null) {
                 log.warn("未配置项目 {} 的业务系统接口地址", projectNo);
                 bizDataMap = new HashMap<>();
             } else {
                 try {
+                    // 构建请求头，添加 token、subjectId 和 projectNo
+                    HttpHeaders headers = new HttpHeaders();
+                    String token = TokenContext.getToken();
+                    if (token != null) {
+                        headers.set("Authorization", "Bearer " + token);
+                    }
+
+                    Long subjectId = AppContext.getSubjectId();
+                    if (subjectId != null) {
+                        headers.set("Subject-Id", String.valueOf(subjectId));
+                    }
+                    if (projectNo != null) {
+                        headers.set("X-Project-No", projectNo);
+                    }
+
+                    // 构建请求实体
+                    HttpEntity<List<DataPermissionQueryItem>> requestEntity =
+                            new HttpEntity<>(queryItems, headers);
+
                     BizSystemResponse response =
                             restTemplate.postForObject(
-                                    bizSystemUrl, queryItems, BizSystemResponse.class);
+                                    bizSystemUrl, requestEntity, BizSystemResponse.class);
                     if (response != null
                             && response.getStatus() == 200
                             && CollUtil.isNotEmpty(response.getData())) {
@@ -240,7 +258,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
 
         // 2. 根据项目编码获取接口地址并调用
         String projectNo = AppContext.getProjectNo();
-        String bizSystemUrl = bizSystemUrls.get(projectNo);
+        String bizSystemUrl = bizSystemConfig.getUrls().get(projectNo);
 
         if (bizSystemUrl == null) {
             log.warn("未配置项目 {} 的业务系统接口地址", projectNo);
