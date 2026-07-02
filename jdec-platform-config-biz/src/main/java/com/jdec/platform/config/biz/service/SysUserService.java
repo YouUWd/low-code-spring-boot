@@ -472,22 +472,37 @@ public class SysUserService implements SysUserApi {
                         .map(SysRoleUser::getRoleId)
                         .distinct()
                         .toList();
+
+        // 2. 获取请求头的主体ID
+        Long headerSubjectId = AppContext.getSubjectId();
+
+        // 3. 如果用户没有角色，返回请求头的主体ID
         if (roleIds.isEmpty()) {
-            return Collections.emptyList();
+            return headerSubjectId != null
+                    ? Collections.singletonList(headerSubjectId)
+                    : Collections.emptyList();
         }
 
-        // 2. 根据角色ID查询主体ID（只按projectNo过滤，不过滤subjectId）
-        return sysRoleMapper
-                .selectList(
-                        Wrappers.<SysRole>lambdaQuery()
-                                .in(SysRole::getId, roleIds)
-                                .eq(SysRole::getProjectNo, AppContext.getProjectNo())
-                                .select(SysRole::getId, SysRole::getSubjectId))
-                .stream()
-                .map(SysRole::getSubjectId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
+        // 4. 根据角色ID查询主体ID（只按projectNo过滤，不过滤subjectId）
+        List<Long> subjectIds =
+                sysRoleMapper
+                        .selectList(
+                                Wrappers.<SysRole>lambdaQuery()
+                                        .in(SysRole::getId, roleIds)
+                                        .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                        .select(SysRole::getId, SysRole::getSubjectId))
+                        .stream()
+                        .map(SysRole::getSubjectId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+
+        // 5. 将请求头的主体ID加入到反查出来的主体列表中
+        if (headerSubjectId != null) {
+            subjectIds.add(headerSubjectId);
+        }
+
+        // 6. 去重并返回
+        return subjectIds.stream().distinct().toList();
     }
 
     private boolean hasUsers(UserSearchTreeNodeResp node) {
