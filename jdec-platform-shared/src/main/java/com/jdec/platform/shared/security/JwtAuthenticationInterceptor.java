@@ -1,5 +1,6 @@
 package com.jdec.platform.shared.security;
 
+import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,7 +66,10 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
             throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌已失效，请重新登录");
         }
 
-        // 5. 构建 LoginUser 并存入 UserContext
+        // 5. 将 token 存入 TokenContext
+        TokenContext.setToken(token);
+
+        // 6. 构建 LoginUser 并存入 UserContext
         log.debug("JWT 认证通过, phone={}", phone);
         return true;
     }
@@ -75,5 +79,8 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
             HttpServletRequest request,
             HttpServletResponse response,
             Object handler,
-            Exception ex) {}
+            Exception ex) {
+        // 清理 TokenContext
+        TokenContext.clear();
+    }
 }

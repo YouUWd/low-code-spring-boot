@@ -1,6 +1,7 @@
 package com.jdec.platform.shared.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.dto.ConfigChangeMessage;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.utils.ConfigChangeChannelUtil;
@@ -95,6 +96,17 @@ public class ConfigChangeMessagePublisher {
         message.setSubjectId(subjectId);
         message.setProjectNo(projectNo);
         message.setPayload(payload);
+
+        // 添加 token（从 ThreadLocal 中获取）
+        try {
+            String token = TokenContext.getToken();
+            if (token != null) {
+                message.setToken(token);
+                log.debug("已将 token 添加到配置变更消息中");
+            }
+        } catch (Exception e) {
+            log.warn("获取 token 失败，跳过 token 字段", e);
+        }
 
         // 添加操作人信息
         /*try {

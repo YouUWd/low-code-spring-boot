@@ -32,6 +32,9 @@ public class ConfigChangeMessage {
     /** 操作人信息 */
     private OperatorInfo operator;
 
+    /** 请求令牌（用于前端更新缓存） */
+    private String token;
+
     /** 操作人信息 */
     @Data
     public static class OperatorInfo {
