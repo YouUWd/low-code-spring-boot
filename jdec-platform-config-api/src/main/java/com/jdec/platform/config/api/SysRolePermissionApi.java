@@ -1,17 +1,7 @@
 package com.jdec.platform.config.api;
 
-import com.jdec.platform.config.api.dto.request.SaveRoleDataPermissionReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleInteractionPermissionReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleMenuReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleModuleFieldPermissionReq;
-import com.jdec.platform.config.api.dto.request.SaveRoleSpecialPermissionReq;
-import com.jdec.platform.config.api.dto.response.RoleDataPermissionDetailResp;
-import com.jdec.platform.config.api.dto.response.RoleDataPermissionResp;
-import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionByModuleResp;
-import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionResp;
-import com.jdec.platform.config.api.dto.response.RoleMenuResp;
-import com.jdec.platform.config.api.dto.response.RoleModuleFieldPermissionResp;
-import com.jdec.platform.config.api.dto.response.RoleSpecialPermissionResp;
+import com.jdec.platform.config.api.dto.request.*;
+import com.jdec.platform.config.api.dto.response.*;
 import java.util.List;
 
 public interface SysRolePermissionApi {
@@ -90,7 +80,7 @@ public interface SysRolePermissionApi {
      * @param roleId 角色ID
      * @return 角色数据权限详情列表
      */
-    List<RoleDataPermissionDetailResp> getRoleDataPermissionDetail(Long roleId);
+    List<DataRightConfigResp> getRoleDataPermissionDetail(Long roleId);
 
     /**
      * 根据角色ID查询特殊权限列表

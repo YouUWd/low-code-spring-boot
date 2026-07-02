@@ -474,7 +474,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
-    public List<RoleDataPermissionDetailResp> getRoleDataPermissionDetail(Long roleId) {
+    public List<DataRightConfigResp> getRoleDataPermissionDetail(Long roleId) {
         // 1. 查询角色数据权限关联
         List<SysRoleDataPermission> roleDataPermissions =
                 sysRoleDataPermissionMapper.selectList(
@@ -500,25 +500,36 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         }
 
         // 5. 按 dataPermissionId 分组角色数据权限，收集 bizId
-        Map<Long, List<String>> permissionIdToBizIdsMap = new HashMap<>();
+        Map<Long, List<Long>> permissionIdToBizIdsMap = new HashMap<>();
         for (SysRoleDataPermission rdp : roleDataPermissions) {
             permissionIdToBizIdsMap
                     .computeIfAbsent(rdp.getDataPermissionId(), k -> new ArrayList<>())
-                    .add(String.valueOf(rdp.getBizId()));
+                    .add(rdp.getBizId());
         }
 
         // 6. 组装返回数据
-        List<RoleDataPermissionDetailResp> result = new ArrayList<>();
+        List<DataRightConfigResp> result = new ArrayList<>();
         for (SysDataPermission dataPermission : dataPermissions) {
-            RoleDataPermissionDetailResp resp = new RoleDataPermissionDetailResp();
-            resp.setId(dataPermission.getId());
-            resp.setRoleId(roleId);
-            resp.setCode(dataPermission.getCode());
-
             // 获取该权限对应的业务ID列表
-            List<String> bizIds =
-                    permissionIdToBizIdsMap.getOrDefault(dataPermission.getId(), new ArrayList<>());
-            resp.setBizIds(bizIds);
+            List<Long> bizIds =
+                    permissionIdToBizIdsMap.getOrDefault(
+                            dataPermission.getId(), Collections.emptyList());
+
+            // 转换为 DataConfig 列表
+            List<DataRightConfigResp.DataConfig> dataList =
+                    bizIds.stream()
+                            .map(
+                                    bizId ->
+                                            DataRightConfigResp.DataConfig.builder()
+                                                    .bizId(bizId)
+                                                    .build())
+                            .toList();
+
+            DataRightConfigResp resp =
+                    DataRightConfigResp.builder()
+                            .tableName(dataPermission.getCode().split("\\*")[0])
+                            .dataList(dataList)
+                            .build();
 
             result.add(resp);
         }
