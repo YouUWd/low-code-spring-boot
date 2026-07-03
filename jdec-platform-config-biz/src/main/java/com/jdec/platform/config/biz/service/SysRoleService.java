@@ -27,22 +27,23 @@ import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
-import com.jdec.platform.shared.annotation.ConfigChangeNotify;
 import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.*;
 import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
+import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 角色 Service 实现 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -54,6 +55,7 @@ public class SysRoleService implements SysRoleApi {
     private final UserApi userApi;
     private final SubjectApi subjectApi;
     private final DepartmentApi departmentApi;
+    private final ConfigChangeMessagePublisher messagePublisher;
 
     @Override
     public Long getUserRoleCount(Long id, Long subjectId, String projectNo) {
@@ -217,7 +219,6 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
-    @ConfigChangeNotify(changeType = ChangeType.ROLE_CONFIG_CHANGED, roleIdExpr = "#result.id")
     public RoleConfigPageResp saveRoleUser(SaveRoleUserReq request) {
         // 先更新已时效的关联状态
         updateExpiredRelations();
@@ -225,6 +226,30 @@ public class SysRoleService implements SysRoleApi {
         autoDetectEffectiveType(request);
 
         Set<Long> allUserIds = collectUserIds(request);
+
+        // === 快照旧数据（仅更新时，必须在事务开启前执行） ===
+        boolean isUpdate = request.getId() != null;
+        Set<Long> oldUserIds = new HashSet<>();
+        Set<Long> oldSubjectIds = new HashSet<>();
+        if (isUpdate) {
+            Long roleId = request.getId();
+            oldUserIds =
+                    sysRoleUserMapper
+                            .selectList(
+                                    Wrappers.<SysRoleUser>lambdaQuery()
+                                            .eq(SysRoleUser::getRoleId, roleId))
+                            .stream()
+                            .map(SysRoleUser::getUserId)
+                            .collect(Collectors.toSet());
+            oldSubjectIds =
+                    sysRoleSubjectMapper
+                            .selectList(
+                                    Wrappers.<SysRoleSubject>lambdaQuery()
+                                            .eq(SysRoleSubject::getRoleId, roleId))
+                            .stream()
+                            .map(SysRoleSubject::getSubjectId)
+                            .collect(Collectors.toSet());
+        }
 
         // 提前完成所有跨库查询（hr 库），必须在事务开启前执行
         Map<Long, UserBO> hrUserMap = new HashMap<>();
@@ -249,7 +274,7 @@ public class SysRoleService implements SysRoleApi {
                         request, allUserIds, hrUserMap, deptMap, subjectMap, allSubjectUsers);
 
         // 操作完成后查询关联表，收集受影响的用户/主体 ID，供 Aspect 追加到 payload
-        List<Long> affectedUserIds =
+        List<Long> newUserIds =
                 sysRoleUserMapper
                         .selectList(
                                 Wrappers.<SysRoleUser>lambdaQuery()
@@ -258,7 +283,7 @@ public class SysRoleService implements SysRoleApi {
                         .map(SysRoleUser::getUserId)
                         .distinct()
                         .toList();
-        List<Long> affectedSubjectIds =
+        List<Long> newSubjectIds =
                 sysRoleSubjectMapper
                         .selectList(
                                 Wrappers.<SysRoleSubject>lambdaQuery()
@@ -267,10 +292,85 @@ public class SysRoleService implements SysRoleApi {
                         .map(SysRoleSubject::getSubjectId)
                         .distinct()
                         .toList();
-        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds);
+        // === 编程式发送细粒度角色变更消息 ===
+        publishRoleChangeMessages(
+                roleId, isUpdate, oldUserIds, oldSubjectIds, newUserIds, newSubjectIds);
 
         // 查询并返回保存后的角色配置信息
         return getRoleConfigById(roleId);
+    }
+
+    /** 编程式发送角色人员/主体变更消息，区分新增和移除 */
+    private void publishRoleChangeMessages(
+            Long roleId,
+            boolean isUpdate,
+            Set<Long> oldUserIds,
+            Set<Long> oldSubjectIds,
+            List<Long> newUserIds,
+            List<Long> newSubjectIds) {
+        try {
+            Long subjectId = AppContext.getSubjectId();
+            String projectNo = AppContext.getProjectNo();
+
+            if (isUpdate) {
+                Set<Long> newUserSet = new HashSet<>(newUserIds);
+                Set<Long> newSubjectSet = new HashSet<>(newSubjectIds);
+
+                // 新增的用户：在新列表中但不在旧列表中
+                List<Long> addedUsers =
+                        newUserIds.stream().filter(id -> !oldUserIds.contains(id)).toList();
+                // 移除的用户：在旧列表中但不在新列表中
+                List<Long> removedUsers =
+                        oldUserIds.stream().filter(id -> !newUserSet.contains(id)).toList();
+                // 新增的主体：在新列表中但不在旧列表中
+                List<Long> addedSubjects =
+                        newSubjectIds.stream().filter(id -> !oldSubjectIds.contains(id)).toList();
+                // 移除的主体：在旧列表中但不在新列表中
+                List<Long> removedSubjects =
+                        oldSubjectIds.stream().filter(id -> !newSubjectSet.contains(id)).toList();
+
+                if (!addedUsers.isEmpty()) {
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("roleId", roleId);
+                    payload.put("affectedUserIds", addedUsers);
+                    messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
+                }
+                if (!removedUsers.isEmpty()) {
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("roleId", roleId);
+                    payload.put("affectedUserIds", removedUsers);
+                    messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
+                }
+                if (!addedSubjects.isEmpty()) {
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("roleId", roleId);
+                    payload.put("affectedSubjectIds", addedSubjects);
+                    messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
+                }
+                if (!removedSubjects.isEmpty()) {
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("roleId", roleId);
+                    payload.put("affectedSubjectIds", removedSubjects);
+                    messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
+                }
+            } else {
+                // 新增角色：所有用户和主体都是新增
+                if (!newUserIds.isEmpty()) {
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("roleId", roleId);
+                    payload.put("affectedUserIds", newUserIds);
+                    messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
+                }
+                if (!newSubjectIds.isEmpty()) {
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("roleId", roleId);
+                    payload.put("affectedSubjectIds", newSubjectIds);
+                    messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
+                }
+            }
+        } catch (Exception e) {
+            log.error("发送角色变更细粒度消息失败: roleId={}", roleId, e);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -638,7 +738,6 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
-    @ConfigChangeNotify(changeType = ChangeType.ROLE_CONFIG_CHANGED, roleIdExpr = "#roleId")
     public void deleteRole(Long roleId) {
         // 1. 删除前收集受影响的用户/主体 ID（删除后数据已不存在，无法再查）
         List<SysRoleUser> roleUsers =
@@ -656,7 +755,6 @@ public class SysRoleService implements SysRoleApi {
                         .map(SysRoleSubject::getSubjectId)
                         .distinct()
                         .toList();
-        ConfigChangeContext.set(new ArrayList<>(userIds), affectedSubjectIds);
 
         // 2. 删除角色主体关联 (sys_role_subject)
         sysRoleSubjectMapper.delete(
@@ -673,6 +771,26 @@ public class SysRoleService implements SysRoleApi {
 
         // 5. 删除角色本身
         sysRoleMapper.deleteById(roleId);
+
+        // 6. 发送 ROLE_DELETE 消息
+        try {
+            Long subjectId = AppContext.getSubjectId();
+            String projectNo = AppContext.getProjectNo();
+            if (!userIds.isEmpty()) {
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("roleId", roleId);
+                payload.put("affectedUserIds", new ArrayList<>(userIds));
+                messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
+            }
+            if (!affectedSubjectIds.isEmpty()) {
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("roleId", roleId);
+                payload.put("affectedSubjectIds", affectedSubjectIds);
+                messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
+            }
+        } catch (Exception e) {
+            log.error("发送角色删除消息失败: roleId={}", roleId, e);
+        }
     }
 
     @Override

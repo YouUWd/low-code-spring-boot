@@ -26,7 +26,13 @@ public enum ChangeType {
     ROLE_DATA_PERMISSION_CHANGED("ROLE_DATA_PERMISSION_CHANGED", "角色数据权限变更"),
 
     /** 角色特殊权限变更 */
-    ROLE_SPECIAL_PERMISSION_CHANGED("ROLE_SPECIAL_PERMISSION_CHANGED", "角色特殊权限变更");
+    ROLE_SPECIAL_PERMISSION_CHANGED("ROLE_SPECIAL_PERMISSION_CHANGED", "角色特殊权限变更"),
+
+    /** 角色新增（新增角色，或编辑角色时新增了用户/主体） */
+    ROLE_ADD("ROLE_ADD", "角色新增"),
+
+    /** 角色删除（删除角色，或编辑角色时移除了用户/主体） */
+    ROLE_DELETE("ROLE_DELETE", "角色删除");
 
     private final String code;
     private final String description;
