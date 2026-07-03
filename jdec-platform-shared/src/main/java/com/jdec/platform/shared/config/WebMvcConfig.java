@@ -23,9 +23,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         //                        "/api/**",
-                        "/api/auth/**", // 认证接口
-                        "/api/config/sso/**", // SSO 接口
-                        "/actuator/**", // 监控接口
+                        "/api/config/sys/user/check-permission",
                         "/doc.html", // API 文档
                         "/webjars/**",
                         "/v3/api-docs/**",
