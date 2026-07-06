@@ -53,7 +53,6 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         LambdaQueryWrapper<SysMenu> menuWrapper =
                 new LambdaQueryWrapper<SysMenu>()
                         .in(SysMenu::getId, menuIds)
-                        .eq(SysMenu::getCategory, 2)
                         .eq(SysMenu::getSubjectId, subjectId)
                         .eq(SysMenu::getProjectNo, projectNo);
         List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
