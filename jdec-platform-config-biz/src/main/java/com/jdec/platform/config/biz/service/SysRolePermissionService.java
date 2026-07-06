@@ -290,7 +290,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     @Override
     @ConfigChangeNotify(
             changeType = ChangeType.ROLE_INTERACTION_PERMISSION_CHANGED,
-            roleIdExpr = "#request.roleId")
+            roleIdExpr = "#request.roleId",
+            moduleIdExpr = "#request.permissions[0].moduleId")
     public void saveRoleInteractionPermission(SaveRoleInteractionPermissionReq request) {
         Long roleId = request.getRoleId();
         List<SaveRoleInteractionPermissionReq.PermissionItem> permissions =
