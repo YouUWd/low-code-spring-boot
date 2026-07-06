@@ -12,6 +12,18 @@ public class SaveRoleInteractionPermissionReq {
     @Schema(description = "角色ID")
     private Long roleId;
 
-    @Schema(description = "交互权限ID列表")
-    private List<Long> permissionIds;
+    @Schema(description = "权限配置列表")
+    private List<PermissionItem> permissions;
+
+    /** 权限项 */
+    @Data
+    @Schema(description = "权限项")
+    public static class PermissionItem {
+
+        @Schema(description = "模块ID")
+        private Long moduleId;
+
+        @Schema(description = "交互权限ID列表")
+        private List<Long> permissionIds;
+    }
 }

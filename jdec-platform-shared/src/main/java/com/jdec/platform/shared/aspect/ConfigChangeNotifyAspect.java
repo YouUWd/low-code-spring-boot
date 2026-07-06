@@ -140,6 +140,12 @@ public class ConfigChangeNotifyAspect {
             payload.put("affectedSubjectIds", affectedSubjectIds);
         }
 
+        // 从 ThreadLocal 读取自定义 payload 数据（由 Service 层设置）
+        Map<String, Object> customPayload = ConfigChangeContext.getCustomPayload();
+        if (!customPayload.isEmpty()) {
+            payload.putAll(customPayload);
+        }
+
         // 【关键】校验 payload 是否为空
         // 如果 requireNonEmptyPayload=true 且 payload 为空，则不发送消息
         if (annotation.requireNonEmptyPayload() && payload.isEmpty()) {

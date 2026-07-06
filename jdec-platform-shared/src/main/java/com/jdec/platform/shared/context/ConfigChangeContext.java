@@ -1,7 +1,9 @@
 package com.jdec.platform.shared.context;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 配置变更上下文（ThreadLocal）
@@ -33,7 +35,21 @@ public final class ConfigChangeContext {
      * @param affectedSubjectIds 受影响的主体 ID 列表
      */
     public static void set(List<Long> affectedUserIds, List<Long> affectedSubjectIds) {
-        HOLDER.set(new Payload(affectedUserIds, affectedSubjectIds));
+        HOLDER.set(new Payload(affectedUserIds, affectedSubjectIds, new HashMap<>()));
+    }
+
+    /**
+     * 设置受影响的用户/主体 ID 列表，并携带自定义 payload 数据
+     *
+     * @param affectedUserIds 受影响的用户 ID 列表
+     * @param affectedSubjectIds 受影响的主体 ID 列表
+     * @param customPayload 自定义 payload 数据（会追加到最终消息的 payload 中）
+     */
+    public static void set(
+            List<Long> affectedUserIds,
+            List<Long> affectedSubjectIds,
+            Map<String, Object> customPayload) {
+        HOLDER.set(new Payload(affectedUserIds, affectedSubjectIds, customPayload));
     }
 
     /** 获取受影响的用户 ID 列表，未设置时返回空列表 */
@@ -48,10 +64,17 @@ public final class ConfigChangeContext {
         return p != null && p.subjectIds != null ? p.subjectIds : Collections.emptyList();
     }
 
+    /** 获取自定义 payload 数据，未设置时返回空 Map */
+    public static Map<String, Object> getCustomPayload() {
+        Payload p = HOLDER.get();
+        return p != null && p.customPayload != null ? p.customPayload : Collections.emptyMap();
+    }
+
     /** 清理 ThreadLocal，防止内存泄漏。Aspect 在 finally 中负责调用 */
     public static void clear() {
         HOLDER.remove();
     }
 
-    private record Payload(List<Long> userIds, List<Long> subjectIds) {}
+    private record Payload(
+            List<Long> userIds, List<Long> subjectIds, Map<String, Object> customPayload) {}
 }

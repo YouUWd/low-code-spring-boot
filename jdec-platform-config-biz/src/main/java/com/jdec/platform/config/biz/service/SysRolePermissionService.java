@@ -293,7 +293,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             roleIdExpr = "#request.roleId")
     public void saveRoleInteractionPermission(SaveRoleInteractionPermissionReq request) {
         Long roleId = request.getRoleId();
-        List<Long> permissionIds = request.getPermissionIds();
+        List<SaveRoleInteractionPermissionReq.PermissionItem> permissions =
+                request.getPermissions();
 
         // 删除旧的角色交互权限关联
         sysRoleInteractionPermissionMapper.delete(
@@ -301,22 +302,29 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .eq(SysRoleInteractionPermission::getRoleId, roleId));
 
         // 批量插入新的角色交互权限关联
-        if (CollUtil.isNotEmpty(permissionIds)) {
-            List<SysRoleInteractionPermission> rolePermissions =
-                    permissionIds.stream()
-                            .map(
-                                    permissionId -> {
-                                        SysRoleInteractionPermission rp =
-                                                new SysRoleInteractionPermission();
-                                        rp.setRoleId(roleId);
-                                        rp.setPermissionId(permissionId);
-                                        return rp;
-                                    })
-                            .toList();
-            sysRoleInteractionPermissionMapper.insert(rolePermissions);
+        if (CollUtil.isNotEmpty(permissions)) {
+            List<SysRoleInteractionPermission> rolePermissions = new ArrayList<>();
+            for (SaveRoleInteractionPermissionReq.PermissionItem permission : permissions) {
+                if (CollUtil.isNotEmpty(permission.getPermissionIds())) {
+                    for (Long permissionId : permission.getPermissionIds()) {
+                        SysRoleInteractionPermission rp = new SysRoleInteractionPermission();
+                        rp.setRoleId(roleId);
+                        rp.setPermissionId(permissionId);
+                        rolePermissions.add(rp);
+                    }
+                }
+            }
+            if (CollUtil.isNotEmpty(rolePermissions)) {
+                sysRoleInteractionPermissionMapper.insert(rolePermissions);
+            }
         }
 
-        setAffectedContext(roleId);
+        // 构建自定义 payload，包含 permissions 数据
+        Map<String, Object> customPayload = new HashMap<>();
+        customPayload.put("permissions", permissions);
+
+        // 设置受影响的用户/主体，并携带自定义 payload
+        setAffectedContext(roleId, customPayload);
     }
 
     @Transactional
@@ -701,5 +709,33 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .distinct()
                         .toList();
         ConfigChangeContext.set(affectedUserIds, affectedSubjectIds);
+    }
+
+    /**
+     * 查询角色关联的用户/主体 ID，并携带自定义 payload，写入 ConfigChangeContext
+     *
+     * @param roleId 角色ID
+     * @param customPayload 自定义 payload 数据
+     */
+    private void setAffectedContext(Long roleId, Map<String, Object> customPayload) {
+        List<Long> affectedUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .eq(SysRoleUser::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleSubject>()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, customPayload);
     }
 }
