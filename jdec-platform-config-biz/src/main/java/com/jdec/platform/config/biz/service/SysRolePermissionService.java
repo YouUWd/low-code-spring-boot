@@ -348,12 +348,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             }
         }
 
-        // 构建自定义 payload，包含 permissions 数据
-        Map<String, Object> customPayload = new HashMap<>();
-        customPayload.put("permissions", permissions);
-
-        // 设置受影响的用户/主体，并携带自定义 payload
-        setAffectedContext(roleId, customPayload);
+        setAffectedContext(roleId);
     }
 
     @Transactional
