@@ -297,12 +297,40 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         List<SaveRoleInteractionPermissionReq.PermissionItem> permissions =
                 request.getPermissions();
 
-        // 删除旧的角色交互权限关联
-        sysRoleInteractionPermissionMapper.delete(
-                Wrappers.<SysRoleInteractionPermission>lambdaQuery()
-                        .eq(SysRoleInteractionPermission::getRoleId, roleId));
+        // 1. 删除该角色下 request 中模块列表的旧交互权限记录
+        if (CollUtil.isNotEmpty(permissions)) {
+            // 提取本次请求涉及的所有模块ID
+            List<Long> moduleIds =
+                    permissions.stream()
+                            .map(SaveRoleInteractionPermissionReq.PermissionItem::getModuleId)
+                            .filter(java.util.Objects::nonNull)
+                            .toList();
 
-        // 批量插入新的角色交互权限关联
+            if (CollUtil.isNotEmpty(moduleIds)) {
+                // 查询这些模块下的所有交互权限ID
+                List<SysInteractionPermission> interactionPermissions =
+                        sysInteractionPermissionMapper.selectList(
+                                Wrappers.<SysInteractionPermission>lambdaQuery()
+                                        .in(SysInteractionPermission::getModuleId, moduleIds));
+
+                if (CollUtil.isNotEmpty(interactionPermissions)) {
+                    List<Long> permissionIdsToDelete =
+                            interactionPermissions.stream()
+                                    .map(SysInteractionPermission::getId)
+                                    .toList();
+
+                    // 只删除这些模块范围内的角色交互权限
+                    sysRoleInteractionPermissionMapper.delete(
+                            Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                    .eq(SysRoleInteractionPermission::getRoleId, roleId)
+                                    .in(
+                                            SysRoleInteractionPermission::getPermissionId,
+                                            permissionIdsToDelete));
+                }
+            }
+        }
+
+        // 2. 批量插入新的角色交互权限关联
         if (CollUtil.isNotEmpty(permissions)) {
             List<SysRoleInteractionPermission> rolePermissions = new ArrayList<>();
             for (SaveRoleInteractionPermissionReq.PermissionItem permission : permissions) {
