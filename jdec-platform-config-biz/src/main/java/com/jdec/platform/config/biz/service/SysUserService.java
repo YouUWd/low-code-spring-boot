@@ -453,8 +453,10 @@ public class SysUserService implements SysUserApi {
 
     @Override
     public List<Long> getSubjectIdsByUserId(Long userId) {
-        // 1. 根据用户ID查询关联的角色ID（过滤状态有效且在时效范围内）
         java.time.LocalDate today = java.time.LocalDate.now();
+        Set<Long> resultSubjectIds = new HashSet<>();
+
+        // 路径1: userId -> sys_role_user -> roleIds -> sys_role -> 收集 subjectIds
         List<Long> roleIds =
                 sysRoleUserMapper
                         .selectList(
@@ -473,36 +475,65 @@ public class SysUserService implements SysUserApi {
                         .distinct()
                         .toList();
 
-        // 2. 获取请求头的主体ID
+        if (!roleIds.isEmpty()) {
+            // 根据角色ID查询角色记录，收集主体ID
+            List<Long> subjectIdsFromRoles =
+                    sysRoleMapper
+                            .selectList(
+                                    Wrappers.<SysRole>lambdaQuery()
+                                            .in(SysRole::getId, roleIds)
+                                            .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                            .select(SysRole::getId, SysRole::getSubjectId))
+                            .stream()
+                            .map(SysRole::getSubjectId)
+                            .filter(Objects::nonNull)
+                            .toList();
+            resultSubjectIds.addAll(subjectIdsFromRoles);
+        }
+
+        // 路径2: 请求头 subjectId -> sys_role_subject -> roleIds -> sys_role -> 收集 subjectIds
         Long headerSubjectId = AppContext.getSubjectId();
-
-        // 3. 如果用户没有角色，返回请求头的主体ID
-        if (roleIds.isEmpty()) {
-            return headerSubjectId != null
-                    ? Collections.singletonList(headerSubjectId)
-                    : Collections.emptyList();
-        }
-
-        // 4. 根据角色ID查询主体ID（只按projectNo过滤，不过滤subjectId）
-        List<Long> subjectIds =
-                sysRoleMapper
-                        .selectList(
-                                Wrappers.<SysRole>lambdaQuery()
-                                        .in(SysRole::getId, roleIds)
-                                        .eq(SysRole::getProjectNo, AppContext.getProjectNo())
-                                        .select(SysRole::getId, SysRole::getSubjectId))
-                        .stream()
-                        .map(SysRole::getSubjectId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toList());
-
-        // 5. 将请求头的主体ID加入到反查出来的主体列表中
         if (headerSubjectId != null) {
-            subjectIds.add(headerSubjectId);
+            // 查询该主体绑定的角色ID（且状态有效、时效范围内）
+            List<Long> subjectRoleIds =
+                    sysRoleSubjectMapper
+                            .selectList(
+                                    Wrappers.<SysRoleSubject>lambdaQuery()
+                                            .eq(SysRoleSubject::getSubjectId, headerSubjectId)
+                                            .eq(SysRoleSubject::getStatus, 0))
+                            .stream()
+                            .filter(
+                                    rs ->
+                                            isEffectiveDateValid(
+                                                    rs.getEffectiveType(),
+                                                    rs.getEffectiveStartDate(),
+                                                    rs.getEffectiveEndDate(),
+                                                    today))
+                            .map(SysRoleSubject::getRoleId)
+                            .distinct()
+                            .toList();
+
+            if (!subjectRoleIds.isEmpty()) {
+                // 根据角色ID查询角色表，收集这些角色的主体ID
+                List<Long> subjectIdsFromSubjectRoles =
+                        sysRoleMapper
+                                .selectList(
+                                        Wrappers.<SysRole>lambdaQuery()
+                                                .in(SysRole::getId, subjectRoleIds)
+                                                .eq(
+                                                        SysRole::getProjectNo,
+                                                        AppContext.getProjectNo())
+                                                .select(SysRole::getId, SysRole::getSubjectId))
+                                .stream()
+                                .map(SysRole::getSubjectId)
+                                .filter(Objects::nonNull)
+                                .toList();
+                resultSubjectIds.addAll(subjectIdsFromSubjectRoles);
+            }
         }
 
-        // 6. 去重并返回
-        return subjectIds.stream().distinct().toList();
+        // 返回去重后的主体ID列表
+        return new ArrayList<>(resultSubjectIds);
     }
 
     private boolean hasUsers(UserSearchTreeNodeResp node) {
