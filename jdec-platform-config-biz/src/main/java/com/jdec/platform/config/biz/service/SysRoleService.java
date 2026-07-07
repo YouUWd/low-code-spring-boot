@@ -1675,7 +1675,7 @@ public class SysRoleService implements SysRoleApi {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
 
-        // 1. 根据主体ID和项目编码查询角色列表
+        // 1. 根据请求头中的主体ID和项目编码查询角色列表
         List<SysRole> roles =
                 sysRoleMapper.selectList(
                         Wrappers.<SysRole>lambdaQuery()
