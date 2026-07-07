@@ -41,6 +41,11 @@ public class UserService implements UserApi {
     }
 
     @Override
+    public Optional<Integer> getSubjectIdByUserId(Long userId) {
+        return Optional.ofNullable(userMapper.selectById(userId)).map(User::getSubjectId);
+    }
+
+    @Override
     public Optional<String> getWeChatUserIdByPhone(String phone) {
         return Optional.ofNullable(
                         userMapper.selectOne(

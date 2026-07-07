@@ -21,6 +21,14 @@ public interface UserApi {
     Optional<Integer> getSubjectIdByPhone(String phone);
 
     /**
+     * 根据用户ID获取用户的主体ID
+     *
+     * @param userId 用户ID
+     * @return 主体ID
+     */
+    Optional<Integer> getSubjectIdByUserId(Long userId);
+
+    /**
      * 根据手机号获取用户的企业微信用户ID（short_name）
      *
      * @param phone 手机号

@@ -926,9 +926,10 @@ public class SysRoleService implements SysRoleApi {
             }
         }
 
-        // 路径2（步骤4）: 从上下文获取用户自己的主体ID，查询主体角色关联，并与当前主体角色取交集
+        // 路径2（步骤4）: 从hr-manage模块获取用户自己的主体ID，查询主体角色关联，并与当前主体角色取交集
         // 注意：这里需要获取用户自己所属的主体ID，不是当前请求的主体ID
-        Long userSubjectId = AppContext.getUserSubjectId();
+        Long userSubjectId =
+                userApi.getSubjectIdByUserId(userId).map(Integer::longValue).orElse(null);
 
         if (userSubjectId != null) {
             // 查询用户所属主体的角色关联（状态有效且在时效内）
