@@ -16,7 +16,8 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class AppContextInterceptor implements HandlerInterceptor {
     private static final String PROJECT_NO_HEADER = "X-Project-No";
     private static final String SUBJECT_ID_HEADER = "X-Subject-Id";
-
+    private static final String MOCK_SUBJECT_HEADER = "mock-subject-id";
+    private static final String MOCK_USER_HEADER = "mock-user-id";
     private final ObjectMapper objectMapper;
 
     @Override
@@ -41,7 +42,16 @@ public class AppContextInterceptor implements HandlerInterceptor {
                 (subjectIdStr != null && !subjectIdStr.isEmpty())
                         ? Long.valueOf(subjectIdStr)
                         : null;
-        AppContext.setContext(projectNo, subjectId);
+
+        Long mockSubjectId =
+                request.getHeader(MOCK_SUBJECT_HEADER) == null
+                        ? subjectId
+                        : Long.valueOf(request.getHeader(MOCK_SUBJECT_HEADER));
+        Long mockUserId =
+                request.getHeader(MOCK_USER_HEADER) == null
+                        ? null
+                        : Long.valueOf(request.getHeader(MOCK_USER_HEADER));
+        AppContext.setContext(projectNo, subjectId, mockUserId, mockSubjectId);
         return true;
     }
 

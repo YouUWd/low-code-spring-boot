@@ -48,6 +48,9 @@ public class UserSwitchDataResp {
         @Schema(description = "性别")
         private Integer sex;
 
+        @Schema(description = "主体id")
+        private Long subjectId;
+
         @Schema(description = "部门ids")
         private String departIds;
 

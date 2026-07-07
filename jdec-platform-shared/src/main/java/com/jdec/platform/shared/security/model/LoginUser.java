@@ -36,6 +36,9 @@ public class LoginUser implements Serializable {
     /** 当前项目编号 */
     private String projectNo;
 
+    /** 用户所属主体ID */
+    private Long subjectId;
+
     /** 登录时间 */
     private LocalDateTime loginTime;
 

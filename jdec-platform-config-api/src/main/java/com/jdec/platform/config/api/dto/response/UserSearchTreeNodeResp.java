@@ -42,6 +42,9 @@ public class UserSearchTreeNodeResp {
     @Schema(description = "工号", example = "W00001")
     private String workNumber;
 
+    @Schema(description = "主体id")
+    private Long subjectId;
+
     @Schema(description = "部门名称", example = "襄阳试界空间有限公司")
     private String departName;
 

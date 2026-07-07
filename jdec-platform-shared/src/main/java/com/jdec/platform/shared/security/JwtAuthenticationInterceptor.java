@@ -50,7 +50,7 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
             throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌无效或已过期");
         }
 
-        // 3. 从 JWT 中获取 phone
+        // 3. 从 JWT 中获取必要字段
         String phone = claims.get("phone", String.class);
         if (!StringUtils.hasText(phone)) {
             log.warn("JWT 中缺少 phone 字段");
@@ -66,11 +66,9 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
             throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌已失效，请重新登录");
         }
 
-        // 5. 将 token 存入 TokenContext
+        // 6. 将 token 存入 TokenContext
         TokenContext.setToken(token);
 
-        // 6. 构建 LoginUser 并存入 UserContext
-        log.debug("JWT 认证通过, phone={}", phone);
         return true;
     }
 

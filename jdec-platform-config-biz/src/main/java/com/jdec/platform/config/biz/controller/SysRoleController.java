@@ -106,9 +106,8 @@ public class SysRoleController {
     @GetMapping("/get-user-roles")
     @Operation(summary = "根据用户ID和主体ID查询用户角色列表", description = "查询用户有哪些角色，仅返回在有效期内的角色")
     public ApiResponse<List<UserRoleListResp>> getUserRolesByUserIdAndSubjectId(
-            @Parameter(description = "用户ID", example = "1") @RequestParam Long userId,
-            @Parameter(description = "主体ID", example = "1") @RequestParam Long subjectId) {
-        return ApiResponse.success(sysRoleApi.getUserRolesByUserIdAndSubjectId(userId, subjectId));
+            @Parameter(description = "用户ID", example = "1") @RequestParam Long userId) {
+        return ApiResponse.success(sysRoleApi.getUserRolesByUserIdAndSubjectId(userId));
     }
 
     @GetMapping("/get-user-switch-tree")
@@ -174,6 +173,7 @@ public class SysRoleController {
                                 .type(3)
                                 .departName(
                                         user.getDepartName() != null ? user.getDepartName() : "")
+                                .subjectId(user.getSubjectId())
                                 .build();
                 userMap.put(user.getUserId(), userNode);
             }
@@ -209,6 +209,7 @@ public class SysRoleController {
                                             hrUser.getDepartmentName() != null
                                                     ? hrUser.getDepartmentName()
                                                     : "")
+                                    .subjectId(Long.valueOf(hrUser.getSubjectId()))
                                     .build();
                     userMap.put(hrUser.getId(), userNode);
                 }

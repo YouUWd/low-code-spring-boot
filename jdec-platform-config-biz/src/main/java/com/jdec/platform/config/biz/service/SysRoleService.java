@@ -863,13 +863,33 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
-    public List<UserRoleListResp> getUserRolesByUserIdAndSubjectId(Long userId, Long subjectId) {
+    public List<UserRoleListResp> getUserRolesByUserIdAndSubjectId(Long userId) {
         // 先更新已时效的关联状态
         updateExpiredRelations();
-        subjectId = AppContext.getSubjectId();
+        Long currentSubjectId = AppContext.getSubjectId();
         List<UserRoleListResp> result = new ArrayList<>();
 
-        // 路径1: 查询用户角色关系表（状态有效且在时效内）
+        // 步骤1: 根据当前主体ID查询该主体下的所有角色
+        List<SysRole> currentSubjectRoles =
+                sysRoleMapper.selectList(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .eq(SysRole::getSubjectId, currentSubjectId)
+                                .eq(SysRole::getProjectNo, AppContext.getProjectNo()));
+
+        // 如果当前主体没有角色，直接返回空列表
+        if (currentSubjectRoles.isEmpty()) {
+            return result;
+        }
+
+        // 当前主体下的所有角色ID集合
+        Set<Long> currentSubjectRoleIds =
+                currentSubjectRoles.stream().map(SysRole::getId).collect(Collectors.toSet());
+
+        // 构建角色ID到角色对象的映射
+        Map<Long, SysRole> roleMap =
+                currentSubjectRoles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
+
+        // 路径1（步骤2）: 查询用户角色关系表（状态有效且在时效内），并与当前主体角色取交集
         List<SysRoleUser> validRoleUsers =
                 filterValidRoleUsers(
                         sysRoleUserMapper.selectList(
@@ -878,65 +898,75 @@ public class SysRoleService implements SysRoleApi {
                                         .eq(SysRoleUser::getStatus, 0)));
 
         if (!validRoleUsers.isEmpty()) {
-            // 批量查询角色信息，并根据当前主体进行过滤
-            List<Long> roleIds =
-                    validRoleUsers.stream().map(SysRoleUser::getRoleId).distinct().toList();
-            List<SysRole> roles =
-                    sysRoleMapper.selectList(
-                            Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
-            Map<Long, SysRole> roleMap =
-                    roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
+            // 用户关联的角色ID
+            Set<Long> userRoleIds =
+                    validRoleUsers.stream().map(SysRoleUser::getRoleId).collect(Collectors.toSet());
+
+            // 取交集：保留既在用户关联中，又在当前主体中的角色
+            userRoleIds.retainAll(currentSubjectRoleIds);
 
             // 构建响应
             for (SysRoleUser roleUser : validRoleUsers) {
-                SysRole role = roleMap.get(roleUser.getRoleId());
-                if (role != null) {
-                    UserRoleListResp resp = new UserRoleListResp();
-                    resp.setRoleId(role.getId());
-                    resp.setRoleName(role.getRoleName());
-                    resp.setRoleSlug(role.getRoleSlug());
-                    resp.setSubjectId(role.getSubjectId());
-                    resp.setEffectiveType(roleUser.getEffectiveType());
-                    resp.setEffectiveStartDate(roleUser.getEffectiveStartDate());
-                    resp.setEffectiveEndDate(roleUser.getEffectiveEndDate());
-                    resp.setRoleSource(1); // 用户直接关联
-                    result.add(resp);
+                // 只处理交集中的角色
+                if (userRoleIds.contains(roleUser.getRoleId())) {
+                    SysRole role = roleMap.get(roleUser.getRoleId());
+                    if (role != null) {
+                        UserRoleListResp resp = new UserRoleListResp();
+                        resp.setRoleId(role.getId());
+                        resp.setRoleName(role.getRoleName());
+                        resp.setRoleSlug(role.getRoleSlug());
+                        resp.setSubjectId(role.getSubjectId());
+                        resp.setEffectiveType(roleUser.getEffectiveType());
+                        resp.setEffectiveStartDate(roleUser.getEffectiveStartDate());
+                        resp.setEffectiveEndDate(roleUser.getEffectiveEndDate());
+                        resp.setRoleSource(1); // 用户直接关联
+                        result.add(resp);
+                    }
                 }
             }
         }
 
-        // 路径2: 查询角色主体绑定关系表（状态有效且在时效内）
-        List<SysRoleSubject> validRoleSubjects =
-                filterValidRoleSubjects(
-                        sysRoleSubjectMapper.selectList(
-                                Wrappers.<SysRoleSubject>lambdaQuery()
-                                        .eq(SysRoleSubject::getSubjectId, subjectId)
-                                        .eq(SysRoleSubject::getStatus, 0)));
+        // 路径2（步骤4）: 从上下文获取用户自己的主体ID，查询主体角色关联，并与当前主体角色取交集
+        // 注意：这里需要获取用户自己所属的主体ID，不是当前请求的主体ID
+        Long userSubjectId = AppContext.getUserSubjectId();
 
-        if (!validRoleSubjects.isEmpty()) {
-            // 批量查询角色信息，并根据当前主体进行过滤
-            List<Long> roleIds =
-                    validRoleSubjects.stream().map(SysRoleSubject::getRoleId).distinct().toList();
-            List<SysRole> roles =
-                    sysRoleMapper.selectList(
-                            Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
-            Map<Long, SysRole> roleMap =
-                    roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
+        if (userSubjectId != null) {
+            // 查询用户所属主体的角色关联（状态有效且在时效内）
+            List<SysRoleSubject> validRoleSubjects =
+                    filterValidRoleSubjects(
+                            sysRoleSubjectMapper.selectList(
+                                    Wrappers.<SysRoleSubject>lambdaQuery()
+                                            .eq(SysRoleSubject::getSubjectId, userSubjectId)
+                                            .eq(SysRoleSubject::getStatus, 0)));
 
-            // 构建响应，合并到结果中
-            for (SysRoleSubject roleSubject : validRoleSubjects) {
-                SysRole role = roleMap.get(roleSubject.getRoleId());
-                if (role != null) {
-                    UserRoleListResp resp = new UserRoleListResp();
-                    resp.setRoleId(role.getId());
-                    resp.setRoleName(role.getRoleName());
-                    resp.setRoleSlug(role.getRoleSlug());
-                    resp.setSubjectId(role.getSubjectId());
-                    resp.setEffectiveType(roleSubject.getEffectiveType());
-                    resp.setEffectiveStartDate(roleSubject.getEffectiveStartDate());
-                    resp.setEffectiveEndDate(roleSubject.getEffectiveEndDate());
-                    resp.setRoleSource(2); // 主体关联
-                    result.add(resp);
+            if (!validRoleSubjects.isEmpty()) {
+                // 用户主体关联的角色ID
+                Set<Long> subjectRoleIds =
+                        validRoleSubjects.stream()
+                                .map(SysRoleSubject::getRoleId)
+                                .collect(Collectors.toSet());
+
+                // 取交集：保留既在主体关联中，又在当前主体中的角色
+                subjectRoleIds.retainAll(currentSubjectRoleIds);
+
+                // 构建响应，合并到结果中
+                for (SysRoleSubject roleSubject : validRoleSubjects) {
+                    // 只处理交集中的角色
+                    if (subjectRoleIds.contains(roleSubject.getRoleId())) {
+                        SysRole role = roleMap.get(roleSubject.getRoleId());
+                        if (role != null) {
+                            UserRoleListResp resp = new UserRoleListResp();
+                            resp.setRoleId(role.getId());
+                            resp.setRoleName(role.getRoleName());
+                            resp.setRoleSlug(role.getRoleSlug());
+                            resp.setSubjectId(role.getSubjectId());
+                            resp.setEffectiveType(roleSubject.getEffectiveType());
+                            resp.setEffectiveStartDate(roleSubject.getEffectiveStartDate());
+                            resp.setEffectiveEndDate(roleSubject.getEffectiveEndDate());
+                            resp.setRoleSource(2); // 主体关联
+                            result.add(resp);
+                        }
+                    }
                 }
             }
         }
@@ -1747,6 +1777,7 @@ public class SysRoleService implements SysRoleApi {
                                                 .userName(user.getUserName())
                                                 .workNumber(user.getWorkNumber())
                                                 .userAvatar(user.getUserAvatar())
+                                                .subjectId(user.getSubjectId())
                                                 .sex(user.getSex())
                                                 .departIds(user.getDepartIds())
                                                 .departName(user.getDepartName())

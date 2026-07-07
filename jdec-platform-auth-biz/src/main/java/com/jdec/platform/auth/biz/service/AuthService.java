@@ -74,6 +74,8 @@ public class AuthService implements AuthApi {
         Map<String, Object> extraClaims = new HashMap<>();
         extraClaims.put("superAdmin", user.getSuperFlag() != null && user.getSuperFlag() == 1);
         extraClaims.put("projectNo", projectNo);
+        extraClaims.put("userId", user.getUserId());
+        extraClaims.put("subjectId", user.getSubjectId());
 
         String token =
                 jwtTokenProvider.generateToken(
