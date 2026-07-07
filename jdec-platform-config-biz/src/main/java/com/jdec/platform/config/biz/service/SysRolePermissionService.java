@@ -290,47 +290,48 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     @Override
     @ConfigChangeNotify(
             changeType = ChangeType.ROLE_INTERACTION_PERMISSION_CHANGED,
-            roleIdExpr = "#request.roleId",
-            moduleIdExpr = "#request.permissions[0].moduleId")
+            roleIdExpr = "#request.roleId")
     public void saveRoleInteractionPermission(SaveRoleInteractionPermissionReq request) {
         Long roleId = request.getRoleId();
         List<SaveRoleInteractionPermissionReq.PermissionItem> permissions =
                 request.getPermissions();
 
-        // 1. 删除该角色下 request 中模块列表的旧交互权限记录
+        // 1. 提取受影响的模块 ID 列表
+        List<Long> affectedModuleIds = Collections.emptyList();
         if (CollUtil.isNotEmpty(permissions)) {
-            // 提取本次请求涉及的所有模块ID
-            List<Long> moduleIds =
+            affectedModuleIds =
                     permissions.stream()
                             .map(SaveRoleInteractionPermissionReq.PermissionItem::getModuleId)
                             .filter(java.util.Objects::nonNull)
+                            .distinct()
                             .toList();
+        }
 
-            if (CollUtil.isNotEmpty(moduleIds)) {
-                // 查询这些模块下的所有交互权限ID
-                List<SysInteractionPermission> interactionPermissions =
-                        sysInteractionPermissionMapper.selectList(
-                                Wrappers.<SysInteractionPermission>lambdaQuery()
-                                        .in(SysInteractionPermission::getModuleId, moduleIds));
+        // 2. 删除该角色下 request 中模块列表的旧交互权限记录
+        if (CollUtil.isNotEmpty(affectedModuleIds)) {
+            // 查询这些模块下的所有交互权限ID
+            List<SysInteractionPermission> interactionPermissions =
+                    sysInteractionPermissionMapper.selectList(
+                            Wrappers.<SysInteractionPermission>lambdaQuery()
+                                    .in(SysInteractionPermission::getModuleId, affectedModuleIds));
 
-                if (CollUtil.isNotEmpty(interactionPermissions)) {
-                    List<Long> permissionIdsToDelete =
-                            interactionPermissions.stream()
-                                    .map(SysInteractionPermission::getId)
-                                    .toList();
+            if (CollUtil.isNotEmpty(interactionPermissions)) {
+                List<Long> permissionIdsToDelete =
+                        interactionPermissions.stream()
+                                .map(SysInteractionPermission::getId)
+                                .toList();
 
-                    // 只删除这些模块范围内的角色交互权限
-                    sysRoleInteractionPermissionMapper.delete(
-                            Wrappers.<SysRoleInteractionPermission>lambdaQuery()
-                                    .eq(SysRoleInteractionPermission::getRoleId, roleId)
-                                    .in(
-                                            SysRoleInteractionPermission::getPermissionId,
-                                            permissionIdsToDelete));
-                }
+                // 只删除这些模块范围内的角色交互权限
+                sysRoleInteractionPermissionMapper.delete(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(SysRoleInteractionPermission::getRoleId, roleId)
+                                .in(
+                                        SysRoleInteractionPermission::getPermissionId,
+                                        permissionIdsToDelete));
             }
         }
 
-        // 2. 批量插入新的角色交互权限关联
+        // 3. 批量插入新的角色交互权限关联
         if (CollUtil.isNotEmpty(permissions)) {
             List<SysRoleInteractionPermission> rolePermissions = new ArrayList<>();
             for (SaveRoleInteractionPermissionReq.PermissionItem permission : permissions) {
@@ -348,7 +349,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             }
         }
 
-        setAffectedContext(roleId);
+        // 4. 设置受影响的上下文（用户、主体、模块）
+        setAffectedContext(roleId, affectedModuleIds);
     }
 
     @Transactional
@@ -573,29 +575,32 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     @Override
     @ConfigChangeNotify(
             changeType = ChangeType.ROLE_MODULE_PERMISSION_CHANGED,
-            roleIdExpr = "#request.roleId",
-            moduleIdExpr = "#request.fields[0].moduleId")
+            roleIdExpr = "#request.roleId")
     public void saveRoleModuleFieldPermission(SaveRoleModuleFieldPermissionReq request) {
         Long roleId = request.getRoleId();
 
-        // 1. 删除该角色下 request 中模块列表的旧字段权限记录
+        // 1. 提取受影响的模块 ID 列表
+        List<Long> affectedModuleIds = Collections.emptyList();
         if (CollUtil.isNotEmpty(request.getFields())) {
-            List<Long> moduleIds =
+            affectedModuleIds =
                     request.getFields().stream()
                             .map(
                                     SaveRoleModuleFieldPermissionReq.ModuleFieldPermissionItem
                                             ::getModuleId)
                             .filter(java.util.Objects::nonNull)
+                            .distinct()
                             .toList();
-            if (CollUtil.isNotEmpty(moduleIds)) {
-                sysRoleModuleFieldPermissionMapper.delete(
-                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
-                                .in(SysRoleModuleFieldPermission::getModuleId, moduleIds));
-            }
         }
 
-        // 2. 解析并批量插入新数据
+        // 2. 删除该角色下 request 中模块列表的旧字段权限记录
+        if (CollUtil.isNotEmpty(affectedModuleIds)) {
+            sysRoleModuleFieldPermissionMapper.delete(
+                    Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                            .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                            .in(SysRoleModuleFieldPermission::getModuleId, affectedModuleIds));
+        }
+
+        // 3. 解析并批量插入新数据
         if (CollUtil.isNotEmpty(request.getFields())) {
             List<SysRoleModuleFieldPermission> allEntities = new ArrayList<>();
             for (SaveRoleModuleFieldPermissionReq.ModuleFieldPermissionItem item :
@@ -664,7 +669,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             }
         }
 
-        setAffectedContext(request.getRoleId());
+        // 4. 设置受影响的上下文（用户、主体、模块）
+        setAffectedContext(request.getRoleId(), affectedModuleIds);
     }
 
     @Override
@@ -761,5 +767,33 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .distinct()
                         .toList();
         ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, customPayload);
+    }
+
+    /**
+     * 查询角色关联的用户/主体 ID，并携带受影响的模块 ID 列表，写入 ConfigChangeContext
+     *
+     * @param roleId 角色ID
+     * @param affectedModuleIds 受影响的模块 ID 列表
+     */
+    private void setAffectedContext(Long roleId, List<Long> affectedModuleIds) {
+        List<Long> affectedUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .eq(SysRoleUser::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleSubject>()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, affectedModuleIds);
     }
 }

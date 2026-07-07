@@ -130,14 +130,18 @@ public class ConfigChangeNotifyAspect {
             }
         }
 
-        // 从 ThreadLocal 读取受影响的用户/主体 ID（由 Service 层在操作前/后 set）
+        // 从 ThreadLocal 读取受影响的用户/主体/模块 ID（由 Service 层在操作前/后 set）
         List<Long> affectedUserIds = ConfigChangeContext.getAffectedUserIds();
         List<Long> affectedSubjectIds = ConfigChangeContext.getAffectedSubjectIds();
+        List<Long> affectedModuleIds = ConfigChangeContext.getAffectedModuleIds();
         if (!affectedUserIds.isEmpty()) {
             payload.put("affectedUserIds", affectedUserIds);
         }
         if (!affectedSubjectIds.isEmpty()) {
             payload.put("affectedSubjectIds", affectedSubjectIds);
+        }
+        if (!affectedModuleIds.isEmpty()) {
+            payload.put("affectedModuleIds", affectedModuleIds);
         }
 
         // 从 ThreadLocal 读取自定义 payload 数据（由 Service 层设置）
