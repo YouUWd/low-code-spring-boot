@@ -866,13 +866,10 @@ public class SysRoleService implements SysRoleApi {
     public List<UserRoleListResp> getUserRolesByUserIdAndSubjectId(Long userId, Long subjectId) {
         // 先更新已时效的关联状态
         updateExpiredRelations();
-
-        // 从请求头获取当前主体ID，用于过滤角色
-        Long currentSubjectId = AppContext.getSubjectId();
-
+        subjectId = AppContext.getSubjectId();
         List<UserRoleListResp> result = new ArrayList<>();
 
-        // 1. 先查询用户角色关系表（状态有效且在时效内）
+        // 路径1: 查询用户角色关系表（状态有效且在时效内）
         List<SysRoleUser> validRoleUsers =
                 filterValidRoleUsers(
                         sysRoleUserMapper.selectList(
@@ -886,9 +883,7 @@ public class SysRoleService implements SysRoleApi {
                     validRoleUsers.stream().map(SysRoleUser::getRoleId).distinct().toList();
             List<SysRole> roles =
                     sysRoleMapper.selectList(
-                            Wrappers.<SysRole>lambdaQuery()
-                                    .in(SysRole::getId, roleIds)
-                                    .eq(SysRole::getSubjectId, currentSubjectId));
+                            Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
             Map<Long, SysRole> roleMap =
                     roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
 
@@ -910,7 +905,7 @@ public class SysRoleService implements SysRoleApi {
             }
         }
 
-        // 2. 如果用户角色关系表中没有记录，查询角色主体绑定关系表（状态有效且在时效内）
+        // 路径2: 查询角色主体绑定关系表（状态有效且在时效内）
         List<SysRoleSubject> validRoleSubjects =
                 filterValidRoleSubjects(
                         sysRoleSubjectMapper.selectList(
@@ -918,38 +913,35 @@ public class SysRoleService implements SysRoleApi {
                                         .eq(SysRoleSubject::getSubjectId, subjectId)
                                         .eq(SysRoleSubject::getStatus, 0)));
 
-        if (validRoleSubjects.isEmpty()) {
-            return result;
-        }
+        if (!validRoleSubjects.isEmpty()) {
+            // 批量查询角色信息，并根据当前主体进行过滤
+            List<Long> roleIds =
+                    validRoleSubjects.stream().map(SysRoleSubject::getRoleId).distinct().toList();
+            List<SysRole> roles =
+                    sysRoleMapper.selectList(
+                            Wrappers.<SysRole>lambdaQuery().in(SysRole::getId, roleIds));
+            Map<Long, SysRole> roleMap =
+                    roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
 
-        // 批量查询角色信息，并根据当前主体进行过滤
-        List<Long> roleIds =
-                validRoleSubjects.stream().map(SysRoleSubject::getRoleId).distinct().toList();
-        List<SysRole> roles =
-                sysRoleMapper.selectList(
-                        Wrappers.<SysRole>lambdaQuery()
-                                .in(SysRole::getId, roleIds)
-                                .eq(SysRole::getSubjectId, currentSubjectId));
-        Map<Long, SysRole> roleMap =
-                roles.stream().collect(Collectors.toMap(SysRole::getId, r -> r));
-
-        // 构建响应
-        for (SysRoleSubject roleSubject : validRoleSubjects) {
-            SysRole role = roleMap.get(roleSubject.getRoleId());
-            if (role != null) {
-                UserRoleListResp resp = new UserRoleListResp();
-                resp.setRoleId(role.getId());
-                resp.setRoleName(role.getRoleName());
-                resp.setRoleSlug(role.getRoleSlug());
-                resp.setSubjectId(role.getSubjectId());
-                resp.setEffectiveType(roleSubject.getEffectiveType());
-                resp.setEffectiveStartDate(roleSubject.getEffectiveStartDate());
-                resp.setEffectiveEndDate(roleSubject.getEffectiveEndDate());
-                resp.setRoleSource(2); // 主体关联
-                result.add(resp);
+            // 构建响应，合并到结果中
+            for (SysRoleSubject roleSubject : validRoleSubjects) {
+                SysRole role = roleMap.get(roleSubject.getRoleId());
+                if (role != null) {
+                    UserRoleListResp resp = new UserRoleListResp();
+                    resp.setRoleId(role.getId());
+                    resp.setRoleName(role.getRoleName());
+                    resp.setRoleSlug(role.getRoleSlug());
+                    resp.setSubjectId(role.getSubjectId());
+                    resp.setEffectiveType(roleSubject.getEffectiveType());
+                    resp.setEffectiveStartDate(roleSubject.getEffectiveStartDate());
+                    resp.setEffectiveEndDate(roleSubject.getEffectiveEndDate());
+                    resp.setRoleSource(2); // 主体关联
+                    result.add(resp);
+                }
             }
         }
 
+        // 返回合并后的结果（两个路径都为空时返回空列表，否则返回合并结果）
         return result;
     }
 
