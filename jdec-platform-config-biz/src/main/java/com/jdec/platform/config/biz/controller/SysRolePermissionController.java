@@ -119,10 +119,14 @@ public class SysRolePermissionController {
     }
 
     @GetMapping("/get-role-module-field-permission")
-    @Operation(summary = "查询角色模块字段权限列表", description = "根据角色ID查询该角色已分配的模块字段权限列表")
+    @Operation(summary = "查询角色模块字段权限列表", description = "根据角色ID和模块类别查询该角色已分配的模块字段权限列表")
     public ApiResponse<List<RoleModuleFieldPermissionResp>> getRoleModuleFieldPermission(
-            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
-        return ApiResponse.success(sysRolePermissionApi.getRoleModuleFieldPermission(roleId));
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
+            @Parameter(description = "模块类别 (1=业务模块, 2=系统模块)", example = "1")
+                    @RequestParam(required = false)
+                    Integer category) {
+        return ApiResponse.success(
+                sysRolePermissionApi.getRoleModuleFieldPermission(roleId, category));
     }
 
     @GetMapping("/check-role-permission")

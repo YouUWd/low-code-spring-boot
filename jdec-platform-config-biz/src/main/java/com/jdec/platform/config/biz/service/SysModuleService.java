@@ -73,11 +73,11 @@ public class SysModuleService implements SysModuleApi {
     private final SubjectApi subjectApi;
 
     @Override
-    public List<SysModuleListResp> listModules(
-            String projectNo, Long subjectId, Boolean availableOnly) {
+    public List<SysModuleListResp> listModules(String projectNo, Long subjectId, Integer category) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getProjectNo, projectNo);
         wrapper.eq(SysModule::getSubjectId, subjectId);
+        wrapper.eq(category != null, SysModule::getCategory, category);
         wrapper.orderByAsc(SysModule::getParentId).orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
@@ -101,6 +101,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setModuleType(module.getModuleType() != null ? module.getModuleType().name() : null);
         resp.setApprovalRequired(module.getApprovalRequired());
         resp.setBizDefFlag(module.getBizDefFlag());
+        resp.setCategory(module.getCategory());
         resp.setSortOrder(module.getSortOrder());
         resp.setRelateSearchField(module.getRelateSearchField());
         resp.setCreatedBy(module.getCreatedBy());
@@ -144,6 +145,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setModuleType(module.getModuleType());
         moduleInfo.setApprovalRequired(module.getApprovalRequired());
         moduleInfo.setBizDefFlag(module.getBizDefFlag());
+        moduleInfo.setCategory(module.getCategory());
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setRelateSearchField(module.getRelateSearchField());
         moduleInfo.setTableHeader(parseTableHeader(module.getTableHeader()));
@@ -767,6 +769,7 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
         module.setBizDefFlag(request.getBizDefFlag());
+        module.setCategory(request.getCategory() != null ? request.getCategory() : 1);
         module.setRelateSearchField(request.getRelateSearchField());
         // 处理排序顺序
         if (request.getSortOrder() == null) {
@@ -1118,6 +1121,9 @@ public class SysModuleService implements SysModuleApi {
         module.setModuleType(convertToModuleTypeEnum(request.getModuleType()));
         module.setApprovalRequired(request.getApprovalRequired());
         module.setBizDefFlag(request.getBizDefFlag());
+        if (request.getCategory() != null) {
+            module.setCategory(request.getCategory());
+        }
         module.setRelateSearchField(request.getRelateSearchField());
         module.setDetailModuleId(request.getDetailModuleId());
         requestToTableHeader(request, module);

@@ -32,20 +32,20 @@ public class SysModuleController {
      *
      * <p>项目上下文通过 X-Project-No 请求头指定。
      *
-     * @param availableOnly 是否仅查询可用模块，默认 false 返回所有模块
+     * @param category
      * @return 模块列表
      */
     @Operation(summary = "获取模块列表", description = "获取所有模块的基本信息（不包含树形结构），前端自行构建树")
     @GetMapping
     public ApiResponse<List<SysModuleListResp>> listModules(
-            @Parameter(description = "是否仅查询可用模块（moduleStatus='active'）", example = "false")
-                    @RequestParam(required = false, defaultValue = "false")
-                    Boolean availableOnly) {
+            @Parameter(description = "模块类别 (1=业务模块, 2=系统模块)", example = "1")
+                    @RequestParam(required = false)
+                    Integer category) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
-        log.info("查询项目 {} (主体 {}) 的模块列表, availableOnly={}", projectNo, subjectId, availableOnly);
+        log.info("查询项目 {} (主体 {}) 的模块列表, category={}", projectNo, subjectId, category);
         List<SysModuleListResp> result =
-                sysModuleService.listModules(projectNo, subjectId, availableOnly);
+                sysModuleService.listModules(projectNo, subjectId, category);
         return ApiResponse.success(result);
     }
 

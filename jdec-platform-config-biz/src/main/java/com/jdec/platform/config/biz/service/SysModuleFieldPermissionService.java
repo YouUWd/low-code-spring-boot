@@ -41,14 +41,20 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
     private final DataSourceResolver dataSourceResolver;
 
     @Override
-    public List<SysModuleFieldTreeResp> getModuleTableFieldTree(String projectNo, Long subjectId) {
-        log.info("获取纯净模块表字段树: projectNo={}, subjectId={}", projectNo, subjectId);
+    public List<SysModuleFieldTreeResp> getModuleTableFieldTree(
+            String projectNo, Long subjectId, Integer category) {
+        log.info(
+                "获取纯净模块表字段树: projectNo={}, subjectId={}, category={}",
+                projectNo,
+                subjectId,
+                category);
 
-        // 1. 一次性全量加载当前项目+主体下的所有模块
+        // 1. 一量加载当前项目+主体下的所有模块
         LambdaQueryWrapper<SysModule> moduleWrapper = new LambdaQueryWrapper<>();
         moduleWrapper
                 .eq(SysModule::getProjectNo, projectNo)
                 .eq(SysModule::getSubjectId, subjectId)
+                .eq(category != null, SysModule::getCategory, category)
                 .orderByAsc(SysModule::getParentId)
                 .orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(moduleWrapper);

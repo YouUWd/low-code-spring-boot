@@ -12,9 +12,11 @@ public interface SysModuleFieldPermissionApi {
      *
      * @param projectNo 项目编码
      * @param subjectId 主体ID
+     * @param category 模块类别 (1=业务模块, 2=系统模块)
      * @return 模块表字段树列表
      */
-    List<SysModuleFieldTreeResp> getModuleTableFieldTree(String projectNo, Long subjectId);
+    List<SysModuleFieldTreeResp> getModuleTableFieldTree(
+            String projectNo, Long subjectId, Integer category);
 
     /**
      * 按表和权限类型分组查询角色模块字段权限集合

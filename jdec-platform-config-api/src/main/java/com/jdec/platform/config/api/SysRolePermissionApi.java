@@ -105,12 +105,13 @@ public interface SysRolePermissionApi {
     void saveRoleModuleFieldPermission(SaveRoleModuleFieldPermissionReq request);
 
     /**
-     * 根据角色ID查询模块字段权限列表
+     * 根据角色ID和模块类别查询模块字段权限列表
      *
      * @param roleId 角色ID
+     * @param category 模块类别 (1=业务模块, 2=系统模块)
      * @return 角色模块字段权限列表
      */
-    List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(Long roleId);
+    List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(Long roleId, Integer category);
 
     /**
      * 检查角色是否有模块字段权限

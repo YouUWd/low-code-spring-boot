@@ -9,6 +9,7 @@ import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -34,6 +35,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
+    private final SysModuleMapper sysModuleMapper;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -674,12 +676,30 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     }
 
     @Override
-    public List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(Long roleId) {
+    public List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(
+            Long roleId, Integer category) {
         // 1. 直接查询该角色已分配的模块字段权限配置列表
+        LambdaQueryWrapper<SysRoleModuleFieldPermission> query = Wrappers.lambdaQuery();
+        query.eq(SysRoleModuleFieldPermission::getRoleId, roleId);
+
+        if (category != null) {
+            String projectNo = AppContext.getProjectNo();
+            Long subjectId = AppContext.getSubjectId();
+            List<SysModule> modules =
+                    sysModuleMapper.selectList(
+                            Wrappers.<SysModule>lambdaQuery()
+                                    .eq(SysModule::getProjectNo, projectNo)
+                                    .eq(SysModule::getSubjectId, subjectId)
+                                    .eq(SysModule::getCategory, category));
+            if (modules.isEmpty()) {
+                return Collections.emptyList();
+            }
+            List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
+            query.in(SysRoleModuleFieldPermission::getModuleId, moduleIds);
+        }
+
         List<SysRoleModuleFieldPermission> allocatedList =
-                sysRoleModuleFieldPermissionMapper.selectList(
-                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
+                sysRoleModuleFieldPermissionMapper.selectList(query);
 
         if (CollUtil.isEmpty(allocatedList)) {
             return Collections.emptyList();

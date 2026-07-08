@@ -34,12 +34,14 @@ public class SysModuleFieldPermissionController {
      */
     @Operation(summary = "获取纯净模块字段树", description = "高性能全批量装配输出模块-表（简单物理表与复合表）-字段树")
     @GetMapping("/tree")
-    public ApiResponse<List<SysModuleFieldTreeResp>> getModuleTableFieldTree() {
+    public ApiResponse<List<SysModuleFieldTreeResp>> getModuleTableFieldTree(
+            @RequestParam(required = false) Integer category) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
-        log.info("获取项目 {} 主体 {} 下的纯净模块表字段树", projectNo, subjectId);
+        log.info("获取项目 {} 主体 {} 下的纯净模块表字段树, category={}", projectNo, subjectId, category);
         List<SysModuleFieldTreeResp> result =
-                sysModuleFieldPermissionService.getModuleTableFieldTree(projectNo, subjectId);
+                sysModuleFieldPermissionService.getModuleTableFieldTree(
+                        projectNo, subjectId, category);
         return ApiResponse.success(result);
     }
 

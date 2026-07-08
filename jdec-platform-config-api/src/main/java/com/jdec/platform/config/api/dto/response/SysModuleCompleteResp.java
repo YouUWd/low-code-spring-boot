@@ -75,6 +75,9 @@ public class SysModuleCompleteResp {
         @Schema(description = "是否模块业务定义", example = "0")
         private Integer bizDefFlag;
 
+        @Schema(description = "模块类别 (1=业务模块, 2=系统模块)", example = "1")
+        private Integer category;
+
         @Schema(description = "主表被设置为bizDefFlag的模块表信息集合")
         private List<TableModule> bizDefTables;
 

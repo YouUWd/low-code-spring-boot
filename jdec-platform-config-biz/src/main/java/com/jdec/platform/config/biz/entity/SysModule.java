@@ -63,6 +63,9 @@ public class SysModule {
     /** 是否模块业务定义 */
     private Integer bizDefFlag;
 
+    /** 模块类别: 1-业务模块, 2-系统模块 */
+    private Integer category;
+
     /** 创建人 ID */
     private Long createdBy;
 

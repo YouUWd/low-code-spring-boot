@@ -47,6 +47,9 @@ public class SysModuleListResp {
     @Schema(description = "是否模块业务定义", example = "0")
     private Integer bizDefFlag;
 
+    @Schema(description = "模块类别 (1=业务模块, 2=系统模块)", example = "1")
+    private Integer category;
+
     @Schema(description = "排序顺序", example = "1")
     private Integer sortOrder;
 
