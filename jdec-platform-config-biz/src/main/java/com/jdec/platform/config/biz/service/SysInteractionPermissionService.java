@@ -17,6 +17,7 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.exception.PopException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -148,7 +149,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                         .build();
         List<String> check = referenceCheckManager.check(context);
         if (!check.isEmpty()) {
-            throw new BusinessException(String.join("\n", check));
+            throw new PopException(String.join("<br>", check));
         }
         sysInteractionPermissionMapper.deleteById(id);
     }
