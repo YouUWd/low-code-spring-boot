@@ -34,5 +34,5 @@ public interface SysInteractionPermissionApi {
     List<SysInteractionPermissionResp> listAllInteractionPermissions();
 
     /** 查询模块树及每个模块各类型关联的交互权限 */
-    List<SysModuleInteractionPermissionResp> listModuleInteractionPermissionTree();
+    List<SysModuleInteractionPermissionResp> listModuleInteractionPermissionTree(Integer category);
 }

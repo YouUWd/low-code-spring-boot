@@ -890,7 +890,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                     .append(referenceContext.getTargetName())
                     .append("】绑定了")
                     .append(count)
-                    .append("个菜单权限<br>");
+                    .append("个菜单权限\n");
         }
         count =
                 sysRoleModuleFieldPermissionMapper.selectCount(
@@ -904,7 +904,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                     .append(referenceContext.getTargetName())
                     .append("】绑定了")
                     .append(count)
-                    .append("个字段权限<br>");
+                    .append("个字段权限\n");
         }
         count =
                 sysRoleInteractionPermissionMapper.selectCount(
@@ -918,7 +918,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                     .append(referenceContext.getTargetName())
                     .append("】绑定了")
                     .append(count)
-                    .append("个交互权限<br>");
+                    .append("个交互权限\n");
         }
         count =
                 sysRoleDataPermissionMapper.selectCount(
@@ -932,7 +932,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                     .append(referenceContext.getTargetName())
                     .append("】绑定了")
                     .append(count)
-                    .append("个数据权限<br>");
+                    .append("个数据权限\n");
         }
         count =
                 sysRoleSpecialPermissionMapper.selectCount(

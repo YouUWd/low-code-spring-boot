@@ -60,8 +60,11 @@ public class SysInteractionPermissionController {
     @GetMapping("/module-tree")
     @Operation(summary = "查询模块交互权限树", description = "返回模块树，每个模块节点直接携带对应的交互权限列表")
     public ApiResponse<List<SysModuleInteractionPermissionResp>>
-            listModuleInteractionPermissionTree() {
+            listModuleInteractionPermissionTree(
+                    @Parameter(description = "模块分类.1:业务模块 2:系统模块（可选）", example = "1")
+                            @RequestParam(required = false)
+                            Integer category) {
         return ApiResponse.success(
-                sysInteractionPermissionApi.listModuleInteractionPermissionTree());
+                sysInteractionPermissionApi.listModuleInteractionPermissionTree(category));
     }
 }

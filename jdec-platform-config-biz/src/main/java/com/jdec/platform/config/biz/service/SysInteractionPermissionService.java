@@ -273,13 +273,15 @@ public class SysInteractionPermissionService implements SysInteractionPermission
     }
 
     @Override
-    public List<SysModuleInteractionPermissionResp> listModuleInteractionPermissionTree() {
+    public List<SysModuleInteractionPermissionResp> listModuleInteractionPermissionTree(
+            Integer category) {
         // 1. 查询当前项目下所有模块
         List<SysModule> allModules =
                 sysModuleMapper.selectList(
                         new LambdaQueryWrapper<SysModule>()
                                 .eq(SysModule::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysModule::getSubjectId, AppContext.getSubjectId())
+                                .eq(category != null, SysModule::getCategory, category)
                                 .orderByAsc(SysModule::getSortOrder)
                                 .orderByAsc(SysModule::getId));
 
