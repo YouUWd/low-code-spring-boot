@@ -21,7 +21,7 @@ public class RoleDataPermissionResp {
         @Schema(description = "权限节点id")
         private Long permissionId;
 
-        @Schema(description = "业务id列表")
-        private List<String> bizIdList;
+        @Schema(description = "业务名称列表")
+        private List<String> bizNames;
     }
 }

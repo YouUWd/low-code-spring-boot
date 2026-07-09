@@ -14,8 +14,8 @@ import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
-import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -362,7 +362,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             roleIdExpr = "#request.roleId")
     public void saveRoleDataPermission(SaveRoleDataPermissionReq request) {
         Long roleId = request.getRoleId();
-        List<SaveRoleDataPermissionReq.SaveDataPermissionReq> permissionIdList =
+        List<SaveRoleDataPermissionReq.SaveDataPermissionReq> saveDataPermissions =
                 request.getDataPermissions();
 
         // 1. 删除该角色的所有数据权限关联
@@ -371,26 +371,24 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .eq(SysRoleDataPermission::getRoleId, roleId));
 
         // 2. 解析并插入新的权限关联
-        if (CollUtil.isNotEmpty(permissionIdList)) {
+        if (CollUtil.isNotEmpty(saveDataPermissions)) {
             List<SysRoleDataPermission> roleDataPermissions =
-                    permissionIdList.stream()
-                            .map(
-                                    dataPermission -> {
-
-                                        // 验证权限类型是否存在
-                                        SysDataPermission permission =
-                                                sysDataPermissionMapper.selectById(
-                                                        dataPermission.getPermissionId());
-                                        if (permission == null) {
-                                            throw new BusinessException("数据权限类型不存在");
-                                        }
-
-                                        SysRoleDataPermission rdp = new SysRoleDataPermission();
-                                        rdp.setRoleId(roleId);
-                                        rdp.setDataPermissionId(dataPermission.getPermissionId());
-                                        rdp.setBizIds(dataPermission.getBizIds());
-                                        return rdp;
-                                    })
+                    saveDataPermissions.stream()
+                            .flatMap(
+                                    saveDataPermission ->
+                                            saveDataPermission.getBizNames().stream()
+                                                    .map(
+                                                            bizName -> {
+                                                                SysRoleDataPermission permission =
+                                                                        new SysRoleDataPermission();
+                                                                permission.setRoleId(
+                                                                        request.getRoleId());
+                                                                permission.setDataPermissionId(
+                                                                        saveDataPermission
+                                                                                .getPermissionId());
+                                                                permission.setBizName(bizName);
+                                                                return permission;
+                                                            }))
                             .toList();
             sysRoleDataPermissionMapper.insert(roleDataPermissions);
         }
@@ -481,14 +479,14 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         }
 
         // 按 dataPermissionId 分组，收集拼接后的权限ID
-        Map<Long, List<String>> groupedPermissions = new LinkedHashMap<>();
-        for (SysRoleDataPermission rdp : roleDataPermissions) {
-            if (rdp.getDataPermissionId() != null && rdp.getBizIds() != null) {
-                groupedPermissions
-                        .computeIfAbsent(rdp.getDataPermissionId(), k -> new ArrayList<>())
-                        .add(rdp.getBizIds());
-            }
-        }
+        Map<Long, List<String>> groupedPermissions =
+                roleDataPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        Collectors.mapping(
+                                                SysRoleDataPermission::getBizName,
+                                                Collectors.toList())));
         RoleDataPermissionResp permissionResp = new RoleDataPermissionResp();
         permissionResp.setRoleId(roleId);
         // 构建响应
@@ -499,7 +497,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                                     RoleDataPermissionResp.DataPermissionListReq permissionListReq =
                                             new RoleDataPermissionResp.DataPermissionListReq();
                                     permissionListReq.setPermissionId(entry.getKey());
-                                    permissionListReq.setBizIdList(entry.getValue());
+                                    permissionListReq.setBizNames(entry.getValue());
                                     return permissionListReq;
                                 })
                         .toList();
@@ -534,12 +532,14 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         }
 
         // 5. 按 dataPermissionId 分组角色数据权限，收集 bizId
-        Map<Long, List<String>> permissionIdToBizIdsMap = new HashMap<>();
-        for (SysRoleDataPermission rdp : roleDataPermissions) {
-            permissionIdToBizIdsMap
-                    .computeIfAbsent(rdp.getDataPermissionId(), k -> new ArrayList<>())
-                    .add(rdp.getBizIds());
-        }
+        Map<Long, List<String>> permissionIdToBizIdsMap =
+                roleDataPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        Collectors.mapping(
+                                                SysRoleDataPermission::getBizName,
+                                                Collectors.toList())));
 
         // 6. 组装返回数据
         List<DataRightConfigResp> result = new ArrayList<>();
@@ -555,7 +555,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                             .map(
                                     bizId ->
                                             DataRightConfigResp.DataConfig.builder()
-                                                    .bizIds(
+                                                    .bizNames(
                                                             Arrays.stream(bizId.split(","))
                                                                     .map(Long::parseLong)
                                                                     .toList())
