@@ -6,6 +6,10 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckResult;
+import com.jdec.platform.config.biz.check.ReferenceChecker;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
@@ -23,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysRolePermissionService implements SysRolePermissionApi {
+public class SysRolePermissionService implements SysRolePermissionApi, ReferenceChecker {
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
@@ -531,8 +535,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             return Collections.emptyList();
         }
 
-        // 5. 按 dataPermissionId 分组角色数据权限，收集 bizId
-        Map<Long, List<String>> permissionIdToBizIdsMap =
+        // 4. 构建 permissionId -> bizNames 的映射
+        Map<Long, List<String>> permissionIdToBizNamesMap =
                 roleDataPermissions.stream()
                         .collect(
                                 Collectors.groupingBy(
@@ -541,33 +545,51 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                                                 SysRoleDataPermission::getBizName,
                                                 Collectors.toList())));
 
-        // 6. 组装返回数据
-        List<DataRightConfigResp> result = new ArrayList<>();
+        // 5. 构建临时数据结构：tableName -> (columnName -> bizNames)
+        Map<String, Map<String, List<String>>> tableColumnBizNamesMap = new HashMap<>();
+
         for (SysDataPermission dataPermission : dataPermissions) {
-            // 获取该权限对应的业务ID列表
-            List<String> bizIds =
-                    permissionIdToBizIdsMap.getOrDefault(
+            String code = dataPermission.getCode();
+            String[] parts = code.split("\\*");
+            if (parts.length != 2) {
+                continue; // 跳过格式不正确的 code
+            }
+
+            String tableName = parts[0];
+            String columnName = parts[1];
+
+            List<String> bizNames =
+                    permissionIdToBizNamesMap.getOrDefault(
                             dataPermission.getId(), Collections.emptyList());
 
-            // 转换为 DataConfig 列表
-            List<DataRightConfigResp.DataConfig> dataList =
-                    bizIds.stream()
-                            .map(
-                                    bizId ->
-                                            DataRightConfigResp.DataConfig.builder()
-                                                    .bizNames(
-                                                            Arrays.stream(bizId.split(","))
-                                                                    .map(Long::parseLong)
-                                                                    .toList())
-                                                    .build())
-                            .toList();
+            tableColumnBizNamesMap
+                    .computeIfAbsent(tableName, k -> new HashMap<>())
+                    .computeIfAbsent(columnName, k -> new ArrayList<>())
+                    .addAll(bizNames);
+        }
+
+        // 6. 转换成最终结果：按表名分组，每个表名下按列名分组
+        List<DataRightConfigResp> result = new ArrayList<>();
+        for (Map.Entry<String, Map<String, List<String>>> tableEntry :
+                tableColumnBizNamesMap.entrySet()) {
+            String tableName = tableEntry.getKey();
+            Map<String, List<String>> columnBizNamesMap = tableEntry.getValue();
+
+            List<DataRightConfigResp.DataConfig> dataList = new ArrayList<>();
+            for (Map.Entry<String, List<String>> columnEntry : columnBizNamesMap.entrySet()) {
+                String columnName = columnEntry.getKey();
+                List<String> bizNames = columnEntry.getValue();
+
+                DataRightConfigResp.DataConfig dataConfig =
+                        DataRightConfigResp.DataConfig.builder()
+                                .columnName(columnName)
+                                .bizNames(bizNames)
+                                .build();
+                dataList.add(dataConfig);
+            }
 
             DataRightConfigResp resp =
-                    DataRightConfigResp.builder()
-                            .tableName(dataPermission.getCode().split("\\*")[0])
-                            .dataList(dataList)
-                            .build();
-
+                    DataRightConfigResp.builder().tableName(tableName).dataList(dataList).build();
             result.add(resp);
         }
 
@@ -816,5 +838,123 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .distinct()
                         .toList();
         ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, affectedModuleIds);
+    }
+
+    @Override
+    public List<String> targetType() {
+        return List.of(CheckConstant.SYS_ROLE, CheckConstant.SYS_INTERACTION_PERMISSION);
+    }
+
+    @Override
+    public ReferenceCheckResult check(ReferenceContext referenceContext) {
+        switch (referenceContext.getTargetType()) {
+            case CheckConstant.SYS_ROLE -> {
+                return checkRole(referenceContext);
+            }
+            case CheckConstant.SYS_INTERACTION_PERMISSION -> {
+                return checkInteractionPermission(referenceContext);
+            }
+            default -> {
+                return ReferenceCheckResult.empty();
+            }
+        }
+    }
+
+    private ReferenceCheckResult checkInteractionPermission(ReferenceContext referenceContext) {
+        Long count =
+                sysRoleInteractionPermissionMapper.selectCount(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleInteractionPermission::getPermissionId,
+                                        referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("交互权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色交互权限")
+                .build();
+    }
+
+    private ReferenceCheckResult checkRole(ReferenceContext referenceContext) {
+        StringBuilder sb = new StringBuilder();
+        Long countSum = 0L;
+        Long count =
+                sysRoleMenuMapper.selectCount(
+                        Wrappers.<SysRoleMenu>lambdaQuery()
+                                .eq(SysRoleMenu::getRoleId, referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个菜单权限\n");
+        }
+        count =
+                sysRoleModuleFieldPermissionMapper.selectCount(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleModuleFieldPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个字段权限\n");
+        }
+        count =
+                sysRoleInteractionPermissionMapper.selectCount(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleInteractionPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个交互权限\n");
+        }
+        count =
+                sysRoleDataPermissionMapper.selectCount(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleDataPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个数据权限\n");
+        }
+        count =
+                sysRoleSpecialPermissionMapper.selectCount(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleSpecialPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个其它权限");
+        }
+        if (countSum == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(countSum)
+                .message(sb.toString())
+                .build();
     }
 }

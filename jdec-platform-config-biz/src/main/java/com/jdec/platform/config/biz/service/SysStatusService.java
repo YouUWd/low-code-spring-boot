@@ -6,6 +6,9 @@ import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckManager;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.shared.context.AppContext;
@@ -26,6 +29,7 @@ import org.springframework.util.CollectionUtils;
 public class SysStatusService implements SysStatusApi {
 
     private final SysStatusMapper sysStatusMapper;
+    private final ReferenceCheckManager referenceCheckManager;
 
     @Override
     public List<SysStatusTreeResp> tree() {
@@ -173,17 +177,18 @@ public class SysStatusService implements SysStatusApi {
         if (status == null) {
             throw new BusinessException("状态不存在");
         }
-        // 收集所有子节点ID
-        Set<Long> childIds = collectChildrenIds(id, AppContext.getSubjectId());
-        int childCount = childIds.size();
-        if (!force && childCount > 0) {
-            throw new BusinessException(
-                    "删除确认：该状态下有 " + childCount + " 个子状态将被同步删除，请确认后携带 force=true 重新请求");
+        // 引用检查
+        ReferenceContext context =
+                ReferenceContext.builder()
+                        .targetType(CheckConstant.SYS_STATUS)
+                        .targetId(status.getId())
+                        .targetName(status.getTitle())
+                        .build();
+        List<String> check = referenceCheckManager.check(context);
+        if (!check.isEmpty()) {
+            throw new BusinessException(String.join("\n", check));
         }
-        Set<Long> ids = new HashSet<>(childIds);
-        ids.add(id);
-        sysStatusMapper.deleteByIds(ids);
-
+        sysStatusMapper.deleteById(id);
         // 删除后重排同级节点的排序值
         reorderSiblingsAfterDelete(status.getPid(), AppContext.getSubjectId());
     }
