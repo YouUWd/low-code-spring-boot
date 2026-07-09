@@ -9,12 +9,19 @@ import lombok.Data;
 @Schema(description = "角色数据权限响应")
 public class RoleDataPermissionResp {
 
-    @Schema(description = "数据权限ID")
-    private Long dataPermissionId;
-
     @Schema(description = "角色ID")
     private Long roleId;
 
-    @Schema(description = "拼接后的权限ID列表（格式：dataPermissionId-bizId）")
-    private List<String> permissionIds;
+    @Schema(description = "权限列表")
+    private List<DataPermissionListReq> dataPermission;
+
+    @Data
+    @Schema(description = "角色数据权限列表响应")
+    public static class DataPermissionListReq {
+        @Schema(description = "权限节点id")
+        private Long permissionId;
+
+        @Schema(description = "业务id列表")
+        private List<String> bizIdList;
+    }
 }

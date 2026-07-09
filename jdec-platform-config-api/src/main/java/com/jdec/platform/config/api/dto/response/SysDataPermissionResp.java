@@ -28,5 +28,16 @@ public class SysDataPermissionResp {
     private Integer status;
 
     @Schema(description = "关联的数据权限列表")
-    private List<BizDataItem> dataList;
+    private List<BizDataItemResp> dataList;
+
+    /** 业务数据项 */
+    @Data
+    @Schema(description = "业务数据项")
+    public static class BizDataItemResp {
+        @Schema(description = "业务ID字符串列表")
+        private String bizId;
+
+        @Schema(description = "业务名称")
+        private String bizName;
+    }
 }

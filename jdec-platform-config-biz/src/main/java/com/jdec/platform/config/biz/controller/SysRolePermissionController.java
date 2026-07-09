@@ -83,7 +83,7 @@ public class SysRolePermissionController {
 
     @GetMapping("/get-role-data-permission")
     @Operation(summary = "查询角色数据权限", description = "根据角色ID查询该角色关联的数据权限列表")
-    public ApiResponse<List<RoleDataPermissionResp>> getRoleDataPermission(
+    public ApiResponse<RoleDataPermissionResp> getRoleDataPermission(
             @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
         return ApiResponse.success(sysRolePermissionApi.getRoleDataPermission(roleId));
     }

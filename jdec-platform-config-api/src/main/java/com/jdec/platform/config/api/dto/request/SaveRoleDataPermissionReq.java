@@ -12,6 +12,16 @@ public class SaveRoleDataPermissionReq {
     @Schema(description = "角色ID")
     private Long roleId;
 
-    @Schema(description = "权限ID列表（格式：permissionTypeId-bizId）")
-    private List<String> permissionIds;
+    @Schema(description = "权限列表")
+    private List<SaveDataPermissionReq> dataPermissions;
+
+    @Data
+    @Schema(description = "角色数据权限保存请求")
+    public static class SaveDataPermissionReq {
+        @Schema(description = "权限节点id")
+        private Long permissionId;
+
+        @Schema(description = "业务id列表", example = "1,2,3")
+        private String bizIds;
+    }
 }

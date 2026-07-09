@@ -72,7 +72,7 @@ public interface SysRolePermissionApi {
      * @param roleId 角色ID
      * @return 角色数据权限列表
      */
-    List<RoleDataPermissionResp> getRoleDataPermission(Long roleId);
+    RoleDataPermissionResp getRoleDataPermission(Long roleId);
 
     /**
      * 根据角色ID查询数据权限详情（包含业务数据列表）

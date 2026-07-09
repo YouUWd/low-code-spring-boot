@@ -1,4 +1,4 @@
-package com.jdec.platform.config.api.dto.response;
+package com.jdec.platform.config.api.bo;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -6,7 +6,7 @@ import lombok.Data;
 /** 业务数据项 */
 @Data
 @Schema(description = "业务数据项")
-public class BizDataItem {
+public class BizDataItemBO {
 
     @Schema(description = "业务ID")
     private String bizId;

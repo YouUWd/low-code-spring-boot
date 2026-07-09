@@ -4,10 +4,14 @@ import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysDataPermissionApi;
+import com.jdec.platform.config.api.bo.BizDataItemBO;
 import com.jdec.platform.config.api.dto.request.DataPermissionQueryItem;
 import com.jdec.platform.config.api.dto.request.QuerySysDataPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysDataPermissionSaveReq;
-import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.api.dto.response.BizDataPermissionResp;
+import com.jdec.platform.config.api.dto.response.BizSystemResponse;
+import com.jdec.platform.config.api.dto.response.SysDataPermissionResp;
+import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.config.BizSystemConfig;
 import com.jdec.platform.config.biz.entity.SysDataPermission;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
@@ -146,9 +150,9 @@ public class SysDataPermissionService implements SysDataPermissionApi {
         }
 
         // 3. 调用业务系统接口查询业务数据
-        final Map<String, List<BizDataItem>> bizDataMap;
+        final Map<String, List<SysDataPermissionResp.BizDataItemResp>> bizDataMap;
         if (CollUtil.isNotEmpty(queryItems)) {
-            Map<String, List<BizDataItem>> tempMap = new HashMap<>();
+            Map<String, List<BizDataItemBO>> tempMap = new HashMap<>();
             // 根据项目编码获取接口地址
             String projectNo = AppContext.getProjectNo();
             String bizSystemUrl = bizSystemConfig.getUrls().get(projectNo);
@@ -157,6 +161,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                 log.warn("未配置项目 {} 的业务系统接口地址", projectNo);
                 bizDataMap = new HashMap<>();
             } else {
+                bizDataMap = new HashMap<>();
                 try {
                     // 构建请求头，添加 token、subjectId 和 projectNo
                     HttpHeaders headers = new HttpHeaders();
@@ -197,7 +202,61 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                     log.error("调用业务系统接口失败: {}", bizSystemUrl, e);
                     // 接口调用失败时返回空数据，不影响节点列表查询
                 }
-                bizDataMap = tempMap;
+                // 对业务数据进行distinct操作
+                for (String key : tempMap.keySet()) {
+                    List<BizDataItemBO> bizDataItemBOS = tempMap.get(key);
+
+                    // 分离 bizName 为 null 和非 null 的数据
+                    Map<Boolean, List<BizDataItemBO>> partitioned =
+                            bizDataItemBOS.stream()
+                                    .collect(
+                                            Collectors.partitioningBy(
+                                                    item -> item.getBizName() != null));
+
+                    List<SysDataPermissionResp.BizDataItemResp> aggregatedList = new ArrayList<>();
+
+                    // 处理 bizName 非 null 的数据：按 bizName 聚合，将相同 bizName 的 bizId 拼接
+                    List<BizDataItemBO> nonNullItems = partitioned.get(true);
+                    if (CollUtil.isNotEmpty(nonNullItems)) {
+                        Map<String, String> aggregatedData =
+                                nonNullItems.stream()
+                                        .collect(
+                                                Collectors.groupingBy(
+                                                        BizDataItemBO::getBizName,
+                                                        Collectors.mapping(
+                                                                BizDataItemBO::getBizId,
+                                                                Collectors.joining(","))));
+
+                        // 转换为 List<BizDataItemResp> 格式
+                        aggregatedData.entrySet().stream()
+                                .map(
+                                        entry -> {
+                                            SysDataPermissionResp.BizDataItemResp item =
+                                                    new SysDataPermissionResp.BizDataItemResp();
+                                            item.setBizName(entry.getKey());
+                                            item.setBizId(entry.getValue());
+                                            return item;
+                                        })
+                                .forEach(aggregatedList::add);
+                    }
+
+                    // 处理 bizName 为 null 的数据：聚合所有 bizId 用逗号拼接
+                    List<BizDataItemBO> nullItems = partitioned.get(false);
+                    if (CollUtil.isNotEmpty(nullItems)) {
+                        String aggregatedBizIds =
+                                nullItems.stream()
+                                        .map(BizDataItemBO::getBizId)
+                                        .collect(Collectors.joining(","));
+
+                        SysDataPermissionResp.BizDataItemResp resp =
+                                new SysDataPermissionResp.BizDataItemResp();
+                        resp.setBizName("Null");
+                        resp.setBizId(aggregatedBizIds);
+                        aggregatedList.add(resp);
+                    }
+
+                    bizDataMap.put(key, aggregatedList);
+                }
             }
         } else {
             bizDataMap = new HashMap<>();
@@ -217,72 +276,12 @@ public class SysDataPermissionService implements SysDataPermissionApi {
 
                             // 填充业务数据
                             if (type.getCode() != null) {
-                                List<BizDataItem> bizDataList =
+                                List<SysDataPermissionResp.BizDataItemResp> bizDataList =
                                         bizDataMap.getOrDefault(type.getCode(), new ArrayList<>());
                                 resp.setDataList(bizDataList);
                             }
                             return resp;
                         })
                 .collect(Collectors.toList());
-    }
-
-    /**
-     * 根据数据权限列表获取业务数据
-     *
-     * @param dataPermissions 数据权限列表
-     * @return key 为 dataPermissionCode，value 为业务数据列表
-     */
-    public Map<String, List<BizDataItem>> fetchBizDataByPermissions(
-            List<SysDataPermission> dataPermissions) {
-        if (CollUtil.isEmpty(dataPermissions)) {
-            return new HashMap<>();
-        }
-
-        // 1. 收集所有 code 并转换为查询参数
-        List<DataPermissionQueryItem> queryItems = new ArrayList<>();
-        for (SysDataPermission permission : dataPermissions) {
-            if (permission.getCode() != null && permission.getCode().contains("*")) {
-                String[] parts = permission.getCode().split("\\*");
-                if (parts.length == 2) {
-                    DataPermissionQueryItem item = new DataPermissionQueryItem();
-                    item.setTableName(parts[0]);
-                    item.setColumn(parts[1]);
-                    queryItems.add(item);
-                }
-            }
-        }
-
-        if (CollUtil.isEmpty(queryItems)) {
-            return new HashMap<>();
-        }
-
-        // 2. 根据项目编码获取接口地址并调用
-        String projectNo = AppContext.getProjectNo();
-        String bizSystemUrl = bizSystemConfig.getUrls().get(projectNo);
-
-        if (bizSystemUrl == null) {
-            log.warn("未配置项目 {} 的业务系统接口地址", projectNo);
-            return new HashMap<>();
-        }
-
-        try {
-            BizSystemResponse response =
-                    restTemplate.postForObject(bizSystemUrl, queryItems, BizSystemResponse.class);
-            if (response != null
-                    && response.getStatus() == 200
-                    && CollUtil.isNotEmpty(response.getData())) {
-                // 转换为 Map，key 为 dataPermissionCode
-                return response.getData().stream()
-                        .collect(
-                                Collectors.toMap(
-                                        BizDataPermissionResp::getDataPermissionCode,
-                                        BizDataPermissionResp::getDataList,
-                                        (v1, v2) -> v1));
-            }
-        } catch (Exception e) {
-            log.error("调用业务系统接口失败: {}", bizSystemUrl, e);
-        }
-
-        return new HashMap<>();
     }
 }

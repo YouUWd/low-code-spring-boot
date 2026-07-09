@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api.dto.response;
 
+import com.jdec.platform.config.api.bo.BizDataItemBO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.Data;
@@ -16,5 +17,5 @@ public class BizDataPermissionResp {
     private String subject;
 
     @Schema(description = "业务数据列表")
-    private List<BizDataItem> dataList;
+    private List<BizDataItemBO> dataList;
 }
