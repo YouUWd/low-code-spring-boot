@@ -149,7 +149,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                         .build();
         List<String> check = referenceCheckManager.check(context);
         if (!check.isEmpty()) {
-            throw new PopException(String.join("<br>", check));
+            throw new PopException(String.join("\n", check));
         }
         sysInteractionPermissionMapper.deleteById(id);
     }

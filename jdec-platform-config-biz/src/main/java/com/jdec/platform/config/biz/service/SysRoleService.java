@@ -754,7 +754,7 @@ public class SysRoleService implements SysRoleApi {
                         .build();
         List<String> check = referenceCheckManager.check(context);
         if (CollUtil.isNotEmpty(check)) {
-            throw new PopException(String.join("<br>", check));
+            throw new PopException(String.join("\n", check));
         }
         // 1. 删除前收集受影响的用户/主体 ID（删除后数据已不存在，无法再查）
         List<SysRoleUser> roleUsers =

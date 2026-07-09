@@ -187,7 +187,7 @@ public class SysStatusService implements SysStatusApi {
                         .build();
         List<String> check = referenceCheckManager.check(context);
         if (!check.isEmpty()) {
-            throw new PopException(String.join("<br>", check));
+            throw new PopException(String.join("\n", check));
         }
         sysStatusMapper.deleteById(id);
         // 删除后重排同级节点的排序值
