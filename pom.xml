@@ -27,6 +27,8 @@
         <module>jdec-platform-hr-api</module>
         <module>jdec-platform-hr-biz</module>
         <module>jdec-platform-app</module>
+        <module>jdec-platform-common-business-api</module>
+        <module>jdec-platform-common-business-biz</module>
     </modules>
 
     <properties>
