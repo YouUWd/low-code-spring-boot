@@ -122,4 +122,12 @@ public interface SysRolePermissionApi {
      * @return 是否有权限
      */
     boolean checkRoleHasPermission(Long roleId, Long subjectId, String projectNo);
+
+    /**
+     * 根据角色ID查询用户个性化设置（仅包含列表类型模块）
+     *
+     * @param roleId 角色ID
+     * @return 用户个性化设置列表
+     */
+    List<PersonalSettingResp> getPersonalSettingByRole(Long roleId);
 }

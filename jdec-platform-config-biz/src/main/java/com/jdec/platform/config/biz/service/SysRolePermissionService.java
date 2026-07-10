@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckResult;
 import com.jdec.platform.config.biz.check.ReferenceChecker;
@@ -40,6 +41,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysModuleMapper sysModuleMapper;
+    private final SysModuleFieldMapper sysModuleFieldMapper;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -1000,5 +1002,156 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 .count(countSum)
                 .message(sb.toString())
                 .build();
+    }
+
+    @Override
+    public List<PersonalSettingResp> getPersonalSettingByRole(Long roleId) {
+        // 1. 根据 roleId 查询 sys_role_module_field_permission
+        List<SysRoleModuleFieldPermission> roleFieldPermissions =
+                sysRoleModuleFieldPermissionMapper.selectList(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
+
+        if (CollUtil.isEmpty(roleFieldPermissions)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 获取模块ID列表
+        List<Long> moduleIds =
+                roleFieldPermissions.stream()
+                        .map(SysRoleModuleFieldPermission::getModuleId)
+                        .distinct()
+                        .toList();
+
+        // 3. 查询模块表，筛选出 moduleType 为 LIST 的模块
+        List<SysModule> listModules =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .in(SysModule::getId, moduleIds)
+                                .eq(SysModule::getModuleType, ModuleTypeEnum.LIST)
+                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
+
+        if (CollUtil.isEmpty(listModules)) {
+            return Collections.emptyList();
+        }
+
+        // 4. 获取 LIST 类型的模块ID集合
+        Set<Long> listModuleIds =
+                listModules.stream().map(SysModule::getId).collect(Collectors.toSet());
+
+        // 5. 过滤出属于 LIST 类型模块的字段权限
+        List<SysRoleModuleFieldPermission> filteredPermissions =
+                roleFieldPermissions.stream()
+                        .filter(p -> listModuleIds.contains(p.getModuleId()))
+                        .toList();
+
+        // 6. 构造 moduleId -> 角色有权限的 fieldId 集合
+        Map<Long, Set<Long>> modulePermittedFieldIds =
+                filteredPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleModuleFieldPermission::getModuleId,
+                                        Collectors.mapping(
+                                                SysRoleModuleFieldPermission::getFieldId,
+                                                Collectors.toSet())));
+
+        // 7. 直接用 moduleId 查询字段表（sys_module_field）
+        List<SysModuleField> moduleFields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .in(SysModuleField::getModuleId, listModuleIds));
+
+        // 8. 构造 (moduleId + table + field) -> SysModuleField 的映射，便于快速查找
+        Map<String, SysModuleField> fieldMap =
+                moduleFields.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        f ->
+                                                f.getModuleId()
+                                                        + "_"
+                                                        + f.getTableName()
+                                                        + "_"
+                                                        + f.getFieldCode(),
+                                        f -> f));
+
+        // 8. 构造响应体
+        List<PersonalSettingResp> result = new ArrayList<>();
+
+        for (SysModule module : listModules) {
+            // 解析 tableHeader
+            String tableHeaderJson = module.getTableHeader();
+            List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> tableHeaders =
+                    parseTableHeader(tableHeaderJson);
+
+            // 获取该模块有权限的 fieldId 集合
+            Set<Long> permittedFieldIds =
+                    modulePermittedFieldIds.getOrDefault(module.getId(), Collections.emptySet());
+            if (permittedFieldIds.isEmpty()) {
+                continue; // 该模块没有字段权限，跳过
+            }
+
+            // 构造 personalSettingColumns
+            List<PersonalSettingResp.PersonalSettingColumn> columns = new ArrayList<>();
+
+            for (com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO header :
+                    tableHeaders) {
+                // 使用复合 key 快速查找字段
+                String fieldKey =
+                        module.getId() + "_" + header.getTable() + "_" + header.getField();
+                SysModuleField moduleField = fieldMap.get(fieldKey);
+
+                // 检查该字段是否存在且有权限
+                if (moduleField != null && permittedFieldIds.contains(moduleField.getId())) {
+                    PersonalSettingResp.PersonalSettingColumn column =
+                            new PersonalSettingResp.PersonalSettingColumn();
+                    column.setId(moduleField.getId());
+                    column.setName(header.getName());
+                    column.setTable(header.getTable());
+                    column.setField(header.getField());
+                    column.setWidth(header.getWidth());
+                    column.setFixed(header.getFixed());
+                    column.setSearchType(header.getSearchType());
+                    column.setEllipsis(
+                            header.getEllipsis() != null && header.getEllipsis() ? 1 : 0);
+                    column.setSortable(
+                            header.getSortable() != null && header.getSortable() ? 1 : 0);
+                    column.setSortOrder(header.getSortOrder());
+
+                    columns.add(column);
+                }
+            }
+
+            // 只有有字段权限的模块才加入结果集
+            if (!columns.isEmpty()) {
+                PersonalSettingResp resp = new PersonalSettingResp();
+                resp.setId(module.getId());
+                resp.setModuleName(module.getModuleName());
+                resp.setPersonalSettingColumns(columns);
+                result.add(resp);
+            }
+        }
+
+        return result;
+    }
+
+    /** 解析表头 JSON 字符串 */
+    private List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> parseTableHeader(
+            String tableHeaderJson) {
+        if (tableHeaderJson == null || tableHeaderJson.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper =
+                    new com.fasterxml.jackson.databind.ObjectMapper();
+            return objectMapper.readValue(
+                    tableHeaderJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<
+                            List<
+                                    com.jdec.platform.config.api.dto.common
+                                            .ModuleTableHeaderDTO>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
     }
 }
