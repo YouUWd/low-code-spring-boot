@@ -8,6 +8,6 @@ import lombok.EqualsAndHashCode;
 /** 消息日志实体 */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("jdec_monitor_messagelog")
+@TableName("sys_monitor_messagelog")
 @Schema(description = "消息日志")
 public class JdecMonitorMessageLog extends JdecMonitorLogBase {}

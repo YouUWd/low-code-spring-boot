@@ -23,10 +23,10 @@ public class JdecMonitorLogBase implements Serializable {
     private String monitorType;
 
     @Schema(description = "日志内容")
-    private String content;
+    private String logContent;
 
     @Schema(description = "日志备注")
-    private String remark;
+    private String logRemark;
 
     @Schema(description = "登录用户ID")
     private Long loginUserId;
@@ -50,10 +50,10 @@ public class JdecMonitorLogBase implements Serializable {
     private String userInfo;
 
     @Schema(description = "IP地址")
-    private String ipAddr;
+    private String ip;
 
     @Schema(description = "设备信息")
-    private String device;
+    private String browser;
 
     @Schema(description = "平台信息")
     private String platForm;

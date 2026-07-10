@@ -8,7 +8,7 @@ import lombok.EqualsAndHashCode;
 /** 操作日志实体 */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("jdec_monitor_operation_log")
+@TableName("sys_monitor_operationlog")
 @Schema(description = "操作日志")
 public class JdecMonitorOperationLog extends JdecMonitorLogBase {
     // 空类，所有字段继承自基类

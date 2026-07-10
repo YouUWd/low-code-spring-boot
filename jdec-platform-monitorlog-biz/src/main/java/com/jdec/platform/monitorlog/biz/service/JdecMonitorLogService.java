@@ -16,6 +16,10 @@ import com.jdec.platform.monitorlog.biz.entity.JdecMonitorSystemLog;
 import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorMessageLogMapper;
 import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorOperationLogMapper;
 import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorSystemLogMapper;
+import com.jdec.platform.shared.datasource.DataSource;
+import com.jdec.platform.shared.datasource.DataSourceConstants;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -25,13 +29,17 @@ import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /** 监控日志服务实现 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@DataSource(DataSourceConstants.MonitorLog)
 public class JdecMonitorLogService implements MonitorLogApi {
 
     private final JdecMonitorMessageLogMapper jdecMonitorMessageLogMapper;
@@ -40,6 +48,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    @Autowired private SqlSessionTemplate sqlSessionTemplate;
 
     /** 日志类型常量 */
     private static final String LOG_TYPE_MESSAGE = "message";
@@ -188,7 +198,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         return new LambdaQueryWrapper<JdecMonitorMessageLog>()
                 .like(
                         StringUtils.hasText(request.getKeyWord()),
-                        JdecMonitorMessageLog::getContent,
+                        JdecMonitorMessageLog::getLogContent,
                         request.getKeyWord())
                 .between(JdecMonitorMessageLog::getLogDate, startDateTime, endDateTime)
                 .eq(JdecMonitorMessageLog::getDeleted, 0)
@@ -201,7 +211,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         return new LambdaQueryWrapper<JdecMonitorOperationLog>()
                 .like(
                         StringUtils.hasText(request.getKeyWord()),
-                        JdecMonitorOperationLog::getContent,
+                        JdecMonitorOperationLog::getLogContent,
                         request.getKeyWord())
                 .between(JdecMonitorOperationLog::getLogDate, startDateTime, endDateTime)
                 .eq(JdecMonitorOperationLog::getDeleted, 0)
@@ -214,7 +224,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         return new LambdaQueryWrapper<JdecMonitorSystemLog>()
                 .like(
                         StringUtils.hasText(request.getKeyWord()),
-                        JdecMonitorSystemLog::getContent,
+                        JdecMonitorSystemLog::getLogContent,
                         request.getKeyWord())
                 .between(JdecMonitorSystemLog::getLogDate, startDateTime, endDateTime)
                 .eq(JdecMonitorSystemLog::getDeleted, 0)
@@ -253,13 +263,43 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     @Override
-    public void record(MonitorLogReq req) {
-        if (req.getId() == null) {
-            JdecMonitorOperationLog log = BeanUtil.toBean(req, JdecMonitorOperationLog.class);
-            jdecMonitorOperationLogMapper.insert(log);
+    @Transactional
+    public void record(MonitorLogReq req) throws SQLException {
+        // 获取当前 MyBatis 使用的连接并打印
+        Connection connection =
+                sqlSessionTemplate
+                        .getConfiguration()
+                        .getEnvironment()
+                        .getDataSource()
+                        .getConnection();
+
+        System.out.println("========== MyBatis 当前连接的数据库地址 ==========");
+        System.out.println(connection.getMetaData().getURL());
+        System.out.println("===============================================");
+        if (req.getId() == null || req.getId() == 0L) {
+
+            if ("system-log".equals(req.getLogType())) {
+                JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
+
+                jdecMonitorSystemLogMapper.insert(log);
+            } else if ("operation-log".equals(req.getLogType())) {
+                JdecMonitorOperationLog log = BeanUtil.toBean(req, JdecMonitorOperationLog.class);
+                jdecMonitorOperationLogMapper.insert(log);
+            } else if ("message-log".equals(req.getLogType())) {
+                JdecMonitorMessageLog log = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
+                jdecMonitorMessageLogMapper.insert(log);
+            }
         } else {
-            JdecMonitorOperationLog log = BeanUtil.toBean(req, JdecMonitorOperationLog.class);
-            jdecMonitorOperationLogMapper.updateById(log);
+            if ("system-log".equals(req.getLogType())) {
+                JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
+                jdecMonitorSystemLogMapper.updateById(log);
+            } else if ("operation-log".equals(req.getLogType())) {
+                JdecMonitorOperationLog log = BeanUtil.toBean(req, JdecMonitorOperationLog.class);
+                jdecMonitorOperationLogMapper.updateById(log);
+            } else if ("message-log".equals(req.getLogType())) {
+                JdecMonitorMessageLog log = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
+                jdecMonitorMessageLogMapper.updateById(log);
+            }
         }
     }
 
@@ -313,9 +353,9 @@ public class JdecMonitorLogService implements MonitorLogApi {
         MonitorLogResp resp = BeanUtil.toBean(log, MonitorLogResp.class);
 
         // 字段映射处理
-        resp.setLogContent(log.getContent());
-        resp.setLogRemark(log.getRemark());
-        resp.setIp(log.getIpAddr());
+        resp.setLogContent(log.getLogContent());
+        resp.setLogRemark(log.getLogRemark());
+        resp.setIp(log.getIp());
 
         // 角色ID类型转换（String -> Long）
         try {

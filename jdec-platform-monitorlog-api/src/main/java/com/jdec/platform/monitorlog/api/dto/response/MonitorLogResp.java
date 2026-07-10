@@ -17,6 +17,9 @@ public class MonitorLogResp {
     @Schema(description = "监控类型")
     private String monitorType;
 
+    @Schema(description = "日志类型")
+    private String logType;
+
     @Schema(description = "日志内容")
     private String logContent;
 

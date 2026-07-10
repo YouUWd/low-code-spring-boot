@@ -46,6 +46,10 @@ spring:
           url: jdbc:mysql://${DB_SCHOOL_HOST:192.168.60.101}:${DB_SCHOOL_PORT:3306}/${DB_SCHOOL_NAME:student_manage}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_SCHOOL_USERNAME:root}
           password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
+        monitorlog_manage:
+          url: jdbc:mysql://${DB_SCHOOL_HOST:192.168.60.101}:${DB_SCHOOL_PORT:3306}/${DB_SCHOOL_NAME:monitorlog_manage}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_SCHOOL_USERNAME:root}
+          password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
     # ===== Druid 监控配置 =====
     druid:
       # Web 监控配置

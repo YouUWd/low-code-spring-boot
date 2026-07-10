@@ -3,18 +3,22 @@ package com.jdec.platform.monitorlog.api.dto.request;
 import cn.hutool.core.date.DateTime;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /** 记录兼容日志请求 */
 @Data
-@Schema(description = "记录兼容日志请求")
+@Schema(description = "记录监控日志请求")
 public class MonitorLogReq {
 
     @Schema(description = "ID")
     private Long id;
 
-    @Schema(description = "主题ID")
+    @Schema(description = "主体ID")
     private Long subjectId;
+
+    @Schema(description = "日志类型")
+    private String logType;
 
     /** 监控类型 requiredMode = Schema.RequiredMode.REQUIRED 标记此字段为必填项 */
     @Schema(description = "监控类型", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -69,7 +73,7 @@ public class MonitorLogReq {
     private String platForm;
 
     @Schema(description = "日志时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "日志时间不能为空")
+    @NotNull(message = "日志时间不能为空")
     private DateTime logDate;
 
     @Schema(description = "创建人ID")
@@ -79,7 +83,7 @@ public class MonitorLogReq {
     private String createdName;
 
     @Schema(description = "创建时间", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "创建时间不能为空")
+    @NotNull(message = "创建时间不能为空")
     private DateTime createdDate;
 
     @Schema(description = "更新人ID")

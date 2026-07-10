@@ -9,6 +9,7 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.sql.SQLException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -35,7 +36,7 @@ public class JdecMonitorLogController {
 
     @PostMapping("/Add")
     @Operation(summary = "添加监控日志", description = "添加监控日志")
-    public ApiResponse<Void> add(@Valid @RequestBody MonitorLogReq request) {
+    public ApiResponse<Void> add(@Valid @RequestBody MonitorLogReq request) throws SQLException {
         jdecMonitorLogService.record(request);
         return ApiResponse.success();
     }

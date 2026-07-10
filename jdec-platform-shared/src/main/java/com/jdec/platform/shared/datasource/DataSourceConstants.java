@@ -23,4 +23,5 @@ public final class DataSourceConstants {
     public static final String HR_MANAGE = "hr_manage";
 
     public static final String STUDENT_MANAGE = "student_manage";
+    public static final String MonitorLog = "monitorlog_manage";
 }
