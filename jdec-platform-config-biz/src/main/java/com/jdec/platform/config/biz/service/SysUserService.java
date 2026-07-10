@@ -348,7 +348,9 @@ public class SysUserService implements SysUserApi {
         }
         List<SysUser> users =
                 sysUserMapper.selectList(
-                        new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, roleUserIds));
+                        new LambdaQueryWrapper<SysUser>()
+                                .in(SysUser::getUserId, roleUserIds)
+                                .eq(SysUser::getDeleted, Boolean.FALSE));
 
         // 3. 将用户按部门分类
         Map<String, List<UserSearchTreeNodeResp>> deptUsers = new LinkedHashMap<>();
