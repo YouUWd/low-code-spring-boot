@@ -22,5 +22,5 @@ public final class DataSourceConstants {
     /** hr_manage 数据源 */
     public static final String HR_MANAGE = "hr_manage";
 
-    public static final String SCHOOL = "school";
+    public static final String STUDENT_MANAGE = "student_manage";
 }

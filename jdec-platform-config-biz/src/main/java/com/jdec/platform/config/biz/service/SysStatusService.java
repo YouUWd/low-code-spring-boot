@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
+import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
@@ -279,6 +280,28 @@ public class SysStatusService implements SysStatusApi {
 
         status.setEnabled(enabled);
         sysStatusMapper.updateById(status);
+    }
+
+    @Override
+    public ModuleApprovalChainConfigResp.StatusNode getStatusByValue(Integer statusValue) {
+        LambdaQueryWrapper<SysStatus> statusWrapper = new LambdaQueryWrapper<>();
+        statusWrapper
+                .eq(SysStatus::getStatusValue, statusValue)
+                .orderByDesc(SysStatus::getId)
+                .last("limit 1");
+        SysStatus statusConfig = sysStatusMapper.selectOne(statusWrapper);
+        if (Objects.isNull(statusConfig)) {
+            throw new BusinessException("状态值 " + statusValue + " 不存在");
+        }
+        ModuleApprovalChainConfigResp.StatusNode node =
+                new ModuleApprovalChainConfigResp.StatusNode();
+        node.setId(statusConfig.getId());
+        node.setPid(statusConfig.getPid());
+        node.setTitle(statusConfig.getTitle());
+        node.setStatusValue(statusConfig.getStatusValue());
+        node.setStatusBackground(statusConfig.getStatusBackground());
+        node.setStatusFontColor(statusConfig.getStatusFontColor());
+        return node;
     }
 
     /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */
