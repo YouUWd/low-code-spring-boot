@@ -10,6 +10,9 @@ import com.jdec.platform.config.api.dto.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckManager;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysRoleSpecialPermission;
 import com.jdec.platform.config.biz.entity.SysRoleSubject;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
@@ -22,6 +25,7 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.exception.PopException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +46,7 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
+    private final ReferenceCheckManager referenceCheckManager;
 
     @Override
     public SysRightResp saveSpecialPermission(SysSpecialPermissionSaveReq req) {
@@ -123,28 +128,26 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     @Transactional
     @Override
     public void deleteSpecialPermission(Long id, boolean force) {
-        boolean exists =
-                sysSpecialPermissionMapper.exists(
+        SysSpecialPermission sysSpecialPermission =
+                sysSpecialPermissionMapper.selectById(
                         Wrappers.<SysSpecialPermission>lambdaQuery()
                                 .eq(SysSpecialPermission::getId, id)
                                 .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysSpecialPermission::getProjectNo, AppContext.getProjectNo()));
-        if (!exists) {
+        if (sysSpecialPermission == null) {
             throw new BusinessException("特殊权限不存在");
         }
-        // 查询角色关联数量
-        long roleCount =
-                sysRoleSpecialPermissionMapper.selectCount(
-                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
-                                .eq(SysRoleSpecialPermission::getSpecialPermissionId, id));
-        if (!force && roleCount > 0) {
-            throw new BusinessException(
-                    "删除确认：该特殊权限已被 " + roleCount + " 个角色授权引用，删除后相关授权将被同步清除，请确认后携带 force=true 重新请求");
+        // 引用检查
+        ReferenceContext context =
+                ReferenceContext.builder()
+                        .targetType(CheckConstant.SYS_SPECIAL_PERMISSION)
+                        .targetId(sysSpecialPermission.getId())
+                        .targetName(sysSpecialPermission.getName())
+                        .build();
+        List<String> check = referenceCheckManager.check(context);
+        if (!check.isEmpty()) {
+            throw new PopException(String.join("\n", check));
         }
-        // 级联删除角色-特殊权限关联
-        sysRoleSpecialPermissionMapper.delete(
-                Wrappers.<SysRoleSpecialPermission>lambdaQuery()
-                        .eq(SysRoleSpecialPermission::getSpecialPermissionId, id));
         sysSpecialPermissionMapper.deleteById(id);
     }
 

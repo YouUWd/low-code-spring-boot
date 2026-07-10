@@ -842,7 +842,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
 
     @Override
     public List<String> targetType() {
-        return List.of(CheckConstant.SYS_ROLE, CheckConstant.SYS_INTERACTION_PERMISSION);
+        return List.of(
+                CheckConstant.SYS_ROLE,
+                CheckConstant.SYS_INTERACTION_PERMISSION,
+                CheckConstant.SYS_SPECIAL_PERMISSION,
+                CheckConstant.SYS_DATA_PERMISSION);
     }
 
     @Override
@@ -854,10 +858,50 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             case CheckConstant.SYS_INTERACTION_PERMISSION -> {
                 return checkInteractionPermission(referenceContext);
             }
+            case CheckConstant.SYS_SPECIAL_PERMISSION -> {
+                return checkSpecialPermission(referenceContext);
+            }
+            case CheckConstant.SYS_DATA_PERMISSION -> {
+                return checkDataPermission(referenceContext);
+            }
             default -> {
                 return ReferenceCheckResult.empty();
             }
         }
+    }
+
+    private ReferenceCheckResult checkDataPermission(ReferenceContext referenceContext) {
+        Long count =
+                sysRoleDataPermissionMapper.selectCount(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("数据权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色数据权限")
+                .build();
+    }
+
+    private ReferenceCheckResult checkSpecialPermission(ReferenceContext referenceContext) {
+        Long count =
+                sysRoleSpecialPermissionMapper.selectCount(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleSpecialPermission::getSpecialPermissionId,
+                                        referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("其它权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色其它权限")
+                .build();
     }
 
     private ReferenceCheckResult checkInteractionPermission(ReferenceContext referenceContext) {
