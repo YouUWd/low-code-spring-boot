@@ -18,13 +18,17 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.ChangeType;
+import java.sql.Connection;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -42,6 +46,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final DataSourceResolver dataSourceResolver;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -1075,7 +1081,10 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                                                         + f.getFieldCode(),
                                         f -> f));
 
-        // 8. 构造响应体
+        // 9. 批量查询表注释
+        Map<String, String> tableCommentMap = batchQueryTableComments(listModules);
+
+        // 11. 构造响应体
         List<PersonalSettingResp> result = new ArrayList<>();
 
         for (SysModule module : listModules) {
@@ -1108,6 +1117,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                     column.setId(moduleField.getId());
                     column.setName(header.getName());
                     column.setTable(header.getTable());
+                    // 设置表中文名：优先从 tableCommentMap 获取，否则使用英文表名
+                    String tableName =
+                            tableCommentMap.getOrDefault(
+                                    header.getTable().toLowerCase(), header.getTable());
+                    column.setTableName(tableName);
                     column.setField(header.getField());
                     column.setWidth(header.getWidth());
                     column.setFixed(header.getFixed());
@@ -1153,5 +1167,105 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         } catch (Exception e) {
             return new ArrayList<>();
         }
+    }
+
+    /**
+     * 批量查询表注释
+     *
+     * <p>根据项目编码从配置中获取对应的数据源，然后查询 information_schema 获取表注释
+     *
+     * @param listModules 模块列表
+     * @return 表名 -> 表注释的映射（表名统一转小写）
+     */
+    private Map<String, String> batchQueryTableComments(List<SysModule> listModules) {
+        Map<String, String> tableCommentMap = new HashMap<>();
+
+        if (listModules == null || listModules.isEmpty()) {
+            return tableCommentMap;
+        }
+
+        // 1. 收集所有表名
+        Set<String> allTableNames = new HashSet<>();
+        for (SysModule module : listModules) {
+            String tableHeaderJson = module.getTableHeader();
+            List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> tableHeaders =
+                    parseTableHeader(tableHeaderJson);
+            for (com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO header :
+                    tableHeaders) {
+                if (header.getTable() != null && !header.getTable().trim().isEmpty()) {
+                    allTableNames.add(header.getTable());
+                }
+            }
+        }
+
+        // 移除通配符
+        allTableNames.remove("*");
+        if (allTableNames.isEmpty()) {
+            return tableCommentMap;
+        }
+
+        try {
+            // 1. 获取项目编码
+            String projectNo = AppContext.getProjectNo();
+            if (projectNo == null || projectNo.trim().isEmpty()) {
+                log.warn("项目编码为空，无法查询表注释");
+                return tableCommentMap;
+            }
+
+            // 2. 根据项目编码解析对应的数据源
+            javax.sql.DataSource targetDataSource = dataSourceResolver.resolve(projectNo);
+
+            // 3. 使用目标数据源创建 JdbcTemplate
+            org.springframework.jdbc.core.JdbcTemplate targetJdbcTemplate =
+                    new org.springframework.jdbc.core.JdbcTemplate(targetDataSource);
+
+            // 4. 获取数据库 schema 名称（优先从连接获取，降级使用 projectNo）
+            String tableSchema =
+                    targetJdbcTemplate.execute(
+                            (Connection conn) -> {
+                                String catalog = conn.getCatalog();
+                                return (catalog != null && !catalog.trim().isEmpty())
+                                        ? catalog
+                                        : projectNo;
+                            });
+
+            // 5. 构造 SQL 查询表注释
+            String tableInSql =
+                    allTableNames.stream().map(t -> "?").collect(Collectors.joining(","));
+            String tableCommentSql =
+                    String.format(
+                            "SELECT TABLE_NAME, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (%s)",
+                            tableInSql);
+
+            // 6. 准备参数
+            List<Object> tableParams = new ArrayList<>();
+            tableParams.add(tableSchema);
+            tableParams.addAll(allTableNames);
+
+            // 7. 执行查询
+            List<Map<String, Object>> tableRows =
+                    targetJdbcTemplate.queryForList(tableCommentSql, tableParams.toArray());
+
+            // 8. 构造返回结果（表名统一转小写）
+            for (Map<String, Object> row : tableRows) {
+                String tName = (String) row.get("TABLE_NAME");
+                String tComment = (String) row.get("TABLE_COMMENT");
+                if (tName != null) {
+                    tableCommentMap.put(tName.toLowerCase(), tComment);
+                }
+            }
+
+            log.debug(
+                    "批量查询表注释成功: projectNo={}, schema={}, 查询{}个表，返回{}条结果",
+                    projectNo,
+                    tableSchema,
+                    allTableNames.size(),
+                    tableCommentMap.size());
+
+        } catch (Exception e) {
+            log.warn("批量获取表注释失败，将使用表英文名", e);
+        }
+
+        return tableCommentMap;
     }
 }

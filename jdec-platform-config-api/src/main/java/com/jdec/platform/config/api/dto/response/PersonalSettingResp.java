@@ -25,8 +25,11 @@ public class PersonalSettingResp {
         @Schema(description = "姓名")
         private String name;
 
-        @Schema(description = "表名称")
+        @Schema(description = "表名-英文")
         private String table;
+
+        @Schema(description = "表名-中文")
+        private String tableName;
 
         @Schema(description = "关联字段")
         private String field;
