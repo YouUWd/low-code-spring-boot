@@ -491,7 +491,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
     private Map<Long, SysUser> batchQueryUserMap(Set<Long> ids) {
         if (ids.isEmpty()) return Collections.emptyMap();
         return sysUserMapper
-                .selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, ids))
+                .selectList(
+                        new LambdaQueryWrapper<SysUser>()
+                                .in(SysUser::getUserId, ids)
+                                .eq(SysUser::getDeleted, 0))
                 .stream()
                 .collect(Collectors.toMap(SysUser::getUserId, u -> u));
     }
