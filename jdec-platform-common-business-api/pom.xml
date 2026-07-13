@@ -11,4 +11,11 @@
 
     <artifactId>jdec-platform-common-business-api</artifactId>
 
+    <dependencies>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-shared</artifactId>
+        </dependency>
+    </dependencies>
+
 </project>
