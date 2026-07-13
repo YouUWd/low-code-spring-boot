@@ -4,7 +4,10 @@ import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
+import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
+import com.jdec.platform.monitorlog.api.client.MonitorCenterApiClient;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogPageListReq;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
@@ -18,7 +21,7 @@ import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorOperationLogMapper;
 import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorSystemLogMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import java.sql.Connection;
+import com.jdec.platform.shared.model.ApiResponse;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -45,6 +48,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private final JdecMonitorMessageLogMapper jdecMonitorMessageLogMapper;
     private final JdecMonitorSystemLogMapper jdecMonitorSystemLogMapper;
     private final JdecMonitorOperationLogMapper jdecMonitorOperationLogMapper;
+    private final MonitorCenterApiClient monitorCenterApiClient;
 
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -52,10 +56,10 @@ public class JdecMonitorLogService implements MonitorLogApi {
     @Autowired private SqlSessionTemplate sqlSessionTemplate;
 
     /** 日志类型常量 */
-    private static final String LOG_TYPE_MESSAGE = "message";
+    private static final String LOG_TYPE_MESSAGE = "message-log";
 
-    private static final String LOG_TYPE_OPERATION = "operation";
-    private static final String LOG_TYPE_SYSTEM = "system";
+    private static final String LOG_TYPE_OPERATION = "operation-log";
+    private static final String LOG_TYPE_SYSTEM = "system-log";
 
     /**
      * 查询监控日志列表
@@ -201,7 +205,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         JdecMonitorMessageLog::getLogContent,
                         request.getKeyWord())
                 .between(JdecMonitorMessageLog::getLogDate, startDateTime, endDateTime)
-                .eq(JdecMonitorMessageLog::getDeleted, 0)
                 .orderByDesc(JdecMonitorMessageLog::getLogDate);
     }
 
@@ -214,7 +217,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         JdecMonitorOperationLog::getLogContent,
                         request.getKeyWord())
                 .between(JdecMonitorOperationLog::getLogDate, startDateTime, endDateTime)
-                .eq(JdecMonitorOperationLog::getDeleted, 0)
                 .orderByDesc(JdecMonitorOperationLog::getLogDate);
     }
 
@@ -227,7 +229,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         JdecMonitorSystemLog::getLogContent,
                         request.getKeyWord())
                 .between(JdecMonitorSystemLog::getLogDate, startDateTime, endDateTime)
-                .eq(JdecMonitorSystemLog::getDeleted, 0)
                 .orderByDesc(JdecMonitorSystemLog::getLogDate);
     }
 
@@ -266,21 +267,50 @@ public class JdecMonitorLogService implements MonitorLogApi {
     @Transactional
     public void record(MonitorLogReq req) throws SQLException {
         // 获取当前 MyBatis 使用的连接并打印
-        Connection connection =
-                sqlSessionTemplate
-                        .getConfiguration()
-                        .getEnvironment()
-                        .getDataSource()
-                        .getConnection();
+        //        Connection connection =
+        //                sqlSessionTemplate
+        //                        .getConfiguration()
+        //                        .getEnvironment()
+        //                        .getDataSource()
+        //                        .getConnection();
+        //
+        //        System.out.println("========== MyBatis 当前连接的数据库地址 ==========");
+        //        System.out.println(connection.getMetaData().getURL());
+        //        System.out.println("===============================================");
 
-        System.out.println("========== MyBatis 当前连接的数据库地址 ==========");
-        System.out.println(connection.getMetaData().getURL());
-        System.out.println("===============================================");
+        if (req.getLoginUserId() == null || req.getLoginUserId() == 0L) {
+            UserDetailResp userDetail = new UserDetailResp();
+            ApiResponse<UserDetailResp> userDetailResp =
+                    monitorCenterApiClient.getUserDetailByUserId(req.getLoginUserId());
+            if (userDetailResp.getStatus() != 200) {
+                throw new IllegalArgumentException("获取用户详情失败");
+            }
+            userDetail = userDetailResp.getData();
+        }
+        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
+        if (req.getMockRole() == null || req.getMockRole() == 0L) {
+            ApiResponse<RoleConfigDetailResp> roleConfigDetailResp =
+                    monitorCenterApiClient.getRoleConfigDetail(req.getLoginRole());
+            if (roleConfigDetailResp.getStatus() != 200) {
+                throw new IllegalArgumentException("获取角色配置详情失败");
+            }
+            roleConfigDetail = roleConfigDetailResp.getData();
+        }
+
+        RoleConfigDetailResp mockRoleConfigDetail = new RoleConfigDetailResp();
+        if (req.getMockRole() == null || req.getMockRole() == 0L) {
+            ApiResponse<RoleConfigDetailResp> mockRoleConfigDetailResp =
+                    monitorCenterApiClient.getRoleConfigDetail(req.getMockRole());
+            if (mockRoleConfigDetailResp.getStatus() != 200) {
+                throw new IllegalArgumentException("获取模拟角色配置详情失败");
+            }
+            mockRoleConfigDetail = mockRoleConfigDetailResp.getData();
+        }
         if (req.getId() == null || req.getId() == 0L) {
 
             if ("system-log".equals(req.getLogType())) {
                 JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
-
+                log.setRoleName(roleConfigDetail.getRoleName());
                 jdecMonitorSystemLogMapper.insert(log);
             } else if ("operation-log".equals(req.getLogType())) {
                 JdecMonitorOperationLog log = BeanUtil.toBean(req, JdecMonitorOperationLog.class);
@@ -304,47 +334,23 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     @Override
-    public void delete(Long id) {
-        // 依次从三个表中查找并删除（逻辑删除）
-        JdecMonitorMessageLog messageLog = jdecMonitorMessageLogMapper.selectById(id);
-        if (messageLog != null) {
-            messageLog.setDeleted(1);
-            jdecMonitorMessageLogMapper.updateById(messageLog);
-            return; // 找到即删除并返回
+    public MonitorLogResp get(Long id, String logType) {
+        if (LOG_TYPE_MESSAGE.equals(logType)) {
+            JdecMonitorMessageLog messageLog = jdecMonitorMessageLogMapper.selectById(id);
+            if (messageLog != null) {
+                return convertToMonitorLogResp(messageLog);
+            }
+        } else if (LOG_TYPE_OPERATION.equals(logType)) {
+            JdecMonitorOperationLog operationLog = jdecMonitorOperationLogMapper.selectById(id);
+            if (operationLog != null) {
+                return convertToMonitorLogResp(operationLog);
+            }
+        } else if (LOG_TYPE_SYSTEM.equals(logType)) {
+            JdecMonitorSystemLog systemLog = jdecMonitorSystemLogMapper.selectById(id);
+            if (systemLog != null) {
+                return convertToMonitorLogResp(systemLog);
+            }
         }
-
-        JdecMonitorOperationLog operationLog = jdecMonitorOperationLogMapper.selectById(id);
-        if (operationLog != null) {
-            operationLog.setDeleted(1);
-            jdecMonitorOperationLogMapper.updateById(operationLog);
-            return; // 找到即删除并返回
-        }
-
-        JdecMonitorSystemLog systemLog = jdecMonitorSystemLogMapper.selectById(id);
-        if (systemLog != null) {
-            systemLog.setDeleted(1);
-            jdecMonitorSystemLogMapper.updateById(systemLog);
-        }
-    }
-
-    @Override
-    public MonitorLogResp get(Long id) {
-        // 依次从三个表中查找
-        JdecMonitorMessageLog messageLog = jdecMonitorMessageLogMapper.selectById(id);
-        if (messageLog != null && messageLog.getDeleted() == 0) {
-            return convertToMonitorLogResp(messageLog);
-        }
-
-        JdecMonitorOperationLog operationLog = jdecMonitorOperationLogMapper.selectById(id);
-        if (operationLog != null && operationLog.getDeleted() == 0) {
-            return convertToMonitorLogResp(operationLog);
-        }
-
-        JdecMonitorSystemLog systemLog = jdecMonitorSystemLogMapper.selectById(id);
-        if (systemLog != null && systemLog.getDeleted() == 0) {
-            return convertToMonitorLogResp(systemLog);
-        }
-
         return null;
     }
 

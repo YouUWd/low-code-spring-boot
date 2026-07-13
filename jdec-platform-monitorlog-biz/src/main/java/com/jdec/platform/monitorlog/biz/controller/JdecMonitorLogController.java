@@ -43,14 +43,19 @@ public class JdecMonitorLogController {
 
     @GetMapping("/get")
     @Operation(summary = "获取监控日志详情", description = "根据ID获取监控日志详情")
-    public ApiResponse<MonitorLogResp> get(@RequestParam Long id) {
-        return ApiResponse.success(jdecMonitorLogService.get(id));
-    }
-
-    @DeleteMapping("/delete")
-    @Operation(summary = "删除监控日志", description = "根据ID删除监控日志")
-    public ApiResponse<Void> delete(@RequestParam Long id) {
-        jdecMonitorLogService.delete(id);
-        return ApiResponse.success();
+    public ApiResponse<MonitorLogResp> get(@RequestParam Long id, @RequestParam String logType) {
+        if (logType == null || logType.isEmpty()) {
+            return ApiResponse.error("日志类型不能为空");
+        }
+        if ("system-log".equals(logType)) {
+            return ApiResponse.success(jdecMonitorLogService.get(id, logType));
+        }
+        if ("message-log".equals(logType)) {
+            return ApiResponse.success(jdecMonitorLogService.get(id, logType));
+        }
+        if ("operation-log".equals(logType)) {
+            return ApiResponse.success(jdecMonitorLogService.get(id, logType));
+        }
+        return ApiResponse.error("日志类型错误");
     }
 }

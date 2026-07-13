@@ -60,32 +60,4 @@ public class JdecMonitorLogBase implements Serializable {
 
     @Schema(description = "日志日期")
     private LocalDateTime logDate;
-
-    @Schema(description = "创建人ID")
-    @TableField(fill = FieldFill.INSERT)
-    private Long createdBy;
-
-    @Schema(description = "创建人名称")
-    @TableField(fill = FieldFill.INSERT)
-    private String createdName;
-
-    @Schema(description = "创建时间")
-    @TableField(fill = FieldFill.INSERT)
-    private LocalDateTime createdDate;
-
-    @Schema(description = "更新人ID")
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private Long updatedBy;
-
-    @Schema(description = "更新人名称")
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private String updatedName;
-
-    @Schema(description = "更新时间")
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private LocalDateTime updatedDate;
-
-    @Schema(description = "是否删除")
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    private Integer deleted = 0;
 }
