@@ -37,6 +37,21 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理业务弹窗异常
+     *
+     * @param e 业务异常
+     * @return 200 OK 响应，业务错误码在 response.status 中
+     */
+    @ExceptionHandler(PopException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePopException(PopException e) {
+        log.warn("业务异常: code={}, message={}", e.getCode(), e.getMessage());
+
+        ApiResponse<Void> response = ApiResponse.error(e.getCode(), e.getMessage());
+
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
+
+    /**
      * 处理参数校验失败异常（@Valid / @Validated）
      *
      * @param e 参数校验异常

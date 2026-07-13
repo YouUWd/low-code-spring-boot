@@ -6,16 +6,18 @@ import com.jdec.platform.config.api.SysInteractionPermissionApi;
 import com.jdec.platform.config.api.dto.request.QuerySysInteractionPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysInteractionPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckManager;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysModule;
-import com.jdec.platform.config.biz.entity.SysRoleInteractionPermission;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
-import com.jdec.platform.config.biz.mapper.SysRoleInteractionPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.exception.PopException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
     private final SysModuleMapper sysModuleMapper;
-    private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
+    private final ReferenceCheckManager referenceCheckManager;
 
     @Transactional
     @Override
@@ -125,8 +127,8 @@ public class SysInteractionPermissionService implements SysInteractionPermission
     @Transactional
     @Override
     public void deleteInteractionPermission(Long id, boolean force) {
-        boolean exists =
-                sysInteractionPermissionMapper.exists(
+        SysInteractionPermission sysInteractionPermission =
+                sysInteractionPermissionMapper.selectOne(
                         Wrappers.<SysInteractionPermission>lambdaQuery()
                                 .eq(SysInteractionPermission::getId, id)
                                 .eq(
@@ -135,22 +137,20 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                 .eq(
                                         SysInteractionPermission::getProjectNo,
                                         AppContext.getProjectNo()));
-        if (!exists) {
+        if (sysInteractionPermission == null) {
             throw new BusinessException("交互权限不存在");
         }
-        // 查询角色关联数量
-        long roleCount =
-                sysRoleInteractionPermissionMapper.selectCount(
-                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
-                                .eq(SysRoleInteractionPermission::getPermissionId, id));
-        if (!force && roleCount > 0) {
-            throw new BusinessException(
-                    "删除确认：该交互权限已被 " + roleCount + " 个角色授权引用，删除后相关授权将被同步清除，请确认后携带 force=true 重新请求");
+        // 引用检查
+        ReferenceContext context =
+                ReferenceContext.builder()
+                        .targetType(CheckConstant.SYS_INTERACTION_PERMISSION)
+                        .targetId(id)
+                        .targetName(sysInteractionPermission.getName())
+                        .build();
+        List<String> check = referenceCheckManager.check(context);
+        if (!check.isEmpty()) {
+            throw new PopException(String.join("\n", check));
         }
-        // 级联删除角色-交互权限关联
-        sysRoleInteractionPermissionMapper.delete(
-                Wrappers.<SysRoleInteractionPermission>lambdaQuery()
-                        .eq(SysRoleInteractionPermission::getPermissionId, id));
         sysInteractionPermissionMapper.deleteById(id);
     }
 
@@ -273,13 +273,15 @@ public class SysInteractionPermissionService implements SysInteractionPermission
     }
 
     @Override
-    public List<SysModuleInteractionPermissionResp> listModuleInteractionPermissionTree() {
+    public List<SysModuleInteractionPermissionResp> listModuleInteractionPermissionTree(
+            Integer category) {
         // 1. 查询当前项目下所有模块
         List<SysModule> allModules =
                 sysModuleMapper.selectList(
                         new LambdaQueryWrapper<SysModule>()
                                 .eq(SysModule::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysModule::getSubjectId, AppContext.getSubjectId())
+                                .eq(category != null, SysModule::getCategory, category)
                                 .orderByAsc(SysModule::getSortOrder)
                                 .orderByAsc(SysModule::getId));
 

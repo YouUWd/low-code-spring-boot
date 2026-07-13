@@ -4,7 +4,6 @@ import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysDataPermissionApi;
-import com.jdec.platform.config.api.bo.BizDataItemBO;
 import com.jdec.platform.config.api.dto.request.DataPermissionQueryItem;
 import com.jdec.platform.config.api.dto.request.QuerySysDataPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysDataPermissionSaveReq;
@@ -150,9 +149,9 @@ public class SysDataPermissionService implements SysDataPermissionApi {
         }
 
         // 3. 调用业务系统接口查询业务数据
-        final Map<String, List<SysDataPermissionResp.BizDataItemResp>> bizDataMap;
+        final Map<String, List<String>> bizDataMap;
         if (CollUtil.isNotEmpty(queryItems)) {
-            Map<String, List<BizDataItemBO>> tempMap = new HashMap<>();
+            Map<String, List<String>> tempMap = new HashMap<>();
             // 根据项目编码获取接口地址
             String projectNo = AppContext.getProjectNo();
             String bizSystemUrl = bizSystemConfig.getUrls().get(projectNo);
@@ -195,7 +194,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                                                 Collectors.toMap(
                                                         BizDataPermissionResp
                                                                 ::getDataPermissionCode,
-                                                        BizDataPermissionResp::getDataList,
+                                                        BizDataPermissionResp::getBizNames,
                                                         (v1, v2) -> v1));
                     }
                 } catch (Exception e) {
@@ -204,58 +203,13 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                 }
                 // 对业务数据进行distinct操作
                 for (String key : tempMap.keySet()) {
-                    List<BizDataItemBO> bizDataItemBOS = tempMap.get(key);
-
-                    // 分离 bizName 为 null 和非 null 的数据
-                    Map<Boolean, List<BizDataItemBO>> partitioned =
+                    List<String> bizDataItemBOS = tempMap.get(key);
+                    bizDataItemBOS =
                             bizDataItemBOS.stream()
-                                    .collect(
-                                            Collectors.partitioningBy(
-                                                    item -> item.getBizName() != null));
-
-                    List<SysDataPermissionResp.BizDataItemResp> aggregatedList = new ArrayList<>();
-
-                    // 处理 bizName 非 null 的数据：按 bizName 聚合，将相同 bizName 的 bizId 拼接
-                    List<BizDataItemBO> nonNullItems = partitioned.get(true);
-                    if (CollUtil.isNotEmpty(nonNullItems)) {
-                        Map<String, String> aggregatedData =
-                                nonNullItems.stream()
-                                        .collect(
-                                                Collectors.groupingBy(
-                                                        BizDataItemBO::getBizName,
-                                                        Collectors.mapping(
-                                                                BizDataItemBO::getBizId,
-                                                                Collectors.joining(","))));
-
-                        // 转换为 List<BizDataItemResp> 格式
-                        aggregatedData.entrySet().stream()
-                                .map(
-                                        entry -> {
-                                            SysDataPermissionResp.BizDataItemResp item =
-                                                    new SysDataPermissionResp.BizDataItemResp();
-                                            item.setBizName(entry.getKey());
-                                            item.setBizId(entry.getValue());
-                                            return item;
-                                        })
-                                .forEach(aggregatedList::add);
-                    }
-
-                    // 处理 bizName 为 null 的数据：聚合所有 bizId 用逗号拼接
-                    List<BizDataItemBO> nullItems = partitioned.get(false);
-                    if (CollUtil.isNotEmpty(nullItems)) {
-                        String aggregatedBizIds =
-                                nullItems.stream()
-                                        .map(BizDataItemBO::getBizId)
-                                        .collect(Collectors.joining(","));
-
-                        SysDataPermissionResp.BizDataItemResp resp =
-                                new SysDataPermissionResp.BizDataItemResp();
-                        resp.setBizName("Null");
-                        resp.setBizId(aggregatedBizIds);
-                        aggregatedList.add(resp);
-                    }
-
-                    bizDataMap.put(key, aggregatedList);
+                                    .map(s -> s == null ? "Null" : s)
+                                    .distinct()
+                                    .toList();
+                    bizDataMap.put(key, bizDataItemBOS);
                 }
             }
         } else {
@@ -273,13 +227,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                             resp.setDescription(type.getDescription());
                             resp.setSort(type.getSort());
                             resp.setStatus(type.getStatus());
-
-                            // 填充业务数据
-                            if (type.getCode() != null) {
-                                List<SysDataPermissionResp.BizDataItemResp> bizDataList =
-                                        bizDataMap.getOrDefault(type.getCode(), new ArrayList<>());
-                                resp.setDataList(bizDataList);
-                            }
+                            resp.setBizNames(
+                                    bizDataMap.getOrDefault(type.getCode(), new ArrayList<>()));
                             return resp;
                         })
                 .collect(Collectors.toList());

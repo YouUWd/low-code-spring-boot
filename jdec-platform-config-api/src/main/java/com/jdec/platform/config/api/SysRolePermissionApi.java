@@ -124,6 +124,13 @@ public interface SysRolePermissionApi {
     boolean checkRoleHasPermission(Long roleId, Long subjectId, String projectNo);
 
     /**
+     * 根据角色ID查询用户个性化设置（仅包含列表类型模块）
+     *
+     * @param roleId 角色ID
+     * @param moduleId 模块ID（可选，不传则查询所有模块）
+     * @return 用户个性化设置列表
+     */
+    List<PersonalSettingResp> getPersonalSettingByRole(Long roleId, Long moduleId);
      * 检查角色是否有模块写入权限
      *
      * @param roleId 角色ID

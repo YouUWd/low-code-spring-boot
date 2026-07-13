@@ -10,11 +10,15 @@ import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckManager;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.exception.PopException;
 import com.jdec.platform.shared.third.WordApiClient;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,6 +47,7 @@ public class SysFieldService implements SysFieldApi {
     private final JdbcTemplate jdbcTemplate;
     private final WordApiClient wordApiClient;
     private final SysDataPermissionMapper sysDataPermissionMapper;
+    private final ReferenceCheckManager referenceCheckManager;
 
     // ==================== 元数据查询逻辑 ====================
 
@@ -418,18 +423,39 @@ public class SysFieldService implements SysFieldApi {
         } else {
             sysFieldMapper.updateById(entity);
         }
-        sysDataPermissionMapper.delete(
-                new LambdaQueryWrapper<SysDataPermission>()
-                        .eq(
-                                SysDataPermission::getCode,
-                                entity.getTableName() + "*" + entity.getColumnName())
-                        .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
-                        .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo()));
+        // 数据权限节点引用检查
+        SysDataPermission dataPermission =
+                sysDataPermissionMapper.selectOne(
+                        new LambdaQueryWrapper<SysDataPermission>()
+                                .eq(
+                                        SysDataPermission::getCode,
+                                        entity.getTableName() + "*" + entity.getColumnName())
+                                .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo()));
+        if (dataPermission != null) {
+            ReferenceContext context =
+                    ReferenceContext.builder()
+                            .targetType(CheckConstant.SYS_DATA_PERMISSION)
+                            .targetId(dataPermission.getId())
+                            .targetName(dataPermission.getName())
+                            .build();
+            List<String> check = referenceCheckManager.check(context);
+            if (!check.isEmpty()) {
+                throw new PopException(String.join("\n", check));
+            }
+            sysDataPermissionMapper.delete(
+                    new LambdaQueryWrapper<SysDataPermission>()
+                            .eq(
+                                    SysDataPermission::getCode,
+                                    entity.getTableName() + "*" + entity.getColumnName())
+                            .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
+                            .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo()));
+        }
         if (entity.getDataRightFlag() == 1) {
             // 生成权限节点
             SysDataPermission permission = new SysDataPermission();
             permission.setCode(entity.getTableName() + "*" + entity.getColumnName());
-            permission.setName(entity.getColumnName());
+            permission.setName(entity.getDisplayName());
             permission.setStatus(1);
             permission.setSubjectId(AppContext.getSubjectId());
             permission.setProjectNo(projectNo);

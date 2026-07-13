@@ -138,4 +138,16 @@ public class SysRolePermissionController {
         return ApiResponse.success(
                 sysRolePermissionApi.checkRoleHasPermission(roleId, subjectId, projectNo));
     }
+
+    @GetMapping("/get-personal-setting-by-role")
+    @Operation(
+            summary = "查询角色个性化设置",
+            description = "根据角色ID查询用户个性化设置（仅包含列表类型模块的表头字段配置）。可选传入模块ID进行过滤")
+    public ApiResponse<List<PersonalSettingResp>> getPersonalSettingByRole(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId,
+            @Parameter(description = "模块ID（可选，不传则查询所有模块）", example = "1")
+                    @RequestParam(required = false)
+                    Long moduleId) {
+        return ApiResponse.success(sysRolePermissionApi.getPersonalSettingByRole(roleId, moduleId));
+    }
 }

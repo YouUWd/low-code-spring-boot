@@ -8,6 +8,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigPageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
+import com.jdec.platform.config.api.dto.response.ApprovalChainCascadeResp;
+import com.jdec.platform.config.api.dto.response.ApprovalChainConfigDetailResp;
+import com.jdec.platform.config.api.dto.response.ApprovalChainConfigPageResp;
+import com.jdec.platform.config.api.dto.response.ApprovalChainConfigSaveResp;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckResult;
+import com.jdec.platform.config.biz.check.ReferenceChecker;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
@@ -29,7 +37,7 @@ import org.springframework.util.CollectionUtils;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysApprovalChainConfigService implements SysApprovalChainConfigApi {
+public class SysApprovalChainConfigService implements SysApprovalChainConfigApi, ReferenceChecker {
 
     private final SysApprovalChainConfigMapper sysApprovalChainConfigMapper;
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
@@ -222,6 +230,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                     resp.setApprovalRule(config.getApprovalRule());
                                     resp.setApprovalRuleName(
                                             approvalRuleMap.get(config.getApprovalRule()));
+                                    resp.setRejectRule(config.getRejectRule());
                                     resp.setRoleApprovalPercent(config.getRoleApprovalPercent());
                                     resp.setApproveRoleId(config.getApproveRoleId());
                                     resp.setApproveRoleName(roleMap.get(config.getApproveRoleId()));
@@ -290,6 +299,8 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                         buttonConfig.getButtonId());
                                                 buttonDetail.setIcon(buttonConfig.getIcon());
                                                 buttonDetail.setLogName(buttonConfig.getLogName());
+                                                buttonDetail.setAutoNextTaskFlag(
+                                                        buttonConfig.getAutoNextTaskFlag());
                                                 buttonDetail.setMsgTemplateIds(
                                                         buttonConfig.getMsgTemplateIds());
 
@@ -475,7 +486,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
     private Map<Long, String> batchQueryUsers(Set<Long> ids) {
         if (ids.isEmpty()) return Collections.emptyMap();
         return sysUserMapper
-                .selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, ids))
+                .selectList(
+                        new LambdaQueryWrapper<SysUser>()
+                                .in(SysUser::getUserId, ids)
+                                .eq(SysUser::getDeleted, 0))
                 .stream()
                 .collect(Collectors.toMap(SysUser::getUserId, SysUser::getUserName));
     }
@@ -483,7 +497,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
     private Map<Long, SysUser> batchQueryUserMap(Set<Long> ids) {
         if (ids.isEmpty()) return Collections.emptyMap();
         return sysUserMapper
-                .selectList(new LambdaQueryWrapper<SysUser>().in(SysUser::getUserId, ids))
+                .selectList(
+                        new LambdaQueryWrapper<SysUser>()
+                                .in(SysUser::getUserId, ids)
+                                .eq(SysUser::getDeleted, 0))
                 .stream()
                 .collect(Collectors.toMap(SysUser::getUserId, u -> u));
     }
@@ -641,6 +658,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                             resp.setApprovalChainTypeName(
                                     finalChainTypeMap.get(chainConfig.getApprovalChainTypeId()));
                             resp.setApprovalRule(chainConfig.getApprovalRule());
+                            resp.setRejectRule(chainConfig.getRejectRule());
                             resp.setRoleApprovalPercent(chainConfig.getRoleApprovalPercent());
                             resp.setApproveRoleId(chainConfig.getApproveRoleId());
                             resp.setApproverId(chainConfig.getApproverId());
@@ -700,6 +718,9 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                                     detail.setIcon(btn.getIcon());
                                                                     detail.setLogName(
                                                                             btn.getLogName());
+                                                                    detail.setAutoNextTaskFlag(
+                                                                            btn
+                                                                                    .getAutoNextTaskFlag());
                                                                     detail.setMsgTemplateIds(
                                                                             btn
                                                                                     .getMsgTemplateIds());
@@ -992,6 +1013,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                         button.setIcon(btn.getIcon());
                                         button.setButtonId(btn.getButtonId());
                                         button.setLogName(btn.getLogName());
+                                        button.setAutoNextTaskFlag(btn.getAutoNextTaskFlag());
                                         button.setMsgTemplateIds(btn.getMsgTemplateIds());
                                         button.setSubjectId(AppContext.getSubjectId());
                                         button.setProjectNo(AppContext.getProjectNo());
@@ -1311,5 +1333,40 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 sysApprovalChainConfigMapper.updateById(item);
             }
         }
+    }
+
+    @Override
+    public List<String> targetType() {
+        return List.of(CheckConstant.SYS_ROLE);
+    }
+
+    @Override
+    public ReferenceCheckResult check(ReferenceContext referenceContext) {
+        switch (referenceContext.getTargetType()) {
+            case CheckConstant.SYS_ROLE -> {
+                return checkRole(referenceContext);
+            }
+            default -> {
+                return ReferenceCheckResult.empty();
+            }
+        }
+    }
+
+    private ReferenceCheckResult checkRole(ReferenceContext referenceContext) {
+        StringBuilder sb = new StringBuilder();
+        Long count =
+                sysApprovalChainConfigMapper.selectCount(
+                        Wrappers.<SysApprovalChainConfig>lambdaQuery()
+                                .eq(
+                                        SysApprovalChainConfig::getApproveRoleId,
+                                        referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("角色【" + referenceContext.getTargetName() + "】绑定了" + count + "个审批链配置")
+                .build();
     }
 }

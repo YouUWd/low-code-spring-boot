@@ -24,8 +24,8 @@ public class DataRightConfigResp {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class DataConfig {
-        @Schema(description = "业务主键")
-        private List<Long> bizIds;
+        @Schema(description = "业务名称列表")
+        private List<String> bizNames;
 
         @Schema(description = "业务名称")
         private String columnName;

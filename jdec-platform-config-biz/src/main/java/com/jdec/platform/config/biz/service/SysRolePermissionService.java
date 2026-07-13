@@ -6,6 +6,11 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.api.enums.ModuleTypeEnum;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckResult;
+import com.jdec.platform.config.biz.check.ReferenceChecker;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
@@ -13,17 +18,21 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.ChangeType;
-import com.jdec.platform.shared.exception.BusinessException;
+import java.sql.Connection;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysRolePermissionService implements SysRolePermissionApi {
+public class SysRolePermissionService implements SysRolePermissionApi, ReferenceChecker {
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
@@ -36,6 +45,9 @@ public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysModuleMapper sysModuleMapper;
+    private final SysModuleFieldMapper sysModuleFieldMapper;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    private final DataSourceResolver dataSourceResolver;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -362,7 +374,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             roleIdExpr = "#request.roleId")
     public void saveRoleDataPermission(SaveRoleDataPermissionReq request) {
         Long roleId = request.getRoleId();
-        List<SaveRoleDataPermissionReq.SaveDataPermissionReq> permissionIdList =
+        List<SaveRoleDataPermissionReq.SaveDataPermissionReq> saveDataPermissions =
                 request.getDataPermissions();
 
         // 1. 删除该角色的所有数据权限关联
@@ -371,26 +383,24 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .eq(SysRoleDataPermission::getRoleId, roleId));
 
         // 2. 解析并插入新的权限关联
-        if (CollUtil.isNotEmpty(permissionIdList)) {
+        if (CollUtil.isNotEmpty(saveDataPermissions)) {
             List<SysRoleDataPermission> roleDataPermissions =
-                    permissionIdList.stream()
-                            .map(
-                                    dataPermission -> {
-
-                                        // 验证权限类型是否存在
-                                        SysDataPermission permission =
-                                                sysDataPermissionMapper.selectById(
-                                                        dataPermission.getPermissionId());
-                                        if (permission == null) {
-                                            throw new BusinessException("数据权限类型不存在");
-                                        }
-
-                                        SysRoleDataPermission rdp = new SysRoleDataPermission();
-                                        rdp.setRoleId(roleId);
-                                        rdp.setDataPermissionId(dataPermission.getPermissionId());
-                                        rdp.setBizIds(dataPermission.getBizIds());
-                                        return rdp;
-                                    })
+                    saveDataPermissions.stream()
+                            .flatMap(
+                                    saveDataPermission ->
+                                            saveDataPermission.getBizNames().stream()
+                                                    .map(
+                                                            bizName -> {
+                                                                SysRoleDataPermission permission =
+                                                                        new SysRoleDataPermission();
+                                                                permission.setRoleId(
+                                                                        request.getRoleId());
+                                                                permission.setDataPermissionId(
+                                                                        saveDataPermission
+                                                                                .getPermissionId());
+                                                                permission.setBizName(bizName);
+                                                                return permission;
+                                                            }))
                             .toList();
             sysRoleDataPermissionMapper.insert(roleDataPermissions);
         }
@@ -481,14 +491,14 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         }
 
         // 按 dataPermissionId 分组，收集拼接后的权限ID
-        Map<Long, List<String>> groupedPermissions = new LinkedHashMap<>();
-        for (SysRoleDataPermission rdp : roleDataPermissions) {
-            if (rdp.getDataPermissionId() != null && rdp.getBizIds() != null) {
-                groupedPermissions
-                        .computeIfAbsent(rdp.getDataPermissionId(), k -> new ArrayList<>())
-                        .add(rdp.getBizIds());
-            }
-        }
+        Map<Long, List<String>> groupedPermissions =
+                roleDataPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        Collectors.mapping(
+                                                SysRoleDataPermission::getBizName,
+                                                Collectors.toList())));
         RoleDataPermissionResp permissionResp = new RoleDataPermissionResp();
         permissionResp.setRoleId(roleId);
         // 构建响应
@@ -499,7 +509,7 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                                     RoleDataPermissionResp.DataPermissionListReq permissionListReq =
                                             new RoleDataPermissionResp.DataPermissionListReq();
                                     permissionListReq.setPermissionId(entry.getKey());
-                                    permissionListReq.setBizIdList(entry.getValue());
+                                    permissionListReq.setBizNames(entry.getValue());
                                     return permissionListReq;
                                 })
                         .toList();
@@ -533,41 +543,61 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             return Collections.emptyList();
         }
 
-        // 5. 按 dataPermissionId 分组角色数据权限，收集 bizId
-        Map<Long, List<String>> permissionIdToBizIdsMap = new HashMap<>();
-        for (SysRoleDataPermission rdp : roleDataPermissions) {
-            permissionIdToBizIdsMap
-                    .computeIfAbsent(rdp.getDataPermissionId(), k -> new ArrayList<>())
-                    .add(rdp.getBizIds());
-        }
+        // 4. 构建 permissionId -> bizNames 的映射
+        Map<Long, List<String>> permissionIdToBizNamesMap =
+                roleDataPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        Collectors.mapping(
+                                                SysRoleDataPermission::getBizName,
+                                                Collectors.toList())));
 
-        // 6. 组装返回数据
-        List<DataRightConfigResp> result = new ArrayList<>();
+        // 5. 构建临时数据结构：tableName -> (columnName -> bizNames)
+        Map<String, Map<String, List<String>>> tableColumnBizNamesMap = new HashMap<>();
+
         for (SysDataPermission dataPermission : dataPermissions) {
-            // 获取该权限对应的业务ID列表
-            List<String> bizIds =
-                    permissionIdToBizIdsMap.getOrDefault(
+            String code = dataPermission.getCode();
+            String[] parts = code.split("\\*");
+            if (parts.length != 2) {
+                continue; // 跳过格式不正确的 code
+            }
+
+            String tableName = parts[0];
+            String columnName = parts[1];
+
+            List<String> bizNames =
+                    permissionIdToBizNamesMap.getOrDefault(
                             dataPermission.getId(), Collections.emptyList());
 
-            // 转换为 DataConfig 列表
-            List<DataRightConfigResp.DataConfig> dataList =
-                    bizIds.stream()
-                            .map(
-                                    bizId ->
-                                            DataRightConfigResp.DataConfig.builder()
-                                                    .bizIds(
-                                                            Arrays.stream(bizId.split(","))
-                                                                    .map(Long::parseLong)
-                                                                    .toList())
-                                                    .build())
-                            .toList();
+            tableColumnBizNamesMap
+                    .computeIfAbsent(tableName, k -> new HashMap<>())
+                    .computeIfAbsent(columnName, k -> new ArrayList<>())
+                    .addAll(bizNames);
+        }
+
+        // 6. 转换成最终结果：按表名分组，每个表名下按列名分组
+        List<DataRightConfigResp> result = new ArrayList<>();
+        for (Map.Entry<String, Map<String, List<String>>> tableEntry :
+                tableColumnBizNamesMap.entrySet()) {
+            String tableName = tableEntry.getKey();
+            Map<String, List<String>> columnBizNamesMap = tableEntry.getValue();
+
+            List<DataRightConfigResp.DataConfig> dataList = new ArrayList<>();
+            for (Map.Entry<String, List<String>> columnEntry : columnBizNamesMap.entrySet()) {
+                String columnName = columnEntry.getKey();
+                List<String> bizNames = columnEntry.getValue();
+
+                DataRightConfigResp.DataConfig dataConfig =
+                        DataRightConfigResp.DataConfig.builder()
+                                .columnName(columnName)
+                                .bizNames(bizNames)
+                                .build();
+                dataList.add(dataConfig);
+            }
 
             DataRightConfigResp resp =
-                    DataRightConfigResp.builder()
-                            .tableName(dataPermission.getCode().split("\\*")[0])
-                            .dataList(dataList)
-                            .build();
-
+                    DataRightConfigResp.builder().tableName(tableName).dataList(dataList).build();
             result.add(resp);
         }
 
@@ -829,5 +859,430 @@ public class SysRolePermissionService implements SysRolePermissionApi {
                         .distinct()
                         .toList();
         ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, affectedModuleIds);
+    }
+
+    @Override
+    public List<String> targetType() {
+        return List.of(
+                CheckConstant.SYS_ROLE,
+                CheckConstant.SYS_INTERACTION_PERMISSION,
+                CheckConstant.SYS_SPECIAL_PERMISSION,
+                CheckConstant.SYS_DATA_PERMISSION);
+    }
+
+    @Override
+    public ReferenceCheckResult check(ReferenceContext referenceContext) {
+        switch (referenceContext.getTargetType()) {
+            case CheckConstant.SYS_ROLE -> {
+                return checkRole(referenceContext);
+            }
+            case CheckConstant.SYS_INTERACTION_PERMISSION -> {
+                return checkInteractionPermission(referenceContext);
+            }
+            case CheckConstant.SYS_SPECIAL_PERMISSION -> {
+                return checkSpecialPermission(referenceContext);
+            }
+            case CheckConstant.SYS_DATA_PERMISSION -> {
+                return checkDataPermission(referenceContext);
+            }
+            default -> {
+                return ReferenceCheckResult.empty();
+            }
+        }
+    }
+
+    private ReferenceCheckResult checkDataPermission(ReferenceContext referenceContext) {
+        Long count =
+                sysRoleDataPermissionMapper.selectCount(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("数据权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色数据权限")
+                .build();
+    }
+
+    private ReferenceCheckResult checkSpecialPermission(ReferenceContext referenceContext) {
+        Long count =
+                sysRoleSpecialPermissionMapper.selectCount(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleSpecialPermission::getSpecialPermissionId,
+                                        referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("其它权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色其它权限")
+                .build();
+    }
+
+    private ReferenceCheckResult checkInteractionPermission(ReferenceContext referenceContext) {
+        Long count =
+                sysRoleInteractionPermissionMapper.selectCount(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleInteractionPermission::getPermissionId,
+                                        referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("交互权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色交互权限")
+                .build();
+    }
+
+    private ReferenceCheckResult checkRole(ReferenceContext referenceContext) {
+        StringBuilder sb = new StringBuilder();
+        Long countSum = 0L;
+        Long count =
+                sysRoleMenuMapper.selectCount(
+                        Wrappers.<SysRoleMenu>lambdaQuery()
+                                .eq(SysRoleMenu::getRoleId, referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个菜单权限\n");
+        }
+        count =
+                sysRoleModuleFieldPermissionMapper.selectCount(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleModuleFieldPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个字段权限\n");
+        }
+        count =
+                sysRoleInteractionPermissionMapper.selectCount(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleInteractionPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个交互权限\n");
+        }
+        count =
+                sysRoleDataPermissionMapper.selectCount(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleDataPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个数据权限\n");
+        }
+        count =
+                sysRoleSpecialPermissionMapper.selectCount(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(
+                                        SysRoleSpecialPermission::getRoleId,
+                                        referenceContext.getTargetId()));
+        if (count > 0) {
+            countSum += count;
+            sb.append("角色【")
+                    .append(referenceContext.getTargetName())
+                    .append("】绑定了")
+                    .append(count)
+                    .append("个其它权限");
+        }
+        if (countSum == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(countSum)
+                .message(sb.toString())
+                .build();
+    }
+
+    @Override
+    public List<PersonalSettingResp> getPersonalSettingByRole(Long roleId, Long moduleId) {
+        // 1. 根据 roleId 查询 sys_role_module_field_permission
+        List<SysRoleModuleFieldPermission> roleFieldPermissions =
+                sysRoleModuleFieldPermissionMapper.selectList(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .eq(
+                                        moduleId != null,
+                                        SysRoleModuleFieldPermission::getModuleId,
+                                        moduleId));
+
+        if (CollUtil.isEmpty(roleFieldPermissions)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 获取模块ID列表
+        List<Long> moduleIds =
+                roleFieldPermissions.stream()
+                        .map(SysRoleModuleFieldPermission::getModuleId)
+                        .distinct()
+                        .toList();
+
+        // 3. 查询模块表，筛选出 moduleType 为 LIST 的模块
+        List<SysModule> listModules =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .in(SysModule::getId, moduleIds)
+                                .eq(SysModule::getModuleType, ModuleTypeEnum.LIST)
+                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
+
+        if (CollUtil.isEmpty(listModules)) {
+            return Collections.emptyList();
+        }
+
+        // 4. 获取 LIST 类型的模块ID集合
+        Set<Long> listModuleIds =
+                listModules.stream().map(SysModule::getId).collect(Collectors.toSet());
+
+        // 5. 过滤出属于 LIST 类型模块的字段权限
+        List<SysRoleModuleFieldPermission> filteredPermissions =
+                roleFieldPermissions.stream()
+                        .filter(p -> listModuleIds.contains(p.getModuleId()))
+                        .toList();
+
+        // 6. 构造 moduleId -> 角色有权限的 fieldId 集合
+        Map<Long, Set<Long>> modulePermittedFieldIds =
+                filteredPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleModuleFieldPermission::getModuleId,
+                                        Collectors.mapping(
+                                                SysRoleModuleFieldPermission::getFieldId,
+                                                Collectors.toSet())));
+
+        // 7. 直接用 moduleId 查询字段表（sys_module_field）
+        List<SysModuleField> moduleFields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .in(SysModuleField::getModuleId, listModuleIds));
+
+        // 8. 构造 (moduleId + table + field) -> SysModuleField 的映射，便于快速查找
+        Map<String, SysModuleField> fieldMap =
+                moduleFields.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        f ->
+                                                f.getModuleId()
+                                                        + "_"
+                                                        + f.getTableName()
+                                                        + "_"
+                                                        + f.getFieldCode(),
+                                        f -> f));
+
+        // 9. 批量查询表注释
+        Map<String, String> tableCommentMap = batchQueryTableComments(listModules);
+
+        // 11. 构造响应体
+        List<PersonalSettingResp> result = new ArrayList<>();
+
+        for (SysModule module : listModules) {
+            // 解析 tableHeader
+            String tableHeaderJson = module.getTableHeader();
+            List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> tableHeaders =
+                    parseTableHeader(tableHeaderJson);
+
+            // 获取该模块有权限的 fieldId 集合
+            Set<Long> permittedFieldIds =
+                    modulePermittedFieldIds.getOrDefault(module.getId(), Collections.emptySet());
+            if (permittedFieldIds.isEmpty()) {
+                continue; // 该模块没有字段权限，跳过
+            }
+
+            // 构造 personalSettingColumns
+            List<PersonalSettingResp.PersonalSettingColumn> columns = new ArrayList<>();
+
+            for (com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO header :
+                    tableHeaders) {
+                // 使用复合 key 快速查找字段
+                String fieldKey =
+                        module.getId() + "_" + header.getTable() + "_" + header.getField();
+                SysModuleField moduleField = fieldMap.get(fieldKey);
+
+                // 检查该字段是否存在且有权限
+                if (moduleField != null && permittedFieldIds.contains(moduleField.getId())) {
+                    PersonalSettingResp.PersonalSettingColumn column =
+                            new PersonalSettingResp.PersonalSettingColumn();
+                    column.setId(moduleField.getId());
+                    column.setName(header.getName());
+                    column.setTable(header.getTable());
+                    // 设置表中文名：优先从 tableCommentMap 获取，否则使用英文表名
+                    String tableName =
+                            tableCommentMap.getOrDefault(
+                                    header.getTable().toLowerCase(), header.getTable());
+                    column.setTableName(tableName);
+                    column.setField(header.getField());
+                    column.setWidth(header.getWidth());
+                    column.setFixed(header.getFixed());
+                    column.setSearchType(header.getSearchType());
+                    column.setEllipsis(
+                            header.getEllipsis() != null && header.getEllipsis() ? 1 : 0);
+                    column.setSortable(
+                            header.getSortable() != null && header.getSortable() ? 1 : 0);
+                    column.setSortOrder(header.getSortOrder());
+
+                    columns.add(column);
+                }
+            }
+
+            // 只有有字段权限的模块才加入结果集
+            if (!columns.isEmpty()) {
+                PersonalSettingResp resp = new PersonalSettingResp();
+                resp.setId(module.getId());
+                resp.setModuleName(module.getModuleName());
+                resp.setPersonalSettingColumns(columns);
+                result.add(resp);
+            }
+        }
+
+        return result;
+    }
+
+    /** 解析表头 JSON 字符串 */
+    private List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> parseTableHeader(
+            String tableHeaderJson) {
+        if (tableHeaderJson == null || tableHeaderJson.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper =
+                    new com.fasterxml.jackson.databind.ObjectMapper();
+            return objectMapper.readValue(
+                    tableHeaderJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<
+                            List<
+                                    com.jdec.platform.config.api.dto.common
+                                            .ModuleTableHeaderDTO>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 批量查询表注释
+     *
+     * <p>根据项目编码从配置中获取对应的数据源，然后查询 information_schema 获取表注释
+     *
+     * @param listModules 模块列表
+     * @return 表名 -> 表注释的映射（表名统一转小写）
+     */
+    private Map<String, String> batchQueryTableComments(List<SysModule> listModules) {
+        Map<String, String> tableCommentMap = new HashMap<>();
+
+        if (listModules == null || listModules.isEmpty()) {
+            return tableCommentMap;
+        }
+
+        // 1. 收集所有表名
+        Set<String> allTableNames = new HashSet<>();
+        for (SysModule module : listModules) {
+            String tableHeaderJson = module.getTableHeader();
+            List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> tableHeaders =
+                    parseTableHeader(tableHeaderJson);
+            for (com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO header :
+                    tableHeaders) {
+                if (header.getTable() != null && !header.getTable().trim().isEmpty()) {
+                    allTableNames.add(header.getTable());
+                }
+            }
+        }
+
+        // 移除通配符
+        allTableNames.remove("*");
+        if (allTableNames.isEmpty()) {
+            return tableCommentMap;
+        }
+
+        try {
+            // 1. 获取项目编码
+            String projectNo = AppContext.getProjectNo();
+            if (projectNo == null || projectNo.trim().isEmpty()) {
+                log.warn("项目编码为空，无法查询表注释");
+                return tableCommentMap;
+            }
+
+            // 2. 根据项目编码解析对应的数据源
+            javax.sql.DataSource targetDataSource = dataSourceResolver.resolve(projectNo);
+
+            // 3. 使用目标数据源创建 JdbcTemplate
+            org.springframework.jdbc.core.JdbcTemplate targetJdbcTemplate =
+                    new org.springframework.jdbc.core.JdbcTemplate(targetDataSource);
+
+            // 4. 获取数据库 schema 名称（优先从连接获取，降级使用 projectNo）
+            String tableSchema =
+                    targetJdbcTemplate.execute(
+                            (Connection conn) -> {
+                                String catalog = conn.getCatalog();
+                                return (catalog != null && !catalog.trim().isEmpty())
+                                        ? catalog
+                                        : projectNo;
+                            });
+
+            // 5. 构造 SQL 查询表注释
+            String tableInSql =
+                    allTableNames.stream().map(t -> "?").collect(Collectors.joining(","));
+            String tableCommentSql =
+                    String.format(
+                            "SELECT TABLE_NAME, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (%s)",
+                            tableInSql);
+
+            // 6. 准备参数
+            List<Object> tableParams = new ArrayList<>();
+            tableParams.add(tableSchema);
+            tableParams.addAll(allTableNames);
+
+            // 7. 执行查询
+            List<Map<String, Object>> tableRows =
+                    targetJdbcTemplate.queryForList(tableCommentSql, tableParams.toArray());
+
+            // 8. 构造返回结果（表名统一转小写）
+            for (Map<String, Object> row : tableRows) {
+                String tName = (String) row.get("TABLE_NAME");
+                String tComment = (String) row.get("TABLE_COMMENT");
+                if (tName != null) {
+                    tableCommentMap.put(tName.toLowerCase(), tComment);
+                }
+            }
+
+            log.debug(
+                    "批量查询表注释成功: projectNo={}, schema={}, 查询{}个表，返回{}条结果",
+                    projectNo,
+                    tableSchema,
+                    allTableNames.size(),
+                    tableCommentMap.size());
+
+        } catch (Exception e) {
+            log.warn("批量获取表注释失败，将使用表英文名", e);
+        }
+
+        return tableCommentMap;
     }
 }

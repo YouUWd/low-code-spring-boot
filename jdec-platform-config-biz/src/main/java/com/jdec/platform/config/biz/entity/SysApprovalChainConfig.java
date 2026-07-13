@@ -34,6 +34,9 @@ public class SysApprovalChainConfig implements Serializable {
     @Schema(description = "审批规则")
     private String approvalRule;
 
+    @Schema(description = "驳回规则")
+    private String rejectRule;
+
     @Schema(description = "0~100 approval_rule为3时设置需要审批人数的百分比")
     private Integer roleApprovalPercent;
 

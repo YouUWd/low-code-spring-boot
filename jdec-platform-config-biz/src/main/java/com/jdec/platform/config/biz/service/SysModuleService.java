@@ -12,12 +12,12 @@ import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq.SaveSysModuleReq;
-import com.jdec.platform.config.api.dto.response.MoveModuleResp;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
-import com.jdec.platform.config.api.dto.response.SysModuleListResp;
-import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
-import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckResult;
+import com.jdec.platform.config.biz.check.ReferenceChecker;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.SubjectApi;
@@ -44,7 +44,7 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 @Slf4j
 @com.jdec.platform.shared.datasource.DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysModuleService implements SysModuleApi {
+public class SysModuleService implements SysModuleApi, ReferenceChecker {
 
     // 权限变更类型位掩码
     private static final int PERM_CHANGE_MODULE_RESET = 1; // 1: 重置整个模块的字段权限
@@ -227,10 +227,10 @@ public class SysModuleService implements SysModuleApi {
                 JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
                 String sql =
                         """
-                        SELECT COLUMN_NAME, COLUMN_COMMENT
-                        FROM INFORMATION_SCHEMA.COLUMNS
-                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                        """;
+                                SELECT COLUMN_NAME, COLUMN_COMMENT
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                                """;
                 List<Map<String, Object>> rows =
                         jdbcTemplate.queryForList(sql, module.getProjectNo(), tableName);
                 for (Map<String, Object> row : rows) {
@@ -1401,5 +1401,37 @@ public class SysModuleService implements SysModuleApi {
             }
         }
         return tree;
+    }
+
+    @Override
+    public List<String> targetType() {
+        return List.of(CheckConstant.SYS_STATUS);
+    }
+
+    @Override
+    public ReferenceCheckResult check(ReferenceContext referenceContext) {
+        switch (referenceContext.getTargetType()) {
+            case CheckConstant.SYS_STATUS -> {
+                return checkStatus(referenceContext);
+            }
+            default -> {
+                return ReferenceCheckResult.empty();
+            }
+        }
+    }
+
+    private ReferenceCheckResult checkStatus(ReferenceContext referenceContext) {
+        Long count =
+                sysModuleStatusMapper.selectCount(
+                        Wrappers.<SysModuleStatus>lambdaQuery()
+                                .eq(SysModuleStatus::getStatusId, referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("状态【" + referenceContext.getTargetName() + "】绑定了" + count + "个模块状态")
+                .build();
     }
 }

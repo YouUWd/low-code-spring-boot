@@ -12,6 +12,9 @@ import com.jdec.platform.config.api.dto.request.RoleSubjectReq;
 import com.jdec.platform.config.api.dto.request.RoleUserReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.check.CheckConstant;
+import com.jdec.platform.config.biz.check.ReferenceCheckManager;
+import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleSubject;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
@@ -33,6 +36,7 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.*;
 import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.exception.PopException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.util.*;
@@ -56,6 +60,7 @@ public class SysRoleService implements SysRoleApi {
     private final SubjectApi subjectApi;
     private final DepartmentApi departmentApi;
     private final ConfigChangeMessagePublisher messagePublisher;
+    private final ReferenceCheckManager referenceCheckManager;
 
     @Override
     public Long getUserRoleCount(Long id, Long subjectId, String projectNo) {
@@ -739,6 +744,18 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public void deleteRole(Long roleId) {
+        // 检查关联
+        SysRole sysRole = sysRoleMapper.selectById(roleId);
+        ReferenceContext context =
+                ReferenceContext.builder()
+                        .targetType(CheckConstant.SYS_ROLE)
+                        .targetId(roleId)
+                        .targetName(sysRole.getRoleName())
+                        .build();
+        List<String> check = referenceCheckManager.check(context);
+        if (CollUtil.isNotEmpty(check)) {
+            throw new PopException(String.join("\n", check));
+        }
         // 1. 删除前收集受影响的用户/主体 ID（删除后数据已不存在，无法再查）
         List<SysRoleUser> roleUsers =
                 sysRoleUserMapper.selectList(
@@ -763,12 +780,6 @@ public class SysRoleService implements SysRoleApi {
         // 3. 删除角色用户关联 (sys_role_user)
         sysRoleUserMapper.delete(
                 new LambdaQueryWrapper<SysRoleUser>().eq(SysRoleUser::getRoleId, roleId));
-
-        // 4. 对于每个用户，检查是否还关联其他角色，如果没有则删除sys_user记录
-        if (!userIds.isEmpty()) {
-            cleanupOrphanedUsers(userIds);
-        }
-
         // 5. 删除角色本身
         sysRoleMapper.deleteById(roleId);
 
