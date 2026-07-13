@@ -39,6 +39,9 @@ public class ApprovalChainConfigPageResp {
     @Schema(description = "审批规则名称")
     private String approvalRuleName;
 
+    @Schema(description = "驳回规则")
+    private String rejectRule;
+
     @Schema(description = "角色审批百分比")
     private Integer roleApprovalPercent;
 
@@ -162,6 +165,9 @@ public class ApprovalChainConfigPageResp {
 
         @Schema(description = "日志名称")
         private String logName;
+
+        @Schema(description = "是否自动进入下一任务 1:是 0:否")
+        private Integer autoNextTaskFlag;
 
         @Schema(description = "消息模板ID集合")
         private String msgTemplateIds;

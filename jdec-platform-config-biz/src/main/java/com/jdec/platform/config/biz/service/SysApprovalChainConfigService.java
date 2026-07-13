@@ -227,6 +227,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                     resp.setApprovalRule(config.getApprovalRule());
                                     resp.setApprovalRuleName(
                                             approvalRuleMap.get(config.getApprovalRule()));
+                                    resp.setRejectRule(config.getRejectRule());
                                     resp.setRoleApprovalPercent(config.getRoleApprovalPercent());
                                     resp.setApproveRoleId(config.getApproveRoleId());
                                     resp.setApproveRoleName(roleMap.get(config.getApproveRoleId()));
@@ -295,6 +296,8 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                                         buttonConfig.getButtonId());
                                                 buttonDetail.setIcon(buttonConfig.getIcon());
                                                 buttonDetail.setLogName(buttonConfig.getLogName());
+                                                buttonDetail.setAutoNextTaskFlag(
+                                                        buttonConfig.getAutoNextTaskFlag());
                                                 buttonDetail.setMsgTemplateIds(
                                                         buttonConfig.getMsgTemplateIds());
 
@@ -652,6 +655,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                             resp.setApprovalChainTypeName(
                                     finalChainTypeMap.get(chainConfig.getApprovalChainTypeId()));
                             resp.setApprovalRule(chainConfig.getApprovalRule());
+                            resp.setRejectRule(chainConfig.getRejectRule());
                             resp.setRoleApprovalPercent(chainConfig.getRoleApprovalPercent());
                             resp.setApproveRoleId(chainConfig.getApproveRoleId());
                             resp.setApproverId(chainConfig.getApproverId());
@@ -711,6 +715,9 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                                                     detail.setIcon(btn.getIcon());
                                                                     detail.setLogName(
                                                                             btn.getLogName());
+                                                                    detail.setAutoNextTaskFlag(
+                                                                            btn
+                                                                                    .getAutoNextTaskFlag());
                                                                     detail.setMsgTemplateIds(
                                                                             btn
                                                                                     .getMsgTemplateIds());
@@ -1003,6 +1010,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                         button.setIcon(btn.getIcon());
                                         button.setButtonId(btn.getButtonId());
                                         button.setLogName(btn.getLogName());
+                                        button.setAutoNextTaskFlag(btn.getAutoNextTaskFlag());
                                         button.setMsgTemplateIds(btn.getMsgTemplateIds());
                                         button.setSubjectId(AppContext.getSubjectId());
                                         button.setProjectNo(AppContext.getProjectNo());

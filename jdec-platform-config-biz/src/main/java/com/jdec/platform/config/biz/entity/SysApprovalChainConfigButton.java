@@ -31,6 +31,9 @@ public class SysApprovalChainConfigButton implements Serializable {
     @Schema(description = "日志对应状态描述")
     private String logName;
 
+    @Schema(description = "是否自动进入下一任务 1:是 0:否")
+    private Integer autoNextTaskFlag;
+
     @Schema(description = "消息模板 sys_wechat_template对应ID")
     private String msgTemplateIds;
 
