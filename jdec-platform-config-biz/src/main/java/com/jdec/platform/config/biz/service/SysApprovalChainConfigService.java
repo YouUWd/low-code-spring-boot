@@ -21,6 +21,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
@@ -1161,7 +1162,9 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
         rearrangeStepsAfterDelete(deletedConfig, upStepConfig, nextStepConfig);
     }
 
+    /** 查询审批链配置详情（返回同模块同类型的所有配置） */
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId) {
         // 1. 查询模块默认启用的审批链类型
         long chainTypeId = 0L;

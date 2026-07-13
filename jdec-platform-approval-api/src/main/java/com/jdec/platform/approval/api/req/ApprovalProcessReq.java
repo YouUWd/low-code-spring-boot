@@ -37,10 +37,7 @@ public class ApprovalProcessReq {
     private Long applicantId;
 
     // 交互动作
-    @Schema(
-            description = "交互动作(create/submit/change/cancel/edit/pass/reject)",
-            requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "交互动作不能为空")
+    @Schema(description = "交互动作(create/submit/change/cancel/edit/pass/reject)")
     private String button;
 
     // 驳回原因、取消原因

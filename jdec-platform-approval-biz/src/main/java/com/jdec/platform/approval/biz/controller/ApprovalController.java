@@ -19,7 +19,7 @@ public class ApprovalController {
     private final IApprovalEngine approvalService;
 
     @PostMapping("/BusinessNum")
-    @Operation(summary = "查询单据数量", description = "查询单据数量")
+    @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
     public ApiResponse<Map<String, Object>> getBusinessTypeList(
             @RequestBody ApprovalProcessReq req) {
         return ApiResponse.success(approvalService.getBusinessTypeList(req));

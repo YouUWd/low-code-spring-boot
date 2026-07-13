@@ -17,6 +17,7 @@ import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
@@ -283,6 +284,7 @@ public class SysStatusService implements SysStatusApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public ModuleApprovalChainConfigResp.StatusNode getStatusByValue(Integer statusValue) {
         LambdaQueryWrapper<SysStatus> statusWrapper = new LambdaQueryWrapper<>();
         statusWrapper
