@@ -41,6 +41,6 @@ public class ApprovalProcessReq {
     private String button;
 
     // 驳回原因、取消原因
-    @Schema(description = "驳回原因、取消原因")
+    @Schema(description = "字段变更记录、驳回原因、取消原因")
     private String reason;
 }

@@ -50,6 +50,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final SysStatusApi sysStatusApi;
     private final SysConfigCategoryApi sysConfigCategoryApi;
     private final SysButtonApi sysButtonApi;
+    private final ApprovalActionLogMapper approvalActionLogMapper;
 
     @Override
     @Transactional
@@ -751,6 +752,55 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setStatusBackground(statusNode.getStatusBackground());
         approvalVersionRecord.setStatusFontColor(statusNode.getStatusFontColor());
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
+    }
+
+    // 保存操作日志-----------------------------------------------------------------------
+    @Transactional
+    public void saveActionLog(
+            Long oldStatusGroupId, Long oldStatusId, ApprovalProcessDTO approvalProcessDTO) {
+        // 1. 获取对应节点 action 的操作日志描述
+        String actionName = "";
+        if (List.of("cancel", "submit", "edit", "create")
+                .contains(approvalProcessDTO.getButton())) {
+            SysConfigItemResp modelConfig =
+                    sysConfigCategoryApi.getConfigItemsByValue(
+                            "ButtonStyle", approvalProcessDTO.getButton());
+            if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
+                actionName = "已" + modelConfig.getLabel();
+            }
+        } else {
+            LambdaQueryWrapper<ApprovalChainButton> configWrapper = new LambdaQueryWrapper<>();
+            configWrapper.eq(
+                    ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
+            configWrapper.eq(ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
+            configWrapper.eq(
+                    ApprovalChainButton::getCurrentStep, approvalProcessDTO.getCurrentStep());
+            configWrapper
+                    .eq(ApprovalChainButton::getIcon, approvalProcessDTO.getButton())
+                    .last("LIMIT 1");
+            ApprovalChainButton approvalChainButton =
+                    approvalChainButtonMapper.selectOne(configWrapper);
+            if (Objects.nonNull(approvalChainButton)) {
+                actionName = approvalChainButton.getLogName();
+            }
+        }
+
+        // 2. 构建日志实体
+        LocalDateTime time = LocalDateTime.now();
+        ApprovalActionLog logEntity = new ApprovalActionLog();
+        logEntity.setActionType(approvalProcessDTO.getButton());
+        logEntity.setActionIcon(approvalProcessDTO.getButton());
+        logEntity.setActionName(actionName);
+        logEntity.setSerialNumber(approvalProcessDTO.getSerialNumber());
+        logEntity.setBusinessId(approvalProcessDTO.getRecordId());
+        logEntity.setModuleId(approvalProcessDTO.getModuleId());
+        logEntity.setStatusGroupId(oldStatusGroupId);
+        logEntity.setStatusId(oldStatusId);
+        logEntity.setDescription(approvalProcessDTO.getReason());
+        logEntity.setRealUserId(approvalProcessDTO.getCurrentUserId());
+        logEntity.setCreatedBy(approvalProcessDTO.getApplicantId());
+        logEntity.setCreatedDate(time);
+        approvalActionLogMapper.insert(logEntity);
     }
 
     // =========================辅助方法===============================================

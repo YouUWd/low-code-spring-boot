@@ -29,7 +29,7 @@ public class ApprovalActionLog extends Model<ApprovalActionLog> {
 
     /** 操作类型 */
     @TableField("action_type")
-    private Integer actionType;
+    private String actionType;
 
     /** 操作日志对应的图片类型 */
     @TableField("action_icon")
