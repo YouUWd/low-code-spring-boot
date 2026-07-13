@@ -1011,12 +1011,16 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     }
 
     @Override
-    public List<PersonalSettingResp> getPersonalSettingByRole(Long roleId) {
+    public List<PersonalSettingResp> getPersonalSettingByRole(Long roleId, Long moduleId) {
         // 1. 根据 roleId 查询 sys_role_module_field_permission
         List<SysRoleModuleFieldPermission> roleFieldPermissions =
                 sysRoleModuleFieldPermissionMapper.selectList(
                         Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .eq(
+                                        moduleId != null,
+                                        SysRoleModuleFieldPermission::getModuleId,
+                                        moduleId));
 
         if (CollUtil.isEmpty(roleFieldPermissions)) {
             return Collections.emptyList();
