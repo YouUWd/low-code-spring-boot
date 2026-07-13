@@ -68,7 +68,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             businessRevoke(approvalProcessDTO);
         }
 
-        return Map.of("ok", 1, "business", "business");
+        return Map.of("ok", 1);
     }
 
     // 查询单据审批详细数据--------------------------------------------------------------------
@@ -398,6 +398,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setUpdatedBy(approvalProcessDTO.getApplicantId());
         approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
         approvalVersionRecordMapper.insert(approvalVersionRecord);
+
+        // 写入日志
+        saveActionLog(0L, 0L, approvalProcessDTO);
     }
 
     // 变更业务发起审批申请------------------------------------------------------------------------
@@ -504,6 +507,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setUpdatedBy(approvalProcessDTO.getApplicantId());
         approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
         approvalVersionRecordMapper.insert(approvalVersionRecord);
+
+        // 写入日志
+        saveActionLog(0L, 0L, approvalProcessDTO);
     }
 
     // 审批通过---------------------------------------------------------------------
@@ -601,6 +607,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
             approvalRecord.setStatusValue(approvalChainStatus.getStatusValue());
             approvalVersionRecordMapper.updateById(approvalRecord);
+
+            // 写入日志
+            saveActionLog(
+                    approvalChain.getCurrentStatusGroupId(),
+                    approvalChain.getCurrentStatusChildId(),
+                    approvalProcessDTO);
         }
     }
 
@@ -613,6 +625,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusinessWrapper.eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId());
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
+        approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
+        approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
 
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionRecordWrapper =
                 new LambdaQueryWrapper<>();
@@ -703,6 +717,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 String.join(",", approvalProcessDTO.getApplicantId().toString()));
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
+        // 写入日志
+        saveActionLog(
+                approvalChain.getCurrentStatusGroupId(),
+                approvalChain.getCurrentStatusChildId(),
+                approvalProcessDTO);
     }
 
     // 撤销申请-------------------------------------------------------------------------
@@ -713,6 +732,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusinessWrapper.eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId());
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
+        approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
+        approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
         LambdaQueryWrapper<ApprovalVersionRecord> approvalRecordWrapper =
                 new LambdaQueryWrapper<>();
         approvalRecordWrapper.eq(
@@ -752,6 +773,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setStatusBackground(statusNode.getStatusBackground());
         approvalVersionRecord.setStatusFontColor(statusNode.getStatusFontColor());
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
+
+        // 写入日志
+        saveActionLog(
+                approvalChain.getCurrentStatusGroupId(),
+                approvalChain.getCurrentStatusChildId(),
+                approvalProcessDTO);
     }
 
     // 保存操作日志-----------------------------------------------------------------------
