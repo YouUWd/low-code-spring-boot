@@ -16,6 +16,7 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -137,5 +138,16 @@ public class SysButtonService implements SysButtonApi {
             throw new BusinessException("按钮不存在");
         }
         sysButtonMapper.deleteById(id);
+    }
+
+    @Override
+    public SysButtonResp getButtonById(Long id) {
+        SysButton entity = sysButtonMapper.selectById(id);
+        if (Objects.isNull(entity)) {
+            return null;
+        }
+        SysButtonResp resp = new SysButtonResp();
+        BeanUtils.copyProperties(entity, resp);
+        return resp;
     }
 }

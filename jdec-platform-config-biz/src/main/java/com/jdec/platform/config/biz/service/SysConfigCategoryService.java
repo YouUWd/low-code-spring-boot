@@ -6,10 +6,7 @@ import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
-import com.jdec.platform.config.api.dto.response.AllConfigResp;
-import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
-import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
-import com.jdec.platform.config.api.dto.response.SysConfigTreeNodeResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.SysConfigCategory;
 import com.jdec.platform.config.biz.entity.SysConfigItem;
 import com.jdec.platform.config.biz.mapper.SysConfigCategoryMapper;
@@ -414,5 +411,25 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     @Override
     public void dragItem(SysConfigItemDragReq req) {
         itemService.dragItem(req);
+    }
+
+    @Override
+    public SysConfigItemResp getConfigItemsByValue(String categoryAlias, String itemValue) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        SysConfigItem item =
+                itemMapper.selectOne(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                .eq(SysConfigItem::getValue, itemValue)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                .last("limit 1"));
+        if (Objects.isNull(item)) {
+            return null;
+        }
+        SysConfigItemResp resp = new SysConfigItemResp();
+        BeanUtils.copyProperties(item, resp);
+        return resp;
     }
 }

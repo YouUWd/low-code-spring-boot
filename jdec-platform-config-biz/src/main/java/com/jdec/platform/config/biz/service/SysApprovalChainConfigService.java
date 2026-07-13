@@ -16,6 +16,7 @@ import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckResult;
 import com.jdec.platform.config.biz.check.ReferenceChecker;
 import com.jdec.platform.config.biz.check.ReferenceContext;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.context.AppContext;
@@ -28,7 +29,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
 /** 审批链配置 Service 实现 */
 @Service
@@ -1179,6 +1182,124 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                         .eq(SysApprovalChainConfigButton::getPid, id));
 
         rearrangeStepsAfterDelete(deletedConfig, upStepConfig, nextStepConfig);
+    }
+
+    /** 查询审批链配置详情（返回同模块同类型的所有配置） */
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId) {
+        // 1. 查询模块默认启用的审批链类型
+        long chainTypeId = 0L;
+        LambdaQueryWrapper<SysApprovalChainType> typeQuery = Wrappers.lambdaQuery();
+        typeQuery.eq(SysApprovalChainType::getModuleId, moduleId);
+        typeQuery.eq(SysApprovalChainType::getDefaultFlag, true);
+        SysApprovalChainType chainType = sysApprovalChainTypeMapper.selectOne(typeQuery);
+        chainTypeId = chainType != null ? chainType.getId() : 0L;
+
+        // 2. 依然为空则抛出异常
+        if (chainTypeId == 0) {
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "审批链分类不能为空");
+        }
+
+        // 3. 查询审批链配置列表
+        LambdaQueryWrapper<SysApprovalChainConfig> chainConfigQuery = Wrappers.lambdaQuery();
+        chainConfigQuery.eq(SysApprovalChainConfig::getModuleId, moduleId);
+        chainConfigQuery.eq(SysApprovalChainConfig::getApprovalChainTypeId, chainTypeId);
+        List<SysApprovalChainConfig> chainConfigs =
+                sysApprovalChainConfigMapper.selectList(chainConfigQuery);
+
+        if (CollectionUtils.isEmpty(chainConfigs)) {
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "审批链节点不能为空");
+        }
+
+        ModuleApprovalChainConfigResp result = new ModuleApprovalChainConfigResp();
+        result.setApprovalChainConfigList(new ArrayList<>());
+        result.setButtonList(new ArrayList<>());
+        result.setStatusList(new ArrayList<>());
+        // 4. 遍历生成审批链
+        for (SysApprovalChainConfig chainConfig : chainConfigs) {
+            ModuleApprovalChainConfigResp.ApprovalChainConfigDetail resp =
+                    new ModuleApprovalChainConfigResp.ApprovalChainConfigDetail();
+            resp.setId(chainConfig.getId());
+            resp.setModuleId(chainConfig.getModuleId());
+            resp.setUpStep(chainConfig.getUpStep());
+            resp.setCurrentStep(chainConfig.getCurrentStep());
+            resp.setNextStep(chainConfig.getNextStep());
+            resp.setApprovalChainTypeId(chainConfig.getApprovalChainTypeId());
+            resp.setApprovalRule(chainConfig.getApprovalRule());
+            resp.setRoleApprovalPercent(chainConfig.getRoleApprovalPercent());
+            resp.setApproveRoleId(chainConfig.getApproveRoleId());
+            resp.setApproverId(chainConfig.getApproverId());
+            resp.setDelegateApproverId(chainConfig.getDelegateApproverId());
+            resp.setSkipped(chainConfig.getSkipped());
+            resp.setShowed(chainConfig.getShowed());
+            resp.setChildModuleIds(chainConfig.getChildModuleIds());
+            resp.setCurrentStatusId(chainConfig.getCurrentStatusId());
+            resp.setNextStatusId(chainConfig.getNextStatusId());
+            resp.setAutoApproved(chainConfig.getAutoApproved());
+            resp.setAutoApprovedTime(chainConfig.getAutoApprovedTime());
+            resp.setDeadlineTime(chainConfig.getDeadlineTime());
+            resp.setButtonList(chainConfig.getButtonList());
+            resp.setCollaborated(chainConfig.getCollaborated());
+            resp.setRepeated(chainConfig.getRepeated());
+            resp.setMsgTemplateIds(chainConfig.getMsgTemplateIds());
+            resp.setDefaultFlag(chainConfig.getDefaultFlag());
+            result.getApprovalChainConfigList().add(resp);
+
+            List<SysApprovalChainConfigButton> buttons =
+                    sysApprovalChainConfigButtonMapper.selectList(
+                            new LambdaQueryWrapper<SysApprovalChainConfigButton>()
+                                    .in(SysApprovalChainConfigButton::getPid, chainConfig.getId()));
+            for (SysApprovalChainConfigButton btn : buttons) {
+                ModuleApprovalChainConfigResp.ButtonConfigDetail btndetail =
+                        new ModuleApprovalChainConfigResp.ButtonConfigDetail();
+                btndetail.setId(btn.getId());
+                btndetail.setButtonTypeId(btn.getButtonTypeId());
+                btndetail.setButtonId(btn.getButtonId());
+                btndetail.setIcon(btn.getIcon());
+                btndetail.setLogName(btn.getLogName());
+                btndetail.setMsgTemplateIds(btn.getMsgTemplateIds());
+                // 设置按钮详细信息
+                if (btn.getButtonId() != null) {
+                    SysButton button = sysButtonMapper.selectById(btn.getButtonId());
+                    btndetail.setButtonTitle(button.getTitle());
+                    btndetail.setButtonAlias(button.getAlias());
+                    btndetail.setButtonDescription(button.getDescription());
+                    btndetail.setDefaultBgColor(button.getDefaultBgColor());
+                    btndetail.setDefaultFontColor(button.getDefaultFontColor());
+                    btndetail.setLevitateBgColor(button.getLevitateBgColor());
+                    btndetail.setLevitateFontColor(button.getLevitateFontColor());
+                    btndetail.setSelectedBgColor(button.getSelectedBgColor());
+                    btndetail.setSelectedFontColor(button.getSelectedFontColor());
+                    btndetail.setButtonSortOrder(button.getSortOrder());
+                    btndetail.setButtonShowed(button.getShowed());
+                    btndetail.setButtonEnabled(button.getEnabled());
+                }
+                result.getButtonList().add(btndetail);
+            }
+
+            List<SysStatus> statusConfigs =
+                    sysStatusMapper.selectList(
+                            new LambdaQueryWrapper<SysStatus>()
+                                    .in(
+                                            SysStatus::getId,
+                                            List.of(
+                                                    chainConfig.getCurrentStatusId(),
+                                                    chainConfig.getNextStatusId())));
+
+            for (SysStatus statusConfig : statusConfigs) {
+                ModuleApprovalChainConfigResp.StatusNode node =
+                        new ModuleApprovalChainConfigResp.StatusNode();
+                node.setId(statusConfig.getId());
+                node.setPid(statusConfig.getPid());
+                node.setTitle(statusConfig.getTitle());
+                node.setStatusValue(statusConfig.getStatusValue());
+                node.setStatusBackground(statusConfig.getStatusBackground());
+                node.setStatusFontColor(statusConfig.getStatusFontColor());
+                result.getStatusList().add(node);
+            }
+        }
+        return result;
     }
 
     private void rearrangeStepsAfterDelete(
