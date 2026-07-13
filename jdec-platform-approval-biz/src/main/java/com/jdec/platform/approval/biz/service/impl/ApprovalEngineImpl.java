@@ -51,6 +51,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final SysConfigCategoryApi sysConfigCategoryApi;
     private final SysButtonApi sysButtonApi;
     private final ApprovalActionLogMapper approvalActionLogMapper;
+    private final SysRolePermissionApi sysRolePermissionApi;
 
     @Override
     @Transactional
@@ -158,8 +159,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalWrapper.eq(ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep());
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
         if (approvalChainBusiness.getStatusValue().equals(99)) {
-            if (approvalChain.getCreatedBy().equals(userId)
-                    && checkRight(approvalProcessDTO, "create")) {
+            if (approvalChain.getCreatedBy().equals(userId) && checkRight(approvalProcessDTO)) {
                 operations.add(
                         showButtonInfo(
                                 "change",
@@ -184,7 +184,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                         approvalChainMapper.selectOne(approvalDeleteWrapper);
                 if (Objects.nonNull(approvalChainDelete)
                         && approvalChainDelete.getCreatedBy().equals(userId)
-                        && checkRight(approvalProcessDTO, "create")) {
+                        && checkRight(approvalProcessDTO)) {
                     operations.add(
                             showButtonInfo(
                                     "submit",
@@ -225,7 +225,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
             if (Objects.nonNull(approvalChain)
                     && approvalChain.getCreatedBy().equals(userId)
-                    && checkRight(approvalProcessDTO, "create")) {
+                    && checkRight(approvalProcessDTO)) {
                 operations.add(
                         showButtonInfo(
                                 "cancel",
@@ -787,11 +787,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             Long oldStatusGroupId, Long oldStatusId, ApprovalProcessDTO approvalProcessDTO) {
         // 1. 获取对应节点 action 的操作日志描述
         String actionName = "";
-        if (List.of("cancel", "submit", "edit", "create")
-                .contains(approvalProcessDTO.getButton())) {
+        if (List.of("cancel", "submit", "create").contains(approvalProcessDTO.getButton())) {
             SysConfigItemResp modelConfig =
                     sysConfigCategoryApi.getConfigItemsByValue(
-                            "ButtonStyle", approvalProcessDTO.getButton());
+                            "logStateIcon", approvalProcessDTO.getButton());
             if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
                 actionName = "已" + modelConfig.getLabel();
             }
@@ -1043,9 +1042,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return item;
     }
 
-    // 检查用户是否拥有某个权限----------------------------------------------
-    private Boolean checkRight(ApprovalProcessDTO approvalProcessDTO, String alias) {
-        return true;
+    // 检查角色是否拥有模块的写入权限----------------------------------------------
+    private Boolean checkRight(ApprovalProcessDTO approvalProcessDTO) {
+        return sysRolePermissionApi.checkRoleHasModuleWrite(
+                approvalProcessDTO.getRoleId(), approvalProcessDTO.getModuleId());
     }
 
     // 新增或者变更业务时初始化审批链-------------------------------------------------------
