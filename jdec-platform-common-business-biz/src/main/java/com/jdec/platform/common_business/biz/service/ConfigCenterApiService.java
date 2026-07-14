@@ -2,7 +2,7 @@ package com.jdec.platform.common_business.biz.service;
 
 import com.jdec.platform.common_business.api.dto.response.RoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
-import com.jdec.platform.common_business.biz.dto.configcenter.resp.*;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import java.util.List;
 
 public interface ConfigCenterApiService {

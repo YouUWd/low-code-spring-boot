@@ -1,4 +1,4 @@
-package com.jdec.platform.common_business.biz.dto.configcenter.resp;
+package com.jdec.platform.common_business.biz.dto.configcenter.response;
 
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import java.io.Serializable;

@@ -6,7 +6,7 @@ import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
 import com.jdec.platform.common_business.biz.dto.FormField;
 import com.jdec.platform.common_business.biz.dto.RightInfoVO;
-import com.jdec.platform.common_business.biz.dto.configcenter.resp.*;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;

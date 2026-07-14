@@ -4,7 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.common_business.api.dto.response.RoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
-import com.jdec.platform.common_business.biz.dto.configcenter.resp.*;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
 import java.util.Comparator;

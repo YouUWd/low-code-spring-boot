@@ -6,7 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.jdec.platform.common_business.biz.dto.configcenter.resp.ModuleNodeResp;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.ModuleNodeResp;
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;

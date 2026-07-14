@@ -1,4 +1,4 @@
-package com.jdec.platform.common_business.biz.dto.configcenter.resp;
+package com.jdec.platform.common_business.biz.dto.configcenter.response;
 
 import java.io.Serializable;
 import lombok.Data;

@@ -1,4 +1,4 @@
-package com.jdec.platform.common_business.biz.dto.configcenter.resp;
+package com.jdec.platform.common_business.biz.dto.configcenter.response;
 
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import java.io.Serializable;

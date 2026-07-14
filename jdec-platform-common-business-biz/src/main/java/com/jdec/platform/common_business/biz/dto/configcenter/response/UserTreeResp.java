@@ -1,4 +1,4 @@
-package com.jdec.platform.common_business.biz.dto.configcenter.resp;
+package com.jdec.platform.common_business.biz.dto.configcenter.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;

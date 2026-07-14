@@ -1,4 +1,4 @@
-package com.jdec.platform.common_business.biz.dto.configcenter.req;
+package com.jdec.platform.common_business.biz.dto.configcenter.requst;
 
 import java.io.Serializable;
 import lombok.Builder;
