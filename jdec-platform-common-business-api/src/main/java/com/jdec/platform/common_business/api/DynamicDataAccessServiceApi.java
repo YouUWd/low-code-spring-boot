@@ -4,13 +4,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.common_business.api.dto.common.DataRightValue;
 import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
 import com.jdec.platform.common_business.api.dto.request.DataRightAccessReq;
+import com.jdec.platform.common_business.api.dto.request.ListQueryReq;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import java.util.List;
 import java.util.Map;
 
 /** 动态查询模块列表和详情数据 * */
-public interface DynamicDataAccessService {
+public interface DynamicDataAccessServiceApi {
     /** 动态查询模块详情数据 * */
     Map<String, Object> dynamicQueryDetailData(
             Long subjectId,
@@ -28,7 +29,9 @@ public interface DynamicDataAccessService {
             Long id,
             Page page,
             ModuleFilterInfo moduleFilterInfo,
-            List<Long> moduleSkip);
+            List<Long> moduleSkip,
+            boolean columnFilter,
+            List<Object> primaryTableFilterIds);
 
     Map<Object, Object> dynamicQueryAllModuleDetailData(
             Long subject, Long roleId, Long menuId, Long id, Long relateSearchId);
@@ -46,5 +49,13 @@ public interface DynamicDataAccessService {
             Long menuId,
             Long id,
             Page pageObj,
+            ModuleFilterInfo moduleFilterInfo);
+
+    /** 动态查询模块列表数据 带搜索条件 * */
+    Map<String, Object> dynamicQueryListDataWithSearchByMenuId(
+            Long subjectId,
+            Long roleId,
+            ListQueryReq req,
+            Page page,
             ModuleFilterInfo moduleFilterInfo);
 }
