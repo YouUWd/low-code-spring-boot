@@ -17,7 +17,7 @@ public interface MonitorCenterApiClient {
             summary = "根据用户ID获取用户详情",
             description =
                     "检查逻辑：1. 先查sys_user表 2. 未查到则调用人力UserApi 3. 校验权限（系统设置或主体设置），无权限则抛出异常 4. 返回用户详情")
-    @GetExchange("/sys/role/get-user-roles/detail/{userId}")
+    @GetExchange("/api/config/sys/user/detail/{userId}")
     public ApiResponse<UserDetailResp> getUserDetailByUserId(
             @Parameter(description = "用户ID", required = true, example = "1") @PathVariable
                     Long userId);
