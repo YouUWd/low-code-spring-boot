@@ -1,6 +1,9 @@
 package com.jdec.platform.approval.api;
 
+import com.jdec.platform.approval.api.req.ApprovalDataReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
+import com.jdec.platform.approval.api.resp.ActionLogResp;
+import java.util.List;
 import java.util.Map;
 
 public interface IApprovalEngine {
@@ -12,4 +15,10 @@ public interface IApprovalEngine {
 
     // 查询单据审批详细数据---------------------------------------------------------------------------
     Map<String, Object> getApprovalDetail(ApprovalProcessReq req);
+
+    // 查询单据审批操作日志
+    List<ActionLogResp> getActionLog(ApprovalDataReq req);
+
+    // 查询单据对应版本号和数据ID
+    Map<String, Object> getApprovalChangeData(ApprovalDataReq req);
 }

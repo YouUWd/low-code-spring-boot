@@ -1,10 +1,13 @@
 package com.jdec.platform.approval.biz.controller;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.req.ApprovalDataReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
+import com.jdec.platform.approval.api.resp.ActionLogResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +32,18 @@ public class ApprovalController {
     @Operation(summary = "查询单据数据", description = "查询单据数据")
     public ApiResponse<Map<String, Object>> getApprovalDetail(@RequestBody ApprovalProcessReq req) {
         return ApiResponse.success(approvalService.getApprovalDetail(req));
+    }
+
+    @PostMapping("/Log")
+    @Operation(summary = "查询单据操作日志", description = "查询单据操作日志")
+    public ApiResponse<List<ActionLogResp>> getApprovalLog(@RequestBody ApprovalDataReq req) {
+        return ApiResponse.success(approvalService.getActionLog(req));
+    }
+
+    @PostMapping("/VersionId")
+    @Operation(summary = "查询单据对比版本数据", description = "查询单据对比版本数据ID,版本号")
+    public ApiResponse<Map<String, Object>> getApprovalVersionId(@RequestBody ApprovalDataReq req) {
+        return ApiResponse.success(approvalService.getApprovalChangeData(req));
     }
 
     @PostMapping("/save")

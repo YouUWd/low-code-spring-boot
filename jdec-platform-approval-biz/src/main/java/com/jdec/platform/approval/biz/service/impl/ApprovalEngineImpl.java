@@ -8,7 +8,9 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.req.ApprovalDataReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
+import com.jdec.platform.approval.api.resp.ActionLogResp;
 import com.jdec.platform.approval.biz.dto.ApprovalProcessDTO;
 import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
@@ -124,6 +126,110 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         resultMap.put("done_num", processList.size());
         resultMap.put("all_num", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
         return resultMap;
+    }
+
+    @Override
+    public List<ActionLogResp> getActionLog(ApprovalDataReq req) {
+        Long subjectId = req.getSubjectId();
+        Long recordId = req.getRecordId();
+        Long moduleId = req.getModuleId();
+        List<ActionLogResp> respList = new ArrayList<>();
+        if (Objects.isNull(recordId) || Objects.isNull(moduleId) || Objects.isNull(subjectId)) {
+            throw new BusinessException("subjectId、recordId和moduleId不能为空");
+        }
+        // 1. 查询业务主记录获取number
+        ApprovalVersionRecord approvalVersionRecord =
+                approvalVersionRecordMapper.selectOne(
+                        new LambdaQueryWrapper<ApprovalVersionRecord>()
+                                .eq(ApprovalVersionRecord::getRecordId, recordId)
+                                .eq(ApprovalVersionRecord::getSubjectId, subjectId)
+                                .eq(ApprovalVersionRecord::getModuleId, moduleId));
+        if (Objects.isNull(approvalVersionRecord)) {
+            return respList;
+        }
+        // 2. 构查询条件
+        LambdaQueryWrapper<ApprovalActionLog> wrapper =
+                new LambdaQueryWrapper<ApprovalActionLog>()
+                        .eq(
+                                ApprovalActionLog::getSerialNumber,
+                                approvalVersionRecord.getSerialNumber())
+                        .orderByAsc(ApprovalActionLog::getId);
+
+        List<ApprovalActionLog> actionLogList = approvalActionLogMapper.selectList(wrapper);
+        if (actionLogList.isEmpty()) {
+            return respList;
+        }
+        // 3. 收集需要批量查询的ID
+        for (ApprovalActionLog log : actionLogList) {
+            ActionLogResp actionLogResp = new ActionLogResp();
+            BeanUtils.copyProperties(log, actionLogResp);
+            SysConfigItemResp modelConfig =
+                    sysConfigCategoryApi.getConfigItemsByValue("logStateIcon", log.getActionIcon());
+            actionLogResp.setActionTypeTitle(modelConfig.getLabel());
+            UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(log.getCreatedBy());
+            if (createByUser != null) {
+                ActionLogResp.UserVO userVO = new ActionLogResp.UserVO();
+                userVO.setId(createByUser.getId());
+                userVO.setUserName(createByUser.getUserName());
+                userVO.setUserAvatar(createByUser.getUserAvatar());
+                userVO.setDepartName(createByUser.getDepartName());
+                userVO.setPositionName(createByUser.getPositionName());
+                userVO.setWorkNumber(createByUser.getWorkNumber());
+                actionLogResp.setCreatedUser(userVO);
+            }
+            UserDetailResp realUser = sysUserApi.getUserDetailByUserId(log.getRealUserId());
+            if (realUser != null) {
+                ActionLogResp.UserVO userVO = new ActionLogResp.UserVO();
+                userVO.setId(realUser.getId());
+                userVO.setUserName(realUser.getUserName());
+                userVO.setUserAvatar(realUser.getUserAvatar());
+                userVO.setDepartName(realUser.getDepartName());
+                userVO.setPositionName(realUser.getPositionName());
+                userVO.setWorkNumber(realUser.getWorkNumber());
+                actionLogResp.setRealUser(userVO);
+            }
+            respList.add(actionLogResp);
+        }
+        return respList;
+    }
+
+    @Override
+    public Map<String, Object> getApprovalChangeData(ApprovalDataReq req) {
+        Long subjectId = req.getSubjectId();
+        Long recordId = req.getRecordId();
+        Long moduleId = req.getModuleId();
+        if (Objects.isNull(recordId) || Objects.isNull(moduleId) || Objects.isNull(subjectId)) {
+            throw new BusinessException("subjectId、recordId和moduleId不能为空");
+        }
+        // 1. 查询业务主记录获取number
+        ApprovalVersionRecord approvalVersionRecord =
+                approvalVersionRecordMapper.selectOne(
+                        new LambdaQueryWrapper<ApprovalVersionRecord>()
+                                .eq(ApprovalVersionRecord::getRecordId, recordId)
+                                .eq(ApprovalVersionRecord::getSubjectId, subjectId)
+                                .eq(ApprovalVersionRecord::getModuleId, moduleId));
+        if ((Objects.isNull(approvalVersionRecord))) {
+            return Map.of();
+        }
+        ApprovalVersionRecord oldApprovalVersionRecord =
+                approvalVersionRecordMapper.selectById(approvalVersionRecord.getSourceId());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("currentVersion", approvalVersionRecord.getVersionNo());
+        result.put("sourceVersion", oldApprovalVersionRecord.getVersionNo());
+        result.put("sourceRecordId", oldApprovalVersionRecord.getRecordId());
+        if (approvalVersionRecord.getSerialNo() > 1) {
+            ApprovalVersionRecord preApprovalVersionRecord =
+                    approvalVersionRecordMapper.selectOne(
+                            new LambdaQueryWrapper<ApprovalVersionRecord>()
+                                    .eq(
+                                            ApprovalVersionRecord::getSerialNumber,
+                                            approvalVersionRecord.getSerialNumber())
+                                    .eq(
+                                            ApprovalVersionRecord::getSerialNo,
+                                            approvalVersionRecord.getSerialNo() - 1));
+            result.put("preRecordId", preApprovalVersionRecord.getRecordId());
+        }
+        return result;
     }
 
     // 查询审批步骤绑定的操作按钮----------------------------------------------------------------------
