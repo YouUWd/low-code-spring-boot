@@ -872,10 +872,28 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             case CheckConstant.SYS_DATA_PERMISSION -> {
                 return checkDataPermission(referenceContext);
             }
+            case CheckConstant.SYS_MENU -> {
+                return checkMenu(referenceContext);
+            }
             default -> {
                 return ReferenceCheckResult.empty();
             }
         }
+    }
+
+    private ReferenceCheckResult checkMenu(ReferenceContext referenceContext) {
+        Long count =
+                sysRoleMenuMapper.selectCount(
+                        Wrappers.<SysRoleMenu>lambdaQuery()
+                                .eq(SysRoleMenu::getMenuId, referenceContext.getTargetId()));
+        if (count == 0) {
+            return ReferenceCheckResult.empty();
+        }
+        return ReferenceCheckResult.builder()
+                .referenced(true)
+                .count(count)
+                .message("菜单【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色菜单权限")
+                .build();
     }
 
     private ReferenceCheckResult checkDataPermission(ReferenceContext referenceContext) {
