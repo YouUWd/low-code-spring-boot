@@ -1,8 +1,8 @@
 package com.jdec.platform.common_business.biz.configcenter.client.openfeign;
 
-import com.jdec.platform.common_business.api.dto.response.MenuListResp;
-import com.jdec.platform.common_business.api.dto.response.RoleResp;
-import com.jdec.platform.common_business.api.dto.response.SubjectResp;
+import com.jdec.platform.common_business.api.dto.response.*;
+import com.jdec.platform.common_business.api.dto.response.MenuResp;
+import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import java.util.List;

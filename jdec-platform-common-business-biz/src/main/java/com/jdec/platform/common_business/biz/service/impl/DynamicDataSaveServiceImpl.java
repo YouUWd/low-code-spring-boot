@@ -1,0 +1,1683 @@
+package com.jdec.platform.common_business.biz.service.impl;
+
+import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
+import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
+import com.jdec.platform.common_business.api.dto.common.ModuleField;
+import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
+import com.jdec.platform.common_business.api.dto.common.ModuleTable;
+import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
+import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
+import com.jdec.platform.common_business.api.dto.response.MenuListResp;
+import com.jdec.platform.common_business.biz.common.CommonConstant;
+import com.jdec.platform.common_business.biz.common.DataSourceConstants;
+import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
+import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
+import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
+import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.util.ToolUtils;
+import com.jdec.platform.shared.datasource.DataSource;
+import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.model.ApiResponse;
+import com.jdec.platform.shared.utils.SpringBeanUtil;
+import java.io.Serializable;
+import java.lang.reflect.*;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.BeanUtils;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@DataSource(DataSourceConstants.STUDENT_MANAGE)
+public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
+
+    private static final String TABLE_JOIN_RELATION_TYPE_ONE2MULTI = "1:N";
+
+    private static final String TABLE_JOIN_RELATION_TYPE_ONE2ONE = "1:1";
+
+    private static final String TABLE_JOIN_RELATION_TYPE_MULTI2ONE = "N:1";
+
+    private static final String FIELD_TYPE_COMBINE = "COMBINE";
+
+    private static final String FIELD_TYPE_SIMPLE = "SIMPLE";
+
+    private static final String MYBATIS_MAPPER_SUFFIX = "Mapper";
+
+    private static final String DB_TABLE_FIELD_SEPARATOR = ".";
+
+    private static final String KEY_SEPARATOR = "-";
+
+    private static final String DEFAULT_PRIMARY_KEY = "id";
+
+    private static final String DEFAULT_SUBJECT_KEY = "subject_id";
+
+    private static final String ONE2MULTI_RESULT_KEY_SUFFIX = "List";
+
+    private static final String NOT_ONE2MULTI_RESULT_KEY_SUFFIX = "Object";
+
+    private static final Set<String> DEFAULT_CREATE_DATE_FIELD = Set.of("createDate", "updateDate");
+    private static final List<String> DEFAULT_CREATE_SUBJECT_FIELD =
+            List.of("subjectId", "subjectName");
+    private static final Set<String> DEFAULT_EDITE_DATE_FIELD = Set.of("updateDate");
+
+    private static final Set<String> DEFAULT_EDITE_UN_FILLED_FIELD =
+            Set.of("createDate", "subjectId", "subjectName");
+    private static final Set<String> DEFAULT_CREATE_UN_FILLED_FIELD = Set.of();
+
+    private static final Map<Long, String> SUBJECT_MAP = Map.of(1L, "环保", 2L, "电气", 3L, "能化");
+
+    private static final Integer FIELD_WRITE_PERMISSION_CODE = Integer.valueOf(2);
+
+    private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
+
+    private final ConfigCenterApiClient configCenterApiClient;
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
+        List<Long> moduleIdList =
+                reqList.stream().map(x -> x.getModuleId()).collect(Collectors.toList());
+        // 先校验权限
+        Boolean operatorPermission =
+                hasOperatorPermission(moduleIdList, subjectId, roleId, FormButtonEnum.CREATE);
+        if (!operatorPermission) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_RIGHT_ERROR.getCode(),
+                    String.format("[模块数据新建][%s]模块没有申请权限", moduleIdList.toString()));
+        }
+        // 先 插入主模块数据,默认第一行是 主模块数据
+        List<Object> primaryTableDataList = createMainModuleData(subjectId, roleId, reqList.get(0));
+
+        if (!CollectionUtils.isEmpty(primaryTableDataList)) {
+            Object primaryTableData = primaryTableDataList.get(0);
+            // 如果有子模块更新
+            for (int i = 1; i < reqList.size(); i++) {
+                try {
+                    createSubModuleData(
+                            subjectId,
+                            roleId,
+                            reqList.get(i),
+                            Long.parseLong(
+                                    String.valueOf(
+                                            getId(primaryTableData)))); // 默认就是取主模块主表的ID字段，写入子模块的主表上
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+        if (CollectionUtil.isNotEmpty(primaryTableDataList)
+                && primaryTableDataList.get(0) != null) {
+            try {
+                return getId(primaryTableDataList.get(0));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return null;
+    }
+
+    private Object createSubModuleData(
+            Long subjectId, Long roleId, ModuleSaveReq req, Long parentModuleId) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.CREATE.getKey(),
+                        List.of());
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_RIGHT_ERROR.getCode(),
+                    String.format("[模块数据新建][%d]子模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据新建][%d]子模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        if (Objects.nonNull(moduleFilterInfo.getModuleInfo().getRelateSearchField())) {
+            log.debug(
+                    "子模块关联主模块主表的字段名称:{},主模块的主键id:{}",
+                    moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId);
+        } else {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据新建][%d]子模块没有配置主模块主表的关联字段",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+            // 放入关联键的ID，主模块的主键id
+            // 补充上层模块主表的主键到关联ID字段
+            moduleItem.put(
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + ToolUtils.snakeToCamelCase(
+                                    moduleFilterInfo.getModuleInfo().getRelateSearchField()),
+                    parentModuleId);
+            log.debug(
+                    "补充:{},主模块的主键id:{}到表{}的提交数据",
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId,
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable());
+        }
+
+        // 子模块创建无需校验权限
+        //        ModuleFilterInfo moduleFilterInfo =
+        //                moduleInfoWithPermissionService.filterModuleInfo(
+        //                        subjectId, roleId, req.getModuleId(),
+        // FormButtonEnum.CREATE.getKey());
+        //        if (Objects.isNull(moduleFilterInfo)
+        //                || CollectionUtils.isEmpty(moduleFilterInfo.getSimpleModuleFields())) {
+        //            throw new BusinessException(
+        //                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+        // "模块没有字段编辑权限");
+        //        }
+        //        if (CollectionUtil.isEmpty(req.getModuleData())) {
+        //            throw new BusinessException(
+        //                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "模块数据不能为空");
+        //        }
+
+        List<Object> resultList = new ArrayList<>();
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+            Map<String, Map<String, Object>> tableDataMap = getTableMap(moduleItem);
+            if (CollectionUtil.isEmpty(tableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据新建][%d]子模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            Map<String, Object> primaryData = tableDataMap.get(primaryTable);
+            if (CollectionUtil.isEmpty(primaryData)) {
+                // throw new BusinessException(ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                // "[模块数据新建]子模块主表数据不能为空");
+                log.warn(
+                        String.format(
+                                "[模块数据新建][%d]子模块主表[%s]数据[%s]能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                primaryTable,
+                                tableDataMap.toString()));
+                continue;
+            }
+            try {
+                Map<String, Object> extraDataMap =
+                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                Object primaryObject = insertModuleTable(primaryTable, primaryData, extraDataMap);
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtils.isEmpty(moduleTables)) {
+                    for (ModuleTable table : moduleTables) {
+                        if (CommonConstant.CONFIG_MODULE_TABLE_READ_ONLY.equals(
+                                table.getReadOnly())) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据新建][%d]模块子表[%s]数据只读",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        String joinLeftField = ToolUtils.snakeToCamelCase(table.getJoinLeftField());
+                        String joinRightField =
+                                ToolUtils.snakeToCamelCase(table.getJoinRightField());
+                        Map<String, Object> data = tableDataMap.get(table.getTableName());
+
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据新建][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+                            Map<String, Object> mapData = (Map<String, Object>) data;
+                            mapData.put(joinRightField, getField(primaryObject, joinLeftField));
+                            // 写入关联表的数据
+                            Object o =
+                                    insertModuleTable(
+                                            table.getTableName(),
+                                            tableDataMap.get(table.getTableName()),
+                                            extraDataMap);
+
+                            //                            // 当前的子表数据中 没有ID字段
+                            //                            if
+                            // (!isDataHasTableId(table.getTableName(), mapData)) {
+                            //                                // 写入与主表的 关联字段
+                            //                                mapData.put(joinRightField,
+                            // getField(primaryObject, joinLeftField));
+                            //                            }
+                            //
+                            //                            if
+                            // (!isDataHasTableId(table.getTableName(), mapData)) {
+                            //                                // 走 insert
+                            //                                //
+                            //                                insertModuleTable(
+                            //                                        table.getTableName(),
+                            //
+                            // tableDataMap.get(table.getTableName()),
+                            //                                        extraDataMap);
+                            //
+                            //                            } else {
+                            //                                // 走update
+                            //                                updateModuleTable(
+                            //                                        table.getTableName(),
+                            //
+                            // tableDataMap.get(table.getTableName()),
+                            //                                        getUpdateModuleExtraMap());
+                            //                            }
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                resultList.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return resultList;
+    }
+
+    /**
+     * 创建主 模块数据
+     *
+     * @param subjectId
+     * @param roleId
+     * @param req
+     * @return
+     */
+    private List<Object> createMainModuleData(Long subjectId, Long roleId, ModuleSaveReq req) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.CREATE.getKey(),
+                        List.of());
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_RIGHT_ERROR.getCode(),
+                    String.format("[模块数据新建][%d]主模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据新建][%d]主模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        List<Object> resultList = new ArrayList<>();
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+            Map<String, Map<String, Object>> tableDataMap = getTableMap(moduleItem);
+            if (CollectionUtil.isEmpty(tableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据新建][%d]主模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            // 过滤掉没有权限的字段
+            // tableDataMap = checkAndRemoveUnPermissionField(moduleFilterInfo, tableDataMap, true);
+
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            Map<String, Object> primaryData = tableDataMap.get(primaryTable);
+            if (CollectionUtil.isEmpty(primaryData)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据新建][%d]权限过滤后模块主表[%s]数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
+            }
+            try {
+                Map<String, Object> extraDataMap =
+                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                Object primaryObject = insertModuleTable(primaryTable, primaryData, extraDataMap);
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtils.isEmpty(moduleTables)) {
+                    for (ModuleTable table : moduleTables) {
+
+                        if (CommonConstant.CONFIG_MODULE_TABLE_READ_ONLY.equals(
+                                table.getReadOnly())) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据新建][%d]模块子表[%s]数据只读",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        Map<String, Object> data = tableDataMap.get(table.getTableName());
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据新建][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+
+                            // 写入关联表的数据
+                            Object o =
+                                    insertModuleTable(
+                                            table.getTableName(),
+                                            tableDataMap.get(table.getTableName()),
+                                            extraDataMap);
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                resultList.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return resultList;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Object editMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
+        List<Long> moduleIdList =
+                reqList.stream().map(x -> x.getModuleId()).collect(Collectors.toList());
+        // 先校验权限
+        Boolean operatorPermission =
+                hasOperatorPermission(moduleIdList, subjectId, roleId, FormButtonEnum.EDITE);
+        //        if (!operatorPermission) {
+        //            throw new BusinessException(
+        //                    ApiResponseCodeEnum.BAD_MODULE_FIELD_WRITE_RIGHT_ERROR.getCode(),
+        //                    String.format("[模块数据编辑][%s]模块没有权限", moduleIdList.toString()));
+        //        }
+        List<Object> primaryTableDataList = editMainModuleData(subjectId, roleId, reqList.get(0));
+
+        for (int i = 1; i < reqList.size(); i++) {
+            try {
+                editSubModuleData(
+                        subjectId,
+                        roleId,
+                        reqList.get(i),
+                        Long.valueOf(getId(primaryTableDataList.get(0)).toString()));
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        if (CollectionUtil.isNotEmpty(primaryTableDataList)
+                && primaryTableDataList.get(0) != null) {
+            try {
+                return getId(primaryTableDataList.get(0));
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return null;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public ApiResponse editMultiMenuModuleData(Long subjectId, Long roleId, List<MenuSaveReq> req) {
+        List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
+
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            return ApiResponse.error(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            return ApiResponse.error(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        // 将menuId替换为moduleId
+        req.stream()
+                .forEach(
+                        ele -> {
+                            MenuListResp target =
+                                    bizMenuList.stream()
+                                            .filter(n -> n.getId().equals(ele.getMenuId()))
+                                            .findFirst()
+                                            .orElse(null);
+
+                            if (Objects.nonNull(target)) {
+                                ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
+                                BeanUtils.copyProperties(ele, moduleSaveReq);
+                                moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveList.add(moduleSaveReq);
+                            }
+                        });
+
+        // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
+        Object o = editMultiModuleData(subjectId, roleId, moduleSaveList);
+        return ApiResponse.success(o);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public ApiResponse createMultiMenuModuleData(
+            Long subjectId, Long roleId, List<MenuSaveReq> req) {
+        List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
+
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            return ApiResponse.error(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            return ApiResponse.error(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        // 将menuId替换为moduleId
+        req.stream()
+                .forEach(
+                        ele -> {
+                            MenuListResp target =
+                                    bizMenuList.stream()
+                                            .filter(n -> n.getId().equals(ele.getMenuId()))
+                                            .findFirst()
+                                            .orElse(null);
+
+                            if (Objects.nonNull(target)) {
+                                ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
+                                BeanUtils.copyProperties(ele, moduleSaveReq);
+                                moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveList.add(moduleSaveReq);
+                            }
+                        });
+
+        // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
+        Object o = createMultiModuleData(subjectId, roleId, moduleSaveList);
+        return ApiResponse.success(o);
+    }
+
+    private List<Object> editMainModuleData(Long subjectId, Long roleId, ModuleSaveReq req) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.EDITE.getKey(),
+                        List.of());
+
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                    String.format("[模块数据编辑][%d]模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据编辑][%d]主模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        List<Object> returnResult = new ArrayList<>();
+
+        for (Map<String, Object> moduleData : req.getModuleData()) {
+            Map<String, Map<String, Object>> tableDataMap = getTableMap(moduleData);
+            if (CollectionUtil.isEmpty(tableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据编辑][%d]主模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            // 校验权限
+            // tableDataMap = checkAndRemoveUnPermissionField(moduleFilterInfo, tableDataMap, true);
+            if (CollectionUtil.isEmpty(tableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据编辑][%d]主模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            Map<String, Object> primaryData = tableDataMap.get(primaryTable);
+
+            try {
+                if (CollectionUtil.isEmpty(primaryData)
+                        && isDataOnlyHasTableId(primaryTable, primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]主模块主表[%s]数据不能为空",
+                                    moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
+                }
+
+                if (CollectionUtil.isEmpty(primaryData)
+                        && !isDataHasTableId(primaryTable, primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]主模块主表[%s]数据没有ID字段值",
+                                    moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
+                }
+                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+
+                // 更新主表 数据
+                Object primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据 更新
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtil.isEmpty(moduleTables)) {
+                    for (ModuleTable table : moduleTables) {
+
+                        if (CommonConstant.CONFIG_MODULE_TABLE_READ_ONLY.equals(
+                                table.getReadOnly())) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据只读",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        String joinLeftField = ToolUtils.snakeToCamelCase(table.getJoinLeftField());
+                        String joinRightField =
+                                ToolUtils.snakeToCamelCase(table.getJoinRightField());
+                        Map<String, Object> data = tableDataMap.get(table.getTableName());
+
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+                        if (!isDataHasTableId(table.getTableName(), data)) {
+                            throw new BusinessException(
+                                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                    String.format(
+                                            "[模块数据编辑][%d]主模块子表[%s]数据没有ID字段值",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                        }
+                        Object jlf = getField(primaryObject, joinLeftField);
+                        if (jlf == null) {
+                            BaseMapper primaryMapper =
+                                    SpringBeanUtil.getBean(
+                                            StrUtil.toCamelCase(primaryTable)
+                                                    + MYBATIS_MAPPER_SUFFIX,
+                                            BaseMapper.class);
+                            Object dataBaseData =
+                                    primaryMapper.selectById((Serializable) primaryObjectId);
+                            if (dataBaseData == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]主模块主表[%s]数据[%s]数据库不存在",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                primaryTable,
+                                                primaryObjectId.toString()));
+                            }
+                            jlf = getField(dataBaseData, joinLeftField);
+                            if (jlf == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]主模块子表[%s]数据无法关联主表ID",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                table.getTableName()));
+                            }
+                        }
+                        Map<String, Object> mapData = (Map<String, Object>) data;
+                        mapData.put(joinRightField, jlf);
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+                            updateModuleTable(
+                                    table.getTableName(),
+                                    tableDataMap.get(table.getTableName()),
+                                    extraDataMap);
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                returnResult.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return returnResult;
+    }
+
+    private List<Object> editSubModuleData(
+            Long subjectId, Long roleId, ModuleSaveReq req, Long parentModuleId) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.EDITE.getKey(),
+                        List.of());
+
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_WRITE_RIGHT_ERROR.getCode(),
+                    String.format("[模块数据编辑][%d]模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据编辑][%d]子模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        if (Objects.nonNull(moduleFilterInfo.getModuleInfo().getRelateSearchField())) {
+            log.debug(
+                    "子模块{}关联主模块主表的字段名称:{},主模块的主键id:{}",
+                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                    moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId);
+        } else {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据编辑][%d]子模块没有配置主模块主表的关联字段",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+            // 放入关联键的ID，主模块的主键id
+            // 补充上层模块主表的主键到关联ID字段
+            moduleItem.put(
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId);
+            log.debug(
+                    "补充:{},主模块的主键id:{}到表{}的提交数据",
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId,
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable());
+        }
+
+        List<Object> returnResult = new ArrayList<>();
+
+        for (Map<String, Object> moduleData : req.getModuleData()) {
+            Map<String, Map<String, Object>> tableDataMap = getTableMap(moduleData);
+            if (CollectionUtil.isEmpty(tableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据编辑][%d]子模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            Map<String, Object> primaryData = tableDataMap.get(primaryTable);
+
+            try {
+                if (CollectionUtil.isEmpty(primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]子模块主表数据不能为空",
+                                    moduleFilterInfo.getModuleInfo().getModuleId()));
+                }
+                if (isDataOnlyHasTableId(primaryTable, primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]子模块主表[%s]数据不能为空",
+                                    moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
+                }
+                Object primaryObject;
+                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+                Boolean isMainTableInsert = false;
+                // 更新
+                if (isDataHasTableId(primaryTable, primaryData)) {
+                    primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                    isMainTableInsert = false;
+                } else {
+                    // 插入
+                    primaryObject =
+                            insertModuleTable(
+                                    primaryTable,
+                                    primaryData,
+                                    getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
+                    isMainTableInsert = true;
+                }
+
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据更新
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtil.isEmpty(moduleTables)) {
+
+                    for (ModuleTable table : moduleTables) {
+                        if (CommonConstant.CONFIG_MODULE_TABLE_READ_ONLY.equals(
+                                table.getReadOnly())) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据只读",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        String joinLeftField = ToolUtils.snakeToCamelCase(table.getJoinLeftField());
+                        String joinRightField =
+                                ToolUtils.snakeToCamelCase(table.getJoinRightField());
+                        Map<String, Object> data = tableDataMap.get(table.getTableName());
+
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+
+                        Object jlf = getField(primaryObject, joinLeftField);
+                        if (jlf == null) {
+                            BaseMapper primaryMapper =
+                                    SpringBeanUtil.getBean(
+                                            StrUtil.toCamelCase(primaryTable)
+                                                    + MYBATIS_MAPPER_SUFFIX,
+                                            BaseMapper.class);
+                            Object dataBaseData =
+                                    primaryMapper.selectById((Serializable) primaryObjectId);
+                            if (dataBaseData == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]模块主表[%s]数据[%s]数据库没有",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                table.getTableName(),
+                                                primaryObjectId.toString()));
+                            }
+                            jlf = getField(dataBaseData, joinLeftField);
+                            if (jlf == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]子模块子表[%s]数据无法关联主表ID",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                table.getTableName()));
+                            }
+                        }
+
+                        Object o = null;
+
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+                            if (isMainTableInsert) {
+
+                                o =
+                                        insertModuleTable(
+                                                table.getTableName(),
+                                                tableDataMap.get(table.getTableName()),
+                                                getCreateModuleExtraMap(
+                                                        subjectId, SUBJECT_MAP.get(subjectId)));
+
+                            } else {
+                                if (!isDataHasTableId(table.getTableName(), data)) {
+                                    throw new BusinessException(
+                                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                            String.format(
+                                                    "[模块数据编辑][%d]子模块子表[%s]数据没有ID字段值",
+                                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                    table.getTableName()));
+                                }
+                                o =
+                                        updateModuleTable(
+                                                table.getTableName(),
+                                                tableDataMap.get(table.getTableName()),
+                                                extraDataMap);
+                            }
+
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                returnResult.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return returnResult;
+    }
+
+    private List<Object> editModuleData(Long subjectId, Long roleId, ModuleSaveReq req) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.EDITE.getKey(),
+                        List.of());
+
+        // 获取创建权限
+        ModuleFilterInfo moduleFilterInfoCreate =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.CREATE.getKey(),
+                        List.of());
+
+        if (Objects.isNull(moduleFilterInfo)
+                || CollectionUtils.isEmpty(moduleFilterInfo.getAllFields())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(), "模块没有字段编辑权限");
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "模块数据不能为空");
+        }
+
+        List<Object> returnResult = new ArrayList<>();
+
+        for (Map<String, Object> moduleData : req.getModuleData()) {
+            Map<String, Map<String, Object>> tableDataMap = getTableMap(moduleData);
+            if (CollectionUtil.isEmpty(tableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "模块数据不能为空");
+            }
+
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            Map<String, Object> primaryData = tableDataMap.get(primaryTable);
+
+            String model = "EDIT";
+            try {
+                // 不是附属子表更新，主表更新默认edit
+                if (Objects.isNull(moduleFilterInfo.getModuleInfo().getRelateSearchField())) {
+                    model = "EDIT";
+                    checkFieldPermission(moduleFilterInfo, tableDataMap);
+                } else {
+                    // 附属子表更新，有可能是新增，要判断是否有主键id传递
+                    // 编辑模式
+                    if (isDataHasTableId(primaryTable, primaryData)) {
+                        log.debug("当前数据编辑，主表名称{}主键id:{}", primaryTable, primaryData.get("id"));
+                        model = "EDIT";
+                        checkFieldPermission(moduleFilterInfo, tableDataMap);
+                    } else {
+                        log.debug("当前数据编辑，主表名称{}", primaryData.get("id"));
+                        model = "CREAT";
+                        checkFieldPermission(moduleFilterInfoCreate, tableDataMap);
+                    }
+                }
+
+                if (primaryData == null) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "模块主表数据不能为空");
+                }
+                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+
+                Object primaryObject;
+                if (model.equals("EDIT")) {
+                    primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                } else {
+                    primaryObject =
+                            insertModuleTable(
+                                    primaryTable,
+                                    primaryData,
+                                    getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
+                }
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtil.isEmpty(moduleTables)) {
+
+                    for (ModuleTable table : moduleTables) {
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        String joinLeftField = ToolUtils.snakeToCamelCase(table.getJoinLeftField());
+                        String joinRightField =
+                                ToolUtils.snakeToCamelCase(table.getJoinRightField());
+                        Object data = tableDataMap.get(table.getTableName());
+                        if (data == null) {
+                            continue;
+                        }
+                        Object jlf = getField(primaryObject, joinLeftField);
+                        if (jlf == null) {
+                            BaseMapper primaryMapper =
+                                    SpringBeanUtil.getBean(
+                                            StrUtil.toCamelCase(primaryTable)
+                                                    + MYBATIS_MAPPER_SUFFIX,
+                                            BaseMapper.class);
+                            Object dataBaseData =
+                                    primaryMapper.selectById((Serializable) primaryObjectId);
+                            if (dataBaseData == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        "模块数据不能为空");
+                            }
+                            jlf = getField(dataBaseData, joinLeftField);
+                            if (jlf == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        "模块数据不能为空");
+                            }
+                        }
+                        Map<String, Object> mapData = (Map<String, Object>) data;
+                        mapData.put(joinRightField, jlf);
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+                            updateModuleTable(
+                                    table.getTableName(),
+                                    tableDataMap.get(table.getTableName()),
+                                    extraDataMap);
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                returnResult.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return returnResult;
+    }
+
+    private Class<?> getEntityClass(Object proxyInstance) {
+        Class<?>[] interfaces = proxyInstance.getClass().getInterfaces();
+
+        Class mapperClass = interfaces[0];
+
+        // 1. 获取当前接口所实现的带有泛型信息的父接口列表
+        Type[] types = mapperClass.getGenericInterfaces();
+        for (Type type : types) {
+            if (type instanceof ParameterizedType) {
+                ParameterizedType parameterizedType = (ParameterizedType) type;
+                // 2. 判断该父接口是否为你期望的 BaseMapper
+                if (parameterizedType.getRawType() == BaseMapper.class) {
+                    // 3. 获取实际类型参数列表，并返回第一个泛型参数（即实体类）
+                    return (Class<?>) parameterizedType.getActualTypeArguments()[0];
+                }
+            }
+        }
+        return null;
+    }
+
+    private Map<String, Map<String, Object>> getTableMap(Map<String, Object> paramMap) {
+        Map<String, Map<String, Object>> tableMap = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : paramMap.entrySet()) {
+            String key = e.getKey();
+            List<String> schemKeyList = Splitter.on(".").splitToList(key);
+            if (CollectionUtil.isEmpty(schemKeyList) || schemKeyList.size() != 2) {
+                continue;
+            }
+            if (!tableMap.containsKey(schemKeyList.get(0))) {
+                tableMap.putIfAbsent(schemKeyList.get(0), new LinkedHashMap<>());
+            }
+            tableMap.get(schemKeyList.get(0)).put(schemKeyList.get(1), e.getValue());
+        }
+        return tableMap;
+    }
+
+    private Object insertModuleTable(
+            String tableName, Map<String, Object> dataMap, Map<String, Object> extraMap)
+            throws NoSuchMethodException,
+                    InvocationTargetException,
+                    InstantiationException,
+                    IllegalAccessException {
+        // 主表查询Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+        Class primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+        Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+        primaryConstructor.setAccessible(true);
+        Object primaryInstance = primaryConstructor.newInstance();
+        fillData(
+                primaryInstance,
+                (Map<String, Object>) dataMap,
+                false,
+                DEFAULT_CREATE_UN_FILLED_FIELD);
+
+        fillData(primaryInstance, extraMap, false, DEFAULT_CREATE_UN_FILLED_FIELD);
+        //        fillCreateDateField(primaryInstance, DEFAULT_CREATE_DATE_FIELD);
+        //        fillSubjectField(
+        //                primaryInstance,
+        //                DEFAULT_CREATE_SUBJECT_FIELD,
+        //                subjectId,
+        //                SUBJECT_MAP.get(subjectId));
+        primaryMapper.insert(primaryInstance);
+        return primaryInstance;
+    }
+
+    private Object updateModuleTable(
+            String tableName, Map<String, Object> dataMap, Map<String, Object> extraMap)
+            throws NoSuchMethodException,
+                    InvocationTargetException,
+                    InstantiationException,
+                    IllegalAccessException {
+        // 主表查询Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+        Class primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+        Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+        primaryConstructor.setAccessible(true);
+        Object primaryInstance = primaryConstructor.newInstance();
+        fillData(
+                primaryInstance,
+                (Map<String, Object>) dataMap,
+                true,
+                DEFAULT_EDITE_UN_FILLED_FIELD);
+        fillData(primaryInstance, extraMap, false, DEFAULT_EDITE_UN_FILLED_FIELD);
+        //        fillCreateDateField(primaryInstance, DEFAULT_CREATE_DATE_FIELD);
+        //        fillSubjectField(
+        //                primaryInstance,
+        //                DEFAULT_CREATE_SUBJECT_FIELD,
+        //                subjectId,
+        //                SUBJECT_MAP.get(subjectId));
+        primaryMapper.updateById(primaryInstance);
+        return primaryInstance;
+    }
+
+    private Object deleteModuleTable(
+            String tableName, Map<String, Object> dataMap, Map<String, Object> extraMap)
+            throws NoSuchMethodException,
+                    InvocationTargetException,
+                    InstantiationException,
+                    IllegalAccessException {
+        // 主表查询Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+        Class primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+        Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+        primaryConstructor.setAccessible(true);
+        Object primaryInstance = primaryConstructor.newInstance();
+        fillData(
+                primaryInstance,
+                (Map<String, Object>) dataMap,
+                true,
+                DEFAULT_CREATE_UN_FILLED_FIELD);
+        fillData(primaryInstance, extraMap, false, DEFAULT_CREATE_UN_FILLED_FIELD);
+        //        fillCreateDateField(primaryInstance, DEFAULT_CREATE_DATE_FIELD);
+        //        fillSubjectField(
+        //                primaryInstance,
+        //                DEFAULT_CREATE_SUBJECT_FIELD,
+        //                subjectId,
+        //                SUBJECT_MAP.get(subjectId));
+        primaryMapper.deleteById(primaryInstance);
+        return primaryInstance;
+    }
+
+    private Map<String, Object> getCreateModuleExtraMap(Object... values) {
+        Map<String, Object> dataMap = new LinkedHashMap<>();
+        for (String key : DEFAULT_CREATE_DATE_FIELD) {
+            dataMap.put(key, LocalDateTime.now());
+        }
+        if (values != null) {
+            // 约定 0...1 是 subject 信息
+            for (int i = 0; i < values.length && i <= 1; i++) {
+                dataMap.put(DEFAULT_CREATE_SUBJECT_FIELD.get(i), values[i]);
+            }
+        }
+        return dataMap;
+    }
+
+    private Map<String, Object> getUpdateModuleExtraMap(Object... values) {
+        Map<String, Object> dataMap = new LinkedHashMap<>();
+        for (String key : DEFAULT_EDITE_DATE_FIELD) {
+            dataMap.put(key, LocalDateTime.now());
+        }
+        //        if (values != null) {
+        //            // 约定 0...1 是 subject 信息
+        //            for (int i = 0; i < values.length && i <= 1; i++) {
+        //                dataMap.put(DEFAULT_CREATE_SUBJECT_FIELD.get(i), values[i]);
+        //            }
+        //        }
+        return dataMap;
+    }
+
+    private Boolean isDataHasTableId(String tableName, Map<String, Object> dataMap)
+            throws NoSuchMethodException,
+                    InvocationTargetException,
+                    InstantiationException,
+                    IllegalAccessException {
+        // 主表查询Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+        Class primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+        Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+        primaryConstructor.setAccessible(true);
+        Object primaryInstance = primaryConstructor.newInstance();
+        Field[] fields = primaryInstance.getClass().getDeclaredFields();
+        for (Field f : fields) {
+            TableId id = f.getDeclaredAnnotation(TableId.class);
+            if (id != null && containsKey(dataMap, id.value())) {
+                return getValue(dataMap, id.value()) != null
+                        && StringUtils.isNotEmpty(getValue(dataMap, id.value()).toString());
+            }
+        }
+        return Boolean.FALSE;
+    }
+
+    private Boolean isDataOnlyHasTableId(String tableName, Map<String, Object> dataMap)
+            throws NoSuchMethodException,
+                    InvocationTargetException,
+                    InstantiationException,
+                    IllegalAccessException {
+        // 主表查询Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+        Class primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+        Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+        primaryConstructor.setAccessible(true);
+        Object primaryInstance = primaryConstructor.newInstance();
+        Field[] fields = primaryInstance.getClass().getDeclaredFields();
+        String idKey = null;
+        for (Field f : fields) {
+            TableId id = f.getDeclaredAnnotation(TableId.class);
+            if (id != null) {
+                idKey = id.value();
+                break;
+            }
+        }
+        return idKey != null
+                && dataMap.size() == 1
+                && containsKey(dataMap, idKey)
+                && getValue(dataMap, idKey) != null;
+    }
+
+    private void fillData(
+            Object instance,
+            Map<String, Object> data,
+            boolean fillId,
+            Set<String> unfilledFieldList)
+            throws IllegalAccessException {
+        Field[] fields = instance.getClass().getDeclaredFields();
+        for (Field f : fields) {
+            if (fillId) {
+                TableId id = f.getDeclaredAnnotation(TableId.class);
+                if (id != null && containsKey(data, id.value())) {
+                    fillField(instance, f, getValue(data, id.value()));
+                }
+            }
+            // 从前端传过来的表单数据中获取对应字段的值填充到数据库实体，并过滤掉不需要设置的字段
+            if (f != null
+                    && containsKey(data, f.getName())
+                    && !unfilledFieldList.contains(f.getName())) {
+                fillField(instance, f, getValue(data, f.getName()));
+            }
+        }
+    }
+
+    //    private void fillCreateDateField(Object instance, Set<String> fieldSet)
+    //            throws IllegalAccessException {
+    //        Field[] fields = instance.getClass().getDeclaredFields();
+    //        for (Field f : fields) {
+    //            TableField tf = f.getDeclaredAnnotation(TableField.class);
+    //            if (tf != null && fieldSet.contains(tf.value())) {
+    //                fillField(instance, f, LocalDateTime.now());
+    //            }
+    //        }
+    //    }
+    //
+    //    private void fillSubjectField(
+    //            Object instance, List<String> fieldSet, Long subjectId, String subjectName)
+    //            throws IllegalAccessException {
+    //        Field[] fields = instance.getClass().getDeclaredFields();
+    //        for (Field f : fields) {
+    //            TableField tf = f.getDeclaredAnnotation(TableField.class);
+    //            if (tf != null && fieldSet.get(0).equals(tf.value())) {
+    //                fillField(instance, f, subjectId);
+    //            }
+    //            if (tf != null && fieldSet.get(1).equals(tf.value())) {
+    //                fillField(instance, f, subjectName);
+    //            }
+    //        }
+    //    }
+
+    private Object getId(Object instance) throws IllegalAccessException {
+        Field[] fields = instance.getClass().getDeclaredFields();
+        for (Field f : fields) {
+            TableId id = f.getDeclaredAnnotation(TableId.class);
+            if (id != null) {
+                f.setAccessible(true);
+                return f.get(instance);
+            }
+        }
+        return null;
+    }
+
+    private Object getField(Object instance, String field) throws IllegalAccessException {
+        Field[] fields = instance.getClass().getDeclaredFields();
+        for (Field f : fields) {
+            TableId id = f.getDeclaredAnnotation(TableId.class);
+            if (id != null && StringUtils.equalsIgnoreCase(id.value(), field)) {
+                f.setAccessible(true);
+                return f.get(instance);
+            }
+
+            if (f != null && StringUtils.equalsIgnoreCase(f.getName(), field)) {
+                f.setAccessible(true);
+                return f.get(instance);
+            }
+        }
+        return null;
+    }
+
+    private void fillField(Object instance, Field f, Object parameter)
+            throws IllegalAccessException {
+        if (parameter == null) {
+            return;
+        }
+        f.setAccessible(true);
+        Class c = f.getType();
+        if (c == String.class) {
+            f.set(instance, parameter.toString());
+        } else if (c == Long.class) {
+            if (parameter.getClass() == String.class) {
+                f.set(
+                        instance,
+                        StringUtils.isEmpty(parameter.toString())
+                                ? null
+                                : Long.valueOf(parameter.toString()));
+            } else if (parameter.getClass() == Long.class) {
+                f.set(instance, parameter);
+            } else if (parameter.getClass() == Integer.class) {
+                f.set(instance, Long.valueOf(parameter.toString()));
+            }
+        } else if (c == Integer.class) {
+            if (parameter.getClass() == String.class) {
+                f.set(
+                        instance,
+                        StringUtils.isEmpty(parameter.toString())
+                                ? null
+                                : Integer.valueOf(parameter.toString()));
+            } else if (parameter.getClass() == Long.class) {
+                f.set(instance, Integer.valueOf(parameter.toString()));
+            } else if (parameter.getClass() == Integer.class) {
+                f.set(instance, parameter);
+            }
+        } else if (c == Double.class) {
+            if (parameter.getClass() == String.class) {
+                f.set(
+                        instance,
+                        StringUtils.isEmpty(parameter.toString())
+                                ? null
+                                : Double.valueOf(parameter.toString()));
+            } else if (parameter.getClass() == Long.class) {
+                f.set(instance, Double.valueOf(parameter.toString()));
+            } else if (parameter.getClass() == Integer.class) {
+                f.set(instance, Double.valueOf(parameter.toString()));
+            }
+        } else if (c == LocalDateTime.class) {
+            if (parameter.getClass() == String.class) {
+                f.set(
+                        instance,
+                        DateUtil.parseLocalDateTime(
+                                parameter.toString(), DatePattern.NORM_DATETIME_PATTERN));
+            } else if (parameter.getClass() == LocalDateTime.class) {
+                f.set(instance, parameter);
+            }
+        }
+    }
+
+    private boolean containsKey(Map<String, Object> paraMap, String fieldKey) {
+        if (CollectionUtil.isEmpty(paraMap)) {
+            return false;
+        }
+        return paraMap.keySet().stream().anyMatch(x -> StringUtils.equalsIgnoreCase(x, fieldKey));
+    }
+
+    private Object getValue(Map<String, Object> paraMap, String fieldKey) {
+        if (CollectionUtil.isEmpty(paraMap)) {
+            return null;
+        }
+        Map.Entry e =
+                paraMap.entrySet().stream()
+                        .filter(x -> StringUtils.equalsIgnoreCase(x.getKey(), fieldKey))
+                        .findFirst()
+                        .orElseGet(() -> null);
+        return e != null ? e.getValue() : null;
+    }
+
+    private Boolean checkFieldPermission(
+            ModuleFilterInfo moduleFilterInfo, Map<String, Map<String, Object>> dataMap) {
+
+        Map<String, Map<String, Integer>> tableFieldMap = new LinkedHashMap<>();
+        for (ModuleField field : moduleFilterInfo.getSimpleModuleFields()) {
+            if (!tableFieldMap.containsKey(field.getTableName())) {
+                tableFieldMap.putIfAbsent(field.getTableName(), new LinkedHashMap<>());
+            }
+            tableFieldMap
+                    .get(field.getTableName())
+                    .put(field.getFieldCode(), field.getPermissionCode());
+        }
+
+        if (!tableFieldMap.containsKey(moduleFilterInfo.getModuleInfo().getPrimaryTable())) {
+            tableFieldMap.putIfAbsent(
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable(), new LinkedHashMap<>());
+        }
+
+        if (CollectionUtil.isNotEmpty(moduleFilterInfo.getModuleTableList())) {
+            for (ModuleTable moduleTable : moduleFilterInfo.getModuleTableList()) {
+                // 关联字段，ID 默认有权限编辑
+                tableFieldMap
+                        .get(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                        .put(moduleTable.getJoinLeftField(), FIELD_WRITE_PERMISSION_CODE);
+                log.info(
+                        "放开权限校验字段,模块={},表={},字段={}",
+                        moduleFilterInfo.getModuleInfo().getModuleId(),
+                        moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                        moduleTable.getJoinLeftField());
+                if (!tableFieldMap.containsKey(moduleTable.getTableName())) {
+                    tableFieldMap.putIfAbsent(moduleTable.getTableName(), new LinkedHashMap<>());
+                }
+                tableFieldMap
+                        .get(moduleTable.getTableName())
+                        .put(moduleTable.getJoinRightField(), FIELD_WRITE_PERMISSION_CODE);
+                log.info(
+                        "放开权限校验字段,模块={},表={},字段={}",
+                        moduleFilterInfo.getModuleInfo().getModuleId(),
+                        moduleTable.getTableName(),
+                        moduleTable.getJoinRightField());
+
+                tableFieldMap
+                        .get(moduleTable.getTableName())
+                        .put(DEFAULT_PRIMARY_KEY, FIELD_WRITE_PERMISSION_CODE);
+                log.info(
+                        "放开权限校验字段,模块={},表={},字段={}",
+                        moduleFilterInfo.getModuleInfo().getModuleId(),
+                        moduleTable.getTableName(),
+                        DEFAULT_PRIMARY_KEY);
+            }
+        }
+        tableFieldMap
+                .get(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                .put(DEFAULT_PRIMARY_KEY, FIELD_WRITE_PERMISSION_CODE);
+        log.info(
+                "放开权限校验字段,模块={},表={},字段={}",
+                moduleFilterInfo.getModuleInfo().getModuleId(),
+                moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                DEFAULT_PRIMARY_KEY);
+
+        List<String> result = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> tableData : dataMap.entrySet()) {
+            Map<String, Integer> fieldMap = tableFieldMap.get(tableData.getKey());
+            for (Map.Entry<String, Object> value : tableData.getValue().entrySet()) {
+                if (!fieldMap.containsKey(value.getKey())
+                        || !FIELD_WRITE_PERMISSION_CODE.equals(fieldMap.get(value.getKey()))) {
+                    result.add(tableData.getKey() + DB_TABLE_FIELD_SEPARATOR + value.getKey());
+                }
+            }
+        }
+        if (CollectionUtil.isNotEmpty(result)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_WRITE_RIGHT_ERROR.getCode(),
+                    "模块字段没有编辑权限[" + Joiner.on(",").join(result) + "]");
+        }
+        return Boolean.TRUE;
+    }
+
+    private Map<String, Map<String, Integer>> getFieldPermission(
+            ModuleFilterInfo moduleFilterInfo) {
+
+        Map<String, Map<String, Integer>> tableFieldMap = new LinkedHashMap<>();
+        for (ModuleField field : moduleFilterInfo.getSimpleModuleFields()) {
+            if (!tableFieldMap.containsKey(field.getTableName())) {
+                tableFieldMap.putIfAbsent(field.getTableName(), new LinkedHashMap<>());
+            }
+            tableFieldMap
+                    .get(field.getTableName())
+                    .put(field.getFieldCode(), field.getPermissionCode());
+        }
+
+        if (!tableFieldMap.containsKey(moduleFilterInfo.getModuleInfo().getPrimaryTable())) {
+            tableFieldMap.putIfAbsent(
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable(), new LinkedHashMap<>());
+        }
+
+        if (CollectionUtil.isNotEmpty(moduleFilterInfo.getModuleTableList())) {
+            for (ModuleTable moduleTable : moduleFilterInfo.getModuleTableList()) {
+                // 关联字段，ID 默认有权限编辑
+                tableFieldMap
+                        .get(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                        .put(moduleTable.getJoinLeftField(), FIELD_WRITE_PERMISSION_CODE);
+                log.info(
+                        "放开权限校验字段,模块={},表={},字段={}",
+                        moduleFilterInfo.getModuleInfo().getModuleId(),
+                        moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                        moduleTable.getJoinLeftField());
+                if (!tableFieldMap.containsKey(moduleTable.getTableName())) {
+                    tableFieldMap.putIfAbsent(moduleTable.getTableName(), new LinkedHashMap<>());
+                }
+                tableFieldMap
+                        .get(moduleTable.getTableName())
+                        .put(moduleTable.getJoinRightField(), FIELD_WRITE_PERMISSION_CODE);
+                log.info(
+                        "放开权限校验字段,模块={},表={},字段={}",
+                        moduleFilterInfo.getModuleInfo().getModuleId(),
+                        moduleTable.getTableName(),
+                        moduleTable.getJoinRightField());
+
+                tableFieldMap
+                        .get(moduleTable.getTableName())
+                        .put(DEFAULT_PRIMARY_KEY, FIELD_WRITE_PERMISSION_CODE);
+                log.info(
+                        "放开权限校验字段,模块={},表={},字段={}",
+                        moduleFilterInfo.getModuleInfo().getModuleId(),
+                        moduleTable.getTableName(),
+                        DEFAULT_PRIMARY_KEY);
+            }
+        }
+        tableFieldMap
+                .get(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                .put(DEFAULT_PRIMARY_KEY, FIELD_WRITE_PERMISSION_CODE);
+        log.info(
+                "放开权限校验字段,模块={},表={},字段={}",
+                moduleFilterInfo.getModuleInfo().getModuleId(),
+                moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                DEFAULT_PRIMARY_KEY);
+        return tableFieldMap;
+    }
+
+    private Map<String, Map<String, Object>> checkAndRemoveUnPermissionField(
+            ModuleFilterInfo moduleFilterInfo,
+            Map<String, Map<String, Object>> dataMap,
+            Boolean isMainModule) {
+        Map<String, Map<String, Integer>> tableFieldMap = getFieldPermission(moduleFilterInfo);
+
+        if (isMainModule && CollectionUtil.isEmpty(tableFieldMap)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_RIGHT_ERROR.getCode(),
+                    String.format(
+                            "[模块数据新建][%d]模块没有权限", moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        Map<String, Map<String, Object>> result = new LinkedHashMap<>();
+        if (isMainModule) {
+            for (Map.Entry<String, Map<String, Object>> tableData : dataMap.entrySet()) {
+                Map<String, Integer> fieldMap = tableFieldMap.get(tableData.getKey());
+                if (CollectionUtil.isEmpty(fieldMap)) {
+                    log.warn(
+                            String.format(
+                                    "[模块数据新建][%d]模块没有表[%s]权限,移除表数据",
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    tableData.getKey()));
+                    continue;
+                }
+                if (!result.containsKey(tableData.getKey())) {
+                    result.putIfAbsent(tableData.getKey(), new LinkedHashMap<>());
+                }
+                for (Map.Entry<String, Object> value : tableData.getValue().entrySet()) {
+                    if (fieldMap.containsKey(value.getKey())
+                            && FIELD_WRITE_PERMISSION_CODE.equals(fieldMap.get(value.getKey()))) {
+                        result.get(tableData.getKey()).put(value.getKey(), value.getValue());
+                    } else {
+                        log.warn(
+                                String.format(
+                                        "[模块数据新建][%d]模块没有表[%s]字段[%s]权限,移除字段数据",
+                                        moduleFilterInfo.getModuleInfo().getModuleId(),
+                                        tableData.getKey(),
+                                        value.getKey()));
+                    }
+                }
+                if (CollectionUtil.isEmpty(result.get(tableData.getKey()))) {
+                    result.remove(tableData.getKey());
+                }
+            }
+        }
+        return result;
+    }
+
+    private Boolean hasOperatorPermission(
+            List<Long> moduleIdList, Long subjectId, Long roleId, FormButtonEnum formButtonEnum) {
+
+        for (Long id : moduleIdList) {
+            // 获取权限过滤后的Field结果
+            ModuleFilterInfo moduleFilterInfo =
+                    moduleInfoWithPermissionService.filterModuleInfo(
+                            subjectId, roleId, id, formButtonEnum.getKey(), List.of());
+            if (Objects.isNull(moduleFilterInfo)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format("[模块保保存权限校验][%s][%d]模块没有配置定义", formButtonEnum.getKey(), id));
+            }
+            if (CollectionUtil.isNotEmpty(moduleFilterInfo.getSimpleModuleFields())) {
+                for (ModuleField moduleField : moduleFilterInfo.getSimpleModuleFields()) {
+                    if (FIELD_WRITE_PERMISSION_CODE.equals(moduleField.getPermissionCode())) {
+                        log.info(
+                                String.format(
+                                        "[模块保存权限校验][%s][%d]模块表[%s]字段[%s]有权限",
+                                        formButtonEnum.getKey(),
+                                        id,
+                                        moduleField.getTableName(),
+                                        moduleField.getFieldName()));
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+}
