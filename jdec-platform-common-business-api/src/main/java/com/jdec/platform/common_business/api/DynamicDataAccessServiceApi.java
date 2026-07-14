@@ -5,6 +5,7 @@ import com.jdec.platform.common_business.api.dto.common.DataRightValue;
 import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
 import com.jdec.platform.common_business.api.dto.request.DataRightAccessReq;
 import com.jdec.platform.common_business.api.dto.request.ListQueryReq;
+import com.jdec.platform.common_business.api.dto.request.OrderItemReq;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import java.util.List;
@@ -31,7 +32,8 @@ public interface DynamicDataAccessServiceApi {
             ModuleFilterInfo moduleFilterInfo,
             List<Long> moduleSkip,
             boolean columnFilter,
-            List<Object> primaryTableFilterIds);
+            List<Object> primaryTableFilterIds,
+            List<OrderItemReq> orderItems);
 
     Map<Object, Object> dynamicQueryAllModuleDetailData(
             Long subject, Long roleId, Long menuId, Long id, Long relateSearchId);
