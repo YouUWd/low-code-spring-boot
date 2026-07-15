@@ -15,9 +15,6 @@ public interface MonitorLogApi {
     /** 记录监控日志 */
     void record(MonitorLogReq req) throws SQLException;
 
-    /** 删除监控日志 */
-    void delete(Long id);
-
     /** 获取监控日志详情 */
-    MonitorLogResp get(Long id);
+    MonitorLogResp get(Long id, String logType);
 }

@@ -189,3 +189,6 @@ biz:
         student_manage: http://119.36.78.123:5020/api/student/query/get-data-right
         # config_center: http://localhost:8080/api/data-permission
         # auth_center: http://localhost:8080/api/data-permission
+
+monitor-center:
+  base-url: http://localhost:8080
