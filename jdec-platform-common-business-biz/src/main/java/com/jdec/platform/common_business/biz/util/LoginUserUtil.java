@@ -2,9 +2,13 @@ package com.jdec.platform.common_business.biz.util;
 
 import static com.jdec.platform.common_business.biz.util.ValidationUtils.requirePositive;
 
+import cn.hutool.http.useragent.UserAgent;
+import cn.hutool.http.useragent.UserAgentUtil;
 import com.jdec.platform.common_business.biz.dto.LoginUserPrincipal;
 import com.jdec.platform.shared.exception.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Triple;
 import org.springframework.security.core.Authentication;
@@ -150,6 +154,125 @@ public class LoginUserUtil {
         return StringUtils.isNotEmpty(request.getHeader("X-Project-No"))
                 ? request.getHeader("X-Project-No")
                 : "student_manage";
+    }
+
+    /**
+     * 获取当前用户 的 Os
+     *
+     * @return
+     */
+    public static String getOsFromHeader() {
+
+        // 2. 安全获取 RequestContext 属性，防止在异步线程中调用时抛出异常
+        RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            // 如果不在 Web 上下文中，直接返回 userId，Header 参数给 null（或根据业务需求抛出异常）
+            return null;
+        }
+
+        HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+        if (StringUtils.isEmpty(request.getHeader("User-Agent"))) {
+            return "Unknown";
+        }
+        UserAgent ua = UserAgentUtil.parse(request.getHeader("User-Agent"));
+        if (ua != null && StringUtils.isNotEmpty(ua.getOs().getName())) {
+            return ua.getOs().getName();
+        }
+        return "Unknown";
+    }
+
+    /**
+     * 获取当前用户 的 Os
+     *
+     * @return
+     */
+    public static String getBrowserFromHeader() {
+
+        // 2. 安全获取 RequestContext 属性，防止在异步线程中调用时抛出异常
+        RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            // 如果不在 Web 上下文中，直接返回 userId，Header 参数给 null（或根据业务需求抛出异常）
+            return null;
+        }
+
+        HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+        if (StringUtils.isEmpty(request.getHeader("User-Agent"))) {
+            return "Unknown";
+        }
+        UserAgent ua = UserAgentUtil.parse(request.getHeader("User-Agent"));
+        if (ua != null && StringUtils.isNotEmpty(ua.getBrowser().getName())) {
+            return ua.getBrowser().getName();
+        }
+        return "Unknown";
+    }
+
+    /**
+     * 获取当前用户 的 Os
+     *
+     * @return
+     */
+    public static String getIpFromHeader() {
+
+        // 2. 安全获取 RequestContext 属性，防止在异步线程中调用时抛出异常
+        RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            // 如果不在 Web 上下文中，直接返回 userId，Header 参数给 null（或根据业务需求抛出异常）
+            return null;
+        }
+
+        HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+        // 获取请求主机IP地址,如果通过代理进来，则透过防火墙获取真实IP地址
+        String headerName = "x-forwarded-for";
+        String ip = request.getHeader(headerName);
+        if (null != ip && ip.length() != 0 && !"unknown".equalsIgnoreCase(ip)) {
+            // 多次反向代理后会有多个IP值，第一个IP才是真实IP,它们按照英文逗号','分割
+            if (ip.indexOf(",") != -1) {
+                ip = ip.split(",")[0];
+            }
+        }
+        if (checkIp(ip)) {
+            headerName = "Proxy-Client-IP";
+            ip = request.getHeader(headerName);
+        }
+        if (checkIp(ip)) {
+            headerName = "WL-Proxy-Client-IP";
+            ip = request.getHeader(headerName);
+        }
+        if (checkIp(ip)) {
+            headerName = "HTTP_CLIENT_IP";
+            ip = request.getHeader(headerName);
+        }
+        if (checkIp(ip)) {
+            headerName = "HTTP_X_FORWARDED_FOR";
+            ip = request.getHeader(headerName);
+        }
+        if (checkIp(ip)) {
+            headerName = "X-Real-IP";
+            ip = request.getHeader(headerName);
+        }
+        if (checkIp(ip)) {
+            // headerName = "remote addr";
+            ip = request.getRemoteAddr();
+            // 127.0.0.1 ipv4, 0:0:0:0:0:0:0:1 ipv6
+            if ("127.0.0.1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip)) {
+                // 根据网卡取本机配置的IP
+                InetAddress inet = null;
+                try {
+                    inet = InetAddress.getLocalHost();
+                } catch (UnknownHostException e) {
+                    e.printStackTrace();
+                }
+                ip = inet.getHostAddress();
+            }
+        }
+        return ip;
+    }
+
+    private static boolean checkIp(String ip) {
+        if (null == ip || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            return true;
+        }
+        return false;
     }
 
     /**

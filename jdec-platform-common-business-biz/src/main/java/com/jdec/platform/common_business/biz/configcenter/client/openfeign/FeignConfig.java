@@ -1,0 +1,24 @@
+package com.jdec.platform.common_business.biz.configcenter.client.openfeign;
+
+import com.jdec.platform.common_business.biz.context.TokenContextHolder;
+import feign.RequestInterceptor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class FeignConfig {
+
+    @Value("${app.project.number}")
+    private String projectNumber;
+
+    @Bean
+    public RequestInterceptor traceInterceptor() {
+        return template -> {
+            //            String traceId = UUID.randomUUID().toString();
+            //            template.header("X-Trace-Id", traceId);
+            template.header("Authorization", "Bearer " + TokenContextHolder.getCurrentUserToken());
+            template.header("X-Project-No", projectNumber);
+        };
+    }
+}

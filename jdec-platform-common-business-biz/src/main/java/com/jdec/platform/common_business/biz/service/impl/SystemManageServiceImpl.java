@@ -10,10 +10,13 @@ import com.jdec.platform.common_business.api.dto.response.SelectRoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
+import com.jdec.platform.common_business.biz.log.ComBizLog;
+import com.jdec.platform.common_business.biz.log.ComBizLogContext;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
@@ -44,6 +47,7 @@ public class SystemManageServiceImpl implements SystemManageServiceApi {
 
     private final Integer DEFAULT_EMPTY_ROLE_ID = Integer.valueOf(0);
 
+    @ComBizLog
     @Override
     public synchronized ApiResponse<SelectRoleResp> selectRole(SelectRoleReq req) {
 
@@ -425,6 +429,21 @@ public class SystemManageServiceImpl implements SystemManageServiceApi {
                             ApiResponseCodeEnum.SERVER_ERROR.getMessage());
                 }
             }
+            BizLogDTO bizLogDTO =
+                    BizLogDTO.builder()
+                            .logType("system-log")
+                            .projectNo(LoginUserUtil.getProjectNoFromHeader())
+                            .platform(LoginUserUtil.getOsFromHeader())
+                            .browser(LoginUserUtil.getBrowserFromHeader())
+                            .ip(LoginUserUtil.getIpFromHeader())
+                            .loginUserId(realLoginUserId)
+                            .mockUserId(realLoginUserId.equals(loginUserId) ? null : loginUserId)
+                            .preSubjectId(oldSubjectRole.getSubjectId())
+                            .currentSubjectId(finalSubjectId)
+                            .preRoleId(oldSubjectRole.getRoleId())
+                            .currentRoleId(oldSubjectRole.getRoleId())
+                            .build();
+            ComBizLogContext.setBizLog(bizLogDTO);
             return apiResponse;
         } catch (Exception e) {
             log.error(
