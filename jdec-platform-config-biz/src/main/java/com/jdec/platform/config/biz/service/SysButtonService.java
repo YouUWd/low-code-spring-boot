@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -12,7 +13,11 @@ import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysButton;
+import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.mapper.SysButtonMapper;
+import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -34,6 +39,7 @@ public class SysButtonService implements SysButtonApi {
 
     private final SysButtonMapper sysButtonMapper;
     private final ReferenceCheckManager referenceCheckManager;
+    private final SysDataSnapshotMapper sysDataSnapshotMapper;
 
     @Override
     public PageResult<SysButtonResp> page(SysButtonPageReq req) {
@@ -86,6 +92,13 @@ public class SysButtonService implements SysButtonApi {
                 .collect(Collectors.toList());
     }
 
+    @DataAudit(
+            module = "系统设置", // 业务模块
+            subModule = "按钮配置", // 业务子模块
+            operation = OperationType.UPDATE, // 操作类型
+            tableName = "sys_button", // 表名
+            dataIdField = "#req.id" // 数据ID的SpEL表达式，从request.id获取
+            )
     @Override
     public void saveButton(SysButtonSaveReq req) {
         if (req.getId() == null) {
@@ -103,6 +116,12 @@ public class SysButtonService implements SysButtonApi {
                 throw new BusinessException("按钮名称已存在");
             }
             sysButtonMapper.insert(entity);
+            // 记录快照
+            SysDataSnapshot snapshot = new SysDataSnapshot();
+            snapshot.setDataId(entity.getId());
+            snapshot.setTableName("sys_button");
+            snapshot.setJsonData(JSONUtil.toJsonStr(entity));
+            sysDataSnapshotMapper.insert(snapshot);
         } else {
             boolean exists =
                     sysButtonMapper.exists(

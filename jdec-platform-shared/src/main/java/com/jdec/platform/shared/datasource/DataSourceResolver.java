@@ -4,6 +4,9 @@ import com.jdec.platform.shared.exception.BusinessException;
 import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jooq.DSLContext;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Component;
 
 /** 数据源解析器 负责根据 projectNo 解析对应的物理数据源 */
@@ -40,5 +43,21 @@ public class DataSourceResolver {
         }
 
         return ds;
+    }
+
+    /**
+     * 根据数据源名称获取 jOOQ DSLContext。
+     *
+     * @param dsName 数据源名称
+     * @return DSLContext
+     * @throws BusinessException 如果数据源不存在
+     */
+    public DSLContext getDSLContext(String dsName) {
+        DataSource ds = dynamicRoutingDataSource.getDataSource(dsName);
+        if (ds == null) {
+            log.error("数据源不存在: {}", dsName);
+            throw new BusinessException("系统配置错误：找不到对应的数据源 [" + dsName + "]");
+        }
+        return DSL.using(ds, SQLDialect.MYSQL);
     }
 }

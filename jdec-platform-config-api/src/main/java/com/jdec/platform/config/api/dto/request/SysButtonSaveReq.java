@@ -1,5 +1,8 @@
 package com.jdec.platform.config.api.dto.request;
 
+import com.jdec.platform.config.api.enums.ShowStatusEnum;
+import com.jdec.platform.shared.audit.annotation.AuditField;
+import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -48,6 +51,7 @@ public class SysButtonSaveReq {
     private Integer sortOrder;
 
     @Schema(description = "1显示 0隐藏")
+    @AuditField(name = "状态", type = FieldType.ENUM, enumClass = ShowStatusEnum.class)
     private Integer showed;
 
     @Schema(description = "是否启用(1:启用。0：不启用)")
