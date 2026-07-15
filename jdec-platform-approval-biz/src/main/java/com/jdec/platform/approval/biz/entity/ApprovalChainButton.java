@@ -43,11 +43,15 @@ public class ApprovalChainButton extends Model<ApprovalChainButton> {
     @TableField("current_step")
     private Integer currentStep;
 
-    /** 操作类型 sys_config表对应的ID */
+    /** 操作类型 sys_config_item表对应的ID */
     @TableField("button_type_id")
     private Long buttonTypeId;
 
-    /** 按钮 sys_config_button按钮表对应ID */
+    /** 操作类型 sys_config_item表对应的Value */
+    @TableField("button_type_value")
+    private String buttonTypeValue;
+
+    /** 按钮 sys_button按钮表对应ID */
     @TableField("button_id")
     private Long buttonId;
 

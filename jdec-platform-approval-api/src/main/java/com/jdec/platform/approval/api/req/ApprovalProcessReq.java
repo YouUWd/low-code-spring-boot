@@ -43,4 +43,8 @@ public class ApprovalProcessReq {
     // 驳回原因、取消原因
     @Schema(description = "字段变更记录、驳回原因、取消原因")
     private String reason;
+
+    // 驳回到指定状态步骤
+    @Schema(description = "驳回到指定状态步骤")
+    private Integer rejectStep;
 }

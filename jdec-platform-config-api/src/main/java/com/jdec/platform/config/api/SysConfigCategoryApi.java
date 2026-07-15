@@ -82,4 +82,11 @@ public interface SysConfigCategoryApi {
      * @param itemValue 配置项value
      */
     SysConfigItemResp getConfigItemsByValue(String categoryAlias, String itemValue);
+
+    /**
+     * 查找指定分类下的配置项
+     *
+     * @param id 配置项ID
+     */
+    SysConfigItemResp getConfigItemsById(Long id);
 }
