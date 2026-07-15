@@ -55,9 +55,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String currentUri = request.getRequestURI();
-        if (Arrays.stream(AuthCommonConstant.PUBLIC_ENDPOINTS).anyMatch(x -> x.equals(currentUri))
+        if (Arrays.stream(AuthCommonConstant.PUBLIC_ENDPOINTS)
+                        .anyMatch(x -> currentUri.startsWith(x))
                 || Arrays.stream(AuthCommonConstant.SWAGGER_ENDPOINTS)
-                        .anyMatch(x -> x.equals(currentUri))) {
+                        .anyMatch(x -> currentUri.startsWith(x))) {
             filterChain.doFilter(request, response);
             return;
         }

@@ -17,7 +17,7 @@ public class WebConfig implements WebMvcConfigurer {
 
         // 添加用户是否拥有当前角色判断
         registry.addInterceptor(roleCheckInterceptor)
-                .addPathPatterns("/api/**")
+                .addPathPatterns("/api/student/**")
                 .excludePathPatterns(
                         "/api/student/login",
                         "/api/student/permission/check-current-user",

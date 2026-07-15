@@ -8,7 +8,8 @@ public interface AuthCommonConstant {
     public static final String[] PUBLIC_ENDPOINTS = {
         "/api/student/login",
         "/api/student/permission/check-current-user",
-        "/api/student/get-project-info"
+        "/api/student/get-project-info",
+        "/api/config"
     };
 
     /** Swagger / OpenAPI 相关端点。 */

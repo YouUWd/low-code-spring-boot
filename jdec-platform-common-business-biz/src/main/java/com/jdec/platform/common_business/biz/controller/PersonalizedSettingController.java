@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/api/com-biz/setting")
+@RequestMapping("/api/student/setting")
 @Tag(
         name = "通用业务层个性化配置", // 分组名称（文档中显示的分组标签）
         description = "通用业务层个性化配置" // 分组描述
