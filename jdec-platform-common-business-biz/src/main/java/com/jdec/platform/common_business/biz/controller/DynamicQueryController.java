@@ -6,6 +6,7 @@ import com.jdec.platform.common_business.api.DynamicDataAccessServiceApi;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
 import com.jdec.platform.common_business.api.dto.common.DataRightValue;
 import com.jdec.platform.common_business.api.dto.request.DataRightAccessReq;
+import com.jdec.platform.common_business.api.dto.request.ListQueryReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
@@ -50,7 +51,8 @@ public class DynamicQueryController {
         }
         return ApiResponse.success(
                 dynamicDataAccessService.dynamicQueryListData(
-                        subjectId, roleId, moduleId, id, pageObj, null, List.of(), false, null));
+                        subjectId, roleId, moduleId, id, pageObj, null, List.of(), false, List.of(),
+                        List.of()));
     }
 
     @GetMapping("/list/menu")
@@ -149,5 +151,20 @@ public class DynamicQueryController {
             log.debug("json object serialize error", e);
         }
         return ApiResponse.success(dynamicDataAccessService.getDataRightData(subjectId, req));
+    }
+
+    @PostMapping("/list/menu/search")
+    @Operation(summary = "获取列表数据", description = "获取列表数据")
+    public ApiResponse<Map<String, Object>> getDynamicQueryResultWithSearchByMenu(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @RequestBody ListQueryReq queryReq) {
+        Page pageObj = null;
+        if (Objects.nonNull(queryReq.getPage()) && Objects.nonNull(queryReq.getPageSize())) {
+            pageObj = Page.of(queryReq.getPage(), queryReq.getPageSize());
+        }
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQueryListDataWithSearchByMenuId(
+                        subjectId, roleId, queryReq, pageObj, null));
     }
 }

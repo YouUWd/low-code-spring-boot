@@ -4,24 +4,30 @@ import lombok.Getter;
 
 @Getter
 public enum QueryOpEnum {
-    OP_IN("in"),
-    OP_LIKE("like"),
-    OP_EQ("eq"),
-    OP_ORIGINAL_DATE_RANGE("originalDateRange"),
-    OP_DATE_RANGE("dateRange"),
-    OP_DATE_OVERLAP_RANGE("dateOverlapRange"),
-    OP_BETWEEN("between"),
-    OP_TEXT_CONTAIN("textContain");
+    OP_SINGLE_FUZZY_SELECT("singleFuzzySelect", "like"),
+    OP_TEXT("text", "like"),
+    OP_GENERAL_TREE("generalTree", "in"),
+    OP_USER_TREE("userTree", "in"),
+    OP_MULTIPLE_SELECT("multipleSelect", "in"),
+    OP_USER_MULTI_SELECT("userMultiSelect", "in"),
+    OP_NUMBER_RANGE("numberRange", "between"),
+    OP_SINGLE_SELECT("singleSelect", "eq"),
+    OP_DATE_RANGE("dateRange", "dateRange"),
+    OP_DATE_OVERLAP_RANGE("dateOverlapRange", "dateOverlapRange"),
+    OP_ORIGINAL_DATE_RANGE("originalDateRange", "originalDateRange");
 
-    private QueryOpEnum(String op) {
+    QueryOpEnum(String searchType, String op) {
+        this.searchType = searchType;
         this.op = op;
     }
 
-    private String op;
+    private final String searchType;
 
-    public static QueryOpEnum getQueryOpEnumByOp(String op) {
+    private final String op;
+
+    public static QueryOpEnum getQueryOpEnumByOp(String searchType) {
         for (QueryOpEnum q : QueryOpEnum.values()) {
-            if (q.op.equals(op)) {
+            if (q.searchType.equals(searchType)) {
                 return q;
             }
         }

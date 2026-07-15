@@ -15,9 +15,6 @@ public class SearchItemReq implements Serializable {
     @Schema(description = "字段名")
     private List<String> field;
 
-    @Schema(description = "条件类型")
-    private String op;
-
     @Schema(description = "字段值")
     private Object value;
 

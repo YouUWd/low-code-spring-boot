@@ -11,6 +11,7 @@ import com.jdec.platform.common_business.api.DynamicDataAccessServiceApi;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.api.dto.request.DataRightAccessReq;
 import com.jdec.platform.common_business.api.dto.request.ListQueryReq;
+import com.jdec.platform.common_business.api.dto.request.OrderItemReq;
 import com.jdec.platform.common_business.api.dto.request.SearchItemReq;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
@@ -684,6 +685,22 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
     }
 
+    private void applyOrdering(QueryWrapper query, List<OrderItemReq> orderItemReqs) {
+        for (OrderItemReq order : orderItemReqs) {
+            String field = order.getField();
+            String direction = order.getValue();
+            boolean isAsc =
+                    CommonConstant.ORDER_ASC_SET.stream()
+                            .anyMatch(x -> x.equalsIgnoreCase(direction));
+            query.orderBy(
+                    true,
+                    isAsc,
+                    order.getTableName()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + ToolUtils.camelToSnakeCase(field));
+        }
+    }
+
     private void buildSelect(
             QueryWrapper queryWrapper, String tableName, List<ModuleField> moduleFields) {
         // 筛选表名称为tableName或者类别为COMBINE的
@@ -730,7 +747,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             ModuleFilterInfo moduleFilterInfo,
             List<Long> moduleSkip,
             boolean columnFilter,
-            List<Object> primaryTableFilterIds) {
+            List<Object> primaryTableFilterIds,
+            List<OrderItemReq> orderItems) {
 
         // 获取权限过滤后的Field结果
         if (Objects.isNull(moduleFilterInfo)) {
@@ -770,6 +788,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         // 合并simple和combine的field
         List<ModuleField> allRightField = fillIdAndJoinIdField(moduleFilterInfo);
+
+        Map<String, List<OrderItemReq>> tableNameToOrders = new HashMap<>();
+        if (!CollectionUtils.isEmpty(orderItems)) {
+            tableNameToOrders =
+                    orderItems.stream().collect(Collectors.groupingBy(OrderItemReq::getTableName));
+        }
 
         // 主表查询条件构造
         QueryWrapper queryWrapper = Wrappers.query();
@@ -864,6 +888,13 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 tableNameToConfigItems,
                 queryWrapper);
 
+        // 请求中带有排序参数
+        if (tableNameToOrders.containsKey(moduleFilterInfo.getModuleInfo().getPrimaryTable())) {
+            applyOrdering(
+                    queryWrapper,
+                    tableNameToOrders.get(moduleFilterInfo.getModuleInfo().getPrimaryTable()));
+        }
+
         buildOrderBy(queryWrapper, Arrays.asList("update_date", "create_date"), false);
 
         Page pageData = null;
@@ -948,6 +979,13 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         moduleTable.getTableName(),
                         tableNameToConfigItems,
                         moduleTableQueryWrapper);
+
+                // 请求中带有排序参数
+                if (tableNameToOrders.containsKey(moduleTable.getTableName())) {
+                    applyOrdering(
+                            moduleTableQueryWrapper,
+                            tableNameToOrders.get(moduleTable.getTableName()));
+                }
 
                 // 关联表的查询结果
                 List<Object> moduleTableList =
@@ -1120,8 +1158,17 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             ModuleFilterInfo moduleFilterInfo,
             List<Long> moduleSkip) {
         Map<String, Object> resultMap = new HashMap<>();
-        List<Object> finalPrimaryTableId =
-                getFinalPrimaryKey(subjectId, roleId, moduleId, req, moduleFilterInfo, moduleSkip);
+        List<Object> finalPrimaryTableId = new ArrayList<>();
+
+        boolean columnFilter = false;
+
+        if (!CollectionUtils.isEmpty(req.getSearch())) {
+            columnFilter = true;
+            finalPrimaryTableId =
+                    getFinalPrimaryKey(
+                            subjectId, roleId, moduleId, req, moduleFilterInfo, moduleSkip);
+            log.debug("列表搜索条件不为空，先查出主表主键列表:{}", finalPrimaryTableId);
+        }
         resultMap.putAll(
                 dynamicQueryListData(
                         subjectId,
@@ -1131,8 +1178,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         page,
                         moduleFilterInfo,
                         moduleSkip,
-                        true,
-                        finalPrimaryTableId));
+                        columnFilter,
+                        finalPrimaryTableId,
+                        req.getOrder()));
         return resultMap;
     }
 
@@ -1219,7 +1267,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
      */
     private <T> boolean applySingleFilter(
             QueryWrapper<T> wrapper, String field, String op, Object value, boolean isOr) {
-        String column = ToolUtils.camelToSnakeCase(field);
+        String column = field;
 
         switch (op) {
             case "like" -> {
@@ -1309,7 +1357,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         return switch (operator) {
-            case QueryOpEnum.OP_BETWEEN -> formatBetweenValue(startObj, endObj);
+            case QueryOpEnum.OP_NUMBER_RANGE -> formatBetweenValue(startObj, endObj);
             case QueryOpEnum.OP_DATE_RANGE -> formatDateRangeValue(startObj, endObj);
             case QueryOpEnum.OP_DATE_OVERLAP_RANGE -> formatDateOverlapRangeValue(startObj, endObj);
             case QueryOpEnum.OP_ORIGINAL_DATE_RANGE -> formatOriginalDateRange(startObj, endObj);
@@ -1326,12 +1374,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         for (SearchItemReq item : searchItemReqs) {
             // 这里的 fields 目前只有有一个值
             List<String> fields = item.getField();
-            String op = item.getOp();
+            String searchType = item.getSearchType();
             Object value = item.getValue();
             if (fields == null || fields.isEmpty() || value == null) {
                 continue;
             }
-            QueryOpEnum opEnum = QueryOpEnum.getQueryOpEnumByOp(op);
+            QueryOpEnum opEnum = QueryOpEnum.getQueryOpEnumByOp(searchType);
             if (opEnum == null) {
                 continue;
             }
@@ -1352,7 +1400,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             QueryWrapper queryWrapper = (QueryWrapper) wrapper;
                             if (applySingleFilter(
                                     queryWrapper,
-                                    item.getTable() + DB_TABLE_FIELD_SEPARATOR + field,
+                                    item.getTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + ToolUtils.camelToSnakeCase(field),
                                     finalOp,
                                     finalValue,
                                     isOr)) {
@@ -1718,6 +1768,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     moduleFilterInfo,
                                     List.of(),
                                     false,
+                                    List.of(),
                                     List.of()));
                 } else {
                     resultMap.put(
@@ -1853,6 +1904,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     moduleFilterInfo,
                                     List.of(),
                                     false,
+                                    List.of(),
                                     List.of());
                     resultMap.put(resp.getId(), map);
                     Set<FormButton> formButtons = (Set<FormButton>) map.get("btnList");
@@ -2016,6 +2068,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             moduleFilterInfo,
                             moduleSkip,
                             false,
+                            List.of(),
                             List.of()));
         }
 
