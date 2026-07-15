@@ -461,6 +461,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness = new ApprovalBusiness();
         approvalBusiness.setSubjectId(approvalProcessDTO.getSubjectId());
         approvalBusiness.setModuleId(approvalProcessDTO.getModuleId());
+        approvalBusiness.setRecordId(approvalProcessDTO.getRecordId());
         approvalBusiness.setBusinessId(approvalProcessDTO.getBusinessId());
         approvalBusiness.setBusinessNumber(businessNumber);
         approvalBusiness.setVersionNo(1);
@@ -487,6 +488,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord = new ApprovalVersionRecord();
         approvalVersionRecord.setSubjectId(approvalProcessDTO.getSubjectId());
         approvalVersionRecord.setModuleId(approvalProcessDTO.getModuleId());
+        approvalVersionRecord.setRecordId(approvalProcessDTO.getRecordId());
         approvalVersionRecord.setBusinessId(approvalProcessDTO.getBusinessId());
         approvalVersionRecord.setBusinessNumber(businessNumber);
         approvalVersionRecord.setVersionNo(1);
@@ -578,6 +580,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusiness.setVersionNo(versionNo);
         approvalBusiness.setSerialNumber(approvalProcessDTO.getSerialNumber());
         approvalBusiness.setSerialNo(approvalProcessDTO.getSerialNo());
+        approvalBusiness.setRecordId(approvalProcessDTO.getRecordId());
         approvalBusiness.setCurrentStep(1);
         approvalBusiness.setStatusId(sysApprovalChain.getCurrentStatusChildId());
         approvalBusiness.setStatusTitle(approvalChainStatus.getTitle());
@@ -596,7 +599,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord = new ApprovalVersionRecord();
         approvalVersionRecord.setSubjectId(approvalProcessDTO.getSubjectId());
         approvalVersionRecord.setModuleId(approvalProcessDTO.getModuleId());
-        approvalVersionRecord.setBusinessId(approvalProcessDTO.getBusinessId());
+        approvalVersionRecord.setRecordId(approvalProcessDTO.getRecordId());
         approvalVersionRecord.setBusinessNumber(approvalRecord.getBusinessNumber());
         approvalVersionRecord.setVersionNo(versionNo);
         approvalVersionRecord.setSerialNumber(approvalProcessDTO.getSerialNumber());
@@ -884,11 +887,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ApprovalChain::getCurrentStep, oldApprovalVersionRecord.getCurrentStep());
         ApprovalChain approvalChain = approvalChainMapper.selectOne(ApprovalChainWrapper);
         ModuleApprovalChainConfigResp.StatusNode statusNode = sysStatusApi.getStatusByValue(-99);
-        approvalBusiness.setStatusTitle(statusNode.getTitle());
-        approvalBusiness.setStatusId(statusNode.getId());
-        approvalBusiness.setStatusValue(statusNode.getStatusValue());
-        approvalBusiness.setStatusBackground(statusNode.getStatusBackground());
-        approvalBusiness.setStatusFontColor(statusNode.getStatusFontColor());
+        approvalBusiness.setRecordId(oldApprovalVersionRecord.getRecordId());
+        approvalBusiness.setStatusTitle(oldApprovalVersionRecord.getStatusTitle());
+        approvalBusiness.setStatusId(oldApprovalVersionRecord.getStatusId());
+        approvalBusiness.setStatusValue(oldApprovalVersionRecord.getStatusValue());
+        approvalBusiness.setStatusBackground(oldApprovalVersionRecord.getStatusBackground());
+        approvalBusiness.setStatusFontColor(oldApprovalVersionRecord.getStatusFontColor());
         approvalBusiness.setCurrentStep(oldApprovalVersionRecord.getCurrentStep());
         approvalBusiness.setStatusValue(oldApprovalVersionRecord.getStatusValue());
         approvalBusiness.setVersionNo(oldApprovalVersionRecord.getVersionNo());
