@@ -67,8 +67,8 @@ public class PersonalizedSettingController {
         return ApiResponse.success(
                 personalizedUserService.getUserPersonalizedModuleSettingByModuleId(
                         LoginUserUtil.getRealLoginUserId(),
-                        LoginUserUtil.getLoginSubjectId(),
                         LoginUserUtil.getRoleId(),
+                        LoginUserUtil.getLoginSubjectId(),
                         LoginUserUtil.getProjectNoFromHeader(),
                         moduleId));
     }
