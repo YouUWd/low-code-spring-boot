@@ -13,6 +13,9 @@ public class ApprovalProcessDTO {
     // 业务记录ID
     private Long recordId;
 
+    // 旧的业务记录ID
+    private Long OldRecordId;
+
     // 审批流编号
     private String serialNumber;
 
@@ -39,4 +42,7 @@ public class ApprovalProcessDTO {
 
     // 驳回原因、取消原因
     private String reason;
+
+    // 驳回到指定状态步骤
+    private Integer rejectStep;
 }

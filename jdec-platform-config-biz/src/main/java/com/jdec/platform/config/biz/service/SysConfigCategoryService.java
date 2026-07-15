@@ -432,4 +432,15 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         BeanUtils.copyProperties(item, resp);
         return resp;
     }
+
+    @Override
+    public SysConfigItemResp getConfigItemsById(Long id) {
+        SysConfigItem item = itemMapper.selectById(id);
+        if (Objects.isNull(item)) {
+            return null;
+        }
+        SysConfigItemResp resp = new SysConfigItemResp();
+        BeanUtils.copyProperties(item, resp);
+        return resp;
+    }
 }

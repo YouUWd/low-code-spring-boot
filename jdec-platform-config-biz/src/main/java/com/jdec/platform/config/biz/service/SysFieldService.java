@@ -396,10 +396,12 @@ public class SysFieldService implements SysFieldApi {
 
         // 更新时查询旧的 relationBusinessNo
         String oldBusinessNo = null;
+        Integer oldDataRightFlag = null;
         if (req.getId() != null) {
             SysField oldField = sysFieldMapper.selectById(req.getId());
             if (oldField != null) {
                 oldBusinessNo = oldField.getRelationBusinessNo();
+                oldDataRightFlag = oldField.getDataRightFlag();
             }
         }
 
@@ -423,43 +425,63 @@ public class SysFieldService implements SysFieldApi {
         } else {
             sysFieldMapper.updateById(entity);
         }
-        // 数据权限节点引用检查
-        SysDataPermission dataPermission =
-                sysDataPermissionMapper.selectOne(
-                        new LambdaQueryWrapper<SysDataPermission>()
-                                .eq(
-                                        SysDataPermission::getCode,
-                                        entity.getTableName() + "*" + entity.getColumnName())
-                                .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
-                                .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo()));
-        if (dataPermission != null) {
-            ReferenceContext context =
-                    ReferenceContext.builder()
-                            .targetType(CheckConstant.SYS_DATA_PERMISSION)
-                            .targetId(dataPermission.getId())
-                            .targetName(dataPermission.getName())
-                            .build();
-            List<String> check = referenceCheckManager.check(context);
-            if (!check.isEmpty()) {
-                throw new PopException(String.join("\n", check));
+
+        // 只在 dataRightFlag 发生变化时处理权限节点
+        Integer newDataRightFlag = req.getDataRightFlag();
+        boolean dataRightFlagChanged =
+                oldDataRightFlag == null || !oldDataRightFlag.equals(newDataRightFlag);
+
+        if (dataRightFlagChanged) {
+            // 如果旧值为 1 或权限节点存在，需要删除
+            if (Integer.valueOf(1).equals(oldDataRightFlag)) {
+                SysDataPermission dataPermission =
+                        sysDataPermissionMapper.selectOne(
+                                new LambdaQueryWrapper<SysDataPermission>()
+                                        .eq(
+                                                SysDataPermission::getCode,
+                                                entity.getTableName()
+                                                        + "*"
+                                                        + entity.getColumnName())
+                                        .eq(
+                                                SysDataPermission::getSubjectId,
+                                                AppContext.getSubjectId())
+                                        .eq(
+                                                SysDataPermission::getProjectNo,
+                                                AppContext.getProjectNo()));
+                if (dataPermission != null) {
+                    // 数据权限节点引用检查
+                    ReferenceContext context =
+                            ReferenceContext.builder()
+                                    .targetType(CheckConstant.SYS_DATA_PERMISSION)
+                                    .targetId(dataPermission.getId())
+                                    .targetName(dataPermission.getName())
+                                    .build();
+                    List<String> check = referenceCheckManager.check(context);
+                    if (!check.isEmpty()) {
+                        throw new PopException(String.join("\n", check));
+                    }
+                    sysDataPermissionMapper.delete(
+                            new LambdaQueryWrapper<SysDataPermission>()
+                                    .eq(
+                                            SysDataPermission::getCode,
+                                            entity.getTableName() + "*" + entity.getColumnName())
+                                    .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
+                                    .eq(
+                                            SysDataPermission::getProjectNo,
+                                            AppContext.getProjectNo()));
+                }
             }
-            sysDataPermissionMapper.delete(
-                    new LambdaQueryWrapper<SysDataPermission>()
-                            .eq(
-                                    SysDataPermission::getCode,
-                                    entity.getTableName() + "*" + entity.getColumnName())
-                            .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
-                            .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo()));
-        }
-        if (entity.getDataRightFlag() == 1) {
-            // 生成权限节点
-            SysDataPermission permission = new SysDataPermission();
-            permission.setCode(entity.getTableName() + "*" + entity.getColumnName());
-            permission.setName(entity.getDisplayName());
-            permission.setStatus(1);
-            permission.setSubjectId(AppContext.getSubjectId());
-            permission.setProjectNo(projectNo);
-            sysDataPermissionMapper.insert(permission);
+
+            // 如果新值为 1，创建权限节点
+            if (Integer.valueOf(1).equals(newDataRightFlag)) {
+                SysDataPermission permission = new SysDataPermission();
+                permission.setCode(entity.getTableName() + "*" + entity.getColumnName());
+                permission.setName(entity.getDisplayName());
+                permission.setStatus(1);
+                permission.setSubjectId(AppContext.getSubjectId());
+                permission.setProjectNo(projectNo);
+                sysDataPermissionMapper.insert(permission);
+            }
         }
         Long fieldId = entity.getId();
         processFieldValues(fieldId, req.getFieldValues());

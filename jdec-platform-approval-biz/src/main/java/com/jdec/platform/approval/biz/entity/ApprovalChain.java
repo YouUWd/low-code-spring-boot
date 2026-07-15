@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.activerecord.Model;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import lombok.Getter;
@@ -66,6 +67,11 @@ public class ApprovalChain extends Model<ApprovalChain> {
     /** 审批规则 */
     @TableField("approval_rule")
     private String approvalRule;
+
+    /** 驳回规则 */
+    @Schema(description = "驳回规则")
+    @TableField("reject_rule")
+    private String rejectRule;
 
     /** 0~100 approval_rule为3时设置需要审批人数的百分比 */
     @TableField("role_approval_percent")

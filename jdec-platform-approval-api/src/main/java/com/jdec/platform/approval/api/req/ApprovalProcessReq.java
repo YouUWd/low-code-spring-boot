@@ -21,6 +21,10 @@ public class ApprovalProcessReq {
     @Schema(description = "业务记录ID")
     private Long recordId;
 
+    // 旧的业务记录ID
+    @Schema(description = "变更前的业务记录ID")
+    private Long OldRecordId;
+
     // 操作角色ID
     @Schema(description = "操作角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "操作角色ID不能为空")
@@ -43,4 +47,8 @@ public class ApprovalProcessReq {
     // 驳回原因、取消原因
     @Schema(description = "字段变更记录、驳回原因、取消原因")
     private String reason;
+
+    // 驳回到指定状态步骤
+    @Schema(description = "驳回到指定状态步骤")
+    private Integer rejectStep;
 }

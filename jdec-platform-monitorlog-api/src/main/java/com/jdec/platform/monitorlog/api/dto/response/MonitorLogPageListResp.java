@@ -2,12 +2,16 @@ package com.jdec.platform.monitorlog.api.dto.response;
 
 import cn.hutool.core.date.DateTime;
 import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /** 监控日志响应 */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "监控日志响应")
 public class MonitorLogPageListResp {
 

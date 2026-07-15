@@ -18,5 +18,9 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-shared</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
     </dependencies>
 </project>
