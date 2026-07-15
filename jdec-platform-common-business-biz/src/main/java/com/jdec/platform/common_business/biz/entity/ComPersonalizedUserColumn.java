@@ -14,14 +14,14 @@ import lombok.experimental.Accessors;
 
 /**
  * @author
- * @since 2026-07-10
+ * @since 2026-07-15
  */
 @Getter
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("personalized_user_column")
-public class PersonalizedUserColumn extends Model<PersonalizedUserColumn> {
+@TableName("com_personalized_user_column")
+public class ComPersonalizedUserColumn extends Model<ComPersonalizedUserColumn> {
 
     private static final long serialVersionUID = 1L;
 

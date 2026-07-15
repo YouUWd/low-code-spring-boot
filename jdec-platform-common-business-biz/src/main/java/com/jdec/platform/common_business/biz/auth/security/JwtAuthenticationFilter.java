@@ -34,7 +34,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** JWT 认证过滤器 — 从请求头中提取 Bearer Token 并设置 Spring Security 上下文。 */
 @Slf4j
-@Component
+@Component(value = "comBizJwtAuthenticationFilter")
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 

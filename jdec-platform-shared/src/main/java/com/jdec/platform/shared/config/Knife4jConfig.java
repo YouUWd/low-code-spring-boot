@@ -71,4 +71,16 @@ public class Knife4jConfig {
                 .packagesToScan("com.jdec.platform.auth.biz.controller")
                 .build();
     }
+
+    // 分组4：通用业务管理
+    @Bean
+    public GroupedOpenApi comBizApi() {
+        return GroupedOpenApi.builder()
+                .group("comBiz")
+                .displayName("通用业务管理")
+                .packagesToScan(
+                        "com.jdec.platform.common_business.biz.controller",
+                        "com.jdec.platform.common_business.biz.auth.controller")
+                .build();
+    }
 }

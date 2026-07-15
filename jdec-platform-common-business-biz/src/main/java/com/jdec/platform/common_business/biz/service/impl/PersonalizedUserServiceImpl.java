@@ -12,9 +12,9 @@ import com.jdec.platform.common_business.api.dto.request.PersonalizedModuleReq;
 import com.jdec.platform.common_business.api.dto.response.PersonalizedModuleResp;
 import com.jdec.platform.common_business.biz.dto.PersonalSettingColumnDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.PersonalSettingResp;
-import com.jdec.platform.common_business.biz.entity.PersonalizedUserColumn;
+import com.jdec.platform.common_business.biz.entity.ComPersonalizedUserColumn;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
-import com.jdec.platform.common_business.biz.mapper.PersonalizedUserColumnMapper;
+import com.jdec.platform.common_business.biz.mapper.ComPersonalizedUserColumnMapper;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -36,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
 
-    private final PersonalizedUserColumnMapper personalizedUserColumnMapper;
+    private final ComPersonalizedUserColumnMapper personalizedUserColumnMapper;
 
     private final ConfigCenterApiService configCenterApiService;
 
@@ -49,20 +49,20 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
             return List.of();
         }
         List<Long> moduleIds = respList.stream().map(x -> x.getId()).collect(Collectors.toList());
-        LambdaQueryWrapper<PersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(PersonalizedUserColumn::getUserId, userId);
-        queryWrapper.in(PersonalizedUserColumn::getModuleId, moduleIds);
-        queryWrapper.eq(PersonalizedUserColumn::getProjectNo, projectNo);
-        List<PersonalizedUserColumn> columnList =
+        LambdaQueryWrapper<ComPersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ComPersonalizedUserColumn::getUserId, userId);
+        queryWrapper.in(ComPersonalizedUserColumn::getModuleId, moduleIds);
+        queryWrapper.eq(ComPersonalizedUserColumn::getProjectNo, projectNo);
+        List<ComPersonalizedUserColumn> columnList =
                 personalizedUserColumnMapper.selectList(queryWrapper);
-        Map<Long, PersonalizedUserColumn> columnMap = new HashMap<>();
+        Map<Long, ComPersonalizedUserColumn> columnMap = new HashMap<>();
         if (CollectionUtil.isEmpty(columnList)) {
             columnMap = columnList.stream().collect(Collectors.toMap(x -> x.getModuleId(), x -> x));
         }
         List<PersonalizedModuleResp> result = new ArrayList<>();
         try {
             for (PersonalSettingResp resp : respList) {
-                PersonalizedUserColumn personalizedUserColumn = columnMap.get(resp.getId());
+                ComPersonalizedUserColumn personalizedUserColumn = columnMap.get(resp.getId());
                 List<PersonalizedModuleDTO> personalizedModuleDTOList = new ArrayList<>();
                 if (personalizedUserColumn != null
                         && StringUtils.isNotEmpty(personalizedUserColumn.getColumnProperty())) {
@@ -132,13 +132,15 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
         }
         try {
             for (PersonalizedModuleReq req : reqs) {
-                LambdaQueryWrapper<PersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper();
-                queryWrapper.eq(PersonalizedUserColumn::getUserId, userId);
-                queryWrapper.eq(PersonalizedUserColumn::getProjectNo, projectNo);
-                queryWrapper.eq(PersonalizedUserColumn::getModuleId, req.getModuleId());
-                PersonalizedUserColumn old = personalizedUserColumnMapper.selectOne(queryWrapper);
+                LambdaQueryWrapper<ComPersonalizedUserColumn> queryWrapper =
+                        new LambdaQueryWrapper();
+                queryWrapper.eq(ComPersonalizedUserColumn::getUserId, userId);
+                queryWrapper.eq(ComPersonalizedUserColumn::getProjectNo, projectNo);
+                queryWrapper.eq(ComPersonalizedUserColumn::getModuleId, req.getModuleId());
+                ComPersonalizedUserColumn old =
+                        personalizedUserColumnMapper.selectOne(queryWrapper);
                 if (old == null) {
-                    PersonalizedUserColumn userColumn = new PersonalizedUserColumn();
+                    ComPersonalizedUserColumn userColumn = new ComPersonalizedUserColumn();
                     userColumn.setUserId(userId);
                     userColumn.setProjectNo(projectNo);
                     userColumn.setModuleId(req.getModuleId());
@@ -152,21 +154,22 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
                     userColumn.setDeleted(Boolean.FALSE);
                     personalizedUserColumnMapper.insert(userColumn);
                 } else {
-                    LambdaUpdateWrapper<PersonalizedUserColumn> updateWrapper =
+                    LambdaUpdateWrapper<ComPersonalizedUserColumn> updateWrapper =
                             new LambdaUpdateWrapper();
-                    updateWrapper.eq(PersonalizedUserColumn::getUserId, userId);
-                    updateWrapper.eq(PersonalizedUserColumn::getProjectNo, projectNo);
-                    updateWrapper.eq(PersonalizedUserColumn::getModuleId, req.getModuleId());
-                    updateWrapper.set(PersonalizedUserColumn::getUpdatedBy, userId);
+                    updateWrapper.eq(ComPersonalizedUserColumn::getUserId, userId);
+                    updateWrapper.eq(ComPersonalizedUserColumn::getProjectNo, projectNo);
+                    updateWrapper.eq(ComPersonalizedUserColumn::getModuleId, req.getModuleId());
+                    updateWrapper.set(ComPersonalizedUserColumn::getUpdatedBy, userId);
                     // updateWrapper.set(PersonalizedUserColumn::getUpdatedName)
-                    updateWrapper.set(PersonalizedUserColumn::getUpdatedDate, LocalDateTime.now());
+                    updateWrapper.set(
+                            ComPersonalizedUserColumn::getUpdatedDate, LocalDateTime.now());
                     if (CollectionUtil.isNotEmpty(req.getColumnRespList())) {
                         updateWrapper.set(
-                                PersonalizedUserColumn::getColumnProperty,
+                                ComPersonalizedUserColumn::getColumnProperty,
                                 JsonUtil.obj2Json(req.getColumnRespList()));
                     } else {
                         updateWrapper.set(
-                                PersonalizedUserColumn::getColumnProperty,
+                                ComPersonalizedUserColumn::getColumnProperty,
                                 JsonUtil.obj2Json(List.of()));
                     }
                 }
@@ -192,13 +195,13 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
                 respList.stream().collect(Collectors.toMap(x -> x.getId(), x -> x));
 
         try {
-            LambdaQueryWrapper<PersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper();
-            queryWrapper.eq(PersonalizedUserColumn::getUserId, userId);
-            queryWrapper.eq(PersonalizedUserColumn::getProjectNo, projectNo);
-            queryWrapper.eq(PersonalizedUserColumn::getModuleId, moduleId);
-            PersonalizedUserColumn old = personalizedUserColumnMapper.selectOne(queryWrapper);
+            LambdaQueryWrapper<ComPersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper();
+            queryWrapper.eq(ComPersonalizedUserColumn::getUserId, userId);
+            queryWrapper.eq(ComPersonalizedUserColumn::getProjectNo, projectNo);
+            queryWrapper.eq(ComPersonalizedUserColumn::getModuleId, moduleId);
+            ComPersonalizedUserColumn old = personalizedUserColumnMapper.selectOne(queryWrapper);
             if (old == null) {
-                PersonalizedUserColumn userColumn = new PersonalizedUserColumn();
+                ComPersonalizedUserColumn userColumn = new ComPersonalizedUserColumn();
                 userColumn.setUserId(userId);
                 userColumn.setProjectNo(projectNo);
                 userColumn.setModuleId(moduleId);
@@ -228,19 +231,19 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
                 userColumn.setDeleted(Boolean.FALSE);
                 personalizedUserColumnMapper.insert(userColumn);
             } else {
-                LambdaUpdateWrapper<PersonalizedUserColumn> updateWrapper =
+                LambdaUpdateWrapper<ComPersonalizedUserColumn> updateWrapper =
                         new LambdaUpdateWrapper();
-                updateWrapper.eq(PersonalizedUserColumn::getUserId, userId);
-                updateWrapper.eq(PersonalizedUserColumn::getProjectNo, projectNo);
-                updateWrapper.eq(PersonalizedUserColumn::getModuleId, moduleId);
-                updateWrapper.set(PersonalizedUserColumn::getUpdatedBy, userId);
+                updateWrapper.eq(ComPersonalizedUserColumn::getUserId, userId);
+                updateWrapper.eq(ComPersonalizedUserColumn::getProjectNo, projectNo);
+                updateWrapper.eq(ComPersonalizedUserColumn::getModuleId, moduleId);
+                updateWrapper.set(ComPersonalizedUserColumn::getUpdatedBy, userId);
                 // updateWrapper.set(PersonalizedUserColumn::getUpdatedName)
-                updateWrapper.set(PersonalizedUserColumn::getUpdatedDate, LocalDateTime.now());
+                updateWrapper.set(ComPersonalizedUserColumn::getUpdatedDate, LocalDateTime.now());
 
                 PersonalSettingResp settingResp = settingRespMap.get(moduleId);
                 if (settingResp == null) {
                     updateWrapper.set(
-                            PersonalizedUserColumn::getColumnProperty,
+                            ComPersonalizedUserColumn::getColumnProperty,
                             JsonUtil.obj2Json(List.of()));
                 } else {
                     List<PersonalizedModuleDTO> rr = new ArrayList<>();
@@ -254,7 +257,7 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
                         rr.add(personalizedModuleDTO);
                     }
                     updateWrapper.set(
-                            PersonalizedUserColumn::getColumnProperty, JsonUtil.obj2Json(rr));
+                            ComPersonalizedUserColumn::getColumnProperty, JsonUtil.obj2Json(rr));
                 }
             }
             return Boolean.TRUE;
@@ -280,11 +283,11 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
         if (resp == null) {
             return null;
         }
-        LambdaQueryWrapper<PersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(PersonalizedUserColumn::getUserId, userId);
-        queryWrapper.eq(PersonalizedUserColumn::getModuleId, moduleId);
-        queryWrapper.eq(PersonalizedUserColumn::getProjectNo, projectNo);
-        PersonalizedUserColumn personalizedUserColumn =
+        LambdaQueryWrapper<ComPersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ComPersonalizedUserColumn::getUserId, userId);
+        queryWrapper.eq(ComPersonalizedUserColumn::getModuleId, moduleId);
+        queryWrapper.eq(ComPersonalizedUserColumn::getProjectNo, projectNo);
+        ComPersonalizedUserColumn personalizedUserColumn =
                 personalizedUserColumnMapper.selectOne(queryWrapper);
         try {
             List<PersonalizedModuleDTO> personalizedModuleDTOList = new ArrayList<>();

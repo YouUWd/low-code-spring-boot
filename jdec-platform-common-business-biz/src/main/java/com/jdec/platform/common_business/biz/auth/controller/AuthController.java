@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@RestController
+@RestController(value = "comBizAuthController")
 @RequestMapping("/api/student")
 @RequiredArgsConstructor
 @Tag(

@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 
 /** JWT 工具类 — 负责令牌的签发、解析与验证。 */
 @Slf4j
-@Component
+@Component(value = "comBizJwtTokenProvider")
 public class JwtTokenProvider {
 
     private final SecretKey secretKey;
