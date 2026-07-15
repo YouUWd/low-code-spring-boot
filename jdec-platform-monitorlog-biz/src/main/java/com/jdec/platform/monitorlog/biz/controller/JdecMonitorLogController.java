@@ -47,15 +47,6 @@ public class JdecMonitorLogController {
         if (logType == null || logType.isEmpty()) {
             return ApiResponse.error("日志类型不能为空");
         }
-        if ("system-log".equals(logType)) {
-            return ApiResponse.success(jdecMonitorLogService.get(id, logType));
-        }
-        if ("message-log".equals(logType)) {
-            return ApiResponse.success(jdecMonitorLogService.get(id, logType));
-        }
-        if ("operation-log".equals(logType)) {
-            return ApiResponse.success(jdecMonitorLogService.get(id, logType));
-        }
-        return ApiResponse.error("日志类型错误");
+        return ApiResponse.success(jdecMonitorLogService.get(id, logType));
     }
 }

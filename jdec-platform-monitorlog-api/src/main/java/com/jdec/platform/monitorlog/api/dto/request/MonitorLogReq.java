@@ -15,7 +15,9 @@ public class MonitorLogReq {
     private Long id;
 
     @Schema(
-            description = "日志类型，例如：'system-log','operation-log','message-log'",
+            description =
+                    "日志类型，例如：'system-log','operation-log','message-log'"
+                            + "当日志类型为operation-log时，content的格式为：",
             requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "日志类型不能为空")
     private String logType;
@@ -28,8 +30,7 @@ public class MonitorLogReq {
     @NotNull(message = "登录用户ID不能为空")
     private Long loginUserId;
 
-    @Schema(description = "用户信息", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "用户信息不能为空")
+    @Schema(description = "用户信息")
     private String userInfo;
 
     @Schema(description = "登录角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
