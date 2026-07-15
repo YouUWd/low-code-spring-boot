@@ -4,7 +4,6 @@ import java.net.InetAddress;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
-import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
 
@@ -15,7 +14,6 @@ import org.springframework.core.env.Environment;
  *
  * <p>排除 {@link DataSourceAutoConfiguration}，因为我们使用自定义的 {@code DynamicDataSourceConfig} 来管理多数据源。
  */
-@EnableFeignClients
 @SpringBootApplication(exclude = {DataSourceAutoConfiguration.class})
 public class PlatformApplication {
 

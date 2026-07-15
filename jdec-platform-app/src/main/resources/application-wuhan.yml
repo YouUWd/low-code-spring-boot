@@ -213,3 +213,6 @@ app:
     url: http://192.168.2.41:5101/home
   project:
     number: student_manage
+
+monitor-center:
+  base-url: http://localhost:8080
