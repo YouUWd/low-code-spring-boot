@@ -13,6 +13,9 @@ public class ApprovalProcessDTO {
     // 业务记录ID
     private Long recordId;
 
+    // 旧的业务记录ID
+    private Long OldRecordId;
+
     // 审批流编号
     private String serialNumber;
 

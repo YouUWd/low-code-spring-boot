@@ -21,6 +21,10 @@ public class ApprovalProcessReq {
     @Schema(description = "业务记录ID")
     private Long recordId;
 
+    // 旧的业务记录ID
+    @Schema(description = "变更前的业务记录ID")
+    private Long OldRecordId;
+
     // 操作角色ID
     @Schema(description = "操作角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "操作角色ID不能为空")
