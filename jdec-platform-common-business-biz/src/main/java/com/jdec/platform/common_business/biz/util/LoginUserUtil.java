@@ -179,7 +179,8 @@ public class LoginUserUtil {
         }
         UserAgent ua = UserAgentUtil.parse(request.getHeader("User-Agent"));
         if (ua != null && StringUtils.isNotEmpty(ua.getOs().getName())) {
-            return ua.getOs().getName();
+            String[] ss = ua.getOs().getName().split(" ");
+            return (ss != null && ss.length > 0) ? ss[0] : "Unknown";
         }
         return "Unknown";
     }
