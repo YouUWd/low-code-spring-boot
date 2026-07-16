@@ -20,8 +20,8 @@ public class WebClientConfig {
     @Value("${app.project.number}")
     private String projectNumber;
 
-    @Bean("configCenterWebClient")
-    WebClient configCenterWebClient() {
+    @Bean("comBizConfigCenterWebClient")
+    WebClient comBizConfigCenterWebClient() {
         return WebClient.builder()
                 // 添加全局默认请求头
                 .defaultHeader("X-Project-No", projectNumber) // X-Subject-Id
@@ -51,9 +51,9 @@ public class WebClientConfig {
                 .build();
     }
 
-    @Bean
-    ConfigCenterApiClient configCenterApiClient(
-            @Qualifier("configCenterWebClient") WebClient client) {
+    @Bean(name = "comBizConfigCenterApiClient")
+    ConfigCenterApiClient comBizConfigCenterApiClient(
+            @Qualifier("comBizConfigCenterWebClient") WebClient client) {
         HttpServiceProxyFactory factory =
                 HttpServiceProxyFactory.builderFor(WebClientAdapter.create(client)).build();
         return factory.createClient(ConfigCenterApiClient.class);
