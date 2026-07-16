@@ -138,7 +138,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
         processWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
         processWrapper.eq(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectId());
-        processWrapper.eq(ApprovalBusiness::getApprovalUids, approvalProcessReq.getApplicantId());
+        // processWrapper.eq(ApprovalBusiness::getApprovalUids,
+        // approvalProcessReq.getApplicantId());
+        processWrapper.apply(
+                "FIND_IN_SET({0}, approval_uids)", approvalProcessReq.getApplicantId());
         List<ApprovalBusiness> processList = approvalBusinessMapper.selectList(processWrapper);
         LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
         allWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
@@ -175,7 +178,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
             processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
             processWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-            processWrapper.eq(ApprovalBusiness::getApprovalUids, approvalListReq.getApplicantId());
+            // processWrapper.eq(ApprovalBusiness::getApprovalUids,
+            // approvalListReq.getApplicantId());
+            processWrapper.apply(
+                    "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
             processWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
             respList =
@@ -185,8 +191,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         if (approvalListReq.getApprovalType() == 3) {
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
-            allWrapper.eq(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            allWrapper.eq(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+            allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
             allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
             Set<Long> ids =
