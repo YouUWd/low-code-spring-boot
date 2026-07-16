@@ -1,16 +1,22 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
+import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
+import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.entity.SysStatus;
+import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -31,6 +37,7 @@ public class SysStatusService implements SysStatusApi {
 
     private final SysStatusMapper sysStatusMapper;
     private final ReferenceCheckManager referenceCheckManager;
+    private final SysDataSnapshotMapper sysDataSnapshotMapper;
 
     @Override
     public List<SysStatusTreeResp> tree() {
@@ -73,6 +80,12 @@ public class SysStatusService implements SysStatusApi {
         return tree;
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "状态配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_status",
+            dataIdField = "#req.id")
     @Transactional
     @Override
     public Long saveStatus(SysStatusSaveReq req) {
@@ -99,6 +112,11 @@ public class SysStatusService implements SysStatusApi {
             // 处理排序值
             handleSortOrderForInsert(entity);
             sysStatusMapper.insert(entity);
+            SysDataSnapshot snapshot = new SysDataSnapshot();
+            snapshot.setTableName("sys_status");
+            snapshot.setDataId(entity.getId());
+            snapshot.setJsonData(JSONUtil.toJsonStr(entity));
+            sysDataSnapshotMapper.insert(snapshot);
             return entity.getId();
         } else {
             // 编辑
@@ -162,10 +180,16 @@ public class SysStatusService implements SysStatusApi {
                     sysStatusMapper.update(null, updateWrapper);
                 }
             }
-            return null;
+            return req.getId();
         }
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "状态配置",
+            operation = OperationType.DELETE,
+            tableName = "sys_status",
+            dataIdField = "#id")
     @Transactional
     @Override
     public void deleteStatus(Long id, boolean force) {
@@ -194,6 +218,13 @@ public class SysStatusService implements SysStatusApi {
         reorderSiblingsAfterDelete(status.getPid(), AppContext.getSubjectId());
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "状态配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_status",
+            dataIdField = "#req.id")
+    @Transactional
     @Override
     public void dragStatus(SysStatusDragReq req) {
         Long id = req.getId();
@@ -264,26 +295,33 @@ public class SysStatusService implements SysStatusApi {
         return result;
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "状态配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_status",
+            dataIdField = "#req.id")
+    @Transactional
     @Override
-    public void toggleStatus(Long id, Integer enabled) {
-        if (id == null) {
+    public void toggleStatus(SysStatusToggleReq req) {
+        if (req.getId() == null) {
             throw new BusinessException("状态ID不能为空");
         }
-        if (enabled == null || (enabled != 0 && enabled != 1)) {
+        if (req.getEnabled() == null || (req.getEnabled() != 0 && req.getEnabled() != 1)) {
             throw new BusinessException("enabled 参数必须为 0 或 1");
         }
 
         SysStatus status =
                 sysStatusMapper.selectOne(
                         Wrappers.<SysStatus>lambdaQuery()
-                                .eq(SysStatus::getId, id)
+                                .eq(SysStatus::getId, req.getId())
                                 .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysStatus::getProjectNo, AppContext.getProjectNo()));
         if (status == null) {
             throw new BusinessException("状态不存在");
         }
 
-        status.setEnabled(enabled);
+        status.setEnabled(req.getEnabled());
         sysStatusMapper.updateById(status);
     }
 
