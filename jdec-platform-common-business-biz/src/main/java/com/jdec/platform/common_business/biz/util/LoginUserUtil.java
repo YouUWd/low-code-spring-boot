@@ -20,6 +20,9 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 /** 登录用户工具类 — 获取登录用户信息 */
 public class LoginUserUtil {
 
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
+
     /**
      * 获取当前登录用户id,如果是模拟用户登录，则返回模拟用户id
      *
@@ -273,6 +276,30 @@ public class LoginUserUtil {
             return true;
         }
         return false;
+    }
+
+    /**
+     * 获取当前用户 的 project NO
+     *
+     * @return
+     */
+    public static String getTokenFromHeader() {
+
+        // 2. 安全获取 RequestContext 属性，防止在异步线程中调用时抛出异常
+        RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            // 如果不在 Web 上下文中，直接返回 userId，Header 参数给 null（或根据业务需求抛出异常）
+            return null;
+        }
+
+        HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+
+        String header = request.getHeader(AUTHORIZATION_HEADER);
+        if (org.springframework.util.StringUtils.hasText(header)
+                && header.startsWith(BEARER_PREFIX)) {
+            return header.substring(BEARER_PREFIX.length());
+        }
+        return null;
     }
 
     /**

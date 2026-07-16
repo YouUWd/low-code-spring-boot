@@ -98,4 +98,9 @@ public interface ConfigCenterApiOpenFeignClient {
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestParam Long roleId,
             @RequestParam(required = false) Long moduleId);
+
+    // 根据角色ID 获取角色的配置详情
+    @GetMapping("/sys/role/get-role-config-detail")
+    ConfigApiResponse<RoleConfigDetailResp> getRoleConfigDetail(
+            @RequestHeader("X-Subject-Id") Long subjectId, @RequestParam Long roleId);
 }

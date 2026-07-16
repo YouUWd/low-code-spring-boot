@@ -44,6 +44,12 @@
             <version>33.0.0-jre</version>
         </dependency>
 
+        <dependency>
+            <groupId>com.lmax</groupId>
+            <artifactId>disruptor</artifactId>
+            <version>3.4.4</version>
+        </dependency>
+
         <!--添加websocket组件依赖-->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -156,8 +156,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         List<ApprovalListResp> respList = new ArrayList<>();
         if (approvalListReq.getApprovalType() != 2) {
             LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
-            todoWrapper.eq(ApprovalBusiness::getModuleId, approvalListReq.getModuleId());
-            todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
+            todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            todoWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
             todoWrapper
                     .eq(ApprovalBusiness::getApproverId, approvalListReq.getApplicantId())
                     .or()
@@ -173,8 +173,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
         } else {
             LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
-            processWrapper.eq(ApprovalBusiness::getModuleId, approvalListReq.getModuleId());
-            processWrapper.eq(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectId());
+            processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            processWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
             processWrapper.eq(ApprovalBusiness::getApprovalUids, approvalListReq.getApplicantId());
             processWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
@@ -184,20 +184,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             .collect(Collectors.toList());
         }
         if (approvalListReq.getApprovalType() == 3) {
-            respList.addAll(
-                    toDoList.stream()
-                            .map(business -> convertApprovalListResp(business, 1))
-                            .toList());
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
-            allWrapper.eq(ApprovalBusiness::getModuleId, approvalListReq.getModuleId());
-            allWrapper.eq(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectId());
+            allWrapper.eq(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            allWrapper.eq(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
             allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
-            allList.removeAll(toDoList);
-            respList.addAll(
-                    allList.stream()
-                            .map(business -> convertApprovalListResp(business, 3))
-                            .collect(Collectors.toList()));
+            Set<Long> ids =
+                    toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
+            for (ApprovalBusiness item : allList) {
+                if (ids.contains(item.getId())) {
+                    respList.add(convertApprovalListResp(item, 1));
+                } else {
+                    respList.add(convertApprovalListResp(item, 3));
+                }
+            }
         }
         return respList;
     }

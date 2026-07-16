@@ -1,6 +1,6 @@
 package com.jdec.platform.monitorlog.api;
 
-import com.jdec.platform.monitorlog.api.client.MonitorCenterApiClient;
+import com.jdec.platform.monitorlog.api.client.MonitorLogApiClient;
 import com.jdec.platform.shared.context.TokenContext;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,12 +14,15 @@ import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 @Configuration
 public class MonitorCenterApiClientConfig {
 
+    // 从配置文件application-dev.yml读取 monitor-center.base-url 作为基础 URL
     @Value("${monitor-center.base-url}")
-    private String configCenterBase;
+    private String monitorLogBase;
 
-    @Bean("monitorCenterWebClient")
-    WebClient configCenterWebClient() {
+    // 创建一个 WebClient 实例，用于与监控中心 API 进行交互
+    @Bean("monitorLogWebClient")
+    WebClient monitorLogWebClient() {
         return WebClient.builder()
+                // 设置默认请求头 X-Project-No: student_manage
                 .defaultHeader("X-Project-No", "student_manage")
                 .filter(
                         (request, next) -> {
@@ -30,15 +33,15 @@ public class MonitorCenterApiClientConfig {
                             }
                             return next.exchange(builder.build());
                         })
-                .baseUrl(configCenterBase)
+                .baseUrl(monitorLogBase)
                 .build();
     }
 
+    // 创建一个 MonitorCenterApiClient 实例，用于调用监控中心 API
     @Bean
-    MonitorCenterApiClient configCenterApiClient(
-            @Qualifier("monitorCenterWebClient") WebClient client) {
+    MonitorLogApiClient monitorLogApiClient(@Qualifier("monitorLogWebClient") WebClient client) {
         HttpServiceProxyFactory factory =
                 HttpServiceProxyFactory.builderFor(WebClientAdapter.create(client)).build();
-        return factory.createClient(MonitorCenterApiClient.class);
+        return factory.createClient(MonitorLogApiClient.class);
     }
 }
