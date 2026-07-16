@@ -16,12 +16,12 @@ public class ApprovalListReq {
     // 所属主体ID
     @Schema(description = "主体ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "主体ID不能为空")
-    private Long subjectId;
+    private List<Long> subjectIdList;
 
     // "模块ID"
     @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "模块ID不能为空")
-    private Long moduleId;
+    private List<Long> moduleIdList;
 
     // 业务记录ID
     @Schema(description = "业务记录ID列表")
