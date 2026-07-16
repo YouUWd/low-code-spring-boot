@@ -10,7 +10,9 @@ import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
+import com.jdec.platform.config.biz.entity.SysModuleStatus;
 import com.jdec.platform.config.biz.entity.SysStatus;
+import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -18,6 +20,7 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.exception.PopException;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -33,6 +36,7 @@ public class SysStatusService implements SysStatusApi {
 
     private final SysStatusMapper sysStatusMapper;
     private final ReferenceCheckManager referenceCheckManager;
+    private final SysModuleStatusMapper sysModuleStatusMapper;
 
     @Override
     public List<SysStatusTreeResp> tree() {
@@ -291,10 +295,17 @@ public class SysStatusService implements SysStatusApi {
 
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ModuleApprovalChainConfigResp.StatusNode getStatusByValue(Integer statusValue) {
+    public ModuleApprovalChainConfigResp.StatusNode getStatusByValue(
+            Integer statusValue, Long moduleId) {
+        LambdaQueryWrapper<SysModuleStatus> moduleWrapper = new LambdaQueryWrapper<>();
+        moduleWrapper.eq(SysModuleStatus::getModuleId, moduleId);
+        List<SysModuleStatus> IdList = sysModuleStatusMapper.selectList(moduleWrapper);
+        Set<Long> Ids =
+                IdList.stream().map(SysModuleStatus::getStatusId).collect(Collectors.toSet());
         LambdaQueryWrapper<SysStatus> statusWrapper = new LambdaQueryWrapper<>();
         statusWrapper
                 .eq(SysStatus::getStatusValue, statusValue)
+                .in(SysStatus::getId, Ids)
                 .orderByDesc(SysStatus::getId)
                 .last("limit 1");
         SysStatus statusConfig = sysStatusMapper.selectOne(statusWrapper);
