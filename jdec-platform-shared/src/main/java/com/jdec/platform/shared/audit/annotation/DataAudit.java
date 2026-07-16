@@ -23,9 +23,12 @@ public @interface DataAudit {
     /** 表名 */
     String tableName();
 
-    /** 数据ID字段名（SpEL表达式，如：#id, #request.id） */
-    String dataIdField();
+    /** 数据ID字段名（SpEL表达式，如：#id, #request.id）。如果为空则不进行差异对比，只记录操作 */
+    String dataIdField() default "";
 
     /** 是否启用 */
     boolean enabled() default true;
+
+    /** 是否强制对比差异（仅当dataIdField不为空时生效）。false：无ID时跳过对比，true：无ID时也对比（新增场景） */
+    boolean forceCompare() default false;
 }

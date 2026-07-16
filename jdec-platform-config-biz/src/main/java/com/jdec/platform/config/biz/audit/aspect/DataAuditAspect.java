@@ -2,6 +2,8 @@ package com.jdec.platform.config.biz.audit.aspect;
 
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.config.biz.audit.dto.AuditLogContent;
+import com.jdec.platform.config.biz.audit.dto.AuditLogRequest;
 import com.jdec.platform.config.biz.audit.dto.AuditResult;
 import com.jdec.platform.config.biz.audit.dto.FieldDiff;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
@@ -9,6 +11,7 @@ import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
+import com.jdec.platform.shared.context.AppContext;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -44,18 +47,31 @@ public class DataAuditAspect {
             return joinPoint.proceed();
         }
 
-        // 解析dataIdField获取实际dataId
-        Long dataId = parseDataId(joinPoint, dataAudit.dataIdField());
-        if (dataId == null) {
-            log.info("新增操作，跳过数据审计: method={}", joinPoint.getSignature().getName());
-            return joinPoint.proceed();
-        }
-
         String tableName = dataAudit.tableName();
         OperationType operationType = dataAudit.operation();
 
+        // 解析dataIdField获取实际dataId
+        Long dataId = null;
+        if (dataAudit.dataIdField() != null && !dataAudit.dataIdField().isEmpty()) {
+            dataId = parseDataId(joinPoint, dataAudit.dataIdField());
+        }
+
+        // 如果没有dataId，且不强制对比，则只记录操作不对比差异
+        if (dataId == null && !dataAudit.forceCompare()) {
+            // 执行业务方法
+            Object result = joinPoint.proceed();
+
+            // 只记录操作，不对比差异
+            if (operationType == OperationType.UPDATE) {
+                handleUpdateAuditWithoutCompare(dataAudit);
+            }
+            return result;
+        }
+
+        // 有dataId的情况，按原逻辑处理
         // 查询旧快照
-        SysDataSnapshot oldSnapshot = snapshotService.getLatestSnapshot(tableName, dataId);
+        SysDataSnapshot oldSnapshot =
+                (dataId != null) ? snapshotService.getLatestSnapshot(tableName, dataId) : null;
 
         // 执行业务方法
         Object result = joinPoint.proceed();
@@ -68,6 +84,39 @@ public class DataAuditAspect {
         }
 
         return result;
+    }
+
+    /** 处理UPDATE操作审计（无对比，仅记录操作） */
+    private void handleUpdateAuditWithoutCompare(DataAudit dataAudit) {
+        try {
+            // 构建审计结果（无差异列表）
+            AuditResult auditResult =
+                    AuditResult.builder()
+                            .module(dataAudit.module())
+                            .subModule(dataAudit.subModule())
+                            .operation(dataAudit.operation().getDescription())
+                            .tableName(dataAudit.tableName())
+                            .dataId(null)
+                            .diffs(Collections.emptyList())
+                            .operateTime(LocalDateTime.now())
+                            .build();
+
+            // 注册事务同步回调
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                sendAuditLog(auditResult);
+                            }
+                        });
+            } else {
+                sendAuditLog(auditResult);
+            }
+
+        } catch (Exception e) {
+            log.error("UPDATE审计处理失败（无对比）: table={}", dataAudit.tableName(), e);
+        }
     }
 
     /** 处理UPDATE操作审计 */
@@ -287,27 +336,64 @@ public class DataAuditAspect {
     /**
      * 发送审计日志到HTTP接口
      *
-     * <p>TODO: 实现HTTP调用逻辑 - 调用审计日志服务的HTTP接口 - 使用RestTemplate或WebClient发送POST请求 - 请求体：AuditResult
-     * JSON - 处理失败重试和异常情况
+     * <p>封装为统一的HTTP请求格式
      */
     private void sendAuditLog(AuditResult auditResult) {
         try {
-            log.info(
-                    "TODO: 发送审计日志到HTTP接口 - module={}, operation={}, table={}, dataId={}, diffs={}",
-                    auditResult.getModule(),
-                    auditResult.getOperation(),
-                    auditResult.getTableName(),
-                    auditResult.getDataId(),
-                    JSONUtil.toJsonStr(auditResult.getDiffs()));
+            // 构建logContent
+            String operatorResult =
+                    auditResult.getOperation()
+                            + "了"
+                            + (auditResult.getSubModule() != null
+                                            && !auditResult.getSubModule().isEmpty()
+                                    ? auditResult.getSubModule()
+                                    : "配置");
+
+            AuditLogContent logContent =
+                    AuditLogContent.builder()
+                            .module(auditResult.getModule())
+                            .orderId(
+                                    auditResult.getSubModule() != null
+                                                    && !auditResult.getSubModule().isEmpty()
+                                            ? auditResult.getSubModule()
+                                            : auditResult.getTableName())
+                            .hrefUrl("") // 暂时为空，后续填充
+                            .operatorResult(operatorResult)
+                            .build();
+
+            // 构建logRemark（字段差异JSON）
+            String logRemark = "";
+            if (auditResult.getDiffs() != null && !auditResult.getDiffs().isEmpty()) {
+                logRemark = JSONUtil.toJsonStr(auditResult.getDiffs());
+            }
+
+            // 构建HTTP请求体
+            AuditLogRequest request =
+                    AuditLogRequest.builder()
+                            .logType("operation-log")
+                            .subjectId(AppContext.getSubjectId())
+                            .loginUserId(AppContext.getUserId())
+                            .loginRoleId(null) // TODO: 需要从安全上下文获取角色ID
+                            .mockFlag(0)
+                            .mockUserId(0L)
+                            .mockRoleId(0L)
+                            .ip("") // TODO: 后续从请求上下文获取
+                            .browser("") // TODO: 后续从请求上下文获取
+                            .platForm("") // TODO: 后续从请求上下文获取
+                            .logContent(JSONUtil.toJsonStr(logContent))
+                            .logRemark(logRemark)
+                            .build();
+
+            log.info("TODO: 发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
 
             // TODO: 实现实际的HTTP调用
             // Example:
             // String auditServiceUrl = "http://audit-service/api/audit/log";
             // HttpHeaders headers = new HttpHeaders();
             // headers.setContentType(MediaType.APPLICATION_JSON);
-            // HttpEntity<AuditResult> request = new HttpEntity<>(auditResult, headers);
+            // HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
             // ResponseEntity<Void> response = restTemplate.postForEntity(auditServiceUrl,
-            // request, Void.class);
+            // httpRequest, Void.class);
             //
             // if (!response.getStatusCode().is2xxSuccessful()) {
             //     throw new RuntimeException("审计日志发送失败: " + response.getStatusCode());
@@ -315,8 +401,7 @@ public class DataAuditAspect {
 
         } catch (Exception e) {
             log.error("发送审计日志失败: {}", auditResult, e);
-            // 注意：这里抛出异常会导致事务回滚
-            throw new RuntimeException("审计日志发送失败", e);
+            // 注意：这里不抛出异常，避免影响业务流程
         }
     }
 }

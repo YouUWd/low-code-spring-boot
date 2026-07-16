@@ -11,6 +11,9 @@
 3. **关联字段解析**：自动查询关联表，显示中文名称而非ID
 4. **事务同步**：审计日志与业务操作在同一事务中，保证一致性
 5. **灵活配置**：通过注解灵活配置审计行为
+6. **无ID场景支持**：支持不传ID的更新操作，仅记录操作不对比差异
+7. **编程式API**：提供 `DataAuditService`，支持复杂业务场景的手动调用
+8. **统一HTTP格式**：按照运营日志系统格式封装审计日志
 
 ## 核心组件
 
@@ -20,10 +23,12 @@
 ```java
 @DataAudit(
     module = "系统设置",           // 业务模块名称
-    subModule = "审批链配置",      // 业务子模块名称
+    subModule = "审批链配置",      // 业务子模块名称（可选）
     operation = OperationType.UPDATE,  // 操作类型：UPDATE/DELETE
     tableName = "sys_approval_chain_config",  // 数据库表名
-    dataIdField = "#request.id"    // 数据ID的SpEL表达式
+    dataIdField = "#request.id",   // 数据ID的SpEL表达式（可选，留空表示无ID场景）
+    forceCompare = false,          // 是否强制对比（仅当dataIdField不为空时生效）
+    enabled = true                 // 是否启用（默认true）
 )
 ```
 
@@ -375,9 +380,221 @@ public void delete(Long id) { }
 public void update(Long configId, String name) { }
 ```
 
+### 示例7：无ID场景（仅记录操作，不对比差异）
+
+适用于批量操作、无法获取ID或不需要对比差异的场景。
+
+```java
+@Service
+public class SysStatusService {
+
+    /**
+     * 批量更新状态
+     * dataIdField留空，只记录操作，不对比差异
+     */
+    @DataAudit(
+        module = "系统设置",
+        subModule = "状态配置",
+        operation = OperationType.UPDATE,
+        tableName = "sys_status",
+        dataIdField = ""  // 留空表示无ID场景
+    )
+    @Transactional
+    public void batchUpdateStatus(List<Long> ids, Integer status) {
+        ids.forEach(id -> statusMapper.updateStatus(id, status));
+    }
+}
+```
+
+### 示例8：保存或更新（新增也记录审计）
+
+```java
+@Service
+public class ConfigService {
+
+    /**
+     * 保存或更新配置
+     * 如果id为null（新增），仍会记录审计日志
+     */
+    @DataAudit(
+        module = "系统设置",
+        subModule = "配置管理",
+        operation = OperationType.UPDATE,
+        tableName = "sys_config",
+        dataIdField = "#req.id",
+        forceCompare = true  // 强制对比，即使ID为null也会处理
+    )
+    @Transactional
+    public void saveOrUpdate(ConfigSaveReq req) {
+        if (req.getId() == null) {
+            // 新增
+            configMapper.insert(req);
+        } else {
+            // 更新
+            configMapper.updateById(req);
+        }
+    }
+}
+```
+
+## 编程式API使用
+
+对于复杂业务逻辑，无法通过注解表达的场景，可以使用 `DataAuditService` 进行手动审计。
+
+### API方法列表
+
+#### 1. 带差异对比的审计
+
+```java
+@Autowired
+private DataAuditService dataAuditService;
+
+@Transactional
+public void updateUser(UserUpdateReq req) {
+    // 执行业务逻辑
+    userMapper.updateById(user);
+
+    // 手动记录审计（带差异对比）
+    dataAuditService.auditWithCompare(
+        "用户管理",        // module
+        "用户信息",        // subModule
+        "修改",           // operation
+        "sys_user",       // tableName
+        req.getUserId(),  // dataId
+        req               // newData（会与快照对比）
+    );
+}
+```
+
+#### 2. 不对比差异的审计
+
+适合批量操作、统计类操作。
+
+```java
+@Transactional
+public void batchUpdateStatus(List<Long> ids, Integer status) {
+    // 批量更新
+    ids.forEach(id -> statusMapper.updateStatus(id, status));
+
+    // 只记录操作，不对比差异
+    dataAuditService.auditWithoutCompare(
+        "系统设置",
+        "状态配置",
+        "批量修改",
+        "sys_status"
+    );
+}
+```
+
+#### 3. 使用JSON字符串审计
+
+适合存储JSON的字段或复杂对象。
+
+```java
+@Transactional
+public void updateComplexData(Long id, String jsonData) {
+    // 存储JSON到数据库
+    dataMapper.updateJson(id, jsonData);
+
+    // 使用JSON字符串审计
+    dataAuditService.auditWithJson(
+        "配置中心",
+        "动态配置",
+        "修改",
+        "sys_dynamic_config",
+        id,
+        jsonData  // 直接传JSON字符串
+    );
+}
+```
+
+#### 4. 删除审计
+
+```java
+@Transactional
+public void deleteConfig(Long id) {
+    // 删除数据
+    configMapper.deleteById(id);
+
+    // 记录删除审计
+    dataAuditService.auditDelete(
+        "系统设置",
+        "配置管理",
+        "sys_config",
+        id
+    );
+}
+```
+
+### 编程式API示例
+
+#### 示例1：复杂业务逻辑
+
+```java
+@Service
+@RequiredArgsConstructor
+public class OrderService {
+
+    private final OrderMapper orderMapper;
+    private final OrderItemMapper orderItemMapper;
+    private final DataAuditService dataAuditService;
+
+    @Transactional
+    public void updateOrderWithItems(OrderUpdateReq req) {
+        // 1. 更新订单主表
+        Order order = new Order();
+        BeanUtils.copyProperties(req, order);
+        orderMapper.updateById(order);
+
+        // 2. 更新订单明细（批量）
+        req.getItems().forEach(item -> {
+            orderItemMapper.updateById(item);
+        });
+
+        // 3. 记录审计（只记录主表，明细不单独审计）
+        dataAuditService.auditWithCompare(
+            "订单管理",
+            "订单信息",
+            "修改",
+            "order_main",
+            req.getOrderId(),
+            req
+        );
+    }
+}
+```
+
+#### 示例2：动态表名审计
+
+```java
+@Service
+@RequiredArgsConstructor
+public class DynamicTableService {
+
+    private final DataAuditService dataAuditService;
+
+    @Transactional
+    public void updateDynamicTable(String tableName, Long dataId, Map<String, Object> data) {
+        // 执行动态SQL更新
+        jdbcTemplate.update("UPDATE " + tableName + " SET ... WHERE id = ?", dataId);
+
+        // 动态审计
+        String jsonData = JSONUtil.toJsonStr(data);
+        dataAuditService.auditWithJson(
+            "系统管理",
+            tableName,
+            "修改",
+            tableName,
+            dataId,
+            jsonData
+        );
+    }
+}
+```
+
 ## 审计结果格式
 
-### AuditResult（审计结果）
+### AuditResult（内部审计结果）
 
 ```json
 {
@@ -404,6 +621,83 @@ public void update(Long configId, String name) { }
     }
   ]
 }
+```
+
+### HTTP请求格式（发送到运营日志系统）
+
+审计日志会封装为以下格式发送到HTTP接口：
+
+```json
+{
+  "logType": "operation-log",
+  "subjectId": 3,
+  "loginUserId": 166,
+  "loginRoleId": 29,
+  "mockFlag": 0,
+  "mockUserId": 0,
+  "mockRoleId": 0,
+  "ip": "",
+  "browser": "",
+  "platForm": "",
+  "logContent": "{\"module\":\"系统设置\",\"orderId\":\"状态配置\",\"hrefUrl\":\"\",\"operatorResult\":\"修改了配置\"}",
+  "logRemark": "[{\"fieldName\":\"状态名称\",\"fieldCode\":\"statusName\",\"oldValue\":\"启用\",\"newValue\":\"停用\",\"fieldType\":\"SIMPLE\"}]"
+}
+```
+
+#### 字段说明
+
+| 字段 | 说明 | 来源 |
+|-----|------|------|
+| logType | 固定为 "operation-log" | 系统固定值 |
+| subjectId | 当前主体ID | `AppContext.getSubjectId()` |
+| loginUserId | 登录用户ID | `AppContext.getUserId()` |
+| loginRoleId | 登录角色ID | TODO（待从安全上下文获取） |
+| mockFlag | 模拟标识（0：正常，1：模拟） | 固定为0 |
+| mockUserId | 模拟用户ID | 固定为0 |
+| mockRoleId | 模拟角色ID | 固定为0 |
+| ip | IP地址 | TODO（待从请求上下文获取） |
+| browser | 浏览器 | TODO（待从请求上下文获取） |
+| platForm | 操作平台 | TODO（待从请求上下文获取） |
+| logContent | 日志内容（JSON字符串） | 见下文 |
+| logRemark | 日志备注（字段差异JSON字符串） | `diffs` 转JSON |
+
+#### logContent 结构
+
+```json
+{
+  "module": "系统设置",
+  "orderId": "状态配置",
+  "hrefUrl": "",
+  "operatorResult": "修改了配置"
+}
+```
+
+- `module`：业务模块（`@DataAudit.module`）
+- `orderId`：业务单号/标识（优先使用 `subModule`，否则使用 `tableName`）
+- `hrefUrl`：跳转链接（暂时为空，后续填充）
+- `operatorResult`：操作结果（格式：`{operation}了{subModule或"配置"}`）
+
+#### logRemark 结构
+
+`logRemark` 是字段差异列表 `List<FieldDiff>` 转为JSON字符串：
+
+```json
+[
+  {
+    "fieldName": "状态名称",
+    "fieldCode": "statusName",
+    "oldValue": "启用",
+    "newValue": "停用",
+    "fieldType": "SIMPLE"
+  },
+  {
+    "fieldName": "排序",
+    "fieldCode": "sortOrder",
+    "oldValue": 1,
+    "newValue": 2,
+    "fieldType": "SIMPLE"
+  }
+]
 ```
 
 ## 工作流程
@@ -443,12 +737,13 @@ public void update(Long configId, String name) { }
 - 可以在数据创建时自动保存快照
 - 已有数据需要手动执行初始化脚本
 
-### 3. SpEL表达式
+### 3. SpEL表达式与无ID场景
 
-- `dataIdField` 支持SpEL表达式
+- `dataIdField` 支持SpEL表达式，也可以留空（无ID场景）
 - `#request.id`：从request对象的id字段获取
 - `#id`：从方法参数id获取
 - 支持多层级访问：`#request.data.id`
+- `dataIdField = ""`：无ID场景，只记录操作不对比差异
 
 ### 4. 字段注解
 
@@ -465,15 +760,43 @@ public void update(Long configId, String name) { }
 - 如果版本号冲突，会抛出异常并回滚事务
 - 正常情况下不会出现版本号冲突
 
-### 6. HTTP审计日志接口（待实现）
+### 6. HTTP审计日志接口
 
-当前HTTP调用部分使用TODO标注，需要实现：
+#### 当前状态
 
-```java
-// TODO: 实现HTTP审计日志接口
-// POST /api/audit/log
-// Body: AuditResult JSON
+当前HTTP发送部分标记为TODO，审计日志会记录到日志文件中。
+
+#### 待实现内容
+
+需要配置并实现以下部分：
+
+1. **配置审计服务地址**（`application.yml`）：
+```yaml
+audit:
+  service:
+    url: http://audit-service/api/audit/log
 ```
+
+2. **实现HTTP调用**（`DataAuditAspect` 和 `DataAuditService`）：
+```java
+RestTemplate restTemplate = new RestTemplate();
+HttpHeaders headers = new HttpHeaders();
+headers.setContentType(MediaType.APPLICATION_JSON);
+HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
+ResponseEntity<Void> response = restTemplate.postForEntity(auditServiceUrl, httpRequest, Void.class);
+```
+
+3. **补充用户上下文信息**：
+- `loginRoleId`：从 `SecurityUtils` 或 `LoginUser` 获取当前角色ID
+- `ip`、`browser`、`platForm`：从HTTP请求中解析（使用 `ServletRequestAttributes`）
+
+### 7. 编程式API使用场景
+
+使用 `DataAuditService` 适合以下场景：
+- 业务逻辑过于复杂，无法通过注解表达
+- 需要动态传入参数（dataId、tableName、jsonData等）
+- 一个方法中需要审计多个不同的数据变更
+- 批量操作只记录一条审计日志
 
 ## 高级配置
 
@@ -563,13 +886,15 @@ public class CustomRelationQueryService extends RelationFieldQueryService {
 
 1. **批量关联查询**：`RelationFieldQueryService` 使用批量查询，避免N+1问题
 2. **快照压缩**：对于大JSON可以考虑压缩存储
-3. **异步审计**：可以改为异步发送HTTP审计日志（需修改切面）
+3. **异步审计**：可以改为异步发送HTTP审计日志（使用消息队列）
 4. **定期清理**：定期清理过期快照数据
+5. **批量操作优化**：使用 `auditWithoutCompare()` 避免逐条对比
 
 ## 后续扩展
 
-1. 实现HTTP审计日志接口
-2. 添加审计日志查询界面
-3. 支持审计日志导出
-4. 支持数据回滚功能（基于快照）
-5. 添加审计日志统计报表
+1. **完成HTTP接口对接**：实现审计日志服务的HTTP调用
+2. **丰富用户上下文**：补充角色ID、IP、浏览器等信息
+3. **支持hrefUrl动态生成**：根据模块和dataId生成详情页链接
+4. **添加审计日志查询界面**：提供查询、导出、统计等功能
+5. **支持数据回滚功能**：基于快照实现数据回滚
+6. **异步发送优化**：使用消息队列异步发送，避免阻塞业务
