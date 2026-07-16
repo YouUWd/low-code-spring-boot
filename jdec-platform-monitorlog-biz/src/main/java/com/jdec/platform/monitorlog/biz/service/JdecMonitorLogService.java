@@ -9,7 +9,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
 import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
-import com.jdec.platform.monitorlog.api.client.MonitorCenterApiClient;
+import com.jdec.platform.monitorlog.api.client.MonitorLogApiClient;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogPageListReq;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -39,7 +40,7 @@ import org.springframework.util.StringUtils;
 public class JdecMonitorLogService implements MonitorLogApi {
 
     private final JdecMonitorSystemLogMapper jdecMonitorSystemLogMapper;
-    private final MonitorCenterApiClient monitorCenterApiClient;
+    private final MonitorLogApiClient monitorLogApiClient;
 
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -107,45 +108,24 @@ public class JdecMonitorLogService implements MonitorLogApi {
             validateOperationLogContent(req.getLogContent());
         }
 
-        // 查询用户信息
         UserDetailResp userDetail = new UserDetailResp();
         if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
-            ApiResponse<UserDetailResp> userDetailResp =
-                    monitorCenterApiClient.getUserDetailByUserId(req.getLoginUserId());
-            if (userDetailResp.getStatus() != 200) {
-                throw new IllegalArgumentException("获取用户详情失败");
-            }
-            userDetail = userDetailResp.getData();
+            userDetail = queryUserDetail(req.getLoginUserId());
         }
-        // 查询角色信息
+
         RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
         if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
-            ApiResponse<RoleConfigDetailResp> roleConfigDetailResp =
-                    monitorCenterApiClient.getRoleConfigDetail(req.getLoginRoleId());
-            if (roleConfigDetailResp.getStatus() != 200) {
-                throw new IllegalArgumentException("获取角色配置详情失败");
-            }
-            roleConfigDetail = roleConfigDetailResp.getData();
+            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
         }
-        // 查询模拟用户信息
+
         UserDetailResp mockUserDetail = new UserDetailResp();
         if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
-            ApiResponse<UserDetailResp> mockUserDetailResp =
-                    monitorCenterApiClient.getUserDetailByUserId(req.getMockUserId());
-            if (mockUserDetailResp.getStatus() != 200) {
-                throw new IllegalArgumentException("获取模拟用户详情失败");
-            }
-            mockUserDetail = mockUserDetailResp.getData();
+            mockUserDetail = queryUserDetail(req.getMockUserId());
         }
 
         RoleConfigDetailResp mockRoleConfigDetail = new RoleConfigDetailResp();
         if (req.getMockRoleId() != null && req.getMockRoleId() != 0L) {
-            ApiResponse<RoleConfigDetailResp> mockRoleConfigDetailResp =
-                    monitorCenterApiClient.getRoleConfigDetail(req.getMockRoleId());
-            if (mockRoleConfigDetailResp.getStatus() != 200) {
-                throw new IllegalArgumentException("获取模拟角色配置详情失败");
-            }
-            mockRoleConfigDetail = mockRoleConfigDetailResp.getData();
+            mockRoleConfigDetail = queryRoleConfigDetail(req.getMockRoleId());
         }
 
         JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
@@ -218,6 +198,26 @@ public class JdecMonitorLogService implements MonitorLogApi {
         } else {
             jdecMonitorSystemLogMapper.updateById(log);
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public UserDetailResp queryUserDetail(Long userId) {
+        ApiResponse<UserDetailResp> userDetailResp =
+                monitorLogApiClient.getUserDetailByUserId(userId);
+        if (userDetailResp.getStatus() != 200 || userDetailResp.getData() == null) {
+            throw new IllegalArgumentException("获取用户详情失败, userId: " + userId);
+        }
+        return userDetailResp.getData();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public RoleConfigDetailResp queryRoleConfigDetail(Long roleId) {
+        ApiResponse<RoleConfigDetailResp> roleConfigDetailResp =
+                monitorLogApiClient.getRoleConfigDetail(roleId);
+        if (roleConfigDetailResp.getStatus() != 200 || roleConfigDetailResp.getData() == null) {
+            throw new IllegalArgumentException("获取角色配置详情失败, roleId: " + roleId);
+        }
+        return roleConfigDetailResp.getData();
     }
 
     private void validateOperationLogContent(String logContent) {

@@ -1,6 +1,6 @@
 package com.jdec.platform.monitorlog.api;
 
-import com.jdec.platform.monitorlog.api.client.MonitorCenterApiClient;
+import com.jdec.platform.monitorlog.api.client.MonitorLogApiClient;
 import com.jdec.platform.shared.context.TokenContext;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +23,7 @@ public class MonitorCenterApiClientConfig {
     WebClient monitorLogWebClient() {
         return WebClient.builder()
                 // 设置默认请求头 X-Project-No: student_manage
-                .defaultHeader("X-Project-No", "monitorlog-center")
+                .defaultHeader("X-Project-No", "student_manage")
                 .filter(
                         (request, next) -> {
                             String token = TokenContext.getToken();
@@ -39,9 +39,9 @@ public class MonitorCenterApiClientConfig {
 
     // 创建一个 MonitorCenterApiClient 实例，用于调用监控中心 API
     @Bean
-    MonitorCenterApiClient monitorLogApiClient(@Qualifier("monitorLogWebClient") WebClient client) {
+    MonitorLogApiClient monitorLogApiClient(@Qualifier("monitorLogWebClient") WebClient client) {
         HttpServiceProxyFactory factory =
                 HttpServiceProxyFactory.builderFor(WebClientAdapter.create(client)).build();
-        return factory.createClient(MonitorCenterApiClient.class);
+        return factory.createClient(MonitorLogApiClient.class);
     }
 }

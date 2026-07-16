@@ -12,7 +12,7 @@ import org.springframework.web.service.annotation.HttpExchange;
 
 /** 监控中心API客户端 @HttpExchange：标记在接口上，表示这是一个声明式 HTTP 客户端接口 */
 @HttpExchange
-public interface MonitorCenterApiClient {
+public interface MonitorLogApiClient {
 
     @Operation(
             summary = "根据用户ID获取用户详情",
