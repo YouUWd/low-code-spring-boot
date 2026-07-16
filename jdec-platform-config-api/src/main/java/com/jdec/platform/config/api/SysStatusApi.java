@@ -33,5 +33,5 @@ public interface SysStatusApi {
      */
     void toggleStatus(Long id, Integer enabled);
 
-    ModuleApprovalChainConfigResp.StatusNode getStatusByValue(Integer statusValue);
+    ModuleApprovalChainConfigResp.StatusNode getStatusByValue(Integer statusValue, Long moduleId);
 }

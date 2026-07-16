@@ -851,7 +851,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             businessApprovalChain = approvalChain;
             approvalBusiness.setCurrentStep(1);
             approvalVersionRecord.setCurrentStep(1);
-            ModuleApprovalChainConfigResp.StatusNode statusNode = sysStatusApi.getStatusByValue(1);
+            ModuleApprovalChainConfigResp.StatusNode statusNode =
+                    sysStatusApi.getStatusByValue(1, approvalProcessDTO.getModuleId());
             approvalBusiness.setStatusTitle(statusNode.getTitle());
             approvalBusiness.setStatusId(statusNode.getId());
             approvalBusiness.setStatusValue(statusNode.getStatusValue());
@@ -958,7 +959,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalChainWrapper.eq(
                 ApprovalChain::getCurrentStep, oldApprovalVersionRecord.getCurrentStep());
         ApprovalChain approvalChain = approvalChainMapper.selectOne(ApprovalChainWrapper);
-        ModuleApprovalChainConfigResp.StatusNode statusNode = sysStatusApi.getStatusByValue(-99);
+        ModuleApprovalChainConfigResp.StatusNode statusNode =
+                sysStatusApi.getStatusByValue(-99, approvalProcessDTO.getModuleId());
         approvalBusiness.setRecordId(oldApprovalVersionRecord.getRecordId());
         approvalBusiness.setStatusTitle(oldApprovalVersionRecord.getStatusTitle());
         approvalBusiness.setStatusId(oldApprovalVersionRecord.getStatusId());
