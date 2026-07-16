@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
+import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -57,13 +58,10 @@ public class SysStatusController {
         return ApiResponse.success();
     }
 
-    @PostMapping("/{id}/toggle")
+    @PostMapping("/toggle")
     @Operation(summary = "停用/启用状态", description = "切换状态的启用状态，enabled=1启用，enabled=0停用")
-    public ApiResponse<Void> toggle(
-            @Parameter(description = "状态ID", example = "1") @PathVariable Long id,
-            @Parameter(description = "是否启用：1-启用，0-停用", example = "1") @RequestParam
-                    Integer enabled) {
-        sysStatusApi.toggleStatus(id, enabled);
+    public ApiResponse<Void> toggle(@RequestBody SysStatusToggleReq request) {
+        sysStatusApi.toggleStatus(request);
         return ApiResponse.success();
     }
 }

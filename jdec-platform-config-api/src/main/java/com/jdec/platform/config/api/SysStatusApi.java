@@ -2,6 +2,7 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
+import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import java.util.List;
@@ -28,10 +29,9 @@ public interface SysStatusApi {
     /**
      * 停用/启用状态
      *
-     * @param id 状态ID
-     * @param enabled 是否启用：1-启用，0-停用
+     * @param req 状态切换请求（包含状态ID和启用标志）
      */
-    void toggleStatus(Long id, Integer enabled);
+    void toggleStatus(SysStatusToggleReq req);
 
     ModuleApprovalChainConfigResp.StatusNode getStatusByValue(Integer statusValue, Long moduleId);
 }
