@@ -19,7 +19,6 @@ import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorSystemLogMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.model.ApiResponse;
-import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -102,12 +101,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
     @Override
     @Transactional
-    public void record(MonitorLogReq req) throws SQLException {
-        /**
-         * { "module": "模块名称/功能名称/页面名称", "orderId": "单据编号/订单编号/业务编号/任务编号", "hrefUrl":
-         * "单据详情页/订单详情页/业务详情页/任务详情页", "orderVersion": "单据版本号/订单版本号/业务版本号/任务版本号", "operatorResult":
-         * "操作结果/执行结果/处理结果: 成功/失败", "fontColor": "字体颜色:默认为黑色" }
-         */
+    public void record(MonitorLogReq req) {
+
         if (LOG_TYPE_OPERATION.equals(req.getLogType())) {
             validateOperationLogContent(req.getLogContent());
         }
@@ -122,7 +117,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
             }
             userDetail = userDetailResp.getData();
         }
-
         // 查询角色信息
         RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
         if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
@@ -156,24 +150,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
         JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         if (req.getMockFlag() == 0) {
-            /*
-            <span class="arco-table-td-content">
-              <div class="flex">
-                <span>
-                  <div class="flex flex-items-center"></div>
-                </span>
-                <div class="arco-image arco-image-with-footer-inner m-r-8px cursor-pointer" style="width: 28px; height: 28px; border-radius: 50%;">
-                  <img class="arco-image-img" src="{user_avatar}" style="width: 28px; height: 28px;">
-                  <!--v-if-->
-                  <!--v-if-->
-                </div>
-                <span>
-                  <span>{user_name}</span>
-                  <span class="c-#667085">({work_number})</span>
-                </span>
-              </div>
-            </span>
-             */
             StringBuilder sb = new StringBuilder();
             sb.append("<span class=\"arco-table-td-content\">\n");
             sb.append("    <div class=\"flex\">\n");
@@ -198,30 +174,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
             sb.append("</span>");
             log.setUserInfo(sb.toString());
         } else {
-            /*
-            <span class="arco-table-td-content">
-              <div class="flex">
-                <span>
-                  <div class="flex flex-items-center"></div>
-                </span>
-                <div class="arco-image arco-image-with-footer-inner m-r-8px cursor-pointer" style="width: 28px; height: 28px; border-radius: 50%;">
-                  <img class="arco-image-img" src="{user_avatar}" style="width: 28px; height: 28px;"><!--v-if--> <!--v-if-->
-                </div>
-                <span>
-                  <span>{user_name}</span>
-                  <span class="c-#667085">({work_number})</span>以
-                </span>
-                <div class="arco-image arco-image-with-footer-inner m-r-8px cursor-pointer" style="width: 28px; height: 28px; border-radius: 50%;">
-                  <img class="arco-image-img" src="{user_avatar}" style="width: 28px; height: 28px;"><!--v-if--><!--v-if-->
-                </div>
-                <span>
-                  <span>{user_name}</span>
-                  <span class="c-#667085">({work_number})</span>
-                  身份操作
-                </span>
-              </div>
-            </span>
-             */
             StringBuilder sb = new StringBuilder();
             sb.append("<span class=\"arco-table-td-content\">\n");
             sb.append("    <div class=\"flex\">\n");
@@ -320,11 +272,22 @@ public class JdecMonitorLogService implements MonitorLogApi {
         } catch (Exception e) {
             return logContent;
         }
-
+        /*
+        {
+            "module": "模块名称/功能名称/页面名称",
+            "orderId": "单据编号/订单编号/业务编号/任务编号",
+            "hrefUrl": "单据详情页/订单详情页/业务详情页/任务详情页",
+            "orderVersion": "单据版本号/订单版本号/业务版本号/任务版本号",
+            "controlName":"操作名称/单据名称",
+            "operatorResult": "操作结果/执行结果/处理结果: 成功/失败",
+            "fontColor": "字体颜色:默认为黑色"
+        }
+         */
         String module = content.getStr("module");
         String orderId = content.getStr("orderId");
         String hrefUrl = content.getStr("hrefUrl");
         String orderVersion = content.getStr("orderVersion");
+        String controlName = content.getStr("controlName");
         String operatorResult = content.getStr("operatorResult");
         String fontColor = content.getStr("fontColor");
 
@@ -346,6 +309,9 @@ public class JdecMonitorLogService implements MonitorLogApi {
                     .append("</span>");
         }
         sb.append("]\n");
+        if (StringUtils.hasText(controlName)) {
+            sb.append(controlName);
+        }
         if (StringUtils.hasText(operatorResult)) {
             sb.append("                <span style=\"color: ")
                     .append(fontColor)
