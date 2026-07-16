@@ -34,7 +34,7 @@ public class JdecMonitorLogController {
         return ApiResponse.success(jdecMonitorLogService.queryPageList(request));
     }
 
-    @PostMapping("/Add")
+    @PostMapping("/add")
     @Operation(summary = "添加监控日志", description = "添加监控日志")
     public ApiResponse<Void> add(@Valid @RequestBody MonitorLogReq request) throws SQLException {
         jdecMonitorLogService.record(request);
