@@ -45,4 +45,8 @@ public class ApiResponse<T> {
     public static <T> ApiResponse<T> error(String msg) {
         return new ApiResponse<>(500, msg, null);
     }
+
+    public static <T> ApiResponse<T> customResponse(int status, String msg, T data) {
+        return new ApiResponse<>(status, msg, data);
+    }
 }

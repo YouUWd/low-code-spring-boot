@@ -2,10 +2,7 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigPageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
-import com.jdec.platform.config.api.dto.response.ApprovalChainCascadeResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigDetailResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigPageResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigSaveResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.List;
 
@@ -26,4 +23,7 @@ public interface SysApprovalChainConfigApi {
 
     /** 删除审批链配置 */
     void delete(Long id);
+
+    /** 查询审批链配置详情（返回同模块同类型的所有配置） */
+    ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId);
 }

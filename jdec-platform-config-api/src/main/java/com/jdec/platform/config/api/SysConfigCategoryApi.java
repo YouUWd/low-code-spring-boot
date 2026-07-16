@@ -3,10 +3,7 @@ package com.jdec.platform.config.api;
 import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
-import com.jdec.platform.config.api.dto.response.AllConfigResp;
-import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
-import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
-import com.jdec.platform.config.api.dto.response.SysConfigTreeNodeResp;
+import com.jdec.platform.config.api.dto.response.*;
 import java.util.List;
 
 public interface SysConfigCategoryApi {
@@ -77,4 +74,19 @@ public interface SysConfigCategoryApi {
      * @param req 拖拽请求
      */
     void dragItem(SysConfigItemDragReq req);
+
+    /**
+     * 查找指定分类下的配置项
+     *
+     * @param categoryAlias 分类英文标识
+     * @param itemValue 配置项value
+     */
+    SysConfigItemResp getConfigItemsByValue(String categoryAlias, String itemValue);
+
+    /**
+     * 查找指定分类下的配置项
+     *
+     * @param id 配置项ID
+     */
+    SysConfigItemResp getConfigItemsById(Long id);
 }

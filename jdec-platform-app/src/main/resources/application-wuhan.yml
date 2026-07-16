@@ -199,3 +199,20 @@ external-api:
       headers:
         Content-Type: application/json
         Accept: application/json
+
+
+config:
+  center:
+    base: http://119.36.78.123:5009/api/config
+
+
+app:
+  front-url: http://119.36.78.123:5988
+  system-name: 人力资源系统-Java
+  internal:
+    url: http://192.168.2.41:5101/home
+  project:
+    number: student_manage
+
+monitor-center:
+  base-url: http://localhost:8080

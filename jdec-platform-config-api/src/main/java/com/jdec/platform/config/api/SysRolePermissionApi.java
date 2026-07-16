@@ -131,4 +131,13 @@ public interface SysRolePermissionApi {
      * @return 用户个性化设置列表
      */
     List<PersonalSettingResp> getPersonalSettingByRole(Long roleId, Long moduleId);
+
+    /**
+     * 检查角色是否有模块写入权限
+     *
+     * @param roleId 角色ID
+     * @param moduleId 模块ID
+     * @return 是否有权限
+     */
+    boolean checkRoleHasModuleWrite(Long roleId, Long moduleId);
 }

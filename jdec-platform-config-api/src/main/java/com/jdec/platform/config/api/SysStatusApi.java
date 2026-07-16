@@ -3,6 +3,7 @@ package com.jdec.platform.config.api;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
 import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
+import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import java.util.List;
 
@@ -31,4 +32,8 @@ public interface SysStatusApi {
      * @param req 状态切换请求（包含状态ID和启用标志）
      */
     void toggleStatus(SysStatusToggleReq req);
+
+    void toggleStatus(Long id, Integer enabled);
+
+    ModuleApprovalChainConfigResp.StatusNode getStatusByValue(Integer statusValue, Long moduleId);
 }

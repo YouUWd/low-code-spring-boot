@@ -7,13 +7,16 @@ import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
 import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
+import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
+import com.jdec.platform.config.biz.entity.SysModuleStatus;
 import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
@@ -23,9 +26,11 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.exception.PopException;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
@@ -38,6 +43,7 @@ public class SysStatusService implements SysStatusApi {
     private final SysStatusMapper sysStatusMapper;
     private final ReferenceCheckManager referenceCheckManager;
     private final SysDataSnapshotMapper sysDataSnapshotMapper;
+    private final SysModuleStatusMapper sysModuleStatusMapper;
 
     @Override
     public List<SysStatusTreeResp> tree() {
@@ -323,6 +329,36 @@ public class SysStatusService implements SysStatusApi {
 
         status.setEnabled(req.getEnabled());
         sysStatusMapper.updateById(status);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ModuleApprovalChainConfigResp.StatusNode getStatusByValue(
+            Integer statusValue, Long moduleId) {
+        LambdaQueryWrapper<SysModuleStatus> moduleWrapper = new LambdaQueryWrapper<>();
+        moduleWrapper.eq(SysModuleStatus::getModuleId, moduleId);
+        List<SysModuleStatus> IdList = sysModuleStatusMapper.selectList(moduleWrapper);
+        Set<Long> Ids =
+                IdList.stream().map(SysModuleStatus::getStatusId).collect(Collectors.toSet());
+        LambdaQueryWrapper<SysStatus> statusWrapper = new LambdaQueryWrapper<>();
+        statusWrapper
+                .eq(SysStatus::getStatusValue, statusValue)
+                .in(SysStatus::getId, Ids)
+                .orderByDesc(SysStatus::getId)
+                .last("limit 1");
+        SysStatus statusConfig = sysStatusMapper.selectOne(statusWrapper);
+        if (Objects.isNull(statusConfig)) {
+            throw new BusinessException("状态值 " + statusValue + " 不存在");
+        }
+        ModuleApprovalChainConfigResp.StatusNode node =
+                new ModuleApprovalChainConfigResp.StatusNode();
+        node.setId(statusConfig.getId());
+        node.setPid(statusConfig.getPid());
+        node.setTitle(statusConfig.getTitle());
+        node.setStatusValue(statusConfig.getStatusValue());
+        node.setStatusBackground(statusConfig.getStatusBackground());
+        node.setStatusFontColor(statusConfig.getStatusFontColor());
+        return node;
     }
 
     /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */

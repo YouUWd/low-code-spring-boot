@@ -765,6 +765,19 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         return count > 0;
     }
 
+    @Override
+    public boolean checkRoleHasModuleWrite(Long roleId, Long moduleId) {
+        // 查询该角色在 sys_role_module_field_permission 表中是否有写入权限记录
+        long count =
+                sysRoleModuleFieldPermissionMapper.selectCount(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .eq(SysRoleModuleFieldPermission::getModuleId, moduleId)
+                                .eq(SysRoleModuleFieldPermission::getWritable, 1));
+
+        return count > 0;
+    }
+
     /**
      * 查询角色关联的用户/主体 ID，写入 ConfigChangeContext，供 Aspect 追加到 payload
      *

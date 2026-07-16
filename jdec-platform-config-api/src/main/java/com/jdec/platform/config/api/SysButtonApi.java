@@ -19,4 +19,7 @@ public interface SysButtonApi {
 
     /** 删除按钮 */
     void deleteButton(Long id);
+
+    /** 根据按钮ID获取按钮配置 */
+    SysButtonResp getButtonById(Long id);
 }
