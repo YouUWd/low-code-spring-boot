@@ -459,7 +459,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         for (ApprovalVersionRecord item : versionDataList) {
             Map<String, Object> map = new HashMap<>();
             map.put("id", item.getId());
-            map.put("business_id", item.getId());
+            map.put("record_id", item.getRecordId());
             map.put("version_no", item.getVersionNo());
             map.put("status_value", item.getStatusValue());
             map.put("btn_type", "change".equals(btnType) ? "change-view" : "");
