@@ -15,8 +15,8 @@ import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSp
 import com.jdec.platform.common_business.biz.dto.configcenter.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
-import com.jdec.platform.common_business.biz.log.ComBizLog;
-import com.jdec.platform.common_business.biz.log.ComBizLogContext;
+import com.jdec.platform.common_business.biz.enums.BizLogEnum;
+import com.jdec.platform.common_business.biz.log.ComBizLogEventPublisher;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
@@ -47,7 +47,6 @@ public class SystemManageServiceImpl implements SystemManageServiceApi {
 
     private final Integer DEFAULT_EMPTY_ROLE_ID = Integer.valueOf(0);
 
-    @ComBizLog
     @Override
     public synchronized ApiResponse<SelectRoleResp> selectRole(SelectRoleReq req) {
 
@@ -433,6 +432,7 @@ public class SystemManageServiceImpl implements SystemManageServiceApi {
                     BizLogDTO.builder()
                             .logType("system-log")
                             .projectNo(LoginUserUtil.getProjectNoFromHeader())
+                            .token(LoginUserUtil.getTokenFromHeader())
                             .platform(LoginUserUtil.getOsFromHeader())
                             .browser(LoginUserUtil.getBrowserFromHeader())
                             .ip(LoginUserUtil.getIpFromHeader())
@@ -443,7 +443,7 @@ public class SystemManageServiceImpl implements SystemManageServiceApi {
                             .preRoleId(oldSubjectRole.getRoleId())
                             .currentRoleId(oldSubjectRole.getRoleId())
                             .build();
-            ComBizLogContext.setBizLog(bizLogDTO);
+            ComBizLogEventPublisher.publishLogEvent(BizLogEnum.SELECT_ROLE, bizLogDTO);
             return apiResponse;
         } catch (Exception e) {
             log.error(
