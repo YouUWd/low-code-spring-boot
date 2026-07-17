@@ -6,7 +6,6 @@ import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
-import com.jdec.platform.approval.api.resp.ApprovalListResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,7 +32,8 @@ public class ApprovalController {
 
     @PostMapping("/BusinessList")
     @Operation(summary = "查询单据列表", description = "查询待办、已办、全部单据列表")
-    public ApiResponse<List<ApprovalListResp>> getBusinessList(@RequestBody ApprovalListReq req) {
+    public ApiResponse<List<Map<String, Object>>> getBusinessList(
+            @RequestBody ApprovalListReq req) {
         return ApiResponse.success(approvalService.getBusinessList(req));
     }
 
