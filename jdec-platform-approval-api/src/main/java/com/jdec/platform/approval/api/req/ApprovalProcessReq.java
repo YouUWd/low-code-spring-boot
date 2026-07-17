@@ -51,4 +51,8 @@ public class ApprovalProcessReq {
     // 驳回到指定状态步骤
     @Schema(description = "驳回到指定状态步骤")
     private Integer rejectStep;
+
+    // 新建业务时的编号前缀
+    @Schema(description = "新建业务时的编号前缀")
+    private String prefix;
 }

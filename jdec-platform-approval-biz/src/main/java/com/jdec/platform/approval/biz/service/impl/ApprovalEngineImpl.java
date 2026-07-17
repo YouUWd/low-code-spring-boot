@@ -539,7 +539,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     @Transactional
     public void businessCreate(ApprovalProcessDTO approvalProcessDTO) {
         // 生成唯一编号
-        String businessNumber = ToolUtils.createNo("JD", 1, "", 0, null);
+        String prefix = "JD";
+        if (Objects.nonNull(approvalProcessDTO.getPrefix())
+                && !approvalProcessDTO.getPrefix().isBlank()) {
+            prefix = approvalProcessDTO.getPrefix();
+        }
+        String businessNumber = ToolUtils.createNo(prefix, 1, "", 0, null);
         String serialNumber = businessNumber + "@1";
         // 初始化审批链
         approvalProcessDTO.setSerialNumber(serialNumber);
