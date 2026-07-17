@@ -66,8 +66,7 @@ public class SelectRoleBizLog implements BizLog {
                 monitorLogApiOpenFeignClient.add(req);
                 return Boolean.TRUE;
             } catch (Exception e) {
-                log.error(
-                        "recordBizLog logEnum=" + logEnum + ",log=" + bizLog.toString() + ",e=", e);
+                log.error("recordBizLog logEnum={},log={},e=", logEnum, bizLog.toString(), e);
             } finally {
                 TokenContextHolder.clear();
             }

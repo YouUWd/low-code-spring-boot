@@ -130,65 +130,49 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
         JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         if (req.getMockFlag() == 0) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("<span class=\"arco-table-td-content\">\n");
-            sb.append("    <div class=\"flex\">\n");
-            sb.append("        <span>\n");
-            sb.append("          <div class=\"flex flex-items-center\"></div>\n");
-            sb.append("        </span>\n");
-            sb.append(
-                    "        <div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">\n");
-            sb.append("         <img class=\"arco-image-img\" src=\"")
-                    .append(userDetail.getUserAvatar())
-                    .append("\" style=\"width: 28px; height: 28px;\">\n");
-            sb.append("        <!--v-if-->\n");
-            sb.append("        <!--v-if-->\n");
-            sb.append("       </div>\n");
-            sb.append("        <span>\n");
-            sb.append("          <span>{").append(userDetail.getUserName()).append("}</span>\n");
-            sb.append("           <span class=\"c-#667085\">({")
-                    .append(userDetail.getWorkNumber())
-                    .append("})</span>\n");
-            sb.append("        </span>\n");
-            sb.append("    </div>\n");
-            sb.append("</span>");
-            log.setUserInfo(sb.toString());
+            String userInfo =
+                    "<span class=\"arco-table-td-content\">"
+                            + "<div class=\"flex\">"
+                            + "<span><div class=\"flex flex-items-center\"></div></span>"
+                            + "<div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">"
+                            + "<img class=\"arco-image-img\" src=\""
+                            + userDetail.getUserAvatar()
+                            + "\" style=\"width: 28px; height: 28px;\"></div>"
+                            + "<span><span>{"
+                            + userDetail.getUserName()
+                            + "}</span>"
+                            + "<span class=\"c-#667085\">("
+                            + userDetail.getWorkNumber()
+                            + ")</span></span>"
+                            + "</div></span>";
+            log.setUserInfo(userInfo);
         } else {
-            StringBuilder sb = new StringBuilder();
-            sb.append("<span class=\"arco-table-td-content\">\n");
-            sb.append("    <div class=\"flex\">\n");
-            sb.append("        <span>\n");
-            sb.append("          <div class=\"flex flex-items-center\"></div>\n");
-            sb.append("        </span>\n");
-            sb.append(
-                    "        <div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">\n");
-            sb.append("         <img class=\"arco-image-img\" src=\"")
-                    .append(userDetail.getUserAvatar())
-                    .append("\" style=\"width: 28px; height: 28px;\"><!--v-if--><!--v-if-->\n");
-            sb.append("       </div>\n");
-            sb.append("        <span>\n");
-            sb.append("          <span>{").append(userDetail.getUserName()).append("}</span>\n");
-            sb.append("           <span class=\"c-#667085\">({")
-                    .append(userDetail.getWorkNumber())
-                    .append("})</span>以\n");
-            sb.append("        </span>\n");
-            sb.append(
-                    "         <div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">\n");
-            sb.append("         <img class=\"arco-image-img\" src=\"")
-                    .append(mockUserDetail.getUserAvatar())
-                    .append("\" style=\"width: 28px; height: 28px;\"><!--v-if--> <!--v-if-->\n");
-            sb.append("       </div>\n");
-            sb.append("        <span>\n");
-            sb.append("          <span>{")
-                    .append(mockUserDetail.getUserName())
-                    .append("}</span>\n");
-            sb.append("           <span class=\"c-#667085\">({")
-                    .append(mockUserDetail.getWorkNumber())
-                    .append("})</span>身份操作\n");
-            sb.append("        </span>\n");
-            sb.append("       </div>\n");
-            sb.append("</span>");
-            log.setUserInfo(sb.toString());
+            String mockUserInfo =
+                    "<span class=\"arco-table-td-content\">"
+                            + "<div class=\"flex\">"
+                            + "<span><div class=\"flex flex-items-center\"></div></span>"
+                            + "<div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">"
+                            + "<img class=\"arco-image-img\" src=\""
+                            + userDetail.getUserAvatar()
+                            + "\" style=\"width: 28px; height: 28px;\"></div>"
+                            + "<span><span>{"
+                            + userDetail.getUserName()
+                            + "}</span>"
+                            + "<span class=\"c-#667085\">("
+                            + userDetail.getWorkNumber()
+                            + ")</span>以</span>"
+                            + "<div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">"
+                            + "<img class=\"arco-image-img\" src=\""
+                            + mockUserDetail.getUserAvatar()
+                            + "\" style=\"width: 28px; height: 28px;\"></div>"
+                            + "<span><span>{"
+                            + mockUserDetail.getUserName()
+                            + "}</span>"
+                            + "<span class=\"c-#667085\">("
+                            + mockUserDetail.getWorkNumber()
+                            + ")</span>身份操作</span>"
+                            + "</div></span>";
+            log.setUserInfo(mockUserInfo);
         }
         log.setMockUserName(mockUserDetail.getUserName());
         log.setLoginRoleName(roleConfigDetail.getRoleName());
@@ -291,38 +275,29 @@ public class JdecMonitorLogService implements MonitorLogApi {
         String operatorResult = content.getStr("operatorResult");
         String fontColor = content.getStr("fontColor");
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("<span class=\"arco-table-td-content\">\n");
-        sb.append("    <div class=\"flex\">\n");
-        sb.append("        <span>\n");
-        sb.append("            <span>[")
-                .append(module)
-                .append("-")
-                .append("<a style=\"color: #408bee\" href=\"")
-                .append(hrefUrl)
-                .append("\" target=\"_blank\">")
-                .append(orderId)
-                .append("</a>");
-        if (StringUtils.hasText(orderVersion)) {
-            sb.append("\n                <span style=\"font-weight: 700; color: #2e7fed\">")
-                    .append(orderVersion)
-                    .append("</span>");
-        }
-        sb.append("]\n");
-        if (StringUtils.hasText(controlName)) {
-            sb.append(controlName);
-        }
-        if (StringUtils.hasText(operatorResult)) {
-            sb.append("                <span style=\"color: ")
-                    .append(fontColor)
-                    .append("\">")
-                    .append(operatorResult)
-                    .append("</span>\n");
-        }
-        sb.append("            </span>\n");
-        sb.append("        </span>\n");
-        sb.append("    </div>\n");
-        sb.append("</span>");
-        return sb.toString();
+        String orderVersionHtml =
+                StringUtils.hasText(orderVersion)
+                        ? "<span style=\"font-weight: 700; color: #2e7fed\">"
+                                + orderVersion
+                                + "</span>"
+                        : "";
+        String controlNameHtml = StringUtils.hasText(controlName) ? controlName : "";
+        String operatorResultHtml =
+                StringUtils.hasText(operatorResult)
+                        ? "<span style=\"color: " + fontColor + "\">" + operatorResult + "</span>"
+                        : "";
+        return "<span class=\"arco-table-td-content\">"
+                + "<div class=\"flex\"><span><span>["
+                + module
+                + "-<a style=\"color: #408bee\" href=\""
+                + hrefUrl
+                + "\" target=\"_blank\">"
+                + orderId
+                + "</a>"
+                + orderVersionHtml
+                + "]"
+                + controlNameHtml
+                + operatorResultHtml
+                + "</span></div></span>";
     }
 }

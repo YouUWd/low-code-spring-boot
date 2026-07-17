@@ -14,7 +14,6 @@ import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
-import com.jdec.platform.approval.api.resp.ApprovalListResp;
 import com.jdec.platform.approval.biz.dto.ApprovalProcessDTO;
 import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
@@ -109,7 +108,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> approvalInfo = BeanUtil.beanToMap(approvalVersionRecord, true, true);
         UserDetailResp createByUser =
                 sysUserApi.getUserDetailByUserId(approvalVersionRecord.getCreatedBy());
-        approvalInfo.put("user", createByUser);
+        Map<String, Object> userInfo = new HashMap<>();
+        userInfo.put("created_by_name", createByUser.getUserName());
+        userInfo.put("u_avatar", createByUser.getUserAvatar());
+        userInfo.put("u_work_number", createByUser.getWorkNumber());
+        approvalInfo.put("user", userInfo);
         Object[] versionArr =
                 getVersionList(approvalVersionRecord.getBusinessNumber(), req.getButton())
                         .toArray();
@@ -130,9 +133,21 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
         todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
         todoWrapper
-                .eq(ApprovalBusiness::getApproverId, approvalProcessReq.getApplicantId())
+                .nested(
+                        wp1 ->
+                                wp1.eq(
+                                                ApprovalBusiness::getApproverId,
+                                                approvalProcessReq.getApplicantId())
+                                        .eq(
+                                                ApprovalBusiness::getApproveRoleId,
+                                                approvalProcessReq.getRoleId()))
                 .or()
-                .eq(ApprovalBusiness::getApproveRoleId, approvalProcessReq.getRoleId());
+                .nested(
+                        wp2 ->
+                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                        .eq(
+                                                ApprovalBusiness::getApproveRoleId,
+                                                approvalProcessReq.getRoleId()));
         todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
         List<ApprovalBusiness> todoList = approvalBusinessMapper.selectList(todoWrapper);
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
@@ -154,24 +169,36 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     @Override
-    public List<ApprovalListResp> getBusinessList(ApprovalListReq approvalListReq) {
+    public List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq) {
         List<ApprovalBusiness> toDoList = new ArrayList<>();
-        List<ApprovalListResp> respList = new ArrayList<>();
+        List<Map<String, Object>> respList = new ArrayList<>();
         if (approvalListReq.getApprovalType() != 2) {
             LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
             todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
             todoWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
             todoWrapper
-                    .eq(ApprovalBusiness::getApproverId, approvalListReq.getApplicantId())
+                    .nested(
+                            wp1 ->
+                                    wp1.eq(
+                                                    ApprovalBusiness::getApproverId,
+                                                    approvalListReq.getApplicantId())
+                                            .eq(
+                                                    ApprovalBusiness::getApproveRoleId,
+                                                    approvalListReq.getRoleId()))
                     .or()
-                    .eq(ApprovalBusiness::getApproveRoleId, approvalListReq.getRoleId());
+                    .nested(
+                            wp2 ->
+                                    wp2.isNull(ApprovalBusiness::getApproverId)
+                                            .eq(
+                                                    ApprovalBusiness::getApproveRoleId,
+                                                    approvalListReq.getRoleId()));
             todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
             todoWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             toDoList = approvalBusinessMapper.selectList(todoWrapper);
             if (approvalListReq.getApprovalType() == 1) {
                 respList =
                         toDoList.stream()
-                                .map(business -> convertApprovalListResp(business, 1))
+                                .map(business -> convertMapResp(business, 1))
                                 .collect(Collectors.toList());
             }
         } else {
@@ -186,7 +213,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
             respList =
                     resultList.stream()
-                            .map(business -> convertApprovalListResp(business, 2))
+                            .map(business -> convertMapResp(business, 2))
                             .collect(Collectors.toList());
         }
         if (approvalListReq.getApprovalType() == 3) {
@@ -199,9 +226,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
             for (ApprovalBusiness item : allList) {
                 if (ids.contains(item.getId())) {
-                    respList.add(convertApprovalListResp(item, 1));
+                    respList.add(convertMapResp(item, 1));
                 } else {
-                    respList.add(convertApprovalListResp(item, 3));
+                    respList.add(convertMapResp(item, 3));
                 }
             }
         }
@@ -1388,21 +1415,46 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return approvalProcessDTO;
     }
 
-    private ApprovalListResp convertApprovalListResp(
+    private Map<String, Object> convertMapResp(
             ApprovalBusiness approvalBusiness, Integer approvalType) {
-        ApprovalListResp approvalListResp = new ApprovalListResp();
-        BeanUtils.copyProperties(approvalBusiness, approvalListResp);
-        approvalListResp.setApprovalType(approvalType);
-        approvalListResp.setListButton("查询");
+        Map<String, Object> approvalListResp = new HashMap<>();
+        Map<String, Object> businessNo = new HashMap<>();
+        businessNo.put("business_number", approvalBusiness.getBusinessNumber());
+        businessNo.put("version_no", approvalBusiness.getVersionNo());
+        approvalListResp.put("businessNo", businessNo);
+        UserDetailResp createByUser =
+                sysUserApi.getUserDetailByUserId(approvalBusiness.getCreatedBy());
+        Map<String, Object> userInfo = new HashMap<>();
+        userInfo.put("created_by_name", createByUser.getUserName());
+        userInfo.put("u_avatar", createByUser.getUserAvatar());
+        userInfo.put("u_work_number", createByUser.getWorkNumber());
+        approvalListResp.put("user", userInfo);
+        approvalListResp.put("createdDate", approvalBusiness.getCreatedDate());
+        Map<String, Object> approvalStatus = new HashMap<>();
+        approvalStatus.put("id", approvalBusiness.getStatusId());
+        approvalStatus.put("status_value", approvalBusiness.getStatusValue());
+        approvalStatus.put("title", approvalBusiness.getStatusTitle());
+        approvalStatus.put("status_background", approvalBusiness.getStatusBackground());
+        approvalStatus.put("status_font_color", approvalBusiness.getStatusFontColor());
+        approvalListResp.put("approvalStatus", approvalStatus);
+        Map<String, Object> btnInfo = new LinkedHashMap<>();
         String alias = "view";
+        String btnName = "查阅";
         if (approvalType == 1) {
             alias = "handle";
+            btnName = "办理";
         }
+        btnInfo.put("buttonKey", alias);
         SysConfigItemResp modelConfig =
                 sysConfigCategoryApi.getConfigItemsByValue("ListButtonStyle", alias);
         if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
-            approvalListResp.setListButton(modelConfig.getLabel());
+            btnInfo.put("buttonName", modelConfig.getLabel());
+        } else {
+            btnInfo.put("buttonName", btnName);
         }
+        List<Map<String, Object>> btnList = new ArrayList<>();
+        btnList.add(btnInfo);
+        approvalListResp.put("btnList", btnList);
         return approvalListResp;
     }
 }

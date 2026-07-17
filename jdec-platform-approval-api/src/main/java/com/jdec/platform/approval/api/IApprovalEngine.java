@@ -5,7 +5,6 @@ import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
-import com.jdec.platform.approval.api.resp.ApprovalListResp;
 import java.util.List;
 import java.util.Map;
 
@@ -14,7 +13,7 @@ public interface IApprovalEngine {
     Map<String, Object> getBusinessTypeList(ApprovalProcessReq approvalProcessDTO);
 
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
-    List<ApprovalListResp> getBusinessList(ApprovalListReq approvalListReq);
+    List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq);
 
     // 处理业务数据的审批流转---------------------------------------------------------------------
     Map<String, Object> process(ApprovalProcessReq approvalProcessDTO);
