@@ -13,6 +13,8 @@ import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -40,6 +42,12 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     @Transactional
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "交互权限",
+            operation = OperationType.UPDATE,
+            tableName = "sys_interaction_permission",
+            dataIdField = "#req.id")
     public SysRightResp saveInteractionPermission(SysInteractionPermissionSaveReq req) {
         SysInteractionPermission entity;
         if (req.getId() == null) {
@@ -126,6 +134,12 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     @Transactional
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "交互权限",
+            operation = OperationType.DELETE,
+            tableName = "sys_interaction_permission",
+            dataIdField = "#id")
     public void deleteInteractionPermission(Long id, boolean force) {
         SysInteractionPermission sysInteractionPermission =
                 sysInteractionPermissionMapper.selectOne(

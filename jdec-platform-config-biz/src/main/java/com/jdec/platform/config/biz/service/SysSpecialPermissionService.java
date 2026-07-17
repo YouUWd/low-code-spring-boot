@@ -21,6 +21,8 @@ import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -48,7 +50,14 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final ReferenceCheckManager referenceCheckManager;
 
+    @Transactional
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "特殊权限",
+            operation = OperationType.UPDATE,
+            tableName = "sys_special_permission",
+            dataIdField = "#req.id")
     public SysRightResp saveSpecialPermission(SysSpecialPermissionSaveReq req) {
         SysSpecialPermission entity;
         if (req.getId() == null) {
@@ -127,9 +136,15 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
 
     @Transactional
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "特殊权限",
+            operation = OperationType.DELETE,
+            tableName = "sys_special_permission",
+            dataIdField = "#id")
     public void deleteSpecialPermission(Long id, boolean force) {
         SysSpecialPermission sysSpecialPermission =
-                sysSpecialPermissionMapper.selectById(
+                sysSpecialPermissionMapper.selectOne(
                         Wrappers.<SysSpecialPermission>lambdaQuery()
                                 .eq(SysSpecialPermission::getId, id)
                                 .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())

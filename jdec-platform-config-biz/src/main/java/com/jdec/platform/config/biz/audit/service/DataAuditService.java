@@ -64,6 +64,12 @@ public class DataAuditService {
                 diffs = jsonDiffUtil.compareJsonObjects(oldJson, newJson, newData.getClass());
             }
 
+            // 如果是update操作（dataId不为空）且diff结果为空，说明没有任何修改，不记录日志
+            if (dataId != null && (diffs == null || diffs.isEmpty())) {
+                log.debug("数据未发生变更，跳过审计日志: table={}, dataId={}", tableName, dataId);
+                return;
+            }
+
             // 发送审计日志
             sendAuditLog(module, subModule, operation, tableName, dataId, diffs);
 
@@ -122,6 +128,12 @@ public class DataAuditService {
                 diffs = Collections.emptyList();
             } else {
                 diffs = jsonDiffUtil.compareJsonObjects(oldJson, jsonData, Object.class);
+            }
+
+            // 如果是update操作（dataId不为空）且diff结果为空，说明没有任何修改，不记录日志
+            if (dataId != null && (diffs == null || diffs.isEmpty())) {
+                log.debug("数据未发生变更，跳过审计日志: table={}, dataId={}", tableName, dataId);
+                return;
             }
 
             // 发送审计日志

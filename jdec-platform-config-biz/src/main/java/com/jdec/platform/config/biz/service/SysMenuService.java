@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysMenuApi;
@@ -10,9 +11,13 @@ import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
+import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.entity.SysMenu;
+import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -34,6 +39,7 @@ public class SysMenuService implements SysMenuApi {
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final ReferenceCheckManager referenceCheckManager;
+    private final SysDataSnapshotMapper sysDataSnapshotMapper;
 
     /** 菜单类型：导航 */
     private static final Integer MENU_TYPE_NAV = 1;
@@ -106,6 +112,12 @@ public class SysMenuService implements SysMenuApi {
         return result;
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "菜单配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_menu",
+            dataIdField = "#req.id")
     @Transactional
     @Override
     public void saveMenu(SysMenuSaveReq req) {
@@ -149,6 +161,11 @@ public class SysMenuService implements SysMenuApi {
             }
 
             sysMenuMapper.insert(entity);
+            SysDataSnapshot snapshot = new SysDataSnapshot();
+            snapshot.setTableName("sys_menu");
+            snapshot.setDataId(entity.getId());
+            snapshot.setJsonData(JSONUtil.toJsonStr(entity));
+            sysDataSnapshotMapper.insert(snapshot);
         } else {
             // 编辑
             SysMenu oldEntity =
@@ -243,6 +260,12 @@ public class SysMenuService implements SysMenuApi {
         }
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "菜单配置",
+            operation = OperationType.DELETE,
+            tableName = "sys_menu",
+            dataIdField = "#id")
     @Transactional
     @Override
     public void deleteMenu(Long id, boolean force) {
@@ -275,6 +298,12 @@ public class SysMenuService implements SysMenuApi {
         reorderSiblingsAfterDelete(menu.getPid(), subjectId, projectNo);
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "菜单配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_menu",
+            dataIdField = "#req.id")
     @Transactional
     @Override
     public void dragMenu(SysMenuDragReq req) {
