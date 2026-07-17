@@ -98,31 +98,53 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 查询单据审批详细数据--------------------------------------------------------------------
     @Override
     public Map<String, Object> getApprovalDetail(ApprovalProcessReq req) {
-        List<Map<String, Object>> step = getApprovalStep(req);
-        List<Map<String, Object>> operationButton = getOperationButton(req);
+        Map<String, Object> result = new HashMap<>();
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
         businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId());
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
-        Map<String, Object> approvalInfo = BeanUtil.beanToMap(approvalVersionRecord, true, true);
-        UserDetailResp createByUser =
-                sysUserApi.getUserDetailByUserId(approvalVersionRecord.getCreatedBy());
-        Map<String, Object> userInfo = new HashMap<>();
-        userInfo.put("created_by_name", createByUser.getUserName());
-        userInfo.put("u_avatar", createByUser.getUserAvatar());
-        userInfo.put("u_work_number", createByUser.getWorkNumber());
-        approvalInfo.put("user", userInfo);
+        // 单据编号
+        result.put("businessNumber", approvalVersionRecord.getBusinessNumber());
+        // 当前版本号
+        result.put("versionNo", approvalVersionRecord.getVersionNo());
+        // 当前版本号
+        result.put("createdDate", approvalVersionRecord.getCreatedDate());
+        // 版本号
         Object[] versionArr =
                 getVersionList(approvalVersionRecord.getBusinessNumber(), req.getButton())
                         .toArray();
         List<Map<String, Object>> versionList = (List<Map<String, Object>>) versionArr[0];
-        approvalInfo.put("version_list", versionList);
-        // 11. 最终返回
-        Map<String, Object> result = new HashMap<>();
-        result.put("info", approvalInfo);
+        result.put("versionList", versionList);
+        // 当前状态
+        Map<String, Object> approvalStatus = new HashMap<>();
+        approvalStatus.put("id", approvalVersionRecord.getStatusId());
+        approvalStatus.put("statusValue", approvalVersionRecord.getStatusValue());
+        approvalStatus.put("title", approvalVersionRecord.getStatusTitle());
+        approvalStatus.put("statusBackground", approvalVersionRecord.getStatusBackground());
+        approvalStatus.put("statusFontColor", approvalVersionRecord.getStatusFontColor());
+        result.put("approvalStatus", approvalStatus);
+        // 审批链步骤
+        List<Map<String, Object>> step =
+                approvalChainStep(
+                        approvalVersionRecord.getSerialNumber(),
+                        approvalVersionRecord.getSerialNo(),
+                        req.getRoleId(),
+                        req.getApplicantId());
         result.put("step", step);
-        result.put("button", operationButton);
+        // 创建人
+        UserDetailResp createByUser =
+                sysUserApi.getUserDetailByUserId(approvalVersionRecord.getCreatedBy());
+        Map<String, Object> userInfo = new HashMap<>();
+        userInfo.put("createdByName", createByUser.getUserName());
+        userInfo.put("uAvatar", createByUser.getUserAvatar());
+        userInfo.put("uWorkNumber", createByUser.getWorkNumber());
+        result.put("createUser", userInfo);
+
+        // 操作按钮
+        List<Map<String, Object>> operationButton = getOperationButton(req);
+
+        result.put("btnList", operationButton);
         return result;
     }
 
@@ -162,9 +184,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         allWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
         allWrapper.eq(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectId());
         Map<String, Object> resultMap = new HashMap<>();
-        resultMap.put("todo_num", todoList.size());
-        resultMap.put("done_num", processList.size());
-        resultMap.put("all_num", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
+        resultMap.put("todoNum", todoList.size());
+        resultMap.put("doneNum", processList.size());
+        resultMap.put("allNum", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
         return resultMap;
     }
 
@@ -453,27 +475,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return operations;
     }
 
-    // 查询审批链全部审批步骤----------------------------------------------------------------------
-    private List<Map<String, Object>> getApprovalStep(ApprovalProcessReq approvalProcessReq) {
-        LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
-        businessWrapper.eq(ApprovalVersionRecord::getModuleId, approvalProcessReq.getModuleId());
-        businessWrapper.eq(ApprovalVersionRecord::getRecordId, approvalProcessReq.getRecordId());
-        ApprovalVersionRecord approvalChainBusiness =
-                approvalVersionRecordMapper.selectOne(businessWrapper);
-        List<Map<String, Object>> result = new ArrayList<>();
-        Map<String, Object> itemMap = new HashMap<>();
-        itemMap.put("module_id", 0);
-        itemMap.put("is_end", 1);
-        itemMap.put(
-                "list",
-                approvalChainStep(
-                        approvalChainBusiness.getSerialNumber(),
-                        approvalChainBusiness.getSerialNo(),
-                        approvalProcessReq.getRoleId()));
-        result.add(itemMap);
-        return result;
-    }
-
     // 获取版本列表，处理变更模式--------------------------------------------------------------
     protected List<Object> getVersionList(String getBusinessNumber, String btnType) {
         // 1. 获取数据
@@ -492,10 +493,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         for (ApprovalVersionRecord item : versionDataList) {
             Map<String, Object> map = new HashMap<>();
             map.put("id", item.getId());
-            map.put("record_id", item.getRecordId());
-            map.put("version_no", item.getVersionNo());
-            map.put("status_value", item.getStatusValue());
-            map.put("btn_type", "change".equals(btnType) ? "change-view" : "");
+            map.put("recordId", item.getRecordId());
+            map.put("versionNo", item.getVersionNo());
+            map.put("statusValue", item.getStatusValue());
+            map.put("btnType", "change".equals(btnType) ? "change-view" : "");
             versionList.add(map);
         }
 
@@ -515,9 +516,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 // 取第一条
                 Map<String, Object> lastData = new HashMap<>(sortData.get(0));
                 lastData.put("id", 0);
-                lastData.put("btn_type", "change-change");
+                lastData.put("btnType", "change-change");
                 versionNo = versionList.size() + 1;
-                lastData.put("version_no", versionNo);
+                lastData.put("versionNo", versionNo);
                 versionList.add(lastData);
             }
         }
@@ -526,8 +527,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         versionList.sort(
                 (a, b) ->
                         Short.compare(
-                                (Short.parseShort(b.get("version_no").toString())),
-                                Short.parseShort(a.get("version_no").toString())));
+                                (Short.parseShort(b.get("versionNo").toString())),
+                                Short.parseShort(a.get("versionNo").toString())));
 
         // 5. 返回 [versionList, versionNo]
         List<Object> result = new ArrayList<>();
@@ -1078,7 +1079,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // =========================辅助方法===============================================
     // 获取业务流审批步骤列表------------------------------------------------------------
     private List<Map<String, Object>> approvalChainStep(
-            String serialNumber, int serialNo, Long roleId) {
+            String serialNumber, int serialNo, Long roleId, Long applicantId) {
         // 1. 构建基础查询条件
         LambdaQueryWrapper<ApprovalChain> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ApprovalChain::getSerialNumber, serialNumber)
@@ -1120,7 +1121,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
             // 当前角色是否可操作
             int isOperate = 0;
-            if (roleId.equals(Long.parseLong(item.getApproveRoleId().toString()))) {
+            if (Objects.nonNull(item.getApproverId())) {
+                if (applicantId.equals(item.getApproverId())
+                        && roleId.equals(item.getApproveRoleId())) {
+                    isOperate = 1;
+                }
+            } else if (roleId.equals(item.getApproveRoleId())) {
                 isOperate = 1;
             }
 
@@ -1139,15 +1145,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             map.put("id", item.getCurrentStatusChildId());
             map.put("order", x);
             map.put("title", status == null ? "" : status.getTitle());
-            map.put("status_background", status == null ? "" : status.getStatusBackground());
-            map.put("status_font_color", status == null ? "" : status.getStatusFontColor());
-            map.put("status_value", status == null ? "" : status.getStatusValue());
-            map.put("is_approved", item.getApproved());
-            map.put("is_highlight", isHighlight);
-            map.put("is_operate", isOperate);
-            map.put("can_do", (isHighlight == 1 && isOperate == 1) ? 1 : 0);
-            map.put("is_collaboration", item.getCollaborated());
-            map.put("approval_rule", item.getApprovalRule());
+            map.put("statusBackground", status == null ? "" : status.getStatusBackground());
+            map.put("statusFontColor", status == null ? "" : status.getStatusFontColor());
+            map.put("statusValue", status == null ? "" : status.getStatusValue());
+            map.put("isApproved", item.getApproved());
+            map.put("isHighlight", isHighlight);
+            map.put("isOperate", isOperate);
+            map.put("canDo", (isHighlight == 1 && isOperate == 1) ? 1 : 0);
+            map.put("isCollaboration", item.getCollaborated());
+            map.put("approvalRule", item.getApprovalRule());
             data.add(map);
 
             // 注释代码完全保留（和PHP一致）
@@ -1187,14 +1193,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 lastMap.put("id", model.getId());
                 lastMap.put("order", x + 1);
                 lastMap.put("title", model.getTitle());
-                lastMap.put("status_background", model.getStatusBackground());
-                lastMap.put("status_font_color", model.getStatusFontColor());
-                lastMap.put("status_value", model.getStatusValue());
-                lastMap.put("is_approved", item.getApproved());
-                lastMap.put("is_highlight", lastHighlight);
-                lastMap.put("can_do", 0);
-                lastMap.put("is_collaboration", item.getCollaborated());
-                lastMap.put("approval_rule", item.getApprovalRule());
+                lastMap.put("statusBackground", model.getStatusBackground());
+                lastMap.put("statusFontColor", model.getStatusFontColor());
+                lastMap.put("statusValue", model.getStatusValue());
+                lastMap.put("isApproved", item.getApproved());
+                lastMap.put("isHighlight", lastHighlight);
+                lastMap.put("canDo", 0);
+                lastMap.put("isCollaboration", item.getCollaborated());
+                lastMap.put("approvalRule", item.getApprovalRule());
                 data.add(lastMap);
             }
             x++;
@@ -1232,17 +1238,17 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             modelConfig = sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
             item.put("key", alias);
             item.put("title", modelConfigButton.getTitle());
-            item.put("show_title", modelConfigButton.getTitle());
+            item.put("showTitle", modelConfigButton.getTitle());
             Map<String, Object> property = new HashMap<>();
-            property.put("default_bg_color", modelConfigButton.getDefaultBgColor());
-            property.put("default_font_color", modelConfigButton.getDefaultFontColor());
-            property.put("levitate_bg_color", modelConfigButton.getLevitateBgColor());
-            property.put("levitate_font_color", modelConfigButton.getLevitateFontColor());
-            property.put("selected_bg_color", modelConfigButton.getSelectedBgColor());
-            property.put("selected_font_color", modelConfigButton.getSelectedFontColor());
-            item.put("extra_property", property);
-            item.put("action_icon", approvalButton.getIcon());
-            item.put("action_name", approvalButton.getLogName());
+            property.put("defaultBgColor", modelConfigButton.getDefaultBgColor());
+            property.put("defaultFontColor", modelConfigButton.getDefaultFontColor());
+            property.put("levitateBgColor", modelConfigButton.getLevitateBgColor());
+            property.put("levitateFontColor", modelConfigButton.getLevitateFontColor());
+            property.put("selectedBgColor", modelConfigButton.getSelectedBgColor());
+            property.put("selectedFontColor", modelConfigButton.getSelectedFontColor());
+            item.put("extraProperty", property);
+            item.put("actionIcon", approvalButton.getIcon());
+            item.put("actionName", approvalButton.getLogName());
             if (alias.equals("reject")) {
                 // 查询当前审批步骤
                 ApprovalChain approvalChain =
@@ -1261,39 +1267,35 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
             item.put("key", alias);
             item.put("title", modelConfig.getLabel());
-            item.put("show_title", modelConfig.getLabel());
+            item.put("showTitle", modelConfig.getLabel());
             String extraPropertyStr = modelConfig.getExtra();
             if (Objects.nonNull(extraPropertyStr) && !extraPropertyStr.isEmpty()) {
                 Type type = new TypeReference<Map<String, Object>>() {};
                 Map<String, Object> extraProperty =
                         BeanUtil.beanToMap(JSONUtil.toBean(extraPropertyStr, type, true));
                 Map<String, Object> property = new HashMap<>();
-                property.put("default_bg_color", MapUtil.getStr(extraProperty, "default_bg_color"));
+                property.put("defaultBgColor", MapUtil.getStr(extraProperty, "default_bg_color"));
                 property.put(
-                        "default_font_color", MapUtil.getStr(extraProperty, "default_font_color"));
+                        "defaultFontColor", MapUtil.getStr(extraProperty, "default_font_color"));
+                property.put("levitateBgColor", MapUtil.getStr(extraProperty, "levitate_bg_color"));
                 property.put(
-                        "levitate_bg_color", MapUtil.getStr(extraProperty, "levitate_bg_color"));
+                        "levitateFontColor", MapUtil.getStr(extraProperty, "levitate_font_color"));
+                property.put("selectedBgColor", MapUtil.getStr(extraProperty, "selected_bg_color"));
                 property.put(
-                        "levitate_font_color",
-                        MapUtil.getStr(extraProperty, "levitate_font_color"));
-                property.put(
-                        "selected_bg_color", MapUtil.getStr(extraProperty, "selected_bg_color"));
-                property.put(
-                        "selected_font_color",
-                        MapUtil.getStr(extraProperty, "selected_font_color"));
-                item.put("extra_property", property);
+                        "selectedFontColor", MapUtil.getStr(extraProperty, "selected_font_color"));
+                item.put("extraProperty", property);
             } else {
                 Map<String, Object> property = new HashMap<>();
-                property.put("default_bg_color", "");
-                property.put("default_font_color", "");
-                property.put("levitate_bg_color", "");
-                property.put("levitate_font_color", "");
-                property.put("selected_bg_color", "");
-                property.put("selected_font_color", "");
-                item.put("extra_property", property);
+                property.put("defaultBgColor", "");
+                property.put("defaultFontColor", "");
+                property.put("levitateBgColor", "");
+                property.put("levitateFontColor", "");
+                property.put("selectedBgColor", "");
+                property.put("selectedFontColor", "");
+                item.put("extraProperty", property);
             }
-            item.put("action_icon", modelConfig.getValue());
-            item.put("action_name", "已" + modelConfig.getLabel());
+            item.put("actionIcon", modelConfig.getValue());
+            item.put("actionName", "已" + modelConfig.getLabel());
         }
         item.put("show", 1);
 
@@ -1423,24 +1425,25 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private Map<String, Object> convertMapResp(
             ApprovalBusiness approvalBusiness, Integer approvalType) {
         Map<String, Object> approvalListResp = new HashMap<>();
+        approvalListResp.put("recordId", approvalBusiness.getRecordId());
         Map<String, Object> businessNo = new HashMap<>();
-        businessNo.put("business_number", approvalBusiness.getBusinessNumber());
-        businessNo.put("version_no", approvalBusiness.getVersionNo());
+        businessNo.put("businessNumber", approvalBusiness.getBusinessNumber());
+        businessNo.put("versionNo", approvalBusiness.getVersionNo());
         approvalListResp.put("businessNo", businessNo);
         UserDetailResp createByUser =
                 sysUserApi.getUserDetailByUserId(approvalBusiness.getCreatedBy());
         Map<String, Object> userInfo = new HashMap<>();
-        userInfo.put("created_by_name", createByUser.getUserName());
-        userInfo.put("u_avatar", createByUser.getUserAvatar());
-        userInfo.put("u_work_number", createByUser.getWorkNumber());
-        approvalListResp.put("user", userInfo);
+        userInfo.put("createdByName", createByUser.getUserName());
+        userInfo.put("uAvatar", createByUser.getUserAvatar());
+        userInfo.put("uWorkNumber", createByUser.getWorkNumber());
+        approvalListResp.put("createUser", userInfo);
         approvalListResp.put("createdDate", approvalBusiness.getCreatedDate());
         Map<String, Object> approvalStatus = new HashMap<>();
         approvalStatus.put("id", approvalBusiness.getStatusId());
-        approvalStatus.put("status_value", approvalBusiness.getStatusValue());
+        approvalStatus.put("statusValue", approvalBusiness.getStatusValue());
         approvalStatus.put("title", approvalBusiness.getStatusTitle());
-        approvalStatus.put("status_background", approvalBusiness.getStatusBackground());
-        approvalStatus.put("status_font_color", approvalBusiness.getStatusFontColor());
+        approvalStatus.put("statusBackground", approvalBusiness.getStatusBackground());
+        approvalStatus.put("statusFontColor", approvalBusiness.getStatusFontColor());
         approvalListResp.put("approvalStatus", approvalStatus);
         Map<String, Object> btnInfo = new LinkedHashMap<>();
         String alias = "view";
