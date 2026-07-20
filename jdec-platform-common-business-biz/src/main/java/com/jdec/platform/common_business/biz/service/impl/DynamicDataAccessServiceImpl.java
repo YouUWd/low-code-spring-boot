@@ -7,12 +7,12 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.req.ApprovalListReq;
+import com.jdec.platform.approval.api.resp.ApprovalListResp;
 import com.jdec.platform.common_business.api.DynamicDataAccessServiceApi;
 import com.jdec.platform.common_business.api.dto.common.*;
-import com.jdec.platform.common_business.api.dto.request.DataRightAccessReq;
-import com.jdec.platform.common_business.api.dto.request.ListQueryReq;
-import com.jdec.platform.common_business.api.dto.request.OrderItemReq;
-import com.jdec.platform.common_business.api.dto.request.SearchItemReq;
+import com.jdec.platform.common_business.api.dto.request.*;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
@@ -28,6 +28,7 @@ import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.enums.QueryOpEnum;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.service.SqlCreateService;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -36,7 +37,6 @@ import com.jdec.platform.shared.utils.SpringBeanUtil;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.List;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -76,11 +76,17 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
     private static final String NOT_ONE2MULTI_RESULT_KEY_SUFFIX = "Object";
 
+    private static final String KEY_ASTERISK_STR = "*";
+
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     private final ConfigCenterApiClient configCenterApiClient;
 
     private final ConfigCenterApiService configCenterApiService;
+
+    private final SqlCreateService sqlCreateService;
+
+    private final IApprovalEngine ApprovalEngineApi;
 
     @Override
     public Map<String, Object> dynamicQueryDetailData(
@@ -715,10 +721,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         for (ModuleField moduleField : filteredFields) {
             // 如果是COMBINE类型，要遍历sourceMapping拿出要查询字段
             if (CollectionUtils.isEmpty(moduleField.getSourceMappings())) {
-                selectColumnsSet.add(
-                        moduleField.getTableName()
-                                + DB_TABLE_FIELD_SEPARATOR
-                                + moduleField.getFieldCode());
+                if (!FIELD_TYPE_COMBINE.equals(moduleField.getFiledType())) {
+                    // 普通查询列
+                    selectColumnsSet.add(
+                            moduleField.getTableName()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + moduleField.getFieldCode());
+                } else {
+                    log.debug(
+                            "组合字段名称:{},字段标识:{}未绑定数据库实体字段，不加入数据库列查询。",
+                            moduleField.getFieldName(),
+                            moduleField.getFieldCode());
+                }
+
             } else {
                 for (ModuleField.SourceMapping sourceMapping : moduleField.getSourceMappings()) {
                     if (tableName.equals(sourceMapping.entity())) {
@@ -747,8 +762,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             ModuleFilterInfo moduleFilterInfo,
             List<Long> moduleSkip,
             boolean columnFilter,
-            List<Object> primaryTableFilterIds,
-            List<OrderItemReq> orderItems) {
+            List<Object> primaryTableDataList,
+            List<OrderItemReq> orderItems,
+            Integer type) {
 
         // 获取权限过滤后的Field结果
         if (Objects.isNull(moduleFilterInfo)) {
@@ -800,12 +816,26 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         // 列头筛选模式下，筛选出来的主键id集合为空，则本次查询不会有数据返回
         if (columnFilter) {
-            if (!CollectionUtils.isEmpty(primaryTableFilterIds)) {
+            if (!CollectionUtils.isEmpty(primaryTableDataList)) {
+                // 获取主表关联key的值作为关联表的查询条件
+                Set<Long> idList =
+                        primaryTableDataList.stream()
+                                .map(
+                                        e -> {
+                                            Field field =
+                                                    ReflectionUtils.findField(
+                                                            e.getClass(), DEFAULT_PRIMARY_KEY);
+                                            field.setAccessible(true);
+                                            return Long.parseLong(
+                                                    String.valueOf(
+                                                            ReflectionUtils.getField(field, e)));
+                                        })
+                                .collect(Collectors.toSet());
                 queryWrapper.in(
                         moduleFilterInfo.getModuleInfo().getPrimaryTable()
                                 + DB_TABLE_FIELD_SEPARATOR
                                 + DEFAULT_PRIMARY_KEY,
-                        primaryTableFilterIds.toArray());
+                        idList.toArray());
             } else {
                 log.debug("列头筛选模式下，主表的主键id列表为空，则直接返回。");
                 buildConfigData(resultMap, moduleFilterInfo);
@@ -813,6 +843,65 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 resultMap.put("total", 0);
                 return resultMap;
             }
+        }
+
+        boolean hasApproval = false;
+        if (Objects.nonNull(type)) {
+            hasApproval = true;
+        }
+
+        List<Map<String, Object>> approvalListResps = new ArrayList<>();
+
+        Map<Long, Map<String, Object>> recordIdToApprovalData = new HashMap<>();
+
+        ApprovalListReq approvalListReq = null;
+        // 带审批链的查询，构造查询参数
+        if (hasApproval) {
+            approvalListReq = new ApprovalListReq();
+            approvalListReq.setApprovalType(type);
+
+            approvalListReq.setRecordIdList(Arrays.asList(1L));
+
+            List<Long> idList =
+                    primaryTableDataList.stream()
+                            .map(
+                                    e -> {
+                                        Field field =
+                                                ReflectionUtils.findField(
+                                                        e.getClass(), DEFAULT_PRIMARY_KEY);
+                                        field.setAccessible(true);
+                                        return Long.parseLong(
+                                                String.valueOf(ReflectionUtils.getField(field, e)));
+                                    })
+                            .collect(Collectors.toList());
+
+            //            approvalListReq.setRecordIdList(idList);
+
+            approvalListReq.setRoleId(54L);
+            //                approvalListReq.setRoleId(roleId);
+
+            approvalListReq.setModuleIdList(Arrays.asList(136L));
+            //            List<Long> moduleIdList =
+            //                    primaryTableDataList.stream()
+            //                            .map(
+            //                                    e -> {
+            //                                        Field field =
+            //                                                ReflectionUtils.findField(
+            //                                                        e.getClass(),"moduleId");
+            //                                        field.setAccessible(true);
+            //                                        return Long.parseLong(
+            //                                                String.valueOf(
+            //
+            // ReflectionUtils.getField(field, e)));
+            //                                    })
+            //                            .collect(Collectors.toList());
+            //            approvalListReq.setModuleId(moduleIdList);
+
+            approvalListReq.setCurrentUserId(296L);
+            approvalListReq.setApplicantId(296L);
+
+            //            approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            //            approvalListReq.setApplicantId(LoginUserUtil.getLoginUserId());
         }
 
         // 查询数据权限配置
@@ -838,6 +927,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             .map(SubjectResp::getId)
                             .collect(Collectors.toList());
             log.debug("数据来源于其他主体，主体ID列表为{}", subjectIds);
+
+            if (hasApproval) {
+                approvalListReq.setSubjectIdList(
+                        subjectIds.stream().map(Integer::longValue).collect(Collectors.toList()));
+            }
+
             buildWhere(
                     queryWrapper,
                     moduleFilterInfo.getModuleInfo().getPrimaryTable()
@@ -845,12 +940,39 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             + DEFAULT_SUBJECT_KEY,
                     subjectIds.toArray());
         } else {
+            if (hasApproval) {
+                approvalListReq.setSubjectIdList(Arrays.asList(subjectId));
+            }
             buildWhere(
                     queryWrapper,
                     moduleFilterInfo.getModuleInfo().getPrimaryTable()
                             + DB_TABLE_FIELD_SEPARATOR
                             + DEFAULT_SUBJECT_KEY,
                     subjectId);
+        }
+
+        if (hasApproval) {
+
+            approvalListResps = ApprovalEngineApi.getBusinessList(approvalListReq);
+
+            // 构造recordId为key,审批数据为值的映射map，方便后面数据拼装
+            for (Map<String, Object> item : approvalListResps) {
+                if (item.containsKey("recordId")) {
+                    Map<String, Object> asteriskPrefixMap =
+                            item.entrySet().stream()
+                                    .collect(
+                                            Collectors.toMap(
+                                                    entry ->
+                                                            KEY_ASTERISK_STR
+                                                                    + DB_TABLE_FIELD_SEPARATOR
+                                                                    + entry.getKey(),
+                                                    Map.Entry::getValue));
+
+                    recordIdToApprovalData.put(
+                            Long.parseLong(String.valueOf(item.get("recordId"))),
+                            asteriskPrefixMap);
+                }
+            }
         }
 
         // 筛选id参数不为空， 则将关联id字段进行筛选 比如学生详情里要以学生ID做筛选查询分数列表
@@ -1131,7 +1253,26 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         }
                     }
                 }
-                primaryTablePrefixResultMap.put("btnList", moduleFilterInfo.getBtnList());
+
+                if (!hasApproval) {
+                    primaryTablePrefixResultMap.put("btnList", moduleFilterInfo.getBtnList());
+                } else {
+                    primaryTablePrefixResultMap.put(
+                            "btnList", recordIdToApprovalData.get(1L).get("*.btnList"));
+                }
+
+                // 加入审批链相关字段
+                Object primaryId =
+                        primaryTablePrefixResultMap.get(
+                                finalModuleFilterInfo4.getModuleInfo().getPrimaryTable()
+                                        + DB_TABLE_FIELD_SEPARATOR
+                                        + DEFAULT_PRIMARY_KEY);
+
+                //
+                // primaryTablePrefixResultMap.putAll(recordIdToApprovalData.get(Long.parseLong(String.valueOf(primaryId))));
+
+                primaryTablePrefixResultMap.putAll(recordIdToApprovalData.get(1L));
+
                 dataList.add(primaryTablePrefixResultMap);
             }
 
@@ -1158,17 +1299,43 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             ModuleFilterInfo moduleFilterInfo,
             List<Long> moduleSkip) {
         Map<String, Object> resultMap = new HashMap<>();
-        List<Object> finalPrimaryTableId = new ArrayList<>();
+        List<Object> finalPrimaryTableDataList = new ArrayList<>();
 
         boolean columnFilter = false;
 
         if (!CollectionUtils.isEmpty(req.getSearch())) {
             columnFilter = true;
-            finalPrimaryTableId =
-                    getFinalPrimaryKey(
+            finalPrimaryTableDataList =
+                    getFinalPrimaryData(
                             subjectId, roleId, moduleId, req, moduleFilterInfo, moduleSkip);
-            log.debug("列表搜索条件不为空，先查出主表主键列表:{}", finalPrimaryTableId);
+            log.debug("列表搜索条件不为空，先查出主表数据条数:{}", finalPrimaryTableDataList.size());
+        } else {
+            log.debug("列头搜索条件为空，先按公共的筛选条件筛选一遍主表。");
+            // 主表查询条件构造
+            QueryWrapper queryWrapper = Wrappers.query();
+            finalPrimaryTableDataList =
+                    commonQuery(
+                            subjectId,
+                            roleId,
+                            moduleId,
+                            moduleFilterInfo,
+                            moduleSkip,
+                            queryWrapper,
+                            true);
         }
+
+        List<ApprovalListResp> approvalListResps = new ArrayList<>();
+
+        Integer type = null;
+
+        // 是带审批链的列表查询，则最终的Id集合需要审批链接口提供
+        if (req instanceof ApprovalListQueryReq) {
+            if (!CollectionUtils.isEmpty(finalPrimaryTableDataList)) {
+                ApprovalListQueryReq approvalReq = (ApprovalListQueryReq) req;
+                type = approvalReq.getType();
+            }
+        }
+
         resultMap.putAll(
                 dynamicQueryListData(
                         subjectId,
@@ -1179,10 +1346,115 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         moduleFilterInfo,
                         moduleSkip,
                         columnFilter,
-                        finalPrimaryTableId,
-                        req.getOrder()));
+                        finalPrimaryTableDataList,
+                        req.getOrder(),
+                        type));
+
+        mergeApprovalData(resultMap, approvalListResps);
         return resultMap;
     }
+
+    /**
+     * 公共条件查询，包括主体、数据权限等筛选条件
+     *
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @param moduleFilterInfo
+     * @param moduleSkip
+     * @param queryWrapper
+     * @param returnResult
+     * @return
+     */
+    private List<Object> commonQuery(
+            Long subjectId,
+            Long roleId,
+            Long moduleId,
+            ModuleFilterInfo moduleFilterInfo,
+            List<Long> moduleSkip,
+            QueryWrapper queryWrapper,
+            boolean returnResult) {
+        // 获取权限过滤后的Field结果
+        if (Objects.isNull(moduleFilterInfo)) {
+
+            moduleFilterInfo =
+                    moduleInfoWithPermissionService.filterModuleInfo(
+                            subjectId, roleId, moduleId, "", moduleSkip);
+        }
+
+        // 判断权限信息是否为空
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
+        }
+
+        // 判断表头是否未配置，单独进行提示
+        if (CollectionUtils.isEmpty(moduleFilterInfo.getModuleInfo().getTableHeader())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_NO_TABLEHEADER_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_NO_TABLEHEADER_ERROR.getMessage());
+        }
+
+        // 检验可查看权限字段是否为空
+        if (CollectionUtils.isEmpty(moduleFilterInfo.getSimpleModuleFields())
+                && CollectionUtils.isEmpty(moduleFilterInfo.getCombineModuleFields())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
+        }
+
+        // 查询数据权限配置
+        List<DataRightConfigResp> dataRightconfigs =
+                configCenterApiService.getDataRightConfigItem(subjectId, roleId);
+        Map<String, List<DataRightConfigResp>> tableNameToConfigItems =
+                dataRightconfigs.stream()
+                        .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
+
+        // 数据来源于其他主体，需要主体id作为筛选条件
+        if (!CollectionUtils.isEmpty(moduleFilterInfo.getModuleInfo().getSourceSubjects())) {
+            List<Integer> subjectIds =
+                    moduleFilterInfo.getModuleInfo().getSourceSubjects().stream()
+                            .map(SubjectResp::getId)
+                            .collect(Collectors.toList());
+            log.debug("数据来源于其他主体，主体ID列表为{}", subjectIds);
+            buildWhere(
+                    queryWrapper,
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + DEFAULT_SUBJECT_KEY,
+                    subjectIds.toArray());
+        } else {
+            buildWhere(
+                    queryWrapper,
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + DEFAULT_SUBJECT_KEY,
+                    subjectId);
+        }
+
+        applyDataRightFilter(
+                moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                tableNameToConfigItems,
+                queryWrapper);
+
+        if (returnResult) {
+            // 获取主表Mapper对象
+            BaseMapper primaryMapper =
+                    SpringBeanUtil.getBean(
+                            moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                                    + MYBATIS_MAPPER_SUFFIX,
+                            BaseMapper.class);
+
+            List<Object> resultList = primaryMapper.selectList(queryWrapper);
+            return resultList;
+        } else {
+            return List.of();
+        }
+    }
+
+    private void mergeApprovalData(
+            Map<String, Object> resultMap, List<ApprovalListResp> approvalListResps) {}
 
     /**
      * 数值参数
@@ -1426,7 +1698,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
      * @param moduleSkip
      * @returngetFinalPrimaryKey
      */
-    private List<Object> getFinalPrimaryKey(
+    private List<Object> getFinalPrimaryData(
             Long subjectId,
             Long roleId,
             Long moduleId,
@@ -1647,36 +1919,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             queryWrapper.in(entry.getKey(), entry.getValue().toArray());
         }
 
-        List<Object> primaryTableIds = primaryMapper.selectList(queryWrapper);
+        List<Object> primaryTableDataList = primaryMapper.selectList(queryWrapper);
 
-        List<Object> primaryIds = new ArrayList<>();
-        if (!CollectionUtils.isEmpty(primaryTableIds)) {
-            primaryIds =
-                    primaryTableIds.stream()
-                            .filter(Objects::nonNull)
-                            .map(
-                                    ele -> {
-                                        Object columnValue = null;
-                                        Field columnField =
-                                                ReflectionUtils.findField(ele.getClass(), "id");
-                                        if (Objects.nonNull(columnField)) {
-                                            columnField.setAccessible(true);
-                                            columnValue =
-                                                    ReflectionUtils.getField(columnField, ele);
-                                            if (Objects.nonNull(columnValue)) {
-                                                return columnValue;
-                                            } else {
-                                                return null;
-                                            }
-                                        } else {
-                                            return null;
-                                        }
-                                    })
-                            .filter(Objects::nonNull)
-                            .toList();
-        }
-
-        return primaryIds;
+        return primaryTableDataList;
     }
 
     /** 两个集合取交集，返回新List */
@@ -1769,7 +2014,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     List.of(),
                                     false,
                                     List.of(),
-                                    List.of()));
+                                    List.of(),
+                                    null));
                 } else {
                     resultMap.put(
                             menu.getId(),
@@ -1905,7 +2151,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     List.of(),
                                     false,
                                     List.of(),
-                                    List.of());
+                                    List.of(),
+                                    null);
                     resultMap.put(resp.getId(), map);
                     Set<FormButton> formButtons = (Set<FormButton>) map.get("btnList");
                     if (CollectionUtil.isNotEmpty(formButtons)) {
@@ -1975,7 +2222,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             DataRightValue.DataRightValueBuilder dataRightValueBuilder = DataRightValue.builder();
             dataRightValueBuilder.dataPermissionCode(
-                    dataRightAccessReq.getTableName() + "*" + dataRightAccessReq.getColumn());
+                    dataRightAccessReq.getTableName()
+                            + KEY_ASTERISK_STR
+                            + dataRightAccessReq.getColumn());
             dataRightValueBuilder.subject(String.valueOf(subjectId));
 
             List<String> values =
@@ -2069,7 +2318,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             moduleSkip,
                             false,
                             List.of(),
-                            List.of()));
+                            List.of(),
+                            null));
         }
 
         return resultMap;
