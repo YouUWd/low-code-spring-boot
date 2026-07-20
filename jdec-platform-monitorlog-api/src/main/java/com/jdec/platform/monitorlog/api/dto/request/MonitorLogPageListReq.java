@@ -18,7 +18,7 @@ public class MonitorLogPageListReq {
 
     @Schema(description = "分页查询-当前页码", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "分页查询-当前页码不能为空")
-    private Integer page;
+    private Integer pageNum;
 
     @Schema(description = "分页查询-每页数量", example = "50", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "分页查询-每页数量不能为空")

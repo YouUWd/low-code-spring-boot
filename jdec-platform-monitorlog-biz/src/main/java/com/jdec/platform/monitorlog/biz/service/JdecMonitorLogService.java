@@ -104,7 +104,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         LocalDateTime startDateTime = LocalDateTime.of(startDate, LocalTime.MIN);
         LocalDateTime endDateTime = LocalDateTime.of(endDate, LocalTime.MAX);
         // 分页查询监控日志
-        Page<JdecMonitorSystemLog> page = new Page<>(request.getPage(), request.getPageSize());
+        Page<JdecMonitorSystemLog> page = new Page<>(request.getPageNum(), request.getPageSize());
         // 构建查询条件
         LambdaQueryWrapper<JdecMonitorSystemLog> wrapper =
                 buildQueryWrapper(request, startDateTime, endDateTime);
