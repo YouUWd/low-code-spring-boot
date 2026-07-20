@@ -28,6 +28,11 @@
         </dependency>
 
         <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-approval-api</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>
             <version>4.1.3</version>
