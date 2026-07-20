@@ -23,6 +23,20 @@ public interface DynamicDataAccessServiceApi {
             ModuleFilterInfo moduleFilterInfo);
 
     /** 动态查询模块列表数据 * */
+    /**
+     * @param subjectId 主体ID
+     * @param roleId 角色ID
+     * @param moduleId 模块ID
+     * @param id 关联表筛选ID
+     * @param page 分页对象
+     * @param moduleFilterInfo 模块权限信息
+     * @param moduleSkip 判断按钮需跳过的模块
+     * @param columnFilter 是否列表筛选模式
+     * @param primaryTableDataList 主表提前过滤数据集合
+     * @param orderItems 排序信息
+     * @param type 带审批链的查询，查询种类 单据类型（待办=1，已办=2，全部=3）
+     * @return
+     */
     Map<String, Object> dynamicQueryListData(
             Long subjectId,
             Long roleId,
@@ -32,8 +46,9 @@ public interface DynamicDataAccessServiceApi {
             ModuleFilterInfo moduleFilterInfo,
             List<Long> moduleSkip,
             boolean columnFilter,
-            List<Object> primaryTableFilterIds,
-            List<OrderItemReq> orderItems);
+            List<Object> primaryTableDataList,
+            List<OrderItemReq> orderItems,
+            Integer type);
 
     Map<Object, Object> dynamicQueryAllModuleDetailData(
             Long subject, Long roleId, Long menuId, Long id, Long relateSearchId);
