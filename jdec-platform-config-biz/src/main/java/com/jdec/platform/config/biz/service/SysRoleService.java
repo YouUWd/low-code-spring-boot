@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -12,6 +13,7 @@ import com.jdec.platform.config.api.dto.request.RoleSubjectReq;
 import com.jdec.platform.config.api.dto.request.RoleUserReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.audit.dto.FieldDiff;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
@@ -23,6 +25,7 @@ import com.jdec.platform.config.biz.mapper.SysRoleMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
+import com.jdec.platform.config.biz.util.AuditLogHelper;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.UserApi;
@@ -30,6 +33,7 @@ import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
+import com.jdec.platform.shared.audit.enums.FieldType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -61,6 +65,8 @@ public class SysRoleService implements SysRoleApi {
     private final DepartmentApi departmentApi;
     private final ConfigChangeMessagePublisher messagePublisher;
     private final ReferenceCheckManager referenceCheckManager;
+    private final AuditLogHelper auditLogHelper;
+    private final SysDataSnapshotService sysDataSnapshotService;
 
     @Override
     public Long getUserRoleCount(Long id, Long subjectId, String projectNo) {
@@ -234,26 +240,42 @@ public class SysRoleService implements SysRoleApi {
 
         // === 快照旧数据（仅更新时，必须在事务开启前执行） ===
         boolean isUpdate = request.getId() != null;
+        String oldRoleName = null;
         Set<Long> oldUserIds = new HashSet<>();
         Set<Long> oldSubjectIds = new HashSet<>();
+        Map<Long, SysRoleUser> oldUserTimeMap = new HashMap<>();
+        Map<Long, SysRoleSubject> oldSubjectTimeMap = new HashMap<>();
+
         if (isUpdate) {
             Long roleId = request.getId();
+            // 查询旧角色名称
+            SysRole oldRole = sysRoleMapper.selectById(roleId);
+            if (oldRole != null) {
+                oldRoleName = oldRole.getRoleName();
+            }
+
+            // 查询旧用户列表及时效
+            List<SysRoleUser> oldRoleUsers =
+                    sysRoleUserMapper.selectList(
+                            Wrappers.<SysRoleUser>lambdaQuery().eq(SysRoleUser::getRoleId, roleId));
             oldUserIds =
-                    sysRoleUserMapper
-                            .selectList(
-                                    Wrappers.<SysRoleUser>lambdaQuery()
-                                            .eq(SysRoleUser::getRoleId, roleId))
-                            .stream()
-                            .map(SysRoleUser::getUserId)
-                            .collect(Collectors.toSet());
+                    oldRoleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toSet());
+            oldUserTimeMap =
+                    oldRoleUsers.stream()
+                            .collect(Collectors.toMap(SysRoleUser::getUserId, ru -> ru));
+
+            // 查询旧主体列表及时效
+            List<SysRoleSubject> oldRoleSubjects =
+                    sysRoleSubjectMapper.selectList(
+                            Wrappers.<SysRoleSubject>lambdaQuery()
+                                    .eq(SysRoleSubject::getRoleId, roleId));
             oldSubjectIds =
-                    sysRoleSubjectMapper
-                            .selectList(
-                                    Wrappers.<SysRoleSubject>lambdaQuery()
-                                            .eq(SysRoleSubject::getRoleId, roleId))
-                            .stream()
+                    oldRoleSubjects.stream()
                             .map(SysRoleSubject::getSubjectId)
                             .collect(Collectors.toSet());
+            oldSubjectTimeMap =
+                    oldRoleSubjects.stream()
+                            .collect(Collectors.toMap(SysRoleSubject::getSubjectId, rs -> rs));
         }
 
         // 提前完成所有跨库查询（hr 库），必须在事务开启前执行
@@ -297,6 +319,48 @@ public class SysRoleService implements SysRoleApi {
                         .map(SysRoleSubject::getSubjectId)
                         .distinct()
                         .toList();
+
+        // === 查询新用户和主体的时效信息 ===
+        Map<Long, SysRoleUser> newUserTimeMap = new HashMap<>();
+        Map<Long, SysRoleSubject> newSubjectTimeMap = new HashMap<>();
+        if (isUpdate) {
+            List<SysRoleUser> newRoleUsers =
+                    sysRoleUserMapper.selectList(
+                            Wrappers.<SysRoleUser>lambdaQuery().eq(SysRoleUser::getRoleId, roleId));
+            newUserTimeMap =
+                    newRoleUsers.stream()
+                            .collect(Collectors.toMap(SysRoleUser::getUserId, ru -> ru));
+
+            List<SysRoleSubject> newRoleSubjects =
+                    sysRoleSubjectMapper.selectList(
+                            Wrappers.<SysRoleSubject>lambdaQuery()
+                                    .eq(SysRoleSubject::getRoleId, roleId));
+            newSubjectTimeMap =
+                    newRoleSubjects.stream()
+                            .collect(Collectors.toMap(SysRoleSubject::getSubjectId, rs -> rs));
+        }
+
+        // === 记录审计日志 ===
+        try {
+            logRoleSaveAudit(
+                    request.getRoleName(),
+                    roleId,
+                    isUpdate,
+                    oldRoleName,
+                    oldUserIds,
+                    new HashSet<>(newUserIds),
+                    oldSubjectIds,
+                    new HashSet<>(newSubjectIds),
+                    oldUserTimeMap,
+                    newUserTimeMap,
+                    oldSubjectTimeMap,
+                    newSubjectTimeMap,
+                    hrUserMap,
+                    subjectMap);
+        } catch (Exception e) {
+            log.error("记录角色审计日志失败: roleId={}", roleId, e);
+        }
+
         // === 编程式发送细粒度角色变更消息 ===
         publishRoleChangeMessages(
                 roleId, isUpdate, oldUserIds, oldSubjectIds, newUserIds, newSubjectIds);
@@ -531,6 +595,16 @@ public class SysRoleService implements SysRoleApi {
             }
         }
 
+        // 保存或更新角色数据快照（新增时创建，更新时更新）
+        try {
+            String snapshotJson = JSON.toJSONString(request);
+            sysDataSnapshotService.saveOrUpdateSnapshot("sys_role", roleId, snapshotJson);
+            log.info("保存角色数据快照成功: roleId={}, isCreate={}", roleId, isCreate);
+        } catch (Exception e) {
+            log.error("保存角色数据快照失败: roleId={}", roleId, e);
+            // 快照保存失败不影响主流程，仅记录日志
+        }
+
         return roleId;
     }
 
@@ -743,6 +817,7 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void deleteRole(Long roleId) {
         // 检查关联
         SysRole sysRole = sysRoleMapper.selectById(roleId);
@@ -756,6 +831,10 @@ public class SysRoleService implements SysRoleApi {
         if (CollUtil.isNotEmpty(check)) {
             throw new PopException(String.join("\n", check));
         }
+
+        // === 审计日志：记录删除角色 ===
+        auditLogHelper.logWithoutCompare("角色管理", "sys_role", "删除了" + sysRole.getRoleName() + "角色");
+
         // 1. 删除前收集受影响的用户/主体 ID（删除后数据已不存在，无法再查）
         List<SysRoleUser> roleUsers =
                 sysRoleUserMapper.selectList(
@@ -1231,6 +1310,9 @@ public class SysRoleService implements SysRoleApi {
         ru.setEffectiveEndDate(userReq.getEffectiveEndDate());
         ru.setEffectiveType(userReq.getEffectiveType());
         ru.setStatus(0); // 初始状态为有效
+        // 为字符串字段设置默认空字符串，避免 diff 时遗漏
+        ru.setCreatedName("");
+        ru.setUpdatedName("");
         return ru;
     }
 
@@ -1797,5 +1879,285 @@ public class SysRoleService implements SysRoleApi {
                         .toList();
 
         return UserSwitchDataResp.builder().sysUsers(userInfoList).subjectIds(subjectIds).build();
+    }
+
+    /**
+     * 记录角色保存的审计日志
+     *
+     * <p>根据新增/修改操作，记录相应的审计日志：
+     *
+     * <ul>
+     *   <li>新增角色：记录"新增了xxx角色"
+     *   <li>修改角色名称：使用diff比较记录名称变更
+     *   <li>用户变更：记录新增/删除的用户
+     *   <li>主体变更：记录新增/删除的主体
+     *   <li>有效期变更：使用diff比较记录时效变更
+     * </ul>
+     */
+    private void logRoleSaveAudit(
+            String newRoleName,
+            Long roleId,
+            boolean isUpdate,
+            String oldRoleName,
+            Set<Long> oldUserIds,
+            Set<Long> newUserIds,
+            Set<Long> oldSubjectIds,
+            Set<Long> newSubjectIds,
+            Map<Long, SysRoleUser> oldUserTimeMap,
+            Map<Long, SysRoleUser> newUserTimeMap,
+            Map<Long, SysRoleSubject> oldSubjectTimeMap,
+            Map<Long, SysRoleSubject> newSubjectTimeMap,
+            Map<Long, UserBO> hrUserMap,
+            Map<Long, SubjectBO> subjectMap) {
+
+        if (!isUpdate) {
+            // 新增角色
+            auditLogHelper.logWithoutCompare("角色管理", "sys_role", "新增了" + newRoleName + "角色");
+            return;
+        }
+
+        // === 1. 角色名称变更 ===
+        if (oldRoleName != null && !oldRoleName.equals(newRoleName)) {
+            List<com.jdec.platform.config.biz.audit.dto.FieldDiff> diffs = new ArrayList<>();
+            diffs.add(
+                    com.jdec.platform.config.biz.audit.dto.FieldDiff.builder()
+                            .fieldName("角色名称")
+                            .fieldCode("roleName")
+                            .oldValue(oldRoleName)
+                            .newValue(newRoleName)
+                            .fieldType(com.jdec.platform.shared.audit.enums.FieldType.SIMPLE)
+                            .build());
+            auditLogHelper.logWithCustomDiff(
+                    "角色管理",
+                    "sys_role",
+                    "修改了"
+                            + oldRoleName
+                            + "角色的配置（角色名称从\""
+                            + oldRoleName
+                            + "\"改为\""
+                            + newRoleName
+                            + "\"）",
+                    diffs);
+        }
+
+        // === 2. 用户变更 ===
+        Set<Long> addedUserIds = new HashSet<>(newUserIds);
+        addedUserIds.removeAll(oldUserIds);
+        Set<Long> removedUserIds = new HashSet<>(oldUserIds);
+        removedUserIds.removeAll(newUserIds);
+
+        if (!addedUserIds.isEmpty()) {
+            List<String> userNames =
+                    addedUserIds.stream()
+                            .map(
+                                    userId -> {
+                                        UserBO user = hrUserMap.get(userId);
+                                        return user != null
+                                                ? user.getUserName()
+                                                : String.valueOf(userId);
+                                    })
+                            .toList();
+            auditLogHelper.logWithoutCompare(
+                    "角色管理", "sys_role", newRoleName + "角色新增了" + String.join(",", userNames) + "用户");
+        }
+
+        if (!removedUserIds.isEmpty()) {
+            List<String> userNames =
+                    removedUserIds.stream()
+                            .map(
+                                    userId -> {
+                                        UserBO user = hrUserMap.get(userId);
+                                        return user != null
+                                                ? user.getUserName()
+                                                : String.valueOf(userId);
+                                    })
+                            .toList();
+            auditLogHelper.logWithoutCompare(
+                    "角色管理", "sys_role", newRoleName + "角色删除了" + String.join(",", userNames) + "用户");
+        }
+
+        // === 3. 用户有效期变更 ===
+        Set<Long> commonUserIds = new HashSet<>(newUserIds);
+        commonUserIds.retainAll(oldUserIds);
+        List<String> timeChangedUsers = new ArrayList<>();
+        List<FieldDiff> userTimeDiffs = new ArrayList<>();
+
+        for (Long userId : commonUserIds) {
+            SysRoleUser oldRoleUser = oldUserTimeMap.get(userId);
+            SysRoleUser newRoleUser = newUserTimeMap.get(userId);
+            if (oldRoleUser != null && newRoleUser != null) {
+                UserBO user = hrUserMap.get(userId);
+                String userName = user != null ? user.getUserName() : String.valueOf(userId);
+
+                // 检查时效类型变更
+                if (!Objects.equals(
+                        oldRoleUser.getEffectiveType(), newRoleUser.getEffectiveType())) {
+                    timeChangedUsers.add(userName);
+                    userTimeDiffs.add(
+                            FieldDiff.builder()
+                                    .fieldName(userName + "-有效期类型")
+                                    .fieldCode("user_" + userId + "_effectiveType")
+                                    .oldValue(oldRoleUser.getEffectiveType())
+                                    .newValue(newRoleUser.getEffectiveType())
+                                    .fieldType(FieldType.SIMPLE)
+                                    .build());
+                }
+
+                // 检查开始日期变更
+                if (!Objects.equals(
+                        oldRoleUser.getEffectiveStartDate(), newRoleUser.getEffectiveStartDate())) {
+                    if (!timeChangedUsers.contains(userName)) {
+                        timeChangedUsers.add(userName);
+                    }
+                    userTimeDiffs.add(
+                            FieldDiff.builder()
+                                    .fieldName(userName + "-开始日期")
+                                    .fieldCode("user_" + userId + "_effectiveStartDate")
+                                    .oldValue(oldRoleUser.getEffectiveStartDate())
+                                    .newValue(newRoleUser.getEffectiveStartDate())
+                                    .fieldType(FieldType.SIMPLE)
+                                    .build());
+                }
+
+                // 检查结束日期变更
+                if (!Objects.equals(
+                        oldRoleUser.getEffectiveEndDate(), newRoleUser.getEffectiveEndDate())) {
+                    if (!timeChangedUsers.contains(userName)) {
+                        timeChangedUsers.add(userName);
+                    }
+                    userTimeDiffs.add(
+                            FieldDiff.builder()
+                                    .fieldName(userName + "-结束日期")
+                                    .fieldCode("user_" + userId + "_effectiveEndDate")
+                                    .oldValue(oldRoleUser.getEffectiveEndDate())
+                                    .newValue(newRoleUser.getEffectiveEndDate())
+                                    .fieldType(FieldType.SIMPLE)
+                                    .build());
+                }
+            }
+        }
+
+        if (!timeChangedUsers.isEmpty()) {
+            auditLogHelper.logWithCustomDiff(
+                    "角色管理",
+                    "sys_role",
+                    "修改了" + newRoleName + "角色的" + String.join(",", timeChangedUsers) + "用户的有效期",
+                    userTimeDiffs);
+        }
+
+        // === 4. 主体变更 ===
+        Set<Long> addedSubjectIds = new HashSet<>(newSubjectIds);
+        addedSubjectIds.removeAll(oldSubjectIds);
+        Set<Long> removedSubjectIds = new HashSet<>(oldSubjectIds);
+        removedSubjectIds.removeAll(newSubjectIds);
+
+        if (!addedSubjectIds.isEmpty()) {
+            List<String> subjectNames =
+                    addedSubjectIds.stream()
+                            .map(
+                                    subjectId -> {
+                                        SubjectBO subject = subjectMap.get(subjectId);
+                                        return subject != null
+                                                ? subject.getSubjectName()
+                                                : String.valueOf(subjectId);
+                                    })
+                            .toList();
+            auditLogHelper.logWithoutCompare(
+                    "角色管理",
+                    "sys_role",
+                    newRoleName + "角色新增了" + String.join(",", subjectNames) + "主体");
+        }
+
+        if (!removedSubjectIds.isEmpty()) {
+            List<String> subjectNames =
+                    removedSubjectIds.stream()
+                            .map(
+                                    subjectId -> {
+                                        SubjectBO subject = subjectMap.get(subjectId);
+                                        return subject != null
+                                                ? subject.getSubjectName()
+                                                : String.valueOf(subjectId);
+                                    })
+                            .toList();
+            auditLogHelper.logWithoutCompare(
+                    "角色管理",
+                    "sys_role",
+                    newRoleName + "角色删除了" + String.join(",", subjectNames) + "主体");
+        }
+
+        // === 5. 主体有效期变更 ===
+        Set<Long> commonSubjectIds = new HashSet<>(newSubjectIds);
+        commonSubjectIds.retainAll(oldSubjectIds);
+        List<String> timeChangedSubjects = new ArrayList<>();
+        List<FieldDiff> subjectTimeDiffs = new ArrayList<>();
+
+        for (Long subjectId : commonSubjectIds) {
+            SysRoleSubject oldRoleSubject = oldSubjectTimeMap.get(subjectId);
+            SysRoleSubject newRoleSubject = newSubjectTimeMap.get(subjectId);
+            if (oldRoleSubject != null && newRoleSubject != null) {
+                boolean timeChanged =
+                        !Objects.equals(
+                                        oldRoleSubject.getEffectiveType(),
+                                        newRoleSubject.getEffectiveType())
+                                || !Objects.equals(
+                                        oldRoleSubject.getEffectiveStartDate(),
+                                        newRoleSubject.getEffectiveStartDate())
+                                || !Objects.equals(
+                                        oldRoleSubject.getEffectiveEndDate(),
+                                        newRoleSubject.getEffectiveEndDate());
+
+                if (timeChanged) {
+                    SubjectBO subject = subjectMap.get(subjectId);
+                    String subjectName =
+                            subject != null ? subject.getSubjectName() : String.valueOf(subjectId);
+                    timeChangedSubjects.add(subjectName);
+
+                    // 构建时效字段的 diff
+                    if (!Objects.equals(
+                            oldRoleSubject.getEffectiveType(), newRoleSubject.getEffectiveType())) {
+                        subjectTimeDiffs.add(
+                                FieldDiff.builder()
+                                        .fieldName(subjectName + "-有效期类型")
+                                        .fieldCode("effectiveType")
+                                        .oldValue(oldRoleSubject.getEffectiveType())
+                                        .newValue(newRoleSubject.getEffectiveType())
+                                        .fieldType(FieldType.SIMPLE)
+                                        .build());
+                    }
+                    if (!Objects.equals(
+                            oldRoleSubject.getEffectiveStartDate(),
+                            newRoleSubject.getEffectiveStartDate())) {
+                        subjectTimeDiffs.add(
+                                FieldDiff.builder()
+                                        .fieldName(subjectName + "-开始日期")
+                                        .fieldCode("effectiveStartDate")
+                                        .oldValue(oldRoleSubject.getEffectiveStartDate())
+                                        .newValue(newRoleSubject.getEffectiveStartDate())
+                                        .fieldType(FieldType.SIMPLE)
+                                        .build());
+                    }
+                    if (!Objects.equals(
+                            oldRoleSubject.getEffectiveEndDate(),
+                            newRoleSubject.getEffectiveEndDate())) {
+                        subjectTimeDiffs.add(
+                                FieldDiff.builder()
+                                        .fieldName(subjectName + "-结束日期")
+                                        .fieldCode("effectiveEndDate")
+                                        .oldValue(oldRoleSubject.getEffectiveEndDate())
+                                        .newValue(newRoleSubject.getEffectiveEndDate())
+                                        .fieldType(FieldType.SIMPLE)
+                                        .build());
+                    }
+                }
+            }
+        }
+
+        if (!timeChangedSubjects.isEmpty()) {
+            auditLogHelper.logWithCustomDiff(
+                    "角色管理",
+                    "sys_role",
+                    "修改了" + newRoleName + "角色的" + String.join(",", timeChangedSubjects) + "主体的有效期",
+                    subjectTimeDiffs);
+        }
     }
 }

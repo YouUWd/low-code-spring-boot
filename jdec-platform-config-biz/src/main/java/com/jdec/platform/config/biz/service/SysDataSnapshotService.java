@@ -62,4 +62,38 @@ public class SysDataSnapshotService extends ServiceImpl<SysDataSnapshotMapper, S
     public boolean updateSnapshotWithVersion(SysDataSnapshot snapshot) {
         return this.updateById(snapshot);
     }
+
+    /**
+     * 保存或更新快照（新增时创建，更新时更新已有记录）
+     *
+     * @param tableName 表名
+     * @param dataId 数据ID
+     * @param jsonData JSON数据
+     */
+    public void saveOrUpdateSnapshot(String tableName, Long dataId, String jsonData) {
+        // 查询是否已存在快照
+        SysDataSnapshot existingSnapshot = getLatestSnapshot(tableName, dataId);
+
+        if (existingSnapshot == null) {
+            // 不存在，创建新快照
+            SysDataSnapshot snapshot =
+                    SysDataSnapshot.builder()
+                            .tableName(tableName)
+                            .dataId(dataId)
+                            .jsonData(jsonData)
+                            .version(1)
+                            .build();
+            this.save(snapshot);
+            log.info("创建新快照: tableName={}, dataId={}", tableName, dataId);
+        } else {
+            // 已存在，更新快照数据
+            existingSnapshot.setJsonData(jsonData);
+            this.updateById(existingSnapshot);
+            log.info(
+                    "更新快照: tableName={}, dataId={}, snapshotId={}",
+                    tableName,
+                    dataId,
+                    existingSnapshot.getId());
+        }
+    }
 }

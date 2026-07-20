@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -10,9 +11,13 @@ import com.jdec.platform.config.api.dto.response.ApprovalChainCascadeResp;
 import com.jdec.platform.config.api.dto.response.ApprovalChainTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.ApprovalChainTypePageResp;
 import com.jdec.platform.config.biz.entity.SysApprovalChainType;
+import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysApprovalChainTypeMapper;
+import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -33,6 +38,7 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
 
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
     private final SysModuleMapper sysModuleMapper;
+    private final SysDataSnapshotMapper sysDataSnapshotMapper;
 
     @Override
     public List<ApprovalChainCascadeResp> getCascadeOptions() {
@@ -130,6 +136,12 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
                 .collect(Collectors.toList());
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "审批链分类",
+            operation = OperationType.UPDATE,
+            tableName = "sys_approval_chain_type",
+            dataIdField = "#request.id")
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void save(ApprovalChainTypeSaveReq request) {
@@ -158,6 +170,13 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
                 throw new BusinessException("审批链类型名称已存在");
             }
             sysApprovalChainTypeMapper.insert(entity);
+
+            // 新增时记录快照
+            SysDataSnapshot snapshot = new SysDataSnapshot();
+            snapshot.setTableName("sys_approval_chain_type");
+            snapshot.setDataId(entity.getId());
+            snapshot.setJsonData(JSONUtil.toJsonStr(request));
+            sysDataSnapshotMapper.insert(snapshot);
         } else {
             // 编辑：校验名称唯一性（排除自己）
             long count =

@@ -175,6 +175,30 @@ public class DataAuditService {
         }
     }
 
+    /**
+     * 记录数据变更审计（使用自定义diff）
+     *
+     * @param module 业务模块
+     * @param subModule 业务子模块
+     * @param operation 操作描述（如："修改了test角色的邓由由用户的有效期"）
+     * @param tableName 表名
+     * @param diffs 自定义的字段差异列表
+     */
+    public void auditWithCustomDiff(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            List<FieldDiff> diffs) {
+        try {
+            // 发送审计日志
+            sendAuditLog(module, subModule, operation, tableName, null, diffs);
+
+        } catch (Exception e) {
+            log.error("数据审计失败（自定义diff）: module={}, table={}", module, tableName, e);
+        }
+    }
+
     /** 发送审计日志 */
     private void sendAuditLog(
             String module,
@@ -185,8 +209,17 @@ public class DataAuditService {
             List<FieldDiff> diffs) {
 
         // 构建logContent
-        String operatorResult =
-                operation + "了" + (subModule != null && !subModule.isEmpty() ? subModule : "配置");
+        String operatorResult;
+        if (operation.contains("了")) {
+            // 已经是完整描述（如："新增了test角色"），直接使用
+            operatorResult = operation;
+        } else {
+            // 只是动词（如："修改"、"删除"），需要拼接
+            operatorResult =
+                    operation
+                            + "了"
+                            + (subModule != null && !subModule.isEmpty() ? subModule : "配置");
+        }
 
         AuditLogContent logContent =
                 AuditLogContent.builder()
