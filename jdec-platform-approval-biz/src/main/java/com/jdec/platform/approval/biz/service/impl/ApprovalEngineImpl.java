@@ -9,10 +9,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.approval.api.IApprovalEngine;
-import com.jdec.platform.approval.api.req.ApprovalDataReq;
-import com.jdec.platform.approval.api.req.ApprovalListReq;
-import com.jdec.platform.approval.api.req.ApprovalProcessReq;
-import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
+import com.jdec.platform.approval.api.req.*;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
 import com.jdec.platform.approval.biz.dto.ApprovalProcessDTO;
 import com.jdec.platform.approval.biz.entity.*;
@@ -55,6 +52,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final SysButtonApi sysButtonApi;
     private final ApprovalActionLogMapper approvalActionLogMapper;
     private final SysRolePermissionApi sysRolePermissionApi;
+    private final SysWechatTemplateApi sysWechatTemplateApi;
 
     @Override
     @Transactional
@@ -133,13 +131,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                         req.getApplicantId());
         result.put("step", step);
         // 创建人
-        UserDetailResp createByUser =
-                sysUserApi.getUserDetailByUserId(approvalVersionRecord.getCreatedBy());
-        Map<String, Object> userInfo = new HashMap<>();
-        userInfo.put("createdByName", createByUser.getUserName());
-        userInfo.put("uAvatar", createByUser.getUserAvatar());
-        userInfo.put("uWorkNumber", createByUser.getWorkNumber());
-        result.put("createUser", userInfo);
+        result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
 
         // 操作按钮
         List<Map<String, Object>> operationButton = getOperationButton(req);
@@ -296,28 +288,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             SysConfigItemResp modelConfig =
                     sysConfigCategoryApi.getConfigItemsByValue("logStateIcon", log.getActionIcon());
             actionLogResp.setActionTypeTitle(modelConfig.getLabel());
-            UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(log.getCreatedBy());
-            if (createByUser != null) {
-                ActionLogResp.UserVO userVO = new ActionLogResp.UserVO();
-                userVO.setId(createByUser.getId());
-                userVO.setUserName(createByUser.getUserName());
-                userVO.setUserAvatar(createByUser.getUserAvatar());
-                userVO.setDepartName(createByUser.getDepartName());
-                userVO.setPositionName(createByUser.getPositionName());
-                userVO.setWorkNumber(createByUser.getWorkNumber());
-                actionLogResp.setCreatedUser(userVO);
-            }
-            UserDetailResp realUser = sysUserApi.getUserDetailByUserId(log.getRealUserId());
-            if (realUser != null) {
-                ActionLogResp.UserVO userVO = new ActionLogResp.UserVO();
-                userVO.setId(realUser.getId());
-                userVO.setUserName(realUser.getUserName());
-                userVO.setUserAvatar(realUser.getUserAvatar());
-                userVO.setDepartName(realUser.getDepartName());
-                userVO.setPositionName(realUser.getPositionName());
-                userVO.setWorkNumber(realUser.getWorkNumber());
-                actionLogResp.setRealUser(userVO);
-            }
+            actionLogResp.setActionPath(modelConfig.getExtra());
+            actionLogResp.setCreatedUser(convertUserResp(log.getCreatedBy()));
+            actionLogResp.setRealUser(convertUserResp(log.getRealUserId()));
             respList.add(actionLogResp);
         }
         return respList;
@@ -342,12 +315,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if ((Objects.isNull(approvalVersionRecord))) {
             return Map.of();
         }
-        ApprovalVersionRecord oldApprovalVersionRecord =
-                approvalVersionRecordMapper.selectById(approvalVersionRecord.getSourceId());
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("currentVersion", approvalVersionRecord.getVersionNo());
-        result.put("sourceVersion", oldApprovalVersionRecord.getVersionNo());
-        result.put("sourceRecordId", oldApprovalVersionRecord.getRecordId());
+        ApprovalVersionRecord oldApprovalVersionRecord =
+                approvalVersionRecordMapper.selectById(approvalVersionRecord.getSourceId());
+        if (Objects.nonNull(oldApprovalVersionRecord)) {
+            result.put("sourceVersion", oldApprovalVersionRecord.getVersionNo());
+            result.put("sourceRecordId", oldApprovalVersionRecord.getRecordId());
+        }
         if (approvalVersionRecord.getSerialNo() > 1) {
             ApprovalVersionRecord preApprovalVersionRecord =
                     approvalVersionRecordMapper.selectOne(
@@ -361,6 +336,49 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             result.put("preRecordId", preApprovalVersionRecord.getRecordId());
         }
         return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> getMessageReceiver(MessageReceiverReq req) {
+        // 查询业务记录
+        LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
+        approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, req.getModuleId());
+        approvalBusinessWrapper
+                .eq(ApprovalBusiness::getRecordId, req.getRecordId())
+                .last("LIMIT 1");
+        ApprovalBusiness approvalBusiness =
+                approvalBusinessMapper.selectOne(approvalBusinessWrapper);
+        if (Objects.isNull(approvalBusiness)) {
+            throw new BusinessException("审批单据不存在");
+        }
+        // 查询当前审批步骤按钮对应的消息模板
+        LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
+        buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalBusiness.getSerialNumber());
+        buttonWrapper.eq(ApprovalChainButton::getSerialNo, approvalBusiness.getSerialNo());
+        buttonWrapper.eq(ApprovalChainButton::getCurrentStep, approvalBusiness.getCurrentStep());
+        buttonWrapper.eq(ApprovalChainButton::getButtonTypeValue, req.getButton()).last("LIMIT 1");
+        ApprovalChainButton button = approvalChainButtonMapper.selectOne(buttonWrapper);
+        if (Objects.isNull(button) || button.getMsgTemplateIds().isBlank()) {
+            throw new BusinessException("没有配置消息模板");
+        }
+        // 逗号分割转列表
+        List<Object> templateIdList = ToolUtils.formatArrayItem(button.getMsgTemplateIds());
+
+        // 3. 遍历每个模板，获取对应用户列表
+        List<Map<String, Object>> templateList = new ArrayList<>();
+        for (Object templateId : templateIdList) {
+            Set<Long> userList =
+                    getSendUserList(
+                            approvalBusiness,
+                            Long.valueOf((String) templateId),
+                            req.getRejectStep());
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("template_id", templateId);
+            item.put("user_list", userList);
+            templateList.add(item);
+        }
+        return templateList;
     }
 
     // 查询审批步骤绑定的操作按钮------------------------------------------------------------------
@@ -1415,11 +1433,118 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
     }
 
-    // ApprovalProcessReq转换为ApprovalProcessDTO
+    // ApprovalProcessReq转换为ApprovalProcessDTO----------------------------------------
     private ApprovalProcessDTO convertApprovalDTO(ApprovalProcessReq approvalProcessReq) {
         ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
         BeanUtils.copyProperties(approvalProcessReq, approvalProcessDTO);
         return approvalProcessDTO;
+    }
+
+    // 获取消息接收人列表------------------------------------------------------------------
+    private Set<Long> getSendUserList(
+            ApprovalBusiness business, Long templateId, Integer rejectStep) {
+        // 1. 查询微信模板
+        WechatTemplateDetailResp sysWeChatTemplate =
+                sysWechatTemplateApi.getTemplateById(templateId);
+        if (sysWeChatTemplate == null) {
+            return Collections.emptySet();
+        }
+
+        Set<Long> userList = new HashSet<>();
+
+        // 3. 接收人类型列表 [1,4]
+        List<Long> acceptTypeList = sysWeChatTemplate.getTemplateAcceptType();
+
+        // 5. 循环处理每种接收类型
+        for (Long item : acceptTypeList) {
+            SysConfigItemResp aliasConfig = sysConfigCategoryApi.getConfigItemsById(item);
+
+            // ================== 额外接收人 ==================
+            if ("extra_receiver".equals(aliasConfig.getValue())) {
+                userList.addAll(sysWeChatTemplate.getExtraReceiverIds());
+            }
+
+            // ================== 申请人 ==================
+            if ("apply_person".equals(aliasConfig.getValue())) {
+                userList.add(business.getCreatedBy());
+            }
+
+            // ================== 下一步审批人 ==================
+            if ("next_approval_person".equals(aliasConfig.getValue())) {
+                LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
+                approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
+                approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
+                approvalWrapper
+                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep() + 1)
+                        .last("LIMIT 1");
+                ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
+                if (approvalChain != null) {
+                    List<Long> approverUserList = getApproverUserList(approvalChain);
+                    userList.addAll(approverUserList);
+                }
+            }
+
+            // ================== 上一步审批人（注释保留） ==================
+            if ("prev_approval_person".equals(aliasConfig.getValue())) {
+                Integer preStrp = business.getCurrentStep() - 1;
+                if (Objects.nonNull(rejectStep) && !rejectStep.equals(0)) {
+                    preStrp = rejectStep;
+                }
+                LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
+                approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
+                approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
+                approvalWrapper.eq(ApprovalChain::getCurrentStep, preStrp).last("LIMIT 1");
+                ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
+                if (approvalChain != null) {
+                    List<Long> approverUserList = getApproverUserList(approvalChain);
+                    userList.addAll(approverUserList);
+                }
+            }
+
+            // ================== 已审批人 ==================
+            if ("approved_person".equals(aliasConfig.getValue())) {
+                List<Object> approvalUids = ToolUtils.formatArrayItem(business.getApprovalUids());
+                List<Long> approverUserList =
+                        approvalUids.stream()
+                                .map(approvalUid -> Long.valueOf((String) approvalUid))
+                                .toList();
+                userList.addAll(approverUserList);
+            }
+
+            // ================== 状态关联人（注释保留） ==================
+            if ("status_change_related".equals(aliasConfig)) {
+                // 注释逻辑保留，不实现
+            }
+        }
+
+        // 6. 二维数组扁平化 + 去重
+        //        List<Object> result = userList.stream().flatMap(List::stream).distinct().toList();
+
+        return userList;
+    }
+
+    // 根据审批规则获取可操作用户ID列表-----------------------------------------------------------------
+    private List<Long> getApproverUserList(ApprovalChain approvalChain) {
+        List<Long> userList = new ArrayList<>();
+        switch (approvalChain.getApprovalRule()) {
+            case "single_approval" -> {
+                // 直接添加审批人ID
+                userList.add(approvalChain.getApproverId());
+            }
+            case "one_of_role_group", "all_members_done", "percent_of_group" -> {
+                // 查询角色下所有用户
+                List<SysUserPageResp> allApprovers =
+                        sysUserApi.getUsersByRoleId(approvalChain.getApproveRoleId());
+
+                // 提取 user_id 列表
+                List<Long> roleUserIds =
+                        allApprovers.stream().map(SysUserPageResp::getUserId).toList();
+                userList.addAll(roleUserIds);
+            }
+            case "child_all" -> {}
+        }
+
+        return userList;
     }
 
     private Map<String, Object> convertMapResp(
@@ -1430,13 +1555,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         businessNo.put("businessNumber", approvalBusiness.getBusinessNumber());
         businessNo.put("versionNo", approvalBusiness.getVersionNo());
         approvalListResp.put("businessNo", businessNo);
-        UserDetailResp createByUser =
-                sysUserApi.getUserDetailByUserId(approvalBusiness.getCreatedBy());
-        Map<String, Object> userInfo = new HashMap<>();
-        userInfo.put("createdByName", createByUser.getUserName());
-        userInfo.put("uAvatar", createByUser.getUserAvatar());
-        userInfo.put("uWorkNumber", createByUser.getWorkNumber());
-        approvalListResp.put("createUser", userInfo);
+        approvalListResp.put("createUser", convertUserResp(approvalBusiness.getCreatedBy()));
         approvalListResp.put("createdDate", approvalBusiness.getCreatedDate());
         Map<String, Object> approvalStatus = new HashMap<>();
         approvalStatus.put("id", approvalBusiness.getStatusId());
@@ -1464,5 +1583,19 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         btnList.add(btnInfo);
         approvalListResp.put("btnList", btnList);
         return approvalListResp;
+    }
+
+    private ActionLogResp.UserVO convertUserResp(Long userId) {
+        UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(userId);
+        ActionLogResp.UserVO userVO = new ActionLogResp.UserVO();
+        if (createByUser != null) {
+            userVO.setId(createByUser.getId());
+            userVO.setUserName(createByUser.getUserName());
+            userVO.setUserAvatar(createByUser.getUserAvatar());
+            userVO.setDepartName(createByUser.getDepartName());
+            userVO.setPositionName(createByUser.getPositionName());
+            userVO.setWorkNumber(createByUser.getWorkNumber());
+        }
+        return userVO;
     }
 }

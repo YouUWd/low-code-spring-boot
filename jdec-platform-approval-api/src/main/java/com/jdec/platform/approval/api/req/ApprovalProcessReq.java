@@ -23,7 +23,7 @@ public class ApprovalProcessReq {
 
     // 旧的业务记录ID
     @Schema(description = "变更前的业务记录ID")
-    private Long OldRecordId;
+    private Long oldRecordId;
 
     // 操作角色ID
     @Schema(description = "操作角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
