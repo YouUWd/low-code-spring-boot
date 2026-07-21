@@ -3,6 +3,7 @@ package com.jdec.platform.approval.api;
 import com.jdec.platform.approval.api.req.ApprovalDataReq;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
+import com.jdec.platform.approval.api.req.MessageReceiverReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
 import java.util.List;
@@ -29,4 +30,7 @@ public interface IApprovalEngine {
 
     // 查询单据对应版本号和数据ID
     Map<String, Object> getApprovalChangeData(ApprovalDataReq req);
+
+    // 查询消息接收人
+    List<Map<String, Object>> getMessageReceiver(MessageReceiverReq req);
 }
