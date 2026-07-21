@@ -79,32 +79,6 @@ public class ClassVersion extends Model<ClassVersion> {
     @TableField("module_id")
     private Long moduleId;
 
-    public static final String ID = "id";
-
-    public static final String CLASS_NO = "class_no";
-
-    public static final String CLASS_NAME = "class_name";
-
-    public static final String GRADE = "grade";
-
-    public static final String CLASS_TEACHER_NAME = "class_teacher_name";
-
-    public static final String STUDENT_COUNT = "student_count";
-
-    public static final String CLASSROOM_CAPACITY = "classroom_capacity";
-
-    public static final String CREATE_DATE = "create_date";
-
-    public static final String UPDATE_DATE = "update_date";
-
-    public static final String SUBJECT_ID = "subject_id";
-
-    public static final String SUBJECT_NAME = "subject_name";
-
-    public static final String DELETED = "deleted";
-
-    public static final String MODULE_ID = "module_id";
-
     @Override
     public Serializable pkVal() {
         return this.id;

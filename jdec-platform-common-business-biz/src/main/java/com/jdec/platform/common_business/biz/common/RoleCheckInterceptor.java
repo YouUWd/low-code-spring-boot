@@ -2,7 +2,7 @@ package com.jdec.platform.common_business.biz.common;
 
 import com.jdec.platform.common_business.api.SystemManageServiceApi;
 import com.jdec.platform.common_business.api.dto.response.RoleResp;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
@@ -28,7 +28,7 @@ public class RoleCheckInterceptor implements HandlerInterceptor {
 
     @Autowired private SystemManageServiceApi systemManageService;
 
-    @Autowired private ConfigCenterApiClient configCenterApiClient;
+    @Autowired private ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     @Override
     public boolean preHandle(
