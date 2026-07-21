@@ -6,9 +6,9 @@ import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
-import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
 import com.jdec.platform.common_business.api.dto.common.ModuleField;
@@ -20,11 +20,13 @@ import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ApprovalApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -91,7 +93,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
     private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
-    private final IApprovalEngine approvalEngineApi;
+    private final ApprovalApiOpenFeignClient approvalApiOpenFeignClient;
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     private Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
@@ -599,7 +601,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
         approvalProcessReq.setPrefix("CLS");
 
-        approvalEngineApi.process(approvalProcessReq);
+        approvalApiOpenFeignClient.process(approvalProcessReq);
 
         return primaryData;
     }
@@ -734,8 +736,23 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         approvalProcessReq.setReason(approvalOperation.getReason());
         approvalProcessReq.setRejectStep(approvalOperation.getRejectStep());
 
-        Map<String, Object> processResult = approvalEngineApi.process(approvalProcessReq);
-        log.debug("审批结果:{}", processResult);
+        ConfigApiResponse<Map<String, Object>> processResult =
+                approvalApiOpenFeignClient.process(approvalProcessReq);
+
+        if (ConfigApiResponse.isSuccessResponse(response)) {
+            log.debug("审批结果:{}", processResult);
+        } else {
+            try {
+                log.debug("调用审批链方法:{}失败，请求参数:{}", "process", JsonUtil.obj2Json(approvalProcessReq));
+            } catch (JsonProcessingException e) {
+                log.debug("请求参数json序列化失败");
+            }
+            // 主动抛出异常，回滚事务
+            throw new BusinessException(
+                    ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                    ApiResponseCodeEnum.SERVER_ERROR.getMessage());
+        }
+
         return primaryData;
     }
 

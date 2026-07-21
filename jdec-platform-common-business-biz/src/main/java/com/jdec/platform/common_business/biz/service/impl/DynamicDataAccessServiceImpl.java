@@ -7,7 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.jdec.platform.approval.api.IApprovalEngine;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.approval.api.req.ApprovalDataReq;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
@@ -20,6 +20,7 @@ import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ApprovalApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.FormField;
 import com.jdec.platform.common_business.biz.dto.RightInfoVO;
@@ -31,6 +32,7 @@ import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.enums.QueryOpEnum;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -87,7 +89,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
     private final ConfigCenterApiService configCenterApiService;
 
-    private final IApprovalEngine approvalEngineApi;
+    private final ApprovalApiOpenFeignClient approvalApiOpenFeignClient;
 
     private final PersonalizedUserServiceApi personalizedUserServiceApi;
 
@@ -249,8 +251,22 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     Integer versionNo =
                             Integer.parseInt(String.valueOf(approvalInfo.get("versionNo")));
 
-                    Map<String, Object> versionInfo =
-                            approvalEngineApi.getApprovalChangeData(approvalDataReq);
+                    Map<String, Object> versionInfo = new HashMap<>();
+
+                    ConfigApiResponse<Map<String, Object>> versionInfoResult =
+                            approvalApiOpenFeignClient.getApprovalChangeData(approvalDataReq);
+                    if (ConfigApiResponse.isSuccessResponse(versionInfoResult)) {
+                        versionInfo = versionInfoResult.getData();
+                    } else {
+                        try {
+                            log.debug(
+                                    "调用审批链:{}方法失败 , 请求参数:{}",
+                                    "getApprovalChangeData",
+                                    JsonUtil.obj2Json(approvalDataReq));
+                        } catch (JsonProcessingException e) {
+                            log.debug("请求参数json序列化失败。");
+                        }
+                    }
 
                     Map<String, Object> fieldChangeList =
                             buildFieldChangeListData(
@@ -954,7 +970,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         queryParam.getModuleFilterInfo(),
                         queryParam.getSubjectId(),
                         queryParam.getRoleId());
-                resultMap.put("list", List.of());
+                resultMap.put("records", List.of());
                 resultMap.put("total", 0);
                 return resultMap;
             }
@@ -1073,7 +1089,20 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (hasApproval) {
 
-            approvalListResps = approvalEngineApi.getBusinessList(approvalListReq);
+            ConfigApiResponse<List<Map<String, Object>>> buttonListResult =
+                    approvalApiOpenFeignClient.getBusinessList(approvalListReq);
+            if (ConfigApiResponse.isSuccessResponse(buttonListResult)) {
+                approvalListResps = buttonListResult.getData();
+            } else {
+                try {
+                    log.debug(
+                            "调用审批链:{}方法失败 , 请求参数:{}",
+                            "getBusinessList",
+                            JsonUtil.obj2Json(approvalListReq));
+                } catch (JsonProcessingException e) {
+                    log.debug("请求参数json序列化失败。");
+                }
+            }
 
             // 构造recordId为key,审批数据为值的映射map，方便后面数据拼装
             for (Map<String, Object> item : approvalListResps) {
@@ -1418,7 +1447,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         // 组装返回数据
-        resultMap.put("list", dataList);
+        resultMap.put("records", dataList);
 
         buildConfigData(
                 resultMap,
@@ -2592,7 +2621,22 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         approvalProcessReq.setApplicantId(296L);
         approvalProcessReq.setButton("");
 
-        Map<String, Object> approvalInfo = approvalEngineApi.getApprovalDetail(approvalProcessReq);
+        Map<String, Object> approvalInfo = new HashMap<>();
+
+        ConfigApiResponse<Map<String, Object>> detailResult =
+                approvalApiOpenFeignClient.getApprovalDetail(approvalProcessReq);
+        if (ConfigApiResponse.isSuccessResponse(detailResult)) {
+            approvalInfo = detailResult.getData();
+        } else {
+            try {
+                log.debug(
+                        "调用审批链:{}方法失败 , 请求参数:{}",
+                        "getApprovalDetail",
+                        JsonUtil.obj2Json(approvalProcessReq));
+            } catch (JsonProcessingException e) {
+                log.debug("请求参数json序列化失败。");
+            }
+        }
 
         // 统计当前页面没有可查看权限的菜单数
         int count = 0;
