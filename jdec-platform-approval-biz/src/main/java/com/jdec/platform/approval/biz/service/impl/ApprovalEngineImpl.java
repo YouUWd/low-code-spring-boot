@@ -927,8 +927,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             "logStateIcon", approvalProcessDTO.getButton());
             if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
                 actionName = "已" + modelConfig.getLabel();
+                actionType = modelConfig.getId();
             }
-            actionType = modelConfig.getId();
         } else {
             LambdaQueryWrapper<ApprovalChainButton> configWrapper = new LambdaQueryWrapper<>();
             configWrapper.eq(
@@ -943,8 +943,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     approvalChainButtonMapper.selectOne(configWrapper);
             if (Objects.nonNull(approvalChainButton)) {
                 actionName = approvalChainButton.getLogName();
+                actionType = approvalChainButton.getButtonTypeId();
             }
-            actionType = approvalChainButton.getButtonTypeId();
         }
 
         // 2. 构建日志实体
