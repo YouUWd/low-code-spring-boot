@@ -33,4 +33,7 @@ public interface IApprovalEngine {
 
     // 查询消息接收人
     List<Map<String, Object>> getMessageReceiver(MessageReceiverReq req);
+
+    // 查询已经审批的步骤
+    List<Map<String, Object>> getApprovalStep(ApprovalDataReq req);
 }

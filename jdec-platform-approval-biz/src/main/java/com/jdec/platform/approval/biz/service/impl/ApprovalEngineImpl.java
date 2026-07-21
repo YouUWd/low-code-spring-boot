@@ -381,176 +381,44 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return templateList;
     }
 
-    // 查询审批步骤绑定的操作按钮------------------------------------------------------------------
-    private List<Map<String, Object>> getOperationButton(ApprovalProcessReq approvalProcessReq) {
-        Long userId = approvalProcessReq.getApplicantId();
-        Long roleId = approvalProcessReq.getRoleId();
-        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = new LambdaQueryWrapper<>();
-        businessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
-        businessWrapper.eq(ApprovalBusiness::getRecordId, approvalProcessReq.getRecordId());
-        ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
-        List<Map<String, Object>> operations = new ArrayList<>();
-        String btnType = approvalProcessReq.getButton();
-        if (Objects.nonNull(btnType) && (btnType.equals("change") || btnType.equals("create"))) {
-            operations.add(
-                    showButtonInfo(
-                            "submit",
-                            null,
-                            approvalChainBusiness.getSerialNumber(),
-                            approvalChainBusiness.getSerialNo(),
-                            approvalChainBusiness.getCurrentStep()));
-            return operations;
-        }
-        if (Objects.isNull(approvalChainBusiness)) {
-            return operations;
-        }
-        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
-        approvalProcessDTO.setSerialNumber(approvalChainBusiness.getSerialNumber());
-        approvalProcessDTO.setSerialNo(approvalChainBusiness.getSerialNo());
-        approvalProcessDTO.setCurrentStep(approvalChainBusiness.getCurrentStep());
-        LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
-        approvalWrapper.eq(ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
-        approvalWrapper.eq(ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
-        approvalWrapper.eq(ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep());
-        ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
-        if (approvalChainBusiness.getStatusValue().equals(99)) {
-            if (approvalChain.getCreatedBy().equals(userId) && checkRight(approvalProcessDTO)) {
-                operations.add(
-                        showButtonInfo(
-                                "change",
-                                null,
-                                approvalChainBusiness.getSerialNumber(),
-                                approvalChainBusiness.getSerialNo(),
-                                approvalChainBusiness.getCurrentStep()));
-            } else {
-                return operations;
-            }
-        } else {
-            if (Objects.isNull(approvalChain)) {
-                LambdaQueryWrapper<ApprovalChain> approvalDeleteWrapper =
-                        new LambdaQueryWrapper<>();
-                approvalDeleteWrapper.eq(
-                        ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
-                approvalDeleteWrapper.eq(
-                        ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
-                approvalDeleteWrapper.eq(
-                        ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep());
-                ApprovalChain approvalChainDelete =
-                        approvalChainMapper.selectOne(approvalDeleteWrapper);
-                if (Objects.nonNull(approvalChainDelete)
-                        && approvalChainDelete.getCreatedBy().equals(userId)
-                        && checkRight(approvalProcessDTO)) {
-                    operations.add(
-                            showButtonInfo(
-                                    "submit",
-                                    null,
-                                    approvalChainBusiness.getSerialNumber(),
-                                    approvalChainBusiness.getSerialNo(),
-                                    approvalChainBusiness.getCurrentStep()));
-                    operations.add(
-                            showButtonInfo(
-                                    "cancel",
-                                    null,
-                                    approvalChainBusiness.getSerialNumber(),
-                                    approvalChainBusiness.getSerialNo(),
-                                    approvalChainBusiness.getCurrentStep()));
-                }
-            } else if ((Objects.nonNull(approvalChainBusiness.getApproverId())
-                            && approvalChainBusiness.getApproverId().equals(userId))
-                    || (Objects.nonNull(approvalChainBusiness.getApproveRoleId())
-                            && approvalChainBusiness.getApproveRoleId().equals(roleId))) {
-                LambdaQueryWrapper<ApprovalChainButton> approvalButtonWrapper =
-                        new LambdaQueryWrapper<>();
-                approvalButtonWrapper.eq(
-                        ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
-                approvalButtonWrapper.eq(
-                        ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
-                approvalButtonWrapper.orderByAsc(ApprovalChainButton::getButtonId);
-                List<ApprovalChainButton> buttonList =
-                        approvalChainButtonMapper.selectList(approvalButtonWrapper);
-                for (ApprovalChainButton item : buttonList) {
-                    operations.add(
-                            showButtonInfo(
-                                    item.getButtonTypeValue(),
-                                    item.getButtonId(),
-                                    approvalChainBusiness.getSerialNumber(),
-                                    approvalChainBusiness.getSerialNo(),
-                                    approvalChainBusiness.getCurrentStep()));
-                }
-            }
-            if (Objects.nonNull(approvalChain)
-                    && approvalChain.getCreatedBy().equals(userId)
-                    && checkRight(approvalProcessDTO)) {
-                operations.add(
-                        showButtonInfo(
-                                "cancel",
-                                null,
-                                approvalChainBusiness.getSerialNumber(),
-                                approvalChainBusiness.getSerialNo(),
-                                approvalChainBusiness.getCurrentStep()));
-            }
-        }
-        return operations;
-    }
-
-    // 获取版本列表，处理变更模式--------------------------------------------------------------
-    protected List<Object> getVersionList(String getBusinessNumber, String btnType) {
-        // 1. 获取数据
-        LambdaQueryWrapper<ApprovalVersionRecord> wrapper =
-                new LambdaQueryWrapper<ApprovalVersionRecord>()
-                        .eq(ApprovalVersionRecord::getBusinessNumber, getBusinessNumber)
-                        .select(
-                                ApprovalVersionRecord::getId,
-                                ApprovalVersionRecord::getVersionNo,
-                                ApprovalVersionRecord::getStatusValue);
-        List<ApprovalVersionRecord> versionDataList =
-                approvalVersionRecordMapper.selectList(wrapper);
-
-        // 2. 组装版本列表
-        List<Map<String, Object>> versionList = new ArrayList<>();
-        for (ApprovalVersionRecord item : versionDataList) {
+    @Override
+    public List<Map<String, Object>> getApprovalStep(ApprovalDataReq req) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        // 查询当前单据记录
+        LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
+        businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
+        businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId());
+        ApprovalVersionRecord approvalVersionRecord =
+                approvalVersionRecordMapper.selectOne(businessWrapper);
+        // 查询步骤列表 + 关联状态
+        LambdaQueryWrapper<ApprovalChain> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ApprovalChain::getSerialNumber, approvalVersionRecord.getSerialNumber())
+                .eq(ApprovalChain::getSerialNo, approvalVersionRecord.getSerialNo())
+                .eq(ApprovalChain::getApproved, true)
+                .orderByAsc(ApprovalChain::getCurrentStep);
+        List<ApprovalChain> approvalChainlist = approvalChainMapper.selectList(wrapper);
+        // 5. 遍历步骤
+        for (ApprovalChain item : approvalChainlist) {
+            LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
+                    new LambdaQueryWrapper<>();
+            approvalChainStatusWrapper.eq(
+                    ApprovalChainStatus::getSerialNumber, item.getSerialNumber());
+            approvalChainStatusWrapper.eq(ApprovalChainStatus::getSerialNo, item.getSerialNo());
+            approvalChainStatusWrapper
+                    .eq(ApprovalChainStatus::getPid, item.getCurrentStatusChildId())
+                    .last("limit 1");
+            ApprovalChainStatus status =
+                    approvalChainStatusMapper.selectOne(approvalChainStatusWrapper);
+            // 组装步骤数据
             Map<String, Object> map = new HashMap<>();
-            map.put("id", item.getId());
-            map.put("recordId", item.getRecordId());
-            map.put("versionNo", item.getVersionNo());
-            map.put("statusValue", item.getStatusValue());
-            map.put("btnType", "change".equals(btnType) ? "change-view" : "");
-            versionList.add(map);
+            map.put("id", item.getCurrentStatusChildId());
+            map.put("title", status == null ? "" : status.getTitle());
+            map.put("statusBackground", status == null ? "" : status.getStatusBackground());
+            map.put("statusFontColor", status == null ? "" : status.getStatusFontColor());
+            map.put("statusValue", status == null ? "" : status.getStatusValue());
+            map.put("step", item.getCurrentStep());
+            result.add(map);
         }
-
-        int versionNo = 0;
-
-        // 3. 处理 change 模式：追加一个新版本
-        if ("change".equals(btnType) && CollectionUtil.isNotEmpty(versionList)) {
-            // 过滤出 status_value = 99 的数据
-            List<Map<String, Object>> sortData =
-                    versionList.stream()
-                            .filter(item -> Objects.equals(item.get("status_value"), 99))
-                            .collect(Collectors.toList());
-
-            if (CollectionUtil.isNotEmpty(sortData)) {
-                // 按 id 倒序
-                sortData.sort((a, b) -> Long.compare(((Long) b.get("id")), ((Long) a.get("id"))));
-                // 取第一条
-                Map<String, Object> lastData = new HashMap<>(sortData.get(0));
-                lastData.put("id", 0);
-                lastData.put("btnType", "change-change");
-                versionNo = versionList.size() + 1;
-                lastData.put("versionNo", versionNo);
-                versionList.add(lastData);
-            }
-        }
-
-        // 4. 按 version_no 倒序
-        versionList.sort(
-                (a, b) ->
-                        Short.compare(
-                                (Short.parseShort(b.get("versionNo").toString())),
-                                Short.parseShort(a.get("versionNo").toString())));
-
-        // 5. 返回 [versionList, versionNo]
-        List<Object> result = new ArrayList<>();
-        result.add(versionList);
         return result;
     }
 
@@ -1052,6 +920,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             Long oldStatusGroupId, Long oldStatusId, ApprovalProcessDTO approvalProcessDTO) {
         // 1. 获取对应节点 action 的操作日志描述
         String actionName = "";
+        Long actionType = 0L;
         if (List.of("cancel", "submit", "create").contains(approvalProcessDTO.getButton())) {
             SysConfigItemResp modelConfig =
                     sysConfigCategoryApi.getConfigItemsByValue(
@@ -1059,6 +928,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
                 actionName = "已" + modelConfig.getLabel();
             }
+            actionType = modelConfig.getId();
         } else {
             LambdaQueryWrapper<ApprovalChainButton> configWrapper = new LambdaQueryWrapper<>();
             configWrapper.eq(
@@ -1074,12 +944,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.nonNull(approvalChainButton)) {
                 actionName = approvalChainButton.getLogName();
             }
+            actionType = approvalChainButton.getButtonTypeId();
         }
 
         // 2. 构建日志实体
         LocalDateTime time = LocalDateTime.now();
         ApprovalActionLog logEntity = new ApprovalActionLog();
-        logEntity.setActionType(approvalProcessDTO.getButton());
+        logEntity.setActionType(actionType);
         logEntity.setActionIcon(approvalProcessDTO.getButton());
         logEntity.setActionName(actionName);
         logEntity.setSerialNumber(approvalProcessDTO.getSerialNumber());
@@ -1225,6 +1096,179 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
 
         return data;
+    }
+
+    // 查询审批步骤绑定的操作按钮------------------------------------------------------------------
+    private List<Map<String, Object>> getOperationButton(ApprovalProcessReq approvalProcessReq) {
+        Long userId = approvalProcessReq.getApplicantId();
+        Long roleId = approvalProcessReq.getRoleId();
+        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = new LambdaQueryWrapper<>();
+        businessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
+        businessWrapper.eq(ApprovalBusiness::getRecordId, approvalProcessReq.getRecordId());
+        ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
+        List<Map<String, Object>> operations = new ArrayList<>();
+        String btnType = approvalProcessReq.getButton();
+        if (Objects.nonNull(btnType) && (btnType.equals("change") || btnType.equals("create"))) {
+            operations.add(
+                    showButtonInfo(
+                            "submit",
+                            null,
+                            approvalChainBusiness.getSerialNumber(),
+                            approvalChainBusiness.getSerialNo(),
+                            approvalChainBusiness.getCurrentStep()));
+            return operations;
+        }
+        if (Objects.isNull(approvalChainBusiness)) {
+            return operations;
+        }
+        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
+        approvalProcessDTO.setSerialNumber(approvalChainBusiness.getSerialNumber());
+        approvalProcessDTO.setSerialNo(approvalChainBusiness.getSerialNo());
+        approvalProcessDTO.setCurrentStep(approvalChainBusiness.getCurrentStep());
+        LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
+        approvalWrapper.eq(ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
+        approvalWrapper.eq(ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
+        approvalWrapper.eq(ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep());
+        ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
+        if (approvalChainBusiness.getStatusValue().equals(99)) {
+            if (approvalChain.getCreatedBy().equals(userId) && checkRight(approvalProcessDTO)) {
+                operations.add(
+                        showButtonInfo(
+                                "change",
+                                null,
+                                approvalChainBusiness.getSerialNumber(),
+                                approvalChainBusiness.getSerialNo(),
+                                approvalChainBusiness.getCurrentStep()));
+            } else {
+                return operations;
+            }
+        } else {
+            if (Objects.isNull(approvalChain)) {
+                LambdaQueryWrapper<ApprovalChain> approvalDeleteWrapper =
+                        new LambdaQueryWrapper<>();
+                approvalDeleteWrapper.eq(
+                        ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
+                approvalDeleteWrapper.eq(
+                        ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
+                approvalDeleteWrapper.eq(
+                        ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep());
+                ApprovalChain approvalChainDelete =
+                        approvalChainMapper.selectOne(approvalDeleteWrapper);
+                if (Objects.nonNull(approvalChainDelete)
+                        && approvalChainDelete.getCreatedBy().equals(userId)
+                        && checkRight(approvalProcessDTO)) {
+                    operations.add(
+                            showButtonInfo(
+                                    "submit",
+                                    null,
+                                    approvalChainBusiness.getSerialNumber(),
+                                    approvalChainBusiness.getSerialNo(),
+                                    approvalChainBusiness.getCurrentStep()));
+                    operations.add(
+                            showButtonInfo(
+                                    "cancel",
+                                    null,
+                                    approvalChainBusiness.getSerialNumber(),
+                                    approvalChainBusiness.getSerialNo(),
+                                    approvalChainBusiness.getCurrentStep()));
+                }
+            } else if ((Objects.nonNull(approvalChainBusiness.getApproverId())
+                            && approvalChainBusiness.getApproverId().equals(userId))
+                    || (Objects.nonNull(approvalChainBusiness.getApproveRoleId())
+                            && approvalChainBusiness.getApproveRoleId().equals(roleId))) {
+                LambdaQueryWrapper<ApprovalChainButton> approvalButtonWrapper =
+                        new LambdaQueryWrapper<>();
+                approvalButtonWrapper.eq(
+                        ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
+                approvalButtonWrapper.eq(
+                        ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
+                approvalButtonWrapper.orderByAsc(ApprovalChainButton::getButtonId);
+                List<ApprovalChainButton> buttonList =
+                        approvalChainButtonMapper.selectList(approvalButtonWrapper);
+                for (ApprovalChainButton item : buttonList) {
+                    operations.add(
+                            showButtonInfo(
+                                    item.getButtonTypeValue(),
+                                    item.getButtonId(),
+                                    approvalChainBusiness.getSerialNumber(),
+                                    approvalChainBusiness.getSerialNo(),
+                                    approvalChainBusiness.getCurrentStep()));
+                }
+            }
+            if (Objects.nonNull(approvalChain)
+                    && approvalChain.getCreatedBy().equals(userId)
+                    && checkRight(approvalProcessDTO)) {
+                operations.add(
+                        showButtonInfo(
+                                "cancel",
+                                null,
+                                approvalChainBusiness.getSerialNumber(),
+                                approvalChainBusiness.getSerialNo(),
+                                approvalChainBusiness.getCurrentStep()));
+            }
+        }
+        return operations;
+    }
+
+    // 获取版本列表，处理变更模式--------------------------------------------------------------
+    protected List<Object> getVersionList(String getBusinessNumber, String btnType) {
+        // 1. 获取数据
+        LambdaQueryWrapper<ApprovalVersionRecord> wrapper =
+                new LambdaQueryWrapper<ApprovalVersionRecord>()
+                        .eq(ApprovalVersionRecord::getBusinessNumber, getBusinessNumber)
+                        .select(
+                                ApprovalVersionRecord::getId,
+                                ApprovalVersionRecord::getVersionNo,
+                                ApprovalVersionRecord::getStatusValue);
+        List<ApprovalVersionRecord> versionDataList =
+                approvalVersionRecordMapper.selectList(wrapper);
+
+        // 2. 组装版本列表
+        List<Map<String, Object>> versionList = new ArrayList<>();
+        for (ApprovalVersionRecord item : versionDataList) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", item.getId());
+            map.put("recordId", item.getRecordId());
+            map.put("versionNo", item.getVersionNo());
+            map.put("statusValue", item.getStatusValue());
+            map.put("btnType", "change".equals(btnType) ? "change-view" : "");
+            versionList.add(map);
+        }
+
+        int versionNo = 0;
+
+        // 3. 处理 change 模式：追加一个新版本
+        if ("change".equals(btnType) && CollectionUtil.isNotEmpty(versionList)) {
+            // 过滤出 status_value = 99 的数据
+            List<Map<String, Object>> sortData =
+                    versionList.stream()
+                            .filter(item -> Objects.equals(item.get("status_value"), 99))
+                            .collect(Collectors.toList());
+
+            if (CollectionUtil.isNotEmpty(sortData)) {
+                // 按 id 倒序
+                sortData.sort((a, b) -> Long.compare(((Long) b.get("id")), ((Long) a.get("id"))));
+                // 取第一条
+                Map<String, Object> lastData = new HashMap<>(sortData.get(0));
+                lastData.put("id", 0);
+                lastData.put("btnType", "change-change");
+                versionNo = versionList.size() + 1;
+                lastData.put("versionNo", versionNo);
+                versionList.add(lastData);
+            }
+        }
+
+        // 4. 按 version_no 倒序
+        versionList.sort(
+                (a, b) ->
+                        Short.compare(
+                                (Short.parseShort(b.get("versionNo").toString())),
+                                Short.parseShort(a.get("versionNo").toString())));
+
+        // 5. 返回 [versionList, versionNo]
+        List<Object> result = new ArrayList<>();
+        result.add(versionList);
+        return result;
     }
 
     // 获取按钮完整信息（样式、标题、图标、排序等）------------------------------------------------
