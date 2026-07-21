@@ -1276,7 +1276,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                         .eq(ApprovalChain::getSerialNo, getSerialNo)
                                         .eq(ApprovalChain::getCurrentStep, currentStep)
                                         .last("LIMIT 1"));
-                item.put("reject_rule", approvalChain.getRejectRule());
+                item.put("rejectRule", approvalChain.getRejectRule());
             }
         } else {
             modelConfig = sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
