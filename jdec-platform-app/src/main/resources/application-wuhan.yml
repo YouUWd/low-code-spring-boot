@@ -103,7 +103,7 @@ jdec:
       primary: mysql
       auth_center: auth_center
       config_center: config_center
-      hr_center: hr_center
+      hr_manage: hr_manage
       third: third
       school: school
       student_manage: student_manage
@@ -118,28 +118,6 @@ logging:
   level:
     com.jdec.platform: DEBUG
     org.springframework.modulith: DEBUG
-# ===== Sa-Token 配置 =====
-sa-token:
-  # 打印操作日志
-  is-log: true
-  # Token 有效期（秒），-1 为永不过期
-  timeout: 86400
-  # Token 临时有效期（秒）
-  active-timeout: -1
-  # 是否允许同一账号多地同时登录
-  is-concurrent: true
-  # Token 风格：uuid | simple-uuid | random-32 | random-64 | random-128 | tik
-  token-style: random-128
-  # SSO 配置
-  sso-server:
-    # Ticket 有效期（秒）
-    ticket-timeout: 300
-    # 允许的回调地址（正则，多个逗号分隔）
-    allow-url: "*"
-    # 是否打开单点注销功能
-    is-slo: true
-sso:
-  login-page-url: http://localhost:3000/sso/login
 
 # knife4j 配置
 knife4j:
@@ -205,6 +183,14 @@ external-api:
         Content-Type: application/json
         Accept: application/json
 
+# ===== 业务系统配置 =====
+biz:
+  system:
+    data-permission:
+      urls:
+        student_manage: http://119.36.78.123:5020/api/student/query/get-data-right
+        # config_center: http://localhost:8080/api/data-permission
+        # auth_center: http://localhost:8080/api/data-permission
 
 config:
   center:
