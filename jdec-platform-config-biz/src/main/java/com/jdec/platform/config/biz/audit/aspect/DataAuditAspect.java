@@ -12,6 +12,9 @@ import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.security.SecurityUtils;
+import com.jdec.platform.shared.security.model.LoginUser;
+import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -200,6 +203,14 @@ public class DataAuditAspect {
                 return;
             }
 
+            // 在事务内立即删除快照记录（与业务删除在同一事务中）
+            snapshotService.removeById(oldSnapshot.getId());
+            log.debug(
+                    "已删除快照记录: table={}, dataId={}, snapshotId={}",
+                    tableName,
+                    dataId,
+                    oldSnapshot.getId());
+
             // 构建审计结果（所有字段都标记为删除）
             AuditResult auditResult =
                     AuditResult.builder()
@@ -212,33 +223,26 @@ public class DataAuditAspect {
                             .operateTime(LocalDateTime.now())
                             .build();
 
-            // 注册事务同步回调
+            // 注册事务同步回调，在事务提交后才发送审计日志
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
                             public void afterCommit() {
-                                // TODO: 调用HTTP接口发送审计日志
+                                // 事务提交后发送审计日志
                                 sendAuditLog(auditResult);
-
-                                // 删除快照记录
-                                snapshotService.removeById(oldSnapshot.getId());
-                            }
-
-                            @Override
-                            public void afterCompletion(int status) {
-                                if (status != STATUS_COMMITTED) {
-                                    log.info("事务回滚，取消删除快照: table={}, dataId={}", tableName, dataId);
-                                }
                             }
                         });
             } else {
+                // 没有事务，直接发送
                 sendAuditLog(auditResult);
-                snapshotService.removeById(oldSnapshot.getId());
             }
 
         } catch (Exception e) {
             log.error("DELETE审计处理失败: table={}, dataId={}", tableName, dataId, e);
+            // 注意：这里不捕获异常，让其向上传播以触发事务回滚
+            throw new RuntimeException(
+                    "DELETE审计处理失败: table=" + tableName + ", dataId=" + dataId, e);
         }
     }
 
@@ -342,10 +346,13 @@ public class DataAuditAspect {
     /**
      * 发送审计日志到HTTP接口
      *
-     * <p>封装为统一的HTTP请求格式
+     * <p>封装为统一的HTTP请求格式，从 UserContext 获取用户信息
      */
     private void sendAuditLog(AuditResult auditResult) {
         try {
+            // 从 UserContext 获取登录用户信息
+            LoginUser loginUser = SecurityUtils.getLoginUser();
+
             // 构建logContent
             String operatorResult =
                     auditResult.getOperation()
@@ -363,8 +370,8 @@ public class DataAuditAspect {
                                                     && !auditResult.getSubModule().isEmpty()
                                             ? auditResult.getSubModule()
                                             : auditResult.getTableName())
-                            .hrefUrl("") // 暂时为空，后续填充
-                            .operatorResult(operatorResult)
+                            .hrefUrl(loginUser != null ? loginUser.getHrefUrl() : "")
+                            .controlName(operatorResult)
                             .build();
 
             // 构建logRemark（字段差异JSON）
@@ -373,24 +380,40 @@ public class DataAuditAspect {
                 logRemark = JSONUtil.toJsonStr(auditResult.getDiffs());
             }
 
+            // 从 UserContext 获取用户信息和模拟登录标识
+            Long loginUserId =
+                    loginUser != null ? loginUser.getRealUserId() : AppContext.getUserId();
+            Long roleId = loginUser != null ? loginUser.getRoleId() : null;
+            boolean isMockLogin =
+                    loginUser != null && Boolean.TRUE.equals(loginUser.getIsMockLogin());
+            Long mockUserId = isMockLogin && loginUser != null ? loginUser.getMockUserId() : null;
+
+            // 获取请求上下文信息
+            String ip = RequestContextUtils.getClientIp();
+            String browser = RequestContextUtils.getBrowser();
+            String platform = RequestContextUtils.getPlatform();
+
             // 构建HTTP请求体
             AuditLogRequest request =
                     AuditLogRequest.builder()
                             .logType("operation-log")
-                            .subjectId(AppContext.getSubjectId())
-                            .loginUserId(AppContext.getUserId())
-                            .loginRoleId(null) // TODO: 需要从安全上下文获取角色ID
-                            .mockFlag(0)
-                            .mockUserId(0L)
-                            .mockRoleId(0L)
-                            .ip("") // TODO: 后续从请求上下文获取
-                            .browser("") // TODO: 后续从请求上下文获取
-                            .platForm("") // TODO: 后续从请求上下文获取
+                            .subjectId(
+                                    loginUser != null
+                                            ? loginUser.getSubjectId()
+                                            : AppContext.getSubjectId())
+                            .loginUserId(loginUserId)
+                            .loginRoleId(roleId)
+                            .mockFlag(isMockLogin ? 1 : 0)
+                            .mockUserId(mockUserId != null ? mockUserId : 0L)
+                            .mockRoleId(0L) // 暂时为0，后续可扩展
+                            .ip(ip != null ? ip : "")
+                            .browser(browser != null ? browser : "")
+                            .platForm(platform != null ? platform : "")
                             .logContent(JSONUtil.toJsonStr(logContent))
                             .logRemark(logRemark)
                             .build();
 
-            log.info("TODO: 发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
+            log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
 
             // TODO: 实现实际的HTTP调用
             // Example:

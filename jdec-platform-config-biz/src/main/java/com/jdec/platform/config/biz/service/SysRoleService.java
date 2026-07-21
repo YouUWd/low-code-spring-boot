@@ -283,8 +283,14 @@ public class SysRoleService implements SysRoleApi {
         Map<Long, DepartmentBO> deptMap = new HashMap<>();
         Map<Long, SubjectBO> subjectMap = new HashMap<>();
         List<UserBO> allSubjectUsers = new ArrayList<>();
-        if (!allUserIds.isEmpty()) {
-            userApi.listByIds(allUserIds).forEach(u -> hrUserMap.put(u.getId(), u));
+
+        // 合并新旧用户ID，确保删除的用户也能查到姓名
+        Set<Long> allUserIdsForQuery = new HashSet<>(allUserIds);
+        allUserIdsForQuery.addAll(oldUserIds);
+
+        if (!allUserIdsForQuery.isEmpty()) {
+            userApi.listByIds(new HashSet<>(allUserIdsForQuery))
+                    .forEach(u -> hrUserMap.put(u.getId(), u));
             departmentApi.getDepartmentList().forEach(d -> deptMap.put(d.getId(), d));
             subjectApi.getSubjectList().forEach(s -> subjectMap.put(s.getId(), s));
         }
@@ -859,6 +865,10 @@ public class SysRoleService implements SysRoleApi {
         // 3. 删除角色用户关联 (sys_role_user)
         sysRoleUserMapper.delete(
                 new LambdaQueryWrapper<SysRoleUser>().eq(SysRoleUser::getRoleId, roleId));
+
+        // 4. 删除角色快照 (sys_data_snapshot)
+        sysDataSnapshotService.deleteSnapshot("sys_role", roleId);
+
         // 5. 删除角色本身
         sysRoleMapper.deleteById(roleId);
 
@@ -1997,8 +2007,8 @@ public class SysRoleService implements SysRoleApi {
                             FieldDiff.builder()
                                     .fieldName(userName + "-有效期类型")
                                     .fieldCode("user_" + userId + "_effectiveType")
-                                    .oldValue(oldRoleUser.getEffectiveType())
-                                    .newValue(newRoleUser.getEffectiveType())
+                                    .oldValue(formatEffectiveType(oldRoleUser.getEffectiveType()))
+                                    .newValue(formatEffectiveType(newRoleUser.getEffectiveType()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2013,8 +2023,8 @@ public class SysRoleService implements SysRoleApi {
                             FieldDiff.builder()
                                     .fieldName(userName + "-开始日期")
                                     .fieldCode("user_" + userId + "_effectiveStartDate")
-                                    .oldValue(oldRoleUser.getEffectiveStartDate())
-                                    .newValue(newRoleUser.getEffectiveStartDate())
+                                    .oldValue(formatDateTime(oldRoleUser.getEffectiveStartDate()))
+                                    .newValue(formatDateTime(newRoleUser.getEffectiveStartDate()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2029,8 +2039,8 @@ public class SysRoleService implements SysRoleApi {
                             FieldDiff.builder()
                                     .fieldName(userName + "-结束日期")
                                     .fieldCode("user_" + userId + "_effectiveEndDate")
-                                    .oldValue(oldRoleUser.getEffectiveEndDate())
-                                    .newValue(newRoleUser.getEffectiveEndDate())
+                                    .oldValue(formatDateTime(oldRoleUser.getEffectiveEndDate()))
+                                    .newValue(formatDateTime(newRoleUser.getEffectiveEndDate()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2119,8 +2129,12 @@ public class SysRoleService implements SysRoleApi {
                                 FieldDiff.builder()
                                         .fieldName(subjectName + "-有效期类型")
                                         .fieldCode("effectiveType")
-                                        .oldValue(oldRoleSubject.getEffectiveType())
-                                        .newValue(newRoleSubject.getEffectiveType())
+                                        .oldValue(
+                                                formatEffectiveType(
+                                                        oldRoleSubject.getEffectiveType()))
+                                        .newValue(
+                                                formatEffectiveType(
+                                                        newRoleSubject.getEffectiveType()))
                                         .fieldType(FieldType.SIMPLE)
                                         .build());
                     }
@@ -2131,8 +2145,12 @@ public class SysRoleService implements SysRoleApi {
                                 FieldDiff.builder()
                                         .fieldName(subjectName + "-开始日期")
                                         .fieldCode("effectiveStartDate")
-                                        .oldValue(oldRoleSubject.getEffectiveStartDate())
-                                        .newValue(newRoleSubject.getEffectiveStartDate())
+                                        .oldValue(
+                                                formatDateTime(
+                                                        oldRoleSubject.getEffectiveStartDate()))
+                                        .newValue(
+                                                formatDateTime(
+                                                        newRoleSubject.getEffectiveStartDate()))
                                         .fieldType(FieldType.SIMPLE)
                                         .build());
                     }
@@ -2143,8 +2161,12 @@ public class SysRoleService implements SysRoleApi {
                                 FieldDiff.builder()
                                         .fieldName(subjectName + "-结束日期")
                                         .fieldCode("effectiveEndDate")
-                                        .oldValue(oldRoleSubject.getEffectiveEndDate())
-                                        .newValue(newRoleSubject.getEffectiveEndDate())
+                                        .oldValue(
+                                                formatDateTime(
+                                                        oldRoleSubject.getEffectiveEndDate()))
+                                        .newValue(
+                                                formatDateTime(
+                                                        newRoleSubject.getEffectiveEndDate()))
                                         .fieldType(FieldType.SIMPLE)
                                         .build());
                     }
@@ -2159,5 +2181,39 @@ public class SysRoleService implements SysRoleApi {
                     "修改了" + newRoleName + "角色的" + String.join(",", timeChangedSubjects) + "主体的有效期",
                     subjectTimeDiffs);
         }
+    }
+
+    /**
+     * 格式化有效期类型为可读字符串
+     *
+     * @param effectiveType 有效期类型（1-永久，2-自定义）
+     * @return 有效期类型描述
+     */
+    private String formatEffectiveType(Integer effectiveType) {
+        if (effectiveType == null) {
+            return "";
+        }
+        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
+            return EffectiveTypeEnum.PERMANENT.getDesc();
+        } else if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
+            return EffectiveTypeEnum.CUSTOM.getDesc();
+        }
+        return String.valueOf(effectiveType);
+    }
+
+    /**
+     * 格式化日期时间为 yyyy-MM-dd HH:mm:ss 格式
+     *
+     * @param date LocalDate 对象
+     * @return 格式化后的日期字符串
+     */
+    private String formatDateTime(java.time.LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        // LocalDate 转为 LocalDateTime（时间部分设为 00:00:00）
+        java.time.LocalDateTime dateTime = date.atStartOfDay();
+        // 格式化为 yyyy-MM-dd HH:mm:ss
+        return dateTime.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 }

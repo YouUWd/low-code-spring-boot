@@ -136,4 +136,20 @@ public class AuditLogHelper {
             log.error("记录删除审计日志失败: subModule={}, dataId={}", subModule, dataId, e);
         }
     }
+
+    /**
+     * 记录批量删除操作
+     *
+     * @param subModule 子模块名称（如："角色管理"、"权限管理"）
+     * @param tableName 表名（如："sys_role"、"sys_permission"）
+     * @param dataIds 数据ID列表
+     */
+    public void logBatchDelete(String subModule, String tableName, List<Long> dataIds) {
+        try {
+            dataAuditService.auditBatchDelete(MODULE, subModule, tableName, dataIds);
+            log.info("审计日志（批量删除）: subModule={}, count={}", subModule, dataIds.size());
+        } catch (Exception e) {
+            log.error("记录批量删除审计日志失败: subModule={}, count={}", subModule, dataIds.size(), e);
+        }
+    }
 }

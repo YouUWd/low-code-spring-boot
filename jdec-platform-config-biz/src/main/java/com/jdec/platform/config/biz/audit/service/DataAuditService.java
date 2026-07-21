@@ -9,6 +9,8 @@ import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.security.SecurityUtils;
+import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -164,14 +166,61 @@ public class DataAuditService {
                 return;
             }
 
-            // 发送审计日志
-            sendAuditLog(module, subModule, "删除", tableName, dataId, Collections.emptyList());
-
-            // 删除快照
+            // 在事务内立即删除快照记录（与业务删除在同一事务中）
             snapshotService.removeById(oldSnapshot.getId());
+            log.debug(
+                    "已删除快照记录: table={}, dataId={}, snapshotId={}",
+                    tableName,
+                    dataId,
+                    oldSnapshot.getId());
+
+            // 发送审计日志（在事务提交后发送）
+            sendAuditLog(module, subModule, "删除", tableName, dataId, Collections.emptyList());
 
         } catch (Exception e) {
             log.error("DELETE审计失败: module={}, table={}, dataId={}", module, tableName, dataId, e);
+            // 抛出异常以触发事务回滚
+            throw new RuntimeException(
+                    "DELETE审计失败: module=" + module + ", table=" + tableName + ", dataId=" + dataId,
+                    e);
+        }
+    }
+
+    /**
+     * 批量删除数据审计
+     *
+     * @param module 业务模块
+     * @param subModule 业务子模块
+     * @param tableName 表名
+     * @param dataIds 数据ID列表
+     */
+    public void auditBatchDelete(
+            String module, String subModule, String tableName, List<Long> dataIds) {
+        try {
+            if (dataIds == null || dataIds.isEmpty()) {
+                log.warn("批量DELETE审计失败: dataIds为空, table={}", tableName);
+                return;
+            }
+
+            // 批量删除快照记录（在事务内立即删除）
+            int deletedCount = snapshotService.deleteSnapshotsByDataIds(tableName, dataIds);
+            log.debug(
+                    "批量删除快照记录: table={}, dataIds={}, deletedCount={}",
+                    tableName,
+                    dataIds,
+                    deletedCount);
+
+            // 为每个dataId发送审计日志（在事务提交后发送）
+            for (Long dataId : dataIds) {
+                sendAuditLog(module, subModule, "删除", tableName, dataId, Collections.emptyList());
+            }
+
+        } catch (Exception e) {
+            log.error(
+                    "批量DELETE审计失败: module={}, table={}, dataIds={}", module, tableName, dataIds, e);
+            // 抛出异常以触发事务回滚
+            throw new RuntimeException(
+                    "批量DELETE审计失败: module=" + module + ", table=" + tableName, e);
         }
     }
 
@@ -180,7 +229,7 @@ public class DataAuditService {
      *
      * @param module 业务模块
      * @param subModule 业务子模块
-     * @param operation 操作描述（如："修改了test角色的邓由由用户的有效期"）
+     * @param operation 操作描述（如:"修改了test角色的邓由由用户的有效期"）
      * @param tableName 表名
      * @param diffs 自定义的字段差异列表
      */
@@ -209,24 +258,27 @@ public class DataAuditService {
             List<FieldDiff> diffs) {
 
         // 构建logContent
-        String operatorResult;
+        String controlName;
         if (operation.contains("了")) {
             // 已经是完整描述（如："新增了test角色"），直接使用
-            operatorResult = operation;
+            controlName = operation;
         } else {
             // 只是动词（如："修改"、"删除"），需要拼接
-            operatorResult =
+            controlName =
                     operation
                             + "了"
                             + (subModule != null && !subModule.isEmpty() ? subModule : "配置");
         }
 
+        // 获取 hrefUrl
+        String hrefUrl = SecurityUtils.getHrefUrl();
+
         AuditLogContent logContent =
                 AuditLogContent.builder()
                         .module(module)
                         .orderId(subModule != null && !subModule.isEmpty() ? subModule : tableName)
-                        .hrefUrl("") // 暂时为空
-                        .operatorResult(operatorResult)
+                        .hrefUrl(hrefUrl != null ? hrefUrl : "")
+                        .controlName(controlName)
                         .build();
 
         // 构建logRemark（字段差异JSON）
@@ -235,19 +287,24 @@ public class DataAuditService {
             logRemark = JSONUtil.toJsonStr(diffs);
         }
 
+        // 判断是否模拟登录
+        boolean isMockLogin = SecurityUtils.isMockLogin();
+        Long currentUserId = AppContext.getUserId();
+        Long currentRoleId = SecurityUtils.getRoleId();
+
         // 构建HTTP请求体
         AuditLogRequest request =
                 AuditLogRequest.builder()
                         .logType("operation-log")
                         .subjectId(AppContext.getSubjectId())
-                        .loginUserId(AppContext.getUserId())
-                        .loginRoleId(null) // TODO: 需要从安全上下文获取角色ID
-                        .mockFlag(0)
-                        .mockUserId(0L)
-                        .mockRoleId(0L)
-                        .ip("") // TODO: 后续从请求上下文获取
-                        .browser("") // TODO: 后续从请求上下文获取
-                        .platForm("") // TODO: 后续从请求上下文获取
+                        .loginUserId(isMockLogin ? SecurityUtils.getRealUserId() : currentUserId)
+                        .loginRoleId(isMockLogin ? null : currentRoleId)
+                        .mockFlag(isMockLogin ? 1 : 0)
+                        .mockUserId(isMockLogin ? SecurityUtils.getMockUserId() : null)
+                        .mockRoleId(isMockLogin ? currentRoleId : null)
+                        .ip(RequestContextUtils.getClientIp())
+                        .browser(RequestContextUtils.getBrowser())
+                        .platForm(RequestContextUtils.getPlatform())
                         .logContent(JSONUtil.toJsonStr(logContent))
                         .logRemark(logRemark)
                         .build();
