@@ -4,8 +4,9 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.Date;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
@@ -68,5 +69,30 @@ public class ToolUtils {
             suffix = date;
         }
         return prefix + suffix;
+    }
+
+    /**
+     * 格式化数组项 Format array item - handles string, list, or single value 等价 PHP:
+     * ToolUtils::formatArrayItem (simplified version)
+     */
+    public static List<Object> formatArrayItem(Object data) {
+        if (data == null) {
+            return new ArrayList<>();
+        }
+
+        if (data instanceof List) {
+            return new ArrayList<>((List<?>) data);
+        } else if (data instanceof String str) {
+            if (str.isEmpty()) {
+                return new ArrayList<>();
+            }
+            // Split by comma
+            return Arrays.stream(str.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+        } else {
+            return Collections.singletonList(data);
+        }
     }
 }

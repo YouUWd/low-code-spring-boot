@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.jdec.platform.common_business.api.PersonalizedUserServiceApi;
 import com.jdec.platform.common_business.api.dto.common.PersonalizedModuleDTO;
+import com.jdec.platform.common_business.api.dto.common.TableHeaderConf;
 import com.jdec.platform.common_business.api.dto.request.PersonalizedModuleReq;
 import com.jdec.platform.common_business.api.dto.response.PersonalizedModuleResp;
 import com.jdec.platform.common_business.biz.dto.PersonalSettingColumnDTO;
@@ -17,6 +18,7 @@ import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.mapper.ComPersonalizedUserColumnMapper;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
+import com.jdec.platform.common_business.biz.util.ToolUtils;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -332,6 +334,68 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
             }
             r.setColumnRespList(rr);
             return r;
+        } catch (Exception e) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                    ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                    e);
+        }
+    }
+
+    @Override
+    public List<TableHeaderConf> getUserPersonalizedModuleHeader(
+            String projectNo, Long subjectId, Long roleId, Long loginUserId, Long moduleId) {
+        List<PersonalSettingResp> respList =
+                configCenterApiService.getPersonalSettingByRole(subjectId, roleId, moduleId);
+        if (CollectionUtil.isEmpty(respList)) {
+            return List.of();
+        }
+        PersonalSettingResp resp =
+                respList.stream().filter(x -> x.getId().equals(moduleId)).findFirst().orElse(null);
+        if (resp == null) {
+            return List.of();
+        }
+        LambdaQueryWrapper<ComPersonalizedUserColumn> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ComPersonalizedUserColumn::getUserId, loginUserId);
+        queryWrapper.eq(ComPersonalizedUserColumn::getModuleId, moduleId);
+        queryWrapper.eq(ComPersonalizedUserColumn::getProjectNo, projectNo);
+        ComPersonalizedUserColumn personalizedUserColumn =
+                personalizedUserColumnMapper.selectOne(queryWrapper);
+        if (personalizedUserColumn == null
+                || StringUtils.isEmpty(personalizedUserColumn.getColumnProperty())) {
+            return List.of();
+        }
+        List<TableHeaderConf> confs = new ArrayList<>();
+        try {
+            List<PersonalizedModuleDTO> personalizedModuleDTOList =
+                    JsonUtil.json2Obj(
+                            personalizedUserColumn.getColumnProperty(),
+                            new TypeReference<List<PersonalizedModuleDTO>>() {});
+
+            Map<String, PersonalSettingColumnDTO> fields =
+                    resp.getPersonalSettingColumns().stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            x -> x.getTable() + "." + x.getField(), x -> x));
+            for (PersonalizedModuleDTO personalizedModuleDTO : personalizedModuleDTOList) {
+                if (fields.containsKey(
+                        personalizedModuleDTO.getTable()
+                                + "."
+                                + personalizedModuleDTO.getField())) {
+                    TableHeaderConf conf = new TableHeaderConf();
+                    conf.setName(personalizedModuleDTO.getName());
+                    conf.setTable(personalizedModuleDTO.getTable());
+                    conf.setField(ToolUtils.snakeToCamelCase(personalizedModuleDTO.getField()));
+                    conf.setWidth(personalizedModuleDTO.getWidth());
+                    conf.setSortable(personalizedModuleDTO.getSortable());
+                    conf.setSearchType(personalizedModuleDTO.getSearchType());
+                    conf.setFixed(personalizedModuleDTO.getFixed());
+                    conf.setEllipsis(personalizedModuleDTO.getEllipsis());
+                    conf.setSortOrder(personalizedModuleDTO.getSortOrder());
+                    confs.add(conf);
+                }
+            }
+            return confs;
         } catch (Exception e) {
             throw new BusinessException(
                     ApiResponseCodeEnum.SERVER_ERROR.getCode(),

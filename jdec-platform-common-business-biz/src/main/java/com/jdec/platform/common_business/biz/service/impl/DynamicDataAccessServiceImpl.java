@@ -11,6 +11,7 @@ import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.resp.ApprovalListResp;
 import com.jdec.platform.common_business.api.DynamicDataAccessServiceApi;
+import com.jdec.platform.common_business.api.PersonalizedUserServiceApi;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.api.dto.request.*;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
@@ -29,6 +30,7 @@ import com.jdec.platform.common_business.biz.enums.QueryOpEnum;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
 import com.jdec.platform.common_business.biz.service.SqlCreateService;
+import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -87,6 +89,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
     private final SqlCreateService sqlCreateService;
 
     private final IApprovalEngine ApprovalEngineApi;
+
+    private final PersonalizedUserServiceApi personalizedUserServiceApi;
 
     @Override
     public Map<String, Object> dynamicQueryDetailData(
@@ -838,7 +842,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         idList.toArray());
             } else {
                 log.debug("列头筛选模式下，主表的主键id列表为空，则直接返回。");
-                buildConfigData(resultMap, moduleFilterInfo);
+                buildConfigData(resultMap, moduleFilterInfo, subjectId, roleId);
                 resultMap.put("list", List.of());
                 resultMap.put("total", 0);
                 return resultMap;
@@ -1285,7 +1289,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         // 组装返回数据
         resultMap.put("list", dataList);
 
-        buildConfigData(resultMap, moduleFilterInfo);
+        buildConfigData(resultMap, moduleFilterInfo, subjectId, roleId);
 
         return resultMap;
     }
@@ -2393,18 +2397,31 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
     }
 
-    private void buildConfigData(Map<String, Object> resultMap, ModuleFilterInfo moduleFilterInfo) {
+    private void buildConfigData(
+            Map<String, Object> resultMap,
+            ModuleFilterInfo moduleFilterInfo,
+            Long subjectId,
+            Long roleId) {
         // 先组装除数据外的其他字段
 
         // 将TableHeader中的下划线转为驼峰
         List<TableHeaderConf> transformHeader =
-                moduleFilterInfo.getModuleInfo().getTableHeader().stream()
-                        .map(
-                                ele -> {
-                                    ele.setField(ToolUtils.snakeToCamelCase(ele.getField()));
-                                    return ele;
-                                })
-                        .collect(Collectors.toList());
+                personalizedUserServiceApi.getUserPersonalizedModuleHeader(
+                        LoginUserUtil.getProjectNoFromHeader(),
+                        subjectId,
+                        roleId,
+                        LoginUserUtil.getRealLoginUserId(),
+                        moduleFilterInfo.getModuleInfo().getModuleId());
+        if (CollectionUtil.isEmpty(transformHeader)) {
+            transformHeader =
+                    moduleFilterInfo.getModuleInfo().getTableHeader().stream()
+                            .map(
+                                    ele -> {
+                                        ele.setField(ToolUtils.snakeToCamelCase(ele.getField()));
+                                        return ele;
+                                    })
+                            .collect(Collectors.toList());
+        }
 
         resultMap.put("columnData", transformHeader);
 

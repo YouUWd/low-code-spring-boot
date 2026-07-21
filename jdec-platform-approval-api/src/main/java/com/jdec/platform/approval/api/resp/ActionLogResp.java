@@ -11,6 +11,9 @@ public class ActionLogResp {
     /** 图标类型 */
     private String actionIcon;
 
+    /** 图标url */
+    private String actionPath;
+
     /** 操作记录 */
     private String actionName;
 
