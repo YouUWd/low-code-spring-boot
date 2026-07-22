@@ -122,14 +122,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalStatus.put("statusBackground", approvalVersionRecord.getStatusBackground());
         approvalStatus.put("statusFontColor", approvalVersionRecord.getStatusFontColor());
         result.put("approvalStatus", approvalStatus);
-        // 审批链步骤
-        List<Map<String, Object>> step =
-                approvalChainStep(
-                        approvalVersionRecord.getSerialNumber(),
-                        approvalVersionRecord.getSerialNo(),
-                        req.getRoleId(),
-                        req.getApplicantId());
-        result.put("step", step);
+        if (approvalVersionRecord.getCurrentStep() > 0) {
+            // 审批链步骤
+            List<Map<String, Object>> step =
+                    approvalChainStep(
+                            approvalVersionRecord.getSerialNumber(),
+                            approvalVersionRecord.getSerialNo(),
+                            req.getRoleId(),
+                            req.getApplicantId());
+            result.put("step", step);
+        }
         // 创建人
         result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
 
