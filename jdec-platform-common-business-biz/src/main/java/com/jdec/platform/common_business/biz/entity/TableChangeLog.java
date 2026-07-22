@@ -14,7 +14,7 @@ import lombok.experimental.Accessors;
 
 /**
  * @author
- * @since 2026-06-22
+ * @since 2026-07-21
  */
 @Getter
 @Setter
@@ -29,9 +29,9 @@ public class TableChangeLog extends Model<TableChangeLog> {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    /** 用户ID */
-    @TableField("user_id")
-    private Long userId;
+    /** 数据ID */
+    @TableField("data_id")
+    private Long dataId;
 
     /** 用户的主题ID */
     @TableField("subject_id")
@@ -128,6 +128,58 @@ public class TableChangeLog extends Model<TableChangeLog> {
     /** 1删除0正常 */
     @TableField("deleted")
     private Boolean deleted;
+
+    public static final String ID = "id";
+
+    public static final String DATA_ID = "data_id";
+
+    public static final String SUBJECT_ID = "subject_id";
+
+    public static final String MODULE_ID = "module_id";
+
+    public static final String MODULE_SLUG = "module_slug";
+
+    public static final String MODULE_NAME = "module_name";
+
+    public static final String CHANGE_CONTENT = "change_content";
+
+    public static final String MOCK_USER_ID = "mock_user_id";
+
+    public static final String MOCK_USER_NAME = "mock_user_name";
+
+    public static final String MOCK_DEPARTMENT_ID = "mock_department_id";
+
+    public static final String MOCK_DEPARTMENT_NAME = "mock_department_name";
+
+    public static final String MOCK_JOB_ID = "mock_job_id";
+
+    public static final String MOCK_JOB_NAME = "mock_job_name";
+
+    public static final String REAL_USER_ID = "real_user_id";
+
+    public static final String REAL_USER_NAME = "real_user_name";
+
+    public static final String REAL_DEPARTMENT_ID = "real_department_id";
+
+    public static final String REAL_DEPARTMENT_NAME = "real_department_name";
+
+    public static final String REAL_JOB_ID = "real_job_id";
+
+    public static final String REAL_JOB_NAME = "real_job_name";
+
+    public static final String CREATED_BY = "created_by";
+
+    public static final String CREATED_NAME = "created_name";
+
+    public static final String CREATED_DATE = "created_date";
+
+    public static final String UPDATED_BY = "updated_by";
+
+    public static final String UPDATED_NAME = "updated_name";
+
+    public static final String UPDATED_DATE = "updated_date";
+
+    public static final String DELETED = "deleted";
 
     @Override
     public Serializable pkVal() {

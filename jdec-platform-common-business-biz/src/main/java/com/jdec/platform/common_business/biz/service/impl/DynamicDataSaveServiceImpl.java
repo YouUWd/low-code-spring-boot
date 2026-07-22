@@ -1,5 +1,7 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
@@ -18,13 +20,18 @@ import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
+import com.jdec.platform.common_business.biz.change.CallTypeEnum;
+import com.jdec.platform.common_business.biz.change.DataChangeContext;
+import com.jdec.platform.common_business.biz.change.ModuleDataChangeContext;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
+import com.jdec.platform.common_business.biz.context.DataUpdateContextHolder;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -92,6 +99,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     private final IApprovalEngine approvalEngineApi;
+
+    private final SystemModuleDataChangeLogService systemModuleDataChangeLogService;
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     private Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
@@ -233,7 +242,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             try {
                 Map<String, Object> extraDataMap =
                         getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
-                Object primaryObject = insertModuleTable(primaryTable, primaryData, extraDataMap);
+                Object primaryObject =
+                        insertModuleTable(
+                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                primaryTable,
+                                primaryData,
+                                extraDataMap);
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
 
@@ -273,6 +287,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             // 写入关联表的数据
                             Object o =
                                     insertModuleTable(
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
                                             table.getTableName(),
                                             tableDataMap.get(table.getTableName()),
                                             extraDataMap);
@@ -375,7 +390,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             try {
                 Map<String, Object> extraDataMap =
                         getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
-                Object primaryObject = insertModuleTable(primaryTable, primaryData, extraDataMap);
+                Object primaryObject =
+                        insertModuleTable(
+                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                primaryTable,
+                                primaryData,
+                                extraDataMap);
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
 
@@ -411,6 +431,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             // 写入关联表的数据
                             Object o =
                                     insertModuleTable(
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
                                             table.getTableName(),
                                             tableDataMap.get(table.getTableName()),
                                             extraDataMap);
@@ -517,7 +538,34 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         });
 
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
-        Object o = editMultiModuleData(subjectId, roleId, moduleSaveList);
+        Object o = null;
+        try {
+            DataUpdateContextHolder.openDataChangeFlag();
+            o = editMultiModuleData(subjectId, roleId, moduleSaveList);
+
+            List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
+            if (CollectionUtil.isNotEmpty(targets)) {
+                ModuleDataChangeContext context = new ModuleDataChangeContext();
+                context.setSubjectId(subjectId);
+                context.setMainModuleId(moduleSaveList.get(0).getModuleId());
+                context.setDataId((Long) o);
+                context.setRealUserId(LoginUserUtil.getRealLoginUserId());
+                context.setMockUserId(
+                        !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
+                                ? LoginUserUtil.getLoginUserId()
+                                : null);
+                List<DataChangeContext> dataChangeContextList = new ArrayList<>();
+                for (Object object : targets) {
+                    DataChangeContext dataChangeContext = (DataChangeContext) object;
+                    dataChangeContextList.add(dataChangeContext);
+                }
+                context.setCallType(CallTypeEnum.EDITE);
+                context.setDataChangeContextList(dataChangeContextList);
+                systemModuleDataChangeLogService.saveLog(context);
+            }
+        } finally {
+            DataUpdateContextHolder.clear();
+        }
         return o;
     }
 
@@ -571,7 +619,34 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         });
 
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
-        Object o = createMultiModuleData(subjectId, roleId, moduleSaveList);
+        Object o = null;
+        try {
+            DataUpdateContextHolder.openDataChangeFlag();
+            o = createMultiModuleData(subjectId, roleId, moduleSaveList);
+
+            List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
+            if (CollectionUtil.isNotEmpty(targets)) {
+                ModuleDataChangeContext context = new ModuleDataChangeContext();
+                context.setSubjectId(subjectId);
+                context.setMainModuleId(moduleSaveList.get(0).getModuleId());
+                context.setDataId((Long) o);
+                context.setRealUserId(LoginUserUtil.getRealLoginUserId());
+                context.setMockUserId(
+                        !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
+                                ? LoginUserUtil.getLoginUserId()
+                                : null);
+                List<DataChangeContext> dataChangeContextList = new ArrayList<>();
+                for (Object object : targets) {
+                    DataChangeContext dataChangeContext = (DataChangeContext) object;
+                    dataChangeContextList.add(dataChangeContext);
+                }
+                context.setCallType(CallTypeEnum.CREATE);
+                context.setDataChangeContextList(dataChangeContextList);
+                systemModuleDataChangeLogService.saveLog(context);
+            }
+        } finally {
+            DataUpdateContextHolder.clear();
+        }
         return o;
     }
 
@@ -889,7 +964,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
 
                 // 更新主表 数据
-                Object primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                Object primaryObject =
+                        updateModuleTable(
+                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                primaryTable,
+                                primaryData,
+                                extraDataMap);
 
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
@@ -964,6 +1044,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
                                 || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
                             updateModuleTable(
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
                                     table.getTableName(),
                                     tableDataMap.get(table.getTableName()),
                                     extraDataMap);
@@ -1072,12 +1153,18 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 Boolean isMainTableInsert = false;
                 // 更新
                 if (isDataHasTableId(primaryTable, primaryData)) {
-                    primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                    primaryObject =
+                            updateModuleTable(
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    primaryTable,
+                                    primaryData,
+                                    extraDataMap);
                     isMainTableInsert = false;
                 } else {
                     // 插入
                     primaryObject =
                             insertModuleTable(
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
                                     primaryTable,
                                     primaryData,
                                     getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
@@ -1154,6 +1241,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                                 o =
                                         insertModuleTable(
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
                                                 table.getTableName(),
                                                 tableDataMap.get(table.getTableName()),
                                                 getCreateModuleExtraMap(
@@ -1170,6 +1258,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 }
                                 o =
                                         updateModuleTable(
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
                                                 table.getTableName(),
                                                 tableDataMap.get(table.getTableName()),
                                                 extraDataMap);
@@ -1260,10 +1349,16 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 Object primaryObject;
                 if (model.equals("EDIT")) {
-                    primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                    primaryObject =
+                            updateModuleTable(
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    primaryTable,
+                                    primaryData,
+                                    extraDataMap);
                 } else {
                     primaryObject =
                             insertModuleTable(
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
                                     primaryTable,
                                     primaryData,
                                     getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
@@ -1311,6 +1406,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
                                 || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
                             updateModuleTable(
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
                                     table.getTableName(),
                                     tableDataMap.get(table.getTableName()),
                                     extraDataMap);
@@ -1367,7 +1463,10 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     }
 
     private Object insertModuleTable(
-            String tableName, Map<String, Object> dataMap, Map<String, Object> extraMap)
+            Long moduleId,
+            String tableName,
+            Map<String, Object> dataMap,
+            Map<String, Object> extraMap)
             throws NoSuchMethodException,
                     InvocationTargetException,
                     InstantiationException,
@@ -1399,11 +1498,23 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         //                subjectId,
         //                SUBJECT_MAP.get(subjectId));
         primaryMapper.insert(primaryInstance);
+        if (DataUpdateContextHolder.getDataChangeFlag()) {
+            DataUpdateContextHolder.addDataUpdateToContext(
+                    DataChangeContext.builder()
+                            .moduleId(moduleId)
+                            .tableName(tableName)
+                            .before(null)
+                            .after(primaryInstance)
+                            .build());
+        }
         return primaryInstance;
     }
 
     private Object updateModuleTable(
-            String tableName, Map<String, Object> dataMap, Map<String, Object> extraMap)
+            Long moduleId,
+            String tableName,
+            Map<String, Object> dataMap,
+            Map<String, Object> extraMap)
             throws NoSuchMethodException,
                     InvocationTargetException,
                     InstantiationException,
@@ -1433,6 +1544,20 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         //                DEFAULT_CREATE_SUBJECT_FIELD,
         //                subjectId,
         //                SUBJECT_MAP.get(subjectId));
+        if (DataUpdateContextHolder.getDataChangeFlag()) {
+            Object pre = primaryMapper.selectById((Serializable) getId(primaryInstance));
+            Object newInstance = primaryConstructor.newInstance();
+            BeanUtil.copyProperties(pre, newInstance, CopyOptions.create().ignoreNullValue());
+            BeanUtil.copyProperties(
+                    primaryInstance, newInstance, CopyOptions.create().ignoreNullValue());
+            DataUpdateContextHolder.addDataUpdateToContext(
+                    DataChangeContext.builder()
+                            .moduleId(moduleId)
+                            .tableName(tableName)
+                            .before(pre)
+                            .after(newInstance)
+                            .build());
+        }
         primaryMapper.updateById(primaryInstance);
         return primaryInstance;
     }
