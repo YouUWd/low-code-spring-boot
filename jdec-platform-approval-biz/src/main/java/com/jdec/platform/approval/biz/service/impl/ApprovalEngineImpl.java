@@ -513,21 +513,42 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 变更业务发起审批申请------------------------------------------------------------------------
     @Transactional
     public void businessSubmit(ApprovalProcessDTO approvalProcessDTO) {
+        // 查询业务单据记录
+        LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
+        approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
+        approvalBusinessWrapper
+                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getOldRecordId())
+                .last("limit 1");
+        ApprovalBusiness approvalBusiness =
+                approvalBusinessMapper.selectOne(approvalBusinessWrapper);
+        if (Objects.isNull(approvalBusiness)) {
+            throw new BusinessException("旧的审批记录不存在");
+        }
+
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionWrapper =
                 new LambdaQueryWrapper<>();
         approvalVersionWrapper.eq(
                 ApprovalVersionRecord::getModuleId, approvalProcessDTO.getModuleId());
         approvalVersionWrapper
                 .eq(ApprovalVersionRecord::getRecordId, approvalProcessDTO.getOldRecordId())
+                .orderByDesc(ApprovalVersionRecord::getId)
                 .last("limit 1"); // 追加SQL limit
         ApprovalVersionRecord approvalRecord =
                 approvalVersionRecordMapper.selectOne(approvalVersionWrapper);
-        // 生成唯一编号
+        if (Objects.isNull(approvalRecord)) {
+            throw new BusinessException("旧的审批记录不存在");
+        }
+
+        // 生成版本和编号
         int versionNo = approvalRecord.getVersionNo();
-        if (approvalRecord.getStatusValue().equals(1)) {
+        Long sourceId = approvalRecord.getId();
+        if (approvalRecord.getCurrentStep().equals(0)) {
+            // 驳回提交
             approvalProcessDTO.setSerialNumber(approvalRecord.getSerialNumber());
             approvalProcessDTO.setSerialNo(approvalRecord.getSerialNo() + 1);
+            sourceId = approvalRecord.getSourceId();
         } else {
+            // 直接提交
             versionNo = approvalRecord.getVersionNo() + 1;
             String serialNumber = approvalRecord.getBusinessNumber() + "@" + versionNo;
             approvalProcessDTO.setSerialNumber(serialNumber);
@@ -540,7 +561,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalChain> sysApprovalChainWrapper = new LambdaQueryWrapper<>();
         sysApprovalChainWrapper.eq(
                 ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
-        sysApprovalChainWrapper.eq(ApprovalChain::getCurrentStep, 1);
+        sysApprovalChainWrapper.eq(ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
+        sysApprovalChainWrapper.eq(ApprovalChain::getCurrentStep, 1).last("LIMIT 1");
         ApprovalChain sysApprovalChain = approvalChainMapper.selectOne(sysApprovalChainWrapper);
         LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                 new LambdaQueryWrapper<>();
@@ -553,23 +575,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 .last("limit 1");
         ApprovalChainStatus approvalChainStatus =
                 approvalChainStatusMapper.selectOne(approvalChainStatusWrapper);
-        // 查询业务单据记录
-        LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
-        approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
-        approvalBusinessWrapper
-                .eq(ApprovalBusiness::getBusinessId, approvalProcessDTO.getBusinessId())
-                .last("limit 1");
-        ApprovalBusiness approvalBusiness =
-                approvalBusinessMapper.selectOne(approvalBusinessWrapper);
-
-        LambdaQueryWrapper<ApprovalVersionRecord> approvalSourceWrapper =
-                new LambdaQueryWrapper<>();
-        approvalSourceWrapper.eq(
-                ApprovalVersionRecord::getSerialNumber, approvalBusiness.getSerialNumber());
-        approvalSourceWrapper.eq(
-                ApprovalVersionRecord::getSerialNo, approvalProcessDTO.getSerialNo());
-        ApprovalVersionRecord approvalSource =
-                approvalVersionRecordMapper.selectOne(approvalSourceWrapper);
 
         // 更新业务单据记录
         approvalBusiness.setVersionNo(versionNo);
@@ -605,7 +610,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setStatusBackground(approvalChainStatus.getStatusBackground());
         approvalVersionRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
         approvalVersionRecord.setStatusValue(approvalChainStatus.getStatusValue());
-        approvalVersionRecord.setSourceId(approvalSource.getId());
+        approvalVersionRecord.setSourceId(sourceId);
         approvalVersionRecord.setApprovalChainTypeId(sysApprovalChain.getApprovalChainTypeId());
         approvalVersionRecord.setCreatedBy(approvalProcessDTO.getApplicantId());
         approvalVersionRecord.setCreatedDate(LocalDateTime.now());
