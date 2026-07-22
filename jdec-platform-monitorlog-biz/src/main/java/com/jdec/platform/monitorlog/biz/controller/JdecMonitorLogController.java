@@ -104,8 +104,8 @@ public class JdecMonitorLogController {
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
             @RequestHeader("Login-Role-Id") Long loginRoleId,
-            @RequestParam String systemName,
-            @RequestParam String ip) {
+            @RequestHeader("systemName") String systemName,
+            @RequestHeader("ip") String ip) {
         systemName = systemName != null ? systemName.trim() : null;
         ip = ip != null ? ip.trim() : null;
         if (subjectId == null) {
@@ -152,8 +152,8 @@ public class JdecMonitorLogController {
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
             @RequestHeader("Login-Role-Id") Long loginRoleId,
-            @RequestParam String systemName,
-            @RequestParam String ip) {
+            @RequestHeader("systemName") String systemName,
+            @RequestHeader("ip") String ip) {
         systemName = systemName != null ? systemName.trim() : null;
         ip = ip != null ? ip.trim() : null;
         if (subjectId == null) {
