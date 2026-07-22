@@ -1225,6 +1225,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalVersionRecord> wrapper =
                 new LambdaQueryWrapper<ApprovalVersionRecord>()
                         .eq(ApprovalVersionRecord::getBusinessNumber, getBusinessNumber)
+                        .ne(ApprovalVersionRecord::getCurrentStep, 0)
                         .select(
                                 ApprovalVersionRecord::getId,
                                 ApprovalVersionRecord::getVersionNo,
