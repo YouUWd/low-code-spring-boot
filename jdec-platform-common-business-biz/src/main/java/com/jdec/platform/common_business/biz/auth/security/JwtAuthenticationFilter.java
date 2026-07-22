@@ -3,7 +3,7 @@ package com.jdec.platform.common_business.biz.auth.security;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.common_business.biz.auth.Common.AuthCommonConstant;
 import com.jdec.platform.common_business.biz.auth.service.AuthApi;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
 import com.jdec.platform.common_business.biz.dto.LoginUserPrincipal;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
@@ -44,7 +44,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final StringRedisTemplate redisTemplate;
 
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     private final AuthApi authApi;
 

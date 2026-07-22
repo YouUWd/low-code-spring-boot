@@ -22,7 +22,7 @@ public class ListQueryReq {
     private Long pageSize;
 
     @Schema(description = "页码")
-    private Long page;
+    private Long pageNum;
 
     @Schema(description = "筛选项")
     private List<SearchItemReq> search;

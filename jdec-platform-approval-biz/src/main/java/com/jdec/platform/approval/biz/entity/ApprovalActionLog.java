@@ -27,9 +27,9 @@ public class ApprovalActionLog extends Model<ApprovalActionLog> {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    /** 操作类型 */
+    /** 操作类型ID */
     @TableField("action_type")
-    private String actionType;
+    private Long actionType;
 
     /** 操作日志对应的图片类型 */
     @TableField("action_icon")

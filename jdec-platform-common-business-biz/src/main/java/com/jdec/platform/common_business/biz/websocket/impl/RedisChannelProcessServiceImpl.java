@@ -2,7 +2,7 @@ package com.jdec.platform.common_business.biz.websocket.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ModuleResp;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
@@ -22,7 +22,7 @@ public class RedisChannelProcessServiceImpl implements RedisChannelProcessServic
 
     private final ConfigCenterApiService configCenterApiService;
 
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     @Override
     public Set<Long> findFinalNotifyModule(Long subjectId, List<Long> moduleIds, Long roleId) {

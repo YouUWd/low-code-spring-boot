@@ -47,6 +47,50 @@ public class DynamicQueryController {
                         subjectId, roleId, menuId, id, relateSearchId));
     }
 
+    @GetMapping("/approval/detail/menu")
+    @Operation(summary = "获取带审批的详情数据", description = "获取带审批的详情数据")
+    public ApiResponse<Map<Object, Object>> getApprovalDynamicQueryResultWithSearchByMenu(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @Schema(description = "菜单ID") @RequestParam Long menuId,
+            @Schema(description = "主表主键ID") @RequestParam Long id,
+            @Schema(description = "关联筛选ID") @RequestParam(required = false) Long relateSearchId,
+            @Schema(description = "按钮状态") @RequestParam String btnType) {
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQueryAllModuleDetailDataWithApproval(
+                        subjectId, roleId, menuId, id, relateSearchId, btnType));
+    }
+
+    @PostMapping("/list/menu/search")
+    @Operation(summary = "获取列表数据", description = "获取列表数据")
+    public ApiResponse<Map<String, Object>> getDynamicQueryResultWithSearchByMenu(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @RequestBody ListQueryReq queryReq) {
+        Page pageObj = null;
+        if (Objects.nonNull(queryReq.getPageNum()) && Objects.nonNull(queryReq.getPageSize())) {
+            pageObj = Page.of(queryReq.getPageNum(), queryReq.getPageSize());
+        }
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQueryListDataWithSearchByMenuId(
+                        subjectId, roleId, queryReq, pageObj, null));
+    }
+
+    @PostMapping("/approval/list/menu/search")
+    @Operation(summary = "获取带审批的列表数据", description = "获取带审批的列表数据")
+    public ApiResponse<Map<String, Object>> getApprovalDynamicQueryResultWithSearchByMenu(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @RequestBody ApprovalListQueryReq queryReq) {
+        Page pageObj = null;
+        if (Objects.nonNull(queryReq.getPageNum()) && Objects.nonNull(queryReq.getPageSize())) {
+            pageObj = Page.of(queryReq.getPageNum(), queryReq.getPageSize());
+        }
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQueryListDataWithSearchByMenuId(
+                        subjectId, roleId, queryReq, pageObj, null));
+    }
+
     @PostMapping("/edit/menu")
     @Operation(summary = "编辑module数据", description = "编辑module数据")
     public ApiResponse<Object> editMenuModule(
@@ -63,7 +107,30 @@ public class DynamicQueryController {
             @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
             @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
             @RequestBody List<MenuSaveReq> req) {
-        return dynamicDataSaveService.createMultiMenuModuleData(subjectId, roleId, req);
+        return ApiResponse.success(
+                dynamicDataSaveService.createMultiMenuModuleData(subjectId, roleId, req));
+    }
+
+    @PostMapping("/approval/new/menu")
+    @Operation(summary = "带审批链的变更新建提交", description = "带审批链的变更新建提交")
+    public ApiResponse<Object> createApproval(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @RequestBody List<MenuSaveReq> req) {
+        return ApiResponse.success(
+                dynamicDataSaveService.createMultiMenuModuleDataWithApproval(
+                        subjectId, roleId, req));
+    }
+
+    @PostMapping("/approval/edit/menu")
+    @Operation(summary = "带审批链的办理、驳回后提交", description = "带审批链的办理、驳回后提交")
+    public ApiResponse<Object> editApproval(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @RequestBody ApprovalModuleSaveReq req) {
+        return ApiResponse.success(
+                dynamicDataSaveService.editMultiMenuModuleDataWithApproval(
+                        subjectId, roleId, req.getModuleSaveData(), req.getApprovalOperation()));
     }
 
     @PostMapping("/get-data-right")
@@ -77,35 +144,5 @@ public class DynamicQueryController {
             log.debug("json object serialize error", e);
         }
         return ApiResponse.success(dynamicDataAccessService.getDataRightData(subjectId, req));
-    }
-
-    @PostMapping("/list/menu/search")
-    @Operation(summary = "获取列表数据", description = "获取列表数据")
-    public ApiResponse<Map<String, Object>> getDynamicQueryResultWithSearchByMenu(
-            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
-            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
-            @RequestBody ListQueryReq queryReq) {
-        Page pageObj = null;
-        if (Objects.nonNull(queryReq.getPage()) && Objects.nonNull(queryReq.getPageSize())) {
-            pageObj = Page.of(queryReq.getPage(), queryReq.getPageSize());
-        }
-        return ApiResponse.success(
-                dynamicDataAccessService.dynamicQueryListDataWithSearchByMenuId(
-                        subjectId, roleId, queryReq, pageObj, null));
-    }
-
-    @PostMapping("/approval/list/menu/search")
-    @Operation(summary = "获取列表数据", description = "获取列表数据")
-    public ApiResponse<Map<String, Object>> getApprovalDynamicQueryResultWithSearchByMenu(
-            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
-            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
-            @RequestBody ApprovalListQueryReq queryReq) {
-        Page pageObj = null;
-        if (Objects.nonNull(queryReq.getPage()) && Objects.nonNull(queryReq.getPageSize())) {
-            pageObj = Page.of(queryReq.getPage(), queryReq.getPageSize());
-        }
-        return ApiResponse.success(
-                dynamicDataAccessService.dynamicQueryListDataWithSearchByMenuId(
-                        subjectId, roleId, queryReq, pageObj, null));
     }
 }

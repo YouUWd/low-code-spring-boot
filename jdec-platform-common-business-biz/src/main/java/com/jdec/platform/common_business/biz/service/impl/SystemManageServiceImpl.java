@@ -9,7 +9,7 @@ import com.jdec.platform.common_business.api.dto.response.RoleResp;
 import com.jdec.platform.common_business.api.dto.response.SelectRoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.CheckUserSpecialPermissionResp;
@@ -43,7 +43,7 @@ public class SystemManageServiceImpl implements SystemManageServiceApi {
 
     private final ConfigCenterApiService configCenterApiService;
 
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     private final Integer DEFAULT_EMPTY_ROLE_ID = Integer.valueOf(0);
 

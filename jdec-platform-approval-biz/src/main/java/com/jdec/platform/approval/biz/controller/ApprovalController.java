@@ -59,6 +59,13 @@ public class ApprovalController {
         return ApiResponse.success(approvalService.getMessageReceiver(req));
     }
 
+    @PostMapping("/ApprovalStep")
+    @Operation(summary = "查询已经审批的步骤状态", description = "查询已经审批的步骤状态")
+    public ApiResponse<List<Map<String, Object>>> getApprovalStep(
+            @RequestBody ApprovalDataReq req) {
+        return ApiResponse.success(approvalService.getApprovalStep(req));
+    }
+
     @PostMapping("/save")
     @Operation(summary = "保存单据", description = "保存单据")
     public ApiResponse<Map<String, Object>> saveApproval(@RequestBody ApprovalProcessReq req) {
