@@ -2,10 +2,14 @@ package com.jdec.platform.common_business.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.common_business.biz.change.*;
+import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.entity.TableChangeLog;
+import com.jdec.platform.common_business.biz.enums.BizLogEnum;
+import com.jdec.platform.common_business.biz.log.ComBizLogEventPublisher;
 import com.jdec.platform.common_business.biz.mapper.TableChangeLogMapper;
 import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
+import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import java.time.LocalDateTime;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -153,10 +157,28 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             if (context.getCallType() == CallTypeEnum.EDITE) {
                 tableChangeLogMapper.insert(changeLog);
             }
-            // todo  log...
 
+            BizLogDTO bizLogDTO =
+                    BizLogDTO.builder()
+                            .logType("operation-log")
+                            .projectNo(LoginUserUtil.getProjectNoFromHeader())
+                            .token(LoginUserUtil.getTokenFromHeader())
+                            .platform(LoginUserUtil.getOsFromHeader())
+                            .browser(LoginUserUtil.getBrowserFromHeader())
+                            .ip(LoginUserUtil.getIpFromHeader())
+                            .loginUserId(context.getRealUserId())
+                            .mockUserId(context.getMockUserId())
+                            .currentSubjectId(context.getSubjectId())
+                            .currentRoleId(context.getRoleId())
+                            .logRemark(changeLog.getChangeContent())
+                            .menuId(context.getMenuId())
+                            .build();
+            if (context.getCallType() == CallTypeEnum.CREATE) {
+                ComBizLogEventPublisher.publishLogEvent(BizLogEnum.DATA_SAVE, bizLogDTO);
+            } else {
+                ComBizLogEventPublisher.publishLogEvent(BizLogEnum.DATA_UPDATE, bizLogDTO);
+            }
             return changeLog;
-
         } catch (Exception e) {
             log.error("save log error,context=" + context.toString() + ",e=", e);
         }

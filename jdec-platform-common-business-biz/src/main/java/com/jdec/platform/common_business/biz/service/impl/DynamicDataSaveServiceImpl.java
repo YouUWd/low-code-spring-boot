@@ -550,12 +550,14 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 ModuleDataChangeContext context = new ModuleDataChangeContext();
                 context.setSubjectId(subjectId);
                 context.setMainModuleId(moduleSaveList.get(0).getModuleId());
+                context.setMenuId(req.get(0).getMenuId());
                 context.setDataId((Long) o);
                 context.setRealUserId(LoginUserUtil.getRealLoginUserId());
                 context.setMockUserId(
                         !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
                                 ? LoginUserUtil.getLoginUserId()
                                 : null);
+                context.setRoleId(roleId);
                 List<DataChangeContext> dataChangeContextList = new ArrayList<>();
                 for (Object object : targets) {
                     DataChangeContext dataChangeContext = (DataChangeContext) object;
@@ -631,12 +633,14 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 ModuleDataChangeContext context = new ModuleDataChangeContext();
                 context.setSubjectId(subjectId);
                 context.setMainModuleId(moduleSaveList.get(0).getModuleId());
+                context.setMenuId(req.get(0).getMenuId());
                 context.setDataId((Long) o);
                 context.setRealUserId(LoginUserUtil.getRealLoginUserId());
                 context.setMockUserId(
                         !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
                                 ? LoginUserUtil.getLoginUserId()
                                 : null);
+                context.setRoleId(roleId);
                 List<DataChangeContext> dataChangeContextList = new ArrayList<>();
                 for (Object object : targets) {
                     DataChangeContext dataChangeContext = (DataChangeContext) object;
