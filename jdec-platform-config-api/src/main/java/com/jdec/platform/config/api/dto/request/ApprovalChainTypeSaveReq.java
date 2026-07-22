@@ -1,5 +1,7 @@
 package com.jdec.platform.config.api.dto.request;
 
+import com.jdec.platform.config.api.enums.EnableEnum;
+import com.jdec.platform.config.api.enums.YesNoEnum;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -33,11 +35,11 @@ public class ApprovalChainTypeSaveReq {
 
     @Schema(description = "是否默认审批链分类（1：是，0：否）", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "是否默认不能为空")
-    @AuditField(name = "是否默认")
+    @AuditField(name = "是否默认", type = FieldType.ENUM, enumClass = YesNoEnum.class)
     private Integer defaultFlag;
 
     @Schema(description = "是否启用(1:启用, 0：不启用)", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "是否启用不能为空")
-    @AuditField(name = "是否启用")
+    @AuditField(name = "是否启用", type = FieldType.ENUM, enumClass = EnableEnum.class)
     private Integer enabled;
 }

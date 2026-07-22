@@ -171,11 +171,13 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
             }
             sysApprovalChainTypeMapper.insert(entity);
 
-            // 新增时记录快照
+            // 新增时记录快照：填充 ID 后保存
+            request.setId(entity.getId());
             SysDataSnapshot snapshot = new SysDataSnapshot();
             snapshot.setTableName("sys_approval_chain_type");
             snapshot.setDataId(entity.getId());
             snapshot.setJsonData(JSONUtil.toJsonStr(request));
+            snapshot.setVersion(1);
             sysDataSnapshotMapper.insert(snapshot);
         } else {
             // 编辑：校验名称唯一性（排除自己）
