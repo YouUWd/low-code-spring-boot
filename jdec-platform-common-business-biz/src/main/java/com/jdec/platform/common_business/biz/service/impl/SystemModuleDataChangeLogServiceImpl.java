@@ -1,6 +1,7 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.jdec.platform.common_business.api.dto.common.ModuleField;
 import com.jdec.platform.common_business.biz.change.*;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.entity.TableChangeLog;
@@ -12,6 +13,7 @@ import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,6 +33,8 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
         try {
             LinkedHashMap<Long, LinkedHashMap<String, List<DataChangeContext>>> dataChangeMap =
                     new LinkedHashMap<>();
+
+            LinkedHashMap<Long, String> moduleNameMap = new LinkedHashMap<>();
             for (DataChangeContext dataChangeContext : context.getDataChangeContextList()) {
                 if (!dataChangeMap.containsKey(dataChangeContext.getModuleId())) {
                     dataChangeMap.put(dataChangeContext.getModuleId(), new LinkedHashMap<>());
@@ -46,6 +50,9 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                         .get(dataChangeContext.getModuleId())
                         .get(dataChangeContext.getTableName())
                         .add(dataChangeContext);
+                moduleNameMap.put(
+                        dataChangeContext.getModuleId(),
+                        dataChangeContext.getModuleFilterInfo().getModuleInfo().getModuleName());
             }
             OperationChangeDTO operationChangeDTO = new OperationChangeDTO();
 
@@ -56,6 +63,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                 Long moduleId = entry.getKey();
                 ModuleDataChangeDTO moduleDataChangeDTO = new ModuleDataChangeDTO();
                 moduleDataChangeDTO.setModuleId(moduleId);
+                moduleDataChangeDTO.setModuleName(moduleNameMap.get(moduleId));
                 List<TableDataChangeDTO> modifyTables = new ArrayList<>();
                 for (Map.Entry<String, List<DataChangeContext>> dataEntry :
                         entry.getValue().entrySet()) {
@@ -68,14 +76,23 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
 
                     // 一张表，变更的 多行
                     for (DataChangeContext dataChangeContext : dataEntry.getValue()) {
+
+                        List<ModuleField> moduleFieldList =
+                                dataChangeContext.getModuleFilterInfo().getAllFields();
+
+                        Map<String, SysFieldDTO> sysFieldMap =
+                                moduleFieldList.stream()
+                                        .map(x -> covertToSysFieldDTO(x))
+                                        .collect(Collectors.toMap(x -> x.getFieldName(), x -> x));
+
                         // 插入操作
                         if (dataChangeContext.getBefore() == null
                                 && dataChangeContext.getAfter() != null) {
                             RowChangeDTO rowChangeDTO =
                                     TableUtils.getInsertOrDeleteRowChange(
-                                            dataChangeContext.getAfter(), new HashMap<>(), true);
+                                            dataChangeContext.getAfter(), sysFieldMap, true);
                             if (rowChangeDTO != null
-                                    && CollectionUtil.isNotEmpty(rowChangeDTO.getRow())) {
+                                    && CollectionUtil.isNotEmpty(rowChangeDTO.getColumnList())) {
                                 insertRows.add(rowChangeDTO);
                             }
 
@@ -86,18 +103,18 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                                     TableUtils.getUpdateFieldChangeRow(
                                             dataChangeContext.getBefore(),
                                             dataChangeContext.getAfter(),
-                                            new HashMap<>());
+                                            sysFieldMap);
                             if (rowChangeDTO != null
-                                    && CollectionUtil.isNotEmpty(rowChangeDTO.getRow())) {
+                                    && CollectionUtil.isNotEmpty(rowChangeDTO.getColumnList())) {
                                 updateRows.add(rowChangeDTO);
                             }
                         } else {
                             // 删除操作
                             RowChangeDTO rowChangeDTO =
                                     TableUtils.getInsertOrDeleteRowChange(
-                                            dataChangeContext.getBefore(), new HashMap<>(), false);
+                                            dataChangeContext.getBefore(), sysFieldMap, false);
                             if (rowChangeDTO != null
-                                    && CollectionUtil.isNotEmpty(rowChangeDTO.getRow())) {
+                                    && CollectionUtil.isNotEmpty(rowChangeDTO.getColumnList())) {
                                 deleteRows.add(rowChangeDTO);
                             }
                         }
@@ -183,5 +200,12 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             log.error("save log error,context=" + context.toString() + ",e=", e);
         }
         return null;
+    }
+
+    private SysFieldDTO covertToSysFieldDTO(ModuleField field) {
+        SysFieldDTO dto = new SysFieldDTO();
+        dto.setFieldName(field.getTableName() + "." + field.getFieldCode());
+        dto.setFieldShowName(field.getFieldName());
+        return dto;
     }
 }

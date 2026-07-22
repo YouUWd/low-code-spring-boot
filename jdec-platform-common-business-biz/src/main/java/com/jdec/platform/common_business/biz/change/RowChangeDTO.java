@@ -14,5 +14,7 @@ import lombok.EqualsAndHashCode;
 public class RowChangeDTO implements Serializable {
 
     @Schema(description = "数据行")
-    private List<FieldChangeDTO> row;
+    private List<FieldChangeDTO> columnList;
+
+    private String uniqName;
 }

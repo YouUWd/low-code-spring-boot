@@ -246,10 +246,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
                 Object primaryObject =
                         insertModuleTable(
-                                moduleFilterInfo.getModuleInfo().getModuleId(),
-                                primaryTable,
-                                primaryData,
-                                extraDataMap);
+                                moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
 
@@ -289,7 +286,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             // 写入关联表的数据
                             Object o =
                                     insertModuleTable(
-                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            moduleFilterInfo,
                                             table.getTableName(),
                                             tableDataMap.get(table.getTableName()),
                                             extraDataMap);
@@ -394,10 +391,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
                 Object primaryObject =
                         insertModuleTable(
-                                moduleFilterInfo.getModuleInfo().getModuleId(),
-                                primaryTable,
-                                primaryData,
-                                extraDataMap);
+                                moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
 
@@ -433,7 +427,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             // 写入关联表的数据
                             Object o =
                                     insertModuleTable(
-                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            moduleFilterInfo,
                                             table.getTableName(),
                                             tableDataMap.get(table.getTableName()),
                                             extraDataMap);
@@ -987,10 +981,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 // 更新主表 数据
                 Object primaryObject =
                         updateModuleTable(
-                                moduleFilterInfo.getModuleInfo().getModuleId(),
-                                primaryTable,
-                                primaryData,
-                                extraDataMap);
+                                moduleFilterInfo, primaryTable, primaryData, extraDataMap);
 
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
@@ -1065,7 +1056,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
                                 || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
                             updateModuleTable(
-                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    moduleFilterInfo,
                                     table.getTableName(),
                                     tableDataMap.get(table.getTableName()),
                                     extraDataMap);
@@ -1176,16 +1167,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 if (isDataHasTableId(primaryTable, primaryData)) {
                     primaryObject =
                             updateModuleTable(
-                                    moduleFilterInfo.getModuleInfo().getModuleId(),
-                                    primaryTable,
-                                    primaryData,
-                                    extraDataMap);
+                                    moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                     isMainTableInsert = false;
                 } else {
                     // 插入
                     primaryObject =
                             insertModuleTable(
-                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    moduleFilterInfo,
                                     primaryTable,
                                     primaryData,
                                     getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
@@ -1262,7 +1250,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                                 o =
                                         insertModuleTable(
-                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                moduleFilterInfo,
                                                 table.getTableName(),
                                                 tableDataMap.get(table.getTableName()),
                                                 getCreateModuleExtraMap(
@@ -1279,7 +1267,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 }
                                 o =
                                         updateModuleTable(
-                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                moduleFilterInfo,
                                                 table.getTableName(),
                                                 tableDataMap.get(table.getTableName()),
                                                 extraDataMap);
@@ -1372,14 +1360,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 if (model.equals("EDIT")) {
                     primaryObject =
                             updateModuleTable(
-                                    moduleFilterInfo.getModuleInfo().getModuleId(),
-                                    primaryTable,
-                                    primaryData,
-                                    extraDataMap);
+                                    moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                 } else {
                     primaryObject =
                             insertModuleTable(
-                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    moduleFilterInfo,
                                     primaryTable,
                                     primaryData,
                                     getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
@@ -1427,7 +1412,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
                                 || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
                             updateModuleTable(
-                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    moduleFilterInfo,
                                     table.getTableName(),
                                     tableDataMap.get(table.getTableName()),
                                     extraDataMap);
@@ -1484,7 +1469,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     }
 
     private Object insertModuleTable(
-            Long moduleId,
+            ModuleFilterInfo moduleFilterInfo,
             String tableName,
             Map<String, Object> dataMap,
             Map<String, Object> extraMap)
@@ -1522,7 +1507,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         if (DataUpdateContextHolder.getDataChangeFlag()) {
             DataUpdateContextHolder.addDataUpdateToContext(
                     DataChangeContext.builder()
-                            .moduleId(moduleId)
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .moduleFilterInfo(moduleFilterInfo)
                             .tableName(tableName)
                             .before(null)
                             .after(primaryInstance)
@@ -1532,7 +1518,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     }
 
     private Object updateModuleTable(
-            Long moduleId,
+            ModuleFilterInfo moduleFilterInfo,
             String tableName,
             Map<String, Object> dataMap,
             Map<String, Object> extraMap)
@@ -1573,7 +1559,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                     primaryInstance, newInstance, CopyOptions.create().ignoreNullValue());
             DataUpdateContextHolder.addDataUpdateToContext(
                     DataChangeContext.builder()
-                            .moduleId(moduleId)
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .moduleFilterInfo(moduleFilterInfo)
                             .tableName(tableName)
                             .before(pre)
                             .after(newInstance)

@@ -16,6 +16,8 @@ public class ModuleDataChangeDTO implements Serializable {
     @Schema(description = "模块ID")
     private Long moduleId;
 
+    private String moduleName;
+
     @Schema(description = "修改的数据表")
     List<TableDataChangeDTO> modifyTables;
 }
