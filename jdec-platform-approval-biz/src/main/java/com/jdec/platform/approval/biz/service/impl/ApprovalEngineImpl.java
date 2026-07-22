@@ -863,47 +863,61 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 撤销申请-------------------------------------------------------------------------
     @Transactional
     public void businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
+        // 查询单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
-        approvalBusinessWrapper.eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId());
+        approvalBusinessWrapper
+                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
+                .last("LIMIT 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
+
+        // 查询单据详情记录
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
         LambdaQueryWrapper<ApprovalVersionRecord> approvalRecordWrapper =
                 new LambdaQueryWrapper<>();
         approvalRecordWrapper.eq(
                 ApprovalVersionRecord::getSerialNumber, approvalBusiness.getSerialNumber());
-        approvalRecordWrapper.eq(
-                ApprovalVersionRecord::getSerialNo, approvalBusiness.getSerialNo());
+        approvalRecordWrapper
+                .eq(ApprovalVersionRecord::getSerialNo, approvalBusiness.getSerialNo())
+                .last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(approvalRecordWrapper);
-        approvalVersionRecord.setStatusValue(-99);
-        approvalVersionRecordMapper.updateById(approvalVersionRecord);
-        ApprovalVersionRecord oldApprovalVersionRecord =
-                approvalVersionRecordMapper.selectById(approvalVersionRecord.getSourceId());
-        LambdaQueryWrapper<ApprovalChain> ApprovalChainWrapper = new LambdaQueryWrapper<>();
-        ApprovalChainWrapper.eq(
-                ApprovalChain::getSerialNumber, oldApprovalVersionRecord.getSerialNumber());
-        ApprovalChainWrapper.eq(ApprovalChain::getSerialNo, oldApprovalVersionRecord.getSerialNo());
-        ApprovalChainWrapper.eq(
-                ApprovalChain::getCurrentStep, oldApprovalVersionRecord.getCurrentStep());
-        ApprovalChain approvalChain = approvalChainMapper.selectOne(ApprovalChainWrapper);
+
+        // 变更过的单据查询来源单据记录，恢复到来源单据信息
+        if (approvalBusiness.getVersionNo() > 1) {
+            ApprovalVersionRecord oldApprovalVersionRecord =
+                    approvalVersionRecordMapper.selectById(approvalVersionRecord.getSourceId());
+            LambdaQueryWrapper<ApprovalChain> ApprovalChainWrapper = new LambdaQueryWrapper<>();
+            ApprovalChainWrapper.eq(
+                    ApprovalChain::getSerialNumber, oldApprovalVersionRecord.getSerialNumber());
+            ApprovalChainWrapper.eq(
+                    ApprovalChain::getSerialNo, oldApprovalVersionRecord.getSerialNo());
+            ApprovalChainWrapper.eq(
+                            ApprovalChain::getCurrentStep,
+                            oldApprovalVersionRecord.getCurrentStep())
+                    .last("LIMIT 1");
+            ApprovalChain approvalChain = approvalChainMapper.selectOne(ApprovalChainWrapper);
+            approvalBusiness.setRecordId(oldApprovalVersionRecord.getRecordId());
+            approvalBusiness.setStatusTitle(oldApprovalVersionRecord.getStatusTitle());
+            approvalBusiness.setStatusId(oldApprovalVersionRecord.getStatusId());
+            approvalBusiness.setStatusValue(oldApprovalVersionRecord.getStatusValue());
+            approvalBusiness.setStatusBackground(oldApprovalVersionRecord.getStatusBackground());
+            approvalBusiness.setStatusFontColor(oldApprovalVersionRecord.getStatusFontColor());
+            approvalBusiness.setCurrentStep(oldApprovalVersionRecord.getCurrentStep());
+            approvalBusiness.setStatusValue(oldApprovalVersionRecord.getStatusValue());
+            approvalBusiness.setVersionNo(oldApprovalVersionRecord.getVersionNo());
+            approvalBusiness.setSerialNumber(oldApprovalVersionRecord.getSerialNumber());
+            approvalBusiness.setSerialNo(oldApprovalVersionRecord.getSerialNo());
+            approvalBusiness.setApprovalUids(approvalChain.getApprovalUids());
+            approvalBusinessMapper.updateById(approvalBusiness);
+        }
+
+        // 查询取消状态信息
         ModuleApprovalChainConfigResp.StatusNode statusNode =
                 sysStatusApi.getStatusByValue(-99, approvalProcessDTO.getModuleId());
-        approvalBusiness.setRecordId(oldApprovalVersionRecord.getRecordId());
-        approvalBusiness.setStatusTitle(oldApprovalVersionRecord.getStatusTitle());
-        approvalBusiness.setStatusId(oldApprovalVersionRecord.getStatusId());
-        approvalBusiness.setStatusValue(oldApprovalVersionRecord.getStatusValue());
-        approvalBusiness.setStatusBackground(oldApprovalVersionRecord.getStatusBackground());
-        approvalBusiness.setStatusFontColor(oldApprovalVersionRecord.getStatusFontColor());
-        approvalBusiness.setCurrentStep(oldApprovalVersionRecord.getCurrentStep());
-        approvalBusiness.setStatusValue(oldApprovalVersionRecord.getStatusValue());
-        approvalBusiness.setVersionNo(oldApprovalVersionRecord.getVersionNo());
-        approvalBusiness.setSerialNumber(oldApprovalVersionRecord.getSerialNumber());
-        approvalBusiness.setSerialNo(oldApprovalVersionRecord.getSerialNo());
-        approvalBusiness.setApprovalUids(approvalChain.getApprovalUids());
-        approvalBusinessMapper.updateById(approvalBusiness);
+        // 变更单据对应版本状态信息
         approvalVersionRecord.setReason(approvalProcessDTO.getReason());
         approvalVersionRecord.setStatusTitle(statusNode.getTitle());
         approvalVersionRecord.setStatusId(statusNode.getId());
@@ -913,10 +927,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
 
         // 写入日志
-        saveActionLog(
-                approvalChain.getCurrentStatusGroupId(),
-                approvalChain.getCurrentStatusChildId(),
-                approvalProcessDTO);
+        saveActionLog(statusNode.getPid(), statusNode.getId(), approvalProcessDTO);
     }
 
     // 保存操作日志-----------------------------------------------------------------------
