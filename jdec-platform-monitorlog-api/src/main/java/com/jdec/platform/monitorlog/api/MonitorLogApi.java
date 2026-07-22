@@ -42,6 +42,9 @@ public interface MonitorLogApi {
     /** 记录消息日志 */
     void recordMessageLog(MonitorLogReq req) throws SQLException;
 
+    /*记录业务单据变化日志*/
+    void recordBusinessLog(MonitorLogReq req) throws SQLException;
+
     /** 获取监控日志详情 */
     MonitorLogResp get(Long id, String logType);
 }
