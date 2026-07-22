@@ -148,7 +148,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         // 主表查询Mapper对象
         BaseMapper primaryMapper =
                 SpringBeanUtil.getBean(
-                        moduleFilterInfo.getModuleInfo().getPrimaryTable() + MYBATIS_MAPPER_SUFFIX,
+                        ToolUtils.snakeToCamelCase(
+                                        moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                                + MYBATIS_MAPPER_SUFFIX,
                         BaseMapper.class);
         // 主表查询构造条件
         QueryWrapper queryWrapper = Wrappers.query();
@@ -217,6 +219,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (Objects.nonNull(primaryData)) {
 
+            Map<String, Object> dataMap = new HashMap<>();
+
             Map<String, Object> beanMap = new HashMap<>();
 
             // 前端无法动态响应动态的label key，所有返回字段都加上表名前缀
@@ -246,8 +250,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     approvalDataReq.setRecordId(id);
                     approvalDataReq.setSubjectId(subjectId);
 
-                    approvalDataReq.setModuleId(136L);
-                    approvalDataReq.setRecordId(1L);
                     Integer versionNo =
                             Integer.parseInt(String.valueOf(approvalInfo.get("versionNo")));
 
@@ -272,13 +274,20 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             buildFieldChangeListData(
                                     moduleFilterInfo.getModuleInfo().getPrimaryTable(),
                                     id,
-                                    Long.parseLong(
-                                            String.valueOf(versionInfo.get("sourceRecordId"))),
-                                    Long.parseLong(String.valueOf(versionInfo.get("preRecordId"))));
+                                    versionInfo.get("sourceRecordId") == null
+                                            ? null
+                                            : Long.parseLong(
+                                                    String.valueOf(
+                                                            versionInfo.get("sourceRecordId"))),
+                                    versionInfo.get("preRecordId") == null
+                                            ? null
+                                            : Long.parseLong(
+                                                    String.valueOf(
+                                                            versionInfo.get("preRecordId"))));
                 }
 
                 // 主表数据放入返回结果Map
-                resultMap.putAll(tablePrefixResultMap);
+                dataMap.putAll(tablePrefixResultMap);
             }
 
             // 遍历关联表，填充关联表数据
@@ -286,7 +295,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 // 关联表查询Mapper对象
                 BaseMapper moduleTableQuery =
                         SpringBeanUtil.getBean(
-                                moduleTable.getTableName() + MYBATIS_MAPPER_SUFFIX,
+                                ToolUtils.snakeToCamelCase(moduleTable.getTableName())
+                                        + MYBATIS_MAPPER_SUFFIX,
                                 BaseMapper.class);
                 QueryWrapper moduleTableQueryWrapper = Wrappers.query();
                 buildSelect(moduleTableQueryWrapper, moduleTable.getTableName(), allRightField);
@@ -297,7 +307,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         moduleTable.getTableName()
                                 + DB_TABLE_FIELD_SEPARATOR
                                 + moduleTable.getJoinRightField(),
-                        resultMap.get(
+                        dataMap.get(
                                 moduleFilterInfo.getModuleInfo().getPrimaryTable()
                                         + DB_TABLE_FIELD_SEPARATOR
                                         + ToolUtils.snakeToCamelCase(
@@ -360,45 +370,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
                     if (Objects.nonNull(moduleTablePrefixResultMap)) {
                         // 关联表数据放入返回结果Map
-                        resultMap.putAll(moduleTablePrefixResultMap);
+                        dataMap.putAll(moduleTablePrefixResultMap);
                     }
-
-                    // 先屏蔽 前端无法低代码动态化 后续实现之后可以使用此段代码
-                    /**
-                     * List<String> sameKeyList = new ArrayList<>();
-                     *
-                     * <p>// 处理同名情况 for (Map.Entry<String, Object> dataItem :
-                     * joinTableData.entrySet()) { if (resultMap.containsKey(dataItem.getKey())) {
-                     * // 存在同名字段，则主表和关联表都要改名 sameKeyList.add(dataItem.getKey()); } else { //
-                     * 不同名字段直接放入主表 resultMap.put(dataItem.getKey(), dataItem.getValue()); } }
-                     *
-                     * <p>// 改名处理 for (String sameKey : sameKeyList) { // 获取主表对应key数据 Object
-                     * primaryKeyVal = resultMap.get(sameKey);
-                     *
-                     * <p>// 删除主表数据 resultMap.remove(sameKey);
-                     *
-                     * <p>// key改名后重新放进返回map resultMap.put(
-                     * moduleFilterInfo.getModuleInfo().getPrimaryTable() + DB_TABLE_FIELD_SEPARATOR
-                     * + sameKey, primaryKeyVal); // 关联表数据放入返回map resultMap.put(
-                     * moduleTable.getTableName() + DB_TABLE_FIELD_SEPARATOR + sameKey,
-                     * joinTableData.get(sameKey)); log.info(
-                     * "主表{}和关联表{}返回数据存在同名字段{},分别改名为{},{}进行返回。",
-                     * moduleFilterInfo.getModuleInfo().getPrimaryTable(),
-                     * moduleTable.getTableName(), sameKey,
-                     * moduleFilterInfo.getModuleInfo().getPrimaryTable() + DB_TABLE_FIELD_SEPARATOR
-                     * + sameKey, moduleTable.getTableName() + DB_TABLE_FIELD_SEPARATOR + sameKey);
-                     * }
-                     */
                 } else {
                     List moduleData = moduleTableQuery.selectList(moduleTableQueryWrapper);
                     List<Map<String, Object>> listMap = new ArrayList<>();
                     for (Object data : moduleData) {
                         listMap.add(BeanUtil.beanToMap(data, false, true));
                     }
-                    resultMap.put(
-                            moduleTable.getTableName() + ONE2MULTI_RESULT_KEY_SUFFIX, listMap);
+                    dataMap.put(moduleTable.getTableName() + ONE2MULTI_RESULT_KEY_SUFFIX, listMap);
                 }
             }
+
+            resultMap.put("data", dataMap);
 
             resultMap.put("formFieldList", getFormFieldData(moduleFilterInfo, allRightField));
 
@@ -447,7 +431,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         Map<String, Object> compareResult = new HashMap<>();
         // 获取主表Mapper对象
         BaseMapper primaryMapper =
-                SpringBeanUtil.getBean(tableName + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+                SpringBeanUtil.getBean(
+                        ToolUtils.snakeToCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX,
+                        BaseMapper.class);
 
         // 主表查询构造条件
         QueryWrapper queryWrapperCurrent = Wrappers.query();
@@ -1006,33 +992,25 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     })
                             .collect(Collectors.toList());
 
-            //            approvalListReq.setRecordIdList(idList);
+            approvalListReq.setRecordIdList(idList);
 
-            approvalListReq.setRoleId(54L);
-            //                approvalListReq.setRoleId(roleId);
+            approvalListReq.setRoleId(queryParam.getRoleId());
 
-            approvalListReq.setModuleIdList(Arrays.asList(136L));
-            //            List<Long> moduleIdList =
-            //                    primaryTableDataList.stream()
-            //                            .map(
-            //                                    e -> {
-            //                                        Field field =
-            //                                                ReflectionUtils.findField(
-            //                                                        e.getClass(),"moduleId");
-            //                                        field.setAccessible(true);
-            //                                        return Long.parseLong(
-            //                                                String.valueOf(
-            //
-            // ReflectionUtils.getField(field, e)));
-            //                                    })
-            //                            .collect(Collectors.toList());
-            //            approvalListReq.setModuleId(moduleIdList);
+            List<Long> moduleIdList =
+                    queryParam.getPrimaryTableDataList().stream()
+                            .map(
+                                    e -> {
+                                        Field field =
+                                                ReflectionUtils.findField(e.getClass(), "moduleId");
+                                        field.setAccessible(true);
+                                        return Long.parseLong(
+                                                String.valueOf(ReflectionUtils.getField(field, e)));
+                                    })
+                            .collect(Collectors.toList());
+            approvalListReq.setModuleIdList(moduleIdList);
 
-            approvalListReq.setCurrentUserId(296L);
-            approvalListReq.setApplicantId(296L);
-
-            //            approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
-            //            approvalListReq.setApplicantId(LoginUserUtil.getLoginUserId());
+            approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            approvalListReq.setApplicantId(LoginUserUtil.getLoginUserId());
         }
 
         // 查询数据权限配置
@@ -1046,7 +1024,11 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         // 获取主表Mapper对象
         BaseMapper primaryMapper =
                 SpringBeanUtil.getBean(
-                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                        ToolUtils.snakeToCamelCase(
+                                        queryParam
+                                                .getModuleFilterInfo()
+                                                .getModuleInfo()
+                                                .getPrimaryTable())
                                 + MYBATIS_MAPPER_SUFFIX,
                         BaseMapper.class);
 
@@ -1201,7 +1183,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 // 获取关联表Mapper对象
                 BaseMapper moduleTableMapper =
                         SpringBeanUtil.getBean(
-                                moduleTable.getTableName() + MYBATIS_MAPPER_SUFFIX,
+                                ToolUtils.snakeToCamelCase(moduleTable.getTableName())
+                                        + MYBATIS_MAPPER_SUFFIX,
                                 BaseMapper.class);
                 // 构造关联表查询条件
                 QueryWrapper moduleTableQueryWrapper = Wrappers.query();
@@ -1612,7 +1595,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             // 获取主表Mapper对象
             BaseMapper primaryMapper =
                     SpringBeanUtil.getBean(
-                            moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            ToolUtils.snakeToCamelCase(
+                                            moduleFilterInfo.getModuleInfo().getPrimaryTable())
                                     + MYBATIS_MAPPER_SUFFIX,
                             BaseMapper.class);
 
@@ -1921,7 +1905,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             // 获取关联表Mapper对象
             BaseMapper moduleTableMapper =
                     SpringBeanUtil.getBean(
-                            moduleTable.getTableName() + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+                            ToolUtils.snakeToCamelCase(moduleTable.getTableName())
+                                    + MYBATIS_MAPPER_SUFFIX,
+                            BaseMapper.class);
             // 构造关联表查询条件
             QueryWrapper moduleTableQueryWrapper = Wrappers.query();
             moduleTableQueryWrapper.select(
@@ -2006,7 +1992,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         // 获取主表Mapper对象
         BaseMapper primaryMapper =
                 SpringBeanUtil.getBean(
-                        moduleFilterInfo.getModuleInfo().getPrimaryTable() + MYBATIS_MAPPER_SUFFIX,
+                        ToolUtils.snakeToCamelCase(
+                                        moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                                + MYBATIS_MAPPER_SUFFIX,
                         BaseMapper.class);
 
         // 主表查询条件构造
@@ -2229,8 +2217,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
      * @param targetId
      * @return
      */
-    @Override
-    public List<MenuListResp> findTargetAndAllChildrenIterate(
+    private List<MenuListResp> findTargetAndAllChildrenIterate(
             List<MenuListResp> flatList, Long targetId) {
         List<MenuListResp> result = new ArrayList<>();
         MenuListResp target =
@@ -2382,7 +2369,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             // 获取表Mapper对象
             BaseMapper moduleTableMapper =
                     SpringBeanUtil.getBean(
-                            dataRightAccessReq.getTableName() + MYBATIS_MAPPER_SUFFIX,
+                            ToolUtils.snakeToCamelCase(dataRightAccessReq.getTableName())
+                                    + MYBATIS_MAPPER_SUFFIX,
                             BaseMapper.class);
 
             // 查询构造条件
@@ -2436,68 +2424,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         return resultList;
-    }
-
-    @Override
-    public Map<String, Object> dynamicQueryListDataByMenuId(
-            Long subjectId,
-            Long roleId,
-            Long menuId,
-            Long id,
-            Page pageObj,
-            ModuleFilterInfo moduleFilterInfo) {
-        Map<String, Object> resultMap = new HashMap<>();
-        ConfigApiResponse<List<MenuListResp>> response =
-                configCenterApiClient.getMenuList(subjectId, 1);
-
-        if (!ConfigApiResponse.isSuccessResponse(response)) {
-            return resultMap;
-        }
-        List<MenuListResp> menuRespList = response.getData();
-        if (CollectionUtil.isEmpty(menuRespList)) {
-            return resultMap;
-        }
-
-        // 筛选业务菜单，去掉系统设置菜单
-        List<MenuListResp> bizMenuList = new ArrayList<>();
-        bizMenuList.addAll(
-                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
-        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
-
-        // 弹窗菜单
-        List<Long> moduleSkip =
-                bizMenuList.stream()
-                        .filter(ele -> ele.getMenuType().equals(5))
-                        .map(MenuListResp::getModuleId)
-                        .toList();
-
-        MenuListResp targetMenu =
-                bizMenuList.stream()
-                        .filter(ele -> menuId.equals(ele.getId()))
-                        .findFirst()
-                        .orElse(null);
-        if (Objects.isNull(targetMenu)) {
-            log.debug("菜单id:{}对应的菜单未空。", menuId);
-        } else {
-            Long moduleId = targetMenu.getModuleId();
-            log.debug("菜单id:{}，菜单名称:{}对应的moduleId:{}", menuId, targetMenu.getTitle(), moduleId);
-            ListQueryParam listQueryParam =
-                    ListQueryParam.builder()
-                            .subjectId(subjectId)
-                            .roleId(roleId)
-                            .moduleId(moduleId)
-                            .id(id)
-                            .moduleFilterInfo(moduleFilterInfo)
-                            .moduleSkip(moduleSkip)
-                            .columnFilter(false)
-                            .primaryTableDataList(List.of())
-                            .orderItems(List.of())
-                            .type(null)
-                            .build();
-            resultMap.putAll(dynamicQueryListData(listQueryParam, pageObj));
-        }
-
-        return resultMap;
     }
 
     @Override
@@ -2613,13 +2539,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
         approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
         approvalProcessReq.setButton(btnType);
-
-        approvalProcessReq.setModuleId(136L);
-        approvalProcessReq.setRoleId(54L);
-        approvalProcessReq.setRecordId(1L);
-        approvalProcessReq.setCurrentUserId(296L);
-        approvalProcessReq.setApplicantId(296L);
-        approvalProcessReq.setButton("");
 
         Map<String, Object> approvalInfo = new HashMap<>();
 

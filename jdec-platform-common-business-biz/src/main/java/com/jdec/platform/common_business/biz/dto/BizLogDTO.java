@@ -33,4 +33,8 @@ public class BizLogDTO implements Serializable {
     private Long currentRoleId;
 
     private String ip;
+
+    private String logRemark;
+
+    private Long menuId;
 }
