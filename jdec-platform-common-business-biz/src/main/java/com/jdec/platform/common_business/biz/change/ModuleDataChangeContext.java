@@ -25,5 +25,9 @@ public class ModuleDataChangeContext implements Serializable {
 
     private Long realUserId;
 
+    private Long roleId;
+
     private CallTypeEnum callType;
+
+    private Long menuId;
 }

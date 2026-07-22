@@ -27,7 +27,8 @@ public class SelectRoleBizLog implements BizLog {
 
     @Override
     public Boolean referToBizLog(BizLogEnum logEnum) {
-        return referSets.contains(logEnum);
+        // return referSets.contains(logEnum);
+        return false;
     }
 
     @Override
@@ -36,22 +37,7 @@ public class SelectRoleBizLog implements BizLog {
         if (bizLogDTO != null) {
             try {
                 TokenContextHolder.setCurrentUserToken(bizLogDTO.getToken());
-                MonitorLogReq req = new MonitorLogReq();
-                req.setLogType(bizLogDTO.getLogType());
-                req.setSubjectId(bizLogDTO.getCurrentSubjectId());
-                req.setLoginUserId(bizLogDTO.getLoginUserId());
-                req.setLoginRoleId(bizLogDTO.getCurrentRoleId());
-                if (bizLogDTO.getMockUserId() != null
-                        && !bizLogDTO.getLoginUserId().equals(bizLogDTO.getMockUserId())) {
-                    req.setMockFlag(1);
-                    req.setMockUserId(bizLogDTO.getMockUserId());
-                    req.setMockRoleId(bizLogDTO.getCurrentRoleId());
-                } else {
-                    req.setMockFlag(0);
-                }
-                req.setIp(bizLogDTO.getIp());
-                req.setBrowser(bizLogDTO.getBrowser());
-                req.setPlatForm(bizLogDTO.getPlatform());
+                MonitorLogReq req = getCommonReq(bizLogDTO);
                 ConfigApiResponse<RoleConfigDetailResp> roleConfigDetailRespConfigApiResponse =
                         configCenterApiOpenFeignClient.getRoleConfigDetail(
                                 bizLogDTO.getCurrentSubjectId(), bizLogDTO.getCurrentRoleId());
