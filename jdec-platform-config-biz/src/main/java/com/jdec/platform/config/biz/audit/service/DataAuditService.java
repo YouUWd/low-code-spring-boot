@@ -84,6 +84,43 @@ public class DataAuditService {
     }
 
     /**
+     * 记录数据新增审计（生成diff列表，oldValue为空，newValue为新增的值）
+     *
+     * @param module 业务模块
+     * @param subModule 业务子模块
+     * @param operation 操作类型（如：新增）
+     * @param tableName 表名
+     * @param dataId 数据ID（可选，新增时可能还没有生成ID）
+     * @param newData 新数据对象
+     */
+    public void auditCreate(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            Long dataId,
+            Object newData) {
+        try {
+            // 转换为JSON
+            String newJson = objectMapper.writeValueAsString(newData);
+
+            // 构建新增操作的diff列表（oldValue为null，newValue为新增的值）
+            List<FieldDiff> diffs = jsonDiffUtil.buildCreateDiffs(newJson, newData.getClass());
+
+            // 发送审计日志
+            sendAuditLog(module, subModule, operation, tableName, dataId, diffs);
+
+            // 如果有dataId，创建初始快照
+            if (dataId != null) {
+                snapshotService.saveSnapshot(tableName, dataId, newJson);
+            }
+
+        } catch (Exception e) {
+            log.error("数据审计失败（新增）: module={}, table={}, dataId={}", module, tableName, dataId, e);
+        }
+    }
+
+    /**
      * 记录数据变更审计（不对比差异，仅记录操作）
      *
      * @param module 业务模块

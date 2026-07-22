@@ -84,6 +84,8 @@ public class DataAuditAspect {
             handleUpdateAudit(joinPoint, dataAudit, dataId, tableName, oldSnapshot, result);
         } else if (operationType == OperationType.DELETE) {
             handleDeleteAudit(dataAudit, dataId, tableName, oldSnapshot);
+        } else if (operationType == OperationType.CREATE) {
+            handleCreateAudit(joinPoint, dataAudit, dataId, tableName, result);
         }
 
         return result;
@@ -142,18 +144,22 @@ public class DataAuditAspect {
             String newJson = objectMapper.writeValueAsString(newData);
             String oldJson = (oldSnapshot != null) ? oldSnapshot.getJsonData() : null;
 
+            // 判断是新增还是修改
+            boolean isCreate = (oldSnapshot == null);
+            String actualOperation = isCreate ? "新增" : dataAudit.operation().getDescription();
+
             // 比较差异
             List<FieldDiff> diffs;
-            if (oldJson == null) {
-                // 没有旧快照，视为新增（所有字段都是新值）
-                diffs = Collections.emptyList();
+            if (isCreate) {
+                // 没有旧快照，视为新增（生成新增的diff列表，oldValue为null，newValue为实际值）
+                diffs = jsonDiffUtil.buildCreateDiffs(newJson, newData.getClass());
             } else {
-                // 进行diff比较
+                // 进行diff比较（修改操作）
                 diffs = jsonDiffUtil.compareJsonObjects(oldJson, newJson, newData.getClass());
             }
 
-            // 如果是update操作（dataId不为空）且diff结果为空，说明没有任何修改，不记录日志
-            if (dataId != null && (diffs == null || diffs.isEmpty())) {
+            // 如果是update操作（非新增）且diff结果为空，说明没有任何修改，不记录日志
+            if (!isCreate && dataId != null && (diffs == null || diffs.isEmpty())) {
                 log.debug("数据未发生变更，跳过审计日志: table={}, dataId={}", tableName, dataId);
                 return;
             }
@@ -163,7 +169,7 @@ public class DataAuditAspect {
                     AuditResult.builder()
                             .module(dataAudit.module())
                             .subModule(dataAudit.subModule())
-                            .operation(dataAudit.operation().getDescription())
+                            .operation(actualOperation) // 使用自动判断的操作类型
                             .tableName(tableName)
                             .dataId(dataId)
                             .diffs(diffs)
@@ -180,7 +186,13 @@ public class DataAuditAspect {
                                 sendAuditLog(auditResult);
 
                                 // 更新或创建快照（带版本号乐观锁）
-                                updateSnapshot(tableName, dataId, newJson, oldSnapshot);
+                                if (isCreate) {
+                                    // 新增：创建快照
+                                    snapshotService.saveSnapshot(tableName, dataId, newJson);
+                                } else {
+                                    // 修改：更新快照
+                                    updateSnapshot(tableName, dataId, newJson, oldSnapshot);
+                                }
                             }
                         });
             } else {

@@ -189,6 +189,70 @@ public class JsonDiffUtil {
     }
 
     /**
+     * 构建新增操作的字段差异列表（所有字段的oldValue为空，newValue为传入值）
+     *
+     * @param json JSON字符串（新增的数据）
+     * @param clazz 目标类
+     * @return 字段差异列表
+     */
+    public <T> List<FieldDiff> buildCreateDiffs(String json, Class<T> clazz) {
+        List<FieldDiff> diffs = new ArrayList<>();
+
+        try {
+            JsonNode node =
+                    json != null ? objectMapper.readTree(json) : objectMapper.createObjectNode();
+
+            // 构建字段映射缓存
+            Map<String, FieldMetadata> fieldMetadataMap = buildFieldMetadataMap(clazz);
+
+            // 遍历所有字段
+            node.fields()
+                    .forEachRemaining(
+                            entry -> {
+                                String fieldName = entry.getKey();
+                                JsonNode value = entry.getValue();
+
+                                FieldMetadata metadata = fieldMetadataMap.get(fieldName);
+                                if (metadata == null) {
+                                    return;
+                                }
+
+                                Object newValue = extractValueFromNode(value);
+
+                                // 处理关联类型字段
+                                if (metadata.fieldType == FieldType.RELATION) {
+                                    newValue = resolveRelationValue(newValue, metadata);
+                                }
+
+                                // 处理枚举类型字段
+                                if (metadata.fieldType == FieldType.ENUM) {
+                                    newValue = resolveEnumValue(newValue, metadata);
+                                }
+
+                                // 处理字典类型字段
+                                if (metadata.fieldType == FieldType.DICT) {
+                                    newValue = resolveDictValue(newValue, metadata);
+                                }
+
+                                FieldDiff diff =
+                                        FieldDiff.builder()
+                                                .fieldName(metadata.fieldName)
+                                                .fieldCode(fieldName)
+                                                .fieldType(metadata.fieldType)
+                                                .oldValue(null)
+                                                .newValue(newValue)
+                                                .build();
+
+                                diffs.add(diff);
+                            });
+        } catch (Exception e) {
+            log.error("构建新增操作差异列表失败: json={}, class={}", json, clazz, e);
+        }
+
+        return diffs;
+    }
+
+    /**
      * 构建字段元数据映射
      *
      * @param clazz 目标类

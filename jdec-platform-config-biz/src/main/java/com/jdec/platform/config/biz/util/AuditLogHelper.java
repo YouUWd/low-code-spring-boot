@@ -122,9 +122,28 @@ public class AuditLogHelper {
     }
 
     /**
-     * 记录删除操作
+     * 记录新增操作（带差异对比，oldValue为空）
+     *
+     * <p>适用场景：新增数据时，需要记录所有字段的新值
      *
      * @param subModule 子模块名称（如："角色管理"、"权限管理"）
+     * @param tableName 表名（如："sys_role"、"sys_permission"）
+     * @param operation 操作类型（如："新增"）
+     * @param newData 新增的数据对象
+     */
+    public void logCreate(String subModule, String tableName, String operation, Object newData) {
+        try {
+            dataAuditService.auditCreate(MODULE, subModule, operation, tableName, newData);
+            log.info("审计日志（新增）: subModule={}, operation={}", subModule, operation);
+        } catch (Exception e) {
+            log.error("记录新增审计日志失败: subModule={}, operation={}", subModule, operation, e);
+        }
+    }
+
+    /**
+     * 记录删除操作
+     *
+     * @param subModule 子模块名称（如:"角色管理"、"权限管理"）
      * @param tableName 表名（如："sys_role"、"sys_permission"）
      * @param dataId 数据ID
      */
