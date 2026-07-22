@@ -131,6 +131,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             req.getRoleId(),
                             req.getApplicantId());
             result.put("step", step);
+        } else {
+            result.put("step", new ArrayList<>());
         }
         // 创建人
         result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
@@ -767,6 +769,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
 
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionRecordWrapper =
                 new LambdaQueryWrapper<>();
@@ -900,6 +903,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(approvalRecordWrapper);
 
+        // 查询取消状态信息
+        ModuleApprovalChainConfigResp.StatusNode statusNode =
+                sysStatusApi.getStatusByValue(-99, approvalProcessDTO.getModuleId());
+
         // 变更过的单据查询来源单据记录，恢复到来源单据信息
         if (approvalBusiness.getVersionNo() > 1) {
             ApprovalVersionRecord oldApprovalVersionRecord =
@@ -927,11 +934,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalBusiness.setSerialNo(oldApprovalVersionRecord.getSerialNo());
             approvalBusiness.setApprovalUids(approvalChain.getApprovalUids());
             approvalBusinessMapper.updateById(approvalBusiness);
+        } else {
+            approvalBusiness.setStatusTitle(statusNode.getTitle());
+            approvalBusiness.setStatusId(statusNode.getId());
+            approvalBusiness.setStatusValue(statusNode.getStatusValue());
+            approvalBusiness.setStatusBackground(statusNode.getStatusBackground());
+            approvalBusiness.setStatusFontColor(statusNode.getStatusFontColor());
+            approvalBusinessMapper.updateById(approvalBusiness);
         }
-
-        // 查询取消状态信息
-        ModuleApprovalChainConfigResp.StatusNode statusNode =
-                sysStatusApi.getStatusByValue(-99, approvalProcessDTO.getModuleId());
         // 变更单据对应版本状态信息
         approvalVersionRecord.setReason(approvalProcessDTO.getReason());
         approvalVersionRecord.setStatusTitle(statusNode.getTitle());
@@ -968,7 +978,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             configWrapper.eq(
                     ApprovalChainButton::getCurrentStep, approvalProcessDTO.getCurrentStep());
             configWrapper
-                    .eq(ApprovalChainButton::getIcon, approvalProcessDTO.getButton())
+                    .eq(ApprovalChainButton::getButtonTypeValue, approvalProcessDTO.getButton())
                     .last("LIMIT 1");
             ApprovalChainButton approvalChainButton =
                     approvalChainButtonMapper.selectOne(configWrapper);
