@@ -63,6 +63,10 @@ public class ApprovalChainButton extends Model<ApprovalChainButton> {
     @TableField("log_name")
     private String logName;
 
+    /** 是否自动进入下一任务 1:是 0:否 */
+    @TableField("auto_next_task_flag")
+    private Integer autoNextTaskFlag;
+
     /** 消息模板 sys_wechat_template对应ID */
     @TableField("msg_template_ids")
     private String msgTemplateIds;

@@ -1297,7 +1297,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(modelConfigButton) || Objects.isNull(approvalButton)) {
                 return null;
             }
-            modelConfig = sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
             item.put("key", alias);
             item.put("title", modelConfigButton.getTitle());
             item.put("showTitle", modelConfigButton.getTitle());
@@ -1321,7 +1320,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                         .eq(ApprovalChain::getCurrentStep, currentStep)
                                         .last("LIMIT 1"));
                 item.put("rejectRule", approvalChain.getRejectRule());
+            } else {
+                item.put("rejectRule", "");
             }
+            item.put("autoNextTaskFlag", approvalButton.getAutoNextTaskFlag());
         } else {
             modelConfig = sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
             if (Objects.isNull(modelConfig)) {
@@ -1358,6 +1360,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
             item.put("actionIcon", modelConfig.getValue());
             item.put("actionName", "已" + modelConfig.getLabel());
+            item.put("rejectRule", "");
+            item.put("autoNextTaskFlag", 0);
         }
         item.put("show", 1);
 
