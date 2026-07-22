@@ -102,6 +102,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId());
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
+        if (Objects.isNull(approvalVersionRecord)) {
+            throw new BusinessException("单据记录不存在");
+        }
         // 单据编号
         result.put("businessNumber", approvalVersionRecord.getBusinessNumber());
         // 当前版本号
@@ -1192,7 +1195,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             } else {
                 return operations;
             }
-        } else {
+        } else if (approvalChainBusiness.getStatusValue() != -99) {
             if (approvalChainBusiness.getCurrentStep().equals(0)) {
                 // 如果单据处于第一步驳回后申请人等待提交状态,显示提交和取消按钮
                 if (approvalChainBusiness.getCreatedBy().equals(userId)
