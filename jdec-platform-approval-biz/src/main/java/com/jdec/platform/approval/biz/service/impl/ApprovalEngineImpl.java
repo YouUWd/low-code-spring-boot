@@ -267,7 +267,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                         new LambdaQueryWrapper<ApprovalVersionRecord>()
                                 .eq(ApprovalVersionRecord::getRecordId, recordId)
                                 .eq(ApprovalVersionRecord::getSubjectId, subjectId)
-                                .eq(ApprovalVersionRecord::getModuleId, moduleId));
+                                .eq(ApprovalVersionRecord::getModuleId, moduleId)
+                                .last("LIMIT 1"));
         if (Objects.isNull(approvalVersionRecord)) {
             return respList;
         }
@@ -313,7 +314,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                         new LambdaQueryWrapper<ApprovalVersionRecord>()
                                 .eq(ApprovalVersionRecord::getRecordId, recordId)
                                 .eq(ApprovalVersionRecord::getSubjectId, subjectId)
-                                .eq(ApprovalVersionRecord::getModuleId, moduleId));
+                                .eq(ApprovalVersionRecord::getModuleId, moduleId)
+                                .last("LIMIT 1"));
         if ((Objects.isNull(approvalVersionRecord))) {
             return Map.of();
         }
@@ -334,7 +336,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                             approvalVersionRecord.getSerialNumber())
                                     .eq(
                                             ApprovalVersionRecord::getSerialNo,
-                                            approvalVersionRecord.getSerialNo() - 1));
+                                            approvalVersionRecord.getSerialNo() - 1)
+                                    .last("LIMIT 1"));
             result.put("preRecordId", preApprovalVersionRecord.getRecordId());
         }
         return result;
@@ -389,7 +392,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 查询当前单据记录
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
-        businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId());
+        businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId()).last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         // 查询步骤列表 + 关联状态
@@ -444,7 +447,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalChain> sysApprovalChainWrapper = new LambdaQueryWrapper<>();
         sysApprovalChainWrapper.eq(
                 ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
-        sysApprovalChainWrapper.eq(ApprovalChain::getCurrentStep, 1);
+        sysApprovalChainWrapper.eq(ApprovalChain::getCurrentStep, 1).last("LIMIT 1");
         ApprovalChain sysApprovalChain = approvalChainMapper.selectOne(sysApprovalChainWrapper);
 
         LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
@@ -647,7 +650,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalChainWrapper.eq(ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
         approvalChainWrapper.eq(ApprovalChain::getSkipped, false);
         approvalChainWrapper.eq(ApprovalChain::getApproved, false);
-        approvalChainWrapper.eq(ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep());
+        approvalChainWrapper
+                .eq(ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep())
+                .last("LIMIT 1");
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalChainWrapper);
         if (StringUtils.isNotBlank(approvalChain.getApproverIdList())) {
             approvalIdList =
@@ -689,7 +694,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalNextWrapper.eq(
                     ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
             approvalNextWrapper.eq(ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
-            approvalNextWrapper.eq(ApprovalChain::getCurrentStep, approvalChain.getNextStep());
+            approvalNextWrapper
+                    .eq(ApprovalChain::getCurrentStep, approvalChain.getNextStep())
+                    .last("LIMIT 1");
             ApprovalChain approvalChainNext = approvalChainMapper.selectOne(approvalNextWrapper);
             LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                     new LambdaQueryWrapper<>();
@@ -753,7 +760,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 查询业务记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
-        approvalBusinessWrapper.eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId());
+        approvalBusinessWrapper
+                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
+                .last("LIMIT 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
@@ -763,8 +772,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 new LambdaQueryWrapper<>();
         approvalVersionRecordWrapper.eq(
                 ApprovalVersionRecord::getSerialNumber, approvalBusiness.getSerialNumber());
-        approvalVersionRecordWrapper.eq(
-                ApprovalVersionRecord::getSerialNo, approvalBusiness.getSerialNo());
+        approvalVersionRecordWrapper
+                .eq(ApprovalVersionRecord::getSerialNo, approvalBusiness.getSerialNo())
+                .last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(approvalVersionRecordWrapper);
 
@@ -773,7 +783,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalChainWrapper.eq(ApprovalChain::getSerialNo, approvalBusiness.getSerialNo());
         approvalChainWrapper.eq(ApprovalChain::getSkipped, false);
         approvalChainWrapper.eq(ApprovalChain::getApproved, false);
-        approvalChainWrapper.eq(ApprovalChain::getCurrentStep, approvalBusiness.getCurrentStep());
+        approvalChainWrapper
+                .eq(ApprovalChain::getCurrentStep, approvalBusiness.getCurrentStep())
+                .last("LIMIT 1");
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalChainWrapper);
         approvalRule(approvalProcessDTO, approvalChain);
         ApprovalChain businessApprovalChain;
@@ -811,7 +823,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                             ApprovalChain::getSerialNo,
                                             approvalProcessDTO.getSerialNo())
                                     .eq(ApprovalChain::getSkipped, false)
-                                    .eq(ApprovalChain::getCurrentStep, specifyStep));
+                                    .eq(ApprovalChain::getCurrentStep, specifyStep)
+                                    .last("LIMIT 1"));
 
             businessApprovalChain = backConfig;
             LambdaUpdateWrapper<ApprovalChain> updateWrapper = new LambdaUpdateWrapper<>();
