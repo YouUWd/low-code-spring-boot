@@ -61,6 +61,13 @@ public class JdecMonitorLogController {
         return ApiResponse.success();
     }
 
+    @PostMapping("/addBusinessChangeLog")
+    @Operation(summary = "添加业务单据字段变化日志", description = "记录业务单据字段变化日志，logContent内容为单据字段变化HTML标记文本")
+    public ApiResponse<Void> addBusinessChangeLog(@Valid @RequestBody MonitorLogReq request) {
+        jdecMonitorLogService.recordBusinessLog(request);
+        return ApiResponse.success();
+    }
+
     @PostMapping("/addApprovalChainLog")
     @Operation(
             summary = "添加审批链操作日志",
