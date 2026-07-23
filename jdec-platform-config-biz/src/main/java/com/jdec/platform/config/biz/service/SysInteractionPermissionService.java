@@ -49,6 +49,24 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             tableName = "sys_interaction_permission",
             dataIdField = "#req.id")
     public SysRightResp saveInteractionPermission(SysInteractionPermissionSaveReq req) {
+        // 保存前先查询旧数据（用于审计）
+        SysInteractionPermission oldEntity = null;
+        if (req.getId() != null) {
+            oldEntity =
+                    sysInteractionPermissionMapper.selectOne(
+                            Wrappers.<SysInteractionPermission>lambdaQuery()
+                                    .eq(SysInteractionPermission::getId, req.getId())
+                                    .eq(
+                                            SysInteractionPermission::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysInteractionPermission::getProjectNo,
+                                            AppContext.getProjectNo()));
+            if (oldEntity == null) {
+                throw new BusinessException("交互权限不存在");
+            }
+        }
+
         SysInteractionPermission entity;
         if (req.getId() == null) {
             // 新增：校验名称唯一性
@@ -70,20 +88,10 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             sysInteractionPermissionMapper.insert(entity);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
         } else {
-            entity =
-                    sysInteractionPermissionMapper.selectOne(
-                            Wrappers.<SysInteractionPermission>lambdaQuery()
-                                    .eq(SysInteractionPermission::getId, req.getId())
-                                    .eq(
-                                            SysInteractionPermission::getSubjectId,
-                                            AppContext.getSubjectId())
-                                    .eq(
-                                            SysInteractionPermission::getProjectNo,
-                                            AppContext.getProjectNo()));
-            if (entity == null) {
-                throw new BusinessException("交互权限不存在");
-            }
+            entity = oldEntity;
             // 编辑：校验名称唯一性（排除自己）
             if (!entity.getName().equals(req.getName())) {
                 boolean exists =

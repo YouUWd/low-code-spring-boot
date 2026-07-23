@@ -64,6 +64,26 @@ public class DataAuditAspect {
             // 执行业务方法
             Object result = joinPoint.proceed();
 
+            // 方法执行后重新解析dataId（方法内部可能在新增后设置了request.id）
+            if (dataAudit.dataIdField() != null && !dataAudit.dataIdField().isEmpty()) {
+                Long newDataId = parseDataId(joinPoint, dataAudit.dataIdField());
+                if (newDataId != null) {
+                    handleCreateAudit(joinPoint, dataAudit, newDataId, tableName, result);
+                    return result;
+                }
+            }
+
+            // 特殊处理：如果是UPDATE操作但dataId为null（说明是统一保存接口的新增场景）
+            // 尝试从返回值中提取dataId，然后走CREATE审计流程
+            if (operationType == OperationType.UPDATE && result instanceof Long) {
+                Long newDataId = (Long) result;
+                if (newDataId != null) {
+                    // 从返回的dataId走CREATE审计流程
+                    handleCreateAudit(joinPoint, dataAudit, newDataId, tableName, result);
+                    return result;
+                }
+            }
+
             // 只记录操作，不对比差异
             if (operationType == OperationType.UPDATE) {
                 handleUpdateAuditWithoutCompare(dataAudit);
@@ -203,6 +223,69 @@ public class DataAuditAspect {
 
         } catch (Exception e) {
             log.error("UPDATE审计处理失败: table={}, dataId={}", tableName, dataId, e);
+        }
+    }
+
+    /** 处理CREATE操作审计 */
+    private void handleCreateAudit(
+            ProceedingJoinPoint joinPoint,
+            DataAudit dataAudit,
+            Long dataId,
+            String tableName,
+            Object result) {
+        try {
+            // 获取新数据（从方法参数中获取）
+            Object newData = extractNewData(joinPoint);
+            if (newData == null) {
+                log.warn("CREATE审计失败: 无法获取新数据, method={}", joinPoint.getSignature().getName());
+                return;
+            }
+
+            // 转换为JSON
+            String newJson = objectMapper.writeValueAsString(newData);
+
+            // 构建新增的diff列表（所有字段都是新增）
+            List<FieldDiff> diffs = jsonDiffUtil.buildCreateDiffs(newJson, newData.getClass());
+
+            // 构建审计结果（强制使用"新增"操作描述）
+            AuditResult auditResult =
+                    AuditResult.builder()
+                            .module(dataAudit.module())
+                            .subModule(dataAudit.subModule())
+                            .operation("新增")
+                            .tableName(tableName)
+                            .dataId(dataId)
+                            .diffs(diffs)
+                            .operateTime(LocalDateTime.now())
+                            .build();
+
+            // 注册事务同步回调，在事务提交后发送审计日志并创建快照
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                sendAuditLog(auditResult);
+                                // 创建快照（检查是否已存在，避免业务代码手动创建后重复）
+                                SysDataSnapshot existingSnapshot =
+                                        snapshotService.getLatestSnapshot(tableName, dataId);
+                                if (existingSnapshot == null) {
+                                    snapshotService.saveSnapshot(tableName, dataId, newJson);
+                                }
+                            }
+                        });
+            } else {
+                // 没有事务，直接发送
+                sendAuditLog(auditResult);
+                SysDataSnapshot existingSnapshot =
+                        snapshotService.getLatestSnapshot(tableName, dataId);
+                if (existingSnapshot == null) {
+                    snapshotService.saveSnapshot(tableName, dataId, newJson);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("CREATE审计处理失败: table={}, dataId={}", tableName, dataId, e);
         }
     }
 

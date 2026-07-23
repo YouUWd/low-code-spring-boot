@@ -118,6 +118,7 @@ public class SysStatusService implements SysStatusApi {
             // 处理排序值
             handleSortOrderForInsert(entity);
             sysStatusMapper.insert(entity);
+            // 手动创建快照（此时已拿到MyBatis-Plus回填的主键ID）
             SysDataSnapshot snapshot = new SysDataSnapshot();
             snapshot.setTableName("sys_status");
             snapshot.setDataId(entity.getId());

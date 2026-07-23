@@ -1,6 +1,5 @@
 package com.jdec.platform.config.biz.service;
 
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysMenuApi;
@@ -11,9 +10,7 @@ import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
-import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.entity.SysMenu;
-import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
@@ -39,7 +36,6 @@ public class SysMenuService implements SysMenuApi {
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final ReferenceCheckManager referenceCheckManager;
-    private final SysDataSnapshotMapper sysDataSnapshotMapper;
 
     /** 菜单类型：导航 */
     private static final Integer MENU_TYPE_NAV = 1;
@@ -131,9 +127,24 @@ public class SysMenuService implements SysMenuApi {
             throw new BusinessException("一级菜单类型必须为导航");
         }
 
+        // 保存前先查询旧数据（用于审计）
+        SysMenu oldEntity = null;
+        if (req.getId() != null) {
+            oldEntity =
+                    sysMenuMapper.selectOne(
+                            Wrappers.<SysMenu>lambdaQuery()
+                                    .eq(SysMenu::getId, req.getId())
+                                    .eq(SysMenu::getSubjectId, subjectId)
+                                    .eq(SysMenu::getProjectNo, projectNo));
+            if (oldEntity == null) {
+                throw new BusinessException("菜单不存在");
+            }
+        }
+
+        SysMenu entity;
         if (req.getId() == null) {
             // 新增
-            SysMenu entity = new SysMenu();
+            entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(subjectId);
             entity.setProjectNo(projectNo);
@@ -161,22 +172,11 @@ public class SysMenuService implements SysMenuApi {
             }
 
             sysMenuMapper.insert(entity);
-            SysDataSnapshot snapshot = new SysDataSnapshot();
-            snapshot.setTableName("sys_menu");
-            snapshot.setDataId(entity.getId());
-            snapshot.setJsonData(JSONUtil.toJsonStr(entity));
-            sysDataSnapshotMapper.insert(snapshot);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
+            // 快照由审计切面自动创建，这里不需要手动创建
         } else {
             // 编辑
-            SysMenu oldEntity =
-                    sysMenuMapper.selectOne(
-                            Wrappers.<SysMenu>lambdaQuery()
-                                    .eq(SysMenu::getId, req.getId())
-                                    .eq(SysMenu::getSubjectId, subjectId)
-                                    .eq(SysMenu::getProjectNo, projectNo));
-            if (oldEntity == null) {
-                throw new BusinessException("菜单不存在");
-            }
             // 不能把自己设为自己的父节点
             if (req.getId().equals(pid)) {
                 throw new BusinessException("不能将自己设为父菜单");
@@ -191,7 +191,7 @@ public class SysMenuService implements SysMenuApi {
             Long oldPid = oldEntity.getPid();
             Integer oldSortOrder = oldEntity.getSortOrder();
 
-            SysMenu entity = new SysMenu();
+            entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
 
             // 处理排序值

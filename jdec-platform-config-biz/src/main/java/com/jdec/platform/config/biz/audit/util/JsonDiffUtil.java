@@ -6,6 +6,7 @@ import com.jdec.platform.config.biz.audit.dto.FieldDiff;
 import com.jdec.platform.config.biz.audit.service.DictFieldQueryService;
 import com.jdec.platform.config.biz.audit.service.RelationFieldQueryService;
 import com.jdec.platform.shared.audit.annotation.AuditField;
+import com.jdec.platform.shared.audit.enums.EnumDescribable;
 import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.lang.reflect.Field;
@@ -429,7 +430,7 @@ public class JsonDiffUtil {
     /**
      * 解析枚举字段值（将枚举值转换为中文描述）
      *
-     * @param value 字段值（可能是枚举name、ordinal或枚举对象）
+     * @param value 字段值（可能是枚举name、code或ordinal）
      * @param metadata 字段元数据
      * @return 解析后的值（中文描述）
      */
@@ -457,26 +458,33 @@ public class JsonDiffUtil {
                         break;
                     }
                 }
-            } else if (value instanceof Integer) {
-                // 尝试按ordinal匹配
-                int ordinal = (Integer) value;
-                if (ordinal >= 0 && ordinal < enumConstants.length) {
-                    matchedEnum = enumConstants[ordinal];
+            } else if (value instanceof Number) {
+                Number numValue = (Number) value;
+                // 优先按EnumDescribable.getValue()匹配code值（适用于所有实现EnumDescribable的枚举）
+                for (Enum<?> enumConstant : enumConstants) {
+                    if (enumConstant instanceof EnumDescribable) {
+                        Object enumCode = ((EnumDescribable) enumConstant).getValue();
+                        if (enumCode instanceof Number
+                                && ((Number) enumCode).longValue() == numValue.longValue()) {
+                            matchedEnum = enumConstant;
+                            break;
+                        }
+                    }
                 }
-            } else if (value instanceof Long) {
-                // 尝试按ordinal匹配
-                int ordinal = ((Long) value).intValue();
-                if (ordinal >= 0 && ordinal < enumConstants.length) {
-                    matchedEnum = enumConstants[ordinal];
+                // 未匹配到则回退按ordinal匹配（兼容非EnumDescribable枚举）
+                if (matchedEnum == null) {
+                    int ordinal = numValue.intValue();
+                    if (ordinal >= 0 && ordinal < enumConstants.length) {
+                        matchedEnum = enumConstants[ordinal];
+                    }
                 }
             }
 
             // 如果匹配到枚举，尝试获取描述
             if (matchedEnum != null) {
                 // 如果枚举实现了EnumDescribable接口，调用getDescription()
-                if (matchedEnum instanceof com.jdec.platform.shared.audit.enums.EnumDescribable) {
-                    return ((com.jdec.platform.shared.audit.enums.EnumDescribable) matchedEnum)
-                            .getDescription();
+                if (matchedEnum instanceof EnumDescribable) {
+                    return ((EnumDescribable) matchedEnum).getDescription();
                 }
                 // 否则返回枚举的name
                 return matchedEnum.name();
