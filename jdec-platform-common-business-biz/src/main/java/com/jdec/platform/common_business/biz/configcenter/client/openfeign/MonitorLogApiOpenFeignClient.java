@@ -13,5 +13,5 @@ import org.springframework.web.bind.annotation.RequestBody;
 public interface MonitorLogApiOpenFeignClient {
 
     @PostMapping("/addBusinessChangeLog")
-    ConfigApiResponse<Void> add(@RequestBody MonitorLogReq request);
+    ConfigApiResponse<Void> recordBusinessLog(@RequestBody MonitorLogReq request);
 }

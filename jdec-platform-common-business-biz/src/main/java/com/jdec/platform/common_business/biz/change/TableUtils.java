@@ -405,7 +405,7 @@ public class TableUtils {
                 fb = objectValue1;
             }
             FieldChangeDTO dto = new FieldChangeDTO();
-            dto.setFieldName(fieldName);
+            dto.setFieldName(tableName + "." + fieldName);
             if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
                 dto.setFieldShowName(showName.get(tableName + "." + fieldName).getFieldShowName());
                 // dto.setFieldType(showName.get(fieldName).getFieldType());
@@ -479,13 +479,13 @@ public class TableUtils {
             f.setAccessible(true);
             String fieldName = null;
             TableId tableId = f.getDeclaredAnnotation(TableId.class);
-            if (tableId != null) {
+            if (tableId != null && !NONE_RECORD_FIELD.contains(tableId.value())) {
                 fieldMap.put(tableId.value(), f);
                 fieldName = tableId.value();
                 IdField = tableId.value();
             }
             TableField tableField = f.getDeclaredAnnotation(TableField.class);
-            if (tableField != null) {
+            if (tableField != null && !NONE_RECORD_FIELD.contains(tableField.value())) {
                 fieldMap.put(tableField.value(), f);
                 fieldName = tableField.value();
             }
@@ -503,6 +503,11 @@ public class TableUtils {
                 String objectValueAfter1 = null;
                 String objectValueAfter2 = null;
                 try {
+
+                    if (fieldMap.get(fieldName).get(t1) == null) {
+                        continue;
+                    }
+
                     objectValueBefore1 =
                             getStringValueFromObject(
                                     fieldMap.get(dictMap.get(fieldName).get(0)).get(t1));
@@ -524,7 +529,7 @@ public class TableUtils {
                 }
 
                 FieldChangeDTO dto = new FieldChangeDTO();
-                dto.setFieldName(fieldName);
+                dto.setFieldName(tableName + "." + fieldName);
                 if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
                     dto.setFieldShowName(
                             showName.get(tableName + "." + fieldName).getFieldShowName());
@@ -539,6 +544,11 @@ public class TableUtils {
                 String objectValueBefore = null;
                 String objectValueAfter = null;
                 try {
+
+                    if (fieldMap.get(fieldName).get(t1) == null) {
+                        continue;
+                    }
+
                     objectValueBefore = getStringValueFromObject(fieldMap.get(fieldName).get(t1));
                     objectValueAfter = getStringValueFromObject(fieldMap.get(fieldName).get(t2));
                 } catch (Exception e) {
@@ -548,7 +558,7 @@ public class TableUtils {
                     continue;
                 }
                 FieldChangeDTO dto = new FieldChangeDTO();
-                dto.setFieldName(fieldName);
+                dto.setFieldName(tableName + "." + fieldName);
 
                 if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
                     dto.setFieldShowName(
