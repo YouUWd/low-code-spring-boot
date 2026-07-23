@@ -6,6 +6,7 @@ import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.jdec.platform.common_business.api.dto.common.RowChangeDTO;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -345,7 +346,8 @@ public class TableUtils {
         List<String> changeField = new ArrayList<>();
         Field[] fs = c.getDeclaredFields();
 
-        List<FieldChangeDTO> fieldChangeDTOS = new ArrayList<>();
+        List<com.jdec.platform.common_business.api.dto.common.FieldChangeDTO> fieldChangeDTOS =
+                new ArrayList<>();
         for (Field f : fs) {
             f.setAccessible(true);
             String fieldName = null;
@@ -404,7 +406,8 @@ public class TableUtils {
                 }
                 fb = objectValue1;
             }
-            FieldChangeDTO dto = new FieldChangeDTO();
+            com.jdec.platform.common_business.api.dto.common.FieldChangeDTO dto =
+                    new com.jdec.platform.common_business.api.dto.common.FieldChangeDTO();
             dto.setFieldName(tableName + "." + fieldName);
             if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
                 dto.setFieldShowName(showName.get(tableName + "." + fieldName).getFieldShowName());
@@ -474,7 +477,8 @@ public class TableUtils {
         Field[] fs = c.getDeclaredFields();
 
         String IdField = null;
-        List<FieldChangeDTO> fieldChangeDTOS = new ArrayList<>();
+        List<com.jdec.platform.common_business.api.dto.common.FieldChangeDTO> fieldChangeDTOS =
+                new ArrayList<>();
         for (Field f : fs) {
             f.setAccessible(true);
             String fieldName = null;
@@ -528,7 +532,8 @@ public class TableUtils {
                     continue;
                 }
 
-                FieldChangeDTO dto = new FieldChangeDTO();
+                com.jdec.platform.common_business.api.dto.common.FieldChangeDTO dto =
+                        new com.jdec.platform.common_business.api.dto.common.FieldChangeDTO();
                 dto.setFieldName(tableName + "." + fieldName);
                 if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
                     dto.setFieldShowName(
@@ -557,7 +562,8 @@ public class TableUtils {
                 if (!isChanged(objectValueBefore, objectValueAfter) || fieldName.equals(IdField)) {
                     continue;
                 }
-                FieldChangeDTO dto = new FieldChangeDTO();
+                com.jdec.platform.common_business.api.dto.common.FieldChangeDTO dto =
+                        new com.jdec.platform.common_business.api.dto.common.FieldChangeDTO();
                 dto.setFieldName(tableName + "." + fieldName);
 
                 if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
