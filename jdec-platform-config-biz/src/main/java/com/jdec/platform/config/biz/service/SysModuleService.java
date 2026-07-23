@@ -258,6 +258,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                                     info.setTableName(f.getTableName());
                                     info.setColumnName(f.getFieldCode());
                                     info.setTransformer(f.getTransformer());
+                                    info.setBizKeyOrder(f.getBizKeyOrder());
 
                                     Map<String, String> colMap =
                                             tableColumnDisplayNameMap.get(f.getTableName());
@@ -995,6 +996,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             f.setFieldCode(info.getColumnName());
             f.setTableName(info.getTableName());
             f.setTransformer(info.getTransformer());
+            f.setBizKeyOrder(info.getBizKeyOrder());
             saveOrUpdateList.add(f);
         }
 
