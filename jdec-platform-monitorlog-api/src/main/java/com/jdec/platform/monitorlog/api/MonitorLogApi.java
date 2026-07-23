@@ -4,13 +4,13 @@ import com.jdec.platform.monitorlog.api.dto.request.MonitorLogPageListReq;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogResp;
+import com.jdec.platform.shared.model.PageResult;
 import java.sql.SQLException;
-import java.util.List;
 
 /** 监控日志 Service */
 public interface MonitorLogApi {
     /** 分页查询监控日志 */
-    List<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq req);
+    PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq req);
 
     /** 记录操作日志 形如：[系统设置-审批链配置]修改了配置 带remark 如：[审批链分类] :PFD\r\n[模块名称]:PFD->PFD-1 */
     void recordControlLog(MonitorLogReq req) throws SQLException;
