@@ -63,9 +63,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if ("create".equals(approvalProcessDTO.getButton())) {
             businessCreate(approvalProcessDTO);
         } else if ("pass".equals(approvalProcessDTO.getButton())) {
-            Integer statusValue = businessApprove(approvalProcessDTO);
-            if (statusValue.equals(99)) {
-                return Map.of("ok", 1, "end", 1);
+            ApprovalBusiness approvalBusiness = businessApprove(approvalProcessDTO);
+            if (approvalBusiness.getStatusValue().equals(99)) {
+                return Map.of("ok", 1, "end", 1, "businessId", approvalBusiness.getBusinessId());
             }
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
             businessReject(approvalProcessDTO);
@@ -642,7 +642,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 审批通过---------------------------------------------------------------------
     @Transactional
-    public Integer businessApprove(ApprovalProcessDTO approvalProcessDTO) {
+    public ApprovalBusiness businessApprove(ApprovalProcessDTO approvalProcessDTO) {
         // 查询当前业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -765,7 +765,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalChain.getCurrentStatusChildId(),
                 approvalProcessDTO);
 
-        return approvalBusiness.getStatusValue();
+        return approvalBusiness;
     }
 
     // 审批驳回------------------------------------------------------------------
