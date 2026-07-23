@@ -40,6 +40,8 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 用户 Service 实现 */
 @Service
@@ -238,6 +240,7 @@ public class SysUserService implements SysUserApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<SysUserPageResp> getUsersByRoleId(Long roleId) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();

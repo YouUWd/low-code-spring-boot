@@ -639,10 +639,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getBusinessId, approvalProcessDTO.getBusinessId())
+                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
                 .last("limit 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
+
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
