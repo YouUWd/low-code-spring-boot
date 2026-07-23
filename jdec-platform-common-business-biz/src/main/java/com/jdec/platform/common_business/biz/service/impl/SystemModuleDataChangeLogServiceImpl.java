@@ -1,8 +1,9 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.jdec.platform.common_business.api.dto.common.ModuleField;
+import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.biz.change.*;
+import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.entity.TableChangeLog;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
@@ -11,6 +12,7 @@ import com.jdec.platform.common_business.biz.mapper.TableChangeLogMapper;
 import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
+import com.jdec.platform.shared.datasource.DataSource;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -22,6 +24,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@DataSource(DataSourceConstants.STUDENT_MANAGE)
 public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataChangeLogService {
 
     private final TableChangeLogMapper tableChangeLogMapper;
@@ -231,7 +234,8 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                             .append("</div>");
                 }
                 html.append("<div>");
-                for (FieldChangeDTO fieldChangeDTO : rowChangeDTO.getColumnList()) {
+                for (com.jdec.platform.common_business.api.dto.common.FieldChangeDTO
+                        fieldChangeDTO : rowChangeDTO.getColumnList()) {
                     // <!-- 分字段，展示每个字段的变更 -->
                     html.append("<div style=\"display: flex; margin-bottom: 4px\">");
                     html.append("<div style=\"color: #86909c; margin-right: 8px\">")

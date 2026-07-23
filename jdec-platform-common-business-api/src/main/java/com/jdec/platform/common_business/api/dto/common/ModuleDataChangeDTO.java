@@ -1,4 +1,4 @@
-package com.jdec.platform.common_business.biz.change;
+package com.jdec.platform.common_business.api.dto.common;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
