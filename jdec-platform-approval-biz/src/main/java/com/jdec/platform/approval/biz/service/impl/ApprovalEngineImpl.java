@@ -25,7 +25,6 @@ import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,9 +62,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if ("create".equals(approvalProcessDTO.getButton())) {
             businessCreate(approvalProcessDTO);
         } else if ("pass".equals(approvalProcessDTO.getButton())) {
-            Integer statusValue = businessApprove(approvalProcessDTO);
-            if (statusValue.equals(99)) {
-                return Map.of("ok", 1, "end", 1);
+            ApprovalBusiness approvalBusiness = businessApprove(approvalProcessDTO);
+            if (approvalBusiness.getStatusValue().equals(99)) {
+                return Map.of("ok", 1, "end", 1, "businessId", approvalBusiness.getBusinessId());
             }
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
             businessReject(approvalProcessDTO);
@@ -538,9 +537,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionWrapper =
                 new LambdaQueryWrapper<>();
         approvalVersionWrapper.eq(
-                ApprovalVersionRecord::getModuleId, approvalProcessDTO.getModuleId());
+                ApprovalVersionRecord::getBusinessNumber, approvalBusiness.getBusinessNumber());
         approvalVersionWrapper
-                .eq(ApprovalVersionRecord::getRecordId, approvalProcessDTO.getOldRecordId())
                 .orderByDesc(ApprovalVersionRecord::getId)
                 .last("limit 1"); // 追加SQL limit
         ApprovalVersionRecord approvalRecord =
@@ -552,18 +550,26 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 生成版本和编号
         int versionNo = approvalRecord.getVersionNo();
         Long sourceId = approvalRecord.getId();
-        if (approvalRecord.getCurrentStep().equals(0)) {
+        if (approvalRecord.getCurrentStep().equals(0) && approvalRecord.getStatusValue() != -99) {
             // 驳回提交
             approvalProcessDTO.setSerialNumber(approvalRecord.getSerialNumber());
             approvalProcessDTO.setSerialNo(approvalRecord.getSerialNo() + 1);
             sourceId = approvalRecord.getSourceId();
-        } else {
+        } else if (approvalRecord.getStatusValue() == 99) {
             // 直接提交
             versionNo = approvalRecord.getVersionNo() + 1;
             String serialNumber = approvalRecord.getBusinessNumber() + "@" + versionNo;
             approvalProcessDTO.setSerialNumber(serialNumber);
             approvalProcessDTO.setSerialNo(1);
+        } else if (approvalRecord.getStatusValue() == -99) {
+            // 直接提交
+            versionNo = approvalRecord.getVersionNo() + 1;
+            String serialNumber = approvalRecord.getBusinessNumber() + "@" + versionNo;
+            approvalProcessDTO.setSerialNumber(serialNumber);
+            approvalProcessDTO.setSerialNo(1);
+            sourceId = approvalRecord.getSourceId();
         }
+
         // 初始化审批链
         initApprovalChainForModule(approvalProcessDTO);
 
@@ -610,6 +616,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setSubjectId(approvalProcessDTO.getSubjectId());
         approvalVersionRecord.setModuleId(approvalProcessDTO.getModuleId());
         approvalVersionRecord.setRecordId(approvalProcessDTO.getRecordId());
+        approvalVersionRecord.setBusinessId(approvalBusiness.getBusinessId());
         approvalVersionRecord.setBusinessNumber(approvalRecord.getBusinessNumber());
         approvalVersionRecord.setVersionNo(versionNo);
         approvalVersionRecord.setSerialNumber(approvalProcessDTO.getSerialNumber());
@@ -634,15 +641,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 审批通过---------------------------------------------------------------------
     @Transactional
-    public Integer businessApprove(ApprovalProcessDTO approvalProcessDTO) {
+    public ApprovalBusiness businessApprove(ApprovalProcessDTO approvalProcessDTO) {
         // 查询当前业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getBusinessId, approvalProcessDTO.getBusinessId())
+                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
                 .last("limit 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
+
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
@@ -683,11 +691,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     "all_members_done".equals(approvalChain.getApprovalRule())
                             ? 100
                             : approvalChain.getRoleApprovalPercent();
-            long currentApproverIdNumber =
-                    IntStream.range(0, approvalChain.getApproverIdList().length())
-                                    .filter(i -> approvalChain.getApproverIdList().charAt(i) == '，')
-                                    .count()
-                            + 2;
+            int currentApproverIdNumber =
+                    Objects.isNull(approvalChain.getApproverIdList())
+                            ? 0
+                            : approvalChain.getApproverIdList().split(",").length;
             int allApproverIdNumber =
                     sysUserApi.getUsersByRoleId(approvalChain.getApproveRoleId()).size();
             if (currentApproverIdNumber / allApproverIdNumber < percent / 100) {
@@ -756,7 +763,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalChain.getCurrentStatusChildId(),
                 approvalProcessDTO);
 
-        return approvalBusiness.getStatusValue();
+        return approvalBusiness;
     }
 
     // 审批驳回------------------------------------------------------------------
