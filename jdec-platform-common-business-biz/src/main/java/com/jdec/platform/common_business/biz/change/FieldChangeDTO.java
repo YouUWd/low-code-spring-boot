@@ -20,8 +20,8 @@ public class FieldChangeDTO implements Serializable {
     // private String fieldType;
 
     @Schema(description = "前值")
-    private FieldObject beforeValue;
+    private String beforeValue;
 
     @Schema(description = "后值")
-    private FieldObject afterValue;
+    private String afterValue;
 }

@@ -6,10 +6,10 @@ import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogResp;
 import com.jdec.platform.monitorlog.biz.service.JdecMonitorLogService;
 import com.jdec.platform.shared.model.ApiResponse;
+import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,9 +28,17 @@ public class JdecMonitorLogController {
 
     @PostMapping("/queryPage")
     @Operation(summary = "查询监控日志列表", description = "根据时间范围、日志类型、关键词查询监控日志")
-    public ApiResponse<List<MonitorLogPageListResp>> query(
+    public ApiResponse<PageResult<MonitorLogPageListResp>> query(
             @Valid @RequestBody MonitorLogPageListReq request) {
-        return ApiResponse.success(jdecMonitorLogService.queryPageList(request));
+        if (request.getPageNum() == null || request.getPageNum() < 1) {
+            request.setPageNum(1L);
+        }
+        if (request.getPageSize() == null || request.getPageSize() < 1) {
+            request.setPageSize(10L);
+        }
+
+        PageResult<MonitorLogPageListResp> records = jdecMonitorLogService.queryPageList(request);
+        return ApiResponse.success(records);
     }
 
     @PostMapping("/addControlLog")
@@ -57,6 +65,15 @@ public class JdecMonitorLogController {
                             + "           }"
                             + "       }")
     public ApiResponse<Void> addControlLog(@Valid @RequestBody MonitorLogReq request) {
+        if (request.getSubjectId() == null) {
+            return ApiResponse.error("subjectId不能为空");
+        }
+        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
+            return ApiResponse.error("logContent不能为空");
+        }
+        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
+            return ApiResponse.error("logRemark不能为空");
+        }
         jdecMonitorLogService.recordControlLog(request);
         return ApiResponse.success();
     }
@@ -64,6 +81,9 @@ public class JdecMonitorLogController {
     @PostMapping("/addBusinessChangeLog")
     @Operation(summary = "添加业务单据字段变化日志", description = "记录业务单据字段变化日志，logContent内容为单据字段变化HTML标记文本")
     public ApiResponse<Void> addBusinessChangeLog(@Valid @RequestBody MonitorLogReq request) {
+        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
+            return ApiResponse.error("logContent不能为空");
+        }
         jdecMonitorLogService.recordBusinessLog(request);
         return ApiResponse.success();
     }
@@ -85,6 +105,9 @@ public class JdecMonitorLogController {
                             + "        }"
                             + "     *  带remark  如：驳回原因：审批不通过..")
     public ApiResponse<Void> addApprovalChainLog(@Valid @RequestBody MonitorLogReq request) {
+        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
+            return ApiResponse.error("logContent不能为空");
+        }
         jdecMonitorLogService.recordApprovalChainLog(request);
         return ApiResponse.success();
     }
@@ -104,8 +127,8 @@ public class JdecMonitorLogController {
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
             @RequestHeader("Login-Role-Id") Long loginRoleId,
-            @RequestParam String systemName,
-            @RequestParam String ip) {
+            @RequestHeader("systemName") String systemName,
+            @RequestHeader("ip") String ip) {
         systemName = systemName != null ? systemName.trim() : null;
         ip = ip != null ? ip.trim() : null;
         if (subjectId == null) {
@@ -152,8 +175,8 @@ public class JdecMonitorLogController {
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
             @RequestHeader("Login-Role-Id") Long loginRoleId,
-            @RequestParam String systemName,
-            @RequestParam String ip) {
+            @RequestHeader("systemName") String systemName,
+            @RequestHeader("ip") String ip) {
         systemName = systemName != null ? systemName.trim() : null;
         ip = ip != null ? ip.trim() : null;
         if (subjectId == null) {

@@ -49,7 +49,7 @@ public class SelectRoleBizLog implements BizLog {
                 } else {
                     req.setLogContent("切换角色:" + "");
                 }
-                monitorLogApiOpenFeignClient.add(req);
+                // monitorLogApiOpenFeignClient.add(req);
                 return Boolean.TRUE;
             } catch (Exception e) {
                 log.error("recordBizLog logEnum={},log={},e=", logEnum, bizLog.toString(), e);

@@ -59,7 +59,7 @@ public class DataUpdateBizLog implements BizLog {
                     req.setLogContent("[" + menuTitle + "]-修改数据");
                 }
                 req.setLogRemark(bizLogDTO.getLogRemark());
-                monitorLogApiOpenFeignClient.add(req);
+                monitorLogApiOpenFeignClient.recordBusinessLog(req);
                 return Boolean.TRUE;
             } catch (Exception e) {
                 log.error("recordBizLog logEnum={},log={},e=", logEnum, bizLog.toString(), e);

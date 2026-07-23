@@ -18,11 +18,11 @@ public class MonitorLogPageListReq {
 
     @Schema(description = "分页查询-当前页码", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "分页查询-当前页码不能为空")
-    private Integer pageNum;
+    private Long pageNum;
 
     @Schema(description = "分页查询-每页数量", example = "50", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "分页查询-每页数量不能为空")
-    private Integer pageSize;
+    private Long pageSize;
 
     @Schema(
             description = "开始时间",

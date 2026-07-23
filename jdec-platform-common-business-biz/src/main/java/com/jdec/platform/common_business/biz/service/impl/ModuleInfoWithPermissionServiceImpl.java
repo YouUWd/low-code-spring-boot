@@ -67,7 +67,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
                     .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
                     .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
-                    .moduleType(moduleInfoResp.getModule().getModuleType());
+                    .moduleType(moduleInfoResp.getModule().getModuleType())
+                    .moduleName(moduleInfoResp.getModule().getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
 
