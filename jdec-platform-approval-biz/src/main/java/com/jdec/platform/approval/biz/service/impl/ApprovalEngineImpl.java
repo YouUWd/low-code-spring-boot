@@ -538,9 +538,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionWrapper =
                 new LambdaQueryWrapper<>();
         approvalVersionWrapper.eq(
-                ApprovalVersionRecord::getModuleId, approvalProcessDTO.getModuleId());
+                ApprovalVersionRecord::getBusinessNumber, approvalBusiness.getBusinessNumber());
         approvalVersionWrapper
-                .eq(ApprovalVersionRecord::getRecordId, approvalProcessDTO.getOldRecordId())
                 .orderByDesc(ApprovalVersionRecord::getId)
                 .last("limit 1"); // 追加SQL limit
         ApprovalVersionRecord approvalRecord =
@@ -552,18 +551,26 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 生成版本和编号
         int versionNo = approvalRecord.getVersionNo();
         Long sourceId = approvalRecord.getId();
-        if (approvalRecord.getCurrentStep().equals(0)) {
+        if (approvalRecord.getCurrentStep().equals(0) && approvalRecord.getStatusValue() != -99) {
             // 驳回提交
             approvalProcessDTO.setSerialNumber(approvalRecord.getSerialNumber());
             approvalProcessDTO.setSerialNo(approvalRecord.getSerialNo() + 1);
             sourceId = approvalRecord.getSourceId();
-        } else {
+        } else if (approvalRecord.getStatusValue() == 99) {
             // 直接提交
             versionNo = approvalRecord.getVersionNo() + 1;
             String serialNumber = approvalRecord.getBusinessNumber() + "@" + versionNo;
             approvalProcessDTO.setSerialNumber(serialNumber);
             approvalProcessDTO.setSerialNo(1);
+        } else if (approvalRecord.getStatusValue() == -99) {
+            // 直接提交
+            versionNo = approvalRecord.getVersionNo() + 1;
+            String serialNumber = approvalRecord.getBusinessNumber() + "@" + versionNo;
+            approvalProcessDTO.setSerialNumber(serialNumber);
+            approvalProcessDTO.setSerialNo(1);
+            sourceId = approvalRecord.getSourceId();
         }
+
         // 初始化审批链
         initApprovalChainForModule(approvalProcessDTO);
 
@@ -610,6 +617,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setSubjectId(approvalProcessDTO.getSubjectId());
         approvalVersionRecord.setModuleId(approvalProcessDTO.getModuleId());
         approvalVersionRecord.setRecordId(approvalProcessDTO.getRecordId());
+        approvalVersionRecord.setBusinessId(approvalBusiness.getBusinessId());
         approvalVersionRecord.setBusinessNumber(approvalRecord.getBusinessNumber());
         approvalVersionRecord.setVersionNo(versionNo);
         approvalVersionRecord.setSerialNumber(approvalProcessDTO.getSerialNumber());
