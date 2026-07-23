@@ -678,7 +678,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalIdList.add(approvalProcessDTO.getApplicantId().toString());
         approvalChain.setApproverIdList(String.join(",", approvalIdList));
         approvalUidList.add(approvalProcessDTO.getApplicantId().toString());
-        approvalChain.setApproved(true);
         approvalChain.setApprovalUids(String.join(",", approvalUidList));
         approvalBusiness.setApprovalUids(String.join(",", approvalUidList));
         approvalChainMapper.updateById(approvalChain);
@@ -702,6 +701,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
         }
         if (approved) {
+            approvalChain.setApproved(true);
+            approvalChainMapper.updateById(approvalChain);
             LambdaQueryWrapper<ApprovalChain> approvalNextWrapper = new LambdaQueryWrapper<>();
             approvalNextWrapper.eq(
                     ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
@@ -1219,24 +1220,37 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             && approvalChainBusiness.getApproverId().equals(userId))
                     || (Objects.nonNull(approvalChainBusiness.getApproveRoleId())
                             && approvalChainBusiness.getApproveRoleId().equals(roleId))) {
-                // 如果单据处于等待审批状态,显示该步骤绑定的按钮
-                LambdaQueryWrapper<ApprovalChainButton> approvalButtonWrapper =
-                        new LambdaQueryWrapper<>();
-                approvalButtonWrapper.eq(
-                        ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
-                approvalButtonWrapper.eq(
-                        ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
-                approvalButtonWrapper.orderByAsc(ApprovalChainButton::getButtonId);
-                List<ApprovalChainButton> buttonList =
-                        approvalChainButtonMapper.selectList(approvalButtonWrapper);
-                for (ApprovalChainButton item : buttonList) {
-                    operations.add(
-                            showButtonInfo(
-                                    item.getButtonTypeValue(),
-                                    item.getButtonId(),
-                                    approvalChainBusiness.getSerialNumber(),
-                                    approvalChainBusiness.getSerialNo(),
-                                    approvalChainBusiness.getCurrentStep()));
+                boolean btnShow = true;
+                // 判断用户是否已经完成会签
+                if (List.of("all_members_done", "percent_of_group")
+                                .contains(approvalChain.getApprovalRule())
+                        && Objects.nonNull(approvalChain.getApproverIdList())) {
+                    List<String> ids = List.of(approvalChain.getApproverIdList().split(","));
+                    if (ids.contains(userId.toString())) {
+                        btnShow = false;
+                    }
+                }
+                if (btnShow) {
+                    // 如果单据处于等待审批状态,显示该步骤绑定的按钮
+                    LambdaQueryWrapper<ApprovalChainButton> approvalButtonWrapper =
+                            new LambdaQueryWrapper<>();
+                    approvalButtonWrapper.eq(
+                            ApprovalChainButton::getSerialNumber,
+                            approvalProcessDTO.getSerialNumber());
+                    approvalButtonWrapper.eq(
+                            ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
+                    approvalButtonWrapper.orderByAsc(ApprovalChainButton::getButtonId);
+                    List<ApprovalChainButton> buttonList =
+                            approvalChainButtonMapper.selectList(approvalButtonWrapper);
+                    for (ApprovalChainButton item : buttonList) {
+                        operations.add(
+                                showButtonInfo(
+                                        item.getButtonTypeValue(),
+                                        item.getButtonId(),
+                                        approvalChainBusiness.getSerialNumber(),
+                                        approvalChainBusiness.getSerialNo(),
+                                        approvalChainBusiness.getCurrentStep()));
+                    }
                 }
             }
             if (approvalChainBusiness.getStatusValue() != -99
