@@ -25,7 +25,6 @@ import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -692,11 +691,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     "all_members_done".equals(approvalChain.getApprovalRule())
                             ? 100
                             : approvalChain.getRoleApprovalPercent();
-            long currentApproverIdNumber =
-                    IntStream.range(0, approvalChain.getApproverIdList().length())
-                                    .filter(i -> approvalChain.getApproverIdList().charAt(i) == '，')
-                                    .count()
-                            + 2;
+            int currentApproverIdNumber =
+                    Objects.isNull(approvalChain.getApproverIdList())
+                            ? 0
+                            : approvalChain.getApproverIdList().split(",").length;
             int allApproverIdNumber =
                     sysUserApi.getUsersByRoleId(approvalChain.getApproveRoleId()).size();
             if (currentApproverIdNumber / allApproverIdNumber < percent / 100) {
