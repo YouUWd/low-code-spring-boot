@@ -14,4 +14,10 @@ public class SaveRoleMenuReq {
 
     @Schema(description = "菜单ID列表")
     private List<Long> menuIds;
+
+    @Schema(description = "勾选标识：1=勾选新增，0=取消勾选")
+    private Integer checkFlag;
+
+    @Schema(description = "菜单路径字符串列表，用于审计日志")
+    private List<String> menuPaths;
 }

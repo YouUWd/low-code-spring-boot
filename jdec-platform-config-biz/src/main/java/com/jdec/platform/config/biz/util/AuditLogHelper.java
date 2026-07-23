@@ -129,11 +129,13 @@ public class AuditLogHelper {
      * @param subModule 子模块名称（如："角色管理"、"权限管理"）
      * @param tableName 表名（如："sys_role"、"sys_permission"）
      * @param operation 操作类型（如："新增"）
+     * @param dataId 数据ID
      * @param newData 新增的数据对象
      */
-    public void logCreate(String subModule, String tableName, String operation, Object newData) {
+    public void logCreate(
+            String subModule, String tableName, String operation, Long dataId, Object newData) {
         try {
-            dataAuditService.auditCreate(MODULE, subModule, operation, tableName, newData);
+            dataAuditService.auditCreate(MODULE, subModule, operation, tableName, dataId, newData);
             log.info("审计日志（新增）: subModule={}, operation={}", subModule, operation);
         } catch (Exception e) {
             log.error("记录新增审计日志失败: subModule={}, operation={}", subModule, operation, e);
