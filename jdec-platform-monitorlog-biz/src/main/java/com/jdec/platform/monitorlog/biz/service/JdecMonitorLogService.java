@@ -20,6 +20,7 @@ import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorSystemLogMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.model.ApiResponse;
+import com.jdec.platform.shared.model.PageResult;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -94,7 +95,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
             new ConcurrentHashMap<>();
 
     @Override
-    public List<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq request) {
+    public PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq request) {
         LocalDate startDate = LocalDate.parse(request.getStartTime(), DATE_FORMATTER);
         LocalDate endDate = LocalDate.parse(request.getEndTime(), DATE_FORMATTER);
         LocalDateTime startDateTime = LocalDateTime.of(startDate, LocalTime.MIN);
@@ -107,7 +108,11 @@ public class JdecMonitorLogService implements MonitorLogApi {
         // 执行分页查询
         IPage<JdecMonitorSystemLog> result = jdecMonitorSystemLogMapper.selectPage(page, wrapper);
 
-        return result.getRecords().stream().map(this::convertToResp).collect(Collectors.toList());
+        List<MonitorLogPageListResp> records =
+                result.getRecords().stream().map(this::convertToResp).collect(Collectors.toList());
+
+        return PageResult.of(
+                request.getPageNum(), request.getPageSize(), result.getTotal(), records);
     }
 
     // 获取监控日志详情
@@ -116,8 +121,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         JdecMonitorSystemLog log = jdecMonitorSystemLogMapper.selectById(id);
         if (log != null) {
             // 从缓存中获取用户详情
-            MonitorLogResp resp = BeanUtil.toBean(log, MonitorLogResp.class);
-            return resp;
+            return BeanUtil.toBean(log, MonitorLogResp.class);
         }
         return null;
     }
@@ -256,9 +260,9 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogType(LOG_TYPE_SYSTEM);
         String mockLogContent =
                 USER_MOCK_TEMPLATE
-                        .replace("{avatar}", userDetail.getUserAvatar())
-                        .replace("{userName}", userDetail.getUserName())
-                        .replace("{workNumber}", userDetail.getWorkNumber())
+                        .replace("{avatar}", mockUserDetail.getUserAvatar())
+                        .replace("{userName}", mockUserDetail.getUserName())
+                        .replace("{workNumber}", mockUserDetail.getWorkNumber())
                         .replace("{mockRoleName}", roleConfigDetail.getRoleName());
         log.setLogContent("切换身份：" + mockLogContent);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
@@ -808,7 +812,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
                 + messageType
                 + "\r\n"
                 + "消息接收人："
-                + messageReceiversHtml.toString()
+                + messageReceiversHtml
                 + "</span></div></span>";
     }
 
