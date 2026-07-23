@@ -46,4 +46,7 @@ public class SysModuleField {
 
     /** 是否启用：0-禁用, 1-启用（COMBINE专属） */
     private Integer enabled;
+
+    /** 业务唯一标识顺序：大于0表示是业务唯一标识字段及其顺序，null或0表示否 */
+    private Integer bizKeyOrder;
 }
