@@ -3,7 +3,7 @@ package com.jdec.platform.common_business.biz.service.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.FormField;
 import com.jdec.platform.common_business.biz.dto.RightInfoVO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
@@ -28,7 +28,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
     private final ConfigCenterApiService configCenterApiService;
 
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     private static final String DB_TABLE_FIELD_SEPARATOR = ".";
 
@@ -67,7 +67,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
                     .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
                     .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
-                    .moduleType(moduleInfoResp.getModule().getModuleType());
+                    .moduleType(moduleInfoResp.getModule().getModuleType())
+                    .moduleName(moduleInfoResp.getModule().getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
 

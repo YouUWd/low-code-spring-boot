@@ -1,7 +1,7 @@
 package com.jdec.platform.common_business.biz.service.change.impl;
 
 import com.jdec.platform.common_business.biz.common.CommonConstant;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
 import com.jdec.platform.common_business.biz.dto.ChangedPayload;
 import com.jdec.platform.common_business.biz.dto.ConfigChangeMessageDTO;
@@ -26,7 +26,7 @@ public class RoleDeletePermissionChangeHandler implements PermissionChangeMessag
     private final Set<ConfigCenterChangeType> referToChangeTypeSet =
             Set.of(ConfigCenterChangeType.ROLE_DELETE);
 
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     @Override
     public Boolean isReferToChangeType(ConfigCenterChangeType changeType) {

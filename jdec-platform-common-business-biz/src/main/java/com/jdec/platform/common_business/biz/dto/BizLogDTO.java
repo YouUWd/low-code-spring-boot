@@ -10,9 +10,11 @@ import lombok.ToString;
 @ToString
 public class BizLogDTO implements Serializable {
 
-    private String logType;
-
     private String projectNo;
+
+    private String token;
+
+    private String logType;
 
     private String platform;
 
@@ -31,4 +33,8 @@ public class BizLogDTO implements Serializable {
     private Long currentRoleId;
 
     private String ip;
+
+    private String logRemark;
+
+    private Long menuId;
 }

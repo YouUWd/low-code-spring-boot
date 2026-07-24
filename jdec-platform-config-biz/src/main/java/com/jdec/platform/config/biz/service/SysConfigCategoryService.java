@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
@@ -414,6 +415,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SysConfigItemResp getConfigItemsByValue(String categoryAlias, String itemValue) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
@@ -434,6 +436,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SysConfigItemResp getConfigItemsById(Long id) {
         SysConfigItem item = itemMapper.selectById(id);
         if (Objects.isNull(item)) {

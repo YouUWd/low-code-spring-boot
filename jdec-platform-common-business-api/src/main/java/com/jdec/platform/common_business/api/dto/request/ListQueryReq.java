@@ -6,7 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-@Schema(description = "带筛选条件的表头数据获取请求参数类")
+@Schema(description = "带筛选条件的表头数据获取请求参数类,不带审批链的普通列表")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -22,7 +22,7 @@ public class ListQueryReq {
     private Long pageSize;
 
     @Schema(description = "页码")
-    private Long page;
+    private Long pageNum;
 
     @Schema(description = "筛选项")
     private List<SearchItemReq> search;

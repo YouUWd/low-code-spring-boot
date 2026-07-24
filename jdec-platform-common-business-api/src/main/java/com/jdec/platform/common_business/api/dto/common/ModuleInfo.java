@@ -23,4 +23,6 @@ public class ModuleInfo {
 
     // 主表外键关联字段 用于详情页的关联表查询
     private String relateSearchField;
+
+    private String moduleName;
 }

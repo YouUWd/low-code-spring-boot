@@ -5,7 +5,7 @@ import com.jdec.platform.common_business.api.dto.response.MenuResp;
 import com.jdec.platform.common_business.api.dto.response.RoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ConfigCenterApiServiceImpl implements ConfigCenterApiService {
 
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     @Override
     public List<RoleResp> getRoleListBySubjectAndUserId(Long subjectId, Long userId) {

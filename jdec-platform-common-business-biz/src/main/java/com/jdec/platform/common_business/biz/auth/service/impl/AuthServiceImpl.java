@@ -7,7 +7,7 @@ import com.jdec.platform.common_business.biz.auth.dto.resp.SysInfoDTO;
 import com.jdec.platform.common_business.biz.auth.dto.resp.UserInfo;
 import com.jdec.platform.common_business.biz.auth.security.JwtTokenProvider;
 import com.jdec.platform.common_business.biz.auth.service.AuthApi;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.LoginUserPrincipal;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.UserCheckResp;
@@ -33,7 +33,7 @@ public class AuthServiceImpl implements AuthApi {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final StringRedisTemplate redisTemplate;
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
     @Value("${app.internal.url}")
     private String internalUrl;

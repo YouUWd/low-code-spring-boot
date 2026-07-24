@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 @FeignClient(
         name = "config-center",
-        url = "http://119.36.78.123:5009/api/config",
+        url = "http://127.0.0.1:8080/api/config",
         configuration = FeignConfig.class)
 public interface ConfigCenterApiOpenFeignClient {
     @GetMapping("/sys/role/get-user-roles")
@@ -98,4 +98,9 @@ public interface ConfigCenterApiOpenFeignClient {
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestParam Long roleId,
             @RequestParam(required = false) Long moduleId);
+
+    // 根据角色ID 获取角色的配置详情
+    @GetMapping("/sys/role/get-role-config-detail")
+    ConfigApiResponse<RoleConfigDetailResp> getRoleConfigDetail(
+            @RequestHeader("X-Subject-Id") Long subjectId, @RequestParam Long roleId);
 }

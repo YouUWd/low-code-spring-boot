@@ -1,12 +1,8 @@
 package com.jdec.platform.approval.biz.controller;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
-import com.jdec.platform.approval.api.req.ApprovalDataReq;
-import com.jdec.platform.approval.api.req.ApprovalListReq;
-import com.jdec.platform.approval.api.req.ApprovalProcessReq;
-import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
+import com.jdec.platform.approval.api.req.*;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
-import com.jdec.platform.approval.api.resp.ApprovalListResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -33,7 +29,8 @@ public class ApprovalController {
 
     @PostMapping("/BusinessList")
     @Operation(summary = "查询单据列表", description = "查询待办、已办、全部单据列表")
-    public ApiResponse<List<ApprovalListResp>> getBusinessList(@RequestBody ApprovalListReq req) {
+    public ApiResponse<List<Map<String, Object>>> getBusinessList(
+            @RequestBody ApprovalListReq req) {
         return ApiResponse.success(approvalService.getBusinessList(req));
     }
 
@@ -53,6 +50,20 @@ public class ApprovalController {
     @Operation(summary = "查询单据对比版本数据", description = "查询单据对比版本数据ID,版本号")
     public ApiResponse<Map<String, Object>> getApprovalVersionId(@RequestBody ApprovalDataReq req) {
         return ApiResponse.success(approvalService.getApprovalChangeData(req));
+    }
+
+    @PostMapping("/Receiver")
+    @Operation(summary = "查询消息接收人", description = "查询消息ID,消息接收人列表")
+    public ApiResponse<List<Map<String, Object>>> getApprovalVersionId(
+            @RequestBody MessageReceiverReq req) {
+        return ApiResponse.success(approvalService.getMessageReceiver(req));
+    }
+
+    @PostMapping("/ApprovalStep")
+    @Operation(summary = "查询已经审批的步骤状态", description = "查询已经审批的步骤状态")
+    public ApiResponse<List<Map<String, Object>>> getApprovalStep(
+            @RequestBody ApprovalDataReq req) {
+        return ApiResponse.success(approvalService.getApprovalStep(req));
     }
 
     @PostMapping("/save")

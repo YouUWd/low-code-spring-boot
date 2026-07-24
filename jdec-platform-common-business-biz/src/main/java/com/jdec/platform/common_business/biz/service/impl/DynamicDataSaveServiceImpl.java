@@ -1,31 +1,43 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
+import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
 import com.jdec.platform.common_business.api.dto.common.ModuleField;
 import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
 import com.jdec.platform.common_business.api.dto.common.ModuleTable;
+import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
+import com.jdec.platform.common_business.biz.change.CallTypeEnum;
+import com.jdec.platform.common_business.biz.change.DataChangeContext;
+import com.jdec.platform.common_business.biz.change.ModuleDataChangeContext;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
-import com.jdec.platform.common_business.biz.configcenter.client.ConfigCenterApiClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ApprovalApiOpenFeignClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
+import com.jdec.platform.common_business.biz.context.DataUpdateContextHolder;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
+import com.jdec.platform.common_business.biz.util.JsonUtil;
+import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.exception.BusinessException;
-import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.utils.SpringBeanUtil;
 import java.io.Serializable;
 import java.lang.reflect.*;
@@ -86,11 +98,14 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
-    private final ConfigCenterApiClient configCenterApiClient;
+    private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
-    @Override
+    private final ApprovalApiOpenFeignClient approvalApiOpenFeignClient;
+
+    private final SystemModuleDataChangeLogService systemModuleDataChangeLogService;
+
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
+    private Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
         List<Long> moduleIdList =
                 reqList.stream().map(x -> x.getModuleId()).collect(Collectors.toList());
         // 先校验权限
@@ -229,7 +244,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             try {
                 Map<String, Object> extraDataMap =
                         getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
-                Object primaryObject = insertModuleTable(primaryTable, primaryData, extraDataMap);
+                Object primaryObject =
+                        insertModuleTable(
+                                moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
 
@@ -269,6 +286,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             // 写入关联表的数据
                             Object o =
                                     insertModuleTable(
+                                            moduleFilterInfo,
                                             table.getTableName(),
                                             tableDataMap.get(table.getTableName()),
                                             extraDataMap);
@@ -371,7 +389,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             try {
                 Map<String, Object> extraDataMap =
                         getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
-                Object primaryObject = insertModuleTable(primaryTable, primaryData, extraDataMap);
+                Object primaryObject =
+                        insertModuleTable(
+                                moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
 
@@ -407,6 +427,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             // 写入关联表的数据
                             Object o =
                                     insertModuleTable(
+                                            moduleFilterInfo,
                                             table.getTableName(),
                                             tableDataMap.get(table.getTableName()),
                                             extraDataMap);
@@ -426,9 +447,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         return resultList;
     }
 
-    @Override
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public Object editMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
+    private Object editMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
         List<Long> moduleIdList =
                 reqList.stream().map(x -> x.getModuleId()).collect(Collectors.toList());
         // 先校验权限
@@ -471,20 +491,20 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
     @Override
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public ApiResponse editMultiMenuModuleData(Long subjectId, Long roleId, List<MenuSaveReq> req) {
+    public Object editMultiMenuModuleData(Long subjectId, Long roleId, List<MenuSaveReq> req) {
         List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
 
         ConfigApiResponse<List<MenuListResp>> response =
                 configCenterApiClient.getMenuList(subjectId, 1);
 
         if (!ConfigApiResponse.isSuccessResponse(response)) {
-            return ApiResponse.error(
+            throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
         }
         List<MenuListResp> menuRespList = response.getData();
         if (CollectionUtil.isEmpty(menuRespList)) {
-            return ApiResponse.error(
+            throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
         }
@@ -514,13 +534,154 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         });
 
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
-        Object o = editMultiModuleData(subjectId, roleId, moduleSaveList);
-        return ApiResponse.success(o);
+        Object o = null;
+        try {
+            DataUpdateContextHolder.openDataChangeFlag();
+            o = editMultiModuleData(subjectId, roleId, moduleSaveList);
+
+            List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
+            if (CollectionUtil.isNotEmpty(targets)) {
+                ModuleDataChangeContext context = new ModuleDataChangeContext();
+                context.setSubjectId(subjectId);
+                context.setMainModuleId(moduleSaveList.get(0).getModuleId());
+                context.setMenuId(req.get(0).getMenuId());
+                context.setDataId((Long) o);
+                context.setRealUserId(LoginUserUtil.getRealLoginUserId());
+                context.setMockUserId(
+                        !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
+                                ? LoginUserUtil.getLoginUserId()
+                                : null);
+                context.setRoleId(roleId);
+                List<DataChangeContext> dataChangeContextList = new ArrayList<>();
+                for (Object object : targets) {
+                    DataChangeContext dataChangeContext = (DataChangeContext) object;
+                    dataChangeContextList.add(dataChangeContext);
+                }
+                context.setCallType(CallTypeEnum.EDITE);
+                context.setDataChangeContextList(dataChangeContextList);
+                systemModuleDataChangeLogService.saveLog(context);
+            }
+        } finally {
+            DataUpdateContextHolder.clear();
+        }
+        return o;
     }
 
     @Override
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
-    public ApiResponse createMultiMenuModuleData(
+    public Object createMultiMenuModuleData(Long subjectId, Long roleId, List<MenuSaveReq> req) {
+        List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
+
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        MenuListResp targetTopMenu =
+                bizMenuList.stream()
+                        .filter(ele -> req.get(0).getMenuId().equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        // 将menuId替换为moduleId
+        req.stream()
+                .forEach(
+                        ele -> {
+                            MenuListResp target =
+                                    bizMenuList.stream()
+                                            .filter(n -> n.getId().equals(ele.getMenuId()))
+                                            .findFirst()
+                                            .orElse(null);
+
+                            if (Objects.nonNull(target)) {
+                                ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
+                                BeanUtils.copyProperties(ele, moduleSaveReq);
+                                moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveList.add(moduleSaveReq);
+                            }
+                        });
+
+        // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
+        Object o = null;
+        try {
+            DataUpdateContextHolder.openDataChangeFlag();
+            o = createMultiModuleData(subjectId, roleId, moduleSaveList);
+
+            List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
+            if (CollectionUtil.isNotEmpty(targets)) {
+                ModuleDataChangeContext context = new ModuleDataChangeContext();
+                context.setSubjectId(subjectId);
+                context.setMainModuleId(moduleSaveList.get(0).getModuleId());
+                context.setMenuId(req.get(0).getMenuId());
+                context.setDataId((Long) o);
+                context.setRealUserId(LoginUserUtil.getRealLoginUserId());
+                context.setMockUserId(
+                        !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
+                                ? LoginUserUtil.getLoginUserId()
+                                : null);
+                context.setRoleId(roleId);
+                List<DataChangeContext> dataChangeContextList = new ArrayList<>();
+                for (Object object : targets) {
+                    DataChangeContext dataChangeContext = (DataChangeContext) object;
+                    dataChangeContextList.add(dataChangeContext);
+                }
+                context.setCallType(CallTypeEnum.CREATE);
+                context.setDataChangeContextList(dataChangeContextList);
+                systemModuleDataChangeLogService.saveLog(context);
+            }
+        } finally {
+            DataUpdateContextHolder.clear();
+        }
+        return o;
+    }
+
+    /**
+     * 审批链编辑时调用，每次都是新增record表的数据，所以要去掉主键ID
+     *
+     * @param subjectId
+     * @param roleId
+     * @param moduleSaveList
+     * @return
+     */
+    private Object createMultiModuleDataWithApproval(
+            Long subjectId, Long roleId, List<ModuleSaveReq> moduleSaveList, Long moduleId) {
+        // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
+        Object primaryData = createMultiModuleData(subjectId, roleId, moduleSaveList);
+
+        // 有审批链操作时，执行审批链
+        ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
+        approvalProcessReq.setSubjectId(subjectId);
+        approvalProcessReq.setButton("create");
+        approvalProcessReq.setModuleId(moduleId);
+        approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryData)));
+        approvalProcessReq.setRoleId(roleId);
+        approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+        approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
+        approvalProcessReq.setPrefix("CLS");
+
+        approvalApiOpenFeignClient.process(approvalProcessReq);
+
+        return primaryData;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Object createMultiMenuModuleDataWithApproval(
             Long subjectId, Long roleId, List<MenuSaveReq> req) {
         List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
 
@@ -528,13 +689,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 configCenterApiClient.getMenuList(subjectId, 1);
 
         if (!ConfigApiResponse.isSuccessResponse(response)) {
-            return ApiResponse.error(
+            throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
         }
         List<MenuListResp> menuRespList = response.getData();
         if (CollectionUtil.isEmpty(menuRespList)) {
-            return ApiResponse.error(
+            throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
         }
@@ -543,6 +704,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         bizMenuList.addAll(
                 menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
         bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        MenuListResp targetTopMenu =
+                bizMenuList.stream()
+                        .filter(ele -> req.get(0).getMenuId().equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
 
         // 将menuId替换为moduleId
         req.stream()
@@ -562,9 +729,187 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             }
                         });
 
+        // 创建前先填充module_id、deleted字段值
+        createPreProcessData(moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
-        Object o = createMultiModuleData(subjectId, roleId, moduleSaveList);
-        return ApiResponse.success(o);
+        Object o =
+                createMultiModuleDataWithApproval(
+                        subjectId, roleId, moduleSaveList, targetTopMenu.getModuleId());
+        return o;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Object editMultiMenuModuleDataWithApproval(
+            Long subjectId,
+            Long roleId,
+            List<MenuSaveReq> req,
+            ApprovalOperationReq approvalOperation) {
+        List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
+
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        MenuListResp targetTopMenu =
+                bizMenuList.stream()
+                        .filter(ele -> req.get(0).getMenuId().equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        // 将menuId替换为moduleId
+        req.stream()
+                .forEach(
+                        ele -> {
+                            MenuListResp target =
+                                    bizMenuList.stream()
+                                            .filter(n -> n.getId().equals(ele.getMenuId()))
+                                            .findFirst()
+                                            .orElse(null);
+
+                            if (Objects.nonNull(target)) {
+                                ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
+                                BeanUtils.copyProperties(ele, moduleSaveReq);
+                                moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveList.add(moduleSaveReq);
+                            }
+                        });
+
+        // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
+        Long oldRecordId = editPreProcessData(req, subjectId, roleId, targetTopMenu.getModuleId());
+
+        Object primaryData = createMultiMenuModuleData(subjectId, roleId, req);
+
+        ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
+        approvalProcessReq.setSubjectId(subjectId);
+        approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
+        approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryData)));
+        approvalProcessReq.setOldRecordId(oldRecordId);
+        approvalProcessReq.setRoleId(roleId);
+        approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+        approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
+        approvalProcessReq.setButton(approvalOperation.getBtnType());
+        approvalProcessReq.setReason(approvalOperation.getReason());
+        approvalProcessReq.setRejectStep(approvalOperation.getRejectStep());
+
+        ConfigApiResponse<Map<String, Object>> processResult =
+                approvalApiOpenFeignClient.process(approvalProcessReq);
+
+        if (ConfigApiResponse.isSuccessResponse(response)) {
+            log.debug("审批结果:{}", processResult);
+        } else {
+            try {
+                log.debug("调用审批链方法:{}失败，请求参数:{}", "process", JsonUtil.obj2Json(approvalProcessReq));
+            } catch (JsonProcessingException e) {
+                log.debug("请求参数json序列化失败");
+            }
+            // 主动抛出异常，回滚事务
+            throw new BusinessException(
+                    ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                    ApiResponseCodeEnum.SERVER_ERROR.getMessage());
+        }
+
+        return primaryData;
+    }
+
+    /**
+     * 新建时补充modueleId和deleted标识
+     *
+     * @param req
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @return
+     */
+    private void createPreProcessData(
+            List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
+        for (ModuleSaveReq ele : req) {
+            for (Map<String, Object> item : ele.getModuleData()) {
+                Set<String> tableNames = new HashSet<>();
+                item.keySet()
+                        .forEach(
+                                str -> {
+                                    if (StringUtils.isNotBlank(str)) {
+                                        tableNames.add(Splitter.on(".").splitToList(str).get(0));
+                                    }
+                                });
+
+                log.debug("模块:{}对应的数据表为:{},顶层模块ID为:{}", ele.getModuleId(), tableNames, moduleId);
+                if (!CollectionUtils.isEmpty(tableNames)) {
+                    for (String tableName : tableNames) {
+                        log.debug("填充数据表:{}的module_id:{}和deleted:{}字段", tableName, moduleId, false);
+                        item.put(tableName + DB_TABLE_FIELD_SEPARATOR + "moduleId", moduleId);
+                        item.put(tableName + DB_TABLE_FIELD_SEPARATOR + "deleted", false);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 去除主键ID，走新建逻辑，返回上一版本recordId
+     *
+     * @param req
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @return
+     */
+    private Long editPreProcessData(
+            List<MenuSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
+        // 获取主模块信息
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId, roleId, moduleId, FormButtonEnum.CREATE.getKey(), List.of());
+
+        String primaryTablePrimaryKey =
+                moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                        + DB_TABLE_FIELD_SEPARATOR
+                        + DEFAULT_PRIMARY_KEY;
+
+        Long recordId = null;
+
+        for (MenuSaveReq ele : req) {
+            for (Map<String, Object> item : ele.getModuleData()) {
+                Iterator<Map.Entry<String, Object>> iterator = item.entrySet().iterator();
+                while (iterator.hasNext()) {
+                    Map.Entry<String, Object> nextEntry = iterator.next();
+                    if (primaryTablePrimaryKey.equals(nextEntry.getKey())) {
+                        recordId = Long.parseLong(String.valueOf(nextEntry.getValue()));
+                        log.debug(
+                                "找到模块主表主键:{}对应的key,值为:{}",
+                                nextEntry.getKey(),
+                                nextEntry.getValue());
+                    }
+                    if (nextEntry
+                            .getKey()
+                            .endsWith(DB_TABLE_FIELD_SEPARATOR + DEFAULT_PRIMARY_KEY)) {
+                        log.debug("模块数据:{}是数据表主键，移除主键走新建逻辑。", nextEntry.getKey());
+                        iterator.remove();
+                        break;
+                    }
+                }
+            }
+        }
+
+        return recordId;
     }
 
     private List<Object> editMainModuleData(Long subjectId, Long roleId, ModuleSaveReq req) {
@@ -634,7 +979,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
 
                 // 更新主表 数据
-                Object primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                Object primaryObject =
+                        updateModuleTable(
+                                moduleFilterInfo, primaryTable, primaryData, extraDataMap);
 
                 // TODO 有问题，关联key不一定是主键
                 Object primaryObjectId = getId(primaryObject);
@@ -709,6 +1056,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
                                 || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
                             updateModuleTable(
+                                    moduleFilterInfo,
                                     table.getTableName(),
                                     tableDataMap.get(table.getTableName()),
                                     extraDataMap);
@@ -817,12 +1165,15 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 Boolean isMainTableInsert = false;
                 // 更新
                 if (isDataHasTableId(primaryTable, primaryData)) {
-                    primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                    primaryObject =
+                            updateModuleTable(
+                                    moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                     isMainTableInsert = false;
                 } else {
                     // 插入
                     primaryObject =
                             insertModuleTable(
+                                    moduleFilterInfo,
                                     primaryTable,
                                     primaryData,
                                     getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
@@ -899,6 +1250,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                                 o =
                                         insertModuleTable(
+                                                moduleFilterInfo,
                                                 table.getTableName(),
                                                 tableDataMap.get(table.getTableName()),
                                                 getCreateModuleExtraMap(
@@ -915,6 +1267,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 }
                                 o =
                                         updateModuleTable(
+                                                moduleFilterInfo,
                                                 table.getTableName(),
                                                 tableDataMap.get(table.getTableName()),
                                                 extraDataMap);
@@ -1005,10 +1358,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 Object primaryObject;
                 if (model.equals("EDIT")) {
-                    primaryObject = updateModuleTable(primaryTable, primaryData, extraDataMap);
+                    primaryObject =
+                            updateModuleTable(
+                                    moduleFilterInfo, primaryTable, primaryData, extraDataMap);
                 } else {
                     primaryObject =
                             insertModuleTable(
+                                    moduleFilterInfo,
                                     primaryTable,
                                     primaryData,
                                     getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
@@ -1056,6 +1412,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
                                 || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
                             updateModuleTable(
+                                    moduleFilterInfo,
                                     table.getTableName(),
                                     tableDataMap.get(table.getTableName()),
                                     extraDataMap);
@@ -1112,7 +1469,10 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     }
 
     private Object insertModuleTable(
-            String tableName, Map<String, Object> dataMap, Map<String, Object> extraMap)
+            ModuleFilterInfo moduleFilterInfo,
+            String tableName,
+            Map<String, Object> dataMap,
+            Map<String, Object> extraMap)
             throws NoSuchMethodException,
                     InvocationTargetException,
                     InstantiationException,
@@ -1144,11 +1504,24 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         //                subjectId,
         //                SUBJECT_MAP.get(subjectId));
         primaryMapper.insert(primaryInstance);
+        if (DataUpdateContextHolder.getDataChangeFlag()) {
+            DataUpdateContextHolder.addDataUpdateToContext(
+                    DataChangeContext.builder()
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .moduleFilterInfo(moduleFilterInfo)
+                            .tableName(tableName)
+                            .before(null)
+                            .after(primaryInstance)
+                            .build());
+        }
         return primaryInstance;
     }
 
     private Object updateModuleTable(
-            String tableName, Map<String, Object> dataMap, Map<String, Object> extraMap)
+            ModuleFilterInfo moduleFilterInfo,
+            String tableName,
+            Map<String, Object> dataMap,
+            Map<String, Object> extraMap)
             throws NoSuchMethodException,
                     InvocationTargetException,
                     InstantiationException,
@@ -1178,6 +1551,21 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         //                DEFAULT_CREATE_SUBJECT_FIELD,
         //                subjectId,
         //                SUBJECT_MAP.get(subjectId));
+        if (DataUpdateContextHolder.getDataChangeFlag()) {
+            Object pre = primaryMapper.selectById((Serializable) getId(primaryInstance));
+            Object newInstance = primaryConstructor.newInstance();
+            BeanUtil.copyProperties(pre, newInstance, CopyOptions.create().ignoreNullValue());
+            BeanUtil.copyProperties(
+                    primaryInstance, newInstance, CopyOptions.create().ignoreNullValue());
+            DataUpdateContextHolder.addDataUpdateToContext(
+                    DataChangeContext.builder()
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .moduleFilterInfo(moduleFilterInfo)
+                            .tableName(tableName)
+                            .before(pre)
+                            .after(newInstance)
+                            .build());
+        }
         primaryMapper.updateById(primaryInstance);
         return primaryInstance;
     }

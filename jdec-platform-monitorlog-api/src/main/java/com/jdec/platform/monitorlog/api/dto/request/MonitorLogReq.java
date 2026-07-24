@@ -33,8 +33,7 @@ public class MonitorLogReq {
     @Schema(description = "用户信息")
     private String userInfo;
 
-    @Schema(description = "登录角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "登录角色ID不能为空")
+    @Schema(description = "登录角色ID")
     private Long loginRoleId;
 
     @Schema(description = "是否mock标记：0，否；1 是")
@@ -55,8 +54,7 @@ public class MonitorLogReq {
     @Schema(description = "平台信息")
     private String platForm = "unknown";
 
-    @Schema(description = "日志内容", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "日志内容不能为空")
+    @Schema(description = "日志内容")
     private String logContent;
 
     @Schema(description = "日志备注")
