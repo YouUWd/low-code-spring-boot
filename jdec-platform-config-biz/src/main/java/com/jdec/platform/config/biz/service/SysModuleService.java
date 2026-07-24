@@ -1117,6 +1117,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
 
     /** 仅做实体字段赋值，不包含任何 DB 副作用。 */
     private void updateModuleInfo(SysModule module, SaveSysModuleReq request) {
+        module.setModuleCode(request.getModuleCode());
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
         module.setPrimaryTable(request.getPrimaryTable());
