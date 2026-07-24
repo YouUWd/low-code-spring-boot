@@ -106,7 +106,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalVersionRecord)) {
-            throw new BusinessException("单据记录不存在");
+            throw new BusinessException(601, "单据记录不存在");
         }
         // 单据编号
         result.put("businessNumber", approvalVersionRecord.getBusinessNumber());
@@ -267,7 +267,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Long moduleId = req.getModuleId();
         List<ActionLogResp> respList = new ArrayList<>();
         if (Objects.isNull(recordId) || Objects.isNull(moduleId) || Objects.isNull(subjectId)) {
-            throw new BusinessException("subjectId、recordId和moduleId不能为空");
+            throw new BusinessException(601, "subjectId、recordId和moduleId不能为空");
         }
         // 1. 查询业务主记录获取number
         ApprovalVersionRecord approvalVersionRecord =
@@ -314,7 +314,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Long recordId = req.getRecordId();
         Long moduleId = req.getModuleId();
         if (Objects.isNull(recordId) || Objects.isNull(moduleId) || Objects.isNull(subjectId)) {
-            throw new BusinessException("subjectId、recordId和moduleId不能为空");
+            throw new BusinessException(601, "subjectId、recordId和moduleId不能为空");
         }
         // 1. 查询业务主记录获取number
         ApprovalVersionRecord approvalVersionRecord =
@@ -362,7 +362,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
-            throw new BusinessException("审批单据不存在");
+            throw new BusinessException(601, "审批单据不存在");
         }
         // 查询当前审批步骤按钮对应的消息模板
         LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
@@ -372,7 +372,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         buttonWrapper.eq(ApprovalChainButton::getButtonTypeValue, req.getButton()).last("LIMIT 1");
         ApprovalChainButton button = approvalChainButtonMapper.selectOne(buttonWrapper);
         if (Objects.isNull(button) || button.getMsgTemplateIds().isBlank()) {
-            throw new BusinessException("没有配置消息模板");
+            throw new BusinessException(601, "没有配置消息模板");
         }
         // 逗号分割转列表
         List<Object> templateIdList = ToolUtils.formatArrayItem(button.getMsgTemplateIds());
@@ -458,7 +458,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         sysApprovalChainWrapper.eq(ApprovalChain::getCurrentStep, 1).last("LIMIT 1");
         ApprovalChain sysApprovalChain = approvalChainMapper.selectOne(sysApprovalChainWrapper);
         if (Objects.isNull(sysApprovalChain)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                 new LambdaQueryWrapper<>();
@@ -472,7 +472,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalChainStatus approvalChainStatus =
                 approvalChainStatusMapper.selectOne(approvalChainStatusWrapper);
         if (Objects.isNull(approvalChainStatus)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         // 创建业务单据记录
         ApprovalBusiness approvalBusiness = new ApprovalBusiness();
@@ -539,10 +539,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         if (!approvalBusiness.getCreatedBy().equals(approvalProcessDTO.getApplicantId())) {
-            throw new BusinessException("申请人与操作人不一致");
+            throw new BusinessException(601, "申请人与操作人不一致");
         }
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionWrapper =
                 new LambdaQueryWrapper<>();
@@ -554,7 +554,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalRecord =
                 approvalVersionRecordMapper.selectOne(approvalVersionWrapper);
         if (Objects.isNull(approvalRecord)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
 
         // 生成版本和编号
@@ -591,7 +591,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         sysApprovalChainWrapper.eq(ApprovalChain::getCurrentStep, 1).last("LIMIT 1");
         ApprovalChain sysApprovalChain = approvalChainMapper.selectOne(sysApprovalChainWrapper);
         if (Objects.isNull(sysApprovalChain)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                 new LambdaQueryWrapper<>();
@@ -605,7 +605,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalChainStatus approvalChainStatus =
                 approvalChainStatusMapper.selectOne(approvalChainStatusWrapper);
         if (Objects.isNull(approvalChainStatus)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         // 更新业务单据记录
         approvalBusiness.setVersionNo(versionNo);
@@ -666,7 +666,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
@@ -685,7 +685,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 .last("LIMIT 1");
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalChainWrapper);
         if (Objects.isNull(approvalChain)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         if (StringUtils.isNotBlank(approvalChain.getApproverIdList())) {
             approvalIdList =
@@ -743,7 +743,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             ApprovalChainStatus approvalChainStatus =
                     approvalChainStatusMapper.selectOne(approvalChainStatusWrapper);
             if (Objects.isNull(approvalChainStatus)) {
-                throw new BusinessException("单据记录异常");
+                throw new BusinessException(601, "单据记录异常");
             }
             if (Objects.nonNull(approvalChainNext)) {
                 approvalBusiness.setCurrentStep(approvalChainNext.getCurrentStep());
@@ -772,7 +772,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             ApprovalVersionRecord approvalRecord =
                     approvalVersionRecordMapper.selectOne(approvalRecordWrapper);
             if (Objects.isNull(approvalRecord)) {
-                throw new BusinessException("单据记录异常");
+                throw new BusinessException(601, "单据记录异常");
             }
             approvalRecord.setCurrentStep(approvalBusiness.getCurrentStep());
             approvalRecord.setStatusId(approvalBusiness.getStatusId());
@@ -805,7 +805,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
@@ -821,7 +821,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(approvalVersionRecordWrapper);
         if (Objects.isNull(approvalVersionRecord)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         LambdaQueryWrapper<ApprovalChain> approvalChainWrapper = new LambdaQueryWrapper<>();
         approvalChainWrapper.eq(ApprovalChain::getSerialNumber, approvalBusiness.getSerialNumber());
@@ -833,7 +833,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 .last("LIMIT 1");
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalChainWrapper);
         if (Objects.isNull(approvalChain)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         approvalRule(approvalProcessDTO, approvalChain);
         ApprovalChain businessApprovalChain;
@@ -846,7 +846,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             ModuleApprovalChainConfigResp.StatusNode statusNode =
                     sysStatusApi.getStatusByValue(1, approvalProcessDTO.getModuleId());
             if (Objects.isNull(statusNode)) {
-                throw new BusinessException("单据记录异常");
+                throw new BusinessException(601, "单据记录异常");
             }
             approvalBusiness.setStatusTitle(statusNode.getTitle());
             approvalBusiness.setStatusId(statusNode.getId());
@@ -877,7 +877,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                     .eq(ApprovalChain::getCurrentStep, specifyStep)
                                     .last("LIMIT 1"));
             if (Objects.isNull(backConfig)) {
-                throw new BusinessException("单据记录异常");
+                throw new BusinessException(601, "单据记录异常");
             }
             businessApprovalChain = backConfig;
             LambdaUpdateWrapper<ApprovalChain> updateWrapper = new LambdaUpdateWrapper<>();
@@ -905,7 +905,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             ApprovalChainStatus statusNode =
                     approvalChainStatusMapper.selectOne(approvalChainStatusWrapper);
             if (Objects.isNull(statusNode)) {
-                throw new BusinessException("单据记录异常");
+                throw new BusinessException(601, "单据记录异常");
             }
             approvalBusiness.setStatusTitle(statusNode.getTitle());
             approvalBusiness.setStatusId(statusNode.getId());
@@ -943,7 +943,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         // 查询单据详情记录
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
@@ -958,20 +958,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(approvalRecordWrapper);
         if (Objects.isNull(approvalVersionRecord)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         // 查询取消状态信息
         ModuleApprovalChainConfigResp.StatusNode statusNode =
                 sysStatusApi.getStatusByValue(-99, approvalProcessDTO.getModuleId());
         if (Objects.isNull(statusNode)) {
-            throw new BusinessException("单据记录异常");
+            throw new BusinessException(601, "单据记录异常");
         }
         // 变更过的单据查询来源单据记录，恢复到来源单据信息
         if (approvalBusiness.getVersionNo() > 1) {
             ApprovalVersionRecord oldApprovalVersionRecord =
                     approvalVersionRecordMapper.selectById(approvalVersionRecord.getSourceId());
             if (Objects.isNull(oldApprovalVersionRecord)) {
-                throw new BusinessException("单据记录异常");
+                throw new BusinessException(601, "单据记录异常");
             }
             LambdaQueryWrapper<ApprovalChain> ApprovalChainWrapper = new LambdaQueryWrapper<>();
             ApprovalChainWrapper.eq(
@@ -984,7 +984,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     .last("LIMIT 1");
             ApprovalChain approvalChain = approvalChainMapper.selectOne(ApprovalChainWrapper);
             if (Objects.isNull(approvalChain)) {
-                throw new BusinessException("单据记录异常");
+                throw new BusinessException(601, "单据记录异常");
             }
             approvalBusiness.setRecordId(oldApprovalVersionRecord.getRecordId());
             approvalBusiness.setStatusTitle(oldApprovalVersionRecord.getStatusTitle());
@@ -1176,7 +1176,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ApprovalChainStatus model =
                         approvalChainStatusMapper.selectOne(approvalNextStatusWrapper);
                 if (model == null) {
-                    throw new BusinessException(400, item.getNextStatusChildId() + "此状态已删除.");
+                    throw new BusinessException(600, item.getNextStatusChildId() + "此状态已删除.");
                 }
 
                 int lastHighlight = 0;
@@ -1495,7 +1495,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ModuleApprovalChainConfigResp approvalConfig =
                 sysApprovalChainConfigApi.getApprovalConfig(approvalProcessDTO.getModuleId());
         if (approvalConfig.getApprovalChainConfigList().isEmpty())
-            throw new BusinessException("未找到审批链配置");
+            throw new BusinessException(600, "审批链已发生变化,页面将刷新!");
         // 2. 遍历生成审批链
         for (ModuleApprovalChainConfigResp.ApprovalChainConfigDetail item :
                 approvalConfig.getApprovalChainConfigList()) {
