@@ -2,6 +2,7 @@ package com.jdec.platform.shared.security;
 
 import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.security.model.LoginUser;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,6 +22,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class JwtAuthenticationInterceptor implements HandlerInterceptor {
 
     private static final String REDIS_TOKEN_KEY_PREFIX = "token:";
+    private static final String HEADER_HREF_URL = "href-url";
+    private static final String HEADER_ROLE_ID = "role-id";
+    private static final String HEADER_MOCK_USER_ID = "mock-user-id";
 
     private final JwtTokenProvider jwtTokenProvider;
     private final StringRedisTemplate stringRedisTemplate;
@@ -66,7 +70,46 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
             throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌已失效，请重新登录");
         }
 
-        // 6. 将 token 存入 TokenContext
+        // 5. 从 JWT 中解析用户信息
+        Long userId = claims.get("userId", Long.class);
+        String username = claims.get("username", String.class);
+        Long subjectId = claims.get("subjectId", Long.class);
+
+        // 6. 从请求头获取额外信息
+        String hrefUrl = request.getHeader(HEADER_HREF_URL);
+        String roleIdStr = request.getHeader(HEADER_ROLE_ID);
+        String mockUserIdStr = request.getHeader(HEADER_MOCK_USER_ID);
+
+        Long roleId = StringUtils.hasText(roleIdStr) ? Long.parseLong(roleIdStr) : null;
+        Long mockUserId = StringUtils.hasText(mockUserIdStr) ? Long.parseLong(mockUserIdStr) : null;
+
+        // 7. 判断是否为模拟登录
+        boolean isMockLogin = false;
+        Long realUserId = userId; // 默认真实用户就是 token 中的用户
+
+        if (mockUserId != null && !mockUserId.equals(userId)) {
+            isMockLogin = true;
+            log.info("检测到模拟登录: 真实用户ID={}, 模拟用户ID={}, roleId={}", userId, mockUserId, roleId);
+        }
+
+        // 8. 构建 LoginUser 对象并存入上下文
+        LoginUser loginUser =
+                LoginUser.builder()
+                        .userId(userId)
+                        .username(username)
+                        .phone(phone)
+                        .subjectId(subjectId)
+                        .token(token)
+                        .hrefUrl(hrefUrl)
+                        .roleId(roleId)
+                        .mockUserId(mockUserId)
+                        .isMockLogin(isMockLogin)
+                        .realUserId(realUserId)
+                        .build();
+
+        UserContext.setLoginUser(loginUser);
+
+        // 9. 将 token 存入 TokenContext（保持兼容性）
         TokenContext.setToken(token);
 
         return true;
@@ -78,7 +121,8 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
             HttpServletResponse response,
             Object handler,
             Exception ex) {
-        // 清理 TokenContext
+        // 清理上下文
         TokenContext.clear();
+        UserContext.remove();
     }
 }

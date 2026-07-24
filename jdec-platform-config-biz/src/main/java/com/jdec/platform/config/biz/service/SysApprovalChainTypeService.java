@@ -13,6 +13,8 @@ import com.jdec.platform.config.biz.entity.SysApprovalChainType;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysApprovalChainTypeMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -130,9 +132,32 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
                 .collect(Collectors.toList());
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "审批链分类",
+            operation = OperationType.UPDATE,
+            tableName = "sys_approval_chain_type",
+            dataIdField = "#request.id")
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void save(ApprovalChainTypeSaveReq request) {
+        // 保存前先查询旧数据（用于审计）
+        SysApprovalChainType oldEntity = null;
+        if (request.getId() != null) {
+            oldEntity =
+                    sysApprovalChainTypeMapper.selectOne(
+                            new LambdaQueryWrapper<SysApprovalChainType>()
+                                    .eq(SysApprovalChainType::getId, request.getId())
+                                    .eq(
+                                            SysApprovalChainType::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysApprovalChainType::getProjectNo,
+                                            AppContext.getProjectNo()));
+            if (oldEntity == null) {
+                throw new BusinessException("审批链类型不存在");
+            }
+        }
         SysApprovalChainType entity = new SysApprovalChainType();
         entity.setId(request.getId());
         entity.setTitle(request.getTitle());
@@ -158,6 +183,8 @@ public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
                 throw new BusinessException("审批链类型名称已存在");
             }
             sysApprovalChainTypeMapper.insert(entity);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            request.setId(entity.getId());
         } else {
             // 编辑：校验名称唯一性（排除自己）
             long count =

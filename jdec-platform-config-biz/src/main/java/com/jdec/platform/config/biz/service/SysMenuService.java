@@ -13,6 +13,8 @@ import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -106,6 +108,12 @@ public class SysMenuService implements SysMenuApi {
         return result;
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "菜单配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_menu",
+            dataIdField = "#req.id")
     @Transactional
     @Override
     public void saveMenu(SysMenuSaveReq req) {
@@ -119,9 +127,24 @@ public class SysMenuService implements SysMenuApi {
             throw new BusinessException("一级菜单类型必须为导航");
         }
 
+        // 保存前先查询旧数据（用于审计）
+        SysMenu oldEntity = null;
+        if (req.getId() != null) {
+            oldEntity =
+                    sysMenuMapper.selectOne(
+                            Wrappers.<SysMenu>lambdaQuery()
+                                    .eq(SysMenu::getId, req.getId())
+                                    .eq(SysMenu::getSubjectId, subjectId)
+                                    .eq(SysMenu::getProjectNo, projectNo));
+            if (oldEntity == null) {
+                throw new BusinessException("菜单不存在");
+            }
+        }
+
+        SysMenu entity;
         if (req.getId() == null) {
             // 新增
-            SysMenu entity = new SysMenu();
+            entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(subjectId);
             entity.setProjectNo(projectNo);
@@ -149,17 +172,11 @@ public class SysMenuService implements SysMenuApi {
             }
 
             sysMenuMapper.insert(entity);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
+            // 快照由审计切面自动创建，这里不需要手动创建
         } else {
             // 编辑
-            SysMenu oldEntity =
-                    sysMenuMapper.selectOne(
-                            Wrappers.<SysMenu>lambdaQuery()
-                                    .eq(SysMenu::getId, req.getId())
-                                    .eq(SysMenu::getSubjectId, subjectId)
-                                    .eq(SysMenu::getProjectNo, projectNo));
-            if (oldEntity == null) {
-                throw new BusinessException("菜单不存在");
-            }
             // 不能把自己设为自己的父节点
             if (req.getId().equals(pid)) {
                 throw new BusinessException("不能将自己设为父菜单");
@@ -174,7 +191,7 @@ public class SysMenuService implements SysMenuApi {
             Long oldPid = oldEntity.getPid();
             Integer oldSortOrder = oldEntity.getSortOrder();
 
-            SysMenu entity = new SysMenu();
+            entity = new SysMenu();
             BeanUtils.copyProperties(req, entity);
 
             // 处理排序值
@@ -243,6 +260,12 @@ public class SysMenuService implements SysMenuApi {
         }
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "菜单配置",
+            operation = OperationType.DELETE,
+            tableName = "sys_menu",
+            dataIdField = "#id")
     @Transactional
     @Override
     public void deleteMenu(Long id, boolean force) {
@@ -275,6 +298,12 @@ public class SysMenuService implements SysMenuApi {
         reorderSiblingsAfterDelete(menu.getPid(), subjectId, projectNo);
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "菜单配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_menu",
+            dataIdField = "#req.id")
     @Transactional
     @Override
     public void dragMenu(SysMenuDragReq req) {

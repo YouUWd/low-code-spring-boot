@@ -47,4 +47,19 @@ public class LoginUser implements Serializable {
 
     /** 登录token */
     private String token;
+
+    /** 当前访问页面URL（从请求头 href-url 获取） */
+    private String hrefUrl;
+
+    /** 当前角色ID（从请求头 role-id 获取） */
+    private Long roleId;
+
+    /** 模拟登录的用户ID（从请求头 mock-user-id 获取） */
+    private Long mockUserId;
+
+    /** 是否为模拟登录（mockUserId != null && mockUserId != userId） */
+    private Boolean isMockLogin;
+
+    /** 真实操作用户ID（模拟登录时为 token 中的 userId，非模拟登录时与 userId 相同） */
+    private Long realUserId;
 }
