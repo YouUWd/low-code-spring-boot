@@ -183,7 +183,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         }
 
         // 编程式审计日志：记录菜单权限变更
-        logMenuPermissionAudit(roleId, request.getCheckFlag(), request.getMenuPaths());
+        logMenuPermissionAudit(roleId, request.getCheckFlag(), request.getPermissionPaths());
 
         setAffectedContext(roleId);
     }

@@ -18,6 +18,6 @@ public class SaveRoleMenuReq {
     @Schema(description = "勾选标识：1=勾选新增，0=取消勾选")
     private Integer checkFlag;
 
-    @Schema(description = "菜单路径字符串列表，用于审计日志")
-    private List<String> menuPaths;
+    @Schema(description = "权限路径字符串列表，用于审计日志")
+    private List<String> permissionPaths;
 }

@@ -12,7 +12,7 @@ import lombok.Data;
 @Schema(description = "特殊权限保存/编辑请求")
 public class SysSpecialPermissionSaveReq {
 
-    @Schema(description = "主键ID，为空时新增")
+    @Schema(description = "主键ID")
     private Long id;
 
     @Schema(description = "权限编码", requiredMode = Schema.RequiredMode.REQUIRED)

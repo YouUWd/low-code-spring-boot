@@ -299,6 +299,9 @@ public class DataAuditService {
         if (operation.contains("了")) {
             // 已经是完整描述（如："新增了test角色"），直接使用
             controlName = operation;
+        } else if (operation.startsWith("新增：") || operation.startsWith("取消：")) {
+            // 操作已是完整描述（如："取消：超级管理员->业务菜单权限->学生详情"），直接使用
+            controlName = operation;
         } else {
             // 只是动词（如："修改"、"删除"），需要拼接
             controlName =

@@ -15,6 +15,7 @@ import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.config.biz.util.AuditLogHelper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -48,6 +49,7 @@ public class SysFieldService implements SysFieldApi {
     private final WordApiClient wordApiClient;
     private final SysDataPermissionMapper sysDataPermissionMapper;
     private final ReferenceCheckManager referenceCheckManager;
+    private final AuditLogHelper auditLogHelper;
 
     // ==================== 元数据查询逻辑 ====================
 
@@ -469,6 +471,10 @@ public class SysFieldService implements SysFieldApi {
                                     .eq(
                                             SysDataPermission::getProjectNo,
                                             AppContext.getProjectNo()));
+
+                    // 记录删除数据权限节点的审计日志
+                    auditLogHelper.logDelete(
+                            "数据权限配置", "sys_data_permission", dataPermission.getId());
                 }
             }
 
@@ -481,6 +487,10 @@ public class SysFieldService implements SysFieldApi {
                 permission.setSubjectId(AppContext.getSubjectId());
                 permission.setProjectNo(projectNo);
                 sysDataPermissionMapper.insert(permission);
+
+                // 记录新增数据权限节点的审计日志
+                auditLogHelper.logCreate(
+                        "数据权限配置", "sys_data_permission", "新增", permission.getId(), permission);
             }
         }
         Long fieldId = entity.getId();
