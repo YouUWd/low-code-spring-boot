@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.audit.aspect;
 
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.biz.audit.dto.AuditLogContent;
@@ -12,6 +13,7 @@ import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.security.model.LoginUser;
 import com.jdec.platform.shared.utils.RequestContextUtils;
@@ -27,9 +29,13 @@ import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.client.RestTemplate;
 
 /** 数据审计切面 拦截 @DataAudit 注解的方法，记录数据变更审计日志 */
 @Slf4j
@@ -41,6 +47,7 @@ public class DataAuditAspect {
     private final SysDataSnapshotService snapshotService;
     private final JsonDiffUtil jsonDiffUtil;
     private final ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
 
     private final ExpressionParser parser = new SpelExpressionParser();
 
@@ -506,22 +513,30 @@ public class DataAuditAspect {
                             .platForm(platform != null ? platform : "")
                             .logContent(JSONUtil.toJsonStr(logContent))
                             .logRemark(logRemark)
+                            .logDate(DateUtil.now())
                             .build();
 
             log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
 
-            // TODO: 实现实际的HTTP调用
-            // Example:
-            // String auditServiceUrl = "http://audit-service/api/audit/log";
-            // HttpHeaders headers = new HttpHeaders();
-            // headers.setContentType(MediaType.APPLICATION_JSON);
-            // HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-            // ResponseEntity<Void> response = restTemplate.postForEntity(auditServiceUrl,
-            // httpRequest, Void.class);
-            //
-            // if (!response.getStatusCode().is2xxSuccessful()) {
-            //     throw new RuntimeException("审计日志发送失败: " + response.getStatusCode());
-            // }
+            String url = "http://119.36.78.123:5009/api/monitorlog/addControlLog";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            String token = TokenContext.getToken();
+            if (token != null) {
+                headers.set("Authorization", "Bearer " + token);
+            }
+            String projectNo = AppContext.getProjectNo();
+            if (projectNo != null) {
+                headers.set("X-Project-No", projectNo);
+            }
+            Long subjectId = AppContext.getSubjectId();
+            if (subjectId != null) {
+                headers.set("X-Subject-Id", String.valueOf(subjectId));
+            }
+
+            HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
+            restTemplate.postForEntity(url, httpRequest, Void.class);
 
         } catch (Exception e) {
             log.error("发送审计日志失败: {}", auditResult, e);

@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.audit.service;
 
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.biz.audit.dto.AuditLogContent;
@@ -9,15 +10,21 @@ import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.client.RestTemplate;
 
 /**
  * 数据审计编程式API服务
@@ -32,6 +39,7 @@ public class DataAuditService {
     private final SysDataSnapshotService snapshotService;
     private final JsonDiffUtil jsonDiffUtil;
     private final ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
 
     /**
      * 记录数据变更审计（带差异对比）
@@ -347,6 +355,7 @@ public class DataAuditService {
                         .platForm(RequestContextUtils.getPlatform())
                         .logContent(JSONUtil.toJsonStr(logContent))
                         .logRemark(logRemark)
+                        .logDate(DateUtil.now())
                         .build();
 
         // 在事务提交后发送
@@ -366,20 +375,34 @@ public class DataAuditService {
     /** 实际发送HTTP请求 */
     private void doSendAuditLog(AuditLogRequest request) {
         try {
-            log.info("TODO: 发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
+            log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
+            String url = "http://119.36.78.123:5009/api/monitorlog/addControlLog";
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            // TODO: 实现实际的HTTP调用
-            // String auditServiceUrl = "http://audit-service/api/audit/log";
-            // HttpHeaders headers = new HttpHeaders();
-            // headers.setContentType(MediaType.APPLICATION_JSON);
-            // HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-            // ResponseEntity<Void> response = restTemplate.postForEntity(auditServiceUrl,
-            // httpRequest, Void.class);
+            String token = TokenContext.getToken();
+            if (token != null) {
+                headers.set("Authorization", "Bearer " + token);
+            }
+            String projectNo = AppContext.getProjectNo();
+            if (projectNo != null) {
+                headers.set("X-Project-No", projectNo);
+            }
+            Long subjectId = AppContext.getSubjectId();
+            if (subjectId != null) {
+                headers.set("X-Subject-Id", String.valueOf(subjectId));
+            }
 
+            HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
+            ResponseEntity<LogResponse> entity =
+                    restTemplate.postForEntity(url, httpRequest, LogResponse.class);
+            System.out.println(entity.getBody());
         } catch (Exception e) {
             log.error("发送审计日志失败: {}", request, e);
         }
     }
+
+    record LogResponse(int status, String msg, Object data) {}
 
     /** 更新快照 */
     private void updateSnapshot(
