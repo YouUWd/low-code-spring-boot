@@ -541,7 +541,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.isNull(approvalBusiness)) {
             throw new BusinessException("单据记录异常");
         }
-
+        if (!approvalBusiness.getCreatedBy().equals(approvalProcessDTO.getApplicantId())) {
+            throw new BusinessException("申请人与操作人不一致");
+        }
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionWrapper =
                 new LambdaQueryWrapper<>();
         approvalVersionWrapper.eq(
