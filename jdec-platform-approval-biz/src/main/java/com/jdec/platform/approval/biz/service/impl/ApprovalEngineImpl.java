@@ -64,7 +64,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if ("pass".equals(approvalProcessDTO.getButton())) {
             ApprovalBusiness approvalBusiness = businessApprove(approvalProcessDTO);
             if (approvalBusiness.getStatusValue().equals(99)) {
-                return Map.of("ok", 1, "end", 1, "businessId", approvalBusiness.getBusinessId());
+                Map<String, Object> result = new HashMap<>();
+                result.put("ok", 1);
+                result.put("end", 1);
+                result.put("businessId", approvalBusiness.getBusinessId());
+                return result;
             }
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
             businessReject(approvalProcessDTO);
