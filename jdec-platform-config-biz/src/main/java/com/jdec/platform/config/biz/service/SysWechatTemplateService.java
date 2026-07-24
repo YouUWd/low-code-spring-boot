@@ -276,6 +276,23 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    public List<WechatTemplateParamEntryResp> listParamsByIds(
+            String projectNo, Long subjectId, List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyList();
+        }
+        LambdaQueryWrapper<SysWechatTemplateParam> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(SysWechatTemplateParam::getProjectNo, projectNo)
+                .eq(subjectId != null, SysWechatTemplateParam::getSubjectId, subjectId)
+                .in(SysWechatTemplateParam::getId, ids)
+                .eq(SysWechatTemplateParam::getDeleted, 0)
+                .orderByDesc(SysWechatTemplateParam::getCreatedDate);
+
+        List<SysWechatTemplateParam> list = sysWechatTemplateParamMapper.selectList(wrapper);
+        return convertToParamEntryRespList(list);
+    }
+
+    @Override
     public WechatTemplateParamEntryResp getParamById(Long id) {
         SysWechatTemplateParam param = sysWechatTemplateParamMapper.selectById(id);
         if (param == null || param.getDeleted() == 1) {

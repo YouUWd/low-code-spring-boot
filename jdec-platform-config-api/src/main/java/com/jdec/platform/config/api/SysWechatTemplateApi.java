@@ -111,6 +111,17 @@ public interface SysWechatTemplateApi {
             String projectNo, Long subjectId, Long moduleId);
 
     /**
+     * 根据模板参数 ID 列表查询微信模板参数列表
+     *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
+     * @param ids 模板参数 ID 列表
+     * @return 微信模板参数列表
+     */
+    List<WechatTemplateParamEntryResp> listParamsByIds(
+            String projectNo, Long subjectId, List<Long> ids);
+
+    /**
      * 获取微信模板参数详情
      *
      * @param id 参数 ID
