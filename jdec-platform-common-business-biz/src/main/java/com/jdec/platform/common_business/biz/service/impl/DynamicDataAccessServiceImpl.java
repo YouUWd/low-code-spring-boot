@@ -1046,7 +1046,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             } else {
                 log.debug("列头筛选模式下，主表的主键id列表为空，则直接返回。");
                 buildConfigData(
-                        List.of(),
                         resultMap,
                         queryParam.getModuleFilterInfo(),
                         queryParam.getSubjectId(),
@@ -1254,19 +1253,16 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         buildOrderBy(queryWrapper, Arrays.asList("update_date", "create_date"), false);
 
-        //        Page pageData = null;
+        Page pageData = null;
         // 主表数据查询返回对象List
         List<Object> primaryData;
-        //        // 判断是否需要分页查询
-        //        if (Objects.nonNull(page)) {
-        //            pageData = (Page) primaryMapper.selectPage(page, queryWrapper);
-        //            primaryData = pageData.getRecords();
-        //        } else {
-        //            primaryData = primaryMapper.selectList(queryWrapper);
-        //        }
-
-        // 不分页查询，内存中再分页，因为要填充不分页下拉框的值
-        primaryData = primaryMapper.selectList(queryWrapper);
+        // 判断是否需要分页查询
+        if (Objects.nonNull(page)) {
+            pageData = (Page) primaryMapper.selectPage(page, queryWrapper);
+            primaryData = pageData.getRecords();
+        } else {
+            primaryData = primaryMapper.selectList(queryWrapper);
+        }
 
         // 最终返回的列表行数据
         List<Map<String, Object>> dataList = new ArrayList<>();
@@ -1505,19 +1501,18 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     primaryTablePrefixResultMap.put(
                             "btnList", queryParam.getModuleFilterInfo().getBtnList());
                 } else {
+                    // 加入审批链相关字段
+                    Object primaryId =
+                            primaryTablePrefixResultMap.get(
+                                    finalModuleFilterInfo4.getModuleInfo().getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + DEFAULT_PRIMARY_KEY);
+
                     primaryTablePrefixResultMap.put(
-                            "btnList", recordIdToApprovalData.get(1L).get("*.btnList"));
-                    // primaryTablePrefixResultMap.putAll(recordIdToApprovalData.get(Long.parseLong(String.valueOf(primaryId))));
-
-                    primaryTablePrefixResultMap.putAll(recordIdToApprovalData.get(1L));
+                            "btnList", recordIdToApprovalData.get(primaryId).get("*.btnList"));
+                    primaryTablePrefixResultMap.putAll(
+                            recordIdToApprovalData.get(Long.parseLong(String.valueOf(primaryId))));
                 }
-
-                // 加入审批链相关字段
-                Object primaryId =
-                        primaryTablePrefixResultMap.get(
-                                finalModuleFilterInfo4.getModuleInfo().getPrimaryTable()
-                                        + DB_TABLE_FIELD_SEPARATOR
-                                        + DEFAULT_PRIMARY_KEY);
 
                 dataList.add(primaryTablePrefixResultMap);
             }
@@ -1528,26 +1523,10 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
         }
 
-        // 分页查询时进行内存分页切割
-        if (Objects.nonNull(page)) {
-            long total = dataList.size();
-            long startIndex = (page.getCurrent() - 1) * page.getSize();
-            List<Map<String, Object>> pageRecords;
-            if (startIndex >= total) {
-                pageRecords = List.of();
-            } else {
-                long endIndex = Math.min(startIndex + page.getSize(), total);
-                pageRecords = dataList.subList((int) startIndex, (int) endIndex);
-            }
-            // 组装返回数据
-            resultMap.put("records", pageRecords);
-        } else {
-            // 组装返回数据
-            resultMap.put("records", dataList);
-        }
+        // 组装返回数据
+        resultMap.put("records", dataList);
 
         buildConfigData(
-                dataList,
                 resultMap,
                 queryParam.getModuleFilterInfo(),
                 queryParam.getSubjectId(),
@@ -2827,7 +2806,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
     }
 
     private void buildConfigData(
-            List<Map<String, Object>> dataList,
             Map<String, Object> resultMap,
             ModuleFilterInfo moduleFilterInfo,
             Long subjectId,
@@ -2881,75 +2859,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         .toList();
 
         resultMap.put("combineConfig", transformCombineFields);
-
-        // 组装筛选项下拉框候选数据
-        if (!CollectionUtils.isEmpty(dataList)) {
-            Set<String> selectItems = new HashSet<>();
-            for (TableHeaderConf tableHeaderConf : transformHeader) {
-                boolean wasCombineField =
-                        transformCombineFields.stream()
-                                .anyMatch(
-                                        ele ->
-                                                ele.getTableName()
-                                                                .equals(tableHeaderConf.getTable())
-                                                        && ele.getFieldCode()
-                                                                .equals(tableHeaderConf.getField())
-                                                        && !CollectionUtils.isEmpty(
-                                                                ele.getSourceMappings()));
-
-                if (wasCombineField) {
-                    log.debug(
-                            "表头:{}，key:{}是组合字段，将各个组合字段分别加入筛选项集合。",
-                            tableHeaderConf.getName(),
-                            tableHeaderConf.getTable()
-                                    + DB_TABLE_FIELD_SEPARATOR
-                                    + tableHeaderConf.getField());
-                    ModuleField targetCombineField =
-                            transformCombineFields.stream()
-                                    .filter(
-                                            item ->
-                                                    item.getTableName()
-                                                                    .equals(
-                                                                            tableHeaderConf
-                                                                                    .getTable())
-                                                            && item.getFieldCode()
-                                                                    .equals(
-                                                                            tableHeaderConf
-                                                                                    .getField())
-                                                            && !CollectionUtils.isEmpty(
-                                                                    item.getSourceMappings()))
-                                    .findFirst()
-                                    .orElse(null);
-                    if (Objects.nonNull(targetCombineField)) {
-                        selectItems.addAll(
-                                targetCombineField.getSourceMappings().stream()
-                                        .map(
-                                                ele ->
-                                                        ele.entity()
-                                                                + DB_TABLE_FIELD_SEPARATOR
-                                                                + ele.field())
-                                        .collect(Collectors.toSet()));
-                    }
-                } else {
-                    log.debug(
-                            "表头:{}，key:{}是普通字段，将字段加入筛选项集合。",
-                            tableHeaderConf.getName(),
-                            tableHeaderConf.getTable()
-                                    + DB_TABLE_FIELD_SEPARATOR
-                                    + tableHeaderConf.getField());
-                    selectItems.add(
-                            tableHeaderConf.getTable()
-                                    + DB_TABLE_FIELD_SEPARATOR
-                                    + tableHeaderConf.getField());
-                }
-            }
-
-            if (!CollectionUtils.isEmpty(selectItems)) {
-                Map<String, Set<Object>> selectData = new HashMap<>();
-                buildSelectData(dataList, selectData, selectItems);
-                resultMap.put("selectData", selectData);
-            }
-        }
 
         resultMap.put("btnList", moduleFilterInfo.getBtnList());
 
