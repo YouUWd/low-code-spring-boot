@@ -24,9 +24,11 @@ import com.jdec.platform.common_business.biz.configcenter.client.openfeign.Appro
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.FormField;
 import com.jdec.platform.common_business.biz.dto.RightInfoVO;
+import com.jdec.platform.common_business.biz.dto.VersionCompareItem;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.DataConfig;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.DataRightConfigResp;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.ModuleInfoResp;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.enums.QueryOpEnum;
@@ -256,7 +258,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     Map<String, Object> versionInfo = new HashMap<>();
 
                     ConfigApiResponse<Map<String, Object>> versionInfoResult =
-                            approvalApiOpenFeignClient.getApprovalChangeData(approvalDataReq);
+                            approvalApiOpenFeignClient.getApprovalChangeData(
+                                    subjectId, approvalDataReq);
                     if (ConfigApiResponse.isSuccessResponse(versionInfoResult)) {
                         versionInfo = versionInfoResult.getData();
                     } else {
@@ -270,7 +273,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         }
                     }
 
-                    Map<String, Object> fieldChangeList =
+                    Map<String, List<VersionCompareItem>> fieldChangeList =
                             buildFieldChangeListData(
                                     moduleFilterInfo.getModuleInfo().getPrimaryTable(),
                                     id,
@@ -282,8 +285,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     versionInfo.get("preRecordId") == null
                                             ? null
                                             : Long.parseLong(
+                                                    String.valueOf(versionInfo.get("preRecordId"))),
+                                    versionInfo.get("sourceVersion") == null
+                                            ? null
+                                            : Integer.parseInt(
                                                     String.valueOf(
-                                                            versionInfo.get("preRecordId"))));
+                                                            versionInfo.get("sourceVersion"))),
+                                    versionInfo.get("currentVersion") == null
+                                            ? null
+                                            : Integer.parseInt(
+                                                    String.valueOf(
+                                                            versionInfo.get("currentVersion"))));
+
+                    dataMap.put("formChangeList", fieldChangeList);
                 }
 
                 // 主表数据放入返回结果Map
@@ -426,9 +440,15 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         return resultMap;
     }
 
-    private Map<String, Object> buildFieldChangeListData(
-            String tableName, Long currentRecordId, Long lastVersionId, Long modifyId) {
-        Map<String, Object> compareResult = new HashMap<>();
+    private Map<String, List<VersionCompareItem>> buildFieldChangeListData(
+            String tableName,
+            Long currentRecordId,
+            Long lastVersionId,
+            Long modifyId,
+            Integer lastVersion,
+            Integer currentVersion) {
+        Map<String, List<VersionCompareItem>> compareResult = new HashMap<>();
+
         // 获取主表Mapper对象
         BaseMapper primaryMapper =
                 SpringBeanUtil.getBean(
@@ -442,6 +462,17 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             return Map.of();
         }
 
+        String type = "change";
+        if (Objects.isNull(lastVersionId)) {
+            log.debug("前一生效版本数据主键ID为空，无版本可以对比。");
+            type = "create";
+        }
+
+        if (Objects.isNull(modifyId)) {
+            log.debug("版本内上一修改数据主键ID为空，无版本可以对比。");
+            type = "reject";
+        }
+
         queryWrapperCurrent.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", currentRecordId);
 
         Object currentData = primaryMapper.selectOne(queryWrapperCurrent);
@@ -453,40 +484,103 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         QueryWrapper queryWrapperLastVersion = Wrappers.query();
         if (Objects.isNull(lastVersionId)) {
             log.debug("前一生效版本数据主键ID为空，无版本可以对比。");
-            return Map.of();
-        }
-
-        queryWrapperLastVersion.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", lastVersionId);
-
-        Object lastVersionData = primaryMapper.selectOne(queryWrapperLastVersion);
-        if (Objects.isNull(lastVersionData)) {
-            log.debug("前一生效版本数据主键ID:{}查询结果为空，无版本可以对比。", lastVersionId);
+            type = "create";
         } else {
-            Map<String, String> diffResult = compareDiff(lastVersionData, currentData);
-            compareResult.putAll(diffResult);
+            type = "change";
+            queryWrapperLastVersion.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", lastVersionId);
+
+            Object lastVersionData = primaryMapper.selectOne(queryWrapperLastVersion);
+            if (Objects.isNull(lastVersionData)) {
+                log.debug("前一生效版本数据主键ID:{}查询结果为空，无版本可以对比。", lastVersionId);
+            } else {
+                Map<String, Pair> diffResult = compareDiff(lastVersionData, currentData);
+                for (Map.Entry<String, Pair> entry : diffResult.entrySet()) {
+                    VersionCompareItem v1VersionCompareItem =
+                            VersionCompareItem.builder()
+                                    .versionNo(lastVersion)
+                                    .fieldValue(entry.getValue().getLeft())
+                                    .type(type)
+                                    .build();
+                    compareResult
+                            .computeIfAbsent(
+                                    tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey(),
+                                    k -> new ArrayList<>())
+                            .add(v1VersionCompareItem);
+                }
+
+                if (Objects.isNull(modifyId)) {
+                    for (Map.Entry<String, Pair> entry : diffResult.entrySet()) {
+                        VersionCompareItem v1VersionCompareItem =
+                                VersionCompareItem.builder()
+                                        .versionNo(currentVersion)
+                                        .fieldValue(entry.getValue().getRight())
+                                        .type(type)
+                                        .build();
+                        compareResult
+                                .computeIfAbsent(
+                                        tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey(),
+                                        k -> new ArrayList<>())
+                                .add(v1VersionCompareItem);
+                    }
+                }
+                //                compareResult.putAll(diffResult);
+            }
         }
 
         QueryWrapper queryWrapperModify = Wrappers.query();
         if (Objects.isNull(modifyId)) {
             log.debug("版本内上一修改数据主键ID为空，无版本可以对比。");
-            return Map.of();
-        }
 
-        queryWrapperModify.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", modifyId);
-
-        Object modifyData = primaryMapper.selectOne(queryWrapperModify);
-        if (Objects.isNull(modifyData)) {
-            log.debug("版本内上一修改数据主键ID:{}查询结果为空，无版本可以对比。", modifyId);
         } else {
-            Map<String, String> diffResult = compareDiff(lastVersionData, currentData);
-            compareResult.putAll(diffResult);
+            type = "reject";
+            queryWrapperModify.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", modifyId);
+
+            Object modifyData = primaryMapper.selectOne(queryWrapperModify);
+            if (Objects.isNull(modifyData)) {
+                log.debug("版本内上一修改数据主键ID:{}查询结果为空，无版本可以对比。", modifyId);
+            } else {
+                Map<String, Pair> diffResult = compareDiff(modifyData, currentData);
+
+                for (Map.Entry<String, Pair> entry : diffResult.entrySet()) {
+                    VersionCompareItem v2CurrentVersion =
+                            VersionCompareItem.builder()
+                                    .type(type)
+                                    .fieldValue(entry.getValue().getRight())
+                                    .versionNo(currentVersion)
+                                    .build();
+
+                    VersionCompareItem v2InternalVersion =
+                            VersionCompareItem.builder()
+                                    .type(type)
+                                    .fieldValue(entry.getValue().getLeft())
+                                    .versionNo(currentVersion)
+                                    .build();
+
+                    List<VersionCompareItem> rejectList = new ArrayList<>();
+                    rejectList.add(v2CurrentVersion);
+                    rejectList.add(v2InternalVersion);
+
+                    VersionCompareItem v2Version =
+                            VersionCompareItem.builder()
+                                    .versionNo(currentVersion)
+                                    .rejectList(rejectList)
+                                    .type("change")
+                                    .build();
+
+                    compareResult
+                            .computeIfAbsent(
+                                    tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey(),
+                                    k -> new ArrayList<>())
+                            .add(v2Version);
+                }
+            }
         }
         return compareResult;
     }
 
     /** 对比新旧实体差异，返回字段：旧值 -> 新值 */
-    public static Map<String, String> compareDiff(Object oldObj, Object newObj) {
-        Map<String, String> diffMap = new HashMap<>();
+    public static Map<String, Pair> compareDiff(Object oldObj, Object newObj) {
+        Map<String, Pair> diffMap = new HashMap<>();
         if (oldObj == null || newObj == null) {
             return diffMap;
         }
@@ -502,7 +596,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 }
                 if ((oldVal == null && newVal != null)
                         || (oldVal != null && !oldVal.equals(newVal))) {
-                    diffMap.put(field.getName(), "旧值:" + oldVal + " 新值:" + newVal);
+                    diffMap.put(field.getName(), Pair.of(oldVal, newVal));
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -952,6 +1046,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             } else {
                 log.debug("列头筛选模式下，主表的主键id列表为空，则直接返回。");
                 buildConfigData(
+                        List.of(),
                         resultMap,
                         queryParam.getModuleFilterInfo(),
                         queryParam.getSubjectId(),
@@ -1072,7 +1167,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         if (hasApproval) {
 
             ConfigApiResponse<List<Map<String, Object>>> buttonListResult =
-                    approvalApiOpenFeignClient.getBusinessList(approvalListReq);
+                    approvalApiOpenFeignClient.getBusinessList(
+                            queryParam.getSubjectId(), approvalListReq);
             if (ConfigApiResponse.isSuccessResponse(buttonListResult)) {
                 approvalListResps = buttonListResult.getData();
             } else {
@@ -1158,16 +1254,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         buildOrderBy(queryWrapper, Arrays.asList("update_date", "create_date"), false);
 
-        Page pageData = null;
+        //        Page pageData = null;
         // 主表数据查询返回对象List
         List<Object> primaryData;
-        // 判断是否需要分页查询
-        if (Objects.nonNull(page)) {
-            pageData = (Page) primaryMapper.selectPage(page, queryWrapper);
-            primaryData = pageData.getRecords();
-        } else {
-            primaryData = primaryMapper.selectList(queryWrapper);
-        }
+        //        // 判断是否需要分页查询
+        //        if (Objects.nonNull(page)) {
+        //            pageData = (Page) primaryMapper.selectPage(page, queryWrapper);
+        //            primaryData = pageData.getRecords();
+        //        } else {
+        //            primaryData = primaryMapper.selectList(queryWrapper);
+        //        }
+
+        // 不分页查询，内存中再分页，因为要填充不分页下拉框的值
+        primaryData = primaryMapper.selectList(queryWrapper);
 
         // 最终返回的列表行数据
         List<Map<String, Object>> dataList = new ArrayList<>();
@@ -1425,14 +1524,30 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             // 分页查询时放入总数
             if (Objects.nonNull(page)) {
-                resultMap.put("total", pageData.getTotal());
+                resultMap.put("total", dataList.size());
             }
         }
 
-        // 组装返回数据
-        resultMap.put("records", dataList);
+        // 分页查询时进行内存分页切割
+        if (Objects.nonNull(page)) {
+            long total = dataList.size();
+            long startIndex = (page.getCurrent() - 1) * page.getSize();
+            List<Map<String, Object>> pageRecords;
+            if (startIndex >= total) {
+                pageRecords = List.of();
+            } else {
+                long endIndex = Math.min(startIndex + page.getSize(), total);
+                pageRecords = dataList.subList((int) startIndex, (int) endIndex);
+            }
+            // 组装返回数据
+            resultMap.put("records", pageRecords);
+        } else {
+            // 组装返回数据
+            resultMap.put("records", dataList);
+        }
 
         buildConfigData(
+                dataList,
                 resultMap,
                 queryParam.getModuleFilterInfo(),
                 queryParam.getSubjectId(),
@@ -1504,7 +1619,29 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         resultMap.putAll(dynamicQueryListData(listQueryParam, page));
 
         mergeApprovalData(resultMap, approvalListResps);
+
         return resultMap;
+    }
+
+    private void buildSelectData(
+            List<Map<String, Object>> dataList,
+            Map<String, Set<Object>> selectDataSet,
+            Set<String> selectItems) {
+        for (Map<String, Object> data : dataList) {
+            for (Map.Entry<String, Object> entry : data.entrySet()) {
+                if (selectItems.contains(entry.getKey())) {
+                    log.debug("数据中存在对应的key:{}，将值放入筛选项集合", entry.getKey());
+                    selectDataSet
+                            .computeIfAbsent(entry.getKey(), k -> new HashSet<>())
+                            .add(entry.getValue());
+                } else if (!entry.getKey().equals("btnList") && entry.getKey().contains("List")) {
+                    log.debug("数据中存在1:N的子表数据，对应的key:{},搜索子表数据。", entry.getKey());
+                    List<Map<String, Object>> joinTableData =
+                            (List<Map<String, Object>>) entry.getValue();
+                    buildSelectData(joinTableData, selectDataSet, selectItems);
+                }
+            }
+        }
     }
 
     /**
@@ -1707,7 +1844,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 return true;
             }
             case "in" -> {
-                if (value instanceof java.util.Collection<?> coll && !coll.isEmpty()) {
+                if (value instanceof Collection<?> coll && !coll.isEmpty()) {
                     if (isOr) wrapper.or().in(column, coll);
                     else wrapper.in(column, coll);
                     return true;
@@ -1737,7 +1874,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 }
             }
             case "textContain" -> {
-                if (value instanceof java.util.Collection<?> coll && !coll.isEmpty()) {
+                if (value instanceof Collection<?> coll && !coll.isEmpty()) {
                     for (Object o : coll) {
                         if (isOr) {
                             wrapper.or().apply("INSTR(" + column + ",?" + ")>1", o);
@@ -2543,7 +2680,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         Map<String, Object> approvalInfo = new HashMap<>();
 
         ConfigApiResponse<Map<String, Object>> detailResult =
-                approvalApiOpenFeignClient.getApprovalDetail(approvalProcessReq);
+                approvalApiOpenFeignClient.getApprovalDetail(subjectId, approvalProcessReq);
         if (ConfigApiResponse.isSuccessResponse(detailResult)) {
             approvalInfo = detailResult.getData();
         } else {
@@ -2617,6 +2754,70 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         return resultMap;
     }
 
+    @Override
+    public Map<String, Object> dynamicQuerygetListNumWithApproval(
+            Long subjectId, Long roleId, Long menuId) {
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        MenuListResp targetTopMenu =
+                bizMenuList.stream()
+                        .filter(ele -> menuId.equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        // 模块相关信息
+        ModuleInfoResp moduleInfoResp =
+                configCenterApiService.getModuleInfoComplete(
+                        subjectId, targetTopMenu.getModuleId());
+
+        if (Objects.nonNull(moduleInfoResp)) {
+
+            ApprovalProcessReq processReq = new ApprovalProcessReq();
+            processReq.setSubjectId(subjectId);
+            processReq.setRoleId(roleId);
+            processReq.setModuleId(
+                    moduleInfoResp.getModule().getDetailModuleId()); // 使用列表关联的详情模块的模块ID
+            processReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            processReq.setApplicantId(LoginUserUtil.getLoginUserId());
+
+            ConfigApiResponse<Map<String, Object>> numResultMap =
+                    approvalApiOpenFeignClient.getBusinessTypeList(subjectId, processReq);
+
+            if (ConfigApiResponse.isSuccessResponse(numResultMap)) {
+                return numResultMap.getData();
+            } else {
+                try {
+                    log.debug(
+                            "调用审批链:{}方法失败 , 请求参数:{}",
+                            "getBusinessTypeList",
+                            JsonUtil.obj2Json(processReq));
+                } catch (JsonProcessingException e) {
+                    log.debug("请求参数json序列化失败。");
+                }
+            }
+        }
+
+        return Map.of();
+    }
+
     private void buildOrderBy(QueryWrapper queryWrapper, List<String> columns, boolean asc) {
         if (asc) {
             queryWrapper.orderByAsc(columns);
@@ -2626,6 +2827,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
     }
 
     private void buildConfigData(
+            List<Map<String, Object>> dataList,
             Map<String, Object> resultMap,
             ModuleFilterInfo moduleFilterInfo,
             Long subjectId,
@@ -2679,6 +2881,75 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         .toList();
 
         resultMap.put("combineConfig", transformCombineFields);
+
+        // 组装筛选项下拉框候选数据
+        if (!CollectionUtils.isEmpty(dataList)) {
+            Set<String> selectItems = new HashSet<>();
+            for (TableHeaderConf tableHeaderConf : transformHeader) {
+                boolean wasCombineField =
+                        transformCombineFields.stream()
+                                .anyMatch(
+                                        ele ->
+                                                ele.getTableName()
+                                                                .equals(tableHeaderConf.getTable())
+                                                        && ele.getFieldCode()
+                                                                .equals(tableHeaderConf.getField())
+                                                        && !CollectionUtils.isEmpty(
+                                                                ele.getSourceMappings()));
+
+                if (wasCombineField) {
+                    log.debug(
+                            "表头:{}，key:{}是组合字段，将各个组合字段分别加入筛选项集合。",
+                            tableHeaderConf.getName(),
+                            tableHeaderConf.getTable()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + tableHeaderConf.getField());
+                    ModuleField targetCombineField =
+                            transformCombineFields.stream()
+                                    .filter(
+                                            item ->
+                                                    item.getTableName()
+                                                                    .equals(
+                                                                            tableHeaderConf
+                                                                                    .getTable())
+                                                            && item.getFieldCode()
+                                                                    .equals(
+                                                                            tableHeaderConf
+                                                                                    .getField())
+                                                            && !CollectionUtils.isEmpty(
+                                                                    item.getSourceMappings()))
+                                    .findFirst()
+                                    .orElse(null);
+                    if (Objects.nonNull(targetCombineField)) {
+                        selectItems.addAll(
+                                targetCombineField.getSourceMappings().stream()
+                                        .map(
+                                                ele ->
+                                                        ele.entity()
+                                                                + DB_TABLE_FIELD_SEPARATOR
+                                                                + ele.field())
+                                        .collect(Collectors.toSet()));
+                    }
+                } else {
+                    log.debug(
+                            "表头:{}，key:{}是普通字段，将字段加入筛选项集合。",
+                            tableHeaderConf.getName(),
+                            tableHeaderConf.getTable()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + tableHeaderConf.getField());
+                    selectItems.add(
+                            tableHeaderConf.getTable()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + tableHeaderConf.getField());
+                }
+            }
+
+            if (!CollectionUtils.isEmpty(selectItems)) {
+                Map<String, Set<Object>> selectData = new HashMap<>();
+                buildSelectData(dataList, selectData, selectItems);
+                resultMap.put("selectData", selectData);
+            }
+        }
 
         resultMap.put("btnList", moduleFilterInfo.getBtnList());
 

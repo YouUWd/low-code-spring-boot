@@ -8,6 +8,11 @@ public enum ApiResponseCodeEnum {
     LONGIN_FORBIDDEN(401, "未登录或令牌已过期"),
     BAD_REQUEST(400, "请求参数不对"),
     SERVER_ERROR(500, "服务器内部错误"),
+
+    // 审批链相关
+    APPROVAL_PROCESS_ERROR(600, "审批链已发生变化,页面将刷新!"),
+    APPROVAL_PROCEDURE_CHANGE(601, "审批流程异常"),
+
     WARNING(700, "页面无任何可查看的字段。"),
     BAD_JSON_ENCODE_ERROR(701, "JSON序列化异常"),
 
@@ -35,5 +40,14 @@ public enum ApiResponseCodeEnum {
     ApiResponseCodeEnum(int code, String message) {
         this.code = code;
         this.message = message;
+    }
+
+    public static ApiResponseCodeEnum getEnumByCode(int code) {
+        for (ApiResponseCodeEnum codeEnum : ApiResponseCodeEnum.values()) {
+            if (codeEnum.code == code) {
+                return codeEnum;
+            }
+        }
+        return null;
     }
 }
