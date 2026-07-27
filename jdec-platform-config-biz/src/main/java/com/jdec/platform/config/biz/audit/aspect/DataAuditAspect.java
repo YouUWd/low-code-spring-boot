@@ -3,10 +3,8 @@ package com.jdec.platform.config.biz.audit.aspect;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jdec.platform.config.biz.audit.dto.AuditLogContent;
-import com.jdec.platform.config.biz.audit.dto.AuditLogRequest;
-import com.jdec.platform.config.biz.audit.dto.AuditResult;
-import com.jdec.platform.config.biz.audit.dto.FieldDiff;
+import com.jdec.platform.config.biz.audit.dto.*;
+import com.jdec.platform.config.biz.audit.util.AuditLogFormatter;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
@@ -48,6 +46,7 @@ public class DataAuditAspect {
     private final JsonDiffUtil jsonDiffUtil;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
+    private final AuditLogFormatter auditLogFormatter;
 
     private final ExpressionParser parser = new SpelExpressionParser();
 
@@ -191,6 +190,9 @@ public class DataAuditAspect {
                 return;
             }
 
+            // 提取记录名称
+            String recordName = jsonDiffUtil.extractUniqueIdentifier(newData);
+
             // 构建审计结果
             AuditResult auditResult =
                     AuditResult.builder()
@@ -200,6 +202,7 @@ public class DataAuditAspect {
                             .tableName(tableName)
                             .dataId(dataId)
                             .diffs(diffs)
+                            .recordName(recordName)
                             .operateTime(LocalDateTime.now())
                             .build();
 
@@ -254,6 +257,9 @@ public class DataAuditAspect {
             // 构建新增的diff列表（所有字段都是新增）
             List<FieldDiff> diffs = jsonDiffUtil.buildCreateDiffs(newJson, newData.getClass());
 
+            // 提取记录名称
+            String recordName = jsonDiffUtil.extractUniqueIdentifier(newData);
+
             // 构建审计结果（强制使用"新增"操作描述）
             AuditResult auditResult =
                     AuditResult.builder()
@@ -263,6 +269,7 @@ public class DataAuditAspect {
                             .tableName(tableName)
                             .dataId(dataId)
                             .diffs(diffs)
+                            .recordName(recordName)
                             .operateTime(LocalDateTime.now())
                             .build();
 
@@ -313,6 +320,45 @@ public class DataAuditAspect {
                     dataId,
                     oldSnapshot.getId());
 
+            // 构建删除操作的 FieldDiff 列表（只提取指定的显示字段）
+            List<FieldDiff> diffs = Collections.emptyList();
+            String oldJson = oldSnapshot.getJsonData();
+            String deleteDisplayField = dataAudit.deleteDisplayField();
+            Class<?> entityClass = dataAudit.entityClass();
+
+            if (oldJson != null
+                    && !oldJson.isEmpty()
+                    && deleteDisplayField != null
+                    && !deleteDisplayField.isEmpty()
+                    && entityClass != null
+                    && entityClass != void.class) {
+                try {
+                    // 从快照中提取指定字段作为删除记录的显示信息
+                    diffs =
+                            jsonDiffUtil.buildDeleteDiffWithDisplayField(
+                                    oldJson, entityClass, deleteDisplayField);
+                } catch (Exception e) {
+                    log.warn(
+                            "解析删除快照JSON失败: table={}, dataId={}, displayField={}",
+                            tableName,
+                            dataId,
+                            deleteDisplayField,
+                            e);
+                    diffs = Collections.emptyList();
+                }
+            }
+
+            // 提取记录名称（直接从快照JSON中提取uniqueIdentifier，避免反序列化LocalDateTime等字段失败）
+            String recordName = "";
+            if (oldJson != null
+                    && !oldJson.isEmpty()
+                    && dataAudit.entityClass() != null
+                    && dataAudit.entityClass() != void.class) {
+                recordName =
+                        jsonDiffUtil.extractUniqueIdentifierFromJson(
+                                oldJson, dataAudit.entityClass());
+            }
+
             // 构建审计结果（所有字段都标记为删除）
             AuditResult auditResult =
                     AuditResult.builder()
@@ -321,7 +367,8 @@ public class DataAuditAspect {
                             .operation(dataAudit.operation().getDescription())
                             .tableName(tableName)
                             .dataId(dataId)
-                            .diffs(Collections.emptyList()) // DELETE操作不需要字段级diff
+                            .diffs(diffs)
+                            .recordName(recordName)
                             .operateTime(LocalDateTime.now())
                             .build();
 
@@ -476,10 +523,38 @@ public class DataAuditAspect {
                             .controlName(operatorResult)
                             .build();
 
-            // 构建logRemark（字段差异JSON）
+            // 构建logRemark（新格式：ModuleAction列表的JSON）
             String logRemark = "";
             if (auditResult.getDiffs() != null && !auditResult.getDiffs().isEmpty()) {
-                logRemark = JSONUtil.toJsonStr(auditResult.getDiffs());
+                List<ModuleAction> moduleActions = null;
+                String moduleName =
+                        auditResult.getSubModule() != null && !auditResult.getSubModule().isEmpty()
+                                ? auditResult.getSubModule()
+                                : "配置";
+                String recordName =
+                        auditResult.getRecordName() != null ? auditResult.getRecordName() : "";
+
+                // 根据操作类型构建不同的ModuleAction
+                if (auditResult.getOperation().equals(OperationType.CREATE.name())
+                        || auditResult.getOperation().contains("新增")) {
+                    moduleActions =
+                            auditLogFormatter.buildCreateAction(
+                                    moduleName, recordName, auditResult.getDiffs());
+                } else if (auditResult.getOperation().equals(OperationType.DELETE.name())
+                        || auditResult.getOperation().contains("删除")) {
+                    moduleActions =
+                            auditLogFormatter.buildDeleteAction(
+                                    moduleName, recordName, auditResult.getDiffs());
+                } else {
+                    // 默认为修改操作
+                    moduleActions =
+                            auditLogFormatter.buildUpdateAction(
+                                    moduleName, recordName, auditResult.getDiffs());
+                }
+
+                if (moduleActions != null && !moduleActions.isEmpty()) {
+                    logRemark = JSONUtil.toJsonStr(moduleActions);
+                }
             }
 
             // 从 UserContext 获取用户信息和模拟登录标识
@@ -508,9 +583,9 @@ public class DataAuditAspect {
                             .mockFlag(isMockLogin ? 1 : 0)
                             .mockUserId(mockUserId != null ? mockUserId : 0L)
                             .mockRoleId(0L) // 暂时为0，后续可扩展
-                            .ip(ip != null ? ip : "")
-                            .browser(browser != null ? browser : "")
-                            .platForm(platform != null ? platform : "")
+                            .ip(ip)
+                            .browser(browser)
+                            .platForm(platform)
                             .logContent(JSONUtil.toJsonStr(logContent))
                             .logRemark(logRemark)
                             .logDate(DateUtil.now())
@@ -536,7 +611,7 @@ public class DataAuditAspect {
             }
 
             HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-            restTemplate.postForEntity(url, httpRequest, Void.class);
+            //            restTemplate.postForEntity(url, httpRequest, Void.class);
 
         } catch (Exception e) {
             log.error("发送审计日志失败: {}", auditResult, e);
