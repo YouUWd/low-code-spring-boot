@@ -5,12 +5,16 @@ import com.jdec.platform.common_business.api.dto.response.MenuResp;
 import com.jdec.platform.common_business.api.dto.response.RoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
+import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -146,6 +150,68 @@ public class ConfigCenterApiServiceImpl implements ConfigCenterApiService {
                 configCenterApiClient.getPersonalSettingByRole(subjectId, roleId, moduleId);
         if (ConfigApiResponse.isSuccessResponse(configItems)) {
             return configItems.getData();
+        }
+        return List.of();
+    }
+
+    @Override
+    public WechatTemplateDetailResp getWechatTemplateDetail(Long subjectId, Long id) {
+        ConfigApiResponse<WechatTemplateDetailResp> configApiResponse =
+                configCenterApiClient.getWechatTemplateDetail(subjectId, id);
+        if (ConfigApiResponse.isSuccessResponse(configApiResponse)) {
+            if (configApiResponse.getData() == null) {
+                return configApiResponse.getData();
+            }
+            if (CollectionUtil.isNotEmpty(configApiResponse.getData().getTemplateAcceptType())) {
+                // 查询接受人类型
+                List<SysConfigItemTreeResp> sysConfigItemTreeRespList =
+                        getCategoryItemByCategoryAlias(
+                                subjectId,
+                                CommonConstant.CONFIG_CENTER_CATEGORY_ALIAS_WX_ACCEPT_TYPE);
+                if (CollectionUtil.isNotEmpty(sysConfigItemTreeRespList)) {
+                    Map<Long, SysConfigItemTreeResp> sysConfigItemTreeRespMap =
+                            sysConfigItemTreeRespList.stream()
+                                    .collect(Collectors.toMap(x -> x.getId(), x -> x));
+                    List<String> templateAcceptTypeList = new ArrayList<>();
+                    for (Long x : configApiResponse.getData().getTemplateAcceptType()) {
+                        SysConfigItemTreeResp treeResp = sysConfigItemTreeRespMap.get(x);
+                        if (treeResp != null) {
+                            templateAcceptTypeList.add(treeResp.getValue());
+                        }
+                    }
+                    configApiResponse.getData().setTemplateAcceptTypeEnum(templateAcceptTypeList);
+                }
+            }
+            if (CollectionUtil.isNotEmpty(configApiResponse.getData().getConfigParamIds())) {
+                // 查询接受人类型
+                List<WechatTemplateParamEntryResp> respList =
+                        getWechatTemplateParamEntryByIds(
+                                subjectId, configApiResponse.getData().getConfigParamIds());
+                configApiResponse.getData().setTemplateParamEntryRespList(respList);
+            }
+            return configApiResponse.getData();
+        }
+        return null;
+    }
+
+    @Override
+    public List<SysConfigItemTreeResp> getCategoryItemByCategoryAlias(
+            Long subjectId, String categoryAlias) {
+        ConfigApiResponse<List<SysConfigItemTreeResp>> configApiResponse =
+                configCenterApiClient.getCategoryItemByCategoryAlias(subjectId, categoryAlias);
+        if (ConfigApiResponse.isSuccessResponse(configApiResponse)) {
+            return configApiResponse.getData();
+        }
+        return List.of();
+    }
+
+    @Override
+    public List<WechatTemplateParamEntryResp> getWechatTemplateParamEntryByIds(
+            Long subjectId, List<Long> ids) {
+        ConfigApiResponse<List<WechatTemplateParamEntryResp>> configApiResponse =
+                configCenterApiClient.getWechatTemplateParamEntryByIds(subjectId, ids);
+        if (ConfigApiResponse.isSuccessResponse(configApiResponse)) {
+            return configApiResponse.getData();
         }
         return List.of();
     }

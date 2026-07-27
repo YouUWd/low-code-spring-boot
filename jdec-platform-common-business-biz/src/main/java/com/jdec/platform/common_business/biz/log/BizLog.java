@@ -8,7 +8,7 @@ public interface BizLog {
 
     public Boolean referToBizLog(BizLogEnum logEnum);
 
-    public Boolean recordBizLog(BizLogEnum logEnum, Object log);
+    public Boolean processBizLog(BizLogEnum logEnum, Object log);
 
     default MonitorLogReq getCommonReq(BizLogDTO bizLogDTO) {
         MonitorLogReq req = new MonitorLogReq();

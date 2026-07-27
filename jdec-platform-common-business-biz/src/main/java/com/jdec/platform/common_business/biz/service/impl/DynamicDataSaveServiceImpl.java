@@ -9,9 +9,11 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
+import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
 import com.jdec.platform.common_business.api.dto.common.ModuleField;
 import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
@@ -30,6 +32,7 @@ import com.jdec.platform.common_business.biz.configcenter.client.openfeign.Confi
 import com.jdec.platform.common_business.biz.context.DataUpdateContextHolder;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
+import com.jdec.platform.common_business.biz.enums.ApprovalButtonType;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
 import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
@@ -125,6 +128,49 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             for (int i = 1; i < reqList.size(); i++) {
                 try {
                     createSubModuleData(
+                            subjectId,
+                            roleId,
+                            reqList.get(i),
+                            Long.parseLong(
+                                    String.valueOf(
+                                            getId(primaryTableData)))); // 默认就是取主模块主表的ID字段，写入子模块的主表上
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+        if (CollectionUtil.isNotEmpty(primaryTableDataList)
+                && primaryTableDataList.get(0) != null) {
+            try {
+                return getId(primaryTableDataList.get(0));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 真实业务表多模块更新，不需要判断权限
+     *
+     * @param subjectId
+     * @param roleId
+     * @param reqList
+     * @return
+     */
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    private Object createMultiModuleDataToRealTable(
+            Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
+        // 先 插入主模块数据,默认第一行是 主模块数据
+        List<Object> primaryTableDataList =
+                createMainRealTableData(subjectId, roleId, reqList.get(0));
+
+        if (!CollectionUtils.isEmpty(primaryTableDataList)) {
+            Object primaryTableData = primaryTableDataList.get(0);
+            // 如果有子模块更新
+            for (int i = 1; i < reqList.size(); i++) {
+                try {
+                    createSubRealTableData(
                             subjectId,
                             roleId,
                             reqList.get(i),
@@ -334,6 +380,305 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     }
 
     /**
+     * 创建真实业务表主模块数据
+     *
+     * @param subjectId
+     * @param roleId
+     * @param req
+     * @return
+     */
+    private List<Object> createMainRealTableData(Long subjectId, Long roleId, ModuleSaveReq req) {
+
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.CREATE.getKey(),
+                        List.of());
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_RIGHT_ERROR.getCode(),
+                    String.format("[模块数据新建][%d]主模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据新建][%d]主模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        List<Object> resultList = new ArrayList<>();
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+
+            // 带version后缀的原始数据
+            Map<String, Map<String, Object>> originTableDataMap = getTableMap(moduleItem);
+
+            // 去除version后的数据
+            Map<String, Map<String, Object>> realTableDataMap =
+                    originTableDataMap.entrySet().stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            entry ->
+                                                    entry.getKey().endsWith("_version")
+                                                            ? entry.getKey()
+                                                                    .substring(
+                                                                            0,
+                                                                            entry.getKey().length()
+                                                                                    - "_version"
+                                                                                            .length())
+                                                            : entry.getKey(),
+                                            Map.Entry::getValue));
+
+            if (CollectionUtil.isEmpty(realTableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据新建][%d]主模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            // 过滤掉没有权限的字段
+            // tableDataMap = checkAndRemoveUnPermissionField(moduleFilterInfo, tableDataMap, true);
+
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            String realPrimaryTable = primaryTable.replace("_version", "");
+            Map<String, Object> primaryData = realTableDataMap.get(realPrimaryTable);
+            if (CollectionUtil.isEmpty(primaryData)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据新建][%d]权限过滤后模块主表[%s]数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId(), realPrimaryTable));
+            }
+            try {
+                Map<String, Object> extraDataMap =
+                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                Object primaryObject =
+                        insertRealTable(
+                                moduleFilterInfo, realPrimaryTable, primaryData, extraDataMap);
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtils.isEmpty(moduleTables)) {
+                    for (ModuleTable table : moduleTables) {
+                        String joinTableName = table.getTableName().replace("_version", "");
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        Map<String, Object> data = realTableDataMap.get(joinTableName);
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据新建][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            joinTableName));
+                            continue;
+                        }
+
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+
+                            // 写入关联表的数据
+                            Object o =
+                                    insertRealTable(
+                                            moduleFilterInfo,
+                                            joinTableName,
+                                            realTableDataMap.get(table.getTableName()),
+                                            extraDataMap);
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                resultList.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return resultList;
+    }
+
+    /**
+     * 创建真实业务表子模块数据
+     *
+     * @param subjectId
+     * @param roleId
+     * @param req
+     * @param relatePrimaryId
+     * @return
+     */
+    private List<Object> createSubRealTableData(
+            Long subjectId, Long roleId, ModuleSaveReq req, long relatePrimaryId) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.CREATE.getKey(),
+                        List.of());
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_RIGHT_ERROR.getCode(),
+                    String.format("[模块数据新建][%d]子模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据新建][%d]子模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        if (Objects.nonNull(moduleFilterInfo.getModuleInfo().getRelateSearchField())) {
+            log.debug(
+                    "子模块关联主模块主表的字段名称:{},主模块的主键id:{}",
+                    moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    relatePrimaryId);
+        } else {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据新建][%d]子模块没有配置主模块主表的关联字段",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+            // 放入关联键的ID，主模块的主键id
+            // 补充上层模块主表的主键到关联ID字段
+            moduleItem.put(
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + ToolUtils.snakeToCamelCase(
+                                    moduleFilterInfo.getModuleInfo().getRelateSearchField()),
+                    relatePrimaryId);
+            log.debug(
+                    "补充:{},主模块的主键id:{}到表{}的提交数据",
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    relatePrimaryId,
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable());
+        }
+
+        List<Object> resultList = new ArrayList<>();
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+
+            // 带version后缀的原始数据
+            Map<String, Map<String, Object>> originTableDataMap = getTableMap(moduleItem);
+
+            // 去除version后的数据
+            Map<String, Map<String, Object>> realTableDataMap =
+                    originTableDataMap.entrySet().stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            entry ->
+                                                    entry.getKey().endsWith("_version")
+                                                            ? entry.getKey()
+                                                                    .substring(
+                                                                            0,
+                                                                            entry.getKey().length()
+                                                                                    - "_version"
+                                                                                            .length())
+                                                            : entry.getKey(),
+                                            Map.Entry::getValue));
+
+            if (CollectionUtil.isEmpty(realTableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据新建][%d]子模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            String primaryRealTable = primaryTable.replace("_version", "");
+            Map<String, Object> primaryData = realTableDataMap.get(primaryRealTable);
+            if (CollectionUtil.isEmpty(primaryData)) {
+                // throw new BusinessException(ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                // "[模块数据新建]子模块主表数据不能为空");
+                log.warn(
+                        String.format(
+                                "[模块数据新建][%d]子模块主表[%s]数据[%s]能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                primaryRealTable,
+                                realTableDataMap.toString()));
+                continue;
+            }
+            try {
+                Map<String, Object> extraDataMap =
+                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                Object primaryObject =
+                        insertModuleTable(
+                                moduleFilterInfo, primaryRealTable, primaryData, extraDataMap);
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtils.isEmpty(moduleTables)) {
+                    for (ModuleTable table : moduleTables) {
+                        String realTableName = table.getTableName().replace("_version", "");
+                        if (CommonConstant.CONFIG_MODULE_TABLE_READ_ONLY.equals(
+                                table.getReadOnly())) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据新建][%d]模块子表[%s]数据只读",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            realTableName));
+                            continue;
+                        }
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        String joinLeftField = ToolUtils.snakeToCamelCase(table.getJoinLeftField());
+                        String joinRightField =
+                                ToolUtils.snakeToCamelCase(table.getJoinRightField());
+                        Map<String, Object> data = realTableDataMap.get(realTableName);
+
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据新建][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            realTableName));
+                            continue;
+                        }
+
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+                            Map<String, Object> mapData = (Map<String, Object>) data;
+                            mapData.put(joinRightField, getField(primaryObject, joinLeftField));
+                            // 写入关联表的数据
+                            Object o =
+                                    insertRealTable(
+                                            moduleFilterInfo,
+                                            realTableName,
+                                            realTableDataMap.get(realTableName),
+                                            extraDataMap);
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                resultList.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return resultList;
+    }
+
+    /**
      * 创建主 模块数据
      *
      * @param subjectId
@@ -445,6 +790,51 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         }
         return resultList;
+    }
+
+    /**
+     * 多模块更新真实业务表数据
+     *
+     * @param subjectId
+     * @param roleId
+     * @param reqList
+     * @return
+     */
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    private Object editMultiRealTableData(
+            Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
+        List<Long> moduleIdList =
+                reqList.stream().map(x -> x.getModuleId()).collect(Collectors.toList());
+
+        List<Object> primaryTableDataList =
+                editMainRealTableData(subjectId, roleId, reqList.get(0));
+
+        for (int i = 1; i < reqList.size(); i++) {
+            try {
+                editSubRealTableData(
+                        subjectId,
+                        roleId,
+                        reqList.get(i),
+                        Long.valueOf(getId(primaryTableDataList.get(0)).toString()));
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        if (CollectionUtil.isNotEmpty(primaryTableDataList)
+                && primaryTableDataList.get(0) != null) {
+            try {
+                return getId(primaryTableDataList.get(0));
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return null;
     }
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
@@ -655,26 +1045,56 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
      *
      * @param subjectId
      * @param roleId
-     * @param moduleSaveList
+     * @param moduleSaveList 添加moduleId和deleted字段后的数据
+     * @param moduleSaveList originModuleSaveList原始的保存数据
+     * @param needProcess 是否调用process , submit创建的新纪录不调用审批链
      * @return
      */
     private Object createMultiModuleDataWithApproval(
-            Long subjectId, Long roleId, List<ModuleSaveReq> moduleSaveList, Long moduleId) {
+            Long subjectId,
+            Long roleId,
+            List<ModuleSaveReq> moduleSaveList,
+            Long moduleId,
+            boolean needProcess) {
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
         Object primaryData = createMultiModuleData(subjectId, roleId, moduleSaveList);
 
-        // 有审批链操作时，执行审批链
-        ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
-        approvalProcessReq.setSubjectId(subjectId);
-        approvalProcessReq.setButton("create");
-        approvalProcessReq.setModuleId(moduleId);
-        approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryData)));
-        approvalProcessReq.setRoleId(roleId);
-        approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
-        approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
-        approvalProcessReq.setPrefix("CLS");
+        if (needProcess) {
+            // 有审批链操作时，执行审批链
+            ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
+            approvalProcessReq.setSubjectId(subjectId);
+            approvalProcessReq.setButton("create");
+            approvalProcessReq.setModuleId(moduleId);
+            approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryData)));
+            approvalProcessReq.setRoleId(roleId);
+            approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
+            approvalProcessReq.setPrefix("CLS");
 
-        approvalApiOpenFeignClient.process(approvalProcessReq);
+            ConfigApiResponse<Map<String, Object>> processResult =
+                    approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
+
+            if (ConfigApiResponse.isSuccessResponse(processResult)) {
+                log.debug("调用审批链方{}方法成功。", "process");
+            } else {
+                try {
+                    log.debug(
+                            "调用审批链:{}方法失败 , 请求参数:{}",
+                            "process",
+                            JsonUtil.obj2Json(approvalProcessReq));
+                } catch (JsonProcessingException e) {
+                    log.debug("请求参数json序列化失败。");
+                }
+                // 主动抛出异常，回滚事务
+                ApiResponseCodeEnum apiResponseCodeEnum =
+                        ApiResponseCodeEnum.getEnumByCode(processResult.getStatus());
+                if (Objects.isNull(apiResponseCodeEnum)) {
+                    apiResponseCodeEnum = ApiResponseCodeEnum.APPROVAL_PROCEDURE_CHANGE;
+                }
+                throw new BusinessException(
+                        apiResponseCodeEnum.getCode(), apiResponseCodeEnum.getMessage());
+            }
+        }
 
         return primaryData;
     }
@@ -729,13 +1149,24 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             }
                         });
 
+        // 深拷贝模块表单数据
+        List<ModuleSaveReq> copyModuleSaveList;
+        try {
+            String originJsonStr = JsonUtil.obj2Json(moduleSaveList);
+            copyModuleSaveList =
+                    JsonUtil.json2Obj(originJsonStr, new TypeReference<List<ModuleSaveReq>>() {});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
         // 创建前先填充module_id、deleted字段值
-        createPreProcessData(moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+        createPreProcessDataFillModuleIdAndDeleted(
+                copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
 
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
         Object o =
                 createMultiModuleDataWithApproval(
-                        subjectId, roleId, moduleSaveList, targetTopMenu.getModuleId());
+                        subjectId, roleId, copyModuleSaveList, targetTopMenu.getModuleId(), true);
         return o;
     }
 
@@ -792,17 +1223,96 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             }
                         });
 
-        // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
-        Long oldRecordId = editPreProcessData(req, subjectId, roleId, targetTopMenu.getModuleId());
-
-        Object primaryData = createMultiMenuModuleData(subjectId, roleId, req);
+        // 深拷贝模块表单数据
+        List<ModuleSaveReq> originalCopyModuleSaveList;
+        try {
+            String originJsonStr = JsonUtil.obj2Json(moduleSaveList);
+            originalCopyModuleSaveList =
+                    JsonUtil.json2Obj(originJsonStr, new TypeReference<List<ModuleSaveReq>>() {});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
 
         ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
+
+        ApprovalButtonType buttonType =
+                ApprovalButtonType.getApprovalButtonTypeByKey(approvalOperation.getBtnType());
+        if (Objects.isNull(buttonType)) {
+            buttonType = ApprovalButtonType.VIEW;
+        }
+
+        Long recordId;
+
+        switch (buttonType) {
+            case CREATE -> {
+                log.debug("当前提交为创建或变更，插入业务数据。");
+                // 创建前先填充module_id、deleted字段值
+                createPreProcessDataFillModuleIdAndDeleted(
+                        moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+
+                Object primaryData =
+                        createMultiModuleDataWithApproval(
+                                subjectId,
+                                roleId,
+                                moduleSaveList,
+                                targetTopMenu.getModuleId(),
+                                true);
+                recordId = Long.parseLong(String.valueOf(primaryData));
+            }
+            case SUBMIT -> {
+                log.debug("当前提交为变更，插入业务数据。");
+                // 深拷贝模块表单数据
+                List<ModuleSaveReq> copyModuleSaveList;
+                try {
+                    String originJsonStr = JsonUtil.obj2Json(moduleSaveList);
+                    copyModuleSaveList =
+                            JsonUtil.json2Obj(
+                                    originJsonStr, new TypeReference<List<ModuleSaveReq>>() {});
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
+                // 更新上一条数据的deleted
+                editPreProcessDataUpdateDelete(
+                        moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                editMultiModuleData(subjectId, roleId, moduleSaveList);
+
+                // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
+                Long oldRecordId =
+                        editPreProcessDataRemoveId(
+                                copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                approvalProcessReq.setOldRecordId(oldRecordId);
+
+                // 创建前先填充module_id、deleted字段值
+                createPreProcessDataFillModuleIdAndDeleted(
+                        copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                Object primaryData =
+                        createMultiModuleDataWithApproval(
+                                subjectId,
+                                roleId,
+                                copyModuleSaveList,
+                                targetTopMenu.getModuleId(),
+                                false);
+                recordId = Long.parseLong(String.valueOf(primaryData));
+            }
+            case CANCEL -> {
+                log.debug("当前提交为取消，修改业务数据删除标识。");
+                recordId =
+                        editPreProcessDataUpdateDelete(
+                                moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                editMultiModuleData(subjectId, roleId, moduleSaveList);
+            }
+            default -> {
+                recordId =
+                        getDataRecordId(
+                                moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                log.debug("当前提交不是创建或变更，只执行审批流程。");
+            }
+        }
+
         approvalProcessReq.setSubjectId(subjectId);
         approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
-        approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryData)));
-        approvalProcessReq.setOldRecordId(oldRecordId);
         approvalProcessReq.setRoleId(roleId);
+        approvalProcessReq.setRecordId(recordId);
         approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
         approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
         approvalProcessReq.setButton(approvalOperation.getBtnType());
@@ -810,23 +1320,157 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         approvalProcessReq.setRejectStep(approvalOperation.getRejectStep());
 
         ConfigApiResponse<Map<String, Object>> processResult =
-                approvalApiOpenFeignClient.process(approvalProcessReq);
+                approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
 
-        if (ConfigApiResponse.isSuccessResponse(response)) {
-            log.debug("审批结果:{}", processResult);
+        if (ConfigApiResponse.isSuccessResponse(processResult)) {
+            Map<String, Object> processResultMap = processResult.getData();
+            // 判断审批链是否完成，若完成则更新真实表数据
+            if (Objects.nonNull(processResultMap.get("end"))
+                    && 1 == Integer.parseInt(String.valueOf(processResultMap.get("end")))) {
+                if (Objects.nonNull(processResultMap.get("businessId"))) {
+                    Long bussinessId =
+                            Long.parseLong(String.valueOf(processResultMap.get("businessId")));
+                    log.debug(
+                            "真实业务表businessId不为空,更新businessId:{}对应的数据",
+                            processResultMap.get("businessId"));
+
+                    // 替换审批链record表的ID为要更新的真实业务表的主键ID
+                    editPreProcessDataReplaceId(
+                            originalCopyModuleSaveList,
+                            subjectId,
+                            roleId,
+                            targetTopMenu.getModuleId(),
+                            bussinessId);
+
+                    editMultiRealTableData(subjectId, roleId, originalCopyModuleSaveList);
+                } else {
+                    log.debug("真实业务表businessId为空,插入数据");
+                    // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
+                    editPreProcessDataRemoveId(
+                            originalCopyModuleSaveList,
+                            subjectId,
+                            roleId,
+                            targetTopMenu.getModuleId());
+
+                    Object businessId =
+                            createMultiModuleDataToRealTable(
+                                    subjectId, roleId, originalCopyModuleSaveList);
+                    SaveBusinessIdReq saveBusinessIdReq = new SaveBusinessIdReq();
+                    saveBusinessIdReq.setSubjectId(subjectId);
+                    saveBusinessIdReq.setModuleId(targetTopMenu.getModuleId());
+                    saveBusinessIdReq.setRecordId(recordId);
+                    saveBusinessIdReq.setBusinessId(Long.parseLong(String.valueOf(businessId)));
+                    approvalApiOpenFeignClient.saveBusinessId(subjectId, saveBusinessIdReq);
+                }
+            }
+
         } else {
             try {
-                log.debug("调用审批链方法:{}失败，请求参数:{}", "process", JsonUtil.obj2Json(approvalProcessReq));
+                log.debug(
+                        "调用审批链:{}方法失败 , 请求参数:{}", "process", JsonUtil.obj2Json(approvalProcessReq));
             } catch (JsonProcessingException e) {
-                log.debug("请求参数json序列化失败");
+                log.debug("请求参数json序列化失败。");
             }
             // 主动抛出异常，回滚事务
+            ApiResponseCodeEnum apiResponseCodeEnum =
+                    ApiResponseCodeEnum.getEnumByCode(processResult.getStatus());
+            if (Objects.isNull(apiResponseCodeEnum)) {
+                apiResponseCodeEnum = ApiResponseCodeEnum.APPROVAL_PROCEDURE_CHANGE;
+            }
             throw new BusinessException(
-                    ApiResponseCodeEnum.SERVER_ERROR.getCode(),
-                    ApiResponseCodeEnum.SERVER_ERROR.getMessage());
+                    apiResponseCodeEnum.getCode(), apiResponseCodeEnum.getMessage());
         }
 
-        return primaryData;
+        return recordId;
+    }
+
+    private void insertDataToRealTable(
+            Long subjectId, Long roleId, List<ModuleSaveReq> moduleSaveList) {}
+
+    private Long getDataRecordId(
+            List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
+        // 获取主模块信息
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId, roleId, moduleId, FormButtonEnum.CREATE.getKey(), List.of());
+
+        String primaryTablePrimaryKey =
+                moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                        + DB_TABLE_FIELD_SEPARATOR
+                        + DEFAULT_PRIMARY_KEY;
+
+        Long recordId = null;
+
+        boolean finded = false;
+
+        for (ModuleSaveReq ele : req) {
+            if (finded) {
+                break;
+            }
+            for (Map<String, Object> item : ele.getModuleData()) {
+                if (item.containsKey(primaryTablePrimaryKey)) {
+                    recordId = Long.parseLong(String.valueOf(item.get(primaryTablePrimaryKey)));
+                    log.debug("找到模块主表主键:{}对应的key,值为:{}", primaryTablePrimaryKey, recordId);
+                    finded = true;
+                    break;
+                }
+            }
+        }
+        return recordId;
+    }
+
+    private Long editPreProcessDataUpdateDelete(
+            List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
+        // 获取主模块信息
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId, roleId, moduleId, FormButtonEnum.CREATE.getKey(), List.of());
+
+        String primaryTablePrimaryKey =
+                moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                        + DB_TABLE_FIELD_SEPARATOR
+                        + DEFAULT_PRIMARY_KEY;
+
+        Long recordId = null;
+
+        for (ModuleSaveReq ele : req) {
+            for (Map<String, Object> item : ele.getModuleData()) {
+                // 补齐moduleId和deleted字段
+                Set<String> tableNames = new HashSet<>();
+                item.keySet()
+                        .forEach(
+                                str -> {
+                                    if (StringUtils.isNotBlank(str)) {
+                                        tableNames.add(Splitter.on(".").splitToList(str).get(0));
+                                    }
+                                });
+
+                Iterator<Map.Entry<String, Object>> iterator = item.entrySet().iterator();
+                while (iterator.hasNext()) {
+                    Map.Entry<String, Object> nextEntry = iterator.next();
+                    if (primaryTablePrimaryKey.equals(nextEntry.getKey())) {
+                        recordId = Long.parseLong(String.valueOf(nextEntry.getValue()));
+                        log.debug(
+                                "找到模块主表主键:{}对应的key,值为:{}",
+                                nextEntry.getKey(),
+                                nextEntry.getValue());
+                    } else {
+                        // 移除除主键之外的数据
+                        iterator.remove();
+                    }
+                }
+
+                log.debug("模块:{}对应的数据表为:{},顶层模块ID为:{}", ele.getModuleId(), tableNames, moduleId);
+                if (!CollectionUtils.isEmpty(tableNames)) {
+                    for (String tableName : tableNames) {
+                        log.debug("填充数据表:{}的module_id:{}和deleted:{}字段", tableName, moduleId, true);
+                        item.put(tableName + DB_TABLE_FIELD_SEPARATOR + "moduleId", moduleId);
+                        item.put(tableName + DB_TABLE_FIELD_SEPARATOR + "deleted", true);
+                    }
+                }
+            }
+        }
+        return recordId;
     }
 
     /**
@@ -838,7 +1482,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
      * @param moduleId
      * @return
      */
-    private void createPreProcessData(
+    private void createPreProcessDataFillModuleIdAndDeleted(
             List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
         for (ModuleSaveReq ele : req) {
             for (Map<String, Object> item : ele.getModuleData()) {
@@ -872,8 +1516,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
      * @param moduleId
      * @return
      */
-    private Long editPreProcessData(
-            List<MenuSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
+    private Long editPreProcessDataRemoveId(
+            List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
         // 获取主模块信息
         ModuleFilterInfo moduleFilterInfo =
                 moduleInfoWithPermissionService.filterModuleInfo(
@@ -886,7 +1530,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
         Long recordId = null;
 
-        for (MenuSaveReq ele : req) {
+        for (ModuleSaveReq ele : req) {
             for (Map<String, Object> item : ele.getModuleData()) {
                 Iterator<Map.Entry<String, Object>> iterator = item.entrySet().iterator();
                 while (iterator.hasNext()) {
@@ -910,6 +1554,462 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
 
         return recordId;
+    }
+
+    /**
+     * 替换主键ID，走真实业务表更新逻辑，返回上一版本recordId
+     *
+     * @param req
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @return
+     */
+    private Long editPreProcessDataReplaceId(
+            List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId, Long businessId) {
+        // 获取主模块信息
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId, roleId, moduleId, FormButtonEnum.CREATE.getKey(), List.of());
+
+        String primaryTablePrimaryKey =
+                moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                        + DB_TABLE_FIELD_SEPARATOR
+                        + DEFAULT_PRIMARY_KEY;
+
+        Long recordId = null;
+
+        for (ModuleSaveReq ele : req) {
+            for (Map<String, Object> item : ele.getModuleData()) {
+                if (item.containsKey(primaryTablePrimaryKey)) {
+                    log.debug(
+                            "找到模块主表主键:{}对应的key,值为:{} , 替换为业务businessId:{}",
+                            primaryTablePrimaryKey,
+                            item.containsKey(primaryTablePrimaryKey),
+                            businessId);
+                    item.put(primaryTablePrimaryKey, businessId);
+                    break;
+                }
+            }
+        }
+
+        return recordId;
+    }
+
+    /**
+     * 更新真实业务表主模块数据
+     *
+     * @param subjectId
+     * @param roleId
+     * @param req
+     * @return
+     */
+    private List<Object> editMainRealTableData(Long subjectId, Long roleId, ModuleSaveReq req) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.EDITE.getKey(),
+                        List.of());
+
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                    String.format("[模块数据编辑][%d]模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据编辑][%d]主模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        List<Object> returnResult = new ArrayList<>();
+
+        for (Map<String, Object> moduleData : req.getModuleData()) {
+
+            // 带version后缀的原始数据
+            Map<String, Map<String, Object>> originTableDataMap = getTableMap(moduleData);
+
+            // 去除version后的数据
+            Map<String, Map<String, Object>> realTableDataMap =
+                    originTableDataMap.entrySet().stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            entry ->
+                                                    entry.getKey().endsWith("_version")
+                                                            ? entry.getKey()
+                                                                    .substring(
+                                                                            0,
+                                                                            entry.getKey().length()
+                                                                                    - "_version"
+                                                                                            .length())
+                                                            : entry.getKey(),
+                                            Map.Entry::getValue));
+
+            if (CollectionUtil.isEmpty(realTableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据编辑][%d]主模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            // 校验权限
+            // tableDataMap = checkAndRemoveUnPermissionField(moduleFilterInfo, tableDataMap, true);
+            if (CollectionUtil.isEmpty(realTableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据编辑][%d]主模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            String primaryRealTable = primaryTable.replace("_version", "");
+            Map<String, Object> primaryData = realTableDataMap.get(primaryRealTable);
+
+            try {
+                if (CollectionUtil.isEmpty(primaryData)
+                        && isDataOnlyHasTableId(primaryRealTable, primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]主模块主表[%s]数据不能为空",
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    primaryRealTable));
+                }
+
+                if (CollectionUtil.isEmpty(primaryData)
+                        && !isDataHasTableId(primaryRealTable, primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]主模块主表[%s]数据没有ID字段值",
+                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                    primaryRealTable));
+                }
+                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+
+                // 更新主表 数据
+                Object primaryObject =
+                        updateRealTable(
+                                moduleFilterInfo, primaryRealTable, primaryData, extraDataMap);
+
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据 更新
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtil.isEmpty(moduleTables)) {
+                    for (ModuleTable table : moduleTables) {
+                        String joinTableName = table.getTableName().replace("_version", "");
+                        if (CommonConstant.CONFIG_MODULE_TABLE_READ_ONLY.equals(
+                                table.getReadOnly())) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据只读",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            joinTableName));
+                            continue;
+                        }
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        String joinLeftField = ToolUtils.snakeToCamelCase(table.getJoinLeftField());
+                        String joinRightField =
+                                ToolUtils.snakeToCamelCase(table.getJoinRightField());
+                        Map<String, Object> data = realTableDataMap.get(joinTableName);
+
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            joinTableName));
+                            continue;
+                        }
+                        if (!isDataHasTableId(joinTableName, data)) {
+                            throw new BusinessException(
+                                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                    String.format(
+                                            "[模块数据编辑][%d]主模块子表[%s]数据没有ID字段值",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            joinTableName));
+                        }
+                        Object jlf = getField(primaryObject, joinLeftField);
+                        if (jlf == null) {
+                            BaseMapper primaryMapper =
+                                    SpringBeanUtil.getBean(
+                                            StrUtil.toCamelCase(primaryRealTable)
+                                                    + MYBATIS_MAPPER_SUFFIX,
+                                            BaseMapper.class);
+                            Object dataBaseData =
+                                    primaryMapper.selectById((Serializable) primaryObjectId);
+                            if (dataBaseData == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]主模块主表[%s]数据[%s]数据库不存在",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                primaryRealTable,
+                                                primaryObjectId.toString()));
+                            }
+                            jlf = getField(dataBaseData, joinLeftField);
+                            if (jlf == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]主模块子表[%s]数据无法关联主表ID",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                primaryRealTable));
+                            }
+                        }
+                        Map<String, Object> mapData = (Map<String, Object>) data;
+                        mapData.put(joinRightField, jlf);
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+                            updateRealTable(
+                                    moduleFilterInfo,
+                                    primaryRealTable,
+                                    realTableDataMap.get(primaryRealTable),
+                                    extraDataMap);
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                returnResult.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return returnResult;
+    }
+
+    /**
+     * 更新真实业务表子模块数据
+     *
+     * @param subjectId
+     * @param roleId
+     * @param req
+     * @param parentModuleId
+     * @return
+     */
+    private List<Object> editSubRealTableData(
+            Long subjectId, Long roleId, ModuleSaveReq req, Long parentModuleId) {
+        // 获取权限过滤后的Field结果
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.EDITE.getKey(),
+                        List.of());
+
+        if (Objects.isNull(moduleFilterInfo)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_FIELD_WRITE_RIGHT_ERROR.getCode(),
+                    String.format("[模块数据编辑][%d]模块没有配置定义", req.getModuleId()));
+        }
+        if (CollectionUtil.isEmpty(req.getModuleData())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据编辑][%d]子模块数据不能为空",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        if (Objects.nonNull(moduleFilterInfo.getModuleInfo().getRelateSearchField())) {
+            log.debug(
+                    "子模块{}关联主模块主表的字段名称:{},主模块的主键id:{}",
+                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                    moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId);
+        } else {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    String.format(
+                            "[模块数据编辑][%d]子模块没有配置主模块主表的关联字段",
+                            moduleFilterInfo.getModuleInfo().getModuleId()));
+        }
+
+        for (Map<String, Object> moduleItem : req.getModuleData()) {
+            // 放入关联键的ID，主模块的主键id
+            // 补充上层模块主表的主键到关联ID字段
+            moduleItem.put(
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId);
+            log.debug(
+                    "补充:{},主模块的主键id:{}到表{}的提交数据",
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + moduleFilterInfo.getModuleInfo().getRelateSearchField(),
+                    parentModuleId,
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable());
+        }
+
+        List<Object> returnResult = new ArrayList<>();
+
+        for (Map<String, Object> moduleData : req.getModuleData()) {
+            Map<String, Map<String, Object>> tableDataMap = getTableMap(moduleData);
+            if (CollectionUtil.isEmpty(tableDataMap)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                        String.format(
+                                "[模块数据编辑][%d]子模块数据不能为空",
+                                moduleFilterInfo.getModuleInfo().getModuleId()));
+            }
+            String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+            Map<String, Object> primaryData = tableDataMap.get(primaryTable);
+
+            try {
+                if (CollectionUtil.isEmpty(primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]子模块主表数据不能为空",
+                                    moduleFilterInfo.getModuleInfo().getModuleId()));
+                }
+                if (isDataOnlyHasTableId(primaryTable, primaryData)) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            String.format(
+                                    "[模块数据编辑][%d]子模块主表[%s]数据不能为空",
+                                    moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
+                }
+                Object primaryObject;
+                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+                Boolean isMainTableInsert = false;
+                // 更新
+                if (isDataHasTableId(primaryTable, primaryData)) {
+                    primaryObject =
+                            updateModuleTable(
+                                    moduleFilterInfo, primaryTable, primaryData, extraDataMap);
+                    isMainTableInsert = false;
+                } else {
+                    // 插入
+                    primaryObject =
+                            insertModuleTable(
+                                    moduleFilterInfo,
+                                    primaryTable,
+                                    primaryData,
+                                    getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
+                    isMainTableInsert = true;
+                }
+
+                // TODO 有问题，关联key不一定是主键
+                Object primaryObjectId = getId(primaryObject);
+
+                // 关联表数据更新
+                List<ModuleTable> moduleTables = moduleFilterInfo.getModuleTableList();
+                if (!CollectionUtil.isEmpty(moduleTables)) {
+
+                    for (ModuleTable table : moduleTables) {
+                        if (CommonConstant.CONFIG_MODULE_TABLE_READ_ONLY.equals(
+                                table.getReadOnly())) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据只读",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+                        // 关联关系
+                        String relationType = table.getRelationType();
+                        String joinLeftField = ToolUtils.snakeToCamelCase(table.getJoinLeftField());
+                        String joinRightField =
+                                ToolUtils.snakeToCamelCase(table.getJoinRightField());
+                        Map<String, Object> data = tableDataMap.get(table.getTableName());
+
+                        if (CollectionUtil.isEmpty(data)) {
+                            log.warn(
+                                    String.format(
+                                            "[模块数据编辑][%d]模块子表[%s]数据为空",
+                                            moduleFilterInfo.getModuleInfo().getModuleId(),
+                                            table.getTableName()));
+                            continue;
+                        }
+
+                        Object jlf = getField(primaryObject, joinLeftField);
+                        if (jlf == null) {
+                            BaseMapper primaryMapper =
+                                    SpringBeanUtil.getBean(
+                                            StrUtil.toCamelCase(primaryTable)
+                                                    + MYBATIS_MAPPER_SUFFIX,
+                                            BaseMapper.class);
+                            Object dataBaseData =
+                                    primaryMapper.selectById((Serializable) primaryObjectId);
+                            if (dataBaseData == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]模块主表[%s]数据[%s]数据库没有",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                table.getTableName(),
+                                                primaryObjectId.toString()));
+                            }
+                            jlf = getField(dataBaseData, joinLeftField);
+                            if (jlf == null) {
+                                throw new BusinessException(
+                                        ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                        String.format(
+                                                "[模块数据编辑][%d]子模块子表[%s]数据无法关联主表ID",
+                                                moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                table.getTableName()));
+                            }
+                        }
+
+                        Object o = null;
+
+                        if (TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(relationType)
+                                || TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(relationType)) {
+                            if (isMainTableInsert) {
+
+                                o =
+                                        insertModuleTable(
+                                                moduleFilterInfo,
+                                                table.getTableName(),
+                                                tableDataMap.get(table.getTableName()),
+                                                getCreateModuleExtraMap(
+                                                        subjectId, SUBJECT_MAP.get(subjectId)));
+
+                            } else {
+                                if (!isDataHasTableId(table.getTableName(), data)) {
+                                    throw new BusinessException(
+                                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                                            String.format(
+                                                    "[模块数据编辑][%d]子模块子表[%s]数据没有ID字段值",
+                                                    moduleFilterInfo.getModuleInfo().getModuleId(),
+                                                    table.getTableName()));
+                                }
+                                o =
+                                        updateModuleTable(
+                                                moduleFilterInfo,
+                                                table.getTableName(),
+                                                tableDataMap.get(table.getTableName()),
+                                                extraDataMap);
+                            }
+
+                        } else if (TABLE_JOIN_RELATION_TYPE_ONE2MULTI.equals(relationType)) {
+                            // data = (List) tableDataMap.get(table.getTableName());
+                        }
+                    }
+                }
+                returnResult.add(primaryObject);
+            } catch (Exception e) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                        ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                        e);
+            }
+        }
+        return returnResult;
     }
 
     private List<Object> editMainModuleData(Long subjectId, Long roleId, ModuleSaveReq req) {
@@ -1468,6 +2568,61 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         return tableMap;
     }
 
+    /**
+     * 审批链完成后插入真实业务表数据，不需要模块相关的判断
+     *
+     * @param tableName
+     * @param dataMap
+     * @param extraMap
+     * @return
+     * @throws NoSuchMethodException
+     * @throws InvocationTargetException
+     * @throws InstantiationException
+     * @throws IllegalAccessException
+     */
+    private Object insertRealTable(
+            ModuleFilterInfo moduleFilterInfo,
+            String tableName,
+            Map<String, Object> dataMap,
+            Map<String, Object> extraMap)
+            throws NoSuchMethodException,
+                    InvocationTargetException,
+                    InstantiationException,
+                    IllegalAccessException {
+        // 主表查询Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+        Class primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+        Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+        primaryConstructor.setAccessible(true);
+        Object primaryInstance = primaryConstructor.newInstance();
+        fillData(
+                primaryInstance,
+                (Map<String, Object>) dataMap,
+                false,
+                DEFAULT_CREATE_UN_FILLED_FIELD);
+
+        fillData(primaryInstance, extraMap, false, DEFAULT_CREATE_UN_FILLED_FIELD);
+        primaryMapper.insert(primaryInstance);
+        if (DataUpdateContextHolder.getDataChangeFlag()) {
+            DataUpdateContextHolder.addDataUpdateToContext(
+                    DataChangeContext.builder()
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .moduleFilterInfo(moduleFilterInfo)
+                            .tableName(tableName)
+                            .before(null)
+                            .after(primaryInstance)
+                            .build());
+        }
+        return primaryInstance;
+    }
+
     private Object insertModuleTable(
             ModuleFilterInfo moduleFilterInfo,
             String tableName,
@@ -1514,6 +2669,72 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             .after(primaryInstance)
                             .build());
         }
+        return primaryInstance;
+    }
+
+    /**
+     * 更新真实业务表数据
+     *
+     * @param moduleFilterInfo
+     * @param tableName
+     * @param dataMap
+     * @param extraMap
+     * @return
+     * @throws NoSuchMethodException
+     * @throws InvocationTargetException
+     * @throws InstantiationException
+     * @throws IllegalAccessException
+     */
+    private Object updateRealTable(
+            ModuleFilterInfo moduleFilterInfo,
+            String tableName,
+            Map<String, Object> dataMap,
+            Map<String, Object> extraMap)
+            throws NoSuchMethodException,
+                    InvocationTargetException,
+                    InstantiationException,
+                    IllegalAccessException {
+        // 主表查询Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+        Class primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+        Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+        primaryConstructor.setAccessible(true);
+        Object primaryInstance = primaryConstructor.newInstance();
+        fillData(
+                primaryInstance,
+                (Map<String, Object>) dataMap,
+                true,
+                DEFAULT_EDITE_UN_FILLED_FIELD);
+        fillData(primaryInstance, extraMap, false, DEFAULT_EDITE_UN_FILLED_FIELD);
+        //        fillCreateDateField(primaryInstance, DEFAULT_CREATE_DATE_FIELD);
+        //        fillSubjectField(
+        //                primaryInstance,
+        //                DEFAULT_CREATE_SUBJECT_FIELD,
+        //                subjectId,
+        //                SUBJECT_MAP.get(subjectId));
+        if (DataUpdateContextHolder.getDataChangeFlag()) {
+            Object pre = primaryMapper.selectById((Serializable) getId(primaryInstance));
+            Object newInstance = primaryConstructor.newInstance();
+            BeanUtil.copyProperties(pre, newInstance, CopyOptions.create().ignoreNullValue());
+            BeanUtil.copyProperties(
+                    primaryInstance, newInstance, CopyOptions.create().ignoreNullValue());
+            DataUpdateContextHolder.addDataUpdateToContext(
+                    DataChangeContext.builder()
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .moduleFilterInfo(moduleFilterInfo)
+                            .tableName(tableName)
+                            .before(pre)
+                            .after(newInstance)
+                            .build());
+        }
+        primaryMapper.updateById(primaryInstance);
         return primaryInstance;
     }
 
@@ -1825,6 +3046,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         DateUtil.parseLocalDateTime(
                                 parameter.toString(), DatePattern.NORM_DATETIME_PATTERN));
             } else if (parameter.getClass() == LocalDateTime.class) {
+                f.set(instance, parameter);
+            }
+        } else if (c == Boolean.class) {
+            if (parameter.getClass() == String.class) {
+                f.set(instance, "true".equals(parameter));
+            } else if (parameter.getClass() == Boolean.class) {
                 f.set(instance, parameter);
             }
         }

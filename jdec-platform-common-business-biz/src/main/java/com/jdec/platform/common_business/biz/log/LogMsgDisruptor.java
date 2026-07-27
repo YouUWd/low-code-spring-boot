@@ -2,6 +2,7 @@ package com.jdec.platform.common_business.biz.log;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
+import com.jdec.platform.common_business.biz.enums.BizMsgEnum;
 import com.lmax.disruptor.dsl.Disruptor;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -16,7 +17,7 @@ import org.springframework.stereotype.Service;
 @Service
 @AllArgsConstructor
 @Slf4j
-public class LogDisruptor {
+public class LogMsgDisruptor {
 
     private final ExecutorService threadPool =
             new ThreadPoolExecutor(
@@ -28,26 +29,36 @@ public class LogDisruptor {
                     new ThreadFactoryBuilder().setNameFormat("LogDisruptor-%d").build(),
                     new ThreadPoolExecutor.CallerRunsPolicy());
 
-    private final Disruptor<LogEvent> logEventDisruptor =
-            new Disruptor<>(new LogEventFactory(), 1024, threadPool);
+    private final Disruptor<LogMsgEvent> logMsgEventDisruptor =
+            new Disruptor<>(new LogMsgEventFactory(), 1024, threadPool);
 
-    private final LogEventHandler logEventHandler;
+    private final LogMsgEventHandler logEventHandler;
 
     @PostConstruct
     public void start() {
-        logEventDisruptor.handleEventsWith(logEventHandler);
-        logEventDisruptor.start();
+        logMsgEventDisruptor.handleEventsWith(logEventHandler);
+        logMsgEventDisruptor.start();
     }
 
     @PreDestroy
     public void stop() {
-        logEventDisruptor.shutdown();
+        logMsgEventDisruptor.shutdown();
     }
 
     public void publishLogEvent(BizLogEnum logEnum, Object target) {
-        logEventDisruptor.publishEvent(
+        logMsgEventDisruptor.publishEvent(
                 (x, y) -> {
                     x.setBizLogEnum(logEnum);
+                    x.setBizMsgEnum(null);
+                    x.setTarget(target);
+                });
+    }
+
+    public void publishMsgEvent(BizMsgEnum msgEnum, Object target) {
+        logMsgEventDisruptor.publishEvent(
+                (x, y) -> {
+                    x.setBizMsgEnum(msgEnum);
+                    x.setBizLogEnum(null);
                     x.setTarget(target);
                 });
     }

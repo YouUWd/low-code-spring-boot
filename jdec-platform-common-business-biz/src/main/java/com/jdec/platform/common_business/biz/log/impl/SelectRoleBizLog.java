@@ -32,7 +32,7 @@ public class SelectRoleBizLog implements BizLog {
     }
 
     @Override
-    public Boolean recordBizLog(BizLogEnum logEnum, Object bizLog) {
+    public Boolean processBizLog(BizLogEnum logEnum, Object bizLog) {
         BizLogDTO bizLogDTO = (BizLogDTO) bizLog;
         if (bizLogDTO != null) {
             try {
