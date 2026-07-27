@@ -1,6 +1,5 @@
 package com.jdec.platform.config.biz.service;
 
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -13,9 +12,7 @@ import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysButton;
-import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.mapper.SysButtonMapper;
-import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -40,7 +37,6 @@ public class SysButtonService implements SysButtonApi {
 
     private final SysButtonMapper sysButtonMapper;
     private final ReferenceCheckManager referenceCheckManager;
-    private final SysDataSnapshotMapper sysDataSnapshotMapper;
 
     @Override
     public PageResult<SysButtonResp> page(SysButtonPageReq req) {
@@ -102,6 +98,20 @@ public class SysButtonService implements SysButtonApi {
             )
     @Override
     public void saveButton(SysButtonSaveReq req) {
+        // 保存前先查询旧数据（用于审计）
+        SysButton oldEntity = null;
+        if (req.getId() != null) {
+            oldEntity =
+                    sysButtonMapper.selectOne(
+                            Wrappers.<SysButton>lambdaQuery()
+                                    .eq(SysButton::getId, req.getId())
+                                    .eq(SysButton::getSubjectId, AppContext.getSubjectId())
+                                    .eq(SysButton::getProjectNo, AppContext.getProjectNo()));
+            if (oldEntity == null) {
+                throw new BusinessException("按钮不存在");
+            }
+        }
+
         if (req.getId() == null) {
             SysButton entity = new SysButton();
             BeanUtils.copyProperties(req, entity);
@@ -117,22 +127,9 @@ public class SysButtonService implements SysButtonApi {
                 throw new BusinessException("按钮名称已存在");
             }
             sysButtonMapper.insert(entity);
-            // 记录快照
-            SysDataSnapshot snapshot = new SysDataSnapshot();
-            snapshot.setDataId(entity.getId());
-            snapshot.setTableName("sys_button");
-            snapshot.setJsonData(JSONUtil.toJsonStr(entity));
-            sysDataSnapshotMapper.insert(snapshot);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
         } else {
-            boolean exists =
-                    sysButtonMapper.exists(
-                            Wrappers.<SysButton>lambdaQuery()
-                                    .eq(SysButton::getId, req.getId())
-                                    .eq(SysButton::getSubjectId, AppContext.getSubjectId())
-                                    .eq(SysButton::getProjectNo, AppContext.getProjectNo()));
-            if (!exists) {
-                throw new BusinessException("按钮不存在");
-            }
             long count =
                     sysButtonMapper.selectCount(
                             Wrappers.<SysButton>lambdaQuery()

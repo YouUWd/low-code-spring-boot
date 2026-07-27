@@ -14,6 +14,8 @@ import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.config.BizSystemConfig;
 import com.jdec.platform.config.biz.entity.SysDataPermission;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -46,6 +48,12 @@ public class SysDataPermissionService implements SysDataPermissionApi {
     private final BizSystemConfig bizSystemConfig;
 
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "数据权限配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_data_permission",
+            dataIdField = "#req.id")
     public SysRightResp saveDataPermission(SysDataPermissionSaveReq req) {
         SysDataPermission entity;
         if (req.getId() == null) {
@@ -67,6 +75,9 @@ public class SysDataPermissionService implements SysDataPermissionApi {
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             sysDataPermissionMapper.insert(entity);
+
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
         } else {
             entity = sysDataPermissionMapper.selectById(req.getId());
             if (entity == null) {

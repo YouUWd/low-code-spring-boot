@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @Schema(description = "字段配置保存请求")
 public class SysFieldSaveReq {
 
-    @Schema(description = "主键ID（更新时必填）")
+    @Schema(description = "主键ID")
     private Long id;
 
     @Schema(description = "列名")

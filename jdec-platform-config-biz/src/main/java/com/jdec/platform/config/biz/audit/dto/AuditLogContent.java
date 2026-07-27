@@ -21,6 +21,6 @@ public class AuditLogContent {
     /** 跳转链接 */
     private String hrefUrl;
 
-    /** 操作结果 */
-    private String operatorResult;
+    /** 控制器名称 */
+    private String controlName;
 }
