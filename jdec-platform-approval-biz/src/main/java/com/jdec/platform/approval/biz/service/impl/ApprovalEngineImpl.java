@@ -145,7 +145,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         // 操作按钮
         List<Map<String, Object>> operationButton = getOperationButton(req);
-
+        int canEdit = operationButton.isEmpty() ? 0 : 1;
+        result.put("canEdit", canEdit);
         result.put("btnList", operationButton);
         return result;
     }
@@ -657,12 +658,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 审批通过---------------------------------------------------------------------
     @Transactional
     public ApprovalBusiness businessApprove(ApprovalProcessDTO approvalProcessDTO) {
+        Long recordId =
+                Objects.nonNull(approvalProcessDTO.getOldRecordId())
+                        ? approvalProcessDTO.getOldRecordId()
+                        : approvalProcessDTO.getRecordId();
         // 查询当前业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
-        approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
-                .last("limit 1");
+        approvalBusinessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("limit 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
@@ -701,6 +704,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalChain.setApprovalUids(String.join(",", approvalUidList));
         approvalBusiness.setApprovalUids(String.join(",", approvalUidList));
         approvalChainMapper.updateById(approvalChain);
+        // 更新业务主记录
+        approvalBusinessMapper.updateById(approvalBusiness);
         // 判断当前步骤是否审批通过
         approvalRule(approvalProcessDTO, approvalChain);
         boolean approved = true;
@@ -762,29 +767,69 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalBusiness.setStatusFontColor(approvalChainStatus.getStatusFontColor());
                 approvalBusiness.setStatusValue(approvalChainStatus.getStatusValue());
             }
+            // 更新业务主记录
+            approvalBusinessMapper.updateById(approvalBusiness);
+
             LambdaQueryWrapper<ApprovalVersionRecord> approvalRecordWrapper =
                     new LambdaQueryWrapper<>();
             approvalRecordWrapper.eq(
-                    ApprovalVersionRecord::getSerialNumber, approvalProcessDTO.getSerialNumber());
+                    ApprovalVersionRecord::getSerialNumber, approvalBusiness.getSerialNumber());
             approvalRecordWrapper
-                    .eq(ApprovalVersionRecord::getSerialNo, approvalProcessDTO.getSerialNo())
+                    .eq(ApprovalVersionRecord::getSerialNo, approvalBusiness.getSerialNo())
                     .last("limit 1");
             ApprovalVersionRecord approvalRecord =
                     approvalVersionRecordMapper.selectOne(approvalRecordWrapper);
             if (Objects.isNull(approvalRecord)) {
                 throw new BusinessException(601, "单据记录异常");
             }
-            approvalRecord.setCurrentStep(approvalBusiness.getCurrentStep());
-            approvalRecord.setStatusId(approvalBusiness.getStatusId());
-            approvalRecord.setStatusTitle(approvalChainStatus.getTitle());
-            approvalRecord.setStatusBackground(approvalChainStatus.getStatusBackground());
-            approvalRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
-            approvalRecord.setStatusValue(approvalChainStatus.getStatusValue());
-            approvalVersionRecordMapper.updateById(approvalRecord);
+
+            if (Objects.isNull(approvalProcessDTO.getOldRecordId())) {
+                approvalRecord.setCurrentStep(approvalBusiness.getCurrentStep());
+                approvalRecord.setStatusId(approvalBusiness.getStatusId());
+                approvalRecord.setStatusTitle(approvalChainStatus.getTitle());
+                approvalRecord.setStatusBackground(approvalChainStatus.getStatusBackground());
+                approvalRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
+                approvalRecord.setStatusValue(approvalChainStatus.getStatusValue());
+                approvalVersionRecordMapper.updateById(approvalRecord);
+            } else {
+                // 生成编号
+                approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo() + 1);
+
+                // 更新业务单据记录
+                approvalBusiness.setSerialNo(approvalProcessDTO.getSerialNo());
+                approvalBusiness.setRecordId(approvalProcessDTO.getRecordId());
+                approvalBusinessMapper.updateById(approvalBusiness);
+
+                // 创建业务单据详细内容记录
+                ApprovalVersionRecord approvalVersionRecord = new ApprovalVersionRecord();
+                approvalVersionRecord.setSubjectId(approvalProcessDTO.getSubjectId());
+                approvalVersionRecord.setModuleId(approvalProcessDTO.getModuleId());
+                approvalVersionRecord.setRecordId(approvalProcessDTO.getRecordId());
+                approvalVersionRecord.setBusinessId(approvalBusiness.getBusinessId());
+                approvalVersionRecord.setBusinessNumber(approvalBusiness.getBusinessNumber());
+                approvalVersionRecord.setVersionNo(approvalBusiness.getVersionNo());
+                approvalVersionRecord.setSerialNumber(approvalProcessDTO.getSerialNumber());
+                approvalVersionRecord.setSerialNo(approvalProcessDTO.getSerialNo());
+                approvalVersionRecord.setCurrentStep(approvalBusiness.getCurrentStep());
+                approvalVersionRecord.setStatusId(approvalBusiness.getStatusId());
+                approvalVersionRecord.setStatusTitle(approvalChainStatus.getTitle());
+                approvalVersionRecord.setStatusBackground(
+                        approvalChainStatus.getStatusBackground());
+                approvalVersionRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
+                approvalVersionRecord.setStatusValue(approvalChainStatus.getStatusValue());
+                approvalVersionRecord.setSourceId(approvalRecord.getSourceId());
+                approvalVersionRecord.setApprovalChainTypeId(
+                        approvalBusiness.getApprovalChainTypeId());
+                approvalVersionRecord.setCreatedBy(approvalProcessDTO.getApplicantId());
+                approvalVersionRecord.setCreatedDate(LocalDateTime.now());
+                approvalVersionRecord.setUpdatedBy(approvalProcessDTO.getApplicantId());
+                approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
+                approvalVersionRecordMapper.insert(approvalVersionRecord);
+            }
         }
-        // 更新业务主记录
-        approvalBusinessMapper.updateById(approvalBusiness);
+
         // 写入日志
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
@@ -925,6 +970,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
         // 写入日志
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
