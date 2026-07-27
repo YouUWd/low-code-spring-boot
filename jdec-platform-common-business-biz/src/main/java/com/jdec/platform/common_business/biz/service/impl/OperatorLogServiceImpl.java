@@ -51,7 +51,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
         if (CollectionUtil.isEmpty(menuRespList)) {
             return new ArrayList<>();
         }
-        // 筛选业务菜单，去掉系统设置菜单
+        // 过滤出菜单 绑定的模块
         MenuListResp targetTopMenu =
                 response.getData().stream()
                         .filter(ele -> req.getMenuId().equals(ele.getId()))
@@ -84,7 +84,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 operationChangeDTO =
                         JsonUtil.json2Obj(changeLog.getChangeContent(), OperationChangeDTO.class);
             } catch (Exception e) {
-
+                log.error(" json parse error,e=" + e);
             }
             if (operationChangeDTO == null
                     || CollectionUtil.isEmpty(operationChangeDTO.getModifyModules())) {

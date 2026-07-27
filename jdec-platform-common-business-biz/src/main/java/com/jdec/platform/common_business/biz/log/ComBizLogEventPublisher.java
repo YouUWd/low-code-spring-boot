@@ -7,7 +7,7 @@ public class ComBizLogEventPublisher {
 
     public static void publishLogEvent(BizLogEnum logEnum, Object log) {
         if (logEnum != null && log != null) {
-            SpringBeanUtil.getBean(LogDisruptor.class).publishLogEvent(logEnum, log);
+            SpringBeanUtil.getBean(LogMsgDisruptor.class).publishLogEvent(logEnum, log);
         }
     }
 }
