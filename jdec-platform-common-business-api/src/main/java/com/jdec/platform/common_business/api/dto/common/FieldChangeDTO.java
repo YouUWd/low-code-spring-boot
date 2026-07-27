@@ -11,17 +11,17 @@ import lombok.EqualsAndHashCode;
 public class FieldChangeDTO implements Serializable {
 
     @Schema(description = "字段名")
-    private String fieldName;
+    private String field;
 
     @Schema(description = "字段显示名")
-    private String fieldShowName;
+    private String name;
 
     // @Schema(description = "字段类型")
     // private String fieldType;
 
     @Schema(description = "前值")
-    private String beforeValue;
+    private String old;
 
     @Schema(description = "后值")
-    private String afterValue;
+    private String newer;
 }

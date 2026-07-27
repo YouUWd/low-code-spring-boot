@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.jdec.platform.common_business.api.OperatorLogServiceApi;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.api.dto.request.OpLogReq;
@@ -77,36 +78,37 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             OpLogResp logResp = new OpLogResp();
             BeanUtil.copyProperties(
                     changeLog, logResp, CopyOptions.create().ignoreNullValue().ignoreError());
-            logResp.setChangeContent(null);
+            logResp.setModifyModules(null);
 
-            OperationChangeDTO operationChangeDTO = null;
+            List<ModuleDataChangeDTO> modifyModules = null;
             try {
-                operationChangeDTO =
-                        JsonUtil.json2Obj(changeLog.getChangeContent(), OperationChangeDTO.class);
+                modifyModules =
+                        JsonUtil.json2Obj(
+                                changeLog.getChangeContent(),
+                                new TypeReference<List<ModuleDataChangeDTO>>() {});
             } catch (Exception e) {
                 log.error(" json parse error,e=" + e);
             }
-            if (operationChangeDTO == null
-                    || CollectionUtil.isEmpty(operationChangeDTO.getModifyModules())) {
+            if (CollectionUtil.isEmpty(modifyModules)) {
                 continue;
             }
             List<ModuleDataChangeDTO> moduleDataList = new ArrayList<>();
             Map<Long, Map<String, Integer>> moduleMap = new HashMap<>();
-            for (ModuleDataChangeDTO moduleDataChangeDTO : operationChangeDTO.getModifyModules()) {
+            for (ModuleDataChangeDTO moduleDataChangeDTO : modifyModules) {
                 DataChangeActionDTO dataChangeActionDTO = moduleDataChangeDTO.getActions();
                 // 没有变更字段
                 if (dataChangeActionDTO == null
-                        || (CollectionUtil.isEmpty(dataChangeActionDTO.getInsertRows())
-                                && CollectionUtil.isEmpty(dataChangeActionDTO.getUpdateRows())
-                                && CollectionUtil.isEmpty(dataChangeActionDTO.getDeleteRows()))) {
+                        || (CollectionUtil.isEmpty(dataChangeActionDTO.getA())
+                                && CollectionUtil.isEmpty(dataChangeActionDTO.getU())
+                                && CollectionUtil.isEmpty(dataChangeActionDTO.getD()))) {
                     continue;
                 }
-                if (!moduleMap.containsKey(moduleDataChangeDTO.getModuleId())) {
+                if (!moduleMap.containsKey(moduleDataChangeDTO.getMId())) {
                     ModuleFilterInfo moduleFilterInfo =
                             moduleInfoWithPermissionService.filterModuleInfo(
                                     subjectId,
                                     roleId,
-                                    moduleDataChangeDTO.getModuleId(),
+                                    moduleDataChangeDTO.getMId(),
                                     FormButtonEnum.VIEW.getKey(),
                                     List.of());
                     Map<String, Integer> fieldMap = new HashMap<>();
@@ -117,16 +119,16 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                                     field.getPermissionCode());
                         }
                     }
-                    moduleMap.put(moduleDataChangeDTO.getModuleId(), fieldMap);
+                    moduleMap.put(moduleDataChangeDTO.getMId(), fieldMap);
                 }
-                Map<String, Integer> fieldMap = moduleMap.get(moduleDataChangeDTO.getModuleId());
+                Map<String, Integer> fieldMap = moduleMap.get(moduleDataChangeDTO.getMId());
 
                 List<RowChangeDTO> insertRows =
-                        getFilterRowChangeDTO(dataChangeActionDTO.getInsertRows(), fieldMap);
+                        getFilterRowChangeDTO(dataChangeActionDTO.getA(), fieldMap);
                 List<RowChangeDTO> updateRows =
-                        getFilterRowChangeDTO(dataChangeActionDTO.getUpdateRows(), fieldMap);
+                        getFilterRowChangeDTO(dataChangeActionDTO.getU(), fieldMap);
                 List<RowChangeDTO> deleteRows =
-                        getFilterRowChangeDTO(dataChangeActionDTO.getDeleteRows(), fieldMap);
+                        getFilterRowChangeDTO(dataChangeActionDTO.getD(), fieldMap);
 
                 // 过滤权限后 没有变更字段了
                 if (CollectionUtil.isEmpty(insertRows)
@@ -135,12 +137,12 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                     continue;
                 }
                 ModuleDataChangeDTO mChangeDTO = new ModuleDataChangeDTO();
-                mChangeDTO.setModuleName(moduleDataChangeDTO.getModuleName());
-                mChangeDTO.setModuleId(moduleDataChangeDTO.getModuleId());
+                mChangeDTO.setName(moduleDataChangeDTO.getName());
+                mChangeDTO.setMId(moduleDataChangeDTO.getMId());
                 DataChangeActionDTO actionDTO = new DataChangeActionDTO();
-                actionDTO.setInsertRows(insertRows);
-                actionDTO.setUpdateRows(updateRows);
-                actionDTO.setDeleteRows(deleteRows);
+                actionDTO.setA(insertRows);
+                actionDTO.setU(updateRows);
+                actionDTO.setD(deleteRows);
                 mChangeDTO.setActions(actionDTO);
                 moduleDataList.add(mChangeDTO);
             }
@@ -148,9 +150,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             if (CollectionUtil.isEmpty(moduleDataList)) {
                 continue;
             }
-            OperationChangeDTO newOpChangeDTO = new OperationChangeDTO();
-            newOpChangeDTO.setModifyModules(moduleDataList);
-            logResp.setChangeContent(newOpChangeDTO);
+            logResp.setModifyModules(moduleDataList);
             opLogResps.add(logResp);
         }
         return opLogResps;
@@ -164,23 +164,23 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
 
         List<RowChangeDTO> result = new ArrayList<>();
         for (RowChangeDTO rowChangeDTO : rowChangeDTOS) {
-            if (CollectionUtil.isEmpty(rowChangeDTO.getColumnList())) {
+            if (CollectionUtil.isEmpty(rowChangeDTO.getColumns())) {
                 continue;
             }
             // 过滤没有权限的字段
             List<FieldChangeDTO> fieldChangeDTOS =
-                    rowChangeDTO.getColumnList().stream()
+                    rowChangeDTO.getColumns().stream()
                             .filter(
                                     x ->
-                                            fieldMap.get(x.getFieldName()) != null
-                                                    && fieldMap.get(x.getFieldName()) >= 1)
+                                            fieldMap.get(x.getField()) != null
+                                                    && fieldMap.get(x.getField()) >= 1)
                             .collect(Collectors.toList());
             if (CollectionUtil.isEmpty(fieldChangeDTOS)) {
                 continue;
             }
             RowChangeDTO newRow = new RowChangeDTO();
-            newRow.setUniqName(rowChangeDTO.getUniqName());
-            newRow.setColumnList(fieldChangeDTOS);
+            newRow.setName(rowChangeDTO.getName());
+            newRow.setColumns(fieldChangeDTOS);
             result.add(newRow);
         }
         return result;

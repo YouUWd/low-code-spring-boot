@@ -408,20 +408,20 @@ public class TableUtils {
             }
             com.jdec.platform.common_business.api.dto.common.FieldChangeDTO dto =
                     new com.jdec.platform.common_business.api.dto.common.FieldChangeDTO();
-            dto.setFieldName(tableName + "." + fieldName);
+            dto.setField(tableName + "." + fieldName);
             if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
-                dto.setFieldShowName(showName.get(tableName + "." + fieldName).getFieldShowName());
+                dto.setName(showName.get(tableName + "." + fieldName).getFieldShowName());
                 // dto.setFieldType(showName.get(fieldName).getFieldType());
             }
             if (insert) {
-                dto.setAfterValue(fb);
+                dto.setNewer(fb);
             } else {
-                dto.setBeforeValue(fb);
+                dto.setOld(fb);
             }
             fieldChangeDTOS.add(dto);
         }
         String uniqName = getUniqName(tableName, fieldMap, t);
-        return RowChangeDTO.builder().columnList(fieldChangeDTOS).uniqName(uniqName).build();
+        return RowChangeDTO.builder().columns(fieldChangeDTOS).name(uniqName).build();
     }
 
     public static <T> String getUniqName(String tableName, Map<String, Field> fieldMap, T t) {
@@ -534,15 +534,14 @@ public class TableUtils {
 
                 com.jdec.platform.common_business.api.dto.common.FieldChangeDTO dto =
                         new com.jdec.platform.common_business.api.dto.common.FieldChangeDTO();
-                dto.setFieldName(tableName + "." + fieldName);
+                dto.setField(tableName + "." + fieldName);
                 if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
-                    dto.setFieldShowName(
-                            showName.get(tableName + "." + fieldName).getFieldShowName());
+                    dto.setName(showName.get(tableName + "." + fieldName).getFieldShowName());
                     // dto.setFieldType(showName.get(fieldName).getFieldType());
                 }
 
-                dto.setBeforeValue(objectValueBefore2);
-                dto.setAfterValue(objectValueAfter2);
+                dto.setOld(objectValueBefore2);
+                dto.setNewer(objectValueAfter2);
                 fieldChangeDTOS.add(dto);
             } else {
                 // 非字典值
@@ -564,26 +563,25 @@ public class TableUtils {
                 }
                 com.jdec.platform.common_business.api.dto.common.FieldChangeDTO dto =
                         new com.jdec.platform.common_business.api.dto.common.FieldChangeDTO();
-                dto.setFieldName(tableName + "." + fieldName);
+                dto.setField(tableName + "." + fieldName);
 
                 if (showName != null && showName.containsKey(tableName + "." + fieldName)) {
-                    dto.setFieldShowName(
-                            showName.get(tableName + "." + fieldName).getFieldShowName());
+                    dto.setName(showName.get(tableName + "." + fieldName).getFieldShowName());
                     // dto.setFieldType(showName.get(fieldName).getFieldType());
                 }
-                dto.setBeforeValue(objectValueBefore);
-                dto.setAfterValue(objectValueAfter);
+                dto.setOld(objectValueBefore);
+                dto.setNewer(objectValueAfter);
                 fieldChangeDTOS.add(dto);
             }
         }
         String uniqName = getUniqName(tableName, fieldMap, t2);
-        return RowChangeDTO.builder().columnList(fieldChangeDTOS).uniqName(uniqName).build();
+        return RowChangeDTO.builder().columns(fieldChangeDTOS).name(uniqName).build();
     }
 
     public static final <T> RowChangeDTO getUpdateFieldChangeRow(
             T t1, T t2, Map<String, SysFieldDTO> showName) {
         RowChangeDTO rowChangeDTO = getUpdateFieldChangeList(t1, t2, showName);
-        if (rowChangeDTO == null || CollectionUtil.isEmpty(rowChangeDTO.getColumnList())) {
+        if (rowChangeDTO == null || CollectionUtil.isEmpty(rowChangeDTO.getColumns())) {
             return null;
         }
         return rowChangeDTO;
@@ -597,7 +595,7 @@ public class TableUtils {
         List<RowChangeDTO> rows = new ArrayList<>();
         for (Map.Entry<?, ?> e : ttMap.entrySet()) {
             RowChangeDTO row = getUpdateFieldChangeRow(e.getKey(), e.getValue(), showName);
-            if (row != null && CollectionUtil.isNotEmpty(row.getColumnList())) {
+            if (row != null && CollectionUtil.isNotEmpty(row.getColumns())) {
                 rows.add(row);
             }
         }

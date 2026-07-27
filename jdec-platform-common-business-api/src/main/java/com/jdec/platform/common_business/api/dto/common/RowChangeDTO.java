@@ -14,7 +14,7 @@ import lombok.*;
 public class RowChangeDTO implements Serializable {
 
     @Schema(description = "数据行")
-    private List<com.jdec.platform.common_business.api.dto.common.FieldChangeDTO> columnList;
+    private List<FieldChangeDTO> columns;
 
-    private String uniqName;
+    private String name;
 }

@@ -27,4 +27,20 @@ public class WordApiController {
         Object data = wordApiClient.getRelationInfo(businessNo, new TypeReference<>() {});
         return ApiResponse.success(data);
     }
+
+    @GetMapping("/relation/info/tree")
+    @Operation(summary = "获取关系详情树")
+    public ApiResponse<Object> getRelationInfoTree(
+            @Parameter(description = "业务编号", required = true) @RequestParam String businessNo) {
+        Object data = wordApiClient.getRelationInfoTree(businessNo, new TypeReference<>() {});
+        return ApiResponse.success(data);
+    }
+
+    @GetMapping("/relation/word")
+    @Operation(summary = "获取关系值")
+    public ApiResponse<Object> getRelationWord(
+            @Parameter(description = "业务编号", required = true) @RequestParam String businessNo) {
+        Object data = wordApiClient.getRelationWord(businessNo, new TypeReference<>() {});
+        return ApiResponse.success(data);
+    }
 }

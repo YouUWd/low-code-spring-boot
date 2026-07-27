@@ -47,15 +47,15 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                         dataChangeContext.getModuleId(),
                         dataChangeContext.getModuleFilterInfo().getModuleInfo().getModuleName());
             }
-            OperationChangeDTO operationChangeDTO = new OperationChangeDTO();
+            // OperationChangeDTO operationChangeDTO = new OperationChangeDTO();
 
             List<ModuleDataChangeDTO> modifyModules = new ArrayList<>();
 
             for (Map.Entry<Long, List<DataChangeContext>> entry : dataChangeMap.entrySet()) {
                 Long moduleId = entry.getKey();
                 ModuleDataChangeDTO moduleDataChangeDTO = new ModuleDataChangeDTO();
-                moduleDataChangeDTO.setModuleId(moduleId);
-                moduleDataChangeDTO.setModuleName(moduleNameMap.get(moduleId));
+                moduleDataChangeDTO.setMId(moduleId);
+                moduleDataChangeDTO.setName(moduleNameMap.get(moduleId));
                 // List<TableDataChangeDTO> modifyTables = new ArrayList<>();
 
                 List<RowChangeDTO> insertRows = new ArrayList<>();
@@ -85,7 +85,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                                 TableUtils.getInsertOrDeleteRowChange(
                                         dataChangeContext.getAfter(), sysFieldMap, true);
                         if (rowChangeDTO != null
-                                && CollectionUtil.isNotEmpty(rowChangeDTO.getColumnList())) {
+                                && CollectionUtil.isNotEmpty(rowChangeDTO.getColumns())) {
                             insertRows.add(rowChangeDTO);
                         }
 
@@ -98,7 +98,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                                         dataChangeContext.getAfter(),
                                         sysFieldMap);
                         if (rowChangeDTO != null
-                                && CollectionUtil.isNotEmpty(rowChangeDTO.getColumnList())) {
+                                && CollectionUtil.isNotEmpty(rowChangeDTO.getColumns())) {
                             updateRows.add(rowChangeDTO);
                         }
                     } else {
@@ -107,39 +107,36 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                                 TableUtils.getInsertOrDeleteRowChange(
                                         dataChangeContext.getBefore(), sysFieldMap, false);
                         if (rowChangeDTO != null
-                                && CollectionUtil.isNotEmpty(rowChangeDTO.getColumnList())) {
+                                && CollectionUtil.isNotEmpty(rowChangeDTO.getColumns())) {
                             deleteRows.add(rowChangeDTO);
                         }
                     }
                 }
 
                 if (CollectionUtil.isNotEmpty(insertRows)) {
-                    dataChangeActionDTO.setInsertRows(insertRows);
+                    dataChangeActionDTO.setA(insertRows);
                 }
 
                 if (CollectionUtil.isNotEmpty(updateRows)) {
-                    dataChangeActionDTO.setUpdateRows(updateRows);
+                    dataChangeActionDTO.setU(updateRows);
                 }
 
                 if (CollectionUtil.isNotEmpty(deleteRows)) {
-                    dataChangeActionDTO.setDeleteRows(deleteRows);
+                    dataChangeActionDTO.setD(deleteRows);
                 }
 
-                if (CollectionUtil.isNotEmpty(dataChangeActionDTO.getInsertRows())
-                        || CollectionUtil.isNotEmpty(dataChangeActionDTO.getUpdateRows())
-                        || CollectionUtil.isNotEmpty(dataChangeActionDTO.getDeleteRows())) {
+                if (CollectionUtil.isNotEmpty(dataChangeActionDTO.getA())
+                        || CollectionUtil.isNotEmpty(dataChangeActionDTO.getU())
+                        || CollectionUtil.isNotEmpty(dataChangeActionDTO.getD())) {
                     moduleDataChangeDTO.setActions(dataChangeActionDTO);
                     modifyModules.add(moduleDataChangeDTO);
                 }
             }
-            if (CollectionUtil.isNotEmpty(modifyModules)) {
-                operationChangeDTO.setModifyModules(modifyModules);
-            }
-            if (CollectionUtil.isEmpty(operationChangeDTO.getModifyModules())) {
+
+            if (CollectionUtil.isEmpty(modifyModules)) {
                 // 没有任何变更记录,不用保存
                 return null;
             }
-
             TableChangeLog changeLog = new TableChangeLog();
             changeLog.setDataId(context.getDataId());
             changeLog.setModuleId(context.getMainModuleId());
@@ -159,7 +156,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             changeLog.setCreatedDate(LocalDateTime.now());
             changeLog.setUpdatedDate(LocalDateTime.now());
             changeLog.setDeleted(Boolean.FALSE);
-            changeLog.setChangeContent(JsonUtil.obj2Json(operationChangeDTO));
+            changeLog.setChangeContent(JsonUtil.obj2Json(modifyModules));
             if (context.getCallType() == CallTypeEnum.EDITE) {
                 tableChangeLogMapper.insert(changeLog);
             }
@@ -176,7 +173,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                             .mockUserId(context.getMockUserId())
                             .currentSubjectId(context.getSubjectId())
                             .currentRoleId(context.getRoleId())
-                            .logRemark(getLogContentHtml(operationChangeDTO))
+                            .logRemark(changeLog.getChangeContent())
                             .menuId(context.getMenuId())
                             .build();
             if (context.getCallType() == CallTypeEnum.CREATE) {
@@ -202,11 +199,11 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                     "<div style=\"display: flex; align-items: flex-start; margin-bottom: 8px; color: #1d2129\">");
             html.append(
                     "<div style=\"background-color: #e5e6eb; width: 64px; padding: 2px 0; margin-right: 8px; text-align: center\">");
-            html.append(moduleDataChangeDTO.getModuleName());
+            html.append(moduleDataChangeDTO.getName());
             html.append("</div>");
-            appendActionHtml(moduleDataChangeDTO.getActions().getInsertRows(), html, "insert");
-            appendActionHtml(moduleDataChangeDTO.getActions().getUpdateRows(), html, "update");
-            appendActionHtml(moduleDataChangeDTO.getActions().getDeleteRows(), html, "delete");
+            appendActionHtml(moduleDataChangeDTO.getActions().getA(), html, "insert");
+            appendActionHtml(moduleDataChangeDTO.getActions().getU(), html, "update");
+            appendActionHtml(moduleDataChangeDTO.getActions().getD(), html, "delete");
             html.append("</div>");
         }
         return html.toString();
@@ -228,23 +225,23 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             for (RowChangeDTO rowChangeDTO : rows) {
                 html.append("<div>");
                 html.append("<div style=\"display: flex\">");
-                if (StringUtils.isNotEmpty(rowChangeDTO.getUniqName())) {
+                if (StringUtils.isNotEmpty(rowChangeDTO.getName())) {
                     html.append(" <div style=\"margin-right: 10px\">")
-                            .append(rowChangeDTO.getUniqName())
+                            .append(rowChangeDTO.getName())
                             .append("</div>");
                 }
                 html.append("<div>");
                 for (com.jdec.platform.common_business.api.dto.common.FieldChangeDTO
-                        fieldChangeDTO : rowChangeDTO.getColumnList()) {
+                        fieldChangeDTO : rowChangeDTO.getColumns()) {
                     // <!-- 分字段，展示每个字段的变更 -->
                     html.append("<div style=\"display: flex; margin-bottom: 4px\">");
                     html.append("<div style=\"color: #86909c; margin-right: 8px\">")
-                            .append(fieldChangeDTO.getFieldShowName() + "：")
+                            .append(fieldChangeDTO.getName() + "：")
                             .append("</div>");
 
                     if ("update".equals(label) || "delete".equals(label)) {
                         html.append("<span>");
-                        html.append(fieldChangeDTO.getBeforeValue());
+                        html.append(fieldChangeDTO.getOld());
                         html.append("</span>");
                     }
 
@@ -254,7 +251,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
 
                     if (!"delete".equals(label)) {
                         html.append("<span>");
-                        html.append(fieldChangeDTO.getAfterValue());
+                        html.append(fieldChangeDTO.getNewer());
                         html.append("</span>");
                     }
                     html.append("</div>");

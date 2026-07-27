@@ -14,11 +14,11 @@ import lombok.*;
 public class DataChangeActionDTO implements Serializable {
 
     @Schema(description = "插入的行")
-    private List<RowChangeDTO> insertRows;
+    private List<RowChangeDTO> a;
 
     @Schema(description = "更新的行")
-    private List<RowChangeDTO> updateRows;
+    private List<RowChangeDTO> u;
 
     @Schema(description = "删除的行")
-    private List<RowChangeDTO> deleteRows;
+    private List<RowChangeDTO> d;
 }

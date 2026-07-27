@@ -13,9 +13,9 @@ import lombok.*;
 public class ModuleDataChangeDTO implements Serializable {
 
     @Schema(description = "模块ID")
-    private Long moduleId;
+    private Long mId;
 
-    private String moduleName;
+    private String name;
 
     //    @Schema(description = "修改的数据表")
     //    List<TableDataChangeDTO> modifyTables;

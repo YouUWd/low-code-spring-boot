@@ -1,8 +1,9 @@
 package com.jdec.platform.common_business.api.dto.response;
 
-import com.jdec.platform.common_business.api.dto.common.OperationChangeDTO;
+import com.jdec.platform.common_business.api.dto.common.ModuleDataChangeDTO;
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.Data;
 
 @Data
@@ -27,7 +28,7 @@ public class OpLogResp implements Serializable {
     private String moduleName;
 
     /** 变更字段内容 */
-    private OperationChangeDTO changeContent;
+    private List<ModuleDataChangeDTO> modifyModules;
 
     /** 模拟用户ID */
     private Long mockUserId;
