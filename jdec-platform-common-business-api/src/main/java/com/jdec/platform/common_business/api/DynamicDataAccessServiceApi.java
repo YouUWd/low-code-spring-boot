@@ -49,4 +49,7 @@ public interface DynamicDataAccessServiceApi {
 
     Map<Object, Object> dynamicQueryAllModuleDetailDataWithApproval(
             Long subjectId, Long roleId, Long menuId, Long id, Long relateSearchId, String btnType);
+
+    Map<String, Object> dynamicQuerygetListNumWithApproval(
+            Long subjectId, Long roleId, Long menuId);
 }

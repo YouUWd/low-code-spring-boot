@@ -69,7 +69,10 @@ public class DynamicQueryController {
             @RequestBody ListQueryReq queryReq) {
         Page pageObj = null;
         if (Objects.nonNull(queryReq.getPageNum()) && Objects.nonNull(queryReq.getPageSize())) {
-            pageObj = Page.of(queryReq.getPageNum(), queryReq.getPageSize());
+            pageObj =
+                    Page.of(
+                            queryReq.getPageNum() <= 0 ? 1 : queryReq.getPageNum(),
+                            queryReq.getPageSize() <= 0 ? 10 : queryReq.getPageSize());
         }
         return ApiResponse.success(
                 dynamicDataAccessService.dynamicQueryListDataWithSearchByMenuId(
@@ -84,7 +87,10 @@ public class DynamicQueryController {
             @RequestBody ApprovalListQueryReq queryReq) {
         Page pageObj = null;
         if (Objects.nonNull(queryReq.getPageNum()) && Objects.nonNull(queryReq.getPageSize())) {
-            pageObj = Page.of(queryReq.getPageNum(), queryReq.getPageSize());
+            pageObj =
+                    Page.of(
+                            queryReq.getPageNum() <= 0 ? 1 : queryReq.getPageNum(),
+                            queryReq.getPageSize() <= 0 ? 10 : queryReq.getPageSize());
         }
         return ApiResponse.success(
                 dynamicDataAccessService.dynamicQueryListDataWithSearchByMenuId(
@@ -131,6 +137,17 @@ public class DynamicQueryController {
         return ApiResponse.success(
                 dynamicDataSaveService.editMultiMenuModuleDataWithApproval(
                         subjectId, roleId, req.getModuleSaveData(), req.getApprovalOperation()));
+    }
+
+    @GetMapping("/approval/list/num/menu")
+    @Operation(summary = "获取带审批的模块待办、已办、全部数量", description = "获取带审批的模块待办、已办、全部数量")
+    public ApiResponse<Map<String, Object>> getApprovalDynamicQueryResultWithSearchByMenu(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @Schema(description = "菜单ID") @RequestParam Long menuId) {
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQuerygetListNumWithApproval(
+                        subjectId, roleId, menuId));
     }
 
     @PostMapping("/get-data-right")
