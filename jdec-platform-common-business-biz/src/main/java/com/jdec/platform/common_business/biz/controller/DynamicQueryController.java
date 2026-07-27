@@ -79,6 +79,28 @@ public class DynamicQueryController {
                         subjectId, roleId, queryReq, pageObj, null));
     }
 
+    @PostMapping("/list/menu/search/getSelectData")
+    @Operation(summary = "获取表头筛选项候选数据", description = "获取表头筛选项候选数据")
+    public ApiResponse<Map<String, Object>> dynamicQuerySearchByMenuForSelectData(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @RequestBody ListSelectQueryReq queryReq) {
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQueryListSelectDataWithSearchByMenuId(
+                        subjectId, roleId, queryReq, null));
+    }
+
+    @PostMapping("/list/menu/search/getFilterSelectedData")
+    @Operation(summary = "获取表头筛选后其他筛选项已选中的候选数据", description = "获取表头筛选后其他筛选项已选中的候选数据")
+    public ApiResponse<List<SearchItemReq>> dynamicQuerySearchByMenuFilterSelectedData(
+            @Schema(description = "主体ID") @RequestHeader("Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "Role-Id") Long roleId,
+            @RequestBody ListFilterSelectedDataReq queryReq) {
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQueryFilterSelectedDataWithSearchByMenuId(
+                        subjectId, roleId, queryReq));
+    }
+
     @PostMapping("/approval/list/menu/search")
     @Operation(summary = "获取带审批的列表数据", description = "获取带审批的列表数据")
     public ApiResponse<Map<String, Object>> getApprovalDynamicQueryResultWithSearchByMenu(
