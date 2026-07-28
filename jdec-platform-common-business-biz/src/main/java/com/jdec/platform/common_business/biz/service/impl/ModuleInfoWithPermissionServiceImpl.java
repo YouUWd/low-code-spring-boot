@@ -621,6 +621,483 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
         return null;
     }
 
+    @Override
+    public ModuleFilterInfo filterModuleInfoWithApproval(
+            Long subjectId, Long roleId, Long moduleId, String btnType, List<Long> moduleSkip) {
+        // 模块相关信息
+        ModuleInfoResp moduleInfoResp =
+                configCenterApiService.getModuleInfoComplete(subjectId, moduleId);
+
+        if (Objects.nonNull(moduleInfoResp)) {
+
+            ModuleFilterInfo.ModuleFilterInfoBuilder moduleFilterInfoBuilder =
+                    ModuleFilterInfo.builder();
+
+            // 组装ModuleInfo
+            ModuleInfo.ModuleInfoBuilder moduleInfoBuilder = ModuleInfo.builder();
+            moduleInfoBuilder
+                    .moduleId(moduleInfoResp.getModule().getId().longValue())
+                    .moduleSlug(moduleInfoResp.getModule().getModuleCode())
+                    .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
+                    .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
+                    .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
+                    .moduleType(moduleInfoResp.getModule().getModuleType())
+                    .moduleName(moduleInfoResp.getModule().getModuleName());
+
+            List<ModuleField> allFields = new ArrayList<>();
+
+            for (SimpleField simpleFieldItem : moduleInfoResp.getSimpleFields()) {
+                allFields.add(
+                        ModuleField.builder()
+                                .fieldCode(simpleFieldItem.getColumnName())
+                                .fieldName(simpleFieldItem.getDisplayName())
+                                .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                .permissionCode(0)
+                                .filedType("SIMPLE")
+                                .tableName(simpleFieldItem.getTableName())
+                                .build());
+            }
+
+            for (CombineField combineFieldItem : moduleInfoResp.getCombineFields()) {
+                // 生成form_field_list使用，可以省略sourceMapping等字段
+                allFields.add(
+                        ModuleField.builder()
+                                .fieldCode(combineFieldItem.getLogicalField())
+                                .fieldName(combineFieldItem.getDisplayName())
+                                .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                .permissionCode(0)
+                                .transformer(combineFieldItem.getTransformer())
+                                .filedType(FIELD_TYPE_COMBINE)
+                                .tableName(COMBINE_FIELD_VIRTUAL_TABLE_NAME)
+                                .build());
+            }
+
+            moduleFilterInfoBuilder.allFields(allFields);
+
+            Long btnListJudgeModuleId = moduleInfoResp.getModule().getDetailModuleId();
+
+            List<ModuleColumnResp> detailCreateFields = new ArrayList<>();
+
+            List<ModuleColumnResp> detailEditFields = new ArrayList<>();
+
+            List<ModuleColumnResp> detailReadFields = new ArrayList<>();
+
+            // 模块表权限节点
+            List<ModuleColumnPermissionResp> moduleColumnPermission =
+                    configCenterApiService.getModuleFieldPermission(subjectId, roleId, moduleId);
+
+            if (!CollectionUtils.isEmpty(moduleColumnPermission)) {
+
+                // 按tableName分组
+                Map<String, ModuleColumnPermissionResp> tableNameToModuleColumnPermission =
+                        moduleColumnPermission.stream()
+                                .collect(
+                                        Collectors.groupingBy(
+                                                ModuleColumnPermissionResp::getTableName,
+                                                Collectors.collectingAndThen(
+                                                        Collectors.toList(),
+                                                        value -> value.get(0))));
+
+                Map<String, Map<String, Set<RightNode>>> tableNameToThreeRightSetMap =
+                        new HashMap<>();
+
+                for (ModuleColumnPermissionResp ele : moduleColumnPermission) {
+
+                    Map<String, Set<RightNode>> threeRightSetMap = new HashMap<>();
+
+                    // 放入有查看权限的字段
+                    threeRightSetMap.put(
+                            "READ",
+                            ele.getReadableFields().stream()
+                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .collect(Collectors.toSet()));
+
+                    // 放入有编辑权限的字段
+                    threeRightSetMap.put(
+                            "EDIT",
+                            ele.getUpdatableFields().stream()
+                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .collect(Collectors.toSet()));
+
+                    // 放入有创建权限的字段
+                    threeRightSetMap.put(
+                            "CREATE",
+                            ele.getWritableFields().stream()
+                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .collect(Collectors.toSet()));
+
+                    tableNameToThreeRightSetMap.put(ele.getTableName(), threeRightSetMap);
+                }
+
+                // tableName为key所有允许的权限字段集合，三种合并
+                Map<String, Set<String>> tableNameToAllowedFields = new HashMap<>();
+
+                // 不区分TableName的权限字段集合
+                Set<String> allAllowedRightFields = new HashSet<>();
+
+                for (Map.Entry<String, Map<String, Set<RightNode>>> entry :
+                        tableNameToThreeRightSetMap.entrySet()) {
+                    Set<String> allowedRightFields = new HashSet<>();
+                    Map<String, Set<RightNode>> rightMap = entry.getValue();
+                    for (Map.Entry<String, Set<RightNode>> rightMapEntry : rightMap.entrySet()) {
+                        allowedRightFields.addAll(
+                                rightMapEntry.getValue().stream()
+                                        .map(
+                                                ele -> {
+                                                    allAllowedRightFields.add(
+                                                            entry.getKey()
+                                                                    + DB_TABLE_FIELD_SEPARATOR
+                                                                    + ele.fieldCode);
+                                                    return ele.fieldCode;
+                                                })
+                                        .collect(Collectors.toList()));
+                    }
+                    tableNameToAllowedFields.put(entry.getKey(), allowedRightFields);
+                }
+
+                // 过滤TableHeader
+                if (!CollectionUtils.isEmpty(moduleInfoResp.getModule().getTableHeader())) {
+                    // 权限过滤后的TableHeader
+                    List<TableHeaderConf> filteredTableHeader =
+                            moduleInfoResp.getModule().getTableHeader().stream()
+                                    .filter(
+                                            ele ->
+                                                    allAllowedRightFields.contains(
+                                                            ele.getTable()
+                                                                    + DB_TABLE_FIELD_SEPARATOR
+                                                                    + ele.getField()))
+                                    .collect(Collectors.toList());
+                    moduleInfoBuilder.tableHeader(filteredTableHeader);
+                }
+
+                // 过滤SimpleField，只查询有权限的字段
+                List<SimpleField> filteredSimpleFields =
+                        moduleInfoResp.getSimpleFields().stream()
+                                .filter(
+                                        e ->
+                                                tableNameToAllowedFields.containsKey(
+                                                                e.getTableName())
+                                                        && tableNameToAllowedFields
+                                                                .get(e.getTableName())
+                                                                .contains(e.getColumnName()))
+                                .collect(Collectors.toList());
+
+                // 如果是列表类型，只判断查看权限，手动赋值btnType为view
+                if ("LIST".equals(moduleInfoResp.getModule().getModuleType())) {
+                    btnType = "view";
+                } else if (!StringUtils.hasText(btnType)) {
+                    btnType = "view";
+                }
+
+                FormButtonEnum buttonEnum = FormButtonEnum.getFormButtonEnumByKey(btnType);
+
+                // 获取模块对应的互动权限节点
+                ModuleInterOperateRightResp interOperateRightResp =
+                        configCenterApiService.getModuleInterOperateRights(
+                                subjectId, roleId, moduleId);
+
+                Set<InterOperateRight> interOperateRights = new HashSet<>();
+
+                if (Objects.nonNull(buttonEnum) && Objects.nonNull(interOperateRightResp)) {
+                    switch (buttonEnum) {
+                        case FormButtonEnum.VIEW -> {
+                            interOperateRightResp.getViewPermissions().stream()
+                                    .forEach(
+                                            ele -> {
+                                                interOperateRights.add(
+                                                        InterOperateRight.builder()
+                                                                .rightCode(ele.getPermissionCode())
+                                                                .rightName(ele.getPermissionName())
+                                                                .build());
+                                            });
+                        }
+                        case FormButtonEnum.EDITE -> {
+                            // 在view中没在edit中的全部加入到集合中
+                            interOperateRightResp.getViewPermissions().stream()
+                                    .filter(
+                                            ele ->
+                                                    !interOperateRightResp
+                                                            .getEditPermissions()
+                                                            .stream()
+                                                            .anyMatch(
+                                                                    item ->
+                                                                            item.getPermissionCode()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getPermissionCode())))
+                                    .forEach(
+                                            ele -> {
+                                                interOperateRights.add(
+                                                        InterOperateRight.builder()
+                                                                .rightCode(ele.getPermissionCode())
+                                                                .rightName(ele.getPermissionName())
+                                                                .build());
+                                            });
+
+                            // edit中的全部加入到集合
+                            interOperateRightResp.getEditPermissions().stream()
+                                    .forEach(
+                                            ele -> {
+                                                interOperateRights.add(
+                                                        InterOperateRight.builder()
+                                                                .rightCode(ele.getPermissionCode())
+                                                                .rightName(ele.getPermissionName())
+                                                                .build());
+                                            });
+                        }
+                        case FormButtonEnum.CREATE -> {
+                            // 在view中没在create中的全部加入到集合中
+                            interOperateRightResp.getViewPermissions().stream()
+                                    .filter(
+                                            ele ->
+                                                    !interOperateRightResp
+                                                            .getEditPermissions()
+                                                            .stream()
+                                                            .anyMatch(
+                                                                    item ->
+                                                                            item.getPermissionCode()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getPermissionCode())))
+                                    .forEach(
+                                            ele -> {
+                                                interOperateRights.add(
+                                                        InterOperateRight.builder()
+                                                                .rightCode(ele.getPermissionCode())
+                                                                .rightName(ele.getPermissionName())
+                                                                .build());
+                                            });
+
+                            // create中的全部加入到集合
+                            interOperateRightResp.getApplyPermissions().stream()
+                                    .forEach(
+                                            ele -> {
+                                                interOperateRights.add(
+                                                        InterOperateRight.builder()
+                                                                .rightCode(ele.getPermissionCode())
+                                                                .rightName(ele.getPermissionName())
+                                                                .build());
+                                            });
+                        }
+                    }
+                }
+
+                // 将互动权限放入返回对象
+                moduleFilterInfoBuilder.interOperateRights(interOperateRights);
+
+                // 填充permissionCode和fieldName字段后的simpleField
+                List<ModuleField> simpleFieldInfo = new ArrayList<>();
+
+                // 填充permissionCode和fieldName
+                for (SimpleField simpleField : filteredSimpleFields) {
+                    ModuleField.ModuleFieldBuilder moduleFieldBuilder =
+                            ModuleField.builder()
+                                    .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                    .filedType("SIMPLE")
+                                    .fieldCode(simpleField.getColumnName())
+                                    .tableName(simpleField.getTableName());
+
+                    Integer permissionCode = 0;
+                    String fieldName = simpleField.getColumnName();
+
+                    // 根据模块角色权限，填充permissionCode和fieldName字段
+                    Set<RightNode> readFields =
+                            tableNameToThreeRightSetMap.containsKey(simpleField.getTableName())
+                                    ? tableNameToThreeRightSetMap
+                                            .get(simpleField.getTableName())
+                                            .get("READ")
+                                    : new HashSet<>();
+                    Set<RightNode> editFields =
+                            tableNameToThreeRightSetMap.containsKey(simpleField.getTableName())
+                                    ? tableNameToThreeRightSetMap
+                                            .get(simpleField.getTableName())
+                                            .get("EDIT")
+                                    : new HashSet<>();
+                    Set<RightNode> createFields =
+                            tableNameToThreeRightSetMap.containsKey(simpleField.getTableName())
+                                    ? tableNameToThreeRightSetMap
+                                            .get(simpleField.getTableName())
+                                            .get("CREATE")
+                                    : new HashSet<>();
+
+                    // 根据权限勾选情况，设置permissionCode的值
+
+                    boolean finded = false;
+
+                    if (Objects.nonNull(buttonEnum)) {
+                        switch (buttonEnum) {
+                            case FormButtonEnum.VIEW -> {
+                                // 在查看权限查找,若有匹配则无需判断其他两种权限
+                                for (RightNode rightNode : readFields) {
+                                    if (rightNode.fieldCode.equals(simpleField.getColumnName())) {
+                                        finded = true;
+                                        permissionCode = 1;
+                                        fieldName = rightNode.fieldName();
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
+                            case FormButtonEnum.EDITE -> {
+                                // 先在编辑权限查找,若有匹配则无需判断其他两种权限
+                                for (RightNode rightNode : editFields) {
+                                    if (rightNode.fieldCode.equals(simpleField.getColumnName())) {
+                                        finded = true;
+                                        permissionCode = 2;
+                                        fieldName = rightNode.fieldName();
+                                        break;
+                                    }
+                                }
+
+                                // 编辑权限没有，则在查看权限匹配
+                                if (!finded) {
+                                    for (RightNode rightNode : readFields) {
+                                        if (rightNode.fieldCode.equals(
+                                                simpleField.getColumnName())) {
+                                            finded = true;
+                                            permissionCode = 1;
+                                            fieldName = rightNode.fieldName();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            case FormButtonEnum.CREATE -> {
+                                // 先在编辑权限查找,若有匹配则无需判断其他两种权限
+                                for (RightNode rightNode : createFields) {
+                                    if (rightNode.fieldCode.equals(simpleField.getColumnName())) {
+                                        finded = true;
+                                        permissionCode = 2;
+                                        fieldName = rightNode.fieldName();
+                                        break;
+                                    }
+                                }
+
+                                // 编辑权限没有，则在查看权限匹配
+                                if (!finded) {
+                                    for (RightNode rightNode : readFields) {
+                                        if (rightNode.fieldCode.equals(
+                                                simpleField.getColumnName())) {
+                                            finded = true;
+                                            permissionCode = 1;
+                                            fieldName = rightNode.fieldName();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 有匹配的字段才放入List
+                    if (finded) {
+                        moduleFieldBuilder.permissionCode(permissionCode);
+                        moduleFieldBuilder.fieldName(fieldName);
+
+                        simpleFieldInfo.add(moduleFieldBuilder.build());
+                    }
+                }
+
+                // 填充simpleModuleFields属性
+                moduleFilterInfoBuilder.simpleModuleFields(simpleFieldInfo);
+
+                // 有权限的组合字段
+                List<CombineField> filteredCombineFields =
+                        moduleInfoResp.getCombineFields().stream()
+                                .filter(
+                                        e ->
+                                                tableNameToAllowedFields.containsKey(
+                                                                COMBINE_FIELD_VIRTUAL_TABLE_NAME)
+                                                        && tableNameToAllowedFields
+                                                                .get(
+                                                                        COMBINE_FIELD_VIRTUAL_TABLE_NAME)
+                                                                .contains(e.getLogicalField()))
+                                .collect(Collectors.toList());
+
+                List<ModuleField> combineFieldInfo = new ArrayList<>();
+
+                for (CombineField combineField : filteredCombineFields) {
+                    ModuleField.ModuleFieldBuilder moduleFieldBuilder =
+                            ModuleField.builder()
+                                    .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                    .filedType(FIELD_TYPE_COMBINE)
+                                    .fieldCode(combineField.getLogicalField())
+                                    .tableName(COMBINE_FIELD_VIRTUAL_TABLE_NAME)
+                                    .transformer(combineField.getTransformer())
+                                    .sourceMappings(
+                                            combineField.getSourceMapping().stream()
+                                                    .map(
+                                                            ele ->
+                                                                    new ModuleField.SourceMapping(
+                                                                            ele.getEntity(),
+                                                                            ele.getField(),
+                                                                            ele.getSortOrder()))
+                                                    .collect(Collectors.toList()));
+
+                    Integer permissionCode = 0;
+                    String fieldName = combineField.getLogicalField();
+
+                    // 根据模块角色权限，填充permissionCode和fieldName字段
+                    Set<RightNode> readFields =
+                            tableNameToThreeRightSetMap.containsKey(
+                                            COMBINE_FIELD_VIRTUAL_TABLE_NAME)
+                                    ? tableNameToThreeRightSetMap
+                                            .get(COMBINE_FIELD_VIRTUAL_TABLE_NAME)
+                                            .get("READ")
+                                    : new HashSet<>();
+
+                    boolean finded = false;
+
+                    // //组合字段不考虑编辑和创建权限
+                    for (RightNode rightNode : readFields) {
+                        if (rightNode.fieldCode.equals(combineField.getLogicalField())) {
+                            permissionCode = 1;
+                            fieldName = rightNode.fieldName();
+                            finded = true;
+                            break;
+                        }
+                    }
+
+                    if (finded) {
+                        moduleFieldBuilder.permissionCode(permissionCode);
+                        moduleFieldBuilder.fieldName(fieldName);
+
+                        combineFieldInfo.add(moduleFieldBuilder.build());
+                    }
+                }
+
+                // 填充simpleModuleFields属性
+                moduleFilterInfoBuilder.combineModuleFields(combineFieldInfo);
+            }
+
+            // moduleInfo数据填充完毕，写入到ModuleFilterInfo
+            moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
+
+            moduleFilterInfoBuilder.moduleTableList(
+                    moduleInfoResp.getModuleTables().stream()
+                            .map(
+                                    ele ->
+                                            ModuleTable.builder()
+                                                    .moduleId(
+                                                            moduleInfoResp
+                                                                    .getModule()
+                                                                    .getId()
+                                                                    .longValue())
+                                                    .tableName(ele.getTableName())
+                                                    .joinLeftField(ele.getJoinLeftField())
+                                                    .joinRightField(ele.getJoinRightField())
+                                                    .relationType(ele.getRelationType())
+                                                    .tableDesc(ele.getTableDesc())
+                                                    .readOnly(ele.getReadOnly())
+                                                    .build())
+                            .collect(Collectors.toList()));
+
+            return moduleFilterInfoBuilder.build();
+        }
+
+        return null;
+    }
+
     private String getFinalBtn(
             List<ModuleNodeResp> moduleNodeResps,
             Long parentModuleId,

@@ -91,7 +91,7 @@ public class LoginUserUtil {
 
         // 3. 安全获取并转换 Header 数据 (String -> Long)
 
-        return parseLongSafe(request.getHeader("Module-Id"));
+        return parseLongSafe(request.getHeader("X-Module-Id"));
     }
 
     /**
@@ -112,7 +112,7 @@ public class LoginUserUtil {
 
         // 3. 安全获取并转换 Header 数据 (String -> Long)
 
-        return parseLongSafe(request.getHeader("Role-Id"));
+        return parseLongSafe(request.getHeader("X-Role-Id"));
     }
 
     /**
@@ -133,7 +133,7 @@ public class LoginUserUtil {
 
         // 3. 安全获取并转换 Header 数据 (String -> Long)
 
-        return parseLongSafe(request.getHeader("Subject-Id"));
+        return parseLongSafe(request.getHeader("X-Subject-Id"));
     }
 
     /**
@@ -327,8 +327,8 @@ public class LoginUserUtil {
         HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
 
         // 3. 安全获取并转换 Header 数据 (String -> Long)
-        Long mockUserId = parseLongSafe(request.getHeader("Mock-User-Id"));
-        Long subjectId = parseLongSafe(request.getHeader("Subject-Id"));
+        Long mockUserId = parseLongSafe(request.getHeader("X-Mock-User-Id"));
+        Long subjectId = parseLongSafe(request.getHeader("X-Subject-Id"));
 
         return Triple.of(loginUser.getUserId(), mockUserId, subjectId);
     }

@@ -122,17 +122,21 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         // 有节点权限，但是按钮并没有编辑或查看，说明此时使用了创建权限，与当前页面入口不符，抛出无权限异常
-        if (!moduleFilterInfo.getBtnList().stream()
-                .anyMatch(
-                        ele ->
-                                FormButtonEnum.VIEW.getKey().equals(ele.getButtonKey())
-                                        || FormButtonEnum.EDITE
-                                                .getKey()
-                                                .equals(ele.getButtonKey()))) {
-            log.debug("编辑和查看都无权限，权限判断拿的是创建权限，此时手动抛出无权限异常。");
-            throw new BusinessException(
-                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
-                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
+        if (!CollectionUtils.isEmpty(moduleFilterInfo.getBtnList())) {
+            if (!moduleFilterInfo.getBtnList().stream()
+                    .anyMatch(
+                            ele ->
+                                    FormButtonEnum.VIEW.getKey().equals(ele.getButtonKey())
+                                            || FormButtonEnum.EDITE
+                                                    .getKey()
+                                                    .equals(ele.getButtonKey()))) {
+                log.debug("编辑和查看都无权限，权限判断拿的是创建权限，此时手动抛出无权限异常。");
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                        ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
+            }
+        } else {
+            log.debug("带审批链的详情查看，btnList为空。");
         }
 
         Map<String, Object> resultMap = new HashMap<>();
@@ -3428,13 +3432,22 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
         }
 
+        String approvalBtnType = "view";
+        if (approvalInfo.containsKey("canEdit")) {
+            approvalBtnType =
+                    Integer.parseInt(String.valueOf(approvalInfo.get("canEdit"))) == 1
+                            ? "edit"
+                            : "view";
+            log.debug("当前审批链页面的权限为:{}", approvalBtnType);
+        }
+
         // 统计当前页面没有可查看权限的菜单数
         int count = 0;
 
         for (MenuListResp menu : targetModules) {
             ModuleFilterInfo moduleFilterInfo =
-                    moduleInfoWithPermissionService.filterModuleInfo(
-                            subjectId, roleId, menu.getModuleId(), "", List.of());
+                    moduleInfoWithPermissionService.filterModuleInfoWithApproval(
+                            subjectId, roleId, menu.getModuleId(), approvalBtnType, List.of());
 
             try {
                 if ("LIST".equals(moduleFilterInfo.getModuleInfo().getModuleType())) {
