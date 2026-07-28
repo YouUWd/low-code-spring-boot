@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /** 按钮配置 Service 实现 */
@@ -147,6 +148,15 @@ public class SysButtonService implements SysButtonApi {
         }
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "按钮配置",
+            operation = OperationType.DELETE,
+            deleteDisplayField = "title",
+            entityClass = SysButton.class,
+            tableName = "sys_button",
+            dataIdField = "#id")
+    @Transactional
     @Override
     public void deleteButton(Long id) {
         SysButton button =

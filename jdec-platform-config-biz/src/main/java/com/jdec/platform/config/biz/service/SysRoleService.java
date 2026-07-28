@@ -1937,7 +1937,7 @@ public class SysRoleService implements SysRoleApi {
                             .fieldName("角色名称")
                             .fieldCode("roleName")
                             .oldValue(oldRoleName)
-                            .newValue(newRoleName)
+                            .newer(newRoleName)
                             .fieldType(com.jdec.platform.shared.audit.enums.FieldType.SIMPLE)
                             .build());
             // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
@@ -2016,7 +2016,7 @@ public class SysRoleService implements SysRoleApi {
                                     .fieldName(userName + "-有效期类型")
                                     .fieldCode("user_" + userId + "_effectiveType")
                                     .oldValue(formatEffectiveType(oldRoleUser.getEffectiveType()))
-                                    .newValue(formatEffectiveType(newRoleUser.getEffectiveType()))
+                                    .newer(formatEffectiveType(newRoleUser.getEffectiveType()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2032,7 +2032,7 @@ public class SysRoleService implements SysRoleApi {
                                     .fieldName(userName + "-开始日期")
                                     .fieldCode("user_" + userId + "_effectiveStartDate")
                                     .oldValue(formatDateTime(oldRoleUser.getEffectiveStartDate()))
-                                    .newValue(formatDateTime(newRoleUser.getEffectiveStartDate()))
+                                    .newer(formatDateTime(newRoleUser.getEffectiveStartDate()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2048,7 +2048,7 @@ public class SysRoleService implements SysRoleApi {
                                     .fieldName(userName + "-结束日期")
                                     .fieldCode("user_" + userId + "_effectiveEndDate")
                                     .oldValue(formatDateTime(oldRoleUser.getEffectiveEndDate()))
-                                    .newValue(formatDateTime(newRoleUser.getEffectiveEndDate()))
+                                    .newer(formatDateTime(newRoleUser.getEffectiveEndDate()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2143,7 +2143,7 @@ public class SysRoleService implements SysRoleApi {
                                         .oldValue(
                                                 formatEffectiveType(
                                                         oldRoleSubject.getEffectiveType()))
-                                        .newValue(
+                                        .newer(
                                                 formatEffectiveType(
                                                         newRoleSubject.getEffectiveType()))
                                         .fieldType(FieldType.SIMPLE)
@@ -2159,7 +2159,7 @@ public class SysRoleService implements SysRoleApi {
                                         .oldValue(
                                                 formatDateTime(
                                                         oldRoleSubject.getEffectiveStartDate()))
-                                        .newValue(
+                                        .newer(
                                                 formatDateTime(
                                                         newRoleSubject.getEffectiveStartDate()))
                                         .fieldType(FieldType.SIMPLE)
@@ -2175,9 +2175,7 @@ public class SysRoleService implements SysRoleApi {
                                         .oldValue(
                                                 formatDateTime(
                                                         oldRoleSubject.getEffectiveEndDate()))
-                                        .newValue(
-                                                formatDateTime(
-                                                        newRoleSubject.getEffectiveEndDate()))
+                                        .newer(formatDateTime(newRoleSubject.getEffectiveEndDate()))
                                         .fieldType(FieldType.SIMPLE)
                                         .build());
                     }

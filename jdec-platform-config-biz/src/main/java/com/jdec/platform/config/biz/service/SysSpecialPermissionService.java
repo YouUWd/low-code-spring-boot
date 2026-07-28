@@ -148,6 +148,8 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
             module = "系统设置",
             subModule = "特殊权限",
             operation = OperationType.DELETE,
+            deleteDisplayField = "name",
+            entityClass = SysSpecialPermission.class,
             tableName = "sys_special_permission",
             dataIdField = "#id")
     public void deleteSpecialPermission(Long id, boolean force) {

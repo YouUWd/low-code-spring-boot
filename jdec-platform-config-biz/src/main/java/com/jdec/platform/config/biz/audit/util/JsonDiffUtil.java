@@ -95,7 +95,7 @@ public class JsonDiffUtil {
                                                     .fieldCode(fieldName)
                                                     .fieldType(metadata.fieldType)
                                                     .oldValue(oldValueObj)
-                                                    .newValue(newValueObj)
+                                                    .newer(newValueObj)
                                                     .build();
 
                                     diffs.add(diff);
@@ -177,7 +177,7 @@ public class JsonDiffUtil {
                                                 .fieldCode(fieldName)
                                                 .fieldType(metadata.fieldType)
                                                 .oldValue(oldValue)
-                                                .newValue(null)
+                                                .newer(null)
                                                 .build();
 
                                 diffs.add(diff);
@@ -219,7 +219,7 @@ public class JsonDiffUtil {
                                                 .fieldCode(fieldName)
                                                 .fieldType(FieldType.SIMPLE)
                                                 .oldValue(oldValue)
-                                                .newValue(null)
+                                                .newer(null)
                                                 .build();
 
                                 diffs.add(diff);
@@ -283,7 +283,7 @@ public class JsonDiffUtil {
                                                 .fieldCode(fieldName)
                                                 .fieldType(metadata.fieldType)
                                                 .oldValue(null)
-                                                .newValue(newValue)
+                                                .newer(newValue)
                                                 .build();
 
                                 diffs.add(diff);
@@ -725,7 +725,7 @@ public class JsonDiffUtil {
                             .fieldCode(deleteDisplayField)
                             .fieldType(metadata.fieldType)
                             .oldValue(oldValue)
-                            .newValue("") // 删除操作，new为空字符串
+                            .newer("") // 删除操作，new为空字符串
                             .build();
 
             diffs.add(diff);

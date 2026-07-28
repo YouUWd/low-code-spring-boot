@@ -9,10 +9,6 @@ import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigPageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.config.api.dto.response.ApprovalChainCascadeResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigDetailResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigPageResp;
-import com.jdec.platform.config.api.dto.response.ApprovalChainConfigSaveResp;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckResult;
 import com.jdec.platform.config.biz.check.ReferenceChecker;
@@ -154,6 +150,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
         Set<Long> roleIds = new HashSet<>();
         Set<Long> userIds = new HashSet<>();
         Set<String> approvalRuleValues = new HashSet<>();
+        Set<String> rejectRuleValues = new HashSet<>();
         Set<Long> buttonConfigIds = new HashSet<>();
 
         for (SysApprovalChainConfig config : configPage.getRecords()) {
@@ -164,6 +161,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
             if (config.getApproverId() != null) userIds.add(config.getApproverId());
             if (config.getDelegateApproverId() != null) userIds.add(config.getDelegateApproverId());
             if (config.getApprovalRule() != null) approvalRuleValues.add(config.getApprovalRule());
+            if (config.getRejectRule() != null) rejectRuleValues.add(config.getRejectRule());
 
             if (config.getChildModuleIds() != null && !config.getChildModuleIds().isEmpty()) {
                 for (String id : config.getChildModuleIds().split(",")) {
@@ -190,6 +188,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
         Map<Long, String> roleMap = batchQueryRoles(roleIds);
         Map<Long, String> userMap = batchQueryUsers(userIds);
         Map<String, String> approvalRuleMap = batchQueryApprovalRules(approvalRuleValues);
+        Map<String, String> rejectRuleMap = batchQueryRejectRules(rejectRuleValues);
         Map<Long, SysStatus> allStatusMap = loadAllStatuses();
         Map<Long, SysApprovalChainConfigButton> buttonConfigMap =
                 batchQueryButtonConfigs(buttonConfigIds);
@@ -230,7 +229,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                     resp.setApprovalRule(config.getApprovalRule());
                                     resp.setApprovalRuleName(
                                             approvalRuleMap.get(config.getApprovalRule()));
-                                    resp.setRejectRule(config.getRejectRule());
+                                    resp.setRejectRule(rejectRuleMap.get(config.getRejectRule()));
                                     resp.setRoleApprovalPercent(config.getRoleApprovalPercent());
                                     resp.setApproveRoleId(config.getApproveRoleId());
                                     resp.setApproveRoleName(roleMap.get(config.getApproveRoleId()));
@@ -511,6 +510,19 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                 .selectList(
                         new LambdaQueryWrapper<SysConfigItem>()
                                 .eq(SysConfigItem::getCategoryAlias, "approvalRule")
+                                .eq(SysConfigItem::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysConfigItem::getProjectNo, AppContext.getProjectNo())
+                                .in(SysConfigItem::getValue, values))
+                .stream()
+                .collect(Collectors.toMap(SysConfigItem::getValue, SysConfigItem::getLabel));
+    }
+
+    private Map<String, String> batchQueryRejectRules(Set<String> values) {
+        if (values.isEmpty()) return Collections.emptyMap();
+        return sysConfigItemMapper
+                .selectList(
+                        new LambdaQueryWrapper<SysConfigItem>()
+                                .eq(SysConfigItem::getCategoryAlias, "rejectRule")
                                 .eq(SysConfigItem::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysConfigItem::getProjectNo, AppContext.getProjectNo())
                                 .in(SysConfigItem::getValue, values))

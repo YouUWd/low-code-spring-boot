@@ -146,6 +146,8 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             module = "系统设置",
             subModule = "交互权限",
             operation = OperationType.DELETE,
+            deleteDisplayField = "name",
+            entityClass = SysInteractionPermission.class,
             tableName = "sys_interaction_permission",
             dataIdField = "#id")
     public void deleteInteractionPermission(Long id, boolean force) {

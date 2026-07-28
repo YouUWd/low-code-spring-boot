@@ -37,7 +37,7 @@ public class AuditLogFormatter {
                     ColumnChange.builder()
                             .name(diff.getFieldName())
                             .old("") // 新增操作，old为空
-                            .newValue(formatValue(diff.getNewValue()))
+                            .newer(formatValue(diff.getNewer()))
                             .field(diff.getFieldCode())
                             .build();
             columns.add(column);
@@ -90,7 +90,7 @@ public class AuditLogFormatter {
                     ColumnChange.builder()
                             .name(diff.getFieldName())
                             .old(formatValue(diff.getOldValue()))
-                            .newValue(formatValue(diff.getNewValue()))
+                            .newer(formatValue(diff.getNewer()))
                             .field(diff.getFieldCode())
                             .build();
             columns.add(column);
@@ -140,7 +140,7 @@ public class AuditLogFormatter {
                         ColumnChange.builder()
                                 .name(diff.getFieldName())
                                 .old(formatValue(diff.getOldValue()))
-                                .newValue("") // 删除操作，new为空
+                                .newer("") // 删除操作，new为空
                                 .field(diff.getFieldCode())
                                 .build();
                 columns.add(column);

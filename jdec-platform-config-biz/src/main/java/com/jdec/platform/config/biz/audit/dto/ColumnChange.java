@@ -24,8 +24,8 @@ public class ColumnChange {
 
     /** 修改后的值（删除时为空） */
     @Builder.Default
-    @com.fasterxml.jackson.annotation.JsonProperty("new")
-    private String newValue = "";
+    @com.fasterxml.jackson.annotation.JsonProperty("newer")
+    private String newer = "";
 
     /** 字段代码（可选） */
     private String field;
