@@ -54,6 +54,9 @@ public class MonitorLogReq {
     @Schema(description = "平台信息")
     private String platForm = "unknown";
 
+    @Schema(description = "系统名称")
+    private String systemName = "unknown";
+
     @Schema(description = "日志内容")
     private String logContent;
 

@@ -16,9 +16,6 @@ public class JdecMonitorLogBase implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Schema(description = "日志类型")
-    private String logType;
-
     @Schema(description = "主题ID")
     private Long subjectId;
 
@@ -58,6 +55,9 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "平台信息")
     private String platForm;
 
+    @Schema(description = "系统名称")
+    private String systemName;
+
     @Schema(description = "日志内容")
     private String logContent;
 
@@ -66,4 +66,8 @@ public class JdecMonitorLogBase implements Serializable {
 
     @Schema(description = "日志日期")
     private LocalDateTime logDate;
+
+    @Schema(description = "日志类型")
+    @TableField(exist = false) // 明确标识此字段不在数据库表中
+    private String logType;
 }
