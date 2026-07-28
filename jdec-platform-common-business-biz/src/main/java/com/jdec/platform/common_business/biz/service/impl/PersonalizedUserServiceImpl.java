@@ -146,7 +146,19 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
                     userColumn.setUserId(userId);
                     userColumn.setProjectNo(projectNo);
                     userColumn.setModuleId(req.getModuleId());
-                    userColumn.setColumnProperty(JsonUtil.obj2Json(req.getColumnRespList()));
+                    List<PersonalizedModuleDTO> columns = new ArrayList<>();
+                    if (CollectionUtil.isNotEmpty(req.getColumnRespList())) {
+                        columns =
+                                req.getColumnRespList().stream()
+                                        .filter(x -> (x.getChecked() != null && x.getChecked()))
+                                        .collect(Collectors.toList());
+                    }
+                    if (CollectionUtil.isNotEmpty(columns)) {
+                        columns.stream().forEach(x -> x.setChecked(null));
+                        userColumn.setColumnProperty(JsonUtil.obj2Json(columns));
+                    } else {
+                        userColumn.setColumnProperty(JsonUtil.obj2Json(List.of()));
+                    }
                     userColumn.setCreatedBy(userId);
                     userColumn.setCreatedName(null);
                     userColumn.setCreatedDate(LocalDateTime.now());
@@ -165,15 +177,25 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
                     // updateWrapper.set(PersonalizedUserColumn::getUpdatedName)
                     updateWrapper.set(
                             ComPersonalizedUserColumn::getUpdatedDate, LocalDateTime.now());
+
+                    List<PersonalizedModuleDTO> columns = new ArrayList<>();
                     if (CollectionUtil.isNotEmpty(req.getColumnRespList())) {
+                        columns =
+                                req.getColumnRespList().stream()
+                                        .filter(x -> (x.getChecked() != null && x.getChecked()))
+                                        .collect(Collectors.toList());
+                    }
+                    if (CollectionUtil.isNotEmpty(columns)) {
+                        columns.stream().forEach(x -> x.setChecked(null));
                         updateWrapper.set(
                                 ComPersonalizedUserColumn::getColumnProperty,
-                                JsonUtil.obj2Json(req.getColumnRespList()));
+                                JsonUtil.obj2Json(columns));
                     } else {
                         updateWrapper.set(
                                 ComPersonalizedUserColumn::getColumnProperty,
                                 JsonUtil.obj2Json(List.of()));
                     }
+                    personalizedUserColumnMapper.update(updateWrapper);
                 }
             }
             return Boolean.TRUE;
@@ -261,6 +283,7 @@ public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
                     updateWrapper.set(
                             ComPersonalizedUserColumn::getColumnProperty, JsonUtil.obj2Json(rr));
                 }
+                personalizedUserColumnMapper.update(updateWrapper);
             }
             return Boolean.TRUE;
 
