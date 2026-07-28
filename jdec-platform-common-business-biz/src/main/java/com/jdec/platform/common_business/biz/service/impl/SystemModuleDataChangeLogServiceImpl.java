@@ -174,6 +174,11 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                             .currentSubjectId(context.getSubjectId())
                             .currentRoleId(context.getRoleId())
                             .logRemark(changeLog.getChangeContent())
+                            .moduleName(modifyModules.get(0).getName())
+                            .dataId(
+                                    context.getDataId() != null
+                                            ? String.valueOf(context.getDataId())
+                                            : null)
                             .menuId(context.getMenuId())
                             .build();
             if (context.getCallType() == CallTypeEnum.CREATE) {

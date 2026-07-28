@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/student/word")
 @RequiredArgsConstructor
 @Tag(name = "Word 外部服务", description = "Word 外部 API 的关系查询接口")
-public class WordApiController {
+public class WordApiBizCommonController {
 
     private final WordApiClient wordApiClient;
 

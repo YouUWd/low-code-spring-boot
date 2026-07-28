@@ -6,9 +6,11 @@ import com.jdec.platform.common_business.biz.configcenter.client.openfeign.Confi
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.MonitorLogApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
+import com.jdec.platform.common_business.biz.dto.LogContentDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
 import com.jdec.platform.common_business.biz.log.BizLog;
+import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
 import java.util.List;
 import java.util.Set;
@@ -50,14 +52,21 @@ public class DataUpdateBizLog implements BizLog {
                                     .findFirst()
                                     .orElse(null);
                     if (menu != null) {
-                        menuTitle = menu.getTitle();
+                        menuTitle = menu.getParam();
                     }
                 }
+                LogContentDTO logContentDTO =
+                        LogContentDTO.builder()
+                                .module(bizLogDTO.getModuleName())
+                                .orderId(bizLogDTO.getDataId())
+                                .hrefUrl(menuTitle)
+                                .build();
                 if (logEnum == BizLogEnum.DATA_SAVE) {
-                    req.setLogContent("[" + menuTitle + "]-保存数据");
+                    logContentDTO.setControlName("新增数据");
                 } else {
-                    req.setLogContent("[" + menuTitle + "]-修改数据");
+                    logContentDTO.setControlName("修改数据");
                 }
+                req.setLogContent(JsonUtil.obj2Json(logContentDTO));
                 req.setLogRemark(bizLogDTO.getLogRemark());
                 monitorLogApiOpenFeignClient.recordBusinessLog(req);
                 return Boolean.TRUE;
