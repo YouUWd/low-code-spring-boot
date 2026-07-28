@@ -533,6 +533,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
@@ -669,6 +670,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
@@ -859,6 +861,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
@@ -1009,6 +1012,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
@@ -1107,6 +1111,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
