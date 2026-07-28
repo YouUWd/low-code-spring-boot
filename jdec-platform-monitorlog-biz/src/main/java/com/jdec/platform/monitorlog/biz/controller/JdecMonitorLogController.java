@@ -3,7 +3,6 @@ package com.jdec.platform.monitorlog.biz.controller;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogPageListReq;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
-import com.jdec.platform.monitorlog.api.dto.response.MonitorLogResp;
 import com.jdec.platform.monitorlog.biz.service.JdecMonitorLogService;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
@@ -41,88 +40,8 @@ public class JdecMonitorLogController {
         return ApiResponse.success(records);
     }
 
-    @PostMapping("/addControlLog")
-    @Operation(
-            summary = "添加操作日志",
-            description =
-                    "记录操作日志"
-                            + "     *形如：[系统设置-审批链配置]修改了配置"
-                            + "      日志内容格式为：{"
-                            + "            \"module\": \"模块名称/功能名称/页面名称\","
-                            + "            \"orderId\": \"单据编号/订单编号/业务编号/任务编号\","
-                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
-                            + "            \"controlName\":\"操作名称/单据名称\""
-                            + "        }"
-                            + "     *带remark  如："
-                            + "       [审批链分类] :PFD"
-                            + "       [模块名称]:PFD->PFD-1"
-                            + "     remark内容格式为：{"
-                            + "       \"keyName\":\"keyValue\","
-                            + "       \"changeList\":"
-                            + "           {"
-                            + "               \"age\":{\"oldVal\":22,\"newVal\":23,\"}"
-                            + "               \"userName\":{\"oldVal\":\"李四\",\"newVal\":\"李四五\"}"
-                            + "           }"
-                            + "       }")
-    public ApiResponse<Void> addControlLog(@Valid @RequestBody MonitorLogReq request) {
-        if (request.getSubjectId() == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
-            return ApiResponse.error("logContent不能为空");
-        }
-        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
-            return ApiResponse.error("logRemark不能为空");
-        }
-        jdecMonitorLogService.recordControlLog(request);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addBusinessChangeLog")
-    @Operation(summary = "添加业务单据字段变化日志", description = "记录业务单据字段变化日志，logContent内容为单据字段变化HTML标记文本")
-    public ApiResponse<Void> addBusinessChangeLog(@Valid @RequestBody MonitorLogReq request) {
-        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
-            return ApiResponse.error("logContent不能为空");
-        }
-        jdecMonitorLogService.recordBusinessLog(request);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addApprovalChainLog")
-    @Operation(
-            summary = "添加审批链操作日志",
-            description =
-                    "记录审批链日志"
-                            + "     * 形如：[元件管理-FHSQ2409230955401 V2] 元件审核已驳回"
-                            + "      日志内容格式为：{"
-                            + "            \"module\": \"模块名称/功能名称/页面名称\","
-                            + "            \"orderId\": \"单据编号/订单编号/业务编号/任务编号\","
-                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
-                            + "            \"orderVersion\": \"单据版本号/订单版本号/业务版本号/任务版本号\","
-                            + "            \"controlName\":\"操作名称/单据名称\","
-                            + "            \"operatorResult\": \"操作结果/执行结果/处理结果: 成功/失败\","
-                            + "            \"fontColor\": \"字体颜色:默认为黑色\""
-                            + "        }"
-                            + "     *  带remark  如：驳回原因：审批不通过..")
-    public ApiResponse<Void> addApprovalChainLog(@Valid @RequestBody MonitorLogReq request) {
-        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
-            return ApiResponse.error("logContent不能为空");
-        }
-        jdecMonitorLogService.recordApprovalChainLog(request);
-        return ApiResponse.success();
-    }
-
     @GetMapping("/addLoginLog")
-    @Operation(
-            summary = "添加登录日志",
-            description =
-                    "记录登录日志"
-                            + "     * 形如：登录ipd系统 [ip：126.214.120.01]"
-                            + "      日志内容格式为：{"
-                            + "            \"userId\": \"用户ID\","
-                            + "            \"systemName\": \"系统名称\","
-                            + "            \"ip\": \"IP地址\","
-                            + "        }")
+    @Operation(summary = "添加登录日志", description = "记录登录日志   * 形如：登录ipd系统 [ip：126.214.120.01]")
     public ApiResponse<Void> addLoginLog(
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
@@ -154,6 +73,7 @@ public class JdecMonitorLogController {
         request.setSubjectId(subjectId);
         request.setLoginUserId(loginUserId);
         request.setLoginRoleId(loginRoleId);
+        request.setSystemName(systemName);
         request.setIp(ip);
         request.setLogContent(String.format("登录%s系统[ip：%s]", systemName, ip));
         jdecMonitorLogService.recordLoginLog(request);
@@ -161,16 +81,7 @@ public class JdecMonitorLogController {
     }
 
     @GetMapping("/addLogoutLog")
-    @Operation(
-            summary = "添加退出日志",
-            description =
-                    "记录退出日志"
-                            + "     * 形如：退出ipd系统 [ip：126.214.120.01]"
-                            + "      日志内容格式为：{"
-                            + "            \"userId\": \"用户ID\","
-                            + "            \"systemName\": \"系统名称\","
-                            + "            \"ip\": \"IP地址\","
-                            + "        }")
+    @Operation(summary = "添加退出日志", description = "记录退出日志   * 形如：退出ipd系统 [ip：126.214.120.01]")
     public ApiResponse<Void> addLogoutLog(
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
@@ -227,7 +138,8 @@ public class JdecMonitorLogController {
             @RequestHeader(value = "Mock-Flag", required = false) Integer mockFlag,
             @RequestHeader(value = "Mock-User-Id", required = false) Long mockUserId,
             @RequestHeader(value = "Mock-Role-Id", required = false) Long mockRoleId,
-            @RequestHeader("Log-Content") String logContent) {
+            @Valid @RequestBody MonitorLogReq request) {
+        String logContent = request.getLogContent();
         logContent = logContent != null ? logContent.trim() : null;
         if (subjectId == null) {
             return ApiResponse.error("subjectId不能为空");
@@ -238,7 +150,6 @@ public class JdecMonitorLogController {
         if (logContent == null || logContent.isEmpty()) {
             return ApiResponse.error("日志内容不能为空");
         }
-        MonitorLogReq request = new MonitorLogReq();
         request.setSubjectId(subjectId);
         request.setLoginUserId(loginUserId);
         request.setLoginRoleId(loginRoleId);
@@ -250,10 +161,10 @@ public class JdecMonitorLogController {
         return ApiResponse.success();
     }
 
-    @PostMapping("/addMockUser")
+    @GetMapping("/addMockUser")
     @Operation(
             summary = "添加切换模拟用户日志",
-            description = "添加切换模拟用户日志" + "     * 形如：切换身份：张三 (J10006821)  超级管理员")
+            description = "添加切换模拟用户日志    * 形如：切换身份：张三 (J10006821)  超级管理员")
     public ApiResponse<Void> addMockUser(
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
@@ -284,8 +195,8 @@ public class JdecMonitorLogController {
         return ApiResponse.success();
     }
 
-    @PostMapping("/addChaneRole")
-    @Operation(summary = "添加切换角色日志", description = "记录切换角色日志" + "     * 形如：切换角色：元件管理审核")
+    @GetMapping("/addChaneRole")
+    @Operation(summary = "添加切换角色日志", description = "记录切换角色日志    * 形如：切换角色：元件管理审核")
     public ApiResponse<Void> addChaneRole(
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
@@ -304,8 +215,34 @@ public class JdecMonitorLogController {
         return ApiResponse.success();
     }
 
-    @PostMapping("/addMockReset")
-    @Operation(summary = "添加重置模拟用户日志", description = "添加重置模拟用户日志" + "形如：重置模拟用户：管理员")
+    @GetMapping("/addMockChaneRole")
+    @Operation(summary = "添加切换角色日志", description = "记录切换角色日志    * 形如：切换角色：元件管理审核")
+    public ApiResponse<Void> addMockChaneRole(
+            @RequestHeader("X-Subject-Id") Long subjectId,
+            @RequestHeader("Login-User-Id") Long loginUserId,
+            @RequestHeader(value = "Login-Role-Id", required = false) Long loginRoleId,
+            @RequestHeader(value = "Mock-Flag", required = false) Integer mockFlag,
+            @RequestHeader(value = "Mock-User-Id", required = false) Long mockUserId,
+            @RequestHeader(value = "Mock-Role-Id", required = false) Long mockRoleId) {
+        if (subjectId == null) {
+            return ApiResponse.error("subjectId不能为空");
+        }
+        if (loginUserId == null || loginUserId == 0L) {
+            return ApiResponse.error("loginUserId不能为空");
+        }
+        MonitorLogReq request = new MonitorLogReq();
+        request.setSubjectId(subjectId);
+        request.setLoginUserId(loginUserId);
+        request.setLoginRoleId(loginRoleId);
+        request.setMockFlag(mockFlag != null ? mockFlag : 0);
+        request.setMockUserId(mockUserId);
+        request.setMockRoleId(mockRoleId);
+        jdecMonitorLogService.recordMockChaneRole(request);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/addMockReset")
+    @Operation(summary = "添加重置模拟用户日志", description = "添加重置模拟用户日志     形如：重置模拟用户：管理员")
     public ApiResponse<Void> addMockReset(
             @RequestHeader("X-Subject-Id") Long subjectId,
             @RequestHeader("Login-User-Id") Long loginUserId,
@@ -320,29 +257,8 @@ public class JdecMonitorLogController {
         request.setSubjectId(subjectId);
         request.setLoginUserId(loginUserId);
         request.setLoginRoleId(loginRoleId);
-        jdecMonitorLogService.recordMockReset(request);
-        return ApiResponse.success();
-    }
 
-    @PostMapping("/addMessageLog")
-    @Operation(
-            summary = "添加消息日志",
-            description =
-                    "添加消息日志"
-                            + "日志内容为：发送消息的文本，如企业微信消息MD文本"
-                            + "     *  带remark  如：[元件管理-FHSQ2409230955401 V2] 消息类型：元件驳回"
-                            + "                                  消息接收人：张三J10006821  李四J10006822"
-                            + "remark是Json格式的字符串，格式如下："
-                            + "{"
-                            + "            \"module\": \"模块名称/功能名称/页面名称\","
-                            + "            \"orderId\": \"单据编号/订单编号/业务编号/任务编号\","
-                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
-                            + "            \"orderVersion\": \"单据版本号/订单版本号/业务版本号/任务版本号\","
-                            + "            \"messageType\":\"操作类型/消息类型\","
-                            + "            \"messageReceivers\":\"消息接收人[userid1,userid2,...]\""
-                            + "        }")
-    public ApiResponse<Void> addMessageLog(@Valid @RequestBody MonitorLogReq request) {
-        jdecMonitorLogService.recordMessageLog(request);
+        jdecMonitorLogService.recordMockReset(request);
         return ApiResponse.success();
     }
 
@@ -372,13 +288,162 @@ public class JdecMonitorLogController {
         return ApiResponse.success();
     }
 
-    @GetMapping("/get")
-    @Operation(summary = "获取监控日志详情", description = "根据ID获取监控日志详情")
-    public ApiResponse<MonitorLogResp> get(@RequestParam Long id, @RequestParam String logType) {
-        logType = logType != null ? logType.trim() : null;
-        if (logType == null || logType.isEmpty()) {
-            return ApiResponse.error("日志类型不能为空");
+    @PostMapping("/addApprovalChainConfigLog")
+    @Operation(
+            summary = "添加审批链配置日志",
+            description =
+                    "记录审批链配置日志"
+                            + "     * 形如：[系统设置-审批链配置]修改了配置"
+                            + "      日志内容格式为：{\n"
+                            + "                \"module\": \"模块名称/功能名称/页面名称\",\n"
+                            + "                \"orderId\": \"单据编号/订单编号/业务编号/任务编号\",\n"
+                            + "                \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\",\n"
+                            + "                \"controlName\":\"操作名称/单据名称\"\n"
+                            + "            }"
+                            + "     *  带remark  也是json格式，请求体如下：\n"
+                            + "            {\"\n"
+                            + "                \"keyName\":\"keyValue\",\n"
+                            + "                \"changeList\":\"\n"
+                            + "                {\n"
+                            + "                \"field1\":{\"oldVal\":22,\"newVal\":23,\"}\n"
+                            + "                \"field2\":{\"oldVal\":\"李四\",\"newVal\":\"李四五\"}\n"
+                            + "                }\n"
+                            + "            }")
+    public ApiResponse<Void> addApprovalChainConfigLog(@Valid @RequestBody MonitorLogReq request) {
+        if (request.getSubjectId() == null || request.getSubjectId() == 0L) {
+            return ApiResponse.error("SubjectId不能为空");
         }
-        return ApiResponse.success(jdecMonitorLogService.get(id, logType));
+        if (request.getLoginUserId() == null || request.getLoginUserId() == 0L) {
+            return ApiResponse.error("LoginUserId不能为空");
+        }
+        if (request.getLoginRoleId() == null || request.getLoginRoleId() == 0L) {
+            return ApiResponse.error("LoginRoleId不能为空");
+        }
+        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
+            return ApiResponse.error("LogContent不能为空");
+        }
+        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
+            return ApiResponse.error("LogRemark不能为空");
+        }
+        jdecMonitorLogService.recordApprovalChainConfigLog(request);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/addApprovalChainRunLog")
+    @Operation(
+            summary = "添加审批链操作日志",
+            description =
+                    "记录审批链日志"
+                            + "     * 形如：[元件管理-FHSQ2409230955401 V2] 元件审核已驳回"
+                            + "      日志内容格式为：{"
+                            + "            \"module\": \"模块名称/功能名称/页面名称\","
+                            + "            \"orderId\": \"单据编号/订单编号/业务编号/任务编号\","
+                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
+                            + "            \"orderVersion\": \"单据版本号/订单版本号/业务版本号/任务版本号\","
+                            + "            \"controlName\":\"操作名称/单据名称\","
+                            + "            \"operatorResult\": \"操作结果/执行结果/处理结果: 成功/失败\","
+                            + "            \"fontColor\": \"字体颜色:默认为黑色\""
+                            + "        }"
+                            + "     *  带remark  如：驳回原因：审批不通过..")
+    public ApiResponse<Void> addApprovalChainRunLog(@Valid @RequestBody MonitorLogReq request) {
+        if (request.getSubjectId() == null || request.getSubjectId() == 0L) {
+            return ApiResponse.error("SubjectId不能为空");
+        }
+        if (request.getLoginUserId() == null || request.getLoginUserId() == 0L) {
+            return ApiResponse.error("LoginUserId不能为空");
+        }
+        if (request.getLoginRoleId() == null || request.getLoginRoleId() == 0L) {
+            return ApiResponse.error("LoginRoleId不能为空");
+        }
+        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
+            return ApiResponse.error("LogContent不能为空");
+        }
+        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
+            return ApiResponse.error("LogRemark不能为空");
+        }
+        jdecMonitorLogService.recordApprovalChainRunLog(request);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/addAuthorityChangeLog")
+    @Operation(
+            summary = "添加权限变更日志",
+            description =
+                    "记录权限变更日志，logContent是Post请求体，格式如下：\n"
+                            + "            {\n"
+                            + "                \"module\": \"模块名称/功能名称/页面名称\",\n"
+                            + "                \"orderId\": \"单据编号/订单编号/业务编号/任务编号\",\n"
+                            + "                \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\",\n"
+                            + "                \"controlName\":\"操作名称/单据名称\"\n"
+                            + "            }"
+                            + "           remark\n"
+                            + "            待定。。。")
+    public ApiResponse<Void> addAuthorityChangeLog(@Valid @RequestBody MonitorLogReq request) {
+        if (request.getSubjectId() == null || request.getSubjectId() == 0L) {
+            return ApiResponse.error("SubjectId不能为空");
+        }
+        if (request.getLoginUserId() == null || request.getLoginUserId() == 0L) {
+            return ApiResponse.error("LoginUserId不能为空");
+        }
+        if (request.getLoginRoleId() == null || request.getLoginRoleId() == 0L) {
+            return ApiResponse.error("LoginRoleId不能为空");
+        }
+        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
+            return ApiResponse.error("LogContent不能为空");
+        }
+        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
+            return ApiResponse.error("LogRemark不能为空");
+        }
+        jdecMonitorLogService.recordAuthorityChangeLog(request);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/addOrderRunLog")
+    @Operation(
+            summary = "添加订单操作日志",
+            description =
+                    "记录订单操作日志"
+                            + "     * 形如：[系统设置-按钮配置]修改了配置"
+                            + "      日志内容格式为：{\n"
+                            + "                \"module\": \"模块名称/功能名称/页面名称\",\n"
+                            + "                \"orderId\": \"单据编号/订单编号/业务编号/任务编号\",\n"
+                            + "                \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\",\n"
+                            + "                \"controlName\":\"操作名称/单据名称\"\n"
+                            + "            }"
+                            + "     *  带remark  备注信息为自定义json，后台不做解析，因此不关注json内容和格式")
+    public ApiResponse<Void> addOrderRunLog(@Valid @RequestBody MonitorLogReq request) {
+        if (request.getSubjectId() == null) {
+            return ApiResponse.error("subjectId不能为空");
+        }
+        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
+            return ApiResponse.error("logContent不能为空");
+        }
+        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
+            return ApiResponse.error("logRemark不能为空");
+        }
+        jdecMonitorLogService.recordOrderRunLog(request);
+        return ApiResponse.success();
+    }
+
+    @PostMapping("/addMessageLog")
+    @Operation(
+            summary = "添加消息日志",
+            description =
+                    "添加消息日志"
+                            + "日志内容为：发送消息的文本，如企业微信消息MD文本"
+                            + "     *  带remark  如：[元件管理-FHSQ2409230955401 V2] 消息类型：元件驳回"
+                            + "                                  消息接收人：张三J10006821  李四J10006822"
+                            + "remark是Json格式的字符串，格式如下："
+                            + "{"
+                            + "            \"module\": \"模块名称/功能名称/页面名称\","
+                            + "            \"orderId\": \"单据编号/订单编号/业务编号/任务编号\","
+                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
+                            + "            \"orderVersion\": \"单据版本号/订单版本号/业务版本号/任务版本号\","
+                            + "            \"messageType\":\"操作类型/消息类型\","
+                            + "            \"messageReceivers\":\"消息接收人[userid1,userid2,...]\""
+                            + "        }")
+    public ApiResponse<Void> addMessageLog(@Valid @RequestBody MonitorLogReq request) {
+        jdecMonitorLogService.recordMessageLog(request);
+        return ApiResponse.success();
     }
 }

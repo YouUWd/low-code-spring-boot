@@ -91,7 +91,7 @@ public class LoginUserUtil {
 
         // 3. 安全获取并转换 Header 数据 (String -> Long)
 
-        return parseLongSafe(request.getHeader("Module-Id"));
+        return parseLongSafe(request.getHeader("X-Module-Id"));
     }
 
     /**

@@ -4,8 +4,6 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
 import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
@@ -13,17 +11,15 @@ import com.jdec.platform.monitorlog.api.client.MonitorLogApiClient;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogPageListReq;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
-import com.jdec.platform.monitorlog.api.dto.response.MonitorLogResp;
 import com.jdec.platform.monitorlog.biz.Utils.JsonChangeParseUtil;
-import com.jdec.platform.monitorlog.biz.entity.JdecMonitorSystemLog;
-import com.jdec.platform.monitorlog.biz.mapper.JdecMonitorSystemLogMapper;
+import com.jdec.platform.monitorlog.biz.entity.*;
+import com.jdec.platform.monitorlog.biz.entity.enumtype.LogTypeEnum;
+import com.jdec.platform.monitorlog.biz.mapper.*;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -41,17 +37,35 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.MonitorLog)
 public class JdecMonitorLogService implements MonitorLogApi {
+    // 监控日志审批链配置Mapper
+    private final JdecMonitorApprovalChainConfigLogMapper jdecMonitorApprovalChainConfigLogMapper;
+
+    // 监控日志操作Mapper
+    private final JdecMonitorApprovalChainRunLogMapper jdecMonitorApprovalChainRunLogMapper;
+
+    // 监控日志权限变更Mapper
+    private final JdecMonitorAuthorityChangeLogMapper jdecMonitorAuthorityChangeLogMapper;
+
+    // 监控日志消息Mapper
+    private final JdecMonitorMessageLogMapper jdecMonitorMessageLogMapper;
+
+    // 监控日志多表查询Mapper
+    private final JdecMonitorMultiTableMapper jdecMonitorMultiTableMapper;
+
+    // 监控日志导航Mapper
+    private final JdecMonitorNavChangeLogMapper jdecMonitorNavChangeLogMapper;
+
+    // 监控日志订单运行Mapper
+    private final JdecMonitorOrderRunLogMapper jdecMonitorOrderRunLogMapper;
+
     // 监控日志Mapper
-    private final JdecMonitorSystemLogMapper jdecMonitorSystemLogMapper;
+    private final JdecMonitorSystemControlLogMapper jdecMonitorSystemControlLogMapper;
+
     // 监控日志API客户端
     private final MonitorLogApiClient monitorLogApiClient;
     // 日期格式化器，用于格式化日期
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-    private static final String LOG_TYPE_MESSAGE = "message-log";
-    private static final String LOG_TYPE_OPERATION = "operation-log";
-    private static final String LOG_TYPE_SYSTEM = "system-log";
 
     private static final String USER_INFO_TEMPLATE =
             "<span class=\"arco-table-td-content\">"
@@ -94,36 +108,47 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private final Map<Long, CacheEntry<RoleConfigDetailResp>> roleConfigDetailCache =
             new ConcurrentHashMap<>();
 
+    //    @Override
+    //    public PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq request) {
+    //        LocalDate startDate = LocalDate.parse(request.getStartTime(), DATE_FORMATTER);
+    //        LocalDate endDate = LocalDate.parse(request.getEndTime(), DATE_FORMATTER);
+    //        LocalDateTime startDateTime = LocalDateTime.of(startDate, LocalTime.MIN);
+    //        LocalDateTime endDateTime = LocalDateTime.of(endDate, LocalTime.MAX);
+    //        // 分页查询监控日志
+    //        Page<JdecMonitorSystemLog> page = new Page<>(request.getPageNum(),
+    // request.getPageSize());
+    //        // 构建查询条件
+    //        LambdaQueryWrapper<JdecMonitorSystemLog> wrapper =
+    //                buildQueryWrapper(request, startDateTime, endDateTime);
+    //        // 执行分页查询
+    //        IPage<JdecMonitorSystemLog> result = jdecMonitorSystemLogMapper.selectPage(page,
+    // wrapper);
+    //
+    //        List<MonitorLogPageListResp> records =
+    //
+    // result.getRecords().stream().map(this::convertToResp).collect(Collectors.toList());
+    //
+    //        return PageResult.of(
+    //                request.getPageNum(), request.getPageSize(), result.getTotal(), records);
+    //    }
     @Override
     public PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq request) {
-        LocalDate startDate = LocalDate.parse(request.getStartTime(), DATE_FORMATTER);
-        LocalDate endDate = LocalDate.parse(request.getEndTime(), DATE_FORMATTER);
-        LocalDateTime startDateTime = LocalDateTime.of(startDate, LocalTime.MIN);
-        LocalDateTime endDateTime = LocalDateTime.of(endDate, LocalTime.MAX);
-        // 分页查询监控日志
-        Page<JdecMonitorSystemLog> page = new Page<>(request.getPageNum(), request.getPageSize());
-        // 构建查询条件
-        LambdaQueryWrapper<JdecMonitorSystemLog> wrapper =
-                buildQueryWrapper(request, startDateTime, endDateTime);
-        // 执行分页查询
-        IPage<JdecMonitorSystemLog> result = jdecMonitorSystemLogMapper.selectPage(page, wrapper);
+        String keyWord = StringUtils.hasText(request.getKeyWord()) ? request.getKeyWord() : "";
+        String logType = StringUtils.hasText(request.getLogType()) ? request.getLogType() : "";
+
+        List<JdecMonitorLogBase> logList =
+                jdecMonitorMultiTableMapper.queryPageListWithMultiTable(
+                        request.getLastTime(),
+                        request.getLastId(),
+                        request.getPageSize(),
+                        keyWord,
+                        logType);
 
         List<MonitorLogPageListResp> records =
-                result.getRecords().stream().map(this::convertToResp).collect(Collectors.toList());
+                logList.stream().map(this::convertToMultiTableResp).collect(Collectors.toList());
 
         return PageResult.of(
-                request.getPageNum(), request.getPageSize(), result.getTotal(), records);
-    }
-
-    // 获取监控日志详情
-    @Override
-    public MonitorLogResp get(Long id, String logType) {
-        JdecMonitorSystemLog log = jdecMonitorSystemLogMapper.selectById(id);
-        if (log != null) {
-            // 从缓存中获取用户详情
-            return BeanUtil.toBean(log, MonitorLogResp.class);
-        }
-        return null;
+                request.getPageNum(), request.getPageSize(), (long) records.size(), records);
     }
 
     // 记录登录日志
@@ -146,12 +171,12 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         .replace("{workNumber}", userDetail.getWorkNumber());
 
         // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
-        log.setLogType(LOG_TYPE_SYSTEM);
+        JdecMonitorSystemControlLog log = BeanUtil.toBean(req, JdecMonitorSystemControlLog.class);
+        log.setLogRecordType(LogTypeEnum.LOGIN);
         log.setUserInfo(userInfo);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
         log.setLogRemark("登录日志");
-        jdecMonitorSystemLogMapper.insert(log);
+        jdecMonitorSystemControlLogMapper.insert(log);
     }
 
     // 记录退出日志
@@ -173,21 +198,19 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         .replace("{userName}", userDetail.getUserName())
                         .replace("{workNumber}", userDetail.getWorkNumber());
         // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
-        log.setLogType(LOG_TYPE_SYSTEM);
+        JdecMonitorSystemControlLog log = BeanUtil.toBean(req, JdecMonitorSystemControlLog.class);
+        log.setLogRecordType(LogTypeEnum.LOGOUT);
         log.setUserInfo(userInfo);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
         log.setLogRemark("登出日志");
-        jdecMonitorSystemLogMapper.insert(log);
+        jdecMonitorSystemControlLogMapper.insert(log);
     }
 
     // 记录导航日志
     @Override
     public void recordNavLog(MonitorLogReq req) {
         // 校验操作日志内容
-        if (LOG_TYPE_OPERATION.equals(req.getLogType())) {
-            validateNavLogContent(req.getLogContent());
-        }
+        validateNavLogContent(req.getLogContent());
         // 查询用户详情
         UserDetailResp userDetail = new UserDetailResp();
         if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
@@ -204,7 +227,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
             mockUserDetail = queryUserDetail(req.getMockUserId());
         }
         // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
+        JdecMonitorNavChangeLog log = BeanUtil.toBean(req, JdecMonitorNavChangeLog.class);
         // 构建用户信息
         if (req.getMockFlag() == 0) {
             String userInfo =
@@ -224,11 +247,10 @@ public class JdecMonitorLogService implements MonitorLogApi {
                             .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
             log.setUserInfo(mockUserInfo);
         }
-        log.setLogType(LOG_TYPE_SYSTEM);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
         log.setLogContent(formatNavLogContent(req.getLogContent()));
         log.setLogRemark("导航日志");
-        jdecMonitorSystemLogMapper.insert(log);
+        jdecMonitorNavChangeLogMapper.insert(log);
     }
 
     // 记录切换身份日志
@@ -250,14 +272,13 @@ public class JdecMonitorLogService implements MonitorLogApi {
             mockUserDetail = queryUserDetail(req.getMockUserId());
         }
         // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
+        JdecMonitorSystemControlLog log = BeanUtil.toBean(req, JdecMonitorSystemControlLog.class);
         String userInfo =
                 USER_INFO_TEMPLATE
                         .replace("{avatar}", userDetail.getUserAvatar())
                         .replace("{userName}", userDetail.getUserName())
                         .replace("{workNumber}", userDetail.getWorkNumber());
         log.setUserInfo(userInfo);
-        log.setLogType(LOG_TYPE_SYSTEM);
         String mockLogContent =
                 USER_MOCK_TEMPLATE
                         .replace("{avatar}", mockUserDetail.getUserAvatar())
@@ -266,8 +287,9 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         .replace("{mockRoleName}", roleConfigDetail.getRoleName());
         log.setLogContent("切换身份：" + mockLogContent);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
+        log.setLogRecordType(LogTypeEnum.MOCKUSER);
         log.setLogRemark("切换身份日志");
-        jdecMonitorSystemLogMapper.insert(log);
+        jdecMonitorSystemControlLogMapper.insert(log);
     }
 
     // 切换角色日志记录分两种，一种是非模拟用户时切换角色，一种是模拟用户时切换角色
@@ -289,7 +311,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
             mockUserDetail = queryUserDetail(req.getMockUserId());
         }
         // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
+        JdecMonitorSystemControlLog log = BeanUtil.toBean(req, JdecMonitorSystemControlLog.class);
         // 构建用户信息
         if (req.getMockFlag() == 0) {
             String userInfo =
@@ -309,11 +331,57 @@ public class JdecMonitorLogService implements MonitorLogApi {
                             .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
             log.setUserInfo(mockUserInfo);
         }
-        log.setLogType(LOG_TYPE_SYSTEM);
         log.setLogContent("切换角色：" + roleConfigDetail.getRoleName());
         log.setLoginRoleName(roleConfigDetail.getRoleName());
+        log.setLogRecordType(LogTypeEnum.CHANGEROLE);
         log.setLogRemark("切换角色日志");
-        jdecMonitorSystemLogMapper.insert(log);
+        jdecMonitorSystemControlLogMapper.insert(log);
+    }
+
+    // 切换角色日志记录分两种，一种是非模拟用户时切换角色，一种是模拟用户时切换角色
+    @Override
+    public void recordMockChaneRole(MonitorLogReq req) {
+        // 查询用户详情
+        UserDetailResp userDetail = new UserDetailResp();
+        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
+            userDetail = queryUserDetail(req.getLoginUserId());
+        }
+        // 查询角色详情
+        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
+        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
+            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
+        }
+        // 查询模拟用户详情
+        UserDetailResp mockUserDetail = new UserDetailResp();
+        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
+            mockUserDetail = queryUserDetail(req.getMockUserId());
+        }
+        // 构建日志实体
+        JdecMonitorSystemControlLog log = BeanUtil.toBean(req, JdecMonitorSystemControlLog.class);
+        // 构建用户信息
+        if (req.getMockFlag() == 0) {
+            String userInfo =
+                    USER_INFO_TEMPLATE
+                            .replace("{avatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{workNumber}", userDetail.getWorkNumber());
+            log.setUserInfo(userInfo);
+        } else {
+            String mockUserInfo =
+                    MOCK_USER_INFO_TEMPLATE
+                            .replace("{userAvatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
+                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
+                            .replace("{mockUserName}", mockUserDetail.getUserName())
+                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
+            log.setUserInfo(mockUserInfo);
+        }
+        log.setLogContent("切换角色：" + roleConfigDetail.getRoleName());
+        log.setLoginRoleName(roleConfigDetail.getRoleName());
+        log.setLogRecordType(LogTypeEnum.MOCKCHANGEROLE);
+        log.setLogRemark("模拟切换角色日志");
+        jdecMonitorSystemControlLogMapper.insert(log);
     }
 
     // 切换角色日志记录分两种，一种是非模拟用户时切换角色，一种是模拟用户时切换角色
@@ -330,7 +398,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
             roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
         }
         // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
+        JdecMonitorSystemControlLog log = BeanUtil.toBean(req, JdecMonitorSystemControlLog.class);
         // 构建用户信息
         String userInfo =
                 USER_INFO_TEMPLATE
@@ -338,11 +406,11 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         .replace("{userName}", userDetail.getUserName())
                         .replace("{workNumber}", userDetail.getWorkNumber());
         log.setUserInfo(userInfo);
-        log.setLogType(LOG_TYPE_SYSTEM);
         log.setLogContent("重置模拟用户：" + roleConfigDetail.getRoleName());
         log.setLoginRoleName(roleConfigDetail.getRoleName());
+        log.setLogRecordType(LogTypeEnum.MOCKRESET);
         log.setLogRemark("重置模拟用户日志");
-        jdecMonitorSystemLogMapper.insert(log);
+        jdecMonitorSystemControlLogMapper.insert(log);
     }
 
     // 切换主题日志记录分两种，一种是非模拟用户时切换主题，一种是模拟用户时切换主题
@@ -359,7 +427,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
             roleConfigDetail = queryRoleConfigDetail(roleId);
         }
         // 构建日志实体
-        JdecMonitorSystemLog log = new JdecMonitorSystemLog();
+        JdecMonitorSystemControlLog log = new JdecMonitorSystemControlLog();
         log.setLoginUserId(userId);
         log.setLoginRoleId(roleId);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
@@ -370,11 +438,217 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         .replace("{userName}", userDetail.getUserName())
                         .replace("{workNumber}", userDetail.getWorkNumber());
         log.setUserInfo(userInfo);
-        log.setLogType(LOG_TYPE_SYSTEM);
         log.setLogContent("切换主体：" + subjectName);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
+        log.setLogRecordType(LogTypeEnum.CHANGESUBJECT);
         log.setLogRemark("切换主体日志");
-        jdecMonitorSystemLogMapper.insert(log);
+        jdecMonitorSystemControlLogMapper.insert(log);
+    }
+
+    @Override
+    @Transactional
+    public void recordAuthorityChangeLog(MonitorLogReq req) {
+        // 校验操作日志内容
+        validateApprovalChainConfigLogContent(req.getLogContent());
+        // 查询用户详情
+        UserDetailResp userDetail = new UserDetailResp();
+        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
+            userDetail = queryUserDetail(req.getLoginUserId());
+        }
+        // 查询角色详情
+        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
+        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
+            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
+        }
+        // 查询模拟用户详情
+        UserDetailResp mockUserDetail = new UserDetailResp();
+        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
+            mockUserDetail = queryUserDetail(req.getMockUserId());
+        }
+        // 构建日志实体
+        JdecMonitorAuthorityChangeLog log =
+                BeanUtil.toBean(req, JdecMonitorAuthorityChangeLog.class);
+        // 构建用户信息
+        if (req.getMockFlag() == 0) {
+            String userInfo =
+                    USER_INFO_TEMPLATE
+                            .replace("{avatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{workNumber}", userDetail.getWorkNumber());
+            log.setUserInfo(userInfo);
+        } else {
+            String mockUserInfo =
+                    MOCK_USER_INFO_TEMPLATE
+                            .replace("{userAvatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
+                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
+                            .replace("{mockUserName}", mockUserDetail.getUserName())
+                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
+            log.setUserInfo(mockUserInfo);
+        }
+        log.setLogContent(formatOperationLogContent(req.getLogContent()));
+        log.setMockUserName(mockUserDetail.getUserName());
+        log.setLoginRoleName(roleConfigDetail.getRoleName());
+        if (req.getId() == null || req.getId() == 0L) {
+            jdecMonitorAuthorityChangeLogMapper.insert(log);
+        } else {
+            jdecMonitorAuthorityChangeLogMapper.updateById(log);
+        }
+    }
+
+    // 记录业务单据字段变化日志
+    @Override
+    public void recordOrderRunLog(MonitorLogReq req) {
+        // 校验操作日志内容
+        validateApprovalChainConfigLogContent(req.getLogContent());
+        // 查询用户详情
+        UserDetailResp userDetail = new UserDetailResp();
+        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
+            userDetail = queryUserDetail(req.getLoginUserId());
+        }
+        // 查询角色详情
+        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
+        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
+            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
+        }
+        // 查询模拟用户详情
+        UserDetailResp mockUserDetail = new UserDetailResp();
+        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
+            mockUserDetail = queryUserDetail(req.getMockUserId());
+        }
+        // 构建日志实体
+        JdecMonitorOrderRunLog log = BeanUtil.toBean(req, JdecMonitorOrderRunLog.class);
+        // 构建用户信息
+        if (req.getMockFlag() == 0) {
+            String userInfo =
+                    USER_INFO_TEMPLATE
+                            .replace("{avatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{workNumber}", userDetail.getWorkNumber());
+            log.setUserInfo(userInfo);
+        } else {
+            String mockUserInfo =
+                    MOCK_USER_INFO_TEMPLATE
+                            .replace("{userAvatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
+                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
+                            .replace("{mockUserName}", mockUserDetail.getUserName())
+                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
+            log.setUserInfo(mockUserInfo);
+        }
+        log.setLogContent(formatOperationLogContent(req.getLogContent()));
+        log.setMockUserName(mockUserDetail.getUserName());
+        log.setLoginRoleName(roleConfigDetail.getRoleName());
+        if (req.getId() == null || req.getId() == 0L) {
+            jdecMonitorOrderRunLogMapper.insert(log);
+        } else {
+            jdecMonitorOrderRunLogMapper.updateById(log);
+        }
+    }
+
+    // 记录审批链日志
+    @Override
+    public void recordApprovalChainRunLog(MonitorLogReq req) {
+        // 校验操作日志内容
+        validateApprovalChainRunLogContent(req.getLogContent());
+        // 查询用户详情
+        UserDetailResp userDetail = new UserDetailResp();
+        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
+            userDetail = queryUserDetail(req.getLoginUserId());
+        }
+        // 查询角色详情
+        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
+        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
+            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
+        }
+        // 查询模拟用户详情
+        UserDetailResp mockUserDetail = new UserDetailResp();
+        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
+            mockUserDetail = queryUserDetail(req.getMockUserId());
+        }
+        // 构建日志实体
+        JdecMonitorApprovalChainRunLog log =
+                BeanUtil.toBean(req, JdecMonitorApprovalChainRunLog.class);
+        // 构建用户信息
+        if (req.getMockFlag() == 0) {
+            String userInfo =
+                    USER_INFO_TEMPLATE
+                            .replace("{avatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{workNumber}", userDetail.getWorkNumber());
+            log.setUserInfo(userInfo);
+        } else {
+            String mockUserInfo =
+                    MOCK_USER_INFO_TEMPLATE
+                            .replace("{userAvatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
+                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
+                            .replace("{mockUserName}", mockUserDetail.getUserName())
+                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
+            log.setUserInfo(mockUserInfo);
+        }
+        log.setLogContent(formatApprovalChainRunLogContent(req.getLogContent()));
+        log.setMockUserName(mockUserDetail.getUserName());
+        log.setLoginRoleName(roleConfigDetail.getRoleName());
+        if (req.getId() == null || req.getId() == 0L) {
+            jdecMonitorApprovalChainRunLogMapper.insert(log);
+        } else {
+            jdecMonitorApprovalChainRunLogMapper.updateById(log);
+        }
+    }
+
+    @Override
+    public void recordApprovalChainConfigLog(MonitorLogReq req) {
+        // 校验操作日志内容
+        validateApprovalChainConfigLogContent(req.getLogContent());
+        // 查询用户详情
+        UserDetailResp userDetail = new UserDetailResp();
+        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
+            userDetail = queryUserDetail(req.getLoginUserId());
+        }
+        // 查询角色详情
+        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
+        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
+            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
+        }
+        // 查询模拟用户详情
+        UserDetailResp mockUserDetail = new UserDetailResp();
+        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
+            mockUserDetail = queryUserDetail(req.getMockUserId());
+        }
+        // 构建日志实体
+        JdecMonitorApprovalChainConfigLog log =
+                BeanUtil.toBean(req, JdecMonitorApprovalChainConfigLog.class);
+        // 构建用户信息
+        if (req.getMockFlag() == 0) {
+            String userInfo =
+                    USER_INFO_TEMPLATE
+                            .replace("{avatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{workNumber}", userDetail.getWorkNumber());
+            log.setUserInfo(userInfo);
+        } else {
+            String mockUserInfo =
+                    MOCK_USER_INFO_TEMPLATE
+                            .replace("{userAvatar}", userDetail.getUserAvatar())
+                            .replace("{userName}", userDetail.getUserName())
+                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
+                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
+                            .replace("{mockUserName}", mockUserDetail.getUserName())
+                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
+            log.setUserInfo(mockUserInfo);
+        }
+        log.setLogContent(formatApprovalChainConfigLogContent(req.getLogContent()));
+        log.setMockUserName(mockUserDetail.getUserName());
+        log.setLoginRoleName(roleConfigDetail.getRoleName());
+        if (req.getId() == null || req.getId() == 0L) {
+            jdecMonitorApprovalChainConfigLogMapper.insert(log);
+        } else {
+            jdecMonitorApprovalChainConfigLogMapper.updateById(log);
+        }
     }
 
     // 记录消息日志
@@ -402,7 +676,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
             mockUserDetail = queryUserDetail(req.getMockUserId());
         }
         // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
+        JdecMonitorMessageLog log = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
         // 构建用户信息
         if (req.getMockFlag() == 0) {
             String userInfo =
@@ -426,190 +700,29 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLoginRoleName(roleConfigDetail.getRoleName());
         log.setLogRemark(formatMessageLogRemark(logRemarkResult));
         if (req.getId() == null || req.getId() == 0L) {
-            jdecMonitorSystemLogMapper.insert(log);
+            jdecMonitorMessageLogMapper.insert(log);
         } else {
-            jdecMonitorSystemLogMapper.updateById(log);
-        }
-    }
-
-    // 记录操作日志
-    @Override
-    @Transactional
-    public void recordControlLog(MonitorLogReq req) {
-        String logRemarkResult = "";
-        // 校验操作日志内容
-        if (LOG_TYPE_OPERATION.equals(req.getLogType())) {
-            validateOperationLogContent(req.getLogContent());
-        }
-        try {
-            logRemarkResult = JsonChangeParseUtil.parseAndFormat(req.getLogRemark());
-        } catch (IllegalArgumentException e) {
-            System.err.println("校验失败：" + e.getMessage());
-        }
-        // 查询用户详情
-        UserDetailResp userDetail = new UserDetailResp();
-        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
-            userDetail = queryUserDetail(req.getLoginUserId());
-        }
-        // 查询角色详情
-        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
-        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
-            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
-        }
-        // 查询模拟用户详情
-        UserDetailResp mockUserDetail = new UserDetailResp();
-        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
-            mockUserDetail = queryUserDetail(req.getMockUserId());
-        }
-        // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
-        // 构建用户信息
-        if (req.getMockFlag() == 0) {
-            String userInfo =
-                    USER_INFO_TEMPLATE
-                            .replace("{avatar}", userDetail.getUserAvatar())
-                            .replace("{userName}", userDetail.getUserName())
-                            .replace("{workNumber}", userDetail.getWorkNumber());
-            log.setUserInfo(userInfo);
-        } else {
-            String mockUserInfo =
-                    MOCK_USER_INFO_TEMPLATE
-                            .replace("{userAvatar}", userDetail.getUserAvatar())
-                            .replace("{userName}", userDetail.getUserName())
-                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
-                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
-                            .replace("{mockUserName}", mockUserDetail.getUserName())
-                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
-            log.setUserInfo(mockUserInfo);
-        }
-        log.setLogContent(formatOperationLogContent(req.getLogContent()));
-        log.setMockUserName(mockUserDetail.getUserName());
-        log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark(logRemarkResult);
-        if (req.getId() == null || req.getId() == 0L) {
-            jdecMonitorSystemLogMapper.insert(log);
-        } else {
-            jdecMonitorSystemLogMapper.updateById(log);
-        }
-    }
-
-    // 记录业务单据字段变化日志
-    @Override
-    public void recordBusinessLog(MonitorLogReq req) {
-        // 查询用户详情
-        UserDetailResp userDetail = new UserDetailResp();
-        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
-            userDetail = queryUserDetail(req.getLoginUserId());
-        }
-        // 查询角色详情
-        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
-        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
-            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
-        }
-        // 查询模拟用户详情
-        UserDetailResp mockUserDetail = new UserDetailResp();
-        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
-            mockUserDetail = queryUserDetail(req.getMockUserId());
-        }
-        // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
-        // 构建用户信息
-        if (req.getMockFlag() == 0) {
-            String userInfo =
-                    USER_INFO_TEMPLATE
-                            .replace("{avatar}", userDetail.getUserAvatar())
-                            .replace("{userName}", userDetail.getUserName())
-                            .replace("{workNumber}", userDetail.getWorkNumber());
-            log.setUserInfo(userInfo);
-        } else {
-            String mockUserInfo =
-                    MOCK_USER_INFO_TEMPLATE
-                            .replace("{userAvatar}", userDetail.getUserAvatar())
-                            .replace("{userName}", userDetail.getUserName())
-                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
-                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
-                            .replace("{mockUserName}", mockUserDetail.getUserName())
-                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
-            log.setUserInfo(mockUserInfo);
-        }
-        log.setMockUserName(mockUserDetail.getUserName());
-        log.setLoginRoleName(roleConfigDetail.getRoleName());
-        if (req.getId() == null || req.getId() == 0L) {
-            jdecMonitorSystemLogMapper.insert(log);
-        } else {
-            jdecMonitorSystemLogMapper.updateById(log);
-        }
-    }
-
-    // 记录审批链日志
-    @Override
-    public void recordApprovalChainLog(MonitorLogReq req) {
-        // 校验操作日志内容
-        if (LOG_TYPE_OPERATION.equals(req.getLogType())) {
-            validateOperationLogContent(req.getLogContent());
-        }
-        // 查询用户详情
-        UserDetailResp userDetail = new UserDetailResp();
-        if (req.getLoginUserId() != null && req.getLoginUserId() != 0L) {
-            userDetail = queryUserDetail(req.getLoginUserId());
-        }
-        // 查询角色详情
-        RoleConfigDetailResp roleConfigDetail = new RoleConfigDetailResp();
-        if (req.getLoginRoleId() != null && req.getLoginRoleId() != 0L) {
-            roleConfigDetail = queryRoleConfigDetail(req.getLoginRoleId());
-        }
-        // 查询模拟用户详情
-        UserDetailResp mockUserDetail = new UserDetailResp();
-        if (req.getMockUserId() != null && req.getMockUserId() != 0L) {
-            mockUserDetail = queryUserDetail(req.getMockUserId());
-        }
-        // 构建日志实体
-        JdecMonitorSystemLog log = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
-        // 构建用户信息
-        if (req.getMockFlag() == 0) {
-            String userInfo =
-                    USER_INFO_TEMPLATE
-                            .replace("{avatar}", userDetail.getUserAvatar())
-                            .replace("{userName}", userDetail.getUserName())
-                            .replace("{workNumber}", userDetail.getWorkNumber());
-            log.setUserInfo(userInfo);
-        } else {
-            String mockUserInfo =
-                    MOCK_USER_INFO_TEMPLATE
-                            .replace("{userAvatar}", userDetail.getUserAvatar())
-                            .replace("{userName}", userDetail.getUserName())
-                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
-                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
-                            .replace("{mockUserName}", mockUserDetail.getUserName())
-                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
-            log.setUserInfo(mockUserInfo);
-        }
-        log.setLogContent(formatApprovalChainLogContent(req.getLogContent()));
-        log.setMockUserName(mockUserDetail.getUserName());
-        log.setLoginRoleName(roleConfigDetail.getRoleName());
-        if (req.getId() == null || req.getId() == 0L) {
-            jdecMonitorSystemLogMapper.insert(log);
-        } else {
-            jdecMonitorSystemLogMapper.updateById(log);
+            jdecMonitorMessageLogMapper.updateById(log);
         }
     }
 
     // 构建查询条件
-    private LambdaQueryWrapper<JdecMonitorSystemLog> buildQueryWrapper(
+    private LambdaQueryWrapper<JdecMonitorSystemControlLog> buildQueryWrapper(
             MonitorLogPageListReq request, LocalDateTime startDateTime, LocalDateTime endDateTime) {
         // 构建查询条件
-        LambdaQueryWrapper<JdecMonitorSystemLog> wrapper =
-                new LambdaQueryWrapper<JdecMonitorSystemLog>()
+        LambdaQueryWrapper<JdecMonitorSystemControlLog> wrapper =
+                new LambdaQueryWrapper<JdecMonitorSystemControlLog>()
                         .like(
                                 StringUtils.hasText(request.getKeyWord()),
-                                JdecMonitorSystemLog::getLogContent,
+                                JdecMonitorSystemControlLog::getLogContent,
                                 request.getKeyWord())
-                        .between(JdecMonitorSystemLog::getLogDate, startDateTime, endDateTime)
-                        .orderByDesc(JdecMonitorSystemLog::getLogDate);
+                        .between(
+                                JdecMonitorSystemControlLog::getLogDate, startDateTime, endDateTime)
+                        .orderByDesc(JdecMonitorSystemControlLog::getLogDate);
         // 如果指定了日志类型，添加等于条件
-        if (StringUtils.hasText(request.getLogType())) {
-            wrapper.eq(JdecMonitorSystemLog::getLogType, request.getLogType());
-        }
+        //        if (StringUtils.hasText(request.getLogType())) {
+        //            wrapper.eq(JdecMonitorSystemLog::getLogType, request.getLogType());
+        //        }
         return wrapper;
     }
 
@@ -671,7 +784,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     // 格式化审批链日志内容
-    private String formatApprovalChainLogContent(String logContent) {
+    private String formatApprovalChainRunLogContent(String logContent) {
         JSONObject content;
         try {
             content = JSONUtil.parseObj(logContent);
@@ -720,6 +833,41 @@ public class JdecMonitorLogService implements MonitorLogApi {
                 + "]"
                 + controlNameHtml
                 + operatorResultHtml
+                + "</span></div></span>";
+    }
+
+    // 格式化审批链日志内容
+    private String formatApprovalChainConfigLogContent(String logContent) {
+        JSONObject content;
+        try {
+            content = JSONUtil.parseObj(logContent);
+        } catch (Exception e) {
+            return logContent;
+        }
+        /*
+        {
+            "module": "模块名称/功能名称/页面名称",
+            "orderId": "单据编号/订单编号/业务编号/任务编号",
+            "hrefUrl": "单据详情页/订单详情页/业务详情页/任务详情页",
+            "controlName":"操作名称/单据名称"
+        }
+         */
+        String module = content.getStr("module");
+        String orderId = content.getStr("orderId");
+        String hrefUrl = content.getStr("hrefUrl");
+        String controlName = content.getStr("controlName");
+
+        String controlNameHtml = StringUtils.hasText(controlName) ? controlName : "";
+        return "<span class=\"arco-table-td-content\">"
+                + "<div class=\"flex\"><span><span>["
+                + module
+                + "-<a style=\"color: #408bee\" href=\""
+                + hrefUrl
+                + "\" target=\"_blank\">"
+                + orderId
+                + "</a>"
+                + "]"
+                + controlNameHtml
                 + "</span></div></span>";
     }
 
@@ -885,7 +1033,30 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     // 校验操作日志内容
-    private void validateOperationLogContent(String logContent) {
+    private void validateApprovalChainConfigLogContent(String logContent) {
+        JSONObject content;
+        try {
+            content = JSONUtil.parseObj(logContent);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("操作日志内容必须是合法的JSON对象");
+        }
+
+        if (!StringUtils.hasText(content.getStr("module"))) {
+            throw new IllegalArgumentException("操作日志内容中module不能为空");
+        }
+        if (!StringUtils.hasText(content.getStr("orderId"))) {
+            throw new IllegalArgumentException("操作日志内容中orderId不能为空");
+        }
+        if (!StringUtils.hasText(content.getStr("hrefUrl"))) {
+            throw new IllegalArgumentException("操作日志内容中hrefUrl不能为空");
+        }
+        if (!StringUtils.hasText(content.getStr("controlName"))) {
+            throw new IllegalArgumentException("操作日志内容中controlName不能为空");
+        }
+    }
+
+    // 校验操作日志内容
+    private void validateApprovalChainRunLogContent(String logContent) {
         JSONObject content;
         try {
             content = JSONUtil.parseObj(logContent);
@@ -914,22 +1085,43 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     // 转换为响应对象
-    private MonitorLogPageListResp convertToResp(JdecMonitorSystemLog log) {
+    private MonitorLogPageListResp convertToResp(JdecMonitorLogBase log) {
         MonitorLogPageListResp resp = BeanUtil.toBean(log, MonitorLogPageListResp.class);
         // 格式化日志内容
-        resp.setLogType(log.getLogType());
-        if (LOG_TYPE_MESSAGE.equals(log.getLogType())) {
+        String logType = log.getLogType();
+        resp.setLogType(logType);
+        if ("message_log".equals(logType)) {
             resp.setLogTypeLabel("消息日志");
-        } else if (LOG_TYPE_OPERATION.equals(log.getLogType())) {
+        } else if ("operation_log".equals(logType)) {
             resp.setLogTypeLabel("操作日志");
-        } else if (LOG_TYPE_SYSTEM.equals(log.getLogType())) {
+        } else if ("system_log".equals(logType)) {
             resp.setLogTypeLabel("系统日志");
+        } else {
+            resp.setLogTypeLabel("未知日志");
         }
 
         resp.setLoginRole(log.getLoginRoleId());
         resp.setMockRole(log.getMockRoleId());
         resp.setRoleName(log.getLoginRoleName());
+        resp.setIsMock(log.getMockFlag());
 
+        return resp;
+    }
+
+    private MonitorLogPageListResp convertToMultiTableResp(JdecMonitorLogBase log) {
+        MonitorLogPageListResp resp = BeanUtil.toBean(log, MonitorLogPageListResp.class);
+        resp.setIsMock(log.getMockFlag());
+        resp.setLoginRole(log.getLoginRoleId());
+        resp.setMockRole(log.getMockRoleId());
+        resp.setRoleName(log.getLoginRoleName());
+        resp.setLogType(log.getLogType());
+        if ("message_log".equals(log.getLogType())) {
+            resp.setLogTypeLabel("消息日志");
+        } else if ("operation_log".equals(log.getLogType())) {
+            resp.setLogTypeLabel("操作日志");
+        } else if ("system_log".equals(log.getLogType())) {
+            resp.setLogTypeLabel("系统日志");
+        }
         return resp;
     }
 
