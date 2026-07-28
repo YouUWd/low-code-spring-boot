@@ -184,4 +184,28 @@ public class DynamicQueryController {
                 dynamicDataAccessService.dynamicQuerygetListNumWithApproval(
                         subjectId, roleId, menuId));
     }
+
+    @GetMapping("/approval/log")
+    @Operation(summary = "获取单据操作日志", description = "获取单据操作日志")
+    public ApiResponse<Object> getApprovalOperationLogs(
+            @Schema(description = "主体ID") @RequestHeader("X-Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "X-Role-Id") Long roleId,
+            @Schema(description = "菜单ID") @RequestParam Long menuId,
+            @Schema(description = "单据ID") @RequestParam Long id) {
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQuerygetApprovalLogs(
+                        subjectId, roleId, menuId, id));
+    }
+
+    @GetMapping("/approval/getApprovalStep")
+    @Operation(summary = "查询已经审批的步骤状态", description = "查询已经审批的步骤状态")
+    public ApiResponse<List<Map<String, Object>>> getApprovalStep(
+            @Schema(description = "主体ID") @RequestHeader("X-Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "X-Role-Id") Long roleId,
+            @Schema(description = "菜单ID") @RequestParam Long menuId,
+            @Schema(description = "单据ID") @RequestParam Long id) {
+        return ApiResponse.success(
+                dynamicDataAccessService.dynamicQuerygetApprovalStep(
+                        subjectId, roleId, menuId, id));
+    }
 }
