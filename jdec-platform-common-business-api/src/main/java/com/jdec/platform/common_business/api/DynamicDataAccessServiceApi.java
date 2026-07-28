@@ -58,4 +58,9 @@ public interface DynamicDataAccessServiceApi {
 
     List<SearchItemReq> dynamicQueryFilterSelectedDataWithSearchByMenuId(
             Long subjectId, Long roleId, ListFilterSelectedDataReq queryReq);
+
+    Object dynamicQuerygetApprovalLogs(Long subjectId, Long roleId, Long menuId, Long id);
+
+    List<Map<String, Object>> dynamicQuerygetApprovalStep(
+            Long subjectId, Long roleId, Long menuId, Long id);
 }

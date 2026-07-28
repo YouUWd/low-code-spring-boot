@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.approval.api.req.ApprovalDataReq;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
+import com.jdec.platform.approval.api.resp.ActionLogResp;
 import com.jdec.platform.approval.api.resp.ApprovalListResp;
 import com.jdec.platform.common_business.api.DynamicDataAccessServiceApi;
 import com.jdec.platform.common_business.api.PersonalizedUserServiceApi;
@@ -2762,6 +2763,117 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         return queryReq.getSearch();
+    }
+
+    @Override
+    public Object dynamicQuerygetApprovalLogs(Long subjectId, Long roleId, Long menuId, Long id) {
+        log.debug(
+                "获取主体id:{} , 角色id:{} , 主键id:{} , 菜单ID:{}及其子菜单所对应模块的数据",
+                subjectId,
+                roleId,
+                id,
+                menuId);
+
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            return new HashMap<>();
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            return new HashMap<>();
+        }
+
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        MenuListResp topMenu =
+                bizMenuList.stream()
+                        .filter(ele -> menuId.equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        ApprovalDataReq approvalDataReq = new ApprovalDataReq();
+        approvalDataReq.setModuleId(topMenu.getModuleId());
+        approvalDataReq.setSubjectId(subjectId);
+        approvalDataReq.setRecordId(id);
+
+        ConfigApiResponse<List<ActionLogResp>> logResult =
+                approvalApiOpenFeignClient.getActionLog(subjectId, approvalDataReq);
+        if (ConfigApiResponse.isSuccessResponse(logResult)) {
+            return logResult.getData();
+        } else {
+            try {
+                log.debug(
+                        "调用审批链:{}方法失败 , 请求参数:{}",
+                        "getActionLog",
+                        JsonUtil.obj2Json(approvalDataReq));
+            } catch (JsonProcessingException e) {
+                log.debug("请求参数json序列化失败。");
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public List<Map<String, Object>> dynamicQuerygetApprovalStep(
+            Long subjectId, Long roleId, Long menuId, Long id) {
+        log.debug(
+                "获取主体id:{} , 角色id:{} , 主键id:{} , 菜单ID:{}及其子菜单所对应模块的数据",
+                subjectId,
+                roleId,
+                id,
+                menuId);
+
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            return List.of();
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            return List.of();
+        }
+
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        MenuListResp topMenu =
+                bizMenuList.stream()
+                        .filter(ele -> menuId.equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        ApprovalDataReq approvalDataReq = new ApprovalDataReq();
+        approvalDataReq.setModuleId(topMenu.getModuleId());
+        approvalDataReq.setSubjectId(subjectId);
+        approvalDataReq.setRecordId(id);
+
+        ConfigApiResponse<List<Map<String, Object>>> approvalStep =
+                approvalApiOpenFeignClient.getApprovalStep(subjectId, approvalDataReq);
+        if (ConfigApiResponse.isSuccessResponse(approvalStep)) {
+            return approvalStep.getData();
+        } else {
+            try {
+                log.debug(
+                        "调用审批链:{}方法失败 , 请求参数:{}",
+                        "getApprovalStep",
+                        JsonUtil.obj2Json(approvalDataReq));
+            } catch (JsonProcessingException e) {
+                log.debug("请求参数json序列化失败。");
+            }
+        }
+
+        return null;
     }
 
     private Map<String, ?> dynamicQueryListSelectDataWithSearch(
