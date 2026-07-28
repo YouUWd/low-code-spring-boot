@@ -2603,6 +2603,761 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
     }
 
     @Override
+    public Map<String, Object> dynamicQueryListSelectDataWithSearchByMenuId(
+            Long subjectId,
+            Long roleId,
+            ListSelectQueryReq queryReq,
+            ModuleFilterInfo moduleFilterInfo) {
+        Map<String, Object> resultMap = new HashMap<>();
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            return resultMap;
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            return resultMap;
+        }
+
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        // 弹窗菜单
+        List<Long> moduleSkip =
+                bizMenuList.stream()
+                        .filter(ele -> ele.getMenuType().equals(5))
+                        .map(MenuListResp::getModuleId)
+                        .toList();
+
+        MenuListResp targetMenu =
+                bizMenuList.stream()
+                        .filter(ele -> queryReq.getMenuId().equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+        if (Objects.isNull(targetMenu)) {
+            log.debug("菜单id:{}对应的菜单未空。", queryReq.getMenuId());
+        } else {
+            Long moduleId = targetMenu.getModuleId();
+            log.debug(
+                    "菜单id:{}，菜单名称:{}对应的moduleId:{}",
+                    queryReq.getMenuId(),
+                    targetMenu.getTitle(),
+                    moduleId);
+            resultMap.putAll(
+                    dynamicQueryListSelectDataWithSearch(
+                            subjectId, roleId, moduleId, queryReq, moduleFilterInfo, moduleSkip));
+        }
+
+        return resultMap;
+    }
+
+    @Override
+    public List<SearchItemReq> dynamicQueryFilterSelectedDataWithSearchByMenuId(
+            Long subjectId, Long roleId, ListFilterSelectedDataReq queryReq) {
+
+        // 需要进行处理的筛选项，只处理关系为in或eq的筛选项
+        List<SelectedItem> selectedItems =
+                queryReq.getSearch().stream()
+                        .filter(
+                                ele -> {
+                                    QueryOpEnum opEnum =
+                                            QueryOpEnum.getQueryOpEnumByOp(ele.getSearchType());
+                                    return opEnum.getOp().equals("in")
+                                            || opEnum.getOp().equals("eq");
+                                })
+                        .map(
+                                ele -> {
+                                    SelectedItem selectedItem = new SelectedItem();
+                                    selectedItem.setTable(ele.getTable());
+                                    selectedItem.setField(ele.getField().get(0));
+                                    return selectedItem;
+                                })
+                        .toList();
+
+        ListSelectQueryReq.ListSelectQueryReqBuilder listSelectQueryReqBuilder =
+                ListSelectQueryReq.builder();
+        listSelectQueryReqBuilder
+                .menuId(queryReq.getMenuId())
+                .id(queryReq.getId())
+                .type(queryReq.getType())
+                .selectedItem(selectedItems)
+                .search(queryReq.getSearch());
+
+        Map<String, Object> resultMap =
+                dynamicQueryListSelectDataWithSearchByMenuId(
+                        subjectId, roleId, listSelectQueryReqBuilder.build(), null);
+
+        // 去除筛选项中已经不存在于结果集中的值
+
+        Iterator<SearchItemReq> iterator = queryReq.getSearch().iterator();
+        while (iterator.hasNext()) {
+            SearchItemReq searchItemReq = iterator.next();
+            QueryOpEnum opEnum = QueryOpEnum.getQueryOpEnumByOp(searchItemReq.getSearchType());
+
+            // in或者eq需要过滤处理候选项
+            if ("in".equals(opEnum.getOp())) {
+                String fieldKey =
+                        searchItemReq.getTable()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + searchItemReq.getField().get(0);
+                if (resultMap.containsKey(fieldKey)) {
+                    Set<Object> allValues = (Set<Object>) resultMap.get(fieldKey);
+                    List<Object> values = (List<Object>) searchItemReq.getValue();
+                    if (!CollectionUtils.isEmpty(values)) {
+                        List<Object> filterValues =
+                                values.stream()
+                                        .filter(ele -> allValues.contains(ele))
+                                        .collect(Collectors.toList());
+                        if (CollectionUtils.isEmpty(filterValues)) {
+                            log.debug("候选项:{}，值列表:{}执行筛选后不在候选项集合中，从筛选集合中移除。", fieldKey, values);
+                            iterator.remove();
+                        } else {
+                            log.debug(
+                                    "候选项:{}，值列表:{}执行筛选后还在候选项集合中的值列表:{}，筛选项设置为新的值列表。",
+                                    fieldKey,
+                                    values,
+                                    filterValues);
+                            searchItemReq.setValue(filterValues);
+                        }
+                    } else {
+                        log.debug("候选项:{}的筛选项为空，从筛选集合中移除。", fieldKey);
+                        iterator.remove();
+                    }
+
+                } else {
+                    log.debug("候选项:{}的执行筛选后候选项集合为空，从筛选集合中移除。", fieldKey);
+                    iterator.remove();
+                }
+            } else if ("eq".equals(opEnum.getOp())) {
+                String fieldKey =
+                        searchItemReq.getTable()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + searchItemReq.getField().get(0);
+                if (resultMap.containsKey(fieldKey)) {
+                    Set<Object> allValues = (Set<Object>) resultMap.get(fieldKey);
+                    Object value = (Object) searchItemReq.getValue();
+                    if (Objects.nonNull(value)) {
+                        if (!allValues.contains(value)) {
+                            log.debug("候选项:{}的值:{}执行筛选后不在候选项集合中，从筛选集合中移除。", fieldKey, value);
+                            iterator.remove();
+                        }
+                    } else {
+                        log.debug("候选项:{}的候选项为空，从筛选集合中移除。", fieldKey);
+                        iterator.remove();
+                    }
+
+                } else {
+                    log.debug("候选项:{}的执行筛选后候选项集合为空，从筛选集合中移除。", fieldKey);
+                    iterator.remove();
+                }
+            }
+        }
+
+        return queryReq.getSearch();
+    }
+
+    private Map<String, ?> dynamicQueryListSelectDataWithSearch(
+            Long subjectId,
+            Long roleId,
+            Long moduleId,
+            ListSelectQueryReq queryReq,
+            ModuleFilterInfo moduleFilterInfo,
+            List<Long> moduleSkip) {
+        Map<String, Object> resultMap = new HashMap<>();
+        List<Object> finalPrimaryTableDataList;
+
+        boolean columnFilter = false;
+
+        if (!CollectionUtils.isEmpty(queryReq.getSearch())) {
+
+            ListQueryReq listQueryReq = new ListQueryReq();
+            listQueryReq.setId(queryReq.getId());
+            listQueryReq.setSearch(queryReq.getSearch());
+
+            columnFilter = true;
+            finalPrimaryTableDataList =
+                    getFinalPrimaryData(
+                            subjectId,
+                            roleId,
+                            moduleId,
+                            listQueryReq,
+                            moduleFilterInfo,
+                            moduleSkip);
+            log.debug("列表搜索条件不为空，先查出主表数据条数:{}", finalPrimaryTableDataList.size());
+        } else {
+            log.debug("列头搜索条件为空，先按公共的筛选条件筛选一遍主表。");
+            // 主表查询条件构造
+            QueryWrapper queryWrapper = Wrappers.query();
+            finalPrimaryTableDataList =
+                    commonQuery(
+                            subjectId,
+                            roleId,
+                            moduleId,
+                            moduleFilterInfo,
+                            moduleSkip,
+                            queryWrapper,
+                            true);
+        }
+
+        ListQueryParam.ListQueryParamBuilder builder =
+                ListQueryParam.builder()
+                        .subjectId(subjectId)
+                        .roleId(roleId)
+                        .moduleId(moduleId)
+                        .id(queryReq.getId())
+                        .moduleFilterInfo(moduleFilterInfo)
+                        .moduleSkip(moduleSkip)
+                        .columnFilter(columnFilter)
+                        .primaryTableDataList(finalPrimaryTableDataList);
+
+        // 待审批链的查询
+        if (Objects.nonNull(queryReq.getType())) {
+            builder.type(queryReq.getType());
+        }
+        ListQueryParam listQueryParam = builder.build();
+
+        resultMap.putAll(dynamicQueryListgetSelectData(listQueryParam, queryReq.getSelectedItem()));
+
+        return resultMap;
+    }
+
+    private Map<String, ?> dynamicQueryListgetSelectData(
+            ListQueryParam queryParam, List<SelectedItem> selectedItems) {
+        // 获取权限过滤后的Field结果
+        if (Objects.isNull(queryParam.getModuleFilterInfo())) {
+
+            ModuleFilterInfo moduleFilterInfo =
+                    moduleInfoWithPermissionService.filterModuleInfo(
+                            queryParam.getSubjectId(),
+                            queryParam.getRoleId(),
+                            queryParam.getModuleId(),
+                            "",
+                            queryParam.getModuleSkip());
+            queryParam.setModuleFilterInfo(moduleFilterInfo);
+        }
+
+        // 判断权限信息是否为空
+        if (Objects.isNull(queryParam.getModuleFilterInfo())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
+        }
+
+        // 判断表头是否未配置，单独进行提示
+        if (CollectionUtils.isEmpty(
+                queryParam.getModuleFilterInfo().getModuleInfo().getTableHeader())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_NO_TABLEHEADER_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_NO_TABLEHEADER_ERROR.getMessage());
+        }
+
+        // 检验可查看权限字段是否为空
+        if (CollectionUtils.isEmpty(queryParam.getModuleFilterInfo().getSimpleModuleFields())
+                && CollectionUtils.isEmpty(
+                        queryParam.getModuleFilterInfo().getCombineModuleFields())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
+        }
+
+        Map<String, Object> resultMap = new HashMap<>();
+
+        if (Objects.isNull(queryParam.getModuleFilterInfo())) {
+            return resultMap;
+        }
+
+        // 合并simple和combine的field
+        List<ModuleField> allRightField = fillIdAndJoinIdField(queryParam.getModuleFilterInfo());
+
+        // 主表查询条件构造
+        QueryWrapper queryWrapper = Wrappers.query();
+
+        // 列头筛选模式下，筛选出来的主键id集合为空，则本次查询不会有数据返回
+        if (queryParam.getColumnFilter()) {
+            if (!CollectionUtils.isEmpty(queryParam.getPrimaryTableDataList())) {
+                // 获取主表关联key的值作为关联表的查询条件
+                Set<Long> idList =
+                        queryParam.getPrimaryTableDataList().stream()
+                                .map(
+                                        e -> {
+                                            Field field =
+                                                    ReflectionUtils.findField(
+                                                            e.getClass(), DEFAULT_PRIMARY_KEY);
+                                            field.setAccessible(true);
+                                            return Long.parseLong(
+                                                    String.valueOf(
+                                                            ReflectionUtils.getField(field, e)));
+                                        })
+                                .collect(Collectors.toSet());
+                queryWrapper.in(
+                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + DEFAULT_PRIMARY_KEY,
+                        idList.toArray());
+            } else {
+                log.debug("列头筛选模式下，主表的主键id列表为空，则直接返回。");
+                return resultMap;
+            }
+        }
+
+        boolean hasApproval = false;
+        if (Objects.nonNull(queryParam.getType())) {
+            hasApproval = true;
+        }
+
+        List<Map<String, Object>> approvalListResps = new ArrayList<>();
+
+        Map<Long, Map<String, Object>> recordIdToApprovalData = new HashMap<>();
+
+        ApprovalListReq approvalListReq = null;
+        // 带审批链的查询，构造查询参数
+        if (hasApproval) {
+            approvalListReq = new ApprovalListReq();
+            approvalListReq.setApprovalType(queryParam.getType());
+
+            approvalListReq.setRecordIdList(Arrays.asList(1L));
+
+            List<Long> idList =
+                    queryParam.getPrimaryTableDataList().stream()
+                            .map(
+                                    e -> {
+                                        Field field =
+                                                ReflectionUtils.findField(
+                                                        e.getClass(), DEFAULT_PRIMARY_KEY);
+                                        field.setAccessible(true);
+                                        return Long.parseLong(
+                                                String.valueOf(ReflectionUtils.getField(field, e)));
+                                    })
+                            .collect(Collectors.toList());
+
+            approvalListReq.setRecordIdList(idList);
+
+            approvalListReq.setRoleId(queryParam.getRoleId());
+
+            List<Long> moduleIdList =
+                    queryParam.getPrimaryTableDataList().stream()
+                            .map(
+                                    e -> {
+                                        Field field =
+                                                ReflectionUtils.findField(e.getClass(), "moduleId");
+                                        field.setAccessible(true);
+                                        return Long.parseLong(
+                                                String.valueOf(ReflectionUtils.getField(field, e)));
+                                    })
+                            .collect(Collectors.toList());
+            approvalListReq.setModuleIdList(moduleIdList);
+
+            approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            approvalListReq.setApplicantId(LoginUserUtil.getLoginUserId());
+        }
+
+        // 查询数据权限配置
+        List<DataRightConfigResp> dataRightconfigs =
+                configCenterApiService.getDataRightConfigItem(
+                        queryParam.getSubjectId(), queryParam.getRoleId());
+        Map<String, List<DataRightConfigResp>> tableNameToConfigItems =
+                dataRightconfigs.stream()
+                        .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
+
+        // 获取主表Mapper对象
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        ToolUtils.snakeToCamelCase(
+                                        queryParam
+                                                .getModuleFilterInfo()
+                                                .getModuleInfo()
+                                                .getPrimaryTable())
+                                + MYBATIS_MAPPER_SUFFIX,
+                        BaseMapper.class);
+
+        // 构造要查询的列
+
+        buildSelect(
+                queryWrapper,
+                queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable(),
+                allRightField);
+
+        // 数据来源于其他主体，需要主体id作为筛选条件
+        if (!CollectionUtils.isEmpty(
+                queryParam.getModuleFilterInfo().getModuleInfo().getSourceSubjects())) {
+            List<Integer> subjectIds =
+                    queryParam.getModuleFilterInfo().getModuleInfo().getSourceSubjects().stream()
+                            .map(SubjectResp::getId)
+                            .collect(Collectors.toList());
+            log.debug("数据来源于其他主体，主体ID列表为{}", subjectIds);
+
+            if (hasApproval) {
+                approvalListReq.setSubjectIdList(
+                        subjectIds.stream().map(Integer::longValue).collect(Collectors.toList()));
+            }
+
+            buildWhere(
+                    queryWrapper,
+                    queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + DEFAULT_SUBJECT_KEY,
+                    subjectIds.toArray());
+        } else {
+            if (hasApproval) {
+                approvalListReq.setSubjectIdList(Arrays.asList(queryParam.getSubjectId()));
+            }
+            buildWhere(
+                    queryWrapper,
+                    queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + DEFAULT_SUBJECT_KEY,
+                    queryParam.getSubjectId());
+        }
+
+        if (hasApproval) {
+
+            ConfigApiResponse<List<Map<String, Object>>> buttonListResult =
+                    approvalApiOpenFeignClient.getBusinessList(
+                            queryParam.getSubjectId(), approvalListReq);
+            if (ConfigApiResponse.isSuccessResponse(buttonListResult)) {
+                approvalListResps = buttonListResult.getData();
+            } else {
+                try {
+                    log.debug(
+                            "调用审批链:{}方法失败 , 请求参数:{}",
+                            "getBusinessList",
+                            JsonUtil.obj2Json(approvalListReq));
+                } catch (JsonProcessingException e) {
+                    log.debug("请求参数json序列化失败。");
+                }
+            }
+
+            // 构造recordId为key,审批数据为值的映射map，方便后面数据拼装
+            for (Map<String, Object> item : approvalListResps) {
+                if (item.containsKey("recordId")) {
+                    Map<String, Object> asteriskPrefixMap =
+                            item.entrySet().stream()
+                                    .collect(
+                                            Collectors.toMap(
+                                                    entry ->
+                                                            KEY_ASTERISK_STR
+                                                                    + DB_TABLE_FIELD_SEPARATOR
+                                                                    + entry.getKey(),
+                                                    Map.Entry::getValue));
+
+                    recordIdToApprovalData.put(
+                            Long.parseLong(String.valueOf(item.get("recordId"))),
+                            asteriskPrefixMap);
+                }
+            }
+        }
+
+        // 筛选id参数不为空， 则将关联id字段进行筛选 比如学生详情里要以学生ID做筛选查询分数列表
+        if (Objects.nonNull(queryParam.getId())) {
+            log.debug(
+                    "详情页面的列表查看，主表{}的ID:{}",
+                    queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable(),
+                    queryParam.getId());
+            if (queryParam.getId() == -1) {
+                log.debug("新建页面的列表请求，返回数据为空，只有表头数据返回。");
+            }
+
+            if (StringUtils.isNotBlank(
+                    queryParam.getModuleFilterInfo().getModuleInfo().getRelateSearchField())) {
+                log.debug(
+                        "模块数据的筛选条件来自于关联字段{},值为{}",
+                        queryParam.getModuleFilterInfo().getModuleInfo().getRelateSearchField(),
+                        queryParam.getId());
+                buildWhere(
+                        queryWrapper,
+                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + queryParam
+                                        .getModuleFilterInfo()
+                                        .getModuleInfo()
+                                        .getRelateSearchField(),
+                        queryParam.getId());
+            } else {
+                // 用主表ID作为筛选条件
+                buildWhere(
+                        queryWrapper,
+                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + DEFAULT_PRIMARY_KEY,
+                        queryParam.getId());
+            }
+        }
+
+        applyDataRightFilter(
+                queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable(),
+                tableNameToConfigItems,
+                queryWrapper);
+
+        buildOrderBy(queryWrapper, Arrays.asList("update_date", "create_date"), false);
+
+        Page pageData = null;
+        // 主表数据查询返回对象List
+        List<Object> primaryData = primaryMapper.selectList(queryWrapper);
+
+        // 最终返回的列表行数据
+        List<Map<String, Object>> dataList = new ArrayList<>();
+
+        // 遍历关联表，填充关联表数据
+        if (!CollectionUtils.isEmpty(primaryData)) {
+
+            // 按前缀和主表关联Id做key，对关联表数据分组的数据
+            Map<String, Map<Object, List<Object>>> moduleTableDataMap = new HashMap<>();
+
+            // 遍历关联表，进行关联表数据查询
+            for (ModuleTable moduleTable : queryParam.getModuleFilterInfo().getModuleTableList()) {
+                // 获取关联表Mapper对象
+                BaseMapper moduleTableMapper =
+                        SpringBeanUtil.getBean(
+                                ToolUtils.snakeToCamelCase(moduleTable.getTableName())
+                                        + MYBATIS_MAPPER_SUFFIX,
+                                BaseMapper.class);
+                // 构造关联表查询条件
+                QueryWrapper moduleTableQueryWrapper = Wrappers.query();
+                buildSelect(moduleTableQueryWrapper, moduleTable.getTableName(), allRightField);
+
+                // 获取主表关联key的值作为关联表的查询条件
+                Set<Long> idList =
+                        primaryData.stream()
+                                .map(
+                                        e -> {
+                                            Field field =
+                                                    ReflectionUtils.findField(
+                                                            e.getClass(),
+                                                            ToolUtils.snakeToCamelCase(
+                                                                    moduleTable
+                                                                            .getJoinLeftField()));
+                                            field.setAccessible(true);
+                                            return Long.parseLong(
+                                                    String.valueOf(
+                                                            ReflectionUtils.getField(field, e)));
+                                        })
+                                .collect(Collectors.toSet());
+                buildWhere(
+                        moduleTableQueryWrapper,
+                        moduleTable.getTableName()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + moduleTable.getJoinRightField(),
+                        idList.toArray());
+
+                // 数据来源于其他主体，需要主体id作为筛选条件
+                if (!CollectionUtils.isEmpty(
+                        queryParam.getModuleFilterInfo().getModuleInfo().getSourceSubjects())) {
+                    List<Integer> subjectIds =
+                            queryParam
+                                    .getModuleFilterInfo()
+                                    .getModuleInfo()
+                                    .getSourceSubjects()
+                                    .stream()
+                                    .map(SubjectResp::getId)
+                                    .collect(Collectors.toList());
+                    log.debug("数据来源于其他主体，主体ID列表为{}", subjectIds);
+                    buildWhere(
+                            moduleTableQueryWrapper,
+                            moduleTable.getTableName()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + DEFAULT_SUBJECT_KEY,
+                            subjectIds.toArray());
+                } else {
+                    buildWhere(
+                            moduleTableQueryWrapper,
+                            moduleTable.getTableName()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + DEFAULT_SUBJECT_KEY,
+                            queryParam.getSubjectId());
+                }
+
+                applyDataRightFilter(
+                        moduleTable.getTableName(),
+                        tableNameToConfigItems,
+                        moduleTableQueryWrapper);
+
+                // 关联表的查询结果
+                List<Object> moduleTableList =
+                        moduleTableMapper.selectList(moduleTableQueryWrapper);
+
+                // 关联表的查询数据按照关联key分组
+                Map<Object, List<Object>> moduleTableIdMap =
+                        moduleTableList.stream()
+                                .collect(
+                                        Collectors.groupingBy(
+                                                e -> {
+                                                    Field field =
+                                                            ReflectionUtils.findField(
+                                                                    e.getClass(),
+                                                                    ToolUtils.snakeToCamelCase(
+                                                                            moduleTable
+                                                                                    .getJoinRightField()));
+                                                    field.setAccessible(true);
+                                                    return ReflectionUtils.getField(field, e);
+                                                }));
+
+                // 按照一定的规则拼接key，放入分组后的关联表数据
+                if (TABLE_JOIN_RELATION_TYPE_MULTI2ONE.equals(moduleTable.getRelationType())
+                        || TABLE_JOIN_RELATION_TYPE_ONE2ONE.equals(moduleTable.getRelationType())) {
+                    moduleTableDataMap.put(
+                            moduleTable.getTableName()
+                                    + KEY_SEPARATOR
+                                    + NOT_ONE2MULTI_RESULT_KEY_SUFFIX
+                                    + KEY_SEPARATOR
+                                    + ToolUtils.snakeToCamelCase(moduleTable.getJoinLeftField()),
+                            moduleTableIdMap);
+                } else {
+                    moduleTableDataMap.put(
+                            moduleTable.getTableName()
+                                    + KEY_SEPARATOR
+                                    + ONE2MULTI_RESULT_KEY_SUFFIX
+                                    + KEY_SEPARATOR
+                                    + ToolUtils.snakeToCamelCase(moduleTable.getJoinLeftField()),
+                            moduleTableIdMap);
+                }
+            }
+            // 遍历主表数据，根据关联key的值填充关联表数据
+            for (Object item : primaryData) {
+
+                Map<String, Object> beanMap = new HashMap<>();
+                // 前端无法动态响应动态的label key，所有返回字段都加上表名前缀
+                ModuleFilterInfo finalModuleFilterInfo4 = queryParam.getModuleFilterInfo();
+                Map<String, Object> primaryTablePrefixResultMap =
+                        BeanUtil.beanToMap(
+                                item,
+                                beanMap,
+                                true,
+                                new Editor<String>() {
+                                    @Override
+                                    public String edit(String s) {
+                                        // Map中的key拼接表名
+                                        return finalModuleFilterInfo4
+                                                        .getModuleInfo()
+                                                        .getPrimaryTable()
+                                                + DB_TABLE_FIELD_SEPARATOR
+                                                + s;
+                                    }
+                                });
+
+                for (Map.Entry<String, Map<Object, List<Object>>> ele :
+                        moduleTableDataMap.entrySet()) {
+                    String key = ele.getKey();
+                    // String[2] 0索引为关联表名，1:N时拼接List;1索引为关联key在主表中的名称
+                    String[] splitKeys = key.split(KEY_SEPARATOR);
+
+                    // 关联key的值为空，过滤掉
+                    if (Objects.isNull(
+                            primaryTablePrefixResultMap.get(
+                                    queryParam
+                                                    .getModuleFilterInfo()
+                                                    .getModuleInfo()
+                                                    .getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + splitKeys[2]))) {
+                        continue;
+                    }
+
+                    // 根据主表中关联key的值，获取关联表数据
+                    List<Object> joinTableData =
+                            ele.getValue()
+                                    .get(
+                                            primaryTablePrefixResultMap.get(
+                                                    queryParam
+                                                                    .getModuleFilterInfo()
+                                                                    .getModuleInfo()
+                                                                    .getPrimaryTable()
+                                                            + DB_TABLE_FIELD_SEPARATOR
+                                                            + splitKeys[2]));
+
+                    // 主表关联的子表数据为空，则跳过
+                    if (CollectionUtils.isEmpty(joinTableData)) {
+                        continue;
+                    }
+
+                    if (key.contains(ONE2MULTI_RESULT_KEY_SUFFIX)) { // 1:N的情况，放入List
+                        List<Map<String, Object>> joinTableListMap = new ArrayList<>();
+                        // 关联表数据加表名前缀
+                        for (Object obj : joinTableData) {
+                            Map<String, Object> targetMap = new HashMap<>();
+                            // 前端无法动态响应动态的label key，所有返回字段都加上表名前缀
+                            Map<String, Object> joinTablePrefixResultMap =
+                                    BeanUtil.beanToMap(
+                                            obj,
+                                            targetMap,
+                                            true,
+                                            new Editor<String>() {
+                                                @Override
+                                                public String edit(String s) {
+                                                    // Map中的key拼接表名
+                                                    return splitKeys[0]
+                                                            + DB_TABLE_FIELD_SEPARATOR
+                                                            + s;
+                                                }
+                                            });
+                            joinTableListMap.add(joinTablePrefixResultMap);
+                        }
+
+                        primaryTablePrefixResultMap.put(
+                                splitKeys[0] + splitKeys[1], joinTableListMap);
+                    } else { // 1:1或N:1，数据合并到主表数据
+
+                        if (!CollectionUtils.isEmpty(joinTableData)) {
+
+                            Map<String, Object> joinTableTargetMap = new HashMap<>();
+                            // 前端无法动态响应动态的label key，所有返回字段都加上表名前缀
+                            Map<String, Object> joinTableMergePrefixResultMap =
+                                    BeanUtil.beanToMap(
+                                            joinTableData.get(0),
+                                            joinTableTargetMap,
+                                            true,
+                                            new Editor<String>() {
+                                                @Override
+                                                public String edit(String s) {
+                                                    // Map中的key拼接表名
+                                                    return splitKeys[0]
+                                                            + DB_TABLE_FIELD_SEPARATOR
+                                                            + s;
+                                                }
+                                            });
+
+                            primaryTablePrefixResultMap.putAll(joinTableMergePrefixResultMap);
+                        }
+                    }
+                }
+
+                if (hasApproval) {
+                    // 加入审批链相关字段
+                    Object primaryId =
+                            primaryTablePrefixResultMap.get(
+                                    finalModuleFilterInfo4.getModuleInfo().getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + DEFAULT_PRIMARY_KEY);
+                    primaryTablePrefixResultMap.putAll(
+                            recordIdToApprovalData.get(Long.parseLong(String.valueOf(primaryId))));
+                }
+
+                dataList.add(primaryTablePrefixResultMap);
+            }
+        }
+
+        // 组装筛选项的候选值
+        for (SelectedItem selectedItem : selectedItems) {
+            Set<Object> values = new HashSet<>();
+            String dataKey =
+                    selectedItem.getTable() + DB_TABLE_FIELD_SEPARATOR + selectedItem.getField();
+            dataList.stream()
+                    .forEach(
+                            ele -> {
+                                if (ele.containsKey(dataKey)) {
+                                    values.add(ele.get(dataKey));
+                                }
+                            });
+            resultMap.put(dataKey, values);
+        }
+
+        return resultMap;
+    }
+
+    @Override
     public Map<Object, Object> dynamicQueryAllModuleDetailDataWithApproval(
             Long subjectId,
             Long roleId,
