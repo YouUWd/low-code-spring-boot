@@ -26,6 +26,6 @@ public class ListSelectQueryReq {
     @Schema(description = "待获取数据的筛选项")
     private List<SelectedItem> selectedItem;
 
-    @Schema(description = "查询类别，1待办2已办 3全部(默认全部)")
+    @Schema(description = "带审批链的查询需要传值，查询类别，1待办2已办 3全部(默认全部)")
     private Integer type;
 }
