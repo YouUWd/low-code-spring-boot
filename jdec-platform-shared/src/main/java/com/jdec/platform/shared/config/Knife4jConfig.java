@@ -42,16 +42,6 @@ public class Knife4jConfig {
                 .build();
     }
 
-    // 分组1：人力管理
-    @Bean
-    public GroupedOpenApi hrApi() {
-        return GroupedOpenApi.builder()
-                .group("HR")
-                .displayName("人力管理")
-                .packagesToScan("com.jdec.platform.hr.biz.controller")
-                .build();
-    }
-
     // 分组2：配置管理
     @Bean
     public GroupedOpenApi configApi() {
@@ -59,16 +49,6 @@ public class Knife4jConfig {
                 .group("CONFIG")
                 .displayName("配置管理")
                 .packagesToScan("com.jdec.platform.config.biz.controller")
-                .build();
-    }
-
-    // 分组3：认证管理
-    @Bean
-    public GroupedOpenApi authApi() {
-        return GroupedOpenApi.builder()
-                .group("AUTH")
-                .displayName("认证管理")
-                .packagesToScan("com.jdec.platform.auth.biz.controller")
                 .build();
     }
 

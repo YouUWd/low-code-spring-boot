@@ -21,6 +21,8 @@ import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -48,8 +50,33 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final ReferenceCheckManager referenceCheckManager;
 
+    @Transactional
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "特殊权限",
+            operation = OperationType.UPDATE,
+            tableName = "sys_special_permission",
+            dataIdField = "#req.id")
     public SysRightResp saveSpecialPermission(SysSpecialPermissionSaveReq req) {
+        // 保存前先查询旧数据（用于审计）
+        SysSpecialPermission oldEntity = null;
+        if (req.getId() != null) {
+            oldEntity =
+                    sysSpecialPermissionMapper.selectOne(
+                            Wrappers.<SysSpecialPermission>lambdaQuery()
+                                    .eq(SysSpecialPermission::getId, req.getId())
+                                    .eq(
+                                            SysSpecialPermission::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            SysSpecialPermission::getProjectNo,
+                                            AppContext.getProjectNo()));
+            if (oldEntity == null) {
+                throw new BusinessException("特殊权限不存在");
+            }
+        }
+
         SysSpecialPermission entity;
         if (req.getId() == null) {
             // 校验编码唯一性
@@ -72,21 +99,11 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             sysSpecialPermissionMapper.insert(entity);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
         } else {
             // 编辑
-            entity =
-                    sysSpecialPermissionMapper.selectOne(
-                            Wrappers.<SysSpecialPermission>lambdaQuery()
-                                    .eq(SysSpecialPermission::getId, req.getId())
-                                    .eq(
-                                            SysSpecialPermission::getSubjectId,
-                                            AppContext.getSubjectId())
-                                    .eq(
-                                            SysSpecialPermission::getProjectNo,
-                                            AppContext.getProjectNo()));
-            if (entity == null) {
-                throw new BusinessException("特殊权限不存在");
-            }
+            entity = oldEntity;
             // 校验编码唯一性（排除自己）
             if (!entity.getCode().equals(req.getCode())) {
                 boolean exists =
@@ -127,9 +144,15 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
 
     @Transactional
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "特殊权限",
+            operation = OperationType.DELETE,
+            tableName = "sys_special_permission",
+            dataIdField = "#id")
     public void deleteSpecialPermission(Long id, boolean force) {
         SysSpecialPermission sysSpecialPermission =
-                sysSpecialPermissionMapper.selectById(
+                sysSpecialPermissionMapper.selectOne(
                         Wrappers.<SysSpecialPermission>lambdaQuery()
                                 .eq(SysSpecialPermission::getId, id)
                                 .eq(SysSpecialPermission::getSubjectId, AppContext.getSubjectId())
