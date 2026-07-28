@@ -59,7 +59,7 @@ public class DataUpdateBizLog implements BizLog {
                         LogContentDTO.builder()
                                 .module(bizLogDTO.getModuleName())
                                 .orderId(bizLogDTO.getDataId())
-                                .hrefUrl(menuTitle)
+                                .hrefUrl("/" + menuTitle + "/" + bizLogDTO.getDataId())
                                 .build();
                 if (logEnum == BizLogEnum.DATA_SAVE) {
                     logContentDTO.setControlName("新增数据");
