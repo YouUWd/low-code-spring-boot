@@ -1117,6 +1117,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
 
     /** 仅做实体字段赋值，不包含任何 DB 副作用。 */
     private void updateModuleInfo(SysModule module, SaveSysModuleReq request) {
+        module.setModuleCode(request.getModuleCode());
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
         module.setPrimaryTable(request.getPrimaryTable());
@@ -1208,9 +1209,6 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
 
     /** 将数据来源主体 JSON 字符串解析为 List */
     private List<Long> parseSourceSubjects(String sourceSubjectsJson) {
-        if (sourceSubjectsJson == null || sourceSubjectsJson.trim().isEmpty()) {
-            return new ArrayList<>();
-        }
         try {
             return objectMapper.readValue(sourceSubjectsJson, new TypeReference<List<Long>>() {});
         } catch (Exception e) {
@@ -1221,6 +1219,9 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
 
     /** 获取主体详细列表 */
     private List<SysModuleCompleteResp.SubjectInfo> buildSubjectInfos(String sourceSubjectsJson) {
+        if (sourceSubjectsJson == null) {
+            return null;
+        }
         List<Long> subjectIds = parseSourceSubjects(sourceSubjectsJson);
         if (CollectionUtils.isEmpty(subjectIds)) {
             return Collections.emptyList();

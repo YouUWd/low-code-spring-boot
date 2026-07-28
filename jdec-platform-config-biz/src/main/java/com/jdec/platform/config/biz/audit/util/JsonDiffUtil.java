@@ -6,6 +6,7 @@ import com.jdec.platform.config.biz.audit.dto.FieldDiff;
 import com.jdec.platform.config.biz.audit.service.DictFieldQueryService;
 import com.jdec.platform.config.biz.audit.service.RelationFieldQueryService;
 import com.jdec.platform.shared.audit.annotation.AuditField;
+import com.jdec.platform.shared.audit.enums.EnumDescribable;
 import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.lang.reflect.Field;
@@ -189,6 +190,70 @@ public class JsonDiffUtil {
     }
 
     /**
+     * 构建新增操作的字段差异列表（所有字段的oldValue为空，newValue为传入值）
+     *
+     * @param json JSON字符串（新增的数据）
+     * @param clazz 目标类
+     * @return 字段差异列表
+     */
+    public <T> List<FieldDiff> buildCreateDiffs(String json, Class<T> clazz) {
+        List<FieldDiff> diffs = new ArrayList<>();
+
+        try {
+            JsonNode node =
+                    json != null ? objectMapper.readTree(json) : objectMapper.createObjectNode();
+
+            // 构建字段映射缓存
+            Map<String, FieldMetadata> fieldMetadataMap = buildFieldMetadataMap(clazz);
+
+            // 遍历所有字段
+            node.fields()
+                    .forEachRemaining(
+                            entry -> {
+                                String fieldName = entry.getKey();
+                                JsonNode value = entry.getValue();
+
+                                FieldMetadata metadata = fieldMetadataMap.get(fieldName);
+                                if (metadata == null) {
+                                    return;
+                                }
+
+                                Object newValue = extractValueFromNode(value);
+
+                                // 处理关联类型字段
+                                if (metadata.fieldType == FieldType.RELATION) {
+                                    newValue = resolveRelationValue(newValue, metadata);
+                                }
+
+                                // 处理枚举类型字段
+                                if (metadata.fieldType == FieldType.ENUM) {
+                                    newValue = resolveEnumValue(newValue, metadata);
+                                }
+
+                                // 处理字典类型字段
+                                if (metadata.fieldType == FieldType.DICT) {
+                                    newValue = resolveDictValue(newValue, metadata);
+                                }
+
+                                FieldDiff diff =
+                                        FieldDiff.builder()
+                                                .fieldName(metadata.fieldName)
+                                                .fieldCode(fieldName)
+                                                .fieldType(metadata.fieldType)
+                                                .oldValue(null)
+                                                .newValue(newValue)
+                                                .build();
+
+                                diffs.add(diff);
+                            });
+        } catch (Exception e) {
+            log.error("构建新增操作差异列表失败: json={}, class={}", json, clazz, e);
+        }
+
+        return diffs;
+    }
+
+    /**
      * 构建字段元数据映射
      *
      * @param clazz 目标类
@@ -365,7 +430,7 @@ public class JsonDiffUtil {
     /**
      * 解析枚举字段值（将枚举值转换为中文描述）
      *
-     * @param value 字段值（可能是枚举name、ordinal或枚举对象）
+     * @param value 字段值（可能是枚举name、code或ordinal）
      * @param metadata 字段元数据
      * @return 解析后的值（中文描述）
      */
@@ -393,26 +458,33 @@ public class JsonDiffUtil {
                         break;
                     }
                 }
-            } else if (value instanceof Integer) {
-                // 尝试按ordinal匹配
-                int ordinal = (Integer) value;
-                if (ordinal >= 0 && ordinal < enumConstants.length) {
-                    matchedEnum = enumConstants[ordinal];
+            } else if (value instanceof Number) {
+                Number numValue = (Number) value;
+                // 优先按EnumDescribable.getValue()匹配code值（适用于所有实现EnumDescribable的枚举）
+                for (Enum<?> enumConstant : enumConstants) {
+                    if (enumConstant instanceof EnumDescribable) {
+                        Object enumCode = ((EnumDescribable) enumConstant).getValue();
+                        if (enumCode instanceof Number
+                                && ((Number) enumCode).longValue() == numValue.longValue()) {
+                            matchedEnum = enumConstant;
+                            break;
+                        }
+                    }
                 }
-            } else if (value instanceof Long) {
-                // 尝试按ordinal匹配
-                int ordinal = ((Long) value).intValue();
-                if (ordinal >= 0 && ordinal < enumConstants.length) {
-                    matchedEnum = enumConstants[ordinal];
+                // 未匹配到则回退按ordinal匹配（兼容非EnumDescribable枚举）
+                if (matchedEnum == null) {
+                    int ordinal = numValue.intValue();
+                    if (ordinal >= 0 && ordinal < enumConstants.length) {
+                        matchedEnum = enumConstants[ordinal];
+                    }
                 }
             }
 
             // 如果匹配到枚举，尝试获取描述
             if (matchedEnum != null) {
                 // 如果枚举实现了EnumDescribable接口，调用getDescription()
-                if (matchedEnum instanceof com.jdec.platform.shared.audit.enums.EnumDescribable) {
-                    return ((com.jdec.platform.shared.audit.enums.EnumDescribable) matchedEnum)
-                            .getDescription();
+                if (matchedEnum instanceof EnumDescribable) {
+                    return ((EnumDescribable) matchedEnum).getDescription();
                 }
                 // 否则返回枚举的name
                 return matchedEnum.name();

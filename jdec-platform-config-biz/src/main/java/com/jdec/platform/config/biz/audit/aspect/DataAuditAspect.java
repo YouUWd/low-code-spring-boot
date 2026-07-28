@@ -12,6 +12,9 @@ import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.security.SecurityUtils;
+import com.jdec.platform.shared.security.model.LoginUser;
+import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -61,6 +64,26 @@ public class DataAuditAspect {
             // 执行业务方法
             Object result = joinPoint.proceed();
 
+            // 方法执行后重新解析dataId（方法内部可能在新增后设置了request.id）
+            if (dataAudit.dataIdField() != null && !dataAudit.dataIdField().isEmpty()) {
+                Long newDataId = parseDataId(joinPoint, dataAudit.dataIdField());
+                if (newDataId != null) {
+                    handleCreateAudit(joinPoint, dataAudit, newDataId, tableName, result);
+                    return result;
+                }
+            }
+
+            // 特殊处理：如果是UPDATE操作但dataId为null（说明是统一保存接口的新增场景）
+            // 尝试从返回值中提取dataId，然后走CREATE审计流程
+            if (operationType == OperationType.UPDATE && result instanceof Long) {
+                Long newDataId = (Long) result;
+                if (newDataId != null) {
+                    // 从返回的dataId走CREATE审计流程
+                    handleCreateAudit(joinPoint, dataAudit, newDataId, tableName, result);
+                    return result;
+                }
+            }
+
             // 只记录操作，不对比差异
             if (operationType == OperationType.UPDATE) {
                 handleUpdateAuditWithoutCompare(dataAudit);
@@ -81,6 +104,8 @@ public class DataAuditAspect {
             handleUpdateAudit(joinPoint, dataAudit, dataId, tableName, oldSnapshot, result);
         } else if (operationType == OperationType.DELETE) {
             handleDeleteAudit(dataAudit, dataId, tableName, oldSnapshot);
+        } else if (operationType == OperationType.CREATE) {
+            handleCreateAudit(joinPoint, dataAudit, dataId, tableName, result);
         }
 
         return result;
@@ -139,14 +164,24 @@ public class DataAuditAspect {
             String newJson = objectMapper.writeValueAsString(newData);
             String oldJson = (oldSnapshot != null) ? oldSnapshot.getJsonData() : null;
 
+            // 判断是新增还是修改
+            boolean isCreate = (oldSnapshot == null);
+            String actualOperation = isCreate ? "新增" : dataAudit.operation().getDescription();
+
             // 比较差异
             List<FieldDiff> diffs;
-            if (oldJson == null) {
-                // 没有旧快照，视为新增（所有字段都是新值）
-                diffs = Collections.emptyList();
+            if (isCreate) {
+                // 没有旧快照，视为新增（生成新增的diff列表，oldValue为null，newValue为实际值）
+                diffs = jsonDiffUtil.buildCreateDiffs(newJson, newData.getClass());
             } else {
-                // 进行diff比较
+                // 进行diff比较（修改操作）
                 diffs = jsonDiffUtil.compareJsonObjects(oldJson, newJson, newData.getClass());
+            }
+
+            // 如果是update操作（非新增）且diff结果为空，说明没有任何修改，不记录日志
+            if (!isCreate && dataId != null && (diffs == null || diffs.isEmpty())) {
+                log.debug("数据未发生变更，跳过审计日志: table={}, dataId={}", tableName, dataId);
+                return;
             }
 
             // 构建审计结果
@@ -154,7 +189,7 @@ public class DataAuditAspect {
                     AuditResult.builder()
                             .module(dataAudit.module())
                             .subModule(dataAudit.subModule())
-                            .operation(dataAudit.operation().getDescription())
+                            .operation(actualOperation) // 使用自动判断的操作类型
                             .tableName(tableName)
                             .dataId(dataId)
                             .diffs(diffs)
@@ -171,7 +206,13 @@ public class DataAuditAspect {
                                 sendAuditLog(auditResult);
 
                                 // 更新或创建快照（带版本号乐观锁）
-                                updateSnapshot(tableName, dataId, newJson, oldSnapshot);
+                                if (isCreate) {
+                                    // 新增：创建快照
+                                    snapshotService.saveSnapshot(tableName, dataId, newJson);
+                                } else {
+                                    // 修改：更新快照
+                                    updateSnapshot(tableName, dataId, newJson, oldSnapshot);
+                                }
                             }
                         });
             } else {
@@ -185,6 +226,69 @@ public class DataAuditAspect {
         }
     }
 
+    /** 处理CREATE操作审计 */
+    private void handleCreateAudit(
+            ProceedingJoinPoint joinPoint,
+            DataAudit dataAudit,
+            Long dataId,
+            String tableName,
+            Object result) {
+        try {
+            // 获取新数据（从方法参数中获取）
+            Object newData = extractNewData(joinPoint);
+            if (newData == null) {
+                log.warn("CREATE审计失败: 无法获取新数据, method={}", joinPoint.getSignature().getName());
+                return;
+            }
+
+            // 转换为JSON
+            String newJson = objectMapper.writeValueAsString(newData);
+
+            // 构建新增的diff列表（所有字段都是新增）
+            List<FieldDiff> diffs = jsonDiffUtil.buildCreateDiffs(newJson, newData.getClass());
+
+            // 构建审计结果（强制使用"新增"操作描述）
+            AuditResult auditResult =
+                    AuditResult.builder()
+                            .module(dataAudit.module())
+                            .subModule(dataAudit.subModule())
+                            .operation("新增")
+                            .tableName(tableName)
+                            .dataId(dataId)
+                            .diffs(diffs)
+                            .operateTime(LocalDateTime.now())
+                            .build();
+
+            // 注册事务同步回调，在事务提交后发送审计日志并创建快照
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                sendAuditLog(auditResult);
+                                // 创建快照（检查是否已存在，避免业务代码手动创建后重复）
+                                SysDataSnapshot existingSnapshot =
+                                        snapshotService.getLatestSnapshot(tableName, dataId);
+                                if (existingSnapshot == null) {
+                                    snapshotService.saveSnapshot(tableName, dataId, newJson);
+                                }
+                            }
+                        });
+            } else {
+                // 没有事务，直接发送
+                sendAuditLog(auditResult);
+                SysDataSnapshot existingSnapshot =
+                        snapshotService.getLatestSnapshot(tableName, dataId);
+                if (existingSnapshot == null) {
+                    snapshotService.saveSnapshot(tableName, dataId, newJson);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("CREATE审计处理失败: table={}, dataId={}", tableName, dataId, e);
+        }
+    }
+
     /** 处理DELETE操作审计 */
     private void handleDeleteAudit(
             DataAudit dataAudit, Long dataId, String tableName, SysDataSnapshot oldSnapshot) {
@@ -193,6 +297,14 @@ public class DataAuditAspect {
                 log.warn("DELETE审计失败: 快照不存在, table={}, dataId={}", tableName, dataId);
                 return;
             }
+
+            // 在事务内立即删除快照记录（与业务删除在同一事务中）
+            snapshotService.removeById(oldSnapshot.getId());
+            log.debug(
+                    "已删除快照记录: table={}, dataId={}, snapshotId={}",
+                    tableName,
+                    dataId,
+                    oldSnapshot.getId());
 
             // 构建审计结果（所有字段都标记为删除）
             AuditResult auditResult =
@@ -206,33 +318,26 @@ public class DataAuditAspect {
                             .operateTime(LocalDateTime.now())
                             .build();
 
-            // 注册事务同步回调
+            // 注册事务同步回调，在事务提交后才发送审计日志
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
                             public void afterCommit() {
-                                // TODO: 调用HTTP接口发送审计日志
+                                // 事务提交后发送审计日志
                                 sendAuditLog(auditResult);
-
-                                // 删除快照记录
-                                snapshotService.removeById(oldSnapshot.getId());
-                            }
-
-                            @Override
-                            public void afterCompletion(int status) {
-                                if (status != STATUS_COMMITTED) {
-                                    log.info("事务回滚，取消删除快照: table={}, dataId={}", tableName, dataId);
-                                }
                             }
                         });
             } else {
+                // 没有事务，直接发送
                 sendAuditLog(auditResult);
-                snapshotService.removeById(oldSnapshot.getId());
             }
 
         } catch (Exception e) {
             log.error("DELETE审计处理失败: table={}, dataId={}", tableName, dataId, e);
+            // 注意：这里不捕获异常，让其向上传播以触发事务回滚
+            throw new RuntimeException(
+                    "DELETE审计处理失败: table=" + tableName + ", dataId=" + dataId, e);
         }
     }
 
@@ -336,10 +441,13 @@ public class DataAuditAspect {
     /**
      * 发送审计日志到HTTP接口
      *
-     * <p>封装为统一的HTTP请求格式
+     * <p>封装为统一的HTTP请求格式，从 UserContext 获取用户信息
      */
     private void sendAuditLog(AuditResult auditResult) {
         try {
+            // 从 UserContext 获取登录用户信息
+            LoginUser loginUser = SecurityUtils.getLoginUser();
+
             // 构建logContent
             String operatorResult =
                     auditResult.getOperation()
@@ -357,8 +465,8 @@ public class DataAuditAspect {
                                                     && !auditResult.getSubModule().isEmpty()
                                             ? auditResult.getSubModule()
                                             : auditResult.getTableName())
-                            .hrefUrl("") // 暂时为空，后续填充
-                            .operatorResult(operatorResult)
+                            .hrefUrl(loginUser != null ? loginUser.getHrefUrl() : "")
+                            .controlName(operatorResult)
                             .build();
 
             // 构建logRemark（字段差异JSON）
@@ -367,24 +475,40 @@ public class DataAuditAspect {
                 logRemark = JSONUtil.toJsonStr(auditResult.getDiffs());
             }
 
+            // 从 UserContext 获取用户信息和模拟登录标识
+            Long loginUserId =
+                    loginUser != null ? loginUser.getRealUserId() : AppContext.getUserId();
+            Long roleId = loginUser != null ? loginUser.getRoleId() : null;
+            boolean isMockLogin =
+                    loginUser != null && Boolean.TRUE.equals(loginUser.getIsMockLogin());
+            Long mockUserId = isMockLogin && loginUser != null ? loginUser.getMockUserId() : null;
+
+            // 获取请求上下文信息
+            String ip = RequestContextUtils.getClientIp();
+            String browser = RequestContextUtils.getBrowser();
+            String platform = RequestContextUtils.getPlatform();
+
             // 构建HTTP请求体
             AuditLogRequest request =
                     AuditLogRequest.builder()
                             .logType("operation-log")
-                            .subjectId(AppContext.getSubjectId())
-                            .loginUserId(AppContext.getUserId())
-                            .loginRoleId(null) // TODO: 需要从安全上下文获取角色ID
-                            .mockFlag(0)
-                            .mockUserId(0L)
-                            .mockRoleId(0L)
-                            .ip("") // TODO: 后续从请求上下文获取
-                            .browser("") // TODO: 后续从请求上下文获取
-                            .platForm("") // TODO: 后续从请求上下文获取
+                            .subjectId(
+                                    loginUser != null
+                                            ? loginUser.getSubjectId()
+                                            : AppContext.getSubjectId())
+                            .loginUserId(loginUserId)
+                            .loginRoleId(roleId)
+                            .mockFlag(isMockLogin ? 1 : 0)
+                            .mockUserId(mockUserId != null ? mockUserId : 0L)
+                            .mockRoleId(0L) // 暂时为0，后续可扩展
+                            .ip(ip != null ? ip : "")
+                            .browser(browser != null ? browser : "")
+                            .platForm(platform != null ? platform : "")
                             .logContent(JSONUtil.toJsonStr(logContent))
                             .logRemark(logRemark)
                             .build();
 
-            log.info("TODO: 发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
+            log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
 
             // TODO: 实现实际的HTTP调用
             // Example:

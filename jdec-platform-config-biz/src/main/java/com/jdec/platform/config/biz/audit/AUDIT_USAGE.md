@@ -12,8 +12,9 @@
 4. **事务同步**：审计日志与业务操作在同一事务中，保证一致性
 5. **灵活配置**：通过注解灵活配置审计行为
 6. **无ID场景支持**：支持不传ID的更新操作，仅记录操作不对比差异
-7. **编程式API**：提供 `DataAuditService`，支持复杂业务场景的手动调用
-8. **统一HTTP格式**：按照运营日志系统格式封装审计日志
+7. **新增操作审计**：支持新增操作的审计日志，diff列表中oldValue为空，newValue为新增的字段值
+8. **编程式API**：提供 `DataAuditService`，支持复杂业务场景的手动调用
+9. **统一HTTP格式**：按照运营日志系统格式封装审计日志
 
 ## 核心组件
 
@@ -24,7 +25,7 @@
 @DataAudit(
     module = "系统设置",           // 业务模块名称
     subModule = "审批链配置",      // 业务子模块名称（可选）
-    operation = OperationType.UPDATE,  // 操作类型：UPDATE/DELETE
+    operation = OperationType.UPDATE,  // 操作类型：CREATE/UPDATE/DELETE
     tableName = "sys_approval_chain_config",  // 数据库表名
     dataIdField = "#request.id",   // 数据ID的SpEL表达式（可选，留空表示无ID场景）
     forceCompare = false,          // 是否强制对比（仅当dataIdField不为空时生效）
@@ -46,6 +47,7 @@
 ### 2. 枚举类型
 
 #### OperationType（操作类型）
+- `CREATE`：新增操作
 - `UPDATE`：修改操作
 - `DELETE`：删除操作
 
@@ -166,7 +168,119 @@ public void initSnapshot(Long dataId) {
 
 ## 使用示例
 
-### 示例1：简单字段修改审计
+### 示例1：新增操作审计（注解式）
+
+对于新增操作，审计日志会生成 diff 列表，其中 oldValue 为空，newValue 为前端传入的值。
+
+```java
+@Data
+public class RoleCreateReq {
+    @AuditField(name = "角色名称")
+    private String roleName;
+
+    @AuditField(name = "角色编码")
+    private String roleCode;
+
+    @AuditField(
+        name = "所属部门",
+        type = FieldType.RELATION,
+        target = "department",
+        idField = "id",
+        nameField = "dept_name"
+    )
+    private Long deptId;
+
+    @AuditField(name = "状态")
+    private Integer status;
+}
+
+@Service
+public class RoleService {
+
+    @DataAudit(
+        module = "角色管理",
+        subModule = "角色配置",
+        operation = OperationType.CREATE,
+        tableName = "sys_role"
+        // 新增操作不需要 dataIdField，因为没有旧数据需要对比
+    )
+    @Transactional(rollbackFor = Exception.class)
+    public void createRole(RoleCreateReq request) {
+        // 创建角色
+        SysRole role = BeanUtil.toBean(request, SysRole.class);
+        roleMapper.insert(role);
+    }
+}
+```
+
+**生成的审计日志：**
+```json
+{
+  "logRemark": "[
+    {\"fieldName\":\"角色名称\",\"fieldCode\":\"roleName\",\"oldValue\":null,\"newValue\":\"管理员\",\"fieldType\":\"SIMPLE\"},
+    {\"fieldName\":\"角色编码\",\"fieldCode\":\"roleCode\",\"oldValue\":null,\"newValue\":\"admin\",\"fieldType\":\"SIMPLE\"},
+    {\"fieldName\":\"所属部门\",\"fieldCode\":\"deptId\",\"oldValue\":null,\"newValue\":\"技术部\",\"fieldType\":\"RELATION\"},
+    {\"fieldName\":\"状态\",\"fieldCode\":\"status\",\"oldValue\":null,\"newValue\":1,\"fieldType\":\"SIMPLE\"}
+  ]"
+}
+```
+
+### 示例2：新增操作审计（编程式）
+
+```java
+@Service
+@RequiredArgsConstructor
+public class RoleService {
+
+    private final DataAuditService dataAuditService;
+    private final RoleMapper roleMapper;
+
+    @Transactional(rollbackFor = Exception.class)
+    public void createRole(RoleCreateReq request) {
+        // 创建角色
+        SysRole role = BeanUtil.toBean(request, SysRole.class);
+        roleMapper.insert(role);
+
+        // 手动记录新增审计（带字段diff）
+        dataAuditService.auditCreate(
+            "角色管理",        // module
+            "角色配置",        // subModule
+            "新增",           // operation
+            "sys_role",       // tableName
+            request           // newData（会生成所有字段的diff，oldValue为null）
+        );
+    }
+}
+```
+
+### 示例3：使用 AuditLogHelper 记录新增操作
+
+```java
+@Service
+@RequiredArgsConstructor
+public class RoleService {
+
+    private final AuditLogHelper auditLogHelper;
+    private final RoleMapper roleMapper;
+
+    @Transactional(rollbackFor = Exception.class)
+    public void createRole(RoleCreateReq request) {
+        // 创建角色
+        SysRole role = BeanUtil.toBean(request, SysRole.class);
+        roleMapper.insert(role);
+
+        // 使用便捷方法记录新增审计
+        auditLogHelper.logCreate(
+            "角色管理",        // subModule
+            "sys_role",       // tableName
+            "新增",           // operation
+            request           // newData
+        );
+    }
+}
+```
+
+### 示例4：简单字段修改审计
 
 ```java
 @Data
@@ -406,7 +520,9 @@ public class SysStatusService {
 }
 ```
 
-### 示例8：保存或更新（新增也记录审计）
+### 示例8：保存或更新（自动识别新增/修改）
+
+**推荐方案：使用 UPDATE 操作，系统自动识别**
 
 ```java
 @Service
@@ -414,15 +530,17 @@ public class ConfigService {
 
     /**
      * 保存或更新配置
-     * 如果id为null（新增），仍会记录审计日志
+     *
+     * 系统会自动识别：
+     * - 如果没有旧快照 → 自动生成新增操作的diff（oldValue为null）
+     * - 如果有旧快照 → 自动生成修改操作的diff（对比新旧值）
      */
     @DataAudit(
         module = "系统设置",
         subModule = "配置管理",
-        operation = OperationType.UPDATE,
+        operation = OperationType.UPDATE,  // 使用UPDATE即可
         tableName = "sys_config",
-        dataIdField = "#req.id",
-        forceCompare = true  // 强制对比，即使ID为null也会处理
+        dataIdField = "#req.id"  // 新增时ID可能为null，没问题
     )
     @Transactional
     public void saveOrUpdate(ConfigSaveReq req) {
@@ -436,6 +554,31 @@ public class ConfigService {
     }
 }
 ```
+
+**审计日志效果：**
+
+新增时（快照不存在）：
+```json
+{
+  "operation": "修改",
+  "diffs": [
+    {"fieldName": "配置名称", "oldValue": null, "newValue": "系统配置"},
+    {"fieldName": "配置值", "oldValue": null, "newValue": "enabled"}
+  ]
+}
+```
+
+修改时（快照存在）：
+```json
+{
+  "operation": "修改",
+  "diffs": [
+    {"fieldName": "配置值", "oldValue": "enabled", "newValue": "disabled"}
+  ]
+}
+```
+
+**详细示例：** 参考 `SaveOrUpdateAuditExample.java`
 
 ## 编程式API使用
 

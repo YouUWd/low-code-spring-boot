@@ -18,6 +18,12 @@ public class SaveRoleModuleFieldPermissionReq implements Serializable {
     @Schema(description = "所有模块的字段权限配置列表")
     private List<ModuleFieldPermissionItem> fields;
 
+    @Schema(description = "勾选标识：1=勾选新增，0=取消勾选")
+    private Integer checkFlag;
+
+    @Schema(description = "权限路径字符串列表，用于审计日志")
+    private List<String> permissionPaths;
+
     @Data
     @Schema(description = "单个模块的字段权限配置明细")
     public static class ModuleFieldPermissionItem implements Serializable {
