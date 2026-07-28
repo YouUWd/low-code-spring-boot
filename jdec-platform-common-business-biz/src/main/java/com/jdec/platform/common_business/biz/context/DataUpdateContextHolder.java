@@ -11,6 +11,9 @@ public class DataUpdateContextHolder {
 
     /** 设置当前用户 token */
     public static void addDataUpdateToContext(Object o) {
+        if (!getDataChangeFlag()) {
+            return;
+        }
         if (getDataUpdateContext() != null) {
             getDataUpdateContext().add(o);
         } else {
@@ -21,7 +24,9 @@ public class DataUpdateContextHolder {
     }
 
     public static void openDataChangeFlag() {
-        OPEN_DATA_CHANGE_FLAG.set(Boolean.TRUE);
+        if (!getDataChangeFlag()) {
+            OPEN_DATA_CHANGE_FLAG.set(Boolean.TRUE);
+        }
     }
 
     public static Boolean getDataChangeFlag() {

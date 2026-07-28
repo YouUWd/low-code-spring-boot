@@ -47,8 +47,8 @@ public class ModuleController {
     @GetMapping("/get/menu/apply/field")
     @Operation(summary = "获取模块字段权限", description = "获取模块字段权限")
     public ApiResponse<Map<Object, Object>> getMenuModuleApplyField(
-            @RequestHeader("Subject-Id") Long subjectId,
-            @RequestHeader("Role-Id") Long roleId,
+            @RequestHeader("X-Subject-Id") Long subjectId,
+            @RequestHeader("X-Role-Id") Long roleId,
             @RequestParam Long menuId,
             @Schema(description = "当前页面模式(view,edit,create)，如果是创建可以不传使用默认的。")
                     @RequestParam(required = false)
@@ -61,8 +61,8 @@ public class ModuleController {
     @PostMapping("/get/data/change/log")
     @Operation(summary = "获取模块字段权限", description = "获取模块字段权限")
     public ApiResponse<List<OpLogResp>> getModuleDataChangeLog(
-            @RequestHeader("Subject-Id") Long subjectId,
-            @RequestHeader("Role-Id") Long roleId,
+            @RequestHeader("X-Subject-Id") Long subjectId,
+            @RequestHeader("X-Role-Id") Long roleId,
             @RequestBody OpLogReq req) {
         // Mock-User-Id Subject-Id  Role-Id
         return ApiResponse.success(
