@@ -1,5 +1,6 @@
 package com.jdec.platform.common_business.api.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.jdec.platform.common_business.api.dto.common.ModuleDataChangeDTO;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -43,5 +44,6 @@ public class OpLogResp implements Serializable {
     private String realUserName;
 
     /** 创建时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdDate;
 }
