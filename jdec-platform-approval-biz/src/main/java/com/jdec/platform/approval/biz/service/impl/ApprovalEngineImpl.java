@@ -20,7 +20,9 @@ import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -52,6 +54,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final ApprovalActionLogMapper approvalActionLogMapper;
     private final SysRolePermissionApi sysRolePermissionApi;
     private final SysWechatTemplateApi sysWechatTemplateApi;
+    private final ConfigChangeMessagePublisher messagePublisher;
 
     @Override
     @Transactional
@@ -190,6 +193,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         resultMap.put("todoNum", todoList.size());
         resultMap.put("doneNum", processList.size());
         resultMap.put("allNum", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
+
         return resultMap;
     }
 
@@ -526,6 +530,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         // 写入日志
         saveActionLog(0L, 0L, approvalProcessDTO);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
+        payload.put("recordId", approvalBusiness.getRecordId());
+        messagePublisher.publish(
+                approvalBusiness.getSubjectId(),
+                AppContext.getProjectNo(),
+                ChangeType.APPROVAL_UPDATE,
+                payload);
     }
 
     // 变更业务发起审批申请------------------------------------------------------------------------
@@ -653,6 +667,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         // 写入日志
         saveActionLog(0L, 0L, approvalProcessDTO);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
+        payload.put("recordId", approvalBusiness.getRecordId());
+        messagePublisher.publish(
+                approvalBusiness.getSubjectId(),
+                AppContext.getProjectNo(),
+                ChangeType.APPROVAL_UPDATE,
+                payload);
     }
 
     // 审批通过---------------------------------------------------------------------
@@ -835,6 +859,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalChain.getCurrentStatusChildId(),
                 approvalProcessDTO);
 
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
+        payload.put("recordId", approvalBusiness.getRecordId());
+        messagePublisher.publish(
+                approvalBusiness.getSubjectId(),
+                AppContext.getProjectNo(),
+                ChangeType.APPROVAL_UPDATE,
+                payload);
+
         return approvalBusiness;
     }
 
@@ -975,6 +1009,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
                 approvalProcessDTO);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
+        payload.put("recordId", approvalBusiness.getRecordId());
+        messagePublisher.publish(
+                approvalBusiness.getSubjectId(),
+                AppContext.getProjectNo(),
+                ChangeType.APPROVAL_UPDATE,
+                payload);
     }
 
     // 撤销申请-------------------------------------------------------------------------
@@ -1064,6 +1108,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
         // 写入日志
         saveActionLog(statusNode.getPid(), statusNode.getId(), approvalProcessDTO);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("businessNumber", approvalBusiness.getBusinessNumber());
+        payload.put("moduleId", approvalBusiness.getModuleId());
+        payload.put("recordId", approvalBusiness.getRecordId());
+        messagePublisher.publish(
+                approvalBusiness.getSubjectId(),
+                AppContext.getProjectNo(),
+                ChangeType.APPROVAL_UPDATE,
+                payload);
     }
 
     // 保存操作日志-----------------------------------------------------------------------
@@ -1583,6 +1637,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     insertItem.setSerialNumber(approvalProcessDTO.getSerialNumber());
                     insertItem.setSerialNo(approvalProcessDTO.getSerialNo());
                     insertItem.setId(null);
+                    insertItem.setCurrentStep(item.getCurrentStep());
                     buttonDataList.add(insertItem);
                 }
             }
