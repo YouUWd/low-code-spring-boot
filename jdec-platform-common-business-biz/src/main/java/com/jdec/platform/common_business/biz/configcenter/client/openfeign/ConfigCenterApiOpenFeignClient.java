@@ -103,4 +103,16 @@ public interface ConfigCenterApiOpenFeignClient {
     @GetMapping("/sys/role/get-role-config-detail")
     ConfigApiResponse<RoleConfigDetailResp> getRoleConfigDetail(
             @RequestHeader("X-Subject-Id") Long subjectId, @RequestParam Long roleId);
+
+    @GetMapping("/wechat/templates/{id}")
+    ConfigApiResponse<WechatTemplateDetailResp> getWechatTemplateDetail(
+            @RequestHeader("X-Subject-Id") Long subjectId, @PathVariable Long id);
+
+    @GetMapping("/category/item/byCategoryAlias")
+    ConfigApiResponse<List<SysConfigItemTreeResp>> getCategoryItemByCategoryAlias(
+            @RequestHeader("X-Subject-Id") Long subjectId, @PathVariable String categoryAlias);
+
+    @PostMapping("/wechat/templates/params/list-by-ids")
+    ConfigApiResponse<List<WechatTemplateParamEntryResp>> getWechatTemplateParamEntryByIds(
+            @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody List<Long> ids);
 }

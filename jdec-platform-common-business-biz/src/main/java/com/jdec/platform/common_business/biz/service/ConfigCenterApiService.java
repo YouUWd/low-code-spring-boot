@@ -34,4 +34,12 @@ public interface ConfigCenterApiService {
     List<DataRightConfigResp> getDataRightConfigItem(Long subjectId, Long roleId);
 
     List<PersonalSettingResp> getPersonalSettingByRole(Long subjectId, Long roleId, Long moduleId);
+
+    WechatTemplateDetailResp getWechatTemplateDetail(Long subjectId, Long id);
+
+    List<SysConfigItemTreeResp> getCategoryItemByCategoryAlias(
+            Long subjectId, String categoryAlias);
+
+    List<WechatTemplateParamEntryResp> getWechatTemplateParamEntryByIds(
+            Long subjectId, List<Long> ids);
 }

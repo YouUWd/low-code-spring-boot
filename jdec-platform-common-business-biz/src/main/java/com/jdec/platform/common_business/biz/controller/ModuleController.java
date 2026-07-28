@@ -1,12 +1,16 @@
 package com.jdec.platform.common_business.biz.controller;
 
 import com.jdec.platform.common_business.api.DynamicDataAccessServiceApi;
+import com.jdec.platform.common_business.api.OperatorLogServiceApi;
+import com.jdec.platform.common_business.api.dto.request.OpLogReq;
+import com.jdec.platform.common_business.api.dto.response.OpLogResp;
 import com.jdec.platform.common_business.biz.dto.RightInfoVO;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +27,8 @@ public class ModuleController {
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     private final DynamicDataAccessServiceApi dynamicDataAccessService;
+
+    private final OperatorLogServiceApi operatorLogServiceApi;
 
     @GetMapping("/get/module/apply/field")
     @Operation(summary = "获取模块字段权限", description = "获取模块字段权限")
@@ -50,5 +56,16 @@ public class ModuleController {
         // Mock-User-Id Subject-Id  Role-Id
         return dynamicDataAccessService.getModuleApplyFieldListByMenuId(
                 subjectId, roleId, menuId, btnType);
+    }
+
+    @PostMapping("/get/data/change/log")
+    @Operation(summary = "获取模块字段权限", description = "获取模块字段权限")
+    public ApiResponse<List<OpLogResp>> getModuleDataChangeLog(
+            @RequestHeader("Subject-Id") Long subjectId,
+            @RequestHeader("Role-Id") Long roleId,
+            @RequestBody OpLogReq req) {
+        // Mock-User-Id Subject-Id  Role-Id
+        return ApiResponse.success(
+                operatorLogServiceApi.getModuleDataChangeLog(subjectId, roleId, req));
     }
 }

@@ -11,6 +11,10 @@ public interface ModuleInfoWithPermissionService {
     ModuleFilterInfo filterModuleInfo(
             Long subjectId, Long roleId, Long moduleId, String btnType, List<Long> moduleSkip);
 
+    // 带审批链的权限获取，直接通过传入的指定btnType获取对应权限，不需要返回btnList
+    ModuleFilterInfo filterModuleInfoWithApproval(
+            Long subjectId, Long roleId, Long moduleId, String btnType, List<Long> moduleSkip);
+
     ApiResponse<RightInfoVO> getModuleApplyFieldList(
             Long subjectId, Long roleId, Long moduleId, String btn_type);
 

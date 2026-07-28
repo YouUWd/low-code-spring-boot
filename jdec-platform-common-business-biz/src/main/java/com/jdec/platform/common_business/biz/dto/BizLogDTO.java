@@ -37,4 +37,8 @@ public class BizLogDTO implements Serializable {
     private String logRemark;
 
     private Long menuId;
+
+    private String moduleName;
+
+    private String dataId;
 }

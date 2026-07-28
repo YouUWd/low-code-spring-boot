@@ -51,4 +51,6 @@ public interface CommonConstant {
     String BEARER_PREFIX = "Bearer ";
 
     String CONFIG_CENTER_SIMULATE_LOGIN_RIGHT_CODE = "simulate_login";
+
+    String CONFIG_CENTER_CATEGORY_ALIAS_WX_ACCEPT_TYPE = "wxAcceptType";
 }
