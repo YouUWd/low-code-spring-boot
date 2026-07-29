@@ -9,6 +9,8 @@ import com.jdec.platform.config.biz.entity.SysConfigCategory;
 import com.jdec.platform.config.biz.entity.SysConfigItem;
 import com.jdec.platform.config.biz.mapper.SysConfigCategoryMapper;
 import com.jdec.platform.config.biz.mapper.SysConfigItemMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -80,6 +82,12 @@ public class SysConfigItemService {
         return list.stream().map(this::toResp).collect(Collectors.toList());
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "通用配置-配置项管理",
+            operation = OperationType.UPDATE,
+            tableName = "sys_config_item",
+            dataIdField = "#req.id")
     @Transactional
     public Long saveItem(SysConfigItemSaveReq req) {
         Long subjectId = AppContext.getSubjectId();
@@ -139,6 +147,8 @@ public class SysConfigItemService {
             }
 
             itemMapper.insert(entity);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
             return entity.getId();
         } else {
             // 编辑
@@ -282,6 +292,14 @@ public class SysConfigItemService {
         }
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "通用配置-配置项管理",
+            operation = OperationType.DELETE,
+            deleteDisplayField = "label",
+            entityClass = SysConfigItem.class,
+            tableName = "sys_config_item",
+            dataIdField = "#id")
     @Transactional
     public void deleteItem(Long id, boolean force) {
         Long subjectId = AppContext.getSubjectId();

@@ -264,6 +264,8 @@ public class SysMenuService implements SysMenuApi {
             module = "系统设置",
             subModule = "菜单配置",
             operation = OperationType.DELETE,
+            deleteDisplayField = "title",
+            entityClass = SysMenu.class,
             tableName = "sys_menu",
             dataIdField = "#id")
     @Transactional

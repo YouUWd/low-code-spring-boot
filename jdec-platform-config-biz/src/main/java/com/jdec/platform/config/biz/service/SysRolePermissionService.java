@@ -1348,7 +1348,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 operation = "取消：" + String.join("->", permissionPaths);
             }
 
-            auditLogHelper.logWithoutCompare("角色权限分配-菜单显示", "sys_role_menu", operation);
+            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare("角色权限分配-菜单显示", "sys_role_menu", operation);
         } catch (Exception e) {
             log.error("记录菜单权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
         }
@@ -1384,7 +1385,9 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 operation = "取消：" + String.join("->", permissionPaths);
             }
 
-            auditLogHelper.logWithoutCompare("角色管理", "sys_role_interaction_permission", operation);
+            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare("角色管理", "sys_role_interaction_permission",
+            // operation);
         } catch (Exception e) {
             log.error("记录交互权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
         }
@@ -1420,7 +1423,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 operation = "取消：" + String.join("->", permissionPaths);
             }
 
-            auditLogHelper.logWithoutCompare("角色管理", "sys_role_data_permission", operation);
+            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare("角色管理", "sys_role_data_permission", operation);
         } catch (Exception e) {
             log.error("记录数据权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
         }
@@ -1456,7 +1460,9 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 operation = "取消：" + String.join("->", permissionPaths);
             }
 
-            auditLogHelper.logWithoutCompare("角色管理", "sys_role_module_field_permission", operation);
+            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare("角色管理", "sys_role_module_field_permission",
+            // operation);
         } catch (Exception e) {
             log.error("记录模块字段权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
         }

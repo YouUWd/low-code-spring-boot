@@ -179,7 +179,7 @@ public void createRole(RoleCreateReq req) {
 
 ```json
 {
-  "logRemark": "[
+  "remark": "[
     {
       \"fieldName\": \"角色名称\",
       \"fieldCode\": \"roleName\",

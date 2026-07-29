@@ -23,7 +23,7 @@ public class FieldDiff {
     private Object oldValue;
 
     /** 修改后值 */
-    private Object newValue;
+    private Object newer;
 
     /** 字段类型 */
     private FieldType fieldType;
