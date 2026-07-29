@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -22,6 +23,7 @@ public class SysStatus implements Serializable {
     @Schema(description = "所属主体")
     private Long subjectId;
 
+    @AuditField(name = "状态名称", uniqueIdentifier = true)
     @Schema(description = "状态名称")
     private String title;
 

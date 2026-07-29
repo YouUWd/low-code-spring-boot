@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -22,6 +23,7 @@ public class SysRight implements Serializable {
     @Schema(description = "父级ID")
     private Long pid;
 
+    @AuditField(name = "权限名称", uniqueIdentifier = true)
     @Schema(description = "权限名称")
     private String rightName;
 

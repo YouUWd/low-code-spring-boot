@@ -13,6 +13,8 @@ import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRightMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -38,6 +40,12 @@ public class SysRightService implements SysRightApi {
     private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
 
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "按钮配置",
+            operation = OperationType.UPDATE,
+            tableName = "sys_right",
+            dataIdField = "#req.id")
     public void saveRight(SysRightSaveReq req) {
         if (req.getId() == null) {
             // 新增
@@ -49,6 +57,8 @@ public class SysRightService implements SysRightApi {
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             sysRightMapper.insert(entity);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
         } else {
             // 编辑
             SysRight entity =
@@ -75,6 +85,14 @@ public class SysRightService implements SysRightApi {
 
     @Transactional
     @Override
+    @DataAudit(
+            module = "系统设置",
+            subModule = "按钮配置",
+            operation = OperationType.DELETE,
+            deleteDisplayField = "rightName",
+            entityClass = SysRight.class,
+            tableName = "sys_right",
+            dataIdField = "#id")
     public void deleteRight(Long id) {
         boolean exists =
                 sysRightMapper.exists(

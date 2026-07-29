@@ -24,7 +24,7 @@ public class MonitorLogResp {
     private String logContent;
 
     @Schema(description = "日志备注")
-    private String logRemark;
+    private String remark;
 
     @Schema(description = "登录用户ID")
     private Long loginUserId;
