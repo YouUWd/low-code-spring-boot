@@ -1247,12 +1247,13 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 tableNameToConfigItems,
                 queryWrapper);
 
-        //        if(hasApproval) {
-        //
-        // queryWrapper.in(queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
-        //                    + DB_TABLE_FIELD_SEPARATOR
-        //                    + "deleted", true);
-        //        }
+        if (hasApproval) {
+            queryWrapper.eq(
+                    queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + "deleted",
+                    false);
+        }
 
         // 请求中带有排序参数
         if (tableNameToOrders.containsKey(
@@ -1526,6 +1527,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         primaryTablePrefixResultMap.putAll(
                                 recordIdToApprovalData.get(
                                         Long.parseLong(String.valueOf(primaryId))));
+                    } else {
+                        log.debug("recordId:{}数据存在于业务表，但审批链部分无数据，数据不返回。", primaryId);
+                        continue;
                     }
                 }
 
