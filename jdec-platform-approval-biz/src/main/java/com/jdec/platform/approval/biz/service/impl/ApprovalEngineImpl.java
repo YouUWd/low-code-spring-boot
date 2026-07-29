@@ -1419,6 +1419,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             approvalProcessDTO.getSerialNumber());
                     approvalButtonWrapper.eq(
                             ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
+                    approvalButtonWrapper.eq(
+                            ApprovalChainButton::getCurrentStep,
+                            approvalChainBusiness.getCurrentStep());
                     approvalButtonWrapper.orderByAsc(ApprovalChainButton::getButtonId);
                     List<ApprovalChainButton> buttonList =
                             approvalChainButtonMapper.selectList(approvalButtonWrapper);
@@ -1539,7 +1542,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(modelConfigButton) || Objects.isNull(approvalButton)) {
                 return null;
             }
-            item.put("key", alias);
+            item.put("buttonKey", alias);
             item.put("title", modelConfigButton.getTitle());
             item.put("showTitle", modelConfigButton.getTitle());
             Map<String, Object> property = new HashMap<>();
