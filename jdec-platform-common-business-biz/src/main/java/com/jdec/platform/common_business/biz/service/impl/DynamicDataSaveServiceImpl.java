@@ -3041,10 +3041,17 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         } else if (c == LocalDateTime.class) {
             if (parameter.getClass() == String.class) {
-                f.set(
-                        instance,
-                        DateUtil.parseLocalDateTime(
-                                parameter.toString(), DatePattern.NORM_DATETIME_PATTERN));
+                if (parameter.toString().indexOf("T") >= 0) {
+                    f.set(
+                            instance,
+                            DateUtil.parseLocalDateTime(
+                                    parameter.toString(), DatePattern.UTC_SIMPLE_PATTERN));
+                } else {
+                    f.set(
+                            instance,
+                            DateUtil.parseLocalDateTime(
+                                    parameter.toString(), DatePattern.NORM_DATETIME_PATTERN));
+                }
             } else if (parameter.getClass() == LocalDateTime.class) {
                 f.set(instance, parameter);
             }
