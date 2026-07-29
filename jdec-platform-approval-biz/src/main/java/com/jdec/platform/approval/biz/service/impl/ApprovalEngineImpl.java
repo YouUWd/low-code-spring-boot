@@ -1574,7 +1574,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(modelConfig)) {
                 return null;
             }
-            item.put("key", alias);
+            item.put("buttonKey", alias);
             item.put("title", modelConfig.getLabel());
             item.put("showTitle", modelConfig.getLabel());
             String extraPropertyStr = modelConfig.getExtra();
