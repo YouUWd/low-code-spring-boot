@@ -1,6 +1,8 @@
 package com.jdec.platform.monitorlog.biz.entity;
 
-import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -63,7 +65,7 @@ public class JdecMonitorLogBase implements Serializable {
 
     @Schema(description = "日志备注")
     @TableField("log_remark")
-    private String remark;
+    private String logRemark;
 
     @Schema(description = "日志日期")
     private LocalDateTime logDate;
