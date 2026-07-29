@@ -853,7 +853,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
 
         // 写入日志
-        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
@@ -1004,7 +1003,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
         // 写入日志
-        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
@@ -1419,6 +1417,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             approvalProcessDTO.getSerialNumber());
                     approvalButtonWrapper.eq(
                             ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
+                    approvalButtonWrapper.eq(
+                            ApprovalChainButton::getCurrentStep,
+                            approvalChainBusiness.getCurrentStep());
                     approvalButtonWrapper.orderByAsc(ApprovalChainButton::getButtonId);
                     List<ApprovalChainButton> buttonList =
                             approvalChainButtonMapper.selectList(approvalButtonWrapper);
@@ -1539,7 +1540,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(modelConfigButton) || Objects.isNull(approvalButton)) {
                 return null;
             }
-            item.put("key", alias);
+            item.put("buttonKey", alias);
             item.put("title", modelConfigButton.getTitle());
             item.put("showTitle", modelConfigButton.getTitle());
             Map<String, Object> property = new HashMap<>();
@@ -1571,7 +1572,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(modelConfig)) {
                 return null;
             }
-            item.put("key", alias);
+            item.put("buttonKey", alias);
             item.put("title", modelConfig.getLabel());
             item.put("showTitle", modelConfig.getLabel());
             String extraPropertyStr = modelConfig.getExtra();

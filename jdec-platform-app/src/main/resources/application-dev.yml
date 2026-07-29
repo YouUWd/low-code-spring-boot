@@ -194,7 +194,6 @@ config:
   center:
     base: http://119.36.78.123:5009
 
-
 app:
   front-url: http://119.36.78.123:5988
   system-name: 人力资源系统-Java
