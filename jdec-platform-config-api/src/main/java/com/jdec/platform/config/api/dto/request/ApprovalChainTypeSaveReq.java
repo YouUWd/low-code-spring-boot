@@ -20,7 +20,7 @@ public class ApprovalChainTypeSaveReq {
 
     @Schema(description = "分类名称", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "分类名称不能为空")
-    @AuditField(name = "分类名称")
+    @AuditField(name = "分类名称", uniqueIdentifier = true)
     private String title;
 
     @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED)

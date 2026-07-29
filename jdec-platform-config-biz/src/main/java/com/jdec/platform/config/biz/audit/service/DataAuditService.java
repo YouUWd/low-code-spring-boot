@@ -311,6 +311,64 @@ public class DataAuditService {
     }
 
     /**
+     * 删除数据审计（带实体类，从快照中提取记录名称和 name 字段作为删除显示字段）
+     *
+     * @param module 业务模块
+     * @param subModule 业务子模块（模块名称，如：角色配置、菜单配置）
+     * @param tableName 表名
+     * @param dataId 数据ID
+     * @param entityClass 实体类（用于解析 @AuditField 字段名）
+     */
+    public void auditDelete(
+            String module, String subModule, String tableName, Long dataId, Class<?> entityClass) {
+        try {
+            // 查询旧快照
+            SysDataSnapshot oldSnapshot = snapshotService.getLatestSnapshot(tableName, dataId);
+            if (oldSnapshot == null) {
+                log.warn("DELETE审计失败: 快照不存在, table={}, dataId={}", tableName, dataId);
+                return;
+            }
+
+            // 从快照中提取记录名称（用于 d.name）
+            String oldJson = oldSnapshot.getJsonData();
+            String recordName = "";
+            if (oldJson != null && !oldJson.isEmpty() && entityClass != null) {
+                recordName = jsonDiffUtil.extractUniqueIdentifierFromJson(oldJson, entityClass);
+            }
+
+            // 构建删除操作的单字段 diff（只保留 name 字段）
+            List<FieldDiff> diffs = Collections.emptyList();
+            if (oldJson != null && !oldJson.isEmpty() && entityClass != null) {
+                try {
+                    diffs =
+                            jsonDiffUtil.buildDeleteDiffWithDisplayField(
+                                    oldJson, entityClass, "name");
+                } catch (Exception e) {
+                    log.warn("解析删除快照JSON失败: table={}, dataId={}", tableName, dataId, e);
+                    diffs = Collections.emptyList();
+                }
+            }
+
+            // 在事务内立即删除快照记录
+            snapshotService.removeById(oldSnapshot.getId());
+            log.debug(
+                    "已删除快照记录: table={}, dataId={}, snapshotId={}",
+                    tableName,
+                    dataId,
+                    oldSnapshot.getId());
+
+            // 发送审计日志
+            sendAuditLog(module, subModule, "删除", tableName, dataId, diffs, recordName);
+
+        } catch (Exception e) {
+            log.error("DELETE审计失败: module={}, table={}, dataId={}", module, tableName, dataId, e);
+            throw new RuntimeException(
+                    "DELETE审计失败: module=" + module + ", table=" + tableName + ", dataId=" + dataId,
+                    e);
+        }
+    }
+
+    /**
      * 批量删除数据审计
      *
      * @param module 业务模块
@@ -455,6 +513,7 @@ public class DataAuditService {
                         .build();
 
         // 在事务提交前发送（失败会触发事务回滚）
+        // 如果业务方法抛出未捕获异常导致事务回滚，beforeCommit 不会被调用，审计日志不会发送
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
@@ -467,7 +526,7 @@ public class DataAuditService {
                         @Override
                         public void afterCompletion(int status) {
                             if (status == STATUS_ROLLED_BACK) {
-                                log.warn("事务已回滚，审计日志将不被记录");
+                                log.info("事务已回滚，跳过审计日志: subModule={}", subModule);
                             }
                         }
                     });

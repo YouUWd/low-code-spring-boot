@@ -159,6 +159,23 @@ public class AuditLogHelper {
     }
 
     /**
+     * 记录删除操作
+     *
+     * @param subModule 子模块名称（如:"角色管理"、"权限管理"）
+     * @param tableName 表名（如："sys_role"、"sys_permission"）
+     * @param dataId 数据ID
+     * @param entityClass 实体类（用于从快照中提取字段中文名和记录名称）
+     */
+    public void logDelete(String subModule, String tableName, Long dataId, Class<?> entityClass) {
+        try {
+            dataAuditService.auditDelete(MODULE, subModule, tableName, dataId, entityClass);
+            log.info("审计日志（删除）: subModule={}, dataId={}", subModule, dataId);
+        } catch (Exception e) {
+            log.error("记录删除审计日志失败: subModule={}, dataId={}", subModule, dataId, e);
+        }
+    }
+
+    /**
      * 记录批量删除操作
      *
      * @param subModule 子模块名称（如："角色管理"、"权限管理"）
