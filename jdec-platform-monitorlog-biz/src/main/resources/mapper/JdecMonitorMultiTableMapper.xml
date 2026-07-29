@@ -28,7 +28,7 @@
         SELECT res.* FROM (
             <choose>
                 <when test="logType == 'systemlog'">
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'system_log' as log_type
                     FROM sys_monitor_navchangelog
@@ -38,11 +38,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
                 </when>
                 
                 <when test="logType == 'messagelog'">
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'message_log' as log_type
                     FROM sys_monitor_messagelog
@@ -52,11 +52,11 @@
                             <if test="keyWord != null and keyWord != ''">log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
                 </when>
                 
                 <when test="logType == 'authoritylog'">
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_authoritychangelog
@@ -66,11 +66,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
                 </when>
                 
                 <when test="logType == 'operationlog'">
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_ApprovalChainRunlog
@@ -80,11 +80,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_ApprovalChainConfiglog
@@ -94,11 +94,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_orderrunlog
@@ -108,20 +108,20 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'system_log' as log_type
                     FROM sys_monitor_systemcontrollog
                     WHERE (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
                 </when>
                 
                 <otherwise>
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_ApprovalChainRunlog
@@ -131,11 +131,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_ApprovalChainConfiglog
@@ -145,11 +145,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_authoritychangelog
@@ -159,11 +159,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'message_log' as log_type
                     FROM sys_monitor_messagelog
@@ -173,11 +173,11 @@
                             <if test="keyWord != null and keyWord != ''">log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'system_log' as log_type
                     FROM sys_monitor_navchangelog
@@ -187,11 +187,11 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'operation_log' as log_type
                     FROM sys_monitor_orderrunlog
@@ -201,16 +201,16 @@
                             <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
                         )
                         AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
                     UNION ALL
 
-                    SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
+                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
                            mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
                            ip, log_content, log_remark, log_date, 'system_log' as log_type
                     FROM sys_monitor_systemcontrollog
                     WHERE (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
                 </otherwise>
             </choose>
         ) res
