@@ -562,8 +562,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     .build();
 
                     List<VersionCompareItem> rejectList = new ArrayList<>();
-                    rejectList.add(v2CurrentVersion);
                     rejectList.add(v2InternalVersion);
+                    rejectList.add(v2CurrentVersion);
 
                     VersionCompareItem v2Version =
                             VersionCompareItem.builder()
