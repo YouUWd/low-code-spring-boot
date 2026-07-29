@@ -11,6 +11,8 @@ import com.jdec.platform.config.biz.entity.SysConfigCategory;
 import com.jdec.platform.config.biz.entity.SysConfigItem;
 import com.jdec.platform.config.biz.mapper.SysConfigCategoryMapper;
 import com.jdec.platform.config.biz.mapper.SysConfigItemMapper;
+import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -269,6 +271,12 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         return resp;
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "通用配置分类",
+            operation = OperationType.UPDATE,
+            tableName = "sys_config_category",
+            dataIdField = "#req.id")
     @Transactional
     @Override
     public Long saveCategory(SysConfigCategorySaveReq req) {
@@ -297,6 +305,8 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
             entity.setProjectNo(projectNo);
             entity.setSubjectId(subjectId);
             categoryMapper.insert(entity);
+            // 设置id到请求对象，用于审计切面重新解析dataId
+            req.setId(entity.getId());
             return entity.getId();
         } else {
             // 编辑
@@ -331,6 +341,14 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         }
     }
 
+    @DataAudit(
+            module = "系统设置",
+            subModule = "通用配置-分类管理",
+            operation = OperationType.DELETE,
+            tableName = "sys_config_category",
+            deleteDisplayField = "label",
+            entityClass = SysConfigCategory.class,
+            dataIdField = "#id")
     @Transactional
     @Override
     public void deleteCategory(Long id, boolean force) {

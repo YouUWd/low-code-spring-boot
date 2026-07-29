@@ -62,7 +62,8 @@ public class JdecMonitorLogBase implements Serializable {
     private String logContent;
 
     @Schema(description = "日志备注")
-    private String logRemark;
+    @TableField("log_remark")
+    private String remark;
 
     @Schema(description = "日志日期")
     private LocalDateTime logDate;

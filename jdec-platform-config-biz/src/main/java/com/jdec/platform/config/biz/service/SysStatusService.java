@@ -196,6 +196,8 @@ public class SysStatusService implements SysStatusApi {
             subModule = "状态配置",
             operation = OperationType.DELETE,
             tableName = "sys_status",
+            deleteDisplayField = "title",
+            entityClass = SysStatus.class,
             dataIdField = "#id")
     @Transactional
     @Override

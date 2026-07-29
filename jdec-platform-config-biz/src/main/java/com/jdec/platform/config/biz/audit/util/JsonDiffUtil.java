@@ -95,7 +95,7 @@ public class JsonDiffUtil {
                                                     .fieldCode(fieldName)
                                                     .fieldType(metadata.fieldType)
                                                     .oldValue(oldValueObj)
-                                                    .newValue(newValueObj)
+                                                    .newer(newValueObj)
                                                     .build();
 
                                     diffs.add(diff);
@@ -177,13 +177,55 @@ public class JsonDiffUtil {
                                                 .fieldCode(fieldName)
                                                 .fieldType(metadata.fieldType)
                                                 .oldValue(oldValue)
-                                                .newValue(null)
+                                                .newer(null)
                                                 .build();
 
                                 diffs.add(diff);
                             });
         } catch (Exception e) {
             log.error("构建删除操作差异列表失败: json={}, class={}", json, clazz, e);
+        }
+
+        return diffs;
+    }
+
+    /**
+     * 构建删除操作的字段差异列表（通用版本，无需Class参数）
+     *
+     * <p>从JSON中提取所有字段作为简单类型处理
+     *
+     * @param json JSON字符串
+     * @return 字段差异列表
+     */
+    public List<FieldDiff> buildDeleteDiffs(String json) {
+        List<FieldDiff> diffs = new ArrayList<>();
+
+        try {
+            JsonNode node =
+                    json != null ? objectMapper.readTree(json) : objectMapper.createObjectNode();
+
+            // 遍历所有字段，作为简单类型处理
+            node.fields()
+                    .forEachRemaining(
+                            entry -> {
+                                String fieldName = entry.getKey();
+                                JsonNode value = entry.getValue();
+
+                                Object oldValue = extractValueFromNode(value);
+
+                                FieldDiff diff =
+                                        FieldDiff.builder()
+                                                .fieldName(fieldName) // 使用字段名作为中文名
+                                                .fieldCode(fieldName)
+                                                .fieldType(FieldType.SIMPLE)
+                                                .oldValue(oldValue)
+                                                .newer(null)
+                                                .build();
+
+                                diffs.add(diff);
+                            });
+        } catch (Exception e) {
+            log.error("构建删除操作差异列表失败: json={}", json, e);
         }
 
         return diffs;
@@ -241,7 +283,7 @@ public class JsonDiffUtil {
                                                 .fieldCode(fieldName)
                                                 .fieldType(metadata.fieldType)
                                                 .oldValue(null)
-                                                .newValue(newValue)
+                                                .newer(newValue)
                                                 .build();
 
                                 diffs.add(diff);
@@ -558,6 +600,145 @@ public class JsonDiffUtil {
                     "解析字典字段值失败: value={}, categoryAlias={}", value, metadata.dictCategoryAlias, e);
             return value;
         }
+    }
+
+    /**
+     * 从对象中提取唯一标识字段的值
+     *
+     * @param obj 对象
+     * @return 唯一标识字段的值，如果没有标注则返回空字符串
+     */
+    public String extractUniqueIdentifier(Object obj) {
+        if (obj == null) {
+            return "";
+        }
+
+        try {
+            Class<?> clazz = obj.getClass();
+            Field[] fields = clazz.getDeclaredFields();
+
+            for (Field field : fields) {
+                AuditField auditField = field.getAnnotation(AuditField.class);
+                if (auditField != null && auditField.uniqueIdentifier()) {
+                    field.setAccessible(true);
+                    Object value = field.get(obj);
+                    return value != null ? value.toString() : "";
+                }
+            }
+        } catch (Exception e) {
+            log.error("提取唯一标识字段失败: obj={}", obj, e);
+        }
+
+        return "";
+    }
+
+    /**
+     * 从JSON中直接提取唯一标识字段的值（避免因字段反序列化失败导致提取失败）
+     *
+     * <p>和 {@link #extractUniqueIdentifier(Object)} 功能相同，但直接从JSON字符串中提取，
+     * 无需将JSON反序列化为实体对象。适用于快照JSON可能包含无法反序列化的字段（如LocalDateTime的原始时间戳）的场景。
+     *
+     * @param json JSON字符串（快照数据）
+     * @param clazz 实体类（用于查找 @AuditField(uniqueIdentifier = true) 字段名）
+     * @return 唯一标识字段的值，如果没有标注则返回空字符串
+     */
+    public String extractUniqueIdentifierFromJson(String json, Class<?> clazz) {
+        if (json == null || json.isEmpty()) {
+            return "";
+        }
+        try {
+            JsonNode node = objectMapper.readTree(json);
+            Field[] fields = clazz.getDeclaredFields();
+            for (Field field : fields) {
+                AuditField auditField = field.getAnnotation(AuditField.class);
+                if (auditField != null && auditField.uniqueIdentifier()) {
+                    JsonNode valueNode = node.get(field.getName());
+                    if (valueNode != null && !valueNode.isNull()) {
+                        return valueNode.asText();
+                    }
+                    return "";
+                }
+            }
+        } catch (Exception e) {
+            log.error("从JSON提取唯一标识字段失败: class={}", clazz, e);
+        }
+        return "";
+    }
+
+    /**
+     * 构建删除操作的单字段差异（从快照中提取指定字段）
+     *
+     * @param json 快照JSON字符串
+     * @param clazz 目标类
+     * @param deleteDisplayField 要显示的字段名（Java字段名）
+     * @return 字段差异列表（只包含一个FieldDiff）
+     */
+    public <T> List<FieldDiff> buildDeleteDiffWithDisplayField(
+            String json, Class<T> clazz, String deleteDisplayField) {
+        if (deleteDisplayField == null || deleteDisplayField.isEmpty()) {
+            // 如果没有指定字段，返回空列表
+            return Collections.emptyList();
+        }
+
+        List<FieldDiff> diffs = new ArrayList<>();
+
+        try {
+            JsonNode node =
+                    json != null ? objectMapper.readTree(json) : objectMapper.createObjectNode();
+
+            // 构建字段映射缓存
+            Map<String, FieldMetadata> fieldMetadataMap = buildFieldMetadataMap(clazz);
+
+            // 从JSON中提取指定字段
+            JsonNode fieldValue = node.get(deleteDisplayField);
+            if (fieldValue == null || fieldValue.isNull()) {
+                log.warn("删除操作指定的显示字段不存在: field={}, json={}", deleteDisplayField, json);
+                return Collections.emptyList();
+            }
+
+            FieldMetadata metadata = fieldMetadataMap.get(deleteDisplayField);
+            if (metadata == null) {
+                log.warn("删除操作指定的显示字段没有审计配置: field={}, class={}", deleteDisplayField, clazz);
+                return Collections.emptyList();
+            }
+
+            Object oldValue = extractValueFromNode(fieldValue);
+
+            // 处理关联类型字段
+            if (metadata.fieldType == FieldType.RELATION) {
+                oldValue = resolveRelationValue(oldValue, metadata);
+            }
+
+            // 处理枚举类型字段
+            if (metadata.fieldType == FieldType.ENUM) {
+                oldValue = resolveEnumValue(oldValue, metadata);
+            }
+
+            // 处理字典类型字段
+            if (metadata.fieldType == FieldType.DICT) {
+                oldValue = resolveDictValue(oldValue, metadata);
+            }
+
+            FieldDiff diff =
+                    FieldDiff.builder()
+                            .fieldName(metadata.fieldName)
+                            .fieldCode(deleteDisplayField)
+                            .fieldType(metadata.fieldType)
+                            .oldValue(oldValue)
+                            .newer("") // 删除操作，new为空字符串
+                            .build();
+
+            diffs.add(diff);
+        } catch (Exception e) {
+            log.error(
+                    "构建删除操作单字段差异失败: json={}, class={}, field={}",
+                    json,
+                    clazz,
+                    deleteDisplayField,
+                    e);
+        }
+
+        return diffs;
     }
 
     /** 字段元数据 */

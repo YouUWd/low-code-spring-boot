@@ -1121,54 +1121,79 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     // 保存操作日志-----------------------------------------------------------------------
-    @Transactional
-    public void saveActionLog(
+    // 注意：此方法必须在 @Transactional 事务方法内部调用，不单独加 @Transactional
+    // 这样可以确保日志保存失败时，整个事务（包括业务数据和快照）都会回滚
+    private void saveActionLog(
             Long oldStatusGroupId, Long oldStatusId, ApprovalProcessDTO approvalProcessDTO) {
-        // 1. 获取对应节点 action 的操作日志描述
-        String actionName = "";
-        Long actionType = 0L;
-        if (List.of("cancel", "submit", "create").contains(approvalProcessDTO.getButton())) {
-            SysConfigItemResp modelConfig =
-                    sysConfigCategoryApi.getConfigItemsByValue(
-                            "logStateIcon", approvalProcessDTO.getButton());
-            if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
-                actionName = "已" + modelConfig.getLabel();
-                actionType = modelConfig.getId();
+        try {
+            // 1. 获取对应节点 action 的操作日志描述
+            String actionName = "";
+            Long actionType = 0L;
+            if (List.of("cancel", "submit", "create").contains(approvalProcessDTO.getButton())) {
+                SysConfigItemResp modelConfig =
+                        sysConfigCategoryApi.getConfigItemsByValue(
+                                "logStateIcon", approvalProcessDTO.getButton());
+                if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
+                    actionName = "已" + modelConfig.getLabel();
+                    actionType = modelConfig.getId();
+                }
+            } else {
+                LambdaQueryWrapper<ApprovalChainButton> configWrapper = new LambdaQueryWrapper<>();
+                configWrapper.eq(
+                        ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
+                configWrapper.eq(
+                        ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
+                configWrapper.eq(
+                        ApprovalChainButton::getCurrentStep, approvalProcessDTO.getCurrentStep());
+                configWrapper
+                        .eq(ApprovalChainButton::getButtonTypeValue, approvalProcessDTO.getButton())
+                        .last("LIMIT 1");
+                ApprovalChainButton approvalChainButton =
+                        approvalChainButtonMapper.selectOne(configWrapper);
+                if (Objects.nonNull(approvalChainButton)) {
+                    actionName = approvalChainButton.getLogName();
+                    actionType = approvalChainButton.getButtonTypeId();
+                }
             }
-        } else {
-            LambdaQueryWrapper<ApprovalChainButton> configWrapper = new LambdaQueryWrapper<>();
-            configWrapper.eq(
-                    ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
-            configWrapper.eq(ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
-            configWrapper.eq(
-                    ApprovalChainButton::getCurrentStep, approvalProcessDTO.getCurrentStep());
-            configWrapper
-                    .eq(ApprovalChainButton::getButtonTypeValue, approvalProcessDTO.getButton())
-                    .last("LIMIT 1");
-            ApprovalChainButton approvalChainButton =
-                    approvalChainButtonMapper.selectOne(configWrapper);
-            if (Objects.nonNull(approvalChainButton)) {
-                actionName = approvalChainButton.getLogName();
-                actionType = approvalChainButton.getButtonTypeId();
-            }
-        }
 
-        // 2. 构建日志实体
-        LocalDateTime time = LocalDateTime.now();
-        ApprovalActionLog logEntity = new ApprovalActionLog();
-        logEntity.setActionType(actionType);
-        logEntity.setActionIcon(approvalProcessDTO.getButton());
-        logEntity.setActionName(actionName);
-        logEntity.setSerialNumber(approvalProcessDTO.getSerialNumber());
-        logEntity.setBusinessId(approvalProcessDTO.getRecordId());
-        logEntity.setModuleId(approvalProcessDTO.getModuleId());
-        logEntity.setStatusGroupId(oldStatusGroupId);
-        logEntity.setStatusId(oldStatusId);
-        logEntity.setDescription(approvalProcessDTO.getReason());
-        logEntity.setRealUserId(approvalProcessDTO.getCurrentUserId());
-        logEntity.setCreatedBy(approvalProcessDTO.getApplicantId());
-        logEntity.setCreatedDate(time);
-        approvalActionLogMapper.insert(logEntity);
+            // 2. 构建日志实体
+            LocalDateTime time = LocalDateTime.now();
+            ApprovalActionLog logEntity = new ApprovalActionLog();
+            logEntity.setActionType(actionType);
+            logEntity.setActionIcon(approvalProcessDTO.getButton());
+            logEntity.setActionName(actionName);
+            logEntity.setSerialNumber(approvalProcessDTO.getSerialNumber());
+            logEntity.setBusinessId(approvalProcessDTO.getRecordId());
+            logEntity.setModuleId(approvalProcessDTO.getModuleId());
+            logEntity.setStatusGroupId(oldStatusGroupId);
+            logEntity.setStatusId(oldStatusId);
+            logEntity.setDescription(approvalProcessDTO.getReason());
+            logEntity.setRealUserId(approvalProcessDTO.getCurrentUserId());
+            logEntity.setCreatedBy(approvalProcessDTO.getApplicantId());
+            logEntity.setCreatedDate(time);
+
+            // 3. 插入日志记录
+            int insertResult = approvalActionLogMapper.insert(logEntity);
+
+            // 4. 确保插入成功，否则抛出异常触发事务回滚
+            if (insertResult <= 0) {
+                throw new BusinessException("审批操作日志保存失败，事务回滚");
+            }
+
+            log.info(
+                    "审批操作日志保存成功: serialNumber={}, businessId={}, action={}",
+                    approvalProcessDTO.getSerialNumber(),
+                    approvalProcessDTO.getRecordId(),
+                    approvalProcessDTO.getButton());
+
+        } catch (BusinessException e) {
+            // 业务异常直接抛出
+            throw e;
+        } catch (Exception e) {
+            // 其他异常包装后抛出，确保事务回滚
+            log.error("审批操作日志保存异常，触发事务回滚", e);
+            throw new BusinessException("审批操作日志保存失败：" + e.getMessage(), e);
+        }
     }
 
     // =========================辅助方法===============================================

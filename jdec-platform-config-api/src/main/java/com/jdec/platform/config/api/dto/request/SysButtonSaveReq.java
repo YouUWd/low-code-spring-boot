@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api.dto.request;
 
+import com.jdec.platform.config.api.enums.EnableEnum;
 import com.jdec.platform.config.api.enums.ShowStatusEnum;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import com.jdec.platform.shared.audit.enums.FieldType;
@@ -14,6 +15,7 @@ public class SysButtonSaveReq {
     @Schema(description = "主键ID，为空时新增")
     private Long id;
 
+    @AuditField(name = "按钮名称", uniqueIdentifier = true)
     @Schema(description = "按钮名称")
     private String title;
 
@@ -54,6 +56,7 @@ public class SysButtonSaveReq {
     @AuditField(name = "是否展示", type = FieldType.ENUM, enumClass = ShowStatusEnum.class)
     private Integer showed;
 
+    @AuditField(name = "是否启用", type = FieldType.ENUM, enumClass = EnableEnum.class)
     @Schema(description = "是否启用(1:启用。0：不启用)")
     private Integer enabled;
 }

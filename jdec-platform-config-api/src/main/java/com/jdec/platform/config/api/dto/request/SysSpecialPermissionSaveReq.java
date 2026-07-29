@@ -22,7 +22,7 @@ public class SysSpecialPermissionSaveReq {
 
     @Schema(description = "权限名称", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "权限名称不能为空")
-    @AuditField(name = "权限名称")
+    @AuditField(name = "权限名称", uniqueIdentifier = true)
     private String name;
 
     @Schema(description = "权限描述")

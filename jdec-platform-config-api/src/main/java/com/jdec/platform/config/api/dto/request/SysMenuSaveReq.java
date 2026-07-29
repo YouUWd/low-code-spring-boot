@@ -1,6 +1,8 @@
 package com.jdec.platform.config.api.dto.request;
 
 import com.jdec.platform.config.api.enums.EnableEnum;
+import com.jdec.platform.config.api.enums.MenuCategoryEnum;
+import com.jdec.platform.config.api.enums.ShowStatusEnum;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -24,7 +26,7 @@ public class SysMenuSaveReq {
     @Schema(description = "父级id，顶层为0")
     private Long pid;
 
-    @AuditField(name = "菜单名称")
+    @AuditField(name = "菜单名称", uniqueIdentifier = true)
     @Schema(description = "菜单名称")
     private String title;
 
@@ -32,11 +34,11 @@ public class SysMenuSaveReq {
     @Schema(description = "参数")
     private String param;
 
-    @AuditField(name = "菜单类型")
+    @AuditField(name = "菜单类型", type = FieldType.DICT, dictCategoryAlias = "menu_type")
     @Schema(description = "菜单类型.1:导航 2:页面 3:标签 4:表")
     private Integer menuType;
 
-    @AuditField(name = "菜单分类")
+    @AuditField(name = "菜单分类", type = FieldType.ENUM, enumClass = MenuCategoryEnum.class)
     @Schema(description = "菜单分类.1:业务菜单 2:系统菜单")
     private Integer category;
 
@@ -61,7 +63,7 @@ public class SysMenuSaveReq {
     @Schema(description = "排序")
     private Integer sortOrder;
 
-    @AuditField(name = "是否显示")
+    @AuditField(name = "是否显示", type = FieldType.ENUM, enumClass = ShowStatusEnum.class)
     @Schema(description = "0隐藏，1显示")
     private Integer showed;
 

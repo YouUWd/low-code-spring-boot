@@ -34,4 +34,7 @@ public class AuditResult {
 
     /** 操作时间 */
     private LocalDateTime operateTime;
+
+    /** 记录名称（通过@AuditField标注的唯一标识字段值） */
+    private String recordName;
 }
