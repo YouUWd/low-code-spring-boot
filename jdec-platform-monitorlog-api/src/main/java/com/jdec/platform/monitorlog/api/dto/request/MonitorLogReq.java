@@ -58,7 +58,7 @@ public class MonitorLogReq {
     private String logContent;
 
     @Schema(description = "日志备注")
-    private String logRemark;
+    private String remark;
 
     @Schema(description = "日志时间")
     private DateTime logDate = new DateTime();

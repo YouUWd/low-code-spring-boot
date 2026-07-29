@@ -71,8 +71,8 @@ public class JdecMonitorLogController {
         if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
             return ApiResponse.error("logContent不能为空");
         }
-        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
-            return ApiResponse.error("logRemark不能为空");
+        if (request.getRemark() == null || request.getRemark().isEmpty()) {
+            return ApiResponse.error("remark不能为空");
         }
         jdecMonitorLogService.recordControlLog(request);
         return ApiResponse.success();

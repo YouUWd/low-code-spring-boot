@@ -150,7 +150,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogType(LOG_TYPE_SYSTEM);
         log.setUserInfo(userInfo);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark("登录日志");
+        log.setRemark("登录日志");
         jdecMonitorSystemLogMapper.insert(log);
     }
 
@@ -177,7 +177,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogType(LOG_TYPE_SYSTEM);
         log.setUserInfo(userInfo);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark("登出日志");
+        log.setRemark("登出日志");
         jdecMonitorSystemLogMapper.insert(log);
     }
 
@@ -227,7 +227,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogType(LOG_TYPE_SYSTEM);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
         log.setLogContent(formatNavLogContent(req.getLogContent()));
-        log.setLogRemark("导航日志");
+        log.setRemark("导航日志");
         jdecMonitorSystemLogMapper.insert(log);
     }
 
@@ -266,7 +266,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         .replace("{mockRoleName}", roleConfigDetail.getRoleName());
         log.setLogContent("切换身份：" + mockLogContent);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark("切换身份日志");
+        log.setRemark("切换身份日志");
         jdecMonitorSystemLogMapper.insert(log);
     }
 
@@ -312,7 +312,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogType(LOG_TYPE_SYSTEM);
         log.setLogContent("切换角色：" + roleConfigDetail.getRoleName());
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark("切换角色日志");
+        log.setRemark("切换角色日志");
         jdecMonitorSystemLogMapper.insert(log);
     }
 
@@ -341,7 +341,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogType(LOG_TYPE_SYSTEM);
         log.setLogContent("重置模拟用户：" + roleConfigDetail.getRoleName());
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark("重置模拟用户日志");
+        log.setRemark("重置模拟用户日志");
         jdecMonitorSystemLogMapper.insert(log);
     }
 
@@ -373,16 +373,16 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogType(LOG_TYPE_SYSTEM);
         log.setLogContent("切换主体：" + subjectName);
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark("切换主体日志");
+        log.setRemark("切换主体日志");
         jdecMonitorSystemLogMapper.insert(log);
     }
 
     // 记录消息日志
     @Override
     public void recordMessageLog(MonitorLogReq req) {
-        String logRemarkResult = "";
+        String remarkResult = "";
         try {
-            logRemarkResult = JsonChangeParseUtil.parseAndFormat(req.getLogRemark());
+            remarkResult = JsonChangeParseUtil.parseAndFormat(req.getRemark());
         } catch (IllegalArgumentException e) {
             System.err.println("校验失败：" + e.getMessage());
         }
@@ -424,7 +424,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
         log.setMockUserName(mockUserDetail.getUserName());
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark(formatMessageLogRemark(logRemarkResult));
+        log.setRemark(formatMessageLogRemark(remarkResult));
         if (req.getId() == null || req.getId() == 0L) {
             jdecMonitorSystemLogMapper.insert(log);
         } else {
@@ -436,13 +436,13 @@ public class JdecMonitorLogService implements MonitorLogApi {
     @Override
     @Transactional
     public void recordControlLog(MonitorLogReq req) {
-        String logRemarkResult = "";
+        String remarkResult = "";
         // 校验操作日志内容
         if (LOG_TYPE_OPERATION.equals(req.getLogType())) {
             validateOperationLogContent(req.getLogContent());
         }
         try {
-            logRemarkResult = JsonChangeParseUtil.parseAndFormat(req.getLogRemark());
+            remarkResult = JsonChangeParseUtil.parseAndFormat(req.getRemark());
         } catch (IllegalArgumentException e) {
             System.err.println("校验失败：" + e.getMessage());
         }
@@ -485,7 +485,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         log.setLogContent(formatOperationLogContent(req.getLogContent()));
         log.setMockUserName(mockUserDetail.getUserName());
         log.setLoginRoleName(roleConfigDetail.getRoleName());
-        log.setLogRemark(logRemarkResult);
+        log.setRemark(remarkResult);
         if (req.getId() == null || req.getId() == 0L) {
             jdecMonitorSystemLogMapper.insert(log);
         } else {
@@ -756,12 +756,12 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     // 格式化消息日志备注
-    private String formatMessageLogRemark(String logRemark) {
+    private String formatMessageLogRemark(String remark) {
         JSONObject content;
         try {
-            content = JSONUtil.parseObj(logRemark);
+            content = JSONUtil.parseObj(remark);
         } catch (Exception e) {
-            return logRemark;
+            return remark;
         }
         /*
         {

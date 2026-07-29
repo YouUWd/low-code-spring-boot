@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -43,6 +44,9 @@ public class DataAuditService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
     private final AuditLogFormatter auditLogFormatter;
+
+    @Value("${audit.monitor-log-url}")
+    private String monitorLogUrl;
 
     /**
      * 记录数据变更审计（带差异对比）
@@ -406,8 +410,8 @@ public class DataAuditService {
                         .controlName(controlName)
                         .build();
 
-        // 构建logRemark（新格式：ModuleAction列表的JSON）
-        String logRemark = "";
+        // 构建remark（新格式：ModuleAction列表的JSON）
+        String remark = "";
         if (diffs != null && !diffs.isEmpty()) {
             List<ModuleAction> moduleActions = null;
             String moduleName = subModule != null && !subModule.isEmpty() ? subModule : "配置";
@@ -423,7 +427,7 @@ public class DataAuditService {
             }
 
             if (moduleActions != null && !moduleActions.isEmpty()) {
-                logRemark = JSONUtil.toJsonStr(moduleActions);
+                remark = JSONUtil.toJsonStr(moduleActions);
             }
         }
 
@@ -446,17 +450,25 @@ public class DataAuditService {
                         .browser(RequestContextUtils.getBrowser())
                         .platForm(RequestContextUtils.getPlatform())
                         .logContent(JSONUtil.toJsonStr(logContent))
-                        .logRemark(logRemark)
+                        .logRemark(remark)
                         .logDate(DateUtil.now())
                         .build();
 
-        // 在事务提交后发送
+        // 在事务提交前发送（失败会触发事务回滚）
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
-                        public void afterCommit() {
+                        public void beforeCommit(boolean readOnly) {
+                            // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
                             doSendAuditLog(request);
+                        }
+
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_ROLLED_BACK) {
+                                log.warn("事务已回滚，审计日志将不被记录");
+                            }
                         }
                     });
         } else {
@@ -464,34 +476,57 @@ public class DataAuditService {
         }
     }
 
-    /** 实际发送HTTP请求 */
+    /** 实际发送HTTP请求 - 失败时抛出异常触发事务回滚 */
     private void doSendAuditLog(AuditLogRequest request) {
-        try {
-            log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
-            String url = "http://119.36.78.123:5009/api/monitorlog/addControlLog";
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+        log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
 
-            String token = TokenContext.getToken();
-            if (token != null) {
-                headers.set("Authorization", "Bearer " + token);
-            }
-            String projectNo = AppContext.getProjectNo();
-            if (projectNo != null) {
-                headers.set("X-Project-No", projectNo);
-            }
-            Long subjectId = AppContext.getSubjectId();
-            if (subjectId != null) {
-                headers.set("X-Subject-Id", String.valueOf(subjectId));
-            }
+        String url = monitorLogUrl;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-            ResponseEntity<LogResponse> entity =
-                    restTemplate.postForEntity(url, httpRequest, LogResponse.class);
-            System.out.println(entity.getBody());
-        } catch (Exception e) {
-            log.error("发送审计日志失败: {}", request, e);
+        String token = TokenContext.getToken();
+        if (token != null) {
+            headers.set("Authorization", "Bearer " + token);
         }
+        String projectNo = AppContext.getProjectNo();
+        if (projectNo != null) {
+            headers.set("X-Project-No", projectNo);
+        }
+        Long subjectId = AppContext.getSubjectId();
+        if (subjectId != null) {
+            headers.set("X-Subject-Id", String.valueOf(subjectId));
+        }
+
+        HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
+
+        ResponseEntity<LogResponse> response =
+                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
+
+        // 检查HTTP状态码
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            String errorMsg =
+                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s", response.getStatusCode(), url);
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg);
+        }
+
+        // 检查业务状态码
+        LogResponse body = response.getBody();
+        if (body == null) {
+            String errorMsg = "审计日志发送失败，响应体为空";
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg);
+        }
+        if (body.status() != 200) {
+            String errorMsg =
+                    String.format(
+                            "审计日志发送失败，业务状态码: %d，消息: %s",
+                            body.status(), body.msg() != null ? body.msg() : "无");
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg);
+        }
+
+        log.info("审计日志发送成功: url={}, status={}", url, body.status());
     }
 
     record LogResponse(int status, String msg, Object data) {}
