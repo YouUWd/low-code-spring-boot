@@ -853,7 +853,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
 
         // 写入日志
-        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
@@ -1004,7 +1003,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
         // 写入日志
-        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
