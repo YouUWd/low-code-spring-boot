@@ -194,7 +194,7 @@ biz:
 
 config:
   center:
-    base: http://119.36.78.123:5009/api/config
+    base: http://119.36.78.123:5009
 
 
 app:

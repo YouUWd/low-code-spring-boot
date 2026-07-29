@@ -192,7 +192,7 @@ biz:
 
 config:
   center:
-    base: http://119.36.78.123:5009/api/config
+    base: http://119.36.78.123:5009
 
 
 app:
@@ -202,6 +202,3 @@ app:
     url: http://192.168.2.41:5101/home
   project:
     number: student_manage
-
-monitor-center:
-  base-url: http://localhost:8080
