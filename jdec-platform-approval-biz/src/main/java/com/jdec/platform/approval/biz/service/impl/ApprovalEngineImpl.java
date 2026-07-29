@@ -147,8 +147,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
 
         // 操作按钮
-        List<Map<String, Object>> operationButton = getOperationButton(req);
-        int canEdit = operationButton.isEmpty() ? 0 : 1;
+        int canEdit = 0;
+        List<Map<String, Object>> operationButton = getOperationButton(req, canEdit);
         result.put("canEdit", canEdit);
         result.put("btnList", operationButton);
         return result;
@@ -1330,7 +1330,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     // 查询审批步骤绑定的操作按钮------------------------------------------------------------------
-    private List<Map<String, Object>> getOperationButton(ApprovalProcessReq approvalProcessReq) {
+    private List<Map<String, Object>> getOperationButton(
+            ApprovalProcessReq approvalProcessReq, int canEdit) {
         Long userId = approvalProcessReq.getApplicantId();
         Long roleId = approvalProcessReq.getRoleId();
         // 查询单据当前信息
@@ -1429,6 +1430,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                         approvalChainBusiness.getSerialNumber(),
                                         approvalChainBusiness.getSerialNo(),
                                         approvalChainBusiness.getCurrentStep()));
+                    }
+                    if (!operations.isEmpty()) {
+                        canEdit = 1;
                     }
                 }
             }
