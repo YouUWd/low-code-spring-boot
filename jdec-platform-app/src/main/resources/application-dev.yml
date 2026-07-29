@@ -203,6 +203,9 @@ app:
   project:
     number: student_manage
 
+monitor-center:
+  base-url: http://localhost:8080
+
 # ===== 审计日志配置 =====
 audit:
   monitor-log-url: http://119.36.78.123:5009/api/monitorlog/addOrderRunLog
