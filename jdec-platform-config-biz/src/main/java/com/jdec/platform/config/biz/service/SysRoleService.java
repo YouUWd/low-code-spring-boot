@@ -839,7 +839,9 @@ public class SysRoleService implements SysRoleApi {
         }
 
         // === 审计日志：记录删除角色 ===
-        auditLogHelper.logWithoutCompare("角色管理", "sys_role", "删除了" + sysRole.getRoleName() + "角色");
+        // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+        // auditLogHelper.logWithoutCompare("角色管理", "sys_role", "删除了" + sysRole.getRoleName() +
+        // "角色");
 
         // 1. 删除前收集受影响的用户/主体 ID（删除后数据已不存在，无法再查）
         List<SysRoleUser> roleUsers =
@@ -1922,7 +1924,8 @@ public class SysRoleService implements SysRoleApi {
 
         if (!isUpdate) {
             // 新增角色
-            auditLogHelper.logWithoutCompare("角色管理", "sys_role", "新增了" + newRoleName + "角色");
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare("角色管理", "sys_role", "新增了" + newRoleName + "角色");
             return;
         }
 
@@ -1934,20 +1937,21 @@ public class SysRoleService implements SysRoleApi {
                             .fieldName("角色名称")
                             .fieldCode("roleName")
                             .oldValue(oldRoleName)
-                            .newValue(newRoleName)
+                            .newer(newRoleName)
                             .fieldType(com.jdec.platform.shared.audit.enums.FieldType.SIMPLE)
                             .build());
-            auditLogHelper.logWithCustomDiff(
-                    "角色管理",
-                    "sys_role",
-                    "修改了"
-                            + oldRoleName
-                            + "角色的配置（角色名称从\""
-                            + oldRoleName
-                            + "\"改为\""
-                            + newRoleName
-                            + "\"）",
-                    diffs);
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithCustomDiff(
+            //         "角色管理",
+            //         "sys_role",
+            //         "修改了"
+            //                 + oldRoleName
+            //                 + "角色的配置（角色名称从\""
+            //                 + oldRoleName
+            //                 + "\"改为\""
+            //                 + newRoleName
+            //                 + "\"）",
+            //         diffs);
         }
 
         // === 2. 用户变更 ===
@@ -1967,8 +1971,10 @@ public class SysRoleService implements SysRoleApi {
                                                 : String.valueOf(userId);
                                     })
                             .toList();
-            auditLogHelper.logWithoutCompare(
-                    "角色管理", "sys_role", newRoleName + "角色新增了" + String.join(",", userNames) + "用户");
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare(
+            //         "角色管理", "sys_role", newRoleName + "角色新增了" + String.join(",", userNames) +
+            // "用户");
         }
 
         if (!removedUserIds.isEmpty()) {
@@ -1982,8 +1988,10 @@ public class SysRoleService implements SysRoleApi {
                                                 : String.valueOf(userId);
                                     })
                             .toList();
-            auditLogHelper.logWithoutCompare(
-                    "角色管理", "sys_role", newRoleName + "角色删除了" + String.join(",", userNames) + "用户");
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare(
+            //         "角色管理", "sys_role", newRoleName + "角色删除了" + String.join(",", userNames) +
+            // "用户");
         }
 
         // === 3. 用户有效期变更 ===
@@ -2008,7 +2016,7 @@ public class SysRoleService implements SysRoleApi {
                                     .fieldName(userName + "-有效期类型")
                                     .fieldCode("user_" + userId + "_effectiveType")
                                     .oldValue(formatEffectiveType(oldRoleUser.getEffectiveType()))
-                                    .newValue(formatEffectiveType(newRoleUser.getEffectiveType()))
+                                    .newer(formatEffectiveType(newRoleUser.getEffectiveType()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2024,7 +2032,7 @@ public class SysRoleService implements SysRoleApi {
                                     .fieldName(userName + "-开始日期")
                                     .fieldCode("user_" + userId + "_effectiveStartDate")
                                     .oldValue(formatDateTime(oldRoleUser.getEffectiveStartDate()))
-                                    .newValue(formatDateTime(newRoleUser.getEffectiveStartDate()))
+                                    .newer(formatDateTime(newRoleUser.getEffectiveStartDate()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2040,7 +2048,7 @@ public class SysRoleService implements SysRoleApi {
                                     .fieldName(userName + "-结束日期")
                                     .fieldCode("user_" + userId + "_effectiveEndDate")
                                     .oldValue(formatDateTime(oldRoleUser.getEffectiveEndDate()))
-                                    .newValue(formatDateTime(newRoleUser.getEffectiveEndDate()))
+                                    .newer(formatDateTime(newRoleUser.getEffectiveEndDate()))
                                     .fieldType(FieldType.SIMPLE)
                                     .build());
                 }
@@ -2048,11 +2056,12 @@ public class SysRoleService implements SysRoleApi {
         }
 
         if (!timeChangedUsers.isEmpty()) {
-            auditLogHelper.logWithCustomDiff(
-                    "角色管理",
-                    "sys_role",
-                    "修改了" + newRoleName + "角色的" + String.join(",", timeChangedUsers) + "用户的有效期",
-                    userTimeDiffs);
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithCustomDiff(
+            //         "角色管理",
+            //         "sys_role",
+            //         "修改了" + newRoleName + "角色的" + String.join(",", timeChangedUsers) + "用户的有效期",
+            //         userTimeDiffs);
         }
 
         // === 4. 主体变更 ===
@@ -2072,10 +2081,11 @@ public class SysRoleService implements SysRoleApi {
                                                 : String.valueOf(subjectId);
                                     })
                             .toList();
-            auditLogHelper.logWithoutCompare(
-                    "角色管理",
-                    "sys_role",
-                    newRoleName + "角色新增了" + String.join(",", subjectNames) + "主体");
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare(
+            //         "角色管理",
+            //         "sys_role",
+            //         newRoleName + "角色新增了" + String.join(",", subjectNames) + "主体");
         }
 
         if (!removedSubjectIds.isEmpty()) {
@@ -2089,10 +2099,11 @@ public class SysRoleService implements SysRoleApi {
                                                 : String.valueOf(subjectId);
                                     })
                             .toList();
-            auditLogHelper.logWithoutCompare(
-                    "角色管理",
-                    "sys_role",
-                    newRoleName + "角色删除了" + String.join(",", subjectNames) + "主体");
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithoutCompare(
+            //         "角色管理",
+            //         "sys_role",
+            //         newRoleName + "角色删除了" + String.join(",", subjectNames) + "主体");
         }
 
         // === 5. 主体有效期变更 ===
@@ -2132,7 +2143,7 @@ public class SysRoleService implements SysRoleApi {
                                         .oldValue(
                                                 formatEffectiveType(
                                                         oldRoleSubject.getEffectiveType()))
-                                        .newValue(
+                                        .newer(
                                                 formatEffectiveType(
                                                         newRoleSubject.getEffectiveType()))
                                         .fieldType(FieldType.SIMPLE)
@@ -2148,7 +2159,7 @@ public class SysRoleService implements SysRoleApi {
                                         .oldValue(
                                                 formatDateTime(
                                                         oldRoleSubject.getEffectiveStartDate()))
-                                        .newValue(
+                                        .newer(
                                                 formatDateTime(
                                                         newRoleSubject.getEffectiveStartDate()))
                                         .fieldType(FieldType.SIMPLE)
@@ -2164,9 +2175,7 @@ public class SysRoleService implements SysRoleApi {
                                         .oldValue(
                                                 formatDateTime(
                                                         oldRoleSubject.getEffectiveEndDate()))
-                                        .newValue(
-                                                formatDateTime(
-                                                        newRoleSubject.getEffectiveEndDate()))
+                                        .newer(formatDateTime(newRoleSubject.getEffectiveEndDate()))
                                         .fieldType(FieldType.SIMPLE)
                                         .build());
                     }
@@ -2175,11 +2184,13 @@ public class SysRoleService implements SysRoleApi {
         }
 
         if (!timeChangedSubjects.isEmpty()) {
-            auditLogHelper.logWithCustomDiff(
-                    "角色管理",
-                    "sys_role",
-                    "修改了" + newRoleName + "角色的" + String.join(",", timeChangedSubjects) + "主体的有效期",
-                    subjectTimeDiffs);
+            // TODO: 暂时移除角色配置相关的审计日志，等后续重新设计
+            // auditLogHelper.logWithCustomDiff(
+            //         "角色管理",
+            //         "sys_role",
+            //         "修改了" + newRoleName + "角色的" + String.join(",", timeChangedSubjects) +
+            // "主体的有效期",
+            //         subjectTimeDiffs);
         }
     }
 

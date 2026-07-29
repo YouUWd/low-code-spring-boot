@@ -26,6 +26,22 @@ public @interface DataAudit {
     /** 数据ID字段名（SpEL表达式，如：#id, #request.id）。如果为空则不进行差异对比，只记录操作 */
     String dataIdField() default "";
 
+    /**
+     * 删除操作时显示的字段名（如：title, name）
+     *
+     * <p>用于在删除时从快照中提取该字段的值，显示在操作日志的 columns 中
+     *
+     * <p>例如：deleteDisplayField = "title"，则在删除时会从快照中提取 title 字段，显示为"删除了XX状态"
+     */
+    String deleteDisplayField() default "";
+
+    /**
+     * 实体类（如：SysStatus.class）
+     *
+     * <p>用于解析字段元数据（中文名、类型等）。DELETE操作必须指定此属性以解析 deleteDisplayField
+     */
+    Class<?> entityClass() default void.class;
+
     /** 是否启用 */
     boolean enabled() default true;
 

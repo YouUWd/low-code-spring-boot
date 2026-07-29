@@ -24,7 +24,7 @@ public class SysStatusSaveReq {
     @Schema(description = "父id，顶层为0")
     private Long pid;
 
-    @AuditField(name = "状态名称")
+    @AuditField(name = "状态名称", uniqueIdentifier = true)
     @Schema(description = "状态名称")
     private String title;
 

@@ -47,4 +47,7 @@ public class AuditLogRequest {
 
     /** 日志备注（字段差异JSON字符串） */
     private String logRemark;
+
+    /** 日志时间（格式：yyyy-MM-dd HH:mm:ss） */
+    private String logDate;
 }

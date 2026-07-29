@@ -32,6 +32,9 @@ public @interface AuditField {
     /** 字典分类别名（type=DICT时必填，对应sys_config_category.category_alias） */
     String dictCategoryAlias() default "";
 
+    /** 是否为唯一标识字段（用于审计日志中的记录名称） */
+    boolean uniqueIdentifier() default false;
+
     /** 是否忽略 */
     boolean ignore() default false;
 

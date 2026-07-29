@@ -1,23 +1,33 @@
 package com.jdec.platform.config.biz.audit.service;
 
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.biz.audit.dto.AuditLogContent;
 import com.jdec.platform.config.biz.audit.dto.AuditLogRequest;
 import com.jdec.platform.config.biz.audit.dto.FieldDiff;
+import com.jdec.platform.config.biz.audit.dto.ModuleAction;
+import com.jdec.platform.config.biz.audit.util.AuditLogFormatter;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.client.RestTemplate;
 
 /**
  * 数据审计编程式API服务
@@ -32,16 +42,22 @@ public class DataAuditService {
     private final SysDataSnapshotService snapshotService;
     private final JsonDiffUtil jsonDiffUtil;
     private final ObjectMapper objectMapper;
+    private final RestTemplate restTemplate;
+    private final AuditLogFormatter auditLogFormatter;
+
+    @Value("${audit.monitor-log-url}")
+    private String monitorLogUrl;
 
     /**
      * 记录数据变更审计（带差异对比）
      *
      * @param module 业务模块
-     * @param subModule 业务子模块
+     * @param subModule 业务子模块（模块名称，如：角色配置、菜单配置）
      * @param operation 操作类型（如：修改、删除）
      * @param tableName 表名
      * @param dataId 数据ID
      * @param newData 新数据对象
+     * @param recordName 记录名称（通过@AuditField标注的唯一标识字段值）
      */
     public void auditWithCompare(
             String module,
@@ -49,8 +65,14 @@ public class DataAuditService {
             String operation,
             String tableName,
             Long dataId,
-            Object newData) {
+            Object newData,
+            String recordName) {
         try {
+            // 如果 recordName 为空，尝试从对象中自动提取
+            if (recordName == null || recordName.isEmpty()) {
+                recordName = jsonDiffUtil.extractUniqueIdentifier(newData);
+            }
+
             // 查询旧快照
             SysDataSnapshot oldSnapshot = snapshotService.getLatestSnapshot(tableName, dataId);
 
@@ -73,7 +95,7 @@ public class DataAuditService {
             }
 
             // 发送审计日志
-            sendAuditLog(module, subModule, operation, tableName, dataId, diffs);
+            sendAuditLog(module, subModule, operation, tableName, dataId, diffs, recordName);
 
             // 更新快照
             updateSnapshot(tableName, dataId, newJson, oldSnapshot);
@@ -84,14 +106,31 @@ public class DataAuditService {
     }
 
     /**
+     * 记录数据变更审计（带差异对比）- 兼容旧版本，recordName为空
+     *
+     * @deprecated 使用带recordName参数的版本
+     */
+    @Deprecated
+    public void auditWithCompare(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            Long dataId,
+            Object newData) {
+        auditWithCompare(module, subModule, operation, tableName, dataId, newData, "");
+    }
+
+    /**
      * 记录数据新增审计（生成diff列表，oldValue为空，newValue为新增的值）
      *
      * @param module 业务模块
-     * @param subModule 业务子模块
+     * @param subModule 业务子模块（模块名称，如：角色配置、菜单配置）
      * @param operation 操作类型（如：新增）
      * @param tableName 表名
      * @param dataId 数据ID（可选，新增时可能还没有生成ID）
      * @param newData 新数据对象
+     * @param recordName 记录名称（通过@AuditField标注的唯一标识字段值）
      */
     public void auditCreate(
             String module,
@@ -99,8 +138,14 @@ public class DataAuditService {
             String operation,
             String tableName,
             Long dataId,
-            Object newData) {
+            Object newData,
+            String recordName) {
         try {
+            // 如果 recordName 为空，尝试从对象中自动提取
+            if (recordName == null || recordName.isEmpty()) {
+                recordName = jsonDiffUtil.extractUniqueIdentifier(newData);
+            }
+
             // 转换为JSON
             String newJson = objectMapper.writeValueAsString(newData);
 
@@ -108,7 +153,7 @@ public class DataAuditService {
             List<FieldDiff> diffs = jsonDiffUtil.buildCreateDiffs(newJson, newData.getClass());
 
             // 发送审计日志
-            sendAuditLog(module, subModule, operation, tableName, dataId, diffs);
+            sendAuditLog(module, subModule, operation, tableName, dataId, diffs, recordName);
 
             // 如果有dataId，创建初始快照
             if (dataId != null) {
@@ -118,6 +163,22 @@ public class DataAuditService {
         } catch (Exception e) {
             log.error("数据审计失败（新增）: module={}, table={}, dataId={}", module, tableName, dataId, e);
         }
+    }
+
+    /**
+     * 记录数据新增审计 - 兼容旧版本，recordName为空
+     *
+     * @deprecated 使用带recordName参数的版本
+     */
+    @Deprecated
+    public void auditCreate(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            Long dataId,
+            Object newData) {
+        auditCreate(module, subModule, operation, tableName, dataId, newData, "");
     }
 
     /**
@@ -132,7 +193,8 @@ public class DataAuditService {
             String module, String subModule, String operation, String tableName) {
         try {
             // 发送审计日志（无差异）
-            sendAuditLog(module, subModule, operation, tableName, null, Collections.emptyList());
+            sendAuditLog(
+                    module, subModule, operation, tableName, null, Collections.emptyList(), "");
 
         } catch (Exception e) {
             log.error("数据审计失败（无对比）: module={}, table={}", module, tableName, e);
@@ -176,7 +238,7 @@ public class DataAuditService {
             }
 
             // 发送审计日志
-            sendAuditLog(module, subModule, operation, tableName, dataId, diffs);
+            sendAuditLog(module, subModule, operation, tableName, dataId, diffs, "");
 
             // 更新快照
             updateSnapshot(tableName, dataId, jsonData, oldSnapshot);
@@ -190,17 +252,32 @@ public class DataAuditService {
      * 删除数据审计
      *
      * @param module 业务模块
-     * @param subModule 业务子模块
+     * @param subModule 业务子模块（模块名称，如：角色配置、菜单配置）
      * @param tableName 表名
      * @param dataId 数据ID
+     * @param recordName 记录名称（通过@AuditField标注的唯一标识字段值）
      */
-    public void auditDelete(String module, String subModule, String tableName, Long dataId) {
+    public void auditDelete(
+            String module, String subModule, String tableName, Long dataId, String recordName) {
         try {
             // 查询旧快照
             SysDataSnapshot oldSnapshot = snapshotService.getLatestSnapshot(tableName, dataId);
             if (oldSnapshot == null) {
                 log.warn("DELETE审计失败: 快照不存在, table={}, dataId={}", tableName, dataId);
                 return;
+            }
+
+            // 构建删除操作的 FieldDiff 列表（从快照中提取字段，old有值，new为空）
+            List<FieldDiff> diffs = Collections.emptyList();
+            String oldJson = oldSnapshot.getJsonData();
+            if (oldJson != null && !oldJson.isEmpty()) {
+                try {
+                    // 将快照JSON解析为Map，提取所有字段作为删除记录
+                    diffs = jsonDiffUtil.buildDeleteDiffs(oldJson);
+                } catch (Exception e) {
+                    log.warn("解析删除快照JSON失败: table={}, dataId={}", tableName, dataId, e);
+                    diffs = Collections.emptyList();
+                }
             }
 
             // 在事务内立即删除快照记录（与业务删除在同一事务中）
@@ -212,7 +289,7 @@ public class DataAuditService {
                     oldSnapshot.getId());
 
             // 发送审计日志（在事务提交后发送）
-            sendAuditLog(module, subModule, "删除", tableName, dataId, Collections.emptyList());
+            sendAuditLog(module, subModule, "删除", tableName, dataId, diffs, recordName);
 
         } catch (Exception e) {
             log.error("DELETE审计失败: module={}, table={}, dataId={}", module, tableName, dataId, e);
@@ -221,6 +298,16 @@ public class DataAuditService {
                     "DELETE审计失败: module=" + module + ", table=" + tableName + ", dataId=" + dataId,
                     e);
         }
+    }
+
+    /**
+     * 删除数据审计 - 兼容旧版本，recordName为空
+     *
+     * @deprecated 使用带recordName参数的版本
+     */
+    @Deprecated
+    public void auditDelete(String module, String subModule, String tableName, Long dataId) {
+        auditDelete(module, subModule, tableName, dataId, "");
     }
 
     /**
@@ -249,7 +336,8 @@ public class DataAuditService {
 
             // 为每个dataId发送审计日志（在事务提交后发送）
             for (Long dataId : dataIds) {
-                sendAuditLog(module, subModule, "删除", tableName, dataId, Collections.emptyList());
+                sendAuditLog(
+                        module, subModule, "删除", tableName, dataId, Collections.emptyList(), "");
             }
 
         } catch (Exception e) {
@@ -278,7 +366,7 @@ public class DataAuditService {
             List<FieldDiff> diffs) {
         try {
             // 发送审计日志
-            sendAuditLog(module, subModule, operation, tableName, null, diffs);
+            sendAuditLog(module, subModule, operation, tableName, null, diffs, "");
 
         } catch (Exception e) {
             log.error("数据审计失败（自定义diff）: module={}, table={}", module, tableName, e);
@@ -292,9 +380,10 @@ public class DataAuditService {
             String operation,
             String tableName,
             Long dataId,
-            List<FieldDiff> diffs) {
+            List<FieldDiff> diffs,
+            String recordName) {
 
-        // 构建logContent
+        // 构建logContent - 简化为"修改了XX配置"、"新增了XX配置"、"删除了XX配置"
         String controlName;
         if (operation.contains("了")) {
             // 已经是完整描述（如："新增了test角色"），直接使用
@@ -303,7 +392,7 @@ public class DataAuditService {
             // 操作已是完整描述（如："取消：超级管理员->业务菜单权限->学生详情"），直接使用
             controlName = operation;
         } else {
-            // 只是动词（如："修改"、"删除"），需要拼接
+            // 只是动词（如："修改"、"删除"、"新增"），需要拼接
             controlName =
                     operation
                             + "了"
@@ -321,10 +410,25 @@ public class DataAuditService {
                         .controlName(controlName)
                         .build();
 
-        // 构建logRemark（字段差异JSON）
-        String logRemark = "";
+        // 构建remark（新格式：ModuleAction列表的JSON）
+        String remark = "";
         if (diffs != null && !diffs.isEmpty()) {
-            logRemark = JSONUtil.toJsonStr(diffs);
+            List<ModuleAction> moduleActions = null;
+            String moduleName = subModule != null && !subModule.isEmpty() ? subModule : "配置";
+
+            // 根据操作类型构建不同的ModuleAction
+            if (operation.equals("新增") || operation.contains("新增")) {
+                moduleActions = auditLogFormatter.buildCreateAction(moduleName, recordName, diffs);
+            } else if (operation.equals("删除") || operation.contains("删除")) {
+                moduleActions = auditLogFormatter.buildDeleteAction(moduleName, recordName, diffs);
+            } else {
+                // 默认为修改操作
+                moduleActions = auditLogFormatter.buildUpdateAction(moduleName, recordName, diffs);
+            }
+
+            if (moduleActions != null && !moduleActions.isEmpty()) {
+                remark = JSONUtil.toJsonStr(moduleActions);
+            }
         }
 
         // 判断是否模拟登录
@@ -346,16 +450,25 @@ public class DataAuditService {
                         .browser(RequestContextUtils.getBrowser())
                         .platForm(RequestContextUtils.getPlatform())
                         .logContent(JSONUtil.toJsonStr(logContent))
-                        .logRemark(logRemark)
+                        .logRemark(remark)
+                        .logDate(DateUtil.now())
                         .build();
 
-        // 在事务提交后发送
+        // 在事务提交前发送（失败会触发事务回滚）
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
-                        public void afterCommit() {
+                        public void beforeCommit(boolean readOnly) {
+                            // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
                             doSendAuditLog(request);
+                        }
+
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_ROLLED_BACK) {
+                                log.warn("事务已回滚，审计日志将不被记录");
+                            }
                         }
                     });
         } else {
@@ -363,23 +476,60 @@ public class DataAuditService {
         }
     }
 
-    /** 实际发送HTTP请求 */
+    /** 实际发送HTTP请求 - 失败时抛出异常触发事务回滚 */
     private void doSendAuditLog(AuditLogRequest request) {
-        try {
-            log.info("TODO: 发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
+        log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
 
-            // TODO: 实现实际的HTTP调用
-            // String auditServiceUrl = "http://audit-service/api/audit/log";
-            // HttpHeaders headers = new HttpHeaders();
-            // headers.setContentType(MediaType.APPLICATION_JSON);
-            // HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-            // ResponseEntity<Void> response = restTemplate.postForEntity(auditServiceUrl,
-            // httpRequest, Void.class);
+        String url = monitorLogUrl;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-        } catch (Exception e) {
-            log.error("发送审计日志失败: {}", request, e);
+        String token = TokenContext.getToken();
+        if (token != null) {
+            headers.set("Authorization", "Bearer " + token);
         }
+        String projectNo = AppContext.getProjectNo();
+        if (projectNo != null) {
+            headers.set("X-Project-No", projectNo);
+        }
+        Long subjectId = AppContext.getSubjectId();
+        if (subjectId != null) {
+            headers.set("X-Subject-Id", String.valueOf(subjectId));
+        }
+
+        HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
+
+        ResponseEntity<LogResponse> response =
+                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
+
+        // 检查HTTP状态码
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            String errorMsg =
+                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s", response.getStatusCode(), url);
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg);
+        }
+
+        // 检查业务状态码
+        LogResponse body = response.getBody();
+        if (body == null) {
+            String errorMsg = "审计日志发送失败，响应体为空";
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg);
+        }
+        if (body.status() != 200) {
+            String errorMsg =
+                    String.format(
+                            "审计日志发送失败，业务状态码: %d，消息: %s",
+                            body.status(), body.msg() != null ? body.msg() : "无");
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg);
+        }
+
+        log.info("审计日志发送成功: url={}, status={}", url, body.status());
     }
+
+    record LogResponse(int status, String msg, Object data) {}
 
     /** 更新快照 */
     private void updateSnapshot(

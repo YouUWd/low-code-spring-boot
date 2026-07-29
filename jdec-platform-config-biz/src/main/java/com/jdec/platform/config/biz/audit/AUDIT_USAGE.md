@@ -216,7 +216,7 @@ public class RoleService {
 **生成的审计日志：**
 ```json
 {
-  "logRemark": "[
+  "remark": "[
     {\"fieldName\":\"角色名称\",\"fieldCode\":\"roleName\",\"oldValue\":null,\"newValue\":\"管理员\",\"fieldType\":\"SIMPLE\"},
     {\"fieldName\":\"角色编码\",\"fieldCode\":\"roleCode\",\"oldValue\":null,\"newValue\":\"admin\",\"fieldType\":\"SIMPLE\"},
     {\"fieldName\":\"所属部门\",\"fieldCode\":\"deptId\",\"oldValue\":null,\"newValue\":\"技术部\",\"fieldType\":\"RELATION\"},
@@ -783,7 +783,7 @@ public class DynamicTableService {
   "browser": "",
   "platForm": "",
   "logContent": "{\"module\":\"系统设置\",\"orderId\":\"状态配置\",\"hrefUrl\":\"\",\"operatorResult\":\"修改了配置\"}",
-  "logRemark": "[{\"fieldName\":\"状态名称\",\"fieldCode\":\"statusName\",\"oldValue\":\"启用\",\"newValue\":\"停用\",\"fieldType\":\"SIMPLE\"}]"
+  "remark": "[{\"fieldName\":\"状态名称\",\"fieldCode\":\"statusName\",\"oldValue\":\"启用\",\"newValue\":\"停用\",\"fieldType\":\"SIMPLE\"}]"
 }
 ```
 
@@ -802,7 +802,7 @@ public class DynamicTableService {
 | browser | 浏览器 | TODO（待从请求上下文获取） |
 | platForm | 操作平台 | TODO（待从请求上下文获取） |
 | logContent | 日志内容（JSON字符串） | 见下文 |
-| logRemark | 日志备注（字段差异JSON字符串） | `diffs` 转JSON |
+| remark | 日志备注（字段差异JSON字符串） | `diffs` 转JSON |
 
 #### logContent 结构
 
@@ -820,9 +820,9 @@ public class DynamicTableService {
 - `hrefUrl`：跳转链接（暂时为空，后续填充）
 - `operatorResult`：操作结果（格式：`{operation}了{subModule或"配置"}`）
 
-#### logRemark 结构
+#### remark 结构
 
-`logRemark` 是字段差异列表 `List<FieldDiff>` 转为JSON字符串：
+`remark` 是字段差异列表 `List<FieldDiff>` 转为JSON字符串：
 
 ```json
 [

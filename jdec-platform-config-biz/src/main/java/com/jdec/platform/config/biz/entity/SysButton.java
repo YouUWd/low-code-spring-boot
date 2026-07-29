@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -16,6 +17,7 @@ public class SysButton implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @AuditField(name = "按钮名称", uniqueIdentifier = true)
     @Schema(description = "按钮名称")
     private String title;
 

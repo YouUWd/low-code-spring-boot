@@ -31,7 +31,7 @@ public class MonitorLogPageListResp {
     private String logContent;
 
     @Schema(description = "日志备注")
-    private String logRemark;
+    private String remark;
 
     @Schema(description = "是否mock标记：0，否；1 是")
     private Integer isMock;

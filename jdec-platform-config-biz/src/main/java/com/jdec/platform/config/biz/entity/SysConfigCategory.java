@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -16,24 +17,31 @@ public class SysConfigCategory implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @AuditField(name = "分类名称", uniqueIdentifier = true)
     @Schema(description = "分类名称 如：员工状态")
     private String label;
 
+    @AuditField(name = "分类标识")
     @Schema(description = "分类英文标识 如：employee_status")
     private String categoryAlias;
 
+    @AuditField(name = "分类说明")
     @Schema(description = "分类说明")
     private String description;
 
+    @AuditField(name = "格式")
     @Schema(description = "格式：list / tree / kv")
     private String format;
 
+    @AuditField(name = "来源")
     @Schema(description = "1系统内置 2用户自定义")
     private Integer source;
 
+    @AuditField(name = "排序")
     @Schema(description = "排序")
     private Integer sort;
 
+    @AuditField(name = "状态")
     @Schema(description = "1启用 0禁用")
     private Integer status;
 
