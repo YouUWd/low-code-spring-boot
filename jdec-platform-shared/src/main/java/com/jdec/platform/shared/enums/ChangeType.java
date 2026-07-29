@@ -35,7 +35,7 @@ public enum ChangeType {
     ROLE_DELETE("ROLE_DELETE", "角色删除"),
 
     /** 审批流程更新（审批链新增，提交，通过，驳回，取消） */
-    APPROVAL_UPDATE("APPROVAL_UPDATE", "审批流程更新");
+    APPROVAL_UPDATE("APPROVAL_CHAIN_CHANGE", "审批流程更新");
 
     private final String code;
     private final String description;
