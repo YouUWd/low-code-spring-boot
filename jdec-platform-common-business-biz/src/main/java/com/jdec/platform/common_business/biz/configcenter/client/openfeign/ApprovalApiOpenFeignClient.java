@@ -12,7 +12,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 
 @FeignClient(
         name = "approval-biz",
-        url = "http://127.0.0.1:8080/api/data/approval",
+        url = "${config.center.base}",
+        path = "/api/data/approval",
         configuration = FeignConfig.class)
 public interface ApprovalApiOpenFeignClient {
 

@@ -11,7 +11,8 @@ import org.springframework.web.bind.annotation.*;
 
 @FeignClient(
         name = "config-center",
-        url = "http://127.0.0.1:8080/api/config",
+        url = "${config.center.base}",
+        path = "/api/config",
         configuration = FeignConfig.class)
 public interface ConfigCenterApiOpenFeignClient {
     @GetMapping("/sys/role/get-user-roles")

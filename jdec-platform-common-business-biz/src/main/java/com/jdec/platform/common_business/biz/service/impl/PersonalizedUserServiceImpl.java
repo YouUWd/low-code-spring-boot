@@ -11,6 +11,7 @@ import com.jdec.platform.common_business.api.dto.common.PersonalizedModuleDTO;
 import com.jdec.platform.common_business.api.dto.common.TableHeaderConf;
 import com.jdec.platform.common_business.api.dto.request.PersonalizedModuleReq;
 import com.jdec.platform.common_business.api.dto.response.PersonalizedModuleResp;
+import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.dto.PersonalSettingColumnDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.PersonalSettingResp;
 import com.jdec.platform.common_business.biz.entity.ComPersonalizedUserColumn;
@@ -19,6 +20,7 @@ import com.jdec.platform.common_business.biz.mapper.ComPersonalizedUserColumnMap
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
+import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -36,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @AllArgsConstructor
 @Slf4j
+@DataSource(DataSourceConstants.STUDENT_MANAGE)
 public class PersonalizedUserServiceImpl implements PersonalizedUserServiceApi {
 
     private final ComPersonalizedUserColumnMapper personalizedUserColumnMapper;
