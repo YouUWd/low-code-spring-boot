@@ -114,7 +114,7 @@ public interface ConfigCenterApiOpenFeignClient {
 
     @GetMapping("/category/item/byCategoryAlias")
     ConfigApiResponse<List<SysConfigItemTreeResp>> getCategoryItemByCategoryAlias(
-            @RequestHeader("X-Subject-Id") Long subjectId, @PathVariable String categoryAlias);
+            @RequestHeader("X-Subject-Id") Long subjectId, @RequestParam String categoryAlias);
 
     @PostMapping("/wechat/templates/params/list-by-ids")
     ConfigApiResponse<List<WechatTemplateParamEntryResp>> getWechatTemplateParamEntryByIds(

@@ -1,14 +1,20 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.google.common.collect.Lists;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.biz.change.*;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
+import com.jdec.platform.common_business.biz.dto.BizWechatMsgDTO;
+import com.jdec.platform.common_business.biz.dto.WechatTemplateDetailDTO;
 import com.jdec.platform.common_business.biz.entity.TableChangeLog;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
+import com.jdec.platform.common_business.biz.enums.BizMsgEnum;
 import com.jdec.platform.common_business.biz.log.ComBizLogEventPublisher;
+import com.jdec.platform.common_business.biz.log.ComBizMsgEventPublisher;
 import com.jdec.platform.common_business.biz.mapper.TableChangeLogMapper;
+import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
@@ -27,6 +33,8 @@ import org.springframework.stereotype.Service;
 public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataChangeLogService {
 
     private final TableChangeLogMapper tableChangeLogMapper;
+
+    private final ConfigCenterApiService configCenterApiService;
 
     @Override
     public TableChangeLog saveLog(ModuleDataChangeContext context) {
@@ -89,6 +97,18 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             } else {
                 ComBizLogEventPublisher.publishLogEvent(BizLogEnum.DATA_UPDATE, bizLogDTO);
             }
+            WechatTemplateDetailDTO wechatTemplateDetailDTO =
+                    configCenterApiService.getWechatTemplateDetail(
+                            LoginUserUtil.getLongSubjectId(), 6L);
+            BizWechatMsgDTO bizWechatMsgDTO =
+                    BizWechatMsgDTO.builder()
+                            .param(new HashMap<>())
+                            .wechatTemplate(wechatTemplateDetailDTO)
+                            .token(LoginUserUtil.getTokenFromHeader())
+                            .acceptorList(Lists.newArrayList(298L))
+                            .subjectId(LoginUserUtil.getLongSubjectId())
+                            .build();
+            ComBizMsgEventPublisher.publishMsgEvent(BizMsgEnum.APPROVAL_CHAIN, bizWechatMsgDTO);
             return changeLog;
         } catch (Exception e) {
             log.error("save log error,context=" + context.toString() + ",e=", e);

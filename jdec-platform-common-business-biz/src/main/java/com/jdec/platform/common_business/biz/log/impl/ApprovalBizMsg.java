@@ -41,7 +41,7 @@ public class ApprovalBizMsg implements BizMsg {
             return Boolean.FALSE;
         }
         BizWechatMsgDTO bizWechatMsgDTO = (BizWechatMsgDTO) msg;
-        if (CollectionUtil.isNotEmpty(bizWechatMsgDTO.getAcceptorList())
+        if (CollectionUtil.isEmpty(bizWechatMsgDTO.getAcceptorList())
                 || bizWechatMsgDTO.getWechatTemplate() == null
                 || bizWechatMsgDTO.getWechatTemplate().getWechatTemplateDetailResp() == null) {
             log.warn("processBizMsg empty param not send");
