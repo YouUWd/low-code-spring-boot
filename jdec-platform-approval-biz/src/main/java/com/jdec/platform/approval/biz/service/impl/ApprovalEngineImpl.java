@@ -76,7 +76,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
             businessReject(approvalProcessDTO);
         } else if ("cancel".equals(approvalProcessDTO.getButton())) {
-            businessRevoke(approvalProcessDTO);
+            ApprovalBusiness approvalBusiness = businessRevoke(approvalProcessDTO);
+            Map<String, Object> result = new HashMap<>();
+            result.put("ok", 1);
+            result.put("end", 0);
+            result.put("versionNo", approvalBusiness.getVersionNo());
+            return result;
         }
 
         return Map.of("ok", 1, "end", 0);
@@ -1021,7 +1026,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 撤销申请-------------------------------------------------------------------------
     @Transactional
-    public void businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
+    public ApprovalBusiness businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
         // 查询单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -1116,6 +1121,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+        return approvalBusiness;
     }
 
     // 保存操作日志-----------------------------------------------------------------------
