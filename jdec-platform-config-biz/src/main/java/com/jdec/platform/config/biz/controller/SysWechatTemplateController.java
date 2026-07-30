@@ -113,8 +113,8 @@ public class SysWechatTemplateController {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
         log.info(
-                "发送企业微信消息: receiver={}, title={}, projectNo={}",
-                req.getReceiver(),
+                "发送企业微信消息: receiversCount={}, title={}, projectNo={}",
+                req.getReceivers() != null ? req.getReceivers().size() : 0,
                 req.getMessageTitle(),
                 projectNo);
         boolean result = sysWechatTemplateService.sendWechatMessage(projectNo, subjectId, req);

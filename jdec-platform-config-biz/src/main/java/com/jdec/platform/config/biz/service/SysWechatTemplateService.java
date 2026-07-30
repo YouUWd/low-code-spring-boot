@@ -173,7 +173,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
         SendWechatMessageReq sendReq = new SendWechatMessageReq();
         sendReq.setMessageTitle(template.getTemplateTitle());
-        sendReq.setReceiver(wechatUserId);
+        sendReq.setReceivers(List.of(wechatUserId));
         sendReq.setMessageContent(content);
         sendReq.setMessageType("markdown");
 
@@ -182,14 +182,25 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
     @Override
     public boolean sendWechatMessage(String projectNo, Long subjectId, SendWechatMessageReq req) {
+        if (req == null || req.getReceivers() == null || req.getReceivers().isEmpty()) {
+            return false;
+        }
+        List<String> validReceivers =
+                req.getReceivers().stream().filter(StringUtils::hasText).distinct().toList();
+        if (validReceivers.isEmpty()) {
+            return false;
+        }
+
+        String receiversStr = String.join("|", validReceivers);
         String msgType =
                 StringUtils.hasText(req.getMessageType()) ? req.getMessageType() : "markdown";
+
         // 创建发送日志记录并初始化写入
         SysMessageRecord record =
                 SysMessageRecord.builder()
                         .projectNo(projectNo)
                         .subjectId(subjectId)
-                        .receiver(req.getReceiver())
+                        .receiver(receiversStr)
                         .messageType(msgType)
                         .messageTitle(req.getMessageTitle())
                         .messageContent(req.getMessageContent())
@@ -202,20 +213,19 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         sysMessageRecordMapper.insert(record);
 
         try {
-            weChatWorkService.sendMarkdownMessage(
-                    subjectId, req.getReceiver(), req.getMessageContent());
+            weChatWorkService.sendMarkdownMessage(subjectId, receiversStr, req.getMessageContent());
             record.setSendStatus(0);
             record.setResponseData("{\"errcode\":0,\"errmsg\":\"ok\"}");
+            return true;
         } catch (Exception e) {
-            log.error("发送微信消息失败", e);
+            log.error("批量发送微信消息给用户 [{}] 失败", receiversStr, e);
             record.setSendStatus(997);
             record.setResponseData(e.getMessage());
+            return false;
         } finally {
             record.setUpdatedDate(LocalDateTime.now());
             sysMessageRecordMapper.updateById(record);
         }
-
-        return record.getSendStatus() == 0;
     }
 
     private String formatContent(String content, List<SysWechatTemplateParam> params) {
