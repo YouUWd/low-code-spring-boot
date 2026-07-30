@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 @FeignClient(
-        name = "config-center",
+        name = "hr-center",
         url = "${config.center.base}",
         path = "/api/hr",
         configuration = FeignConfig.class)

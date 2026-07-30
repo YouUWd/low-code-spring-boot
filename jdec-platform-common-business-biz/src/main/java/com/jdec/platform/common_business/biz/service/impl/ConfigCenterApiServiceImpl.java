@@ -7,9 +7,12 @@ import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
+import com.jdec.platform.common_business.biz.dto.WechatTemplateDetailDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
+import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
+import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -155,13 +158,15 @@ public class ConfigCenterApiServiceImpl implements ConfigCenterApiService {
     }
 
     @Override
-    public WechatTemplateDetailResp getWechatTemplateDetail(Long subjectId, Long id) {
+    public WechatTemplateDetailDTO getWechatTemplateDetail(Long subjectId, Long id) {
         ConfigApiResponse<WechatTemplateDetailResp> configApiResponse =
                 configCenterApiClient.getWechatTemplateDetail(subjectId, id);
+        WechatTemplateDetailDTO wechatTemplateDetailDTO = new WechatTemplateDetailDTO();
         if (ConfigApiResponse.isSuccessResponse(configApiResponse)) {
             if (configApiResponse.getData() == null) {
-                return configApiResponse.getData();
+                return wechatTemplateDetailDTO;
             }
+            wechatTemplateDetailDTO.setWechatTemplateDetailResp(configApiResponse.getData());
             if (CollectionUtil.isNotEmpty(configApiResponse.getData().getTemplateAcceptType())) {
                 // 查询接受人类型
                 List<SysConfigItemTreeResp> sysConfigItemTreeRespList =
@@ -179,7 +184,7 @@ public class ConfigCenterApiServiceImpl implements ConfigCenterApiService {
                             templateAcceptTypeList.add(treeResp.getValue());
                         }
                     }
-                    configApiResponse.getData().setTemplateAcceptTypeEnum(templateAcceptTypeList);
+                    wechatTemplateDetailDTO.setTemplateAcceptTypeEnum(templateAcceptTypeList);
                 }
             }
             if (CollectionUtil.isNotEmpty(configApiResponse.getData().getConfigParamIds())) {
@@ -187,9 +192,9 @@ public class ConfigCenterApiServiceImpl implements ConfigCenterApiService {
                 List<WechatTemplateParamEntryResp> respList =
                         getWechatTemplateParamEntryByIds(
                                 subjectId, configApiResponse.getData().getConfigParamIds());
-                configApiResponse.getData().setTemplateParamEntryRespList(respList);
+                wechatTemplateDetailDTO.setTemplateParamEntryRespList(respList);
             }
-            return configApiResponse.getData();
+            return wechatTemplateDetailDTO;
         }
         return null;
     }

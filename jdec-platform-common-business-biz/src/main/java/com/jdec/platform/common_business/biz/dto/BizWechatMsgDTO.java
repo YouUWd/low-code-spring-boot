@@ -1,6 +1,5 @@
 package com.jdec.platform.common_business.biz.dto;
 
-import com.jdec.platform.common_business.biz.dto.configcenter.response.WechatTemplateDetailResp;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +16,7 @@ public class BizWechatMsgDTO implements Serializable {
 
     private Long subjectId;
 
-    private WechatTemplateDetailResp wechatTemplateDetailResp;
+    private WechatTemplateDetailDTO wechatTemplate;
 
     private List<Long> acceptorList;
 
