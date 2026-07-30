@@ -78,5 +78,6 @@ public interface SysModuleApi {
      * @param subjectId 主体ID
      * @return 简易模块树响应列表
      */
-    List<SysModuleSimpleTreeResp> getAvailableModuleTree(String projectNo, Long subjectId);
+    List<SysModuleSimpleTreeResp> getAvailableModuleTree(
+            Integer category, String projectNo, Long subjectId);
 }

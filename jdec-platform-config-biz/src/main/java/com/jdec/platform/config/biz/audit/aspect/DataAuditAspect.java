@@ -17,7 +17,9 @@ import com.jdec.platform.shared.security.model.LoginUser;
 import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -612,7 +614,9 @@ public class DataAuditAspect {
             }
 
             if (moduleActions != null && !moduleActions.isEmpty()) {
-                remark = JSONUtil.toJsonStr(moduleActions);
+                Map<String, Object> remarkMap = new HashMap<>();
+                remarkMap.put("change", moduleActions);
+                remark = JSONUtil.toJsonStr(remarkMap);
             }
         }
 

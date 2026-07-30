@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysWechatTemplateApi;
 import com.jdec.platform.config.api.dto.request.CreateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.CreateWechatTemplateReq;
+import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateReq;
 import com.jdec.platform.config.api.dto.request.WechatTemplateParamQueryReq;
@@ -104,6 +105,20 @@ public class SysWechatTemplateController {
         log.info("测试发送微信模板消息: id={}, projectNo={}", id, projectNo);
         boolean result = sysWechatTemplateService.testSendMessage(projectNo, subjectId, id);
         return ApiResponse.success("发送测试消息成功", result);
+    }
+
+    @Operation(summary = "发送企业微信消息")
+    @PostMapping("/send-message")
+    public ApiResponse<Boolean> sendWechatMessage(@RequestBody SendWechatMessageReq req) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info(
+                "发送企业微信消息: receiver={}, title={}, projectNo={}",
+                req.getReceiver(),
+                req.getMessageTitle(),
+                projectNo);
+        boolean result = sysWechatTemplateService.sendWechatMessage(projectNo, subjectId, req);
+        return ApiResponse.success("发送消息成功", result);
     }
 
     // --- 模板参数管理 ---
