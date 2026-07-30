@@ -76,7 +76,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                             .mockUserId(context.getMockUserId())
                             .currentSubjectId(context.getSubjectId())
                             .currentRoleId(context.getRoleId())
-                            .logRemark(changeLog.getChangeContent())
+                            .logRemark("{\"change\":" + changeLog.getChangeContent() + "}")
                             .moduleName(modifyModules.get(0).getName())
                             .dataId(
                                     context.getDataId() != null

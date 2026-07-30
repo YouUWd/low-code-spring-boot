@@ -2,6 +2,8 @@ package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.jdec.platform.shared.audit.annotation.AuditField;
+import com.jdec.platform.shared.audit.enums.FieldType;
+import com.jdec.platform.shared.enums.CommonStatusEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -13,10 +15,12 @@ import lombok.Data;
 @Schema(description = "数据权限类型定义")
 public class SysDataPermission implements Serializable {
 
+    @AuditField(name = "类型ID", ignore = true)
     @Schema(description = "类型ID")
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @AuditField(name = "类型编码")
     @Schema(description = "类型编码")
     private String code;
 
@@ -24,18 +28,23 @@ public class SysDataPermission implements Serializable {
     @Schema(description = "类型名称")
     private String name;
 
+    @AuditField(name = "类型描述")
     @Schema(description = "类型描述")
     private String description;
 
+    @AuditField(name = "排序")
     @Schema(description = "排序")
     private Integer sort;
 
+    @AuditField(name = "状态", type = FieldType.ENUM, enumClass = CommonStatusEnum.class)
     @Schema(description = "状态 1:启用 0:禁用")
     private Integer status;
 
+    @AuditField(name = "所属主体", ignore = true)
     @Schema(description = "所属主体")
     private Long subjectId;
 
+    @AuditField(name = "应用编码", ignore = true)
     @Schema(description = "应用编码")
     private String projectNo;
 
@@ -46,6 +55,7 @@ public class SysDataPermission implements Serializable {
     @Schema(description = "模拟操作用户名称")
     private String createdName;
 
+    @AuditField(name = "创建时间", ignore = true)
     @Schema(description = "创建时间")
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdDate;
@@ -57,6 +67,7 @@ public class SysDataPermission implements Serializable {
     @Schema(description = "更改人名称")
     private String updatedName;
 
+    @AuditField(name = "更改时间", ignore = true)
     @Schema(description = "更改时间")
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedDate;

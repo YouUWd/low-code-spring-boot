@@ -122,6 +122,27 @@ public class AuditLogHelper {
     }
 
     /**
+     * 记录操作（自定义remark JSON）
+     *
+     * <p>适用场景：需要自定义 logRemark 格式的复杂审计场景，如权限变更审计。
+     *
+     * @param subModule 子模块名称（如："角色菜单权限"、"角色交互权限"）
+     * @param tableName 表名（如："sys_role_menu"、"sys_role_interaction_permission"）
+     * @param operation 操作描述（如："新增权限"、"取消权限"）
+     * @param remarkJson 自定义的 logRemark JSON 字符串
+     */
+    public void logWithCustomRemark(
+            String subModule, String tableName, String operation, String remarkJson) {
+        try {
+            dataAuditService.auditWithCustomRemark(
+                    MODULE, subModule, operation, tableName, remarkJson);
+            log.info("审计日志（自定义remark）: subModule={}, operation={}", subModule, operation);
+        } catch (Exception e) {
+            log.error("记录审计日志失败（自定义remark）: subModule={}, operation={}", subModule, operation, e);
+        }
+    }
+
+    /**
      * 记录新增操作（带差异对比，oldValue为空）
      *
      * <p>适用场景：新增数据时，需要记录所有字段的新值
@@ -152,6 +173,23 @@ public class AuditLogHelper {
     public void logDelete(String subModule, String tableName, Long dataId) {
         try {
             dataAuditService.auditDelete(MODULE, subModule, tableName, dataId);
+            log.info("审计日志（删除）: subModule={}, dataId={}", subModule, dataId);
+        } catch (Exception e) {
+            log.error("记录删除审计日志失败: subModule={}, dataId={}", subModule, dataId, e);
+        }
+    }
+
+    /**
+     * 记录删除操作
+     *
+     * @param subModule 子模块名称（如:"角色管理"、"权限管理"）
+     * @param tableName 表名（如："sys_role"、"sys_permission"）
+     * @param dataId 数据ID
+     * @param entityClass 实体类（用于从快照中提取字段中文名和记录名称）
+     */
+    public void logDelete(String subModule, String tableName, Long dataId, Class<?> entityClass) {
+        try {
+            dataAuditService.auditDelete(MODULE, subModule, tableName, dataId, entityClass);
             log.info("审计日志（删除）: subModule={}, dataId={}", subModule, dataId);
         } catch (Exception e) {
             log.error("记录删除审计日志失败: subModule={}, dataId={}", subModule, dataId, e);

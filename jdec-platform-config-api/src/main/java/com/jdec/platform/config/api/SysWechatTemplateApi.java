@@ -2,6 +2,7 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.CreateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.CreateWechatTemplateReq;
+import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateReq;
 import com.jdec.platform.config.api.dto.request.WechatTemplateParamQueryReq;
@@ -157,4 +158,14 @@ public interface SysWechatTemplateApi {
      * @param id 参数 ID
      */
     void deleteParam(Long id);
+
+    /**
+     * 发送企业微信消息并保存记录
+     *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
+     * @param req 发送消息请求
+     * @return 是否发送成功
+     */
+    boolean sendWechatMessage(String projectNo, Long subjectId, SendWechatMessageReq req);
 }

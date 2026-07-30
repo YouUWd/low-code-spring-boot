@@ -26,6 +26,7 @@ import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -76,7 +77,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
             businessReject(approvalProcessDTO);
         } else if ("cancel".equals(approvalProcessDTO.getButton())) {
-            businessRevoke(approvalProcessDTO);
+            ApprovalBusiness approvalBusiness = businessRevoke(approvalProcessDTO);
+            Map<String, Object> result = new HashMap<>();
+            result.put("ok", 1);
+            result.put("end", 0);
+            result.put("versionNo", approvalBusiness.getVersionNo());
+            return result;
         }
 
         return Map.of("ok", 1, "end", 0);
@@ -146,10 +152,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 创建人
         result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
 
-        // 操作按钮
-        int canEdit = 0;
+        // 操作按钮、是否可编辑
+        AtomicReference<Integer> canEdit = new AtomicReference<>();
+        canEdit.set(0);
         List<Map<String, Object>> operationButton = getOperationButton(req, canEdit);
-        result.put("canEdit", canEdit);
+        result.put("canEdit", canEdit.get());
         result.put("btnList", operationButton);
         return result;
     }
@@ -160,23 +167,33 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
         todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
         todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
-        todoWrapper
-                .nested(
-                        wp1 ->
-                                wp1.eq(
-                                                ApprovalBusiness::getApproverId,
-                                                approvalProcessReq.getApplicantId())
-                                        .eq(
-                                                ApprovalBusiness::getApproveRoleId,
-                                                approvalProcessReq.getRoleId()))
-                .or()
-                .nested(
-                        wp2 ->
-                                wp2.isNull(ApprovalBusiness::getApproverId)
-                                        .eq(
-                                                ApprovalBusiness::getApproveRoleId,
-                                                approvalProcessReq.getRoleId()));
         todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
+        todoWrapper.and(
+                wrapper ->
+                        wrapper.nested(
+                                        wp1 ->
+                                                wp1.eq(
+                                                                ApprovalBusiness::getApproverId,
+                                                                approvalProcessReq.getApplicantId())
+                                                        .eq(
+                                                                ApprovalBusiness::getApproveRoleId,
+                                                                approvalProcessReq.getRoleId()))
+                                .or()
+                                .nested(
+                                        wp2 ->
+                                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                                        .eq(
+                                                                ApprovalBusiness::getApproveRoleId,
+                                                                approvalProcessReq.getRoleId())
+                                                        .ne(ApprovalBusiness::getCurrentStep, 0))
+                                .or()
+                                .nested(
+                                        wp3 ->
+                                                wp3.isNull(ApprovalBusiness::getApproverId)
+                                                        .eq(
+                                                                ApprovalBusiness::getCreatedBy,
+                                                                approvalProcessReq.getApplicantId())
+                                                        .eq(ApprovalBusiness::getCurrentStep, 0)));
         List<ApprovalBusiness> todoList = approvalBusinessMapper.selectList(todoWrapper);
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
         processWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
@@ -205,22 +222,42 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
             todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
             todoWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-            todoWrapper
-                    .nested(
-                            wp1 ->
-                                    wp1.eq(
-                                                    ApprovalBusiness::getApproverId,
-                                                    approvalListReq.getApplicantId())
-                                            .eq(
-                                                    ApprovalBusiness::getApproveRoleId,
-                                                    approvalListReq.getRoleId()))
-                    .or()
-                    .nested(
-                            wp2 ->
-                                    wp2.isNull(ApprovalBusiness::getApproverId)
-                                            .eq(
-                                                    ApprovalBusiness::getApproveRoleId,
-                                                    approvalListReq.getRoleId()));
+            todoWrapper.and(
+                    wrapper ->
+                            wrapper.nested(
+                                            wp1 ->
+                                                    wp1.eq(
+                                                                    ApprovalBusiness::getApproverId,
+                                                                    approvalListReq
+                                                                            .getApplicantId())
+                                                            .eq(
+                                                                    ApprovalBusiness
+                                                                            ::getApproveRoleId,
+                                                                    approvalListReq.getRoleId()))
+                                    .or()
+                                    .nested(
+                                            wp2 ->
+                                                    wp2.isNull(ApprovalBusiness::getApproverId)
+                                                            .eq(
+                                                                    ApprovalBusiness
+                                                                            ::getApproveRoleId,
+                                                                    approvalListReq.getRoleId())
+                                                            .ne(
+                                                                    ApprovalBusiness
+                                                                            ::getCurrentStep,
+                                                                    0))
+                                    .or()
+                                    .nested(
+                                            wp3 ->
+                                                    wp3.isNull(ApprovalBusiness::getApproverId)
+                                                            .eq(
+                                                                    ApprovalBusiness::getCreatedBy,
+                                                                    approvalListReq
+                                                                            .getApplicantId())
+                                                            .eq(
+                                                                    ApprovalBusiness
+                                                                            ::getCurrentStep,
+                                                                    0)));
             todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
             todoWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             toDoList = approvalBusinessMapper.selectList(todoWrapper);
@@ -535,6 +572,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalProcessDTO.getApplicantId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -672,6 +710,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalProcessDTO.getApplicantId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -853,7 +892,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
 
         // 写入日志
-        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
@@ -863,6 +901,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalProcessDTO.getApplicantId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -1004,7 +1043,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
         // 写入日志
-        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
@@ -1014,6 +1052,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalProcessDTO.getApplicantId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -1023,7 +1062,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 撤销申请-------------------------------------------------------------------------
     @Transactional
-    public void businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
+    public ApprovalBusiness businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
         // 查询单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -1113,11 +1152,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalProcessDTO.getApplicantId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+        return approvalBusiness;
     }
 
     // 保存操作日志-----------------------------------------------------------------------
@@ -1331,7 +1372,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 查询审批步骤绑定的操作按钮------------------------------------------------------------------
     private List<Map<String, Object>> getOperationButton(
-            ApprovalProcessReq approvalProcessReq, int canEdit) {
+            ApprovalProcessReq approvalProcessReq, AtomicReference<Integer> canEdit) {
         Long userId = approvalProcessReq.getApplicantId();
         Long roleId = approvalProcessReq.getRoleId();
         // 查询单据当前信息
@@ -1435,7 +1476,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                         approvalChainBusiness.getCurrentStep()));
                     }
                     if (!operations.isEmpty()) {
-                        canEdit = 1;
+                        canEdit.set(1);
                     }
                 }
             }

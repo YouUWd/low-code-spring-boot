@@ -16,7 +16,9 @@ import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -311,6 +313,64 @@ public class DataAuditService {
     }
 
     /**
+     * 删除数据审计（带实体类，从快照中提取记录名称和 name 字段作为删除显示字段）
+     *
+     * @param module 业务模块
+     * @param subModule 业务子模块（模块名称，如：角色配置、菜单配置）
+     * @param tableName 表名
+     * @param dataId 数据ID
+     * @param entityClass 实体类（用于解析 @AuditField 字段名）
+     */
+    public void auditDelete(
+            String module, String subModule, String tableName, Long dataId, Class<?> entityClass) {
+        try {
+            // 查询旧快照
+            SysDataSnapshot oldSnapshot = snapshotService.getLatestSnapshot(tableName, dataId);
+            if (oldSnapshot == null) {
+                log.warn("DELETE审计失败: 快照不存在, table={}, dataId={}", tableName, dataId);
+                return;
+            }
+
+            // 从快照中提取记录名称（用于 d.name）
+            String oldJson = oldSnapshot.getJsonData();
+            String recordName = "";
+            if (oldJson != null && !oldJson.isEmpty() && entityClass != null) {
+                recordName = jsonDiffUtil.extractUniqueIdentifierFromJson(oldJson, entityClass);
+            }
+
+            // 构建删除操作的单字段 diff（只保留 name 字段）
+            List<FieldDiff> diffs = Collections.emptyList();
+            if (oldJson != null && !oldJson.isEmpty() && entityClass != null) {
+                try {
+                    diffs =
+                            jsonDiffUtil.buildDeleteDiffWithDisplayField(
+                                    oldJson, entityClass, "name");
+                } catch (Exception e) {
+                    log.warn("解析删除快照JSON失败: table={}, dataId={}", tableName, dataId, e);
+                    diffs = Collections.emptyList();
+                }
+            }
+
+            // 在事务内立即删除快照记录
+            snapshotService.removeById(oldSnapshot.getId());
+            log.debug(
+                    "已删除快照记录: table={}, dataId={}, snapshotId={}",
+                    tableName,
+                    dataId,
+                    oldSnapshot.getId());
+
+            // 发送审计日志
+            sendAuditLog(module, subModule, "删除", tableName, dataId, diffs, recordName);
+
+        } catch (Exception e) {
+            log.error("DELETE审计失败: module={}, table={}, dataId={}", module, tableName, dataId, e);
+            throw new RuntimeException(
+                    "DELETE审计失败: module=" + module + ", table=" + tableName + ", dataId=" + dataId,
+                    e);
+        }
+    }
+
+    /**
      * 批量删除数据审计
      *
      * @param module 业务模块
@@ -373,7 +433,31 @@ public class DataAuditService {
         }
     }
 
-    /** 发送审计日志 */
+    /**
+     * 记录数据变更审计（使用自定义remark JSON）
+     *
+     * <p>适用场景：需要自定义 logRemark 格式的复杂审计场景，如权限变更审计。 remarkJson 需为合法的 JSON
+     * 字符串，格式如：{"change":[{"name":"角色名","mId":"","actions":[...]}]}
+     *
+     * @param module 业务模块
+     * @param subModule 业务子模块
+     * @param operation 操作描述（如："新增权限"、"取消权限"）
+     * @param tableName 表名
+     * @param remarkJson 自定义的 logRemark JSON 字符串
+     */
+    public void auditWithCustomRemark(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            String remarkJson) {
+        try {
+            sendAuditLogWithRemark(module, subModule, operation, tableName, remarkJson);
+        } catch (Exception e) {
+            log.error("数据审计失败（自定义remark）: module={}, table={}", module, tableName, e);
+        }
+    }
+
     private void sendAuditLog(
             String module,
             String subModule,
@@ -427,9 +511,90 @@ public class DataAuditService {
             }
 
             if (moduleActions != null && !moduleActions.isEmpty()) {
-                remark = JSONUtil.toJsonStr(moduleActions);
+                Map<String, Object> remarkMap = new HashMap<>();
+                remarkMap.put("change", moduleActions);
+                remark = JSONUtil.toJsonStr(remarkMap);
             }
         }
+
+        // 判断是否模拟登录
+        boolean isMockLogin = SecurityUtils.isMockLogin();
+        Long currentUserId = AppContext.getUserId();
+        Long currentRoleId = SecurityUtils.getRoleId();
+
+        // 构建HTTP请求体
+        AuditLogRequest request =
+                AuditLogRequest.builder()
+                        .logType("operation-log")
+                        .subjectId(AppContext.getSubjectId())
+                        .loginUserId(isMockLogin ? SecurityUtils.getRealUserId() : currentUserId)
+                        .loginRoleId(isMockLogin ? null : currentRoleId)
+                        .mockFlag(isMockLogin ? 1 : 0)
+                        .mockUserId(isMockLogin ? SecurityUtils.getMockUserId() : null)
+                        .mockRoleId(isMockLogin ? currentRoleId : null)
+                        .ip(RequestContextUtils.getClientIp())
+                        .browser(RequestContextUtils.getBrowser())
+                        .platForm(RequestContextUtils.getPlatform())
+                        .logContent(JSONUtil.toJsonStr(logContent))
+                        .logRemark(remark)
+                        .logDate(DateUtil.now())
+                        .build();
+
+        // 在事务提交前发送（失败会触发事务回滚）
+        // 如果业务方法抛出未捕获异常导致事务回滚，beforeCommit 不会被调用，审计日志不会发送
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void beforeCommit(boolean readOnly) {
+                            // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
+                            doSendAuditLog(request);
+                        }
+
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_ROLLED_BACK) {
+                                log.info("事务已回滚，跳过审计日志: subModule={}", subModule);
+                            }
+                        }
+                    });
+        } else {
+            doSendAuditLog(request);
+        }
+    }
+
+    /** 发送审计日志（使用自定义remark） */
+    private void sendAuditLogWithRemark(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            String remarkJson) {
+
+        // 构建logContent
+        String controlName;
+        if (operation.contains("了")) {
+            controlName = operation;
+        } else {
+            controlName =
+                    operation
+                            + "了"
+                            + (subModule != null && !subModule.isEmpty() ? subModule : "配置");
+        }
+
+        // 获取 hrefUrl
+        String hrefUrl = SecurityUtils.getHrefUrl();
+
+        AuditLogContent logContent =
+                AuditLogContent.builder()
+                        .module(module)
+                        .orderId(subModule != null && !subModule.isEmpty() ? subModule : tableName)
+                        .hrefUrl(hrefUrl != null ? hrefUrl : "")
+                        .controlName(controlName)
+                        .build();
+
+        // 使用自定义remark
+        String remark = remarkJson != null ? remarkJson : "";
 
         // 判断是否模拟登录
         boolean isMockLogin = SecurityUtils.isMockLogin();
@@ -460,14 +625,13 @@ public class DataAuditService {
                     new TransactionSynchronization() {
                         @Override
                         public void beforeCommit(boolean readOnly) {
-                            // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
                             doSendAuditLog(request);
                         }
 
                         @Override
                         public void afterCompletion(int status) {
                             if (status == STATUS_ROLLED_BACK) {
-                                log.warn("事务已回滚，审计日志将不被记录");
+                                log.info("事务已回滚，跳过审计日志: subModule={}", subModule);
                             }
                         }
                     });
