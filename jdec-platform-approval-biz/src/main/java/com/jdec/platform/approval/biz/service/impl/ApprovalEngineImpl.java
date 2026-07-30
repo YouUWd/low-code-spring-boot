@@ -152,8 +152,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 创建人
         result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
 
-        // 操作按钮
+        // 操作按钮、是否可编辑
         AtomicReference<Integer> canEdit = new AtomicReference<>();
+        canEdit.set(0);
         List<Map<String, Object>> operationButton = getOperationButton(req, canEdit);
         result.put("canEdit", canEdit.get());
         result.put("btnList", operationButton);
