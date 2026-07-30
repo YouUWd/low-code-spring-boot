@@ -3,11 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
-import com.jdec.platform.config.api.dto.response.MoveModuleResp;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
-import com.jdec.platform.config.api.dto.response.SysModuleListResp;
-import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
-import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -60,12 +56,12 @@ public class SysModuleController {
             summary = "获取所有可用模块的模块树",
             description = "获取所有状态为active的模块，并组装为树形结构，节点仅包含id, moduleCode和moduleName")
     @GetMapping("/tree")
-    public ApiResponse<List<SysModuleSimpleTreeResp>> getAvailableModuleTree() {
+    public ApiResponse<List<SysModuleSimpleTreeResp>> getAvailableModuleTree(Integer category) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
         log.info("查询项目 {} (主体 {}) 的可用模块树", projectNo, subjectId);
         List<SysModuleSimpleTreeResp> result =
-                sysModuleService.getAvailableModuleTree(projectNo, subjectId);
+                sysModuleService.getAvailableModuleTree(category, projectNo, subjectId);
         return ApiResponse.success(result);
     }
 

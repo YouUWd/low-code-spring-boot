@@ -1365,10 +1365,12 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     }
 
     @Override
-    public List<SysModuleSimpleTreeResp> getAvailableModuleTree(String projectNo, Long subjectId) {
+    public List<SysModuleSimpleTreeResp> getAvailableModuleTree(
+            Integer category, String projectNo, Long subjectId) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getProjectNo, projectNo);
         wrapper.eq(SysModule::getSubjectId, subjectId);
+        wrapper.eq(category != null, SysModule::getCategory, category);
         wrapper.orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 

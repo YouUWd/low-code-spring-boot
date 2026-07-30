@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.dto.request.SysFieldSaveReq;
 import com.jdec.platform.config.api.dto.request.SysFieldValueSaveReq;
@@ -50,6 +51,8 @@ public class SysFieldService implements SysFieldApi {
     private final SysDataPermissionMapper sysDataPermissionMapper;
     private final ReferenceCheckManager referenceCheckManager;
     private final AuditLogHelper auditLogHelper;
+    private final SysDataSnapshotService snapshotService;
+    private final ObjectMapper objectMapper;
 
     // ==================== 元数据查询逻辑 ====================
 
@@ -462,6 +465,22 @@ public class SysFieldService implements SysFieldApi {
                     if (!check.isEmpty()) {
                         throw new PopException(String.join("\n", check));
                     }
+
+                    // 删除前确保快照存在（用于审计日志）
+                    SysDataSnapshot existingSnapshot =
+                            snapshotService.getLatestSnapshot(
+                                    "sys_data_permission", dataPermission.getId());
+                    if (existingSnapshot == null) {
+                        try {
+                            String snapshotJson = objectMapper.writeValueAsString(dataPermission);
+                            snapshotService.saveSnapshot(
+                                    "sys_data_permission", dataPermission.getId(), snapshotJson);
+                        } catch (Exception e) {
+                            log.warn("删除数据权限节点前创建快照失败: id={}", dataPermission.getId(), e);
+                        }
+                    }
+
+                    // 执行删除操作
                     sysDataPermissionMapper.delete(
                             new LambdaQueryWrapper<SysDataPermission>()
                                     .eq(
@@ -472,9 +491,12 @@ public class SysFieldService implements SysFieldApi {
                                             SysDataPermission::getProjectNo,
                                             AppContext.getProjectNo()));
 
-                    // 记录删除数据权限节点的审计日志
+                    // 记录删除数据权限节点的审计日志（会自动删除快照）
                     auditLogHelper.logDelete(
-                            "数据权限配置", "sys_data_permission", dataPermission.getId());
+                            "数据权限配置",
+                            "sys_data_permission",
+                            dataPermission.getId(),
+                            SysDataPermission.class);
                 }
             }
 
