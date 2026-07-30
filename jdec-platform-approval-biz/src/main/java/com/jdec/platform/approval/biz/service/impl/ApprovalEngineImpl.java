@@ -26,6 +26,7 @@ import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -152,9 +153,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
 
         // 操作按钮
-        int canEdit = 0;
+        AtomicReference<Integer> canEdit = new AtomicReference<>();
         List<Map<String, Object>> operationButton = getOperationButton(req, canEdit);
-        result.put("canEdit", canEdit);
+        result.put("canEdit", canEdit.get());
         result.put("btnList", operationButton);
         return result;
     }
@@ -1335,7 +1336,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 查询审批步骤绑定的操作按钮------------------------------------------------------------------
     private List<Map<String, Object>> getOperationButton(
-            ApprovalProcessReq approvalProcessReq, int canEdit) {
+            ApprovalProcessReq approvalProcessReq, AtomicReference<Integer> canEdit) {
         Long userId = approvalProcessReq.getApplicantId();
         Long roleId = approvalProcessReq.getRoleId();
         // 查询单据当前信息
@@ -1439,7 +1440,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                         approvalChainBusiness.getCurrentStep()));
                     }
                     if (!operations.isEmpty()) {
-                        canEdit = 1;
+                        canEdit.set(1);
                     }
                 }
             }
