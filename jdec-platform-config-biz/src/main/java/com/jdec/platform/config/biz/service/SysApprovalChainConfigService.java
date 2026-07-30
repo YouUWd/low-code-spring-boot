@@ -1239,6 +1239,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
             resp.setNextStep(chainConfig.getNextStep());
             resp.setApprovalChainTypeId(chainConfig.getApprovalChainTypeId());
             resp.setApprovalRule(chainConfig.getApprovalRule());
+            resp.setRejectRule(chainConfig.getRejectRule());
             resp.setRoleApprovalPercent(chainConfig.getRoleApprovalPercent());
             resp.setApproveRoleId(chainConfig.getApproveRoleId());
             resp.setApproverId(chainConfig.getApproverId());
@@ -1270,6 +1271,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                 btndetail.setButtonId(btn.getButtonId());
                 btndetail.setIcon(btn.getIcon());
                 btndetail.setLogName(btn.getLogName());
+                btndetail.setAutoNextTaskFlag(btn.getAutoNextTaskFlag());
                 btndetail.setMsgTemplateIds(btn.getMsgTemplateIds());
                 // 设置按钮详细信息
                 if (btn.getButtonId() != null) {
