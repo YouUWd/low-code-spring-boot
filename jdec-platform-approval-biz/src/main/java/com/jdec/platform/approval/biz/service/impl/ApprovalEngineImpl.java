@@ -1504,6 +1504,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                         .ne(ApprovalVersionRecord::getCurrentStep, 0)
                         .select(
                                 ApprovalVersionRecord::getId,
+                                ApprovalVersionRecord::getRecordId,
                                 ApprovalVersionRecord::getVersionNo,
                                 ApprovalVersionRecord::getStatusValue);
         List<ApprovalVersionRecord> versionDataList =
