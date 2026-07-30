@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysWechatTemplateApi;
 import com.jdec.platform.config.api.dto.request.CreateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.CreateWechatTemplateReq;
+import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateReq;
 import com.jdec.platform.config.api.dto.request.WechatTemplateParamQueryReq;
@@ -30,6 +31,8 @@ import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
+import com.jdec.platform.shared.security.SecurityUtils;
+import com.jdec.platform.shared.security.model.LoginUser;
 import com.jdec.platform.shared.utils.PageResultUtils;
 import com.jdec.platform.shared.wechat.WeChatWorkService;
 import java.time.LocalDateTime;
@@ -148,8 +151,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
                 || (subjectId != null && !Objects.equals(template.getSubjectId(), subjectId))) {
             throw new BusinessException(403, "无权访问此模板");
         }
-        //        LoginUser loginUser = SecurityUtils.getLoginUserOrThrow();
-        String phone = "19008612557";
+        LoginUser loginUser = SecurityUtils.getLoginUserOrThrow();
+        String phone = loginUser.getPhone();
         if (!StringUtils.hasText(phone)) {
             throw new BusinessException(400, "当前用户未绑定手机号");
         }
@@ -168,15 +171,28 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
         String content = formatContent(template.getTemplateContent(), params);
 
+        SendWechatMessageReq sendReq = new SendWechatMessageReq();
+        sendReq.setMessageTitle(template.getTemplateTitle());
+        sendReq.setReceiver(wechatUserId);
+        sendReq.setMessageContent(content);
+        sendReq.setMessageType("markdown");
+
+        return sendWechatMessage(projectNo, subjectId, sendReq);
+    }
+
+    @Override
+    public boolean sendWechatMessage(String projectNo, Long subjectId, SendWechatMessageReq req) {
+        String msgType =
+                StringUtils.hasText(req.getMessageType()) ? req.getMessageType() : "markdown";
         // 创建发送日志记录并初始化写入
         SysMessageRecord record =
                 SysMessageRecord.builder()
                         .projectNo(projectNo)
-                        .subjectId(template.getSubjectId())
-                        .receiver(wechatUserId)
-                        .messageType("markdown")
-                        .messageTitle(template.getTemplateTitle())
-                        .messageContent(content)
+                        .subjectId(subjectId)
+                        .receiver(req.getReceiver())
+                        .messageType(msgType)
+                        .messageTitle(req.getMessageTitle())
+                        .messageContent(req.getMessageContent())
                         .sendStatus(998) // 默认未发送成功/等待发送
                         .responseData("sending...")
                         .createdDate(LocalDateTime.now())
@@ -186,11 +202,12 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         sysMessageRecordMapper.insert(record);
 
         try {
-            weChatWorkService.sendMarkdownMessage(template.getSubjectId(), wechatUserId, content);
+            weChatWorkService.sendMarkdownMessage(
+                    subjectId, req.getReceiver(), req.getMessageContent());
             record.setSendStatus(0);
             record.setResponseData("{\"errcode\":0,\"errmsg\":\"ok\"}");
         } catch (Exception e) {
-            log.error("测试发送微信模板消息失败", e);
+            log.error("发送微信消息失败", e);
             record.setSendStatus(997);
             record.setResponseData(e.getMessage());
         } finally {
