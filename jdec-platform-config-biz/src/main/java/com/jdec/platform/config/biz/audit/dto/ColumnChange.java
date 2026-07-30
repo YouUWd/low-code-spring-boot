@@ -19,13 +19,13 @@ public class ColumnChange {
     /** 字段中文名 */
     private String name;
 
-    /** 修改前的值（新增时为空） */
-    private String old;
+    /** 修改前的值（新增时为空），可以是字符串或数组 */
+    private Object old;
 
-    /** 修改后的值（删除时为空） */
+    /** 修改后的值（删除时为空），可以是字符串或数组 */
     @Builder.Default
     @com.fasterxml.jackson.annotation.JsonProperty("newer")
-    private String newer = "";
+    private Object newer = "";
 
     /** 字段代码（可选） */
     private String field;

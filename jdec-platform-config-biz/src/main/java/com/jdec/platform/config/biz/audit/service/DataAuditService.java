@@ -16,7 +16,9 @@ import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.security.SecurityUtils;
 import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -431,7 +433,31 @@ public class DataAuditService {
         }
     }
 
-    /** 发送审计日志 */
+    /**
+     * 记录数据变更审计（使用自定义remark JSON）
+     *
+     * <p>适用场景：需要自定义 logRemark 格式的复杂审计场景，如权限变更审计。 remarkJson 需为合法的 JSON
+     * 字符串，格式如：{"change":[{"name":"角色名","mId":"","actions":[...]}]}
+     *
+     * @param module 业务模块
+     * @param subModule 业务子模块
+     * @param operation 操作描述（如："新增权限"、"取消权限"）
+     * @param tableName 表名
+     * @param remarkJson 自定义的 logRemark JSON 字符串
+     */
+    public void auditWithCustomRemark(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            String remarkJson) {
+        try {
+            sendAuditLogWithRemark(module, subModule, operation, tableName, remarkJson);
+        } catch (Exception e) {
+            log.error("数据审计失败（自定义remark）: module={}, table={}", module, tableName, e);
+        }
+    }
+
     private void sendAuditLog(
             String module,
             String subModule,
@@ -485,7 +511,9 @@ public class DataAuditService {
             }
 
             if (moduleActions != null && !moduleActions.isEmpty()) {
-                remark = JSONUtil.toJsonStr(moduleActions);
+                Map<String, Object> remarkMap = new HashMap<>();
+                remarkMap.put("change", moduleActions);
+                remark = JSONUtil.toJsonStr(remarkMap);
             }
         }
 
@@ -520,6 +548,83 @@ public class DataAuditService {
                         @Override
                         public void beforeCommit(boolean readOnly) {
                             // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
+                            doSendAuditLog(request);
+                        }
+
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_ROLLED_BACK) {
+                                log.info("事务已回滚，跳过审计日志: subModule={}", subModule);
+                            }
+                        }
+                    });
+        } else {
+            doSendAuditLog(request);
+        }
+    }
+
+    /** 发送审计日志（使用自定义remark） */
+    private void sendAuditLogWithRemark(
+            String module,
+            String subModule,
+            String operation,
+            String tableName,
+            String remarkJson) {
+
+        // 构建logContent
+        String controlName;
+        if (operation.contains("了")) {
+            controlName = operation;
+        } else {
+            controlName =
+                    operation
+                            + "了"
+                            + (subModule != null && !subModule.isEmpty() ? subModule : "配置");
+        }
+
+        // 获取 hrefUrl
+        String hrefUrl = SecurityUtils.getHrefUrl();
+
+        AuditLogContent logContent =
+                AuditLogContent.builder()
+                        .module(module)
+                        .orderId(subModule != null && !subModule.isEmpty() ? subModule : tableName)
+                        .hrefUrl(hrefUrl != null ? hrefUrl : "")
+                        .controlName(controlName)
+                        .build();
+
+        // 使用自定义remark
+        String remark = remarkJson != null ? remarkJson : "";
+
+        // 判断是否模拟登录
+        boolean isMockLogin = SecurityUtils.isMockLogin();
+        Long currentUserId = AppContext.getUserId();
+        Long currentRoleId = SecurityUtils.getRoleId();
+
+        // 构建HTTP请求体
+        AuditLogRequest request =
+                AuditLogRequest.builder()
+                        .logType("operation-log")
+                        .subjectId(AppContext.getSubjectId())
+                        .loginUserId(isMockLogin ? SecurityUtils.getRealUserId() : currentUserId)
+                        .loginRoleId(isMockLogin ? null : currentRoleId)
+                        .mockFlag(isMockLogin ? 1 : 0)
+                        .mockUserId(isMockLogin ? SecurityUtils.getMockUserId() : null)
+                        .mockRoleId(isMockLogin ? currentRoleId : null)
+                        .ip(RequestContextUtils.getClientIp())
+                        .browser(RequestContextUtils.getBrowser())
+                        .platForm(RequestContextUtils.getPlatform())
+                        .logContent(JSONUtil.toJsonStr(logContent))
+                        .logRemark(remark)
+                        .logDate(DateUtil.now())
+                        .build();
+
+        // 在事务提交前发送（失败会触发事务回滚）
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void beforeCommit(boolean readOnly) {
                             doSendAuditLog(request);
                         }
 

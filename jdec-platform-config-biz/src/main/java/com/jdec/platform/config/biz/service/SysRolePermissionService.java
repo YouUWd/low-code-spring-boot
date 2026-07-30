@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.service;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysRolePermissionApi;
@@ -183,7 +184,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         }
 
         // 编程式审计日志：记录菜单权限变更
-        logMenuPermissionAudit(roleId, request.getCheckFlag(), request.getPermissionPaths());
+        logMenuPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
 
         setAffectedContext(roleId);
     }
@@ -369,7 +374,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         }
 
         // 4. 记录审计日志（编程式）
-        logInteractionPermissionAudit(roleId, request.getCheckFlag(), request.getPermissionPaths());
+        logInteractionPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
 
         // 5. 设置受影响的上下文（用户、主体、模块）
         setAffectedContext(roleId, affectedModuleIds);
@@ -414,7 +423,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         }
 
         // 3. 记录审计日志（编程式）
-        logDataPermissionAudit(roleId, request.getCheckFlag(), request.getPermissionPaths());
+        logDataPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
 
         setAffectedContext(roleId);
     }
@@ -469,6 +482,13 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         sysRoleSpecialPermissionMapper.delete(
                 Wrappers.<SysRoleSpecialPermission>lambdaQuery()
                         .eq(SysRoleSpecialPermission::getRoleId, roleId));
+
+        // 记录审计日志（编程式）
+        logSpecialPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
 
         // 批量插入新的角色特殊权限关联
         if (CollUtil.isNotEmpty(specialPermissionIds)) {
@@ -714,7 +734,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         }
 
         // 4. 审计日志记录（编程式）
-        logModuleFieldPermissionAudit(roleId, request.getCheckFlag(), request.getPermissionPaths());
+        logModuleFieldPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
 
         // 5. 设置受影响的上下文（用户、主体、模块）
         setAffectedContext(request.getRoleId(), affectedModuleIds);
@@ -1319,40 +1343,127 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     }
 
     /**
-     * 处理菜单权限审计日志
+     * 通用权限审计日志记录
+     *
+     * <p>构建标准审计日志格式：
+     *
+     * <pre>
+     * {"change":[{"name":"角色名","mId":"","actions":[{"i/d":[{"name":"前缀-权限类型","columns":[{"name":"","old":"","newer":"permissionPaths拼接","field":""}]}]}]}]}
+     * </pre>
      *
      * @param roleId 角色ID
      * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
      * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"、"系统菜单权限"）
+     * @param subModuleStr 子模块字符串（如："角色菜单权限"）
+     * @param tableName 表名（如："sys_role_menu"）
+     * @param recordNamePrefix 记录名称前缀（如："菜单显示"、"模块权限"），硬编码
+     * @param suffixFromPath 是否从permissionPaths取后缀（特殊权限用true，此时permissionTypeName传null）
      */
-    private void logMenuPermissionAudit(
-            Long roleId, Integer checkFlag, List<String> permissionPaths) {
+    private void logPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName,
+            String subModuleStr,
+            String tableName,
+            String recordNamePrefix,
+            boolean suffixFromPath) {
         if (checkFlag == null || CollUtil.isEmpty(permissionPaths)) {
             return;
         }
 
         try {
-            // 查询角色名称
+            // 1. 查询角色名称
             SysRole role = sysRoleMapper.selectById(roleId);
             if (role == null) {
                 log.warn("角色不存在，无法记录审计日志: roleId={}", roleId);
                 return;
             }
+            String roleName = role.getRoleName();
 
-            String operation;
-            if (checkFlag == 1) {
-                // 新增权限
-                operation = "新增：" + String.join("->", permissionPaths);
+            // 2. 构建记录名称：前缀-权限类型
+            String suffix;
+            if (suffixFromPath) {
+                // 其它权限从permissionPaths取
+                suffix = permissionPaths.get(0);
             } else {
-                // 取消权限
-                operation = "取消：" + String.join("->", permissionPaths);
+                suffix = permissionTypeName != null ? permissionTypeName : "";
+            }
+            String recordName = recordNamePrefix + "-" + suffix;
+
+            // 3. 构建permissionPath字符串（用-拼接）
+            String permissionPathStr = String.join("-", permissionPaths);
+
+            // 4. 构建审计日志结构
+            // RecordChange
+            Map<String, Object> recordChange = new LinkedHashMap<>();
+            recordChange.put("name", recordName);
+
+            // 其它权限不需要 columns
+            if (!suffixFromPath) {
+                // ColumnChange: 新增放newer，删除放old
+                Map<String, Object> column = new LinkedHashMap<>();
+                column.put("name", "");
+                if (checkFlag == 1) {
+                    column.put("old", "");
+                    column.put("newer", permissionPathStr);
+                } else {
+                    column.put("old", permissionPathStr);
+                    column.put("newer", "");
+                }
+                column.put("field", "");
+
+                recordChange.put("columns", Collections.singletonList(column));
             }
 
-            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
-            // auditLogHelper.logWithoutCompare("角色权限分配-菜单显示", "sys_role_menu", operation);
+            // ActionDetail: checkFlag=1 -> i(新增), checkFlag=0 -> d(取消)
+            Map<String, Object> actionDetail = new LinkedHashMap<>();
+            String actionKey = (checkFlag == 1) ? "i" : "d";
+            actionDetail.put(actionKey, Collections.singletonList(recordChange));
+
+            // ModuleAction: name=角色名
+            Map<String, Object> moduleAction = new LinkedHashMap<>();
+            moduleAction.put("name", roleName);
+            moduleAction.put("mId", "");
+            moduleAction.put("actions", Collections.singletonList(actionDetail));
+
+            // 构建完整的 logRemark
+            Map<String, Object> remarkMap = new LinkedHashMap<>();
+            remarkMap.put("change", Collections.singletonList(moduleAction));
+            String remarkJson = JSONUtil.toJsonStr(remarkMap);
+
+            // 5. 发送审计日志
+            String operation = (checkFlag == 1) ? "新增权限" : "取消权限";
+            auditLogHelper.logWithCustomRemark(subModuleStr, tableName, operation, remarkJson);
+
         } catch (Exception e) {
-            log.error("记录菜单权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
+            log.error("记录{}审计日志失败: roleId={}, checkFlag={}", subModuleStr, roleId, checkFlag, e);
         }
+    }
+
+    /**
+     * 处理菜单权限审计日志
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
+     */
+    private void logMenuPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色菜单权限",
+                "sys_role_menu",
+                "菜单显示",
+                false);
     }
 
     /**
@@ -1361,36 +1472,22 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
      * @param roleId 角色ID
      * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
      * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
      */
     private void logInteractionPermissionAudit(
-            Long roleId, Integer checkFlag, List<String> permissionPaths) {
-        if (checkFlag == null || CollUtil.isEmpty(permissionPaths)) {
-            return;
-        }
-
-        try {
-            // 查询角色名称
-            SysRole role = sysRoleMapper.selectById(roleId);
-            if (role == null) {
-                log.warn("角色不存在，无法记录审计日志: roleId={}", roleId);
-                return;
-            }
-
-            String operation;
-            if (checkFlag == 1) {
-                // 新增权限
-                operation = "新增：" + String.join("->", permissionPaths);
-            } else {
-                // 取消权限
-                operation = "取消：" + String.join("->", permissionPaths);
-            }
-
-            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
-            // auditLogHelper.logWithoutCompare("角色管理", "sys_role_interaction_permission",
-            // operation);
-        } catch (Exception e) {
-            log.error("记录交互权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
-        }
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色交互权限",
+                "sys_role_interaction_permission",
+                "互动权限",
+                false);
     }
 
     /**
@@ -1399,35 +1496,22 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
      * @param roleId 角色ID
      * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
      * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
      */
     private void logDataPermissionAudit(
-            Long roleId, Integer checkFlag, List<String> permissionPaths) {
-        if (checkFlag == null || CollUtil.isEmpty(permissionPaths)) {
-            return;
-        }
-
-        try {
-            // 查询角色名称
-            SysRole role = sysRoleMapper.selectById(roleId);
-            if (role == null) {
-                log.warn("角色不存在，无法记录审计日志: roleId={}", roleId);
-                return;
-            }
-
-            String operation;
-            if (checkFlag == 1) {
-                // 新增权限
-                operation = "新增：" + String.join("->", permissionPaths);
-            } else {
-                // 取消权限
-                operation = "取消：" + String.join("->", permissionPaths);
-            }
-
-            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
-            // auditLogHelper.logWithoutCompare("角色管理", "sys_role_data_permission", operation);
-        } catch (Exception e) {
-            log.error("记录数据权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
-        }
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色数据权限",
+                "sys_role_data_permission",
+                "数据权限",
+                false);
     }
 
     /**
@@ -1436,35 +1520,45 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
      * @param roleId 角色ID
      * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
      * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
      */
     private void logModuleFieldPermissionAudit(
-            Long roleId, Integer checkFlag, List<String> permissionPaths) {
-        if (checkFlag == null || CollUtil.isEmpty(permissionPaths)) {
-            return;
-        }
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色模块字段权限",
+                "sys_role_module_field_permission",
+                "模块权限",
+                false);
+    }
 
-        try {
-            // 查询角色名称
-            SysRole role = sysRoleMapper.selectById(roleId);
-            if (role == null) {
-                log.warn("角色不存在，无法记录审计日志: roleId={}", roleId);
-                return;
-            }
-
-            String operation;
-            if (checkFlag == 1) {
-                // 新增权限
-                operation = "新增：" + String.join("->", permissionPaths);
-            } else {
-                // 取消权限
-                operation = "取消：" + String.join("->", permissionPaths);
-            }
-
-            // TODO: 暂时移除角色权限相关的审计日志，等后续重新设计
-            // auditLogHelper.logWithoutCompare("角色管理", "sys_role_module_field_permission",
-            // operation);
-        } catch (Exception e) {
-            log.error("记录模块字段权限审计日志失败: roleId={}, checkFlag={}", roleId, checkFlag, e);
-        }
+    /**
+     * 处理特殊权限审计日志
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型名称（传null，取permissionPaths[0]）
+     */
+    private void logSpecialPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                null,
+                "角色特殊权限",
+                "sys_role_special_permission",
+                "其它权限",
+                true);
     }
 }

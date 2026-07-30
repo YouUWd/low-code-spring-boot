@@ -21,6 +21,9 @@ public class SaveRoleInteractionPermissionReq {
     @Schema(description = "权限路径字符串列表，用于审计日志")
     private List<String> permissionPaths;
 
+    @Schema(description = "权限类型名称（如：模块权限-业务菜单权限、模块权限-系统菜单权限），用于审计日志")
+    private String permissionTypeName;
+
     /** 权限项 */
     @Data
     @Schema(description = "权限项")
