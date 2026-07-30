@@ -542,6 +542,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalBusiness.getApproverId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -679,6 +680,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalBusiness.getApproverId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -869,6 +871,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalBusiness.getApproverId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -1019,6 +1022,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalBusiness.getApproverId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
@@ -1118,6 +1122,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
         payload.put("recordId", approvalBusiness.getRecordId());
+        payload.put("applicantId", approvalBusiness.getApproverId());
         messagePublisher.publish(
                 approvalBusiness.getSubjectId(),
                 AppContext.getProjectNo(),
