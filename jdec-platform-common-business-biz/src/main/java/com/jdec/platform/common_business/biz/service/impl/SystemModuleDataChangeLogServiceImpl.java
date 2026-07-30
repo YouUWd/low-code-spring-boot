@@ -36,15 +36,20 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                 // 没有任何变更记录,不用保存
                 return null;
             }
+            LinkedHashMap<Long, String> moduleNameMap = new LinkedHashMap<>();
+            for (DataChangeContext dataChangeContext : context.getDataChangeContextList()) {
+                moduleNameMap.put(
+                        dataChangeContext.getModuleId(),
+                        dataChangeContext.getModuleFilterInfo().getModuleInfo().getModuleName());
+            }
             TableChangeLog changeLog = new TableChangeLog();
             changeLog.setDataId(context.getDataId());
             changeLog.setModuleId(context.getMainModuleId());
             changeLog.setSubjectId(context.getSubjectId());
-            changeLog.setModuleSlug(null);
-            changeLog.setModuleName(null);
+            changeLog.setModuleSlug("已提交");
+            changeLog.setModuleName(moduleNameMap.get(context.getMainModuleId()));
             changeLog.setMockUserId(context.getMockUserId());
             changeLog.setRealUserId(context.getRealUserId());
-
             Long operator =
                     (context.getMockUserId() != null
                                     && !context.getRealUserId().equals(context.getMockUserId()))

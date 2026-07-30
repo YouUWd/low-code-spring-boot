@@ -116,4 +116,8 @@ public interface ConfigCenterApiOpenFeignClient {
     @PostMapping("/wechat/templates/params/list-by-ids")
     ConfigApiResponse<List<WechatTemplateParamEntryResp>> getWechatTemplateParamEntryByIds(
             @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody List<Long> ids);
+
+    //    @PostMapping("/wechat/templates/send-message")
+    //    ConfigApiResponse<Boolean> sendMessage(@RequestHeader("X-Subject-Id") Long
+    // subjectId,@RequestBody SendWechatMessageReq req);
 }

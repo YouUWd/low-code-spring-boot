@@ -1,5 +1,6 @@
 package com.jdec.platform.common_business.biz.log.impl;
 
+import com.jdec.platform.common_business.biz.dto.BizWechatMsgDTO;
 import com.jdec.platform.common_business.biz.enums.BizMsgEnum;
 import com.jdec.platform.common_business.biz.log.BizMsg;
 import java.util.Set;
@@ -21,6 +22,7 @@ public class ApprovalBizMsg implements BizMsg {
 
     @Override
     public Boolean processBizMsg(BizMsgEnum msgEnum, Object msg) {
+        BizWechatMsgDTO bizWechatMsgDTO = (BizWechatMsgDTO) msg;
         return null;
     }
 }
