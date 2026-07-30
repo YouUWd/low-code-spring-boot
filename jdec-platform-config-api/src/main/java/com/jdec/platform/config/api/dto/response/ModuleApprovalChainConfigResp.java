@@ -189,6 +189,9 @@ public class ModuleApprovalChainConfigResp {
         @Schema(description = "日志对应状态描述")
         private String logName;
 
+        @Schema(description = "是否自动进入下一任务 1:是 0:否")
+        private Integer autoNextTaskFlag;
+
         @Schema(description = "消息模板ID集合")
         private String msgTemplateIds;
     }
