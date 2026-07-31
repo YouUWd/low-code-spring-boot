@@ -1397,6 +1397,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             approvalChainBusiness.getSerialNumber(),
                             approvalChainBusiness.getSerialNo(),
                             approvalChainBusiness.getCurrentStep()));
+            canEdit.set(1);
             return operations;
         }
         ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
