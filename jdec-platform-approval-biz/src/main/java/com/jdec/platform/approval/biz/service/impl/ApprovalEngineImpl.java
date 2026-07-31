@@ -1005,7 +1005,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     ApprovalChain::getCurrentStep, specifyStep, approvalBusiness.getCurrentStep());
             updateWrapper.set(ApprovalChain::getApproved, false);
             updateWrapper.set(ApprovalChain::getApproverIdList, null);
-            updateWrapper.set(ApprovalChain::getApprovalUids, null);
+            // updateWrapper.set(ApprovalChain::getApprovalUids, null);
             updateWrapper.set(ApprovalChain::getApprovalUid, null);
             approvalChainMapper.update(updateWrapper);
 
@@ -1436,6 +1436,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                     approvalChainBusiness.getSerialNumber(),
                                     approvalChainBusiness.getSerialNo(),
                                     approvalChainBusiness.getCurrentStep()));
+                    canEdit.set(1);
                 }
             } else if ((Objects.nonNull(approvalChainBusiness.getApproverId())
                             && approvalChainBusiness.getApproverId().equals(userId))
