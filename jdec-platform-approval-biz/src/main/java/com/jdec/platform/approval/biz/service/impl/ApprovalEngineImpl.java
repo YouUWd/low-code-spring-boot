@@ -1026,12 +1026,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 throw new BusinessException(601, "单据记录异常");
             }
             approvalBusiness.setStatusTitle(statusNode.getTitle());
-            approvalBusiness.setStatusId(statusNode.getId());
+            approvalBusiness.setStatusId(backConfig.getCurrentStatusChildId());
             approvalBusiness.setStatusValue(statusNode.getStatusValue());
             approvalBusiness.setStatusBackground(statusNode.getStatusBackground());
             approvalBusiness.setStatusFontColor(statusNode.getStatusFontColor());
             approvalVersionRecord.setStatusTitle(statusNode.getTitle());
-            approvalVersionRecord.setStatusId(statusNode.getId());
+            approvalVersionRecord.setStatusId(backConfig.getCurrentStatusChildId());
             approvalVersionRecord.setStatusValue(statusNode.getStatusValue());
             approvalVersionRecord.setStatusBackground(statusNode.getStatusBackground());
             approvalVersionRecord.setStatusFontColor(statusNode.getStatusFontColor());
