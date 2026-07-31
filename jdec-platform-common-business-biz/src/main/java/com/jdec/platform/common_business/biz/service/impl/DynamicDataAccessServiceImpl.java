@@ -827,6 +827,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             .fieldTitle(allFieldItem.getFieldName())
                             .permissionCode(allFieldItem.getPermissionCode())
                             .tableName(allFieldItem.getTableName())
+                            .relationName(allFieldItem.getRelationName())
+                            .relationBusinessNo(allFieldItem.getRelationBusinessNo())
                             .build();
 
             formFields.add(formField);

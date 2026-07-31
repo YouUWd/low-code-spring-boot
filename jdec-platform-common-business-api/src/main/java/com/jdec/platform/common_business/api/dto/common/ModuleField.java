@@ -34,6 +34,21 @@ public class ModuleField {
     @Schema(description = "字段权限")
     private Integer permissionCode;
 
+    @Schema(description = "业务唯一标识顺序（大于0表示是业务唯一标识及其顺序，null或0表示否）")
+    private Integer bizKeyOrder;
+
+    @Schema(description = "关联关系业务编号")
+    private String relationBusinessNo;
+
+    @Schema(description = "关联关系名称")
+    private String relationName;
+
+    @Schema(description = "是否加密存储: 0-否, 1-是")
+    private Integer encrypted;
+
+    @Schema(description = "是否生成权限节点: 0-否, 1-是")
+    private Integer dataRightFlag;
+
     public record SourceMapping(
             @Schema(description = "表名") String entity,
             @Schema(description = "字段名") String field,

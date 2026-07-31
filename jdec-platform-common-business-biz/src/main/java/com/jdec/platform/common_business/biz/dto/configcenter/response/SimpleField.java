@@ -19,4 +19,6 @@ public class SimpleField implements Serializable {
     private String transformer;
 
     private String displayName;
+
+    private Integer bizKeyOrder;
 }

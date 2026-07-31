@@ -6,6 +6,7 @@ import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import java.util.List;
@@ -123,4 +124,10 @@ public interface ConfigCenterApiOpenFeignClient {
     @PostMapping("/wechat/templates/send-message")
     ConfigApiResponse<Boolean> sendMessage(
             @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody SendWechatMessageReq req);
+
+    @GetMapping("/tables/{tableName}/columns/settings")
+    ConfigApiResponse<List<SysFieldResp>> getColumnSettings(
+            @RequestHeader("X-Subject-Id") Long subjectId,
+            @PathVariable String tableName,
+            @RequestParam(required = false) String columnName);
 }
