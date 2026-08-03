@@ -493,7 +493,7 @@ public class SysFieldService implements SysFieldApi {
 
                     // 记录删除数据权限节点的审计日志（会自动删除快照）
                     auditLogHelper.logDelete(
-                            "数据权限配置",
+                            "数据权限",
                             "sys_data_permission",
                             dataPermission.getId(),
                             SysDataPermission.class);
@@ -512,7 +512,7 @@ public class SysFieldService implements SysFieldApi {
 
                 // 记录新增数据权限节点的审计日志
                 auditLogHelper.logCreate(
-                        "数据权限配置", "sys_data_permission", "新增", permission.getId(), permission);
+                        "数据权限", "sys_data_permission", "新增", permission.getId(), permission);
             }
         }
         Long fieldId = entity.getId();

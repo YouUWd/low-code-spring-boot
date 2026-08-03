@@ -9,6 +9,7 @@ import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
+import com.jdec.platform.shared.audit.enums.EnumDescribable;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.TokenContext;
@@ -33,7 +34,6 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -66,6 +66,9 @@ public class DataAuditAspect {
         String tableName = dataAudit.tableName();
         OperationType operationType = dataAudit.operation();
 
+        // 解析子模块（支持从请求参数对象中动态获取，如：#req.category，并结合枚举类转为中文）
+        String subModule = resolveSubModule(joinPoint, dataAudit);
+
         // 解析dataIdField获取实际dataId
         Long dataId = null;
         if (dataAudit.dataIdField() != null && !dataAudit.dataIdField().isEmpty()) {
@@ -81,7 +84,8 @@ public class DataAuditAspect {
             if (dataAudit.dataIdField() != null && !dataAudit.dataIdField().isEmpty()) {
                 Long newDataId = parseDataId(joinPoint, dataAudit.dataIdField());
                 if (newDataId != null) {
-                    handleCreateAudit(joinPoint, dataAudit, newDataId, tableName, result);
+                    handleCreateAudit(
+                            joinPoint, dataAudit, newDataId, tableName, result, subModule);
                     return result;
                 }
             }
@@ -92,14 +96,15 @@ public class DataAuditAspect {
                 Long newDataId = (Long) result;
                 if (newDataId != null) {
                     // 从返回的dataId走CREATE审计流程
-                    handleCreateAudit(joinPoint, dataAudit, newDataId, tableName, result);
+                    handleCreateAudit(
+                            joinPoint, dataAudit, newDataId, tableName, result, subModule);
                     return result;
                 }
             }
 
             // 只记录操作，不对比差异
             if (operationType == OperationType.UPDATE) {
-                handleUpdateAuditWithoutCompare(dataAudit);
+                handleUpdateAuditWithoutCompare(dataAudit, subModule);
             }
             return result;
         }
@@ -114,24 +119,25 @@ public class DataAuditAspect {
 
         // 根据操作类型处理审计
         if (operationType == OperationType.UPDATE) {
-            handleUpdateAudit(joinPoint, dataAudit, dataId, tableName, oldSnapshot, result);
+            handleUpdateAudit(
+                    joinPoint, dataAudit, dataId, tableName, oldSnapshot, result, subModule);
         } else if (operationType == OperationType.DELETE) {
-            handleDeleteAudit(dataAudit, dataId, tableName, oldSnapshot);
+            handleDeleteAudit(dataAudit, dataId, tableName, oldSnapshot, subModule);
         } else if (operationType == OperationType.CREATE) {
-            handleCreateAudit(joinPoint, dataAudit, dataId, tableName, result);
+            handleCreateAudit(joinPoint, dataAudit, dataId, tableName, result, subModule);
         }
 
         return result;
     }
 
     /** 处理UPDATE操作审计（无对比，仅记录操作） */
-    private void handleUpdateAuditWithoutCompare(DataAudit dataAudit) {
+    private void handleUpdateAuditWithoutCompare(DataAudit dataAudit, String subModule) {
         try {
             // 构建审计结果（无差异列表）
             AuditResult auditResult =
                     AuditResult.builder()
                             .module(dataAudit.module())
-                            .subModule(dataAudit.subModule())
+                            .subModule(subModule)
                             .operation(dataAudit.operation().getDescription())
                             .tableName(dataAudit.tableName())
                             .dataId(null)
@@ -175,7 +181,8 @@ public class DataAuditAspect {
             Long dataId,
             String tableName,
             SysDataSnapshot oldSnapshot,
-            Object result) {
+            Object result,
+            String subModule) {
         try {
             // 获取新数据（从方法参数中获取）
             Object newData = extractNewData(joinPoint);
@@ -208,14 +215,28 @@ public class DataAuditAspect {
                 return;
             }
 
-            // 提取记录名称
-            String recordName = jsonDiffUtil.extractUniqueIdentifier(newData);
+            // 提取记录名称（修改操作时从旧快照提取，显示修改前的名称）
+            String recordName;
+            if (isCreate) {
+                // 新增操作：从新数据中提取
+                recordName = jsonDiffUtil.extractUniqueIdentifier(newData);
+            } else {
+                // 修改操作：从旧快照提取，显示修改前的名称
+                if (oldSnapshot != null && oldSnapshot.getJsonData() != null) {
+                    recordName =
+                            jsonDiffUtil.extractUniqueIdentifierFromJson(
+                                    oldSnapshot.getJsonData(), newData.getClass());
+                } else {
+                    // 降级：如果没有旧快照，则从新数据提取
+                    recordName = jsonDiffUtil.extractUniqueIdentifier(newData);
+                }
+            }
 
             // 构建审计结果
             AuditResult auditResult =
                     AuditResult.builder()
                             .module(dataAudit.module())
-                            .subModule(dataAudit.subModule())
+                            .subModule(subModule)
                             .operation(actualOperation) // 使用自动判断的操作类型
                             .tableName(tableName)
                             .dataId(dataId)
@@ -275,7 +296,8 @@ public class DataAuditAspect {
             DataAudit dataAudit,
             Long dataId,
             String tableName,
-            Object result) {
+            Object result,
+            String subModule) {
         try {
             // 获取新数据（从方法参数中获取）
             Object newData = extractNewData(joinPoint);
@@ -297,7 +319,7 @@ public class DataAuditAspect {
             AuditResult auditResult =
                     AuditResult.builder()
                             .module(dataAudit.module())
-                            .subModule(dataAudit.subModule())
+                            .subModule(subModule)
                             .operation("新增")
                             .tableName(tableName)
                             .dataId(dataId)
@@ -355,7 +377,11 @@ public class DataAuditAspect {
 
     /** 处理DELETE操作审计 */
     private void handleDeleteAudit(
-            DataAudit dataAudit, Long dataId, String tableName, SysDataSnapshot oldSnapshot) {
+            DataAudit dataAudit,
+            Long dataId,
+            String tableName,
+            SysDataSnapshot oldSnapshot,
+            String subModule) {
         try {
             if (oldSnapshot == null) {
                 log.warn("DELETE审计失败: 快照不存在, table={}, dataId={}", tableName, dataId);
@@ -413,7 +439,7 @@ public class DataAuditAspect {
             AuditResult auditResult =
                     AuditResult.builder()
                             .module(dataAudit.module())
-                            .subModule(dataAudit.subModule())
+                            .subModule(subModule)
                             .operation(dataAudit.operation().getDescription())
                             .tableName(tableName)
                             .dataId(dataId)
@@ -455,8 +481,39 @@ public class DataAuditAspect {
         }
     }
 
-    /** 使用SpEL解析dataIdField获取实际dataId */
-    private Long parseDataId(ProceedingJoinPoint joinPoint, String dataIdField) {
+    /**
+     * 解析业务子模块。
+     *
+     * <p>优先使用 subModuleField 的SpEL表达式从请求参数对象中动态获取（如：#req.category）， 结合 subModuleEnumClass
+     * 可将枚举code转换为中文描述；解析失败或未指定时回退到静态 subModule。
+     */
+    private String resolveSubModule(ProceedingJoinPoint joinPoint, DataAudit dataAudit) {
+        if (dataAudit.subModuleField() != null && !dataAudit.subModuleField().isEmpty()) {
+            try {
+                Object value = parseSpelValue(joinPoint, dataAudit.subModuleField());
+                if (value != null) {
+                    // 结合枚举类将枚举code转换为中文描述
+                    String desc = resolveEnumValue(value, dataAudit.subModuleEnumClass());
+                    if (desc != null && !desc.isEmpty()) {
+                        return desc;
+                    }
+                    return value.toString();
+                }
+            } catch (Exception e) {
+                log.warn("解析子模块SpEL表达式失败: field={}, 使用静态subModule", dataAudit.subModuleField(), e);
+            }
+        }
+        return dataAudit.subModule();
+    }
+
+    /**
+     * 使用SpEL解析指定表达式获取实际值
+     *
+     * @param joinPoint 连接点
+     * @param expression SpEL表达式（如：#req.category）
+     * @return 解析后的值，失败返回null
+     */
+    private Object parseSpelValue(ProceedingJoinPoint joinPoint, String expression) {
         try {
             StandardEvaluationContext context = new StandardEvaluationContext();
 
@@ -471,7 +528,17 @@ public class DataAuditAspect {
             }
 
             // 解析SpEL表达式
-            Object value = parser.parseExpression(dataIdField).getValue(context);
+            return parser.parseExpression(expression).getValue(context);
+        } catch (Exception e) {
+            log.error("解析SpEL表达式失败: expression={}", expression, e);
+            return null;
+        }
+    }
+
+    /** 使用SpEL解析dataIdField获取实际dataId */
+    private Long parseDataId(ProceedingJoinPoint joinPoint, String dataIdField) {
+        try {
+            Object value = parseSpelValue(joinPoint, dataIdField);
             if (value instanceof Long) {
                 return (Long) value;
             } else if (value instanceof Integer) {
@@ -483,6 +550,67 @@ public class DataAuditAspect {
             log.error("解析dataId失败: field={}", dataIdField, e);
         }
         return null;
+    }
+
+    /**
+     * 将枚举值转换为中文描述（兼容EnumDescribable的code匹配与ordinal匹配）
+     *
+     * @param value 枚举值（code或ordinal）
+     * @param enumClass 枚举类，非枚举或void.class时直接返回null
+     * @return 中文描述，未匹配返回null
+     */
+    private String resolveEnumValue(Object value, Class<?> enumClass) {
+        if (value == null || enumClass == null || enumClass == void.class || !enumClass.isEnum()) {
+            return null;
+        }
+        try {
+            Object[] enumConstants = enumClass.getEnumConstants();
+            if (enumConstants == null || enumConstants.length == 0) {
+                return null;
+            }
+            // 优先按EnumDescribable.getValue()匹配code值
+            for (Object enumConstant : enumConstants) {
+                if (enumConstant instanceof EnumDescribable) {
+                    Object enumCode = ((EnumDescribable) enumConstant).getValue();
+                    if (enumValuesEqual(enumCode, value)) {
+                        return ((EnumDescribable) enumConstant).getDescription();
+                    }
+                } else if (enumConstant instanceof Enum<?> e) {
+                    // 兼容非EnumDescribable枚举按name匹配
+                    if (e.name().equals(value.toString())) {
+                        return e.name();
+                    }
+                }
+            }
+            // 未匹配到则回退按ordinal匹配
+            if (value instanceof Number number) {
+                int ordinal = number.intValue();
+                if (ordinal >= 0 && ordinal < enumConstants.length) {
+                    Object enumConstant = enumConstants[ordinal];
+                    if (enumConstant instanceof EnumDescribable) {
+                        return ((EnumDescribable) enumConstant).getDescription();
+                    }
+                    return ((Enum<?>) enumConstant).name();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析枚举值失败: value={}, enumClass={}", value, enumClass, e);
+        }
+        return null;
+    }
+
+    /** 判断两个枚举值是否相等（兼容Integer/Long等数值类型） */
+    private boolean enumValuesEqual(Object a, Object b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        if (a.equals(b)) {
+            return true;
+        }
+        if (a instanceof Number na && b instanceof Number nb) {
+            return na.longValue() == nb.longValue();
+        }
+        return false;
     }
 
     /** 提取新数据（从方法参数中获取第一个请求对象） */
@@ -673,34 +801,35 @@ public class DataAuditAspect {
         }
 
         HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-        ResponseEntity<LogResponse> response =
-                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
+        //        ResponseEntity<LogResponse> response =
+        //                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
 
         // 检查HTTP状态码
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            String errorMsg =
-                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s", response.getStatusCode(), url);
-            log.error(errorMsg);
-            throw new RuntimeException(errorMsg);
-        }
-
-        // 检查业务状态码
-        LogResponse body = response.getBody();
-        if (body == null) {
-            String errorMsg = "审计日志发送失败，响应体为空";
-            log.error(errorMsg);
-            throw new RuntimeException(errorMsg);
-        }
-        if (body.status() != 200) {
-            String errorMsg =
-                    String.format(
-                            "审计日志发送失败，业务状态码: %d，消息: %s",
-                            body.status(), body.msg() != null ? body.msg() : "无");
-            log.error(errorMsg);
-            throw new RuntimeException(errorMsg);
-        }
-
-        log.info("审计日志发送成功: url={}, status={}", url, body.status());
+        //        if (!response.getStatusCode().is2xxSuccessful()) {
+        //            String errorMsg =
+        //                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s",
+        // response.getStatusCode(), url);
+        //            log.error(errorMsg);
+        //            throw new RuntimeException(errorMsg);
+        //        }
+        //
+        //        // 检查业务状态码
+        //        LogResponse body = response.getBody();
+        //        if (body == null) {
+        //            String errorMsg = "审计日志发送失败，响应体为空";
+        //            log.error(errorMsg);
+        //            throw new RuntimeException(errorMsg);
+        //        }
+        //        if (body.status() != 200) {
+        //            String errorMsg =
+        //                    String.format(
+        //                            "审计日志发送失败，业务状态码: %d，消息: %s",
+        //                            body.status(), body.msg() != null ? body.msg() : "无");
+        //            log.error(errorMsg);
+        //            throw new RuntimeException(errorMsg);
+        //        }
+        //
+        //        log.info("审计日志发送成功: url={}, status={}", url, body.status());
     }
 
     record LogResponse(int status, String msg, Object data) {}

@@ -54,7 +54,7 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     @Override
     @DataAudit(
             module = "系统设置",
-            subModule = "特殊权限",
+            subModule = "其它权限",
             operation = OperationType.UPDATE,
             tableName = "sys_special_permission",
             dataIdField = "#req.id")
@@ -146,7 +146,7 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     @Override
     @DataAudit(
             module = "系统设置",
-            subModule = "特殊权限",
+            subModule = "其它权限",
             operation = OperationType.DELETE,
             deleteDisplayField = "name",
             entityClass = SysSpecialPermission.class,

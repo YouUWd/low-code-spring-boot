@@ -12,21 +12,22 @@ import lombok.Data;
 @Schema(description = "特殊权限保存/编辑请求")
 public class SysSpecialPermissionSaveReq {
 
+    @AuditField(name = "主键ID", ignore = true)
     @Schema(description = "主键ID")
     private Long id;
 
-    @Schema(description = "权限编码", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "权限编码不能为空")
-    @AuditField(name = "权限编码")
-    private String code;
-
-    @Schema(description = "权限名称", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "权限节点名称", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "权限名称不能为空")
-    @AuditField(name = "权限名称", uniqueIdentifier = true)
+    @AuditField(name = "权限节点名称", uniqueIdentifier = true)
     private String name;
 
-    @Schema(description = "权限描述")
-    @AuditField(name = "权限描述")
+    @Schema(description = "权限节点编码", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "权限编码不能为空")
+    @AuditField(name = "权限节点编码")
+    private String code;
+
+    @Schema(description = "权限节点描述")
+    @AuditField(name = "权限节点描述")
     private String description;
 
     @Schema(description = "排序")
@@ -34,6 +35,6 @@ public class SysSpecialPermissionSaveReq {
     private Integer sort;
 
     @Schema(description = "状态 1:启用 0:禁用", requiredMode = Schema.RequiredMode.REQUIRED)
-    @AuditField(name = "状态", type = FieldType.ENUM, enumClass = CommonStatusEnum.class)
+    @AuditField(name = "权限节点状态", type = FieldType.ENUM, enumClass = CommonStatusEnum.class)
     private Integer status = 1;
 }

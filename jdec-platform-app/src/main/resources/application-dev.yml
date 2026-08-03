@@ -123,9 +123,11 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
-    enable-swagger-models: true
     enable-document-manage: true
     swagger-model-name: 实体类
+springdoc:
+  swagger-ui:
+    display-request-duration: true # 显示请求耗时
 # ===== 企业微信配置 - 开发环境 =====
 wechat:
   work:
