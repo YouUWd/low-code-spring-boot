@@ -8,10 +8,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 @FeignClient(
         name = "monitor-log",
-        url = "http://127.0.0.1:8080/api/monitorlog",
+        url = "${config.center.base}",
+        path = "/api/monitorlog",
         configuration = FeignConfig.class)
 public interface MonitorLogApiOpenFeignClient {
 
-    @PostMapping("/addBusinessChangeLog")
+    @PostMapping("/addOrderRunLog")
     ConfigApiResponse<Void> recordBusinessLog(@RequestBody MonitorLogReq request);
 }

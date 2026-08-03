@@ -1,10 +1,13 @@
 package com.jdec.platform.hr.biz.controller;
 
 import com.jdec.platform.hr.api.UserApi;
+import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.request.CreateUserReq;
 import com.jdec.platform.hr.api.dto.request.UpdateUserReq;
 import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
 import com.jdec.platform.shared.model.ApiResponse;
+import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -59,5 +62,10 @@ public class UserController {
     public ApiResponse<UserBasicInfoResp> updateUser(@RequestBody UpdateUserReq request) {
         UserBasicInfoResp result = userApi.updateUser(request);
         return ApiResponse.success("更新成功", result);
+    }
+
+    @PostMapping("/list-by-ids")
+    public ApiResponse<List<UserBO>> listByIds(@RequestBody Set<Long> userIds) {
+        return ApiResponse.success(userApi.listByIds(userIds));
     }
 }

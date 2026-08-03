@@ -5,13 +5,17 @@ import com.jdec.platform.common_business.api.dto.response.MenuResp;
 import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
+import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
+import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
+import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import java.util.List;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
 
 @FeignClient(
         name = "config-center",
-        url = "http://127.0.0.1:8080/api/config",
+        url = "${config.center.base}",
+        path = "/api/config",
         configuration = FeignConfig.class)
 public interface ConfigCenterApiOpenFeignClient {
     @GetMapping("/sys/role/get-user-roles")
@@ -110,9 +114,13 @@ public interface ConfigCenterApiOpenFeignClient {
 
     @GetMapping("/category/item/byCategoryAlias")
     ConfigApiResponse<List<SysConfigItemTreeResp>> getCategoryItemByCategoryAlias(
-            @RequestHeader("X-Subject-Id") Long subjectId, @PathVariable String categoryAlias);
+            @RequestHeader("X-Subject-Id") Long subjectId, @RequestParam String categoryAlias);
 
     @PostMapping("/wechat/templates/params/list-by-ids")
     ConfigApiResponse<List<WechatTemplateParamEntryResp>> getWechatTemplateParamEntryByIds(
             @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody List<Long> ids);
+
+    @PostMapping("/wechat/templates/send-message")
+    ConfigApiResponse<Boolean> sendMessage(
+            @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody SendWechatMessageReq req);
 }

@@ -4,19 +4,16 @@ import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.enums.ConfigCenterChangeType;
 import com.jdec.platform.common_business.biz.service.impl.ConfigCenterMessageListener;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
 
-@Configuration
+// @Configuration
 @Slf4j
 public class RedisConfigListener {
 
-    @Value("${app.project.number}")
+    // @Value("${app.project.number}")
     private String projectNumber;
 
     /**
@@ -25,13 +22,13 @@ public class RedisConfigListener {
      * @param redisMessageSubscriber
      * @return
      */
-    @Bean
+    // @Bean
     public MessageListenerAdapter messageListenerAdapter(
             ConfigCenterMessageListener redisMessageSubscriber) {
         return new MessageListenerAdapter(redisMessageSubscriber, "handleMessage");
     }
 
-    @Bean(value = "comBizRedisMessageListenerContainer")
+    // @Bean(value = "comBizRedisMessageListenerContainer")
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory connectionFactory,
             MessageListenerAdapter messageListenerAdapter) {

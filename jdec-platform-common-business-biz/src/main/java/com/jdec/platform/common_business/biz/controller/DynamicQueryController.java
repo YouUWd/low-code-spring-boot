@@ -128,7 +128,8 @@ public class DynamicQueryController {
             @Schema(description = "菜单ID") @RequestParam Long menuId,
             @Schema(description = "主表主键ID") @RequestParam Long id,
             @Schema(description = "关联筛选ID") @RequestParam(required = false) Long relateSearchId,
-            @Schema(description = "按钮状态") @RequestParam String btnType) {
+            @Schema(description = "按钮状态") @RequestParam(required = false, defaultValue = "view")
+                    String btnType) {
         return ApiResponse.success(
                 dynamicDataAccessService.dynamicQueryAllModuleDetailDataWithApproval(
                         subjectId, roleId, menuId, id, relateSearchId, btnType));

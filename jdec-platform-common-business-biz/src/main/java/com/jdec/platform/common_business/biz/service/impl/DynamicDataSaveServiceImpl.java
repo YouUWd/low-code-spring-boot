@@ -1299,7 +1299,6 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 recordId =
                         editPreProcessDataUpdateDelete(
                                 moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
-                editMultiModuleData(subjectId, roleId, moduleSaveList);
             }
             default -> {
                 recordId =
@@ -1361,6 +1360,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                     saveBusinessIdReq.setRecordId(recordId);
                     saveBusinessIdReq.setBusinessId(Long.parseLong(String.valueOf(businessId)));
                     approvalApiOpenFeignClient.saveBusinessId(subjectId, saveBusinessIdReq);
+                }
+            } else if (Objects.nonNull(processResultMap.get("versionNo"))) {
+                // 取消提交且versionNo不为初始版本1
+                if (buttonType == ApprovalButtonType.CANCEL) {
+                    if (Integer.parseInt(String.valueOf(processResultMap.get("versionNo"))) != 1) {
+                        editMultiModuleData(subjectId, roleId, moduleSaveList);
+                    }
                 }
             }
 
@@ -3041,10 +3047,17 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         } else if (c == LocalDateTime.class) {
             if (parameter.getClass() == String.class) {
-                f.set(
-                        instance,
-                        DateUtil.parseLocalDateTime(
-                                parameter.toString(), DatePattern.NORM_DATETIME_PATTERN));
+                if (parameter.toString().indexOf("T") >= 0) {
+                    f.set(
+                            instance,
+                            DateUtil.parseLocalDateTime(
+                                    parameter.toString(), DatePattern.UTC_SIMPLE_PATTERN));
+                } else {
+                    f.set(
+                            instance,
+                            DateUtil.parseLocalDateTime(
+                                    parameter.toString(), DatePattern.NORM_DATETIME_PATTERN));
+                }
             } else if (parameter.getClass() == LocalDateTime.class) {
                 f.set(instance, parameter);
             }

@@ -12,7 +12,7 @@ public class ApprovalProcessReq {
     @NotBlank(message = "主体ID不能为空")
     private Long subjectId;
 
-    // "模块ID"
+    // 模块ID
     @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "模块ID不能为空")
     private Long moduleId;

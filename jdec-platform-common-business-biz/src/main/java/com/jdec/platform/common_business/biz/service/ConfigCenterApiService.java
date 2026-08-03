@@ -4,7 +4,9 @@ import com.jdec.platform.common_business.api.dto.response.MenuResp;
 import com.jdec.platform.common_business.api.dto.response.RoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
+import com.jdec.platform.common_business.biz.dto.WechatTemplateDetailDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
+import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import java.util.List;
 
 public interface ConfigCenterApiService {
@@ -35,7 +37,7 @@ public interface ConfigCenterApiService {
 
     List<PersonalSettingResp> getPersonalSettingByRole(Long subjectId, Long roleId, Long moduleId);
 
-    WechatTemplateDetailResp getWechatTemplateDetail(Long subjectId, Long id);
+    WechatTemplateDetailDTO getWechatTemplateDetail(Long subjectId, Long id);
 
     List<SysConfigItemTreeResp> getCategoryItemByCategoryAlias(
             Long subjectId, String categoryAlias);

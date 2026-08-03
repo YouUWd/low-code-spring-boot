@@ -562,8 +562,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     .build();
 
                     List<VersionCompareItem> rejectList = new ArrayList<>();
-                    rejectList.add(v2CurrentVersion);
                     rejectList.add(v2InternalVersion);
+                    rejectList.add(v2CurrentVersion);
 
                     VersionCompareItem v2Version =
                             VersionCompareItem.builder()
@@ -908,17 +908,21 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
     private void applyOrdering(QueryWrapper query, List<OrderItemReq> orderItemReqs) {
         for (OrderItemReq order : orderItemReqs) {
-            String field = order.getField();
+            List<String> fields = order.getField();
             String direction = order.getValue();
             boolean isAsc =
                     CommonConstant.ORDER_ASC_SET.stream()
                             .anyMatch(x -> x.equalsIgnoreCase(direction));
-            query.orderBy(
-                    true,
-                    isAsc,
-                    order.getTableName()
-                            + DB_TABLE_FIELD_SEPARATOR
-                            + ToolUtils.camelToSnakeCase(field));
+            for (String field : fields) {
+                if (StringUtils.isNotBlank(field)) {
+                    query.orderBy(
+                            true,
+                            isAsc,
+                            order.getTableName()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + ToolUtils.camelToSnakeCase(field));
+                }
+            }
         }
     }
 
@@ -1076,8 +1080,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             approvalListReq = new ApprovalListReq();
             approvalListReq.setApprovalType(queryParam.getType());
 
-            approvalListReq.setRecordIdList(Arrays.asList(1L));
-
             List<Long> idList =
                     queryParam.getPrimaryTableDataList().stream()
                             .map(
@@ -1095,7 +1097,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             approvalListReq.setRoleId(queryParam.getRoleId());
 
-            List<Long> moduleIdList =
+            Set<Long> moduleIdSet =
                     queryParam.getPrimaryTableDataList().stream()
                             .map(
                                     e -> {
@@ -1105,7 +1107,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                         return Long.parseLong(
                                                 String.valueOf(ReflectionUtils.getField(field, e)));
                                     })
-                            .collect(Collectors.toList());
+                            .collect(Collectors.toSet());
+
+            List<Long> moduleIdList = new ArrayList<>(moduleIdSet);
             approvalListReq.setModuleIdList(moduleIdList);
 
             approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
@@ -1246,6 +1250,14 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable(),
                 tableNameToConfigItems,
                 queryWrapper);
+
+        if (hasApproval) {
+            queryWrapper.eq(
+                    queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                            + DB_TABLE_FIELD_SEPARATOR
+                            + "deleted",
+                    false);
+        }
 
         // 请求中带有排序参数
         if (tableNameToOrders.containsKey(
@@ -1513,10 +1525,16 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                             + DB_TABLE_FIELD_SEPARATOR
                                             + DEFAULT_PRIMARY_KEY);
 
-                    primaryTablePrefixResultMap.put(
-                            "btnList", recordIdToApprovalData.get(primaryId).get("*.btnList"));
-                    primaryTablePrefixResultMap.putAll(
-                            recordIdToApprovalData.get(Long.parseLong(String.valueOf(primaryId))));
+                    if (recordIdToApprovalData.containsKey(primaryId)) {
+                        primaryTablePrefixResultMap.put(
+                                "btnList", recordIdToApprovalData.get(primaryId).get("*.btnList"));
+                        primaryTablePrefixResultMap.putAll(
+                                recordIdToApprovalData.get(
+                                        Long.parseLong(String.valueOf(primaryId))));
+                    } else {
+                        log.debug("recordId:{}数据存在于业务表，但审批链部分无数据，数据不返回。", primaryId);
+                        continue;
+                    }
                 }
 
                 dataList.add(primaryTablePrefixResultMap);
