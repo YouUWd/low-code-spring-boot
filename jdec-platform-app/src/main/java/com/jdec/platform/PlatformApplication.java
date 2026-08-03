@@ -1,6 +1,7 @@
 package com.jdec.platform;
 
 import java.net.InetAddress;
+import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
@@ -18,6 +19,9 @@ import org.springframework.core.env.Environment;
 public class PlatformApplication {
 
     public static void main(String[] args) throws Exception {
+        // 1. 设置全局默认时区为中国时区（中国标准时间）
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+
         ConfigurableApplicationContext context =
                 SpringApplication.run(PlatformApplication.class, args);
         Environment env = context.getEnvironment();
