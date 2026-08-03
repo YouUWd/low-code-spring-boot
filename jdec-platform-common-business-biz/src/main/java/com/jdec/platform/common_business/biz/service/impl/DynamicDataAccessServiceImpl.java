@@ -910,17 +910,21 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
     private void applyOrdering(QueryWrapper query, List<OrderItemReq> orderItemReqs) {
         for (OrderItemReq order : orderItemReqs) {
-            String field = order.getField();
+            List<String> fields = order.getField();
             String direction = order.getValue();
             boolean isAsc =
                     CommonConstant.ORDER_ASC_SET.stream()
                             .anyMatch(x -> x.equalsIgnoreCase(direction));
-            query.orderBy(
-                    true,
-                    isAsc,
-                    order.getTableName()
-                            + DB_TABLE_FIELD_SEPARATOR
-                            + ToolUtils.camelToSnakeCase(field));
+            for (String field : fields) {
+                if (StringUtils.isNotBlank(field)) {
+                    query.orderBy(
+                            true,
+                            isAsc,
+                            order.getTableName()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + ToolUtils.camelToSnakeCase(field));
+                }
+            }
         }
     }
 

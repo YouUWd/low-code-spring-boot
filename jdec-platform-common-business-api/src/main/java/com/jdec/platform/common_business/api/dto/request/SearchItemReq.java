@@ -21,12 +21,12 @@ public class SearchItemReq implements Serializable {
     @Schema(description = "搜索类型")
     private String searchType;
 
-    @Schema(description = "列ID")
-    private Long columnId;
+    //    @Schema(description = "列ID")
+    //    private Long columnId;
 
-    @Schema(description = "搜索关联")
-    private String searchRelation;
-
-    @Schema(description = "搜索表")
-    private String searchTable;
+    //    @Schema(description = "搜索关联")
+    //    private String searchRelation;
+    //
+    //    @Schema(description = "搜索表")
+    //    private String searchTable;
 }
