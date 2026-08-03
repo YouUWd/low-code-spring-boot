@@ -20,24 +20,24 @@ public class SysDataPermission implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    @AuditField(name = "类型编码")
-    @Schema(description = "类型编码")
-    private String code;
-
-    @AuditField(name = "权限名称", uniqueIdentifier = true)
-    @Schema(description = "类型名称")
+    @AuditField(name = "权限节点名称", uniqueIdentifier = true)
+    @Schema(description = "权限节点名称")
     private String name;
 
-    @AuditField(name = "类型描述")
-    @Schema(description = "类型描述")
+    @AuditField(name = "权限节点编码")
+    @Schema(description = "权限节点编码")
+    private String code;
+
+    @AuditField(name = "权限节点描述")
+    @Schema(description = "权限节点描述")
     private String description;
 
-    @AuditField(name = "排序")
+    @AuditField(name = "排序", ignore = true)
     @Schema(description = "排序")
     private Integer sort;
 
-    @AuditField(name = "状态", type = FieldType.ENUM, enumClass = CommonStatusEnum.class)
-    @Schema(description = "状态 1:启用 0:禁用")
+    @AuditField(name = "权限节点状态", type = FieldType.ENUM, enumClass = CommonStatusEnum.class)
+    @Schema(description = "权限节点状态 1:启用 0:禁用")
     private Integer status;
 
     @AuditField(name = "所属主体", ignore = true)

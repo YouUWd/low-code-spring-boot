@@ -22,7 +22,8 @@ public class SysMenuSaveReq {
             type = FieldType.RELATION,
             target = "sys_menu",
             idField = "id",
-            nameField = "title")
+            nameField = "title",
+            ignore = true)
     @Schema(description = "父级id，顶层为0")
     private Long pid;
 
@@ -34,11 +35,15 @@ public class SysMenuSaveReq {
     @Schema(description = "参数")
     private String param;
 
-    @AuditField(name = "菜单类型", type = FieldType.DICT, dictCategoryAlias = "menu_type")
+    @AuditField(name = "菜单类型", type = FieldType.DICT, dictCategoryAlias = "menuType")
     @Schema(description = "菜单类型.1:导航 2:页面 3:标签 4:表")
     private Integer menuType;
 
-    @AuditField(name = "菜单分类", type = FieldType.ENUM, enumClass = MenuCategoryEnum.class)
+    @AuditField(
+            name = "菜单分类",
+            type = FieldType.ENUM,
+            enumClass = MenuCategoryEnum.class,
+            ignore = true)
     @Schema(description = "菜单分类.1:业务菜单 2:系统菜单")
     private Integer category;
 
@@ -46,8 +51,8 @@ public class SysMenuSaveReq {
     @Schema(description = "默认图标")
     private String imgDefault;
 
-    @AuditField(name = "选中后图标")
-    @Schema(description = "选中后图标")
+    @AuditField(name = "选中图标")
+    @Schema(description = "选中图标")
     private String imgActive;
 
     @AuditField(

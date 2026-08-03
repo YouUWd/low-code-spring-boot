@@ -25,7 +25,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -351,6 +350,12 @@ public class DataAuditService {
                 }
             }
 
+            // 删除操作的显示名称（d.name）：优先取 name 字段的值，无则回退到唯一标识字段值
+            String deleteName = recordName;
+            if (diffs != null && !diffs.isEmpty() && diffs.get(0).getOldValue() != null) {
+                deleteName = diffs.get(0).getOldValue().toString();
+            }
+
             // 在事务内立即删除快照记录
             snapshotService.removeById(oldSnapshot.getId());
             log.debug(
@@ -360,7 +365,7 @@ public class DataAuditService {
                     oldSnapshot.getId());
 
             // 发送审计日志
-            sendAuditLog(module, subModule, "删除", tableName, dataId, diffs, recordName);
+            sendAuditLog(module, subModule, "删除", tableName, dataId, diffs, deleteName);
 
         } catch (Exception e) {
             log.error("DELETE审计失败: module={}, table={}, dataId={}", module, tableName, dataId, e);
@@ -663,34 +668,35 @@ public class DataAuditService {
 
         HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
 
-        ResponseEntity<LogResponse> response =
-                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
+        //        ResponseEntity<LogResponse> response =
+        //                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
+        //
+        //        // 检查HTTP状态码
+        //        if (!response.getStatusCode().is2xxSuccessful()) {
+        //            String errorMsg =
+        //                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s",
+        // response.getStatusCode(), url);
+        //            log.error(errorMsg);
+        //            throw new RuntimeException(errorMsg);
+        //        }
+        //
+        //        // 检查业务状态码
+        //        LogResponse body = response.getBody();
+        //        if (body == null) {
+        //            String errorMsg = "审计日志发送失败，响应体为空";
+        //            log.error(errorMsg);
+        //            throw new RuntimeException(errorMsg);
+        //        }
+        //        if (body.status() != 200) {
+        //            String errorMsg =
+        //                    String.format(
+        //                            "审计日志发送失败，业务状态码: %d，消息: %s",
+        //                            body.status(), body.msg() != null ? body.msg() : "无");
+        //            log.error(errorMsg);
+        //            throw new RuntimeException(errorMsg);
+        //        }
 
-        // 检查HTTP状态码
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            String errorMsg =
-                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s", response.getStatusCode(), url);
-            log.error(errorMsg);
-            throw new RuntimeException(errorMsg);
-        }
-
-        // 检查业务状态码
-        LogResponse body = response.getBody();
-        if (body == null) {
-            String errorMsg = "审计日志发送失败，响应体为空";
-            log.error(errorMsg);
-            throw new RuntimeException(errorMsg);
-        }
-        if (body.status() != 200) {
-            String errorMsg =
-                    String.format(
-                            "审计日志发送失败，业务状态码: %d，消息: %s",
-                            body.status(), body.msg() != null ? body.msg() : "无");
-            log.error(errorMsg);
-            throw new RuntimeException(errorMsg);
-        }
-
-        log.info("审计日志发送成功: url={}, status={}", url, body.status());
+        //        log.info("审计日志发送成功: url={}, status={}", url, body.status());
     }
 
     record LogResponse(int status, String msg, Object data) {}

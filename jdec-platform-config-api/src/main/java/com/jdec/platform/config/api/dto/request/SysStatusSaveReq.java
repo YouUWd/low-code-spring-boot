@@ -1,6 +1,7 @@
 package com.jdec.platform.config.api.dto.request;
 
 import com.jdec.platform.config.api.enums.EnableEnum;
+import com.jdec.platform.config.api.enums.YesNoEnum;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -40,13 +41,13 @@ public class SysStatusSaveReq {
     @Schema(description = "状态字体颜色")
     private String statusFontColor;
 
-    @AuditField(name = "是否启用", type = FieldType.ENUM, enumClass = EnableEnum.class)
+    @AuditField(name = "是否审批链显示", type = FieldType.ENUM, enumClass = YesNoEnum.class)
+    @Schema(description = "审批是否显示(1:是0：否)")
+    private Integer approvalShowFlag;
+
+    @AuditField(name = "状态", type = FieldType.ENUM, enumClass = EnableEnum.class)
     @Schema(description = "是否启用(1:启用。0：不启用)")
     private Integer enabled;
-
-    @AuditField(name = "审批是否显示", ignore = true)
-    @Schema(description = "审批是否显示(1:显示。0：不显示)")
-    private Integer approvalShowFlag;
 
     @AuditField(name = "排序值", ignore = true)
     @Schema(description = "排序值，从0开始")
