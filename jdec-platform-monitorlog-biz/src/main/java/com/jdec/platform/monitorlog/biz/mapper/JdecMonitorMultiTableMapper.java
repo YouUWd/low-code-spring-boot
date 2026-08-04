@@ -14,4 +14,14 @@ public interface JdecMonitorMultiTableMapper {
             @Param("pageSize") Long pageSize,
             @Param("keyWord") String keyWord,
             @Param("logType") String logType);
+
+    List<JdecMonitorLogBase> queryByModuleIdAndOrderId(
+            @Param("moduleId") Long moduleId,
+            @Param("orderId") String orderId,
+            @Param("logType") String logType);
+
+    List<JdecMonitorLogBase> queryByMenuIdAndDataId(
+            @Param("menuId") Long menuId,
+            @Param("dataId") Long dataId,
+            @Param("logType") String logType);
 }

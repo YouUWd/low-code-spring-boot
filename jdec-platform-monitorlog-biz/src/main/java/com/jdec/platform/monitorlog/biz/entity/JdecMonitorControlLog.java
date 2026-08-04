@@ -5,12 +5,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-/** 系统监控单据操作日志实体 */
 @Data
 @EqualsAndHashCode(callSuper = true)
-@TableName("sys_monitor_orderrunlog")
-@Schema(description = "系统监控单据操作日志")
-public class JdecMonitorOrderRunLog extends JdecMonitorLogBase {
-
-    // 空类，所有字段继承自基类
-}
+@TableName("sys_monitor_controllog")
+@Schema(description = "控制日志/单据操作日志")
+public class JdecMonitorControlLog extends JdecMonitorLogBase {}

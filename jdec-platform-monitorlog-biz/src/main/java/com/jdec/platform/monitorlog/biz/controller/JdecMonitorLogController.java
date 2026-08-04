@@ -1,22 +1,20 @@
 package com.jdec.platform.monitorlog.biz.controller;
 
-import com.jdec.platform.monitorlog.api.dto.request.MonitorLogPageListReq;
-import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
+import com.jdec.platform.monitorlog.api.dto.request.*;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.monitorlog.biz.service.JdecMonitorLogService;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * 监控日志 REST 控制器
- *
- * <p>提供监控日志的查询接口
- */
 @RestController
 @RequestMapping("/api/monitorlog")
 @RequiredArgsConstructor
@@ -40,387 +38,26 @@ public class JdecMonitorLogController {
         return ApiResponse.success(records);
     }
 
-    @GetMapping("/addLoginLog")
-    @Operation(summary = "添加登录日志", description = "记录登录日志   * 形如：登录ipd系统 [ip：126.214.120.01]")
-    public ApiResponse<Void> addLoginLog(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader("Login-Role-Id") Long loginRoleId,
-            @RequestHeader("systemName") String systemName,
-            @RequestHeader("ip") String ip) {
-        systemName = systemName != null ? systemName.trim() : null;
-        ip = ip != null ? ip.trim() : null;
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        if (loginRoleId == null || loginRoleId == 0L) {
-            return ApiResponse.error("loginRoleId不能为空");
-        }
-        if (systemName == null || systemName.isEmpty()) {
-            return ApiResponse.error("登录系统的名称不能为空");
-        }
-        if (ip == null || ip.isEmpty()) {
-            return ApiResponse.error("IP地址不能为空");
-        }
-        if (!ip.matches(
-                "^((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)$")) {
-            return ApiResponse.error("IP地址格式不合法");
-        }
-        MonitorLogReq request = new MonitorLogReq();
-        request.setSubjectId(subjectId);
-        request.setLoginUserId(loginUserId);
-        request.setLoginRoleId(loginRoleId);
-        request.setSystemName(systemName);
-        request.setIp(ip);
-        request.setLogContent(String.format("登录%s系统[ip：%s]", systemName, ip));
-        jdecMonitorLogService.recordLoginLog(request);
-        return ApiResponse.success();
-    }
-
-    @GetMapping("/addLogoutLog")
-    @Operation(summary = "添加退出日志", description = "记录退出日志   * 形如：退出ipd系统 [ip：126.214.120.01]")
-    public ApiResponse<Void> addLogoutLog(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader("Login-Role-Id") Long loginRoleId,
-            @RequestHeader("systemName") String systemName,
-            @RequestHeader("ip") String ip) {
-        systemName = systemName != null ? systemName.trim() : null;
-        ip = ip != null ? ip.trim() : null;
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        if (loginRoleId == null || loginRoleId == 0L) {
-            return ApiResponse.error("loginRoleId不能为空");
-        }
-        if (systemName == null || systemName.isEmpty()) {
-            return ApiResponse.error("登录系统的名称不能为空");
-        }
-        if (ip == null || ip.isEmpty()) {
-            return ApiResponse.error("IP地址不能为空");
-        }
-        if (!ip.matches(
-                "^((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)$")) {
-            return ApiResponse.error("IP地址格式不合法");
-        }
-        MonitorLogReq request = new MonitorLogReq();
-        request.setSubjectId(subjectId);
-        request.setLoginUserId(loginUserId);
-        request.setLoginRoleId(loginRoleId);
-        request.setIp(ip);
-        request.setLogContent(String.format("退出%s系统[ip：%s]", systemName, ip));
-        jdecMonitorLogService.recordLogoutLog(request);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addNavLog")
+    @PostMapping("/addSystemLog")
     @Operation(
-            summary = "添加导航日志",
+            summary = "添加系统日志",
             description =
-                    "记录导航日志"
-                            + "     * 形如： [元件管理-列表] 进入列表页面"
-                            + "      日志内容格式为：{"
-                            + "            \"moduleName\": \"模块名称/功能名称/页面名称\","
-                            + "            \"controlName\": \"操作名称/单据名称\","
-                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
-                            + "            \"workDesc\":\"操作描述\","
-                            + "        }")
-    public ApiResponse<Void> addNavLog(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader(value = "Login-Role-Id", required = false) Long loginRoleId,
-            @RequestHeader(value = "Mock-Flag", required = false) Integer mockFlag,
-            @RequestHeader(value = "Mock-User-Id", required = false) Long mockUserId,
-            @RequestHeader(value = "Mock-Role-Id", required = false) Long mockRoleId,
-            @Valid @RequestBody MonitorLogReq request) {
-        String logContent = request.getLogContent();
-        logContent = logContent != null ? logContent.trim() : null;
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        if (logContent == null || logContent.isEmpty()) {
-            return ApiResponse.error("日志内容不能为空");
-        }
-        request.setSubjectId(subjectId);
-        request.setLoginUserId(loginUserId);
-        request.setLoginRoleId(loginRoleId);
-        request.setMockFlag(mockFlag != null ? mockFlag : 0);
-        request.setMockUserId(mockUserId);
-        request.setMockRoleId(mockRoleId);
-        request.setLogContent(logContent);
-        jdecMonitorLogService.recordNavLog(request);
+                    "记录系统日志，如系统登录、退出等操作"
+                            + "     * logContent 为日志详细内容"
+                            + "     * logRemark 为日志备注(JSON格式)")
+    public ApiResponse<Void> addSystemLog(@Valid @RequestBody MonitorSystemLogReq request) {
+        jdecMonitorLogService.recordSystemControlLog(request);
         return ApiResponse.success();
     }
 
-    @GetMapping("/addMockUser")
+    @PostMapping("/addControlLog")
     @Operation(
-            summary = "添加切换模拟用户日志",
-            description = "添加切换模拟用户日志    * 形如：切换身份：张三 (J10006821)  超级管理员")
-    public ApiResponse<Void> addMockUser(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader(value = "Login-Role-Id", required = false) Long loginRoleId,
-            @RequestHeader(value = "Mock-Flag", required = false) Integer mockFlag,
-            @RequestHeader(value = "Mock-User-Id", required = false) Long mockUserId,
-            @RequestHeader(value = "Mock-Role-Id", required = false) Long mockRoleId) {
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        if (mockUserId == null || mockUserId == 0L) {
-            return ApiResponse.error("mockUserId不能为空");
-        }
-        if (mockRoleId == null || mockRoleId == 0L) {
-            return ApiResponse.error("mockRoleId不能为空");
-        }
-        MonitorLogReq request = new MonitorLogReq();
-        request.setSubjectId(subjectId);
-        request.setLoginUserId(loginUserId);
-        request.setLoginRoleId(loginRoleId);
-        request.setMockFlag(mockFlag != null ? mockFlag : 0);
-        request.setMockUserId(mockUserId);
-        request.setMockRoleId(mockRoleId);
-        jdecMonitorLogService.recordMockUser(request);
-        return ApiResponse.success();
-    }
-
-    @GetMapping("/addChaneRole")
-    @Operation(summary = "添加切换角色日志", description = "记录切换角色日志    * 形如：切换角色：元件管理审核")
-    public ApiResponse<Void> addChaneRole(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader(value = "Login-Role-Id", required = false) Long loginRoleId) {
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        MonitorLogReq request = new MonitorLogReq();
-        request.setSubjectId(subjectId);
-        request.setLoginUserId(loginUserId);
-        request.setLoginRoleId(loginRoleId);
-        jdecMonitorLogService.recordChaneRole(request);
-        return ApiResponse.success();
-    }
-
-    @GetMapping("/addMockChaneRole")
-    @Operation(summary = "添加切换角色日志", description = "记录切换角色日志    * 形如：切换角色：元件管理审核")
-    public ApiResponse<Void> addMockChaneRole(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader(value = "Login-Role-Id", required = false) Long loginRoleId,
-            @RequestHeader(value = "Mock-Flag", required = false) Integer mockFlag,
-            @RequestHeader(value = "Mock-User-Id", required = false) Long mockUserId,
-            @RequestHeader(value = "Mock-Role-Id", required = false) Long mockRoleId) {
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        MonitorLogReq request = new MonitorLogReq();
-        request.setSubjectId(subjectId);
-        request.setLoginUserId(loginUserId);
-        request.setLoginRoleId(loginRoleId);
-        request.setMockFlag(mockFlag != null ? mockFlag : 0);
-        request.setMockUserId(mockUserId);
-        request.setMockRoleId(mockRoleId);
-        jdecMonitorLogService.recordMockChaneRole(request);
-        return ApiResponse.success();
-    }
-
-    @GetMapping("/addMockReset")
-    @Operation(summary = "添加重置模拟用户日志", description = "添加重置模拟用户日志     形如：重置模拟用户：管理员")
-    public ApiResponse<Void> addMockReset(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader(value = "Login-Role-Id", required = false) Long loginRoleId) {
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        MonitorLogReq request = new MonitorLogReq();
-        request.setSubjectId(subjectId);
-        request.setLoginUserId(loginUserId);
-        request.setLoginRoleId(loginRoleId);
-
-        jdecMonitorLogService.recordMockReset(request);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addChangeSubject")
-    @Operation(
-            summary = "添加切换主体日志",
-            description = "添加切换主体日志" + "     * 形如：切换主体：[主体名称]，用户：[用户ID]，角色：[角色ID]")
-    public ApiResponse<Void> addChangeSubject(
-            @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestHeader("Subject-Name") String subjectName,
-            @RequestHeader("Login-User-Id") Long loginUserId,
-            @RequestHeader("Login-Role-Id") Long loginRoleId) {
-        subjectName = subjectName != null ? subjectName.trim() : null;
-        if (subjectId == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (loginUserId == null || loginUserId == 0L) {
-            return ApiResponse.error("loginUserId不能为空");
-        }
-        if (loginRoleId == null || loginRoleId == 0L) {
-            return ApiResponse.error("loginRoleId不能为空");
-        }
-        if (subjectName == null || subjectName.isEmpty()) {
-            return ApiResponse.error("主体名称不能为空");
-        }
-        jdecMonitorLogService.recordChangeSubject(loginUserId, loginRoleId, subjectName);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addApprovalChainConfigLog")
-    @Operation(
-            summary = "添加审批链配置日志",
+            summary = "添加控制日志/单据操作日志",
             description =
-                    "记录审批链配置日志"
-                            + "     * 形如：[系统设置-审批链配置]修改了配置"
-                            + "      日志内容格式为：{\n"
-                            + "                \"module\": \"模块名称/功能名称/页面名称\",\n"
-                            + "                \"orderId\": \"单据编号/订单编号/业务编号/任务编号\",\n"
-                            + "                \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\",\n"
-                            + "                \"controlName\":\"操作名称/单据名称\"\n"
-                            + "            }"
-                            + "     *  带remark  也是json格式，请求体如下：\n"
-                            + "            {\"\n"
-                            + "                \"keyName\":\"keyValue\",\n"
-                            + "                \"changeList\":\"\n"
-                            + "                {\n"
-                            + "                \"field1\":{\"oldVal\":22,\"newVal\":23,\"}\n"
-                            + "                \"field2\":{\"oldVal\":\"李四\",\"newVal\":\"李四五\"}\n"
-                            + "                }\n"
-                            + "            }")
-    public ApiResponse<Void> addApprovalChainConfigLog(@Valid @RequestBody MonitorLogReq request) {
-        if (request.getSubjectId() == null || request.getSubjectId() == 0L) {
-            return ApiResponse.error("SubjectId不能为空");
-        }
-        if (request.getLoginUserId() == null || request.getLoginUserId() == 0L) {
-            return ApiResponse.error("LoginUserId不能为空");
-        }
-        if (request.getLoginRoleId() == null || request.getLoginRoleId() == 0L) {
-            return ApiResponse.error("LoginRoleId不能为空");
-        }
-        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
-            return ApiResponse.error("LogContent不能为空");
-        }
-        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
-            return ApiResponse.error("LogRemark不能为空");
-        }
-        jdecMonitorLogService.recordApprovalChainConfigLog(request);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addApprovalChainRunLog")
-    @Operation(
-            summary = "添加审批链操作日志",
-            description =
-                    "记录审批链日志"
-                            + "     * 形如：[元件管理-FHSQ2409230955401 V2] 元件审核已驳回"
-                            + "      日志内容格式为：{"
-                            + "            \"module\": \"模块名称/功能名称/页面名称\","
-                            + "            \"orderId\": \"单据编号/订单编号/业务编号/任务编号\","
-                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
-                            + "            \"orderVersion\": \"单据版本号/订单版本号/业务版本号/任务版本号\","
-                            + "            \"controlName\":\"操作名称/单据名称\","
-                            + "            \"operatorResult\": \"操作结果/执行结果/处理结果: 成功/失败\","
-                            + "            \"fontColor\": \"字体颜色:默认为黑色\""
-                            + "        }"
-                            + "     *  带remark  如：驳回原因：审批不通过..")
-    public ApiResponse<Void> addApprovalChainRunLog(@Valid @RequestBody MonitorLogReq request) {
-        if (request.getSubjectId() == null || request.getSubjectId() == 0L) {
-            return ApiResponse.error("SubjectId不能为空");
-        }
-        if (request.getLoginUserId() == null || request.getLoginUserId() == 0L) {
-            return ApiResponse.error("LoginUserId不能为空");
-        }
-        if (request.getLoginRoleId() == null || request.getLoginRoleId() == 0L) {
-            return ApiResponse.error("LoginRoleId不能为空");
-        }
-        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
-            return ApiResponse.error("LogContent不能为空");
-        }
-        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
-            return ApiResponse.error("LogRemark不能为空");
-        }
-        jdecMonitorLogService.recordApprovalChainRunLog(request);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addAuthorityChangeLog")
-    @Operation(
-            summary = "添加权限变更日志",
-            description =
-                    "记录权限变更日志，logContent是Post请求体，格式如下：\n"
-                            + "            {\n"
-                            + "                \"module\": \"模块名称/功能名称/页面名称\",\n"
-                            + "                \"orderId\": \"单据编号/订单编号/业务编号/任务编号\",\n"
-                            + "                \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\",\n"
-                            + "                \"controlName\":\"操作名称/单据名称\"\n"
-                            + "            }"
-                            + "           remark\n"
-                            + "            待定。。。")
-    public ApiResponse<Void> addAuthorityChangeLog(@Valid @RequestBody MonitorLogReq request) {
-        if (request.getSubjectId() == null || request.getSubjectId() == 0L) {
-            return ApiResponse.error("SubjectId不能为空");
-        }
-        if (request.getLoginUserId() == null || request.getLoginUserId() == 0L) {
-            return ApiResponse.error("LoginUserId不能为空");
-        }
-        if (request.getLoginRoleId() == null || request.getLoginRoleId() == 0L) {
-            return ApiResponse.error("LoginRoleId不能为空");
-        }
-        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
-            return ApiResponse.error("LogContent不能为空");
-        }
-        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
-            return ApiResponse.error("LogRemark不能为空");
-        }
-        jdecMonitorLogService.recordAuthorityChangeLog(request);
-        return ApiResponse.success();
-    }
-
-    @PostMapping("/addOrderRunLog")
-    @Operation(
-            summary = "添加订单操作日志",
-            description =
-                    "记录订单操作日志"
-                            + "     * 形如：[系统设置-按钮配置]修改了配置"
-                            + "      日志内容格式为：{\n"
-                            + "                \"module\": \"模块名称/功能名称/页面名称\",\n"
-                            + "                \"orderId\": \"单据编号/订单编号/业务编号/任务编号\",\n"
-                            + "                \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\",\n"
-                            + "                \"controlName\":\"操作名称/单据名称\"\n"
-                            + "            }"
-                            + "     *  带remark  备注信息为自定义json，后台不做解析，因此不关注json内容和格式")
-    public ApiResponse<Void> addOrderRunLog(@Valid @RequestBody MonitorLogReq request) {
-        if (request.getSubjectId() == null) {
-            return ApiResponse.error("subjectId不能为空");
-        }
-        if (request.getLogContent() == null || request.getLogContent().isEmpty()) {
-            return ApiResponse.error("logContent不能为空");
-        }
-        if (request.getLogRemark() == null || request.getLogRemark().isEmpty()) {
-            return ApiResponse.error("logRemark不能为空");
-        }
+                    "记录控制日志/单据操作日志"
+                            + "     * logContent 为日志详细内容"
+                            + "     * logRemark 为备注信息(自定义json，后台不做解析)")
+    public ApiResponse<Void> addControlLog(@Valid @RequestBody MonitorControlLogReq request) {
         jdecMonitorLogService.recordOrderRunLog(request);
         return ApiResponse.success();
     }
@@ -431,7 +68,7 @@ public class JdecMonitorLogController {
             description =
                     "添加消息日志"
                             + "日志内容为：发送消息的文本，如企业微信消息MD文本"
-                            + "     *  带remark  如：[元件管理-FHSQ2409230955401 V2] 消息类型：元件驳回"
+                            + "     *  logRemark 如：[元件管理-FHSQ2409230955401 V2] 消息类型：元件驳回"
                             + "                                  消息接收人：张三J10006821  李四J10006822"
                             + "remark是Json格式的字符串，格式如下："
                             + "{"
@@ -442,8 +79,456 @@ public class JdecMonitorLogController {
                             + "            \"messageType\":\"操作类型/消息类型\","
                             + "            \"messageReceivers\":\"消息接收人[userid1,userid2,...]\""
                             + "        }")
-    public ApiResponse<Void> addMessageLog(@Valid @RequestBody MonitorLogReq request) {
+    public ApiResponse<Void> addMessageLog(@Valid @RequestBody MonitorMessageLogReq request) {
         jdecMonitorLogService.recordMessageLog(request);
+        return ApiResponse.success();
+    }
+
+    @GetMapping("/queryByModuleIdAndOrderId")
+    @Operation(
+            summary = "根据模块ID和单据编号查询多条日志",
+            description = "传入moduleId+orderId查询多条日志记录，按时间倒序返回；可选logType指定日志类型")
+    public ApiResponse<List<MonitorLogPageListResp>> queryByModuleIdAndOrderId(
+            @Parameter(description = "模块ID", required = true) @RequestParam Long moduleId,
+            @Parameter(description = "单据编号", required = true) @RequestParam String orderId,
+            @Parameter(description = "日志类型(messagelog/controllog/systemlog，不传则查全表)")
+                    @RequestParam(required = false)
+                    String logType) {
+        List<MonitorLogPageListResp> result =
+                jdecMonitorLogService.queryByModuleIdAndOrderId(moduleId, orderId, logType);
+        return ApiResponse.success(result);
+    }
+
+    @GetMapping("/queryByMenuIdAndDataId")
+    @Operation(
+            summary = "根据菜单ID和单据ID查询单条最新日志",
+            description = "传入menuId+dataId查询单条最新日志记录；可选logType指定日志类型")
+    public ApiResponse<MonitorLogPageListResp> queryByMenuIdAndDataId(
+            @Parameter(description = "菜单ID", required = true) @RequestParam Long menuId,
+            @Parameter(description = "单据ID", required = true) @RequestParam Long dataId,
+            @Parameter(description = "日志类型(messagelog/controllog/systemlog，不传则查全表)")
+                    @RequestParam(required = false)
+                    String logType) {
+        MonitorLogPageListResp result =
+                jdecMonitorLogService.queryByMenuIdAndDataId(menuId, dataId, logType);
+        return ApiResponse.success(result);
+    }
+
+    private static final Set<String> BASE_LOG_TYPES =
+            Set.of("loginin", "loginout", "changerole", "resetuser", "changesubject");
+    private static final Set<String> MOCK_LOG_TYPES = Set.of("mockuser", "mockchangerole");
+
+    @PostMapping("/sendSystemLog")
+    @Operation(
+            summary = "发送系统日志(Header传参)",
+            description =
+                    "通过Header参数记录系统控制日志，根据logType类型进行不同字段校验："
+                            + "loginin/loginout/changerole/resetuser/changesubject 校验基础字段；"
+                            + "mockuser/mockchangerole 额外校验模拟用户字段")
+    public ApiResponse<Void> sendSystemLog(
+            @Parameter(
+                            description =
+                                    "日志类型(loginin/loginout/changerole/mockuser/mockchangerole/resetuser/changesubject)",
+                            required = true)
+                    @RequestHeader("Log-Type")
+                    String logType,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo,
+            @Parameter(description = "主体ID")
+                    @RequestHeader(value = "X-Subject-Id", required = false)
+                    Long subjectId,
+            @Parameter(description = "主体名称")
+                    @RequestHeader(value = "Subject-Name", required = false)
+                    String subjectName,
+            @Parameter(description = "登录用户ID") @RequestHeader(value = "User-Id", required = false)
+                    Long loginUserId,
+            @Parameter(description = "登录用户名称") @RequestHeader(value = "UserName", required = false)
+                    String loginUserName,
+            @Parameter(description = "登录用户头像")
+                    @RequestHeader(value = "User-Avater", required = false)
+                    String loginAvater,
+            @Parameter(description = "登录用户工号")
+                    @RequestHeader(value = "User-Number", required = false)
+                    String loginUserNumber,
+            @Parameter(description = "登录角色ID") @RequestHeader(value = "Role-Id", required = false)
+                    Long loginRoleId,
+            @Parameter(description = "登录角色名称")
+                    @RequestHeader(value = "Rrole-Name", required = false)
+                    String loginRoleName,
+            @Parameter(description = "登录人部门ID") @RequestHeader(value = "Dept-Id", required = false)
+                    Long loginUserDeptId,
+            @Parameter(description = "登录人部门名称")
+                    @RequestHeader(value = "Dept-Name", required = false)
+                    String loginUserDeptName,
+            @Parameter(description = "是否mock标记：0否；1是")
+                    @RequestHeader(value = "Mock-Flug", required = false)
+                    Integer mockFlug,
+            @Parameter(description = "模拟角色ID")
+                    @RequestHeader(value = "Mock-Role-Id", required = false)
+                    Long mockRoleId,
+            @Parameter(description = "模拟角色名称")
+                    @RequestHeader(value = "Mock-Rrole-Name", required = false)
+                    String mockRoleName,
+            @Parameter(description = "模拟用户ID")
+                    @RequestHeader(value = "Mock-User-Id", required = false)
+                    Long mockUserId,
+            @Parameter(description = "模拟用户名称")
+                    @RequestHeader(value = "Mock-UserName", required = false)
+                    String mockUserName,
+            @Parameter(description = "模拟用户头像")
+                    @RequestHeader(value = "Mock-User-Avater", required = false)
+                    String mockUserAvater,
+            @Parameter(description = "模拟用户工号")
+                    @RequestHeader(value = "Mock-User-Number", required = false)
+                    String mockUserNumber,
+            @Parameter(description = "IP地址") @RequestHeader(value = "X-Real-IP", required = false)
+                    String ip,
+            @Parameter(description = "浏览器") @RequestHeader(value = "Browser", required = false)
+                    String browser,
+            @Parameter(description = "系统名称") @RequestHeader(value = "System-Name", required = false)
+                    String systemName) {
+
+        if (!StringUtils.hasText(logType)) {
+            throw new IllegalArgumentException("日志类型(Log-Type)不能为空");
+        }
+        boolean isBaseType = BASE_LOG_TYPES.contains(logType);
+        boolean isMockType = MOCK_LOG_TYPES.contains(logType);
+        if (!isBaseType && !isMockType) {
+            throw new IllegalArgumentException(
+                    "日志类型(Log-Type)不合法，允许值：loginin/loginout/changerole/resetuser/changesubject/mockuser/mockchangerole");
+        }
+
+        if (isBaseType || isMockType) {
+            if (!StringUtils.hasText(projectNo)) {
+                throw new IllegalArgumentException("项目编号(X-Project-No)不能为空");
+            }
+            if (subjectId == null || subjectId <= 0) {
+                throw new IllegalArgumentException("主体ID(X-Subject-Id)不能为空且必须大于0");
+            }
+            if (!StringUtils.hasText(subjectName)) {
+                throw new IllegalArgumentException("主体名称(Subject-Name)不能为空");
+            }
+            if (loginUserId == null || loginUserId <= 0) {
+                throw new IllegalArgumentException("登录用户ID(User-Id)不能为空且必须大于0");
+            }
+            if (!StringUtils.hasText(loginUserName)) {
+                throw new IllegalArgumentException("登录用户名称(UserName)不能为空");
+            }
+            if (!StringUtils.hasText(loginAvater)) {
+                throw new IllegalArgumentException("登录用户头像(User-Avater)不能为空");
+            }
+            if (!StringUtils.hasText(loginUserNumber)) {
+                throw new IllegalArgumentException("登录用户工号(User-Number)不能为空");
+            }
+            if (loginRoleId == null || loginRoleId <= 0) {
+                throw new IllegalArgumentException("登录角色ID(Role-Id)不能为空且必须大于0");
+            }
+            if (!StringUtils.hasText(loginRoleName)) {
+                throw new IllegalArgumentException("登录角色名称(Role-Name)不能为空");
+            }
+            if (loginUserDeptId == null || loginUserDeptId < 0) {
+                throw new IllegalArgumentException("登录部门ID(Dept-Id)不能为空且不能为负");
+            }
+            if (!StringUtils.hasText(loginUserDeptName)) {
+                throw new IllegalArgumentException("登录部门名称(Dept-Name)不能为空");
+            }
+            if (!StringUtils.hasText(systemName)) {
+                throw new IllegalArgumentException("系统名称(System-Name)不能为空");
+            }
+            if (systemName.length() > 100) {
+                throw new IllegalArgumentException("系统名称(System-Name)长度不能超过100字符");
+            }
+            if (!StringUtils.hasText(ip)) {
+                throw new IllegalArgumentException("IP地址(X-Real-IP)不能为空");
+            }
+            if (ip.length() > 20) {
+                throw new IllegalArgumentException("IP地址(X-Real-IP)长度不能超过20字符");
+            }
+            if (!StringUtils.hasText(browser)) {
+                throw new IllegalArgumentException("浏览器(Browser)不能为空");
+            }
+            if (browser.length() > 100) {
+                throw new IllegalArgumentException("浏览器(Browser)长度不能超过100字符");
+            }
+        }
+
+        if (isMockType) {
+            if (mockUserId == null || mockUserId < 0) {
+                throw new IllegalArgumentException("模拟用户ID(Mock-User-Id)不能为空且不能为负");
+            }
+            if (!StringUtils.hasText(mockUserName)) {
+                throw new IllegalArgumentException("模拟用户名称(Mock-UserName)不能为空");
+            }
+            if (!StringUtils.hasText(mockUserAvater)) {
+                throw new IllegalArgumentException("模拟用户头像(Mock-User-Avater)不能为空");
+            }
+            if (!StringUtils.hasText(mockUserNumber)) {
+                throw new IllegalArgumentException("模拟用户工号(Mock-User-Number)不能为空");
+            }
+        }
+
+        if (mockFlug == null) {
+            mockFlug = isMockType ? 1 : 0;
+        }
+        if (mockFlug != 0 && mockFlug != 1) {
+            throw new IllegalArgumentException("mock标记(Mock-Flug)只能为0或1");
+        }
+
+        MonitorSystemLogReq request = new MonitorSystemLogReq();
+        request.setSubjectId(subjectId);
+        request.setSubjectName(subjectName);
+        request.setLoginUserId(loginUserId);
+        request.setLoginUserName(loginUserName);
+        request.setLoginAvater(loginAvater);
+        request.setLoginUserNumber(loginUserNumber);
+        request.setLoginRoleId(loginRoleId);
+        request.setLoginRoleName(loginRoleName);
+        request.setLoginUserDeptId(loginUserDeptId);
+        request.setLoginUserDeptName(loginUserDeptName);
+        request.setMockFlag(mockFlug);
+        request.setMockUserId(mockUserId);
+        request.setMockUserName(mockUserName);
+        request.setMockUserAvater(mockUserAvater);
+        request.setMockUserNumber(mockUserNumber);
+        request.setMockRoleId(mockRoleId != null ? mockRoleId : loginRoleId);
+        request.setMockRoleName(StringUtils.hasText(mockRoleName) ? mockRoleName : loginRoleName);
+        request.setIp(ip);
+        request.setBrowser(browser);
+        request.setSystemName(systemName);
+        request.setLogContent(
+                buildLogContent(
+                        logType,
+                        systemName,
+                        ip,
+                        loginUserName,
+                        loginUserNumber,
+                        loginRoleName,
+                        mockUserName,
+                        mockUserNumber,
+                        mockFlug,
+                        subjectName));
+
+        jdecMonitorLogService.recordSystemControlLog(request);
+        return ApiResponse.success();
+    }
+
+    private String buildLogContent(
+            String logType,
+            String systemName,
+            String ip,
+            String loginUserName,
+            String loginUserNumber,
+            String loginRoleName,
+            String mockUserName,
+            String mockUserNumber,
+            Integer mockFlug,
+            String subjectName) {
+        switch (logType) {
+            case "loginin":
+                return "登录" + systemName + "系统 [ip：" + ip + "]";
+            case "loginout":
+                return "退出" + systemName + "系统 [ip：" + ip + "]";
+            case "changerole":
+                return "切换角色：" + loginRoleName;
+            case "mockuser":
+                return "切换身份：" + loginUserName + "(" + loginUserNumber + ")  " + loginRoleName;
+            case "mockchangerole":
+                return "切换角色："
+                        + loginUserName
+                        + "("
+                        + loginUserNumber
+                        + ") 以 "
+                        + mockUserName
+                        + "("
+                        + mockUserNumber
+                        + ")的身份切换角色： "
+                        + loginRoleName;
+            case "resetuser":
+                return "重置用户：" + loginUserName + "(" + loginUserNumber + ")重置角色：" + loginRoleName;
+            case "changesubject":
+                return "切换主体：["
+                        + subjectName
+                        + "]，用户："
+                        + loginUserName
+                        + "("
+                        + loginUserNumber
+                        + ")，角色：["
+                        + loginRoleName
+                        + "]";
+            default:
+                String operator =
+                        (mockFlug != null && mockFlug == 1 && StringUtils.hasText(mockUserName))
+                                ? mockUserName + "(模拟)"
+                                : StringUtils.hasText(loginUserName) ? loginUserName : "";
+                return operator + " - 系统操作";
+        }
+    }
+
+    @PostMapping("/sendSystemNavLog")
+    @Operation(summary = "发送系统导航日志(Header传参)", description = "通过Header参数记录系统导航日志，所有参数均从Header中获取")
+    public ApiResponse<Void> sendSystemNavLog(
+            @Parameter(description = "项目编号", required = true) @RequestHeader("X-Project-No")
+                    String projectNo,
+            @Parameter(description = "主体ID", required = true) @RequestHeader("X-Subject-Id")
+                    Long subjectId,
+            @Parameter(description = "主体名称", required = true) @RequestHeader("Subject-Name")
+                    String subjectName,
+            @Parameter(description = "登录用户ID", required = true) @RequestHeader("User-Id")
+                    Long loginUserId,
+            @Parameter(description = "登录用户名", required = true) @RequestHeader("UserName")
+                    String loginUserName,
+            @Parameter(description = "登录人头像", required = true) @RequestHeader("User-Avater")
+                    String loginAvater,
+            @Parameter(description = "登录人工号", required = true) @RequestHeader("User-Number")
+                    String loginUserNumber,
+            @Parameter(description = "登录角色ID", required = true) @RequestHeader("Role-Id")
+                    Long loginRoleId,
+            @Parameter(description = "登录角色名称", required = true) @RequestHeader("Rrole-Name")
+                    String loginRoleName,
+            @Parameter(description = "登录人部门ID", required = true) @RequestHeader("Dept-Id")
+                    Long loginUserDeptId,
+            @Parameter(description = "登录人部门名称", required = true) @RequestHeader("Dept-Name")
+                    String loginUserDeptName,
+            @Parameter(description = "是否mock标记：0否；1是", required = true) @RequestHeader("Mock-Flug")
+                    Integer mockFlug,
+            @Parameter(description = "模拟用户ID") @RequestHeader("Mock-User-Id") Long mockUserId,
+            @Parameter(description = "模拟用户名称") @RequestHeader("Mock-UserName") String mockUserName,
+            @Parameter(description = "模拟用户头像") @RequestHeader("Mock-User-Avater")
+                    String mockUserAvater,
+            @Parameter(description = "模拟用户工号") @RequestHeader("Mock-User-Number")
+                    String mockUserNumber,
+            @Parameter(description = "IP地址", required = true) @RequestHeader("X-Real-IP") String ip,
+            @Parameter(description = "模块名称") @RequestHeader("Module-Name") String moduleName,
+            @Parameter(description = "菜单名称") @RequestHeader("Menu-Name") String menuName,
+            @Parameter(description = "菜单URL") @RequestHeader("Href-Url") String hrefUrl,
+            @Parameter(description = "菜单操作描述") @RequestHeader("Control-Desc") String controlDesc,
+            @Parameter(description = "浏览器", required = true) @RequestHeader("Browser")
+                    String browser,
+            @Parameter(description = "系统名称", required = true) @RequestHeader("System-Name")
+                    String systemName) {
+
+        if (subjectId == null || subjectId <= 0) {
+            throw new IllegalArgumentException("主体ID(subject-id)不能为空且必须大于0");
+        }
+        if (!StringUtils.hasText(subjectName)) {
+            throw new IllegalArgumentException("主体名称(subject-name)不能为空");
+        }
+        if (loginUserId == null || loginUserId <= 0) {
+            throw new IllegalArgumentException("登录用户ID(login-user-id)不能为空且必须大于0");
+        }
+        if (!StringUtils.hasText(loginUserName)) {
+            throw new IllegalArgumentException("登录用户名(login-user-name)不能为空");
+        }
+        if (!StringUtils.hasText(loginAvater)) {
+            throw new IllegalArgumentException("登录人头像(login-avater)不能为空");
+        }
+        if (!StringUtils.hasText(loginUserNumber)) {
+            throw new IllegalArgumentException("登录人工号(login-user-number)不能为空");
+        }
+        if (loginRoleId == null || loginRoleId <= 0) {
+            throw new IllegalArgumentException("登录角色ID(login-role-id)不能为空且必须大于0");
+        }
+        if (!StringUtils.hasText(loginRoleName)) {
+            throw new IllegalArgumentException("登录角色名称(login-role-name)不能为空");
+        }
+        if (loginUserDeptId == null || loginUserDeptId < 0) {
+            throw new IllegalArgumentException("登录人部门ID(login-user-dept-id)不能为空且不能为负");
+        }
+        if (!StringUtils.hasText(loginUserDeptName)) {
+            throw new IllegalArgumentException("登录人部门名称(login-user-dept-name)不能为空");
+        }
+        if (mockFlug == null || (mockFlug != 0 && mockFlug != 1)) {
+            throw new IllegalArgumentException("mock标记(mock-flug)不能为空且只能为0或1");
+        }
+        if (mockFlug == 1) {
+            if (mockUserId == null || mockUserId < 0) {
+                throw new IllegalArgumentException("模拟用户ID(mock-user-id)不能为空且不能为负");
+            }
+            if (!StringUtils.hasText(mockUserName)) {
+                throw new IllegalArgumentException("模拟用户名称(mock-user-name)不能为空");
+            }
+            if (!StringUtils.hasText(mockUserAvater)) {
+                throw new IllegalArgumentException("模拟用户头像(mock-user-avater)不能为空");
+            }
+            if (!StringUtils.hasText(mockUserNumber)) {
+                throw new IllegalArgumentException("模拟用户工号(mock-user-number)不能为空");
+            }
+        }
+        if (!StringUtils.hasText(ip)) {
+            throw new IllegalArgumentException("IP地址(ip)不能为空");
+        }
+        if (ip.length() > 20) {
+            throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
+        }
+        if (!StringUtils.hasText(moduleName)) {
+            throw new IllegalArgumentException("模块名称(module-name)不能为空");
+        }
+        if (moduleName.length() > 100) {
+            throw new IllegalArgumentException("模块名称(module-name)长度不能超过100字符");
+        }
+        if (!StringUtils.hasText(menuName)) {
+            throw new IllegalArgumentException("菜单名称(menu-name)不能为空");
+        }
+        if (!StringUtils.hasText(hrefUrl)) {
+            throw new IllegalArgumentException("菜单操作URL(href-url)不能为空");
+        }
+        if (!StringUtils.hasText(controlDesc)) {
+            throw new IllegalArgumentException("操作描述(control-desc)不能为空");
+        }
+        if (!StringUtils.hasText(browser)) {
+            throw new IllegalArgumentException("浏览器(browser)不能为空");
+        }
+        if (browser.length() > 100) {
+            throw new IllegalArgumentException("浏览器(browser)长度不能超过100字符");
+        }
+        if (!StringUtils.hasText(systemName)) {
+            throw new IllegalArgumentException("系统名称(system-name)不能为空");
+        }
+        if (systemName.length() > 100) {
+            throw new IllegalArgumentException("系统名称(system-name)长度不能超过100字符");
+        }
+
+        MonitorSystemNavLogReq request = new MonitorSystemNavLogReq();
+        request.setSubjectId(subjectId);
+        request.setSubjectName(subjectName);
+        request.setLoginUserId(loginUserId);
+        request.setLoginUserName(loginUserName);
+        request.setLoginAvater(loginAvater);
+        request.setLoginUserNumber(loginUserNumber);
+        request.setLoginRoleId(loginRoleId);
+        request.setLoginRoleName(loginRoleName);
+        request.setLoginUserDeptId(loginUserDeptId);
+        request.setLoginUserDeptName(loginUserDeptName);
+        request.setMockFlag(mockFlug);
+        request.setMockUserId(mockUserId);
+        request.setMockUserName(mockUserName);
+        request.setMockUserAvater(mockUserAvater);
+        request.setMockUserNumber(mockUserNumber);
+        request.setMockRoleId(loginRoleId);
+        request.setMockRoleName(loginRoleName);
+        request.setIp(ip);
+        //        request.setModuleId(moduleId);
+        //        request.setModuleName(moduleName);
+        //        request.setMenuId(menuId);
+        //        request.setMenuName(menuName);
+        //        request.setHrefUrl(hrefUrl);
+        //        request.setControlDesc(controlDesc);
+        request.setBrowser(browser);
+        request.setSystemName(systemName);
+        // [元件管理-列表] 进入列表页面
+        //        request.setLogContent(controlName + " - " + operatorResutl);
+        request.setLogContent(
+                "<span class=\"arco-table-td-content\"><div class=\"flex\"><span>["
+                        + moduleName
+                        + "-<a style=\"color: #408bee\" href=\""
+                        + hrefUrl
+                        + "\" target=\"_blank\">"
+                        + menuName
+                        + "</a>]<span style=\"font-weight: 700; color: #2e7fed\">"
+                        + controlDesc
+                        + "</span></span></div></span>");
+        jdecMonitorLogService.recordSystemNavLog(request);
         return ApiResponse.success();
     }
 }
