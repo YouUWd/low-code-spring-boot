@@ -14,6 +14,16 @@ import lombok.Data;
 @Schema(description = "交互权限保存/编辑请求")
 public class SysInteractionPermissionSaveReq {
 
+    @Schema(description = "权限节点名称", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "权限名称不能为空")
+    @AuditField(name = "权限节点名称", uniqueIdentifier = true)
+    private String name;
+
+    @Schema(description = "交互权限类型.1:申请 2:编辑 3:查看", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "交互权限类型不能为空")
+    @AuditField(name = "权限节点类型", type = FieldType.ENUM, enumClass = InteractionTypeEnum.class)
+    private Integer type;
+
     @Schema(description = "主键ID，为空时新增")
     @AuditField(name = "权限ID", ignore = true)
     private Long id;
@@ -33,19 +43,9 @@ public class SysInteractionPermissionSaveReq {
     @AuditField(name = "模块标识")
     private String moduleCode;
 
-    @Schema(description = "交互权限类型.1:申请 2:编辑 3:查看", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "交互权限类型不能为空")
-    @AuditField(name = "交互权限类型", type = FieldType.ENUM, enumClass = InteractionTypeEnum.class)
-    private Integer type;
-
-    @Schema(description = "权限名称", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "权限名称不能为空")
-    @AuditField(name = "权限名称", uniqueIdentifier = true)
-    private String name;
-
-    @Schema(description = "权限编码", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "权限节点编码", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "权限编码不能为空")
-    @AuditField(name = "权限编码")
+    @AuditField(name = "权限节点编码")
     private String code;
 
     @Schema(description = "排序")
@@ -53,6 +53,6 @@ public class SysInteractionPermissionSaveReq {
     private Integer sort;
 
     @Schema(description = "状态 1:启用 0:禁用", requiredMode = Schema.RequiredMode.REQUIRED)
-    @AuditField(name = "状态", type = FieldType.ENUM, enumClass = CommonStatusEnum.class)
+    @AuditField(name = "权限节点状态", type = FieldType.ENUM, enumClass = CommonStatusEnum.class)
     private Integer status = 1;
 }

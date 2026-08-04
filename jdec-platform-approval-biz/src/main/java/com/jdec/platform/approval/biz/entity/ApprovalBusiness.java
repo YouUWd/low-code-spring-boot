@@ -95,6 +95,10 @@ public class ApprovalBusiness extends Model<ApprovalBusiness> {
     @TableField("approver_id")
     private Long approverId;
 
+    /** 当前步骤已审批人，驳回会会清空，用于百分比判断 */
+    @TableField("approver_id_list")
+    private String approverIdList;
+
     /** 历史审批人ID-审批角色ID列表，如 2-3,3-3 */
     @TableField("approval_uids")
     private String approvalUids;

@@ -7,6 +7,7 @@ import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
 import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
+import com.jdec.platform.config.api.enums.MenuCategoryEnum;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
@@ -111,12 +112,14 @@ public class SysMenuService implements SysMenuApi {
     @DataAudit(
             module = "系统设置",
             subModule = "菜单配置",
+            subModuleField = "#req.category",
+            subModuleEnumClass = MenuCategoryEnum.class,
             operation = OperationType.UPDATE,
             tableName = "sys_menu",
             dataIdField = "#req.id")
     @Transactional
     @Override
-    public void saveMenu(SysMenuSaveReq req) {
+    public SysMenuResp saveMenu(SysMenuSaveReq req) {
         Long pid = req.getPid() == null ? ROOT_PID : req.getPid();
         req.setPid(pid);
         Long subjectId = AppContext.getSubjectId();
@@ -258,11 +261,17 @@ public class SysMenuService implements SysMenuApi {
                 }
             }
         }
+
+        // 构建返回对象（将保存后的菜单信息返回给前端，新增时携带生成的ID）
+        SysMenuResp resp = new SysMenuResp();
+        BeanUtils.copyProperties(entity, resp);
+        return resp;
     }
 
     @DataAudit(
             module = "系统设置",
             subModule = "菜单配置",
+            subModuleField = "#category",
             operation = OperationType.DELETE,
             deleteDisplayField = "title",
             entityClass = SysMenu.class,
@@ -270,7 +279,7 @@ public class SysMenuService implements SysMenuApi {
             dataIdField = "#id")
     @Transactional
     @Override
-    public void deleteMenu(Long id, boolean force) {
+    public void deleteMenu(Long id, String category) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
         SysMenu menu =
@@ -300,12 +309,6 @@ public class SysMenuService implements SysMenuApi {
         reorderSiblingsAfterDelete(menu.getPid(), subjectId, projectNo);
     }
 
-    @DataAudit(
-            module = "系统设置",
-            subModule = "菜单配置",
-            operation = OperationType.UPDATE,
-            tableName = "sys_menu",
-            dataIdField = "#req.id")
     @Transactional
     @Override
     public void dragMenu(SysMenuDragReq req) {

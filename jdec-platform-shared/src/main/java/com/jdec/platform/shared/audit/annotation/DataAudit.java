@@ -14,8 +14,24 @@ public @interface DataAudit {
     /** 业务模块（如：系统设置） */
     String module();
 
-    /** 业务子模块（如：审批链配置） */
+    /** 业务子模块（如：审批链配置）。当 subModuleField 未指定或解析失败时使用此静态值 */
     String subModule() default "";
+
+    /**
+     * 业务子模块 SpEL 表达式（如：#req.category），优先级高于 subModule。
+     *
+     * <p>从请求参数对象中动态获取子模块，结合 {@link #subModuleEnumClass()} 可将枚举code转换为中文描述。 例如菜单配置中，请求对象的 category
+     * 字段是枚举code，通过 subModuleEnumClass = MenuCategoryEnum.class 解析为"业务菜单"/"系统菜单"。
+     */
+    String subModuleField() default "";
+
+    /**
+     * 子模块枚举类（当 {@link #subModuleField()} 解析出的值是枚举code时，用于转换为中文描述）。
+     *
+     * <p>枚举需实现 {@link com.jdec.platform.shared.audit.enums.EnumDescribable} 接口，优先按 {@link
+     * com.jdec.platform.shared.audit.enums.EnumDescribable#getValue()} 匹配code，其次按 ordinal 匹配。
+     */
+    Class<?> subModuleEnumClass() default void.class;
 
     /** 操作类型（如：修改） */
     OperationType operation();

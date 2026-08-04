@@ -132,26 +132,11 @@ public class AuditLogFormatter {
      */
     public List<ModuleAction> buildDeleteAction(
             String moduleName, String recordName, List<FieldDiff> diffs) {
-        // 构建字段变更列表
-        List<ColumnChange> columns = new ArrayList<>();
-        if (diffs != null && !diffs.isEmpty()) {
-            for (FieldDiff diff : diffs) {
-                ColumnChange column =
-                        ColumnChange.builder()
-                                .name(diff.getFieldName())
-                                .old(formatValue(diff.getOldValue()))
-                                .newer("") // 删除操作，new为空
-                                .field(diff.getFieldCode())
-                                .build();
-                columns.add(column);
-            }
-        }
-
-        // 构建记录变更
+        // 构建记录变更（删除操作只包含 name，不包含 columns）
         RecordChange recordChange =
                 RecordChange.builder()
                         .name(recordName != null ? recordName : "")
-                        .columns(columns)
+                        .columns(null) // 删除操作不需要 columns
                         .build();
 
         // 构建操作详情（删除操作，放在 d 字段）
