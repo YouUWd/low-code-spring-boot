@@ -61,31 +61,37 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     @Transactional
     public Map<String, Object> process(ApprovalProcessReq approvalProcessReq) {
         ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
+        ApprovalBusiness approvalBusiness = new ApprovalBusiness();
+        Map<String, Object> result = new HashMap<>();
         if (List.of("submit", "edit", "change").contains(approvalProcessDTO.getButton())) {
-            businessSubmit(approvalProcessDTO);
+            approvalBusiness = businessSubmit(approvalProcessDTO);
         } else if ("create".equals(approvalProcessDTO.getButton())) {
-            businessCreate(approvalProcessDTO);
+            approvalBusiness = businessCreate(approvalProcessDTO);
         } else if ("pass".equals(approvalProcessDTO.getButton())) {
-            ApprovalBusiness approvalBusiness = businessApprove(approvalProcessDTO);
+            approvalBusiness = businessApprove(approvalProcessDTO);
             if (approvalBusiness.getStatusValue().equals(99)) {
-                Map<String, Object> result = new HashMap<>();
                 result.put("ok", 1);
                 result.put("end", 1);
                 result.put("businessId", approvalBusiness.getBusinessId());
+                result.put("statusTitle", approvalBusiness.getStatusTitle());
                 return result;
             }
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
-            businessReject(approvalProcessDTO);
+            approvalBusiness = businessReject(approvalProcessDTO);
+            result.put("statusTitle", approvalBusiness.getStatusTitle());
         } else if ("cancel".equals(approvalProcessDTO.getButton())) {
-            ApprovalBusiness approvalBusiness = businessRevoke(approvalProcessDTO);
-            Map<String, Object> result = new HashMap<>();
+            approvalBusiness = businessRevoke(approvalProcessDTO);
             result.put("ok", 1);
             result.put("end", 0);
             result.put("versionNo", approvalBusiness.getVersionNo());
+            result.put("statusTitle", approvalBusiness.getStatusTitle());
             return result;
         }
 
-        return Map.of("ok", 1, "end", 0);
+        result.put("ok", 1);
+        result.put("end", 0);
+        result.put("statusTitle", approvalBusiness.getStatusTitle());
+        return result;
     }
 
     @Override
@@ -503,7 +509,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 新建业务发起审批申请------------------------------------------------------------------------
     @Transactional
-    public void businessCreate(ApprovalProcessDTO approvalProcessDTO) {
+    public ApprovalBusiness businessCreate(ApprovalProcessDTO approvalProcessDTO) {
         // 生成唯一编号
         String prefix = "JD";
         if (Objects.nonNull(approvalProcessDTO.getPrefix())
@@ -602,11 +608,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+
+        return approvalBusiness;
     }
 
     // 变更业务发起审批申请------------------------------------------------------------------------
     @Transactional
-    public void businessSubmit(ApprovalProcessDTO approvalProcessDTO) {
+    public ApprovalBusiness businessSubmit(ApprovalProcessDTO approvalProcessDTO) {
         // 查询业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -740,6 +748,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+
+        return approvalBusiness;
     }
 
     // 审批通过---------------------------------------------------------------------
@@ -937,7 +947,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 审批驳回------------------------------------------------------------------
     @Transactional
-    public void businessReject(ApprovalProcessDTO approvalProcessDTO) {
+    public ApprovalBusiness businessReject(ApprovalProcessDTO approvalProcessDTO) {
         // 查询业务记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -1082,6 +1092,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+
+        return approvalBusiness;
     }
 
     // 撤销申请-------------------------------------------------------------------------
@@ -1693,7 +1705,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Long userId = approvalProcessDTO.getCurrentUserId();
         // 1. 查询审批链配置列表
         ModuleApprovalChainConfigResp approvalConfig =
-                sysApprovalChainConfigApi.getApprovalConfig(approvalProcessDTO.getModuleId());
+                sysApprovalChainConfigApi.getApprovalConfig(
+                        approvalProcessDTO.getModuleId(), approvalProcessDTO.getApprovalTypeId());
         if (approvalConfig.getApprovalChainConfigList().isEmpty())
             throw new BusinessException(600, "审批链已发生变化,页面将刷新!");
         // 2. 遍历生成审批链
