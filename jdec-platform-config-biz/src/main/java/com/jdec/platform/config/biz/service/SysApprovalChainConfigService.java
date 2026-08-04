@@ -1207,7 +1207,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
         } else {
             LambdaQueryWrapper<SysApprovalChainType> typeQuery = Wrappers.lambdaQuery();
             typeQuery.eq(SysApprovalChainType::getModuleId, moduleId);
-            typeQuery.eq(SysApprovalChainType::getDefaultFlag, true);
+            typeQuery.eq(SysApprovalChainType::getDefaultFlag, true).last("LIMIT 1");
             SysApprovalChainType chainType = sysApprovalChainTypeMapper.selectOne(typeQuery);
             chainTypeId = chainType != null ? chainType.getId() : 0L;
         }
