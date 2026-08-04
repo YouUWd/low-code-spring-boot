@@ -1199,15 +1199,18 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
     /** 查询审批链配置详情（返回同模块同类型的所有配置） */
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId) {
+    public ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId, Long approvalTypeId) {
         // 1. 查询模块默认启用的审批链类型
         long chainTypeId = 0L;
-        LambdaQueryWrapper<SysApprovalChainType> typeQuery = Wrappers.lambdaQuery();
-        typeQuery.eq(SysApprovalChainType::getModuleId, moduleId);
-        typeQuery.eq(SysApprovalChainType::getDefaultFlag, true);
-        SysApprovalChainType chainType = sysApprovalChainTypeMapper.selectOne(typeQuery);
-        chainTypeId = chainType != null ? chainType.getId() : 0L;
-
+        if (Objects.nonNull(approvalTypeId) && approvalTypeId > 0) {
+            chainTypeId = approvalTypeId;
+        } else {
+            LambdaQueryWrapper<SysApprovalChainType> typeQuery = Wrappers.lambdaQuery();
+            typeQuery.eq(SysApprovalChainType::getModuleId, moduleId);
+            typeQuery.eq(SysApprovalChainType::getDefaultFlag, true);
+            SysApprovalChainType chainType = sysApprovalChainTypeMapper.selectOne(typeQuery);
+            chainTypeId = chainType != null ? chainType.getId() : 0L;
+        }
         // 2. 依然为空则抛出异常
         if (chainTypeId == 0) {
             throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "审批链分类不能为空");

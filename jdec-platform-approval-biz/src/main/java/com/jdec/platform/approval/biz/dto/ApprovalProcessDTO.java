@@ -7,6 +7,9 @@ public class ApprovalProcessDTO {
     // 模块ID
     private Long moduleId;
 
+    // 审批分类ID
+    private Long approvalTypeId;
+
     // 真实业务ID
     private Long businessId;
 

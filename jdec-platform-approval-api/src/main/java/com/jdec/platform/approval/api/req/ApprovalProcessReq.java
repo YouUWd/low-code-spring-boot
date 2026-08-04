@@ -19,7 +19,7 @@ public class ApprovalProcessReq {
 
     // 审批分类ID
     @Schema(description = "审批分类ID")
-    private Long approval_type_id;
+    private Long approvalTypeId;
 
     // 业务记录ID
     @Schema(description = "业务记录ID")
