@@ -17,6 +17,10 @@ public class ApprovalProcessReq {
     @NotBlank(message = "模块ID不能为空")
     private Long moduleId;
 
+    // 审批分类ID
+    @Schema(description = "审批分类ID")
+    private Long approval_type_id;
+
     // 业务记录ID
     @Schema(description = "业务记录ID")
     private Long recordId;

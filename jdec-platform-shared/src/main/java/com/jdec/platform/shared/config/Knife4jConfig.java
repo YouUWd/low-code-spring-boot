@@ -33,14 +33,14 @@ public class Knife4jConfig {
     }
 
     /** 接口分组（按 controller 包路径扫描） */
-    @Bean
-    public GroupedOpenApi defaultApi() {
-        return GroupedOpenApi.builder()
-                .group("default")
-                .displayName("全部接口")
-                .packagesToScan("com.jdec.platform") // ← 替换成你的包路径
-                .build();
-    }
+    //    @Bean
+    //    public GroupedOpenApi defaultApi() {
+    //        return GroupedOpenApi.builder()
+    //                .group("default")
+    //                .displayName("全部接口")
+    //                .packagesToScan("com.jdec.platform") // ← 替换成你的包路径
+    //                .build();
+    //    }
 
     // 分组2：配置管理
     @Bean

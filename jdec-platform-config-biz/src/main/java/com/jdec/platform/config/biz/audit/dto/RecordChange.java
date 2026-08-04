@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.audit.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,6 +16,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class RecordChange {
 
     /** 记录名称（通过@AuditField标注的唯一标识字段） */

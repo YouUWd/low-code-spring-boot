@@ -45,22 +45,18 @@ public class SysMenuController {
     }
 
     @PostMapping("/save")
-    @Operation(summary = "新增/编辑菜单", description = "id为空则新增，不为空则修改")
-    public ApiResponse<Void> save(@RequestBody SysMenuSaveReq request) {
-        sysMenuApi.saveMenu(request);
-        return ApiResponse.success();
+    @Operation(summary = "新增/编辑菜单", description = "id为空则新增，不为空则修改，返回保存后的菜单信息")
+    public ApiResponse<SysMenuResp> save(@RequestBody SysMenuSaveReq request) {
+        return ApiResponse.success(sysMenuApi.saveMenu(request));
     }
 
     @DeleteMapping("/{id}")
-    @Operation(
-            summary = "删除菜单",
-            description = "删除指定菜单及其所有子菜单。force=false 时若有子菜单或角色授权则返回提示；force=true 时级联删除")
+    @Operation(summary = "删除菜单", description = "删除指定菜单及其所有子菜单")
     public ApiResponse<Void> delete(
             @Parameter(description = "菜单ID", example = "1") @PathVariable Long id,
-            @Parameter(description = "是否强制删除", example = "false")
-                    @RequestParam(defaultValue = "false")
-                    boolean force) {
-        sysMenuApi.deleteMenu(id, force);
+            @Parameter(description = "菜单分类（如：业务菜单/系统菜单），用于审计日志", example = "业务菜单") @RequestParam
+                    String category) {
+        sysMenuApi.deleteMenu(id, category);
         return ApiResponse.success();
     }
 

@@ -20,10 +20,8 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -385,18 +383,19 @@ public class RoleApprovalLogService {
                 headers.set("X-Subject-Id", String.valueOf(subjectId));
             }
 
-            HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-            ResponseEntity<String> response =
-                    restTemplate.postForEntity(url, httpRequest, String.class);
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                log.error(
-                        "角色审批日志发送失败，HTTP状态码: {}, operation={}",
-                        response.getStatusCode(),
-                        operation);
-            } else {
-                log.info("角色审批日志发送成功: operation={}", operation);
-            }
+            //            HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request,
+            // headers);
+            //            ResponseEntity<String> response =
+            //                    restTemplate.postForEntity(url, httpRequest, String.class);
+            //
+            //            if (!response.getStatusCode().is2xxSuccessful()) {
+            //                log.error(
+            //                        "角色审批日志发送失败，HTTP状态码: {}, operation={}",
+            //                        response.getStatusCode(),
+            //                        operation);
+            //            } else {
+            //                log.info("角色审批日志发送成功: operation={}", operation);
+            //            }
         } catch (Exception e) {
             log.error("角色审批日志发送异常: operation={}", operation, e);
             if (TransactionSynchronizationManager.isSynchronizationActive()) {

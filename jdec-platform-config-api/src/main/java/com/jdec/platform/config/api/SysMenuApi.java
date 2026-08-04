@@ -22,16 +22,20 @@ public interface SysMenuApi {
      */
     List<SysMenuResp> list(Integer category);
 
-    /** 新增/编辑菜单 */
-    void saveMenu(SysMenuSaveReq req);
+    /**
+     * 新增/编辑菜单
+     *
+     * @return 保存后的菜单信息
+     */
+    SysMenuResp saveMenu(SysMenuSaveReq req);
 
     /**
      * 删除菜单（级联删除子节点及角色关联）
      *
      * @param id 菜单ID
-     * @param force 是否强制删除。false 时若有子菜单或角色关联则抛出提示；true 时级联删除
+     * @param category 菜单分类（如：业务菜单/系统菜单），用于审计日志的子模块标识
      */
-    void deleteMenu(Long id, boolean force);
+    void deleteMenu(Long id, String category);
 
     /** 拖拽菜单 */
     void dragMenu(SysMenuDragReq req);
