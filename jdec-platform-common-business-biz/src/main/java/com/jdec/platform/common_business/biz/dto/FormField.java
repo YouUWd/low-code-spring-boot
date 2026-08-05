@@ -1,6 +1,8 @@
 package com.jdec.platform.common_business.biz.dto;
 
+import com.jdec.platform.common_business.api.dto.common.FieldChainValueDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.Builder;
 import lombok.Data;
 
@@ -26,6 +28,9 @@ public class FormField {
 
     @Schema(description = "字段表名")
     private String tableName;
+
+    @Schema(description = "字段配置审批链的分类值")
+    private List<FieldChainValueDTO> fieldChainValues;
 
     //    @Schema(description = "是否加密存储: 0-否, 1-是")
     //    private Integer encrypted;

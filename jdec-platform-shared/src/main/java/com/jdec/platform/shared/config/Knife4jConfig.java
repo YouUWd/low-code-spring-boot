@@ -52,6 +52,16 @@ public class Knife4jConfig {
                 .build();
     }
 
+    // 分组3：监控日志管理
+    @Bean
+    public GroupedOpenApi monitorLogApi() {
+        return GroupedOpenApi.builder()
+                .group("MONITOR_LOG_API")
+                .displayName("监控日志管理")
+                .packagesToScan("com.jdec.platform.monitorlog.biz.controller")
+                .build();
+    }
+
     // 分组4：通用业务管理
     @Bean
     public GroupedOpenApi comBizApi() {

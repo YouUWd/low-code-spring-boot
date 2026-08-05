@@ -5,16 +5,35 @@
     <resultMap id="BaseResultMap" type="com.jdec.platform.monitorlog.biz.entity.JdecMonitorLogBase">
         <id column="id" property="id"/>
         <result column="subject_id" property="subjectId"/>
+        <result column="subject_name" property="subjectName"/>
+        <result column="actionName" property="actionName"/>
+        <result column="actionPath" property="actionPath"/>
+        <result column="actionTypeTitle" property="actionTypeTitle"/>
         <result column="login_user_id" property="loginUserId"/>
-        <result column="user_info" property="userInfo"/>
+        <result column="login_user_name" property="loginUserName"/>
+        <result column="login_avater" property="loginAvater"/>
+        <result column="login_user_number" property="loginUserNumber"/>
         <result column="login_role_id" property="loginRoleId"/>
         <result column="login_role_name" property="loginRoleName"/>
+        <result column="login_user_dept_id" property="loginUserDeptId"/>
+        <result column="login_user_dept_name" property="loginUserDeptName"/>
         <result column="mock_flag" property="mockFlag"/>
         <result column="mock_user_id" property="mockUserId"/>
         <result column="mock_user_name" property="mockUserName"/>
+        <result column="mock_user_avater" property="mockUserAvater"/>
+        <result column="mock_user_number" property="mockUserNumber"/>
         <result column="mock_role_id" property="mockRoleId"/>
         <result column="mock_role_name" property="mockRoleName"/>
         <result column="ip" property="ip"/>
+        <result column="module_id" property="moduleId"/>
+        <result column="module_name" property="moduleName"/>
+        <result column="order_id" property="orderId"/>
+        <result column="menu_id" property="menuId"/>
+        <result column="data_id" property="dataId"/>
+        <result column="orderVersion" property="orderVersion"/>
+        <result column="control_ame" property="controlAme"/>
+        <result column="operator_result" property="operatorResult"/>
+        <result column="font_color" property="fontColor"/>
         <result column="browser" property="browser"/>
         <result column="plat_form" property="platForm"/>
         <result column="system_name" property="systemName"/>
@@ -24,198 +43,152 @@
         <result column="log_type" property="logType"/>
     </resultMap>
 
+    <sql id="commonSelectColumns">
+        id, subject_id, subject_name, actionName, actionPath, actionTypeTitle,
+        login_user_id, login_user_name, login_avater, login_user_number,
+        login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
+        mock_flag, mock_user_id, mock_user_name, mock_user_avater, mock_user_number,
+        mock_role_id, mock_role_name,
+        ip, module_id, module_name, order_id, menu_id, data_id, orderVersion,
+        control_ame, operator_result, font_color, browser, plat_form, system_name,
+        log_content, log_remark, log_date
+    </sql>
+
+    <sql id="commonWhereCondition">
+        WHERE
+            (
+                <if test="keyWord == null or keyWord == ''">1=1</if>
+                <if test="keyWord != null and keyWord != ''">
+                    log_content LIKE CONCAT('%', #{keyWord}, '%')
+                    OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
+                    OR order_id LIKE CONCAT('%', #{keyWord}, '%')
+                    OR module_name LIKE CONCAT('%', #{keyWord}, '%')
+                </if>
+            )
+            AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
+        ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+    </sql>
+
     <select id="queryPageListWithMultiTable" resultMap="BaseResultMap">
         SELECT res.* FROM (
             <choose>
-                <when test="logType == 'systemlog'">
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'system_log' as log_type
-                    FROM sys_monitor_navchangelog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
-                </when>
-                
                 <when test="logType == 'messagelog'">
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'message_log' as log_type
+                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
+                    <include refid="commonWhereCondition"/>)
                 </when>
-                
-                <when test="logType == 'authoritylog'">
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_authoritychangelog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
+
+                <when test="logType == 'controllog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    FROM sys_monitor_controllog
+                    <include refid="commonWhereCondition"/>)
                 </when>
-                
-                <when test="logType == 'operationlog'">
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_ApprovalChainRunlog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
 
-                    UNION ALL
-
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_ApprovalChainConfiglog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
-
-                    UNION ALL
-
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_orderrunlog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
-
-                    UNION ALL
-
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'system_log' as log_type
-                    FROM sys_monitor_systemcontrollog
-                    WHERE (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
+                <when test="logType == 'systemlog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    FROM sys_monitor_systemlog
+                    <include refid="commonWhereCondition"/>)
                 </when>
-                
+
                 <otherwise>
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_ApprovalChainRunlog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
-
-                    UNION ALL
-
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_ApprovalChainConfiglog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
-
-                    UNION ALL
-
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_authoritychangelog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
-
-                    UNION ALL
-
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'message_log' as log_type
+                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
+                    <include refid="commonWhereCondition"/>)
 
                     UNION ALL
 
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'system_log' as log_type
-                    FROM sys_monitor_navchangelog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
+                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    FROM sys_monitor_controllog
+                    <include refid="commonWhereCondition"/>)
 
                     UNION ALL
 
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'operation_log' as log_type
-                    FROM sys_monitor_orderrunlog
-                    WHERE
-                        (
-                            <if test="keyWord == null or keyWord == ''">1=1</if>
-                            <if test="keyWord != null and keyWord != ''">log_content-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%') OR log_remark-&gt;&gt;'$.name' LIKE CONCAT('%', #{keyWord}, '%')</if>
-                        )
-                        AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
-
-                    UNION ALL
-
-                    (SELECT id, subject_id, login_user_id, user_info, login_role_id, login_role_name,
-                           mock_flag, mock_user_id, mock_user_name, mock_role_id, mock_role_name,
-                           ip, log_content, log_remark, log_date, 'system_log' as log_type
-                    FROM sys_monitor_systemcontrollog
-                    WHERE (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-                    ORDER BY log_date DESC, id DESC LIMIT #{pageSize})
+                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    FROM sys_monitor_systemlog
+                    <include refid="commonWhereCondition"/>)
                 </otherwise>
             </choose>
         ) res
         ORDER BY res.log_date DESC, res.id DESC
         LIMIT #{pageSize}
+    </select>
+
+    <select id="queryByModuleIdAndOrderId" resultMap="BaseResultMap">
+        SELECT res.* FROM (
+            <choose>
+                <when test="logType == 'messagelog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    FROM sys_monitor_messagelog
+                    WHERE module_id = #{moduleId} AND order_id = #{orderId}
+                    ORDER BY log_date DESC, id DESC)
+                </when>
+                <when test="logType == 'controllog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    FROM sys_monitor_controllog
+                    WHERE module_id = #{moduleId} AND order_id = #{orderId}
+                    ORDER BY log_date DESC, id DESC)
+                </when>
+                <when test="logType == 'systemlog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    FROM sys_monitor_systemlog
+                    WHERE module_id = #{moduleId} AND order_id = #{orderId}
+                    ORDER BY log_date DESC, id DESC)
+                </when>
+                <otherwise>
+                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    FROM sys_monitor_messagelog
+                    WHERE module_id = #{moduleId} AND order_id = #{orderId})
+                    UNION ALL
+                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    FROM sys_monitor_controllog
+                    WHERE module_id = #{moduleId} AND order_id = #{orderId})
+                    UNION ALL
+                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    FROM sys_monitor_systemlog
+                    WHERE module_id = #{moduleId} AND order_id = #{orderId})
+                </otherwise>
+            </choose>
+        ) res
+        ORDER BY res.log_date DESC, res.id DESC
+    </select>
+
+    <select id="queryByMenuIdAndDataId" resultMap="BaseResultMap">
+        SELECT res.* FROM (
+            <choose>
+                <when test="logType == 'messagelog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    FROM sys_monitor_messagelog
+                    WHERE menu_id = #{menuId} AND data_id = #{dataId}
+                    ORDER BY log_date DESC, id DESC LIMIT 1)
+                </when>
+                <when test="logType == 'controllog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    FROM sys_monitor_controllog
+                    WHERE menu_id = #{menuId} AND data_id = #{dataId}
+                    ORDER BY log_date DESC, id DESC LIMIT 1)
+                </when>
+                <when test="logType == 'systemlog'">
+                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    FROM sys_monitor_systemlog
+                    WHERE menu_id = #{menuId} AND data_id = #{dataId}
+                    ORDER BY log_date DESC, id DESC LIMIT 1)
+                </when>
+                <otherwise>
+                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    FROM sys_monitor_messagelog
+                    WHERE menu_id = #{menuId} AND data_id = #{dataId})
+                    UNION ALL
+                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    FROM sys_monitor_controllog
+                    WHERE menu_id = #{menuId} AND data_id = #{dataId})
+                    UNION ALL
+                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    FROM sys_monitor_systemlog
+                    WHERE menu_id = #{menuId} AND data_id = #{dataId})
+                </otherwise>
+            </choose>
+        ) res
+        ORDER BY res.log_date DESC, res.id DESC LIMIT 1
     </select>
 
 </mapper>

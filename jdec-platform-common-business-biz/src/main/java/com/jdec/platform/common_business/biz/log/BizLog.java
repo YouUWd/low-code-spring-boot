@@ -2,7 +2,7 @@ package com.jdec.platform.common_business.biz.log;
 
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
-import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
+import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 
 public interface BizLog {
 
@@ -10,9 +10,9 @@ public interface BizLog {
 
     public Boolean processBizLog(BizLogEnum logEnum, Object log);
 
-    default MonitorLogReq getCommonReq(BizLogDTO bizLogDTO) {
-        MonitorLogReq req = new MonitorLogReq();
-        req.setLogType(bizLogDTO.getLogType());
+    default MonitorControlLogReq getCommonReq(BizLogDTO bizLogDTO) {
+        MonitorControlLogReq req = new MonitorControlLogReq();
+        //        req.setLogType(bizLogDTO.getLogType());
         req.setSubjectId(bizLogDTO.getCurrentSubjectId());
         req.setLoginUserId(bizLogDTO.getLoginUserId());
         req.setLoginRoleId(bizLogDTO.getCurrentRoleId());

@@ -49,6 +49,9 @@ public class ModuleField {
     @Schema(description = "是否生成权限节点: 0-否, 1-是")
     private Integer dataRightFlag;
 
+    @Schema(description = "字段对应的审批链分类值列表")
+    private List<FieldChainValueDTO> fieldChainValues;
+
     public record SourceMapping(
             @Schema(description = "表名") String entity,
             @Schema(description = "字段名") String field,

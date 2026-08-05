@@ -1,6 +1,7 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.google.common.collect.Lists;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
@@ -95,7 +96,32 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             SysFieldResp defaultSysFieldResp = new SysFieldResp();
 
             for (SimpleField simpleFieldItem : moduleInfoResp.getSimpleFields()) {
-                allFields.add(
+
+                SysFieldResp sysFieldResp =
+                        sysFieldRespMap.getOrDefault(
+                                simpleFieldItem.getTableName()
+                                        + "."
+                                        + simpleFieldItem.getColumnName(),
+                                defaultSysFieldResp);
+                List<FieldChainValueDTO> fieldChainValueDTOS = Lists.newArrayList();
+                if (CollectionUtil.isNotEmpty(sysFieldResp.getFieldValues())) {
+                    fieldChainValueDTOS =
+                            sysFieldResp.getFieldValues().stream()
+                                    .filter(
+                                            x ->
+                                                    moduleId.equals(x.getModuleId())
+                                                            && x.getEnabled() != null
+                                                            && x.getEnabled()
+                                                                    .equals(Integer.valueOf(1)))
+                                    .map(
+                                            x ->
+                                                    FieldChainValueDTO.builder()
+                                                            .fieldValue(x.getFieldValue())
+                                                            .fieldValueDesc(x.getFieldValueDesc())
+                                                            .build())
+                                    .collect(Collectors.toList());
+                }
+                ModuleField mf =
                         ModuleField.builder()
                                 .fieldCode(simpleFieldItem.getColumnName())
                                 .fieldName(simpleFieldItem.getDisplayName())
@@ -104,39 +130,14 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                 .filedType("SIMPLE")
                                 .tableName(simpleFieldItem.getTableName())
                                 .bizKeyOrder(simpleFieldItem.getBizKeyOrder())
-                                .relationBusinessNo(
-                                        sysFieldRespMap
-                                                .getOrDefault(
-                                                        simpleFieldItem.getTableName()
-                                                                + "."
-                                                                + simpleFieldItem.getColumnName(),
-                                                        defaultSysFieldResp)
-                                                .getRelationBusinessNo())
-                                .relationName(
-                                        sysFieldRespMap
-                                                .getOrDefault(
-                                                        simpleFieldItem.getTableName()
-                                                                + "."
-                                                                + simpleFieldItem.getColumnName(),
-                                                        defaultSysFieldResp)
-                                                .getRelationName())
-                                .encrypted(
-                                        sysFieldRespMap
-                                                .getOrDefault(
-                                                        simpleFieldItem.getTableName()
-                                                                + "."
-                                                                + simpleFieldItem.getColumnName(),
-                                                        defaultSysFieldResp)
-                                                .getEncrypted())
-                                .dataRightFlag(
-                                        sysFieldRespMap
-                                                .getOrDefault(
-                                                        simpleFieldItem.getTableName()
-                                                                + "."
-                                                                + simpleFieldItem.getColumnName(),
-                                                        defaultSysFieldResp)
-                                                .getDataRightFlag())
-                                .build());
+                                .relationBusinessNo(sysFieldResp.getRelationBusinessNo())
+                                .relationName(sysFieldResp.getRelationName())
+                                .encrypted(sysFieldResp.getEncrypted())
+                                .dataRightFlag(sysFieldResp.getDataRightFlag())
+                                .fieldChainValues(fieldChainValueDTOS)
+                                .build();
+
+                allFields.add(mf);
             }
 
             for (CombineField combineFieldItem : moduleInfoResp.getCombineFields()) {
@@ -460,44 +461,40 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
                 // 填充permissionCode和fieldName
                 for (SimpleField simpleField : filteredSimpleFields) {
+                    SysFieldResp sysFieldResp =
+                            sysFieldRespMap.getOrDefault(
+                                    simpleField.getTableName() + "." + simpleField.getColumnName(),
+                                    defaultSysFieldResp);
+                    List<FieldChainValueDTO> fieldChainValueDTOS = Lists.newArrayList();
+                    if (CollectionUtil.isNotEmpty(sysFieldResp.getFieldValues())) {
+                        fieldChainValueDTOS =
+                                sysFieldResp.getFieldValues().stream()
+                                        .filter(
+                                                x ->
+                                                        moduleId.equals(x.getModuleId())
+                                                                && x.getEnabled() != null
+                                                                && x.getEnabled()
+                                                                        .equals(Integer.valueOf(1)))
+                                        .map(
+                                                x ->
+                                                        FieldChainValueDTO.builder()
+                                                                .fieldValue(x.getFieldValue())
+                                                                .fieldValueDesc(
+                                                                        x.getFieldValueDesc())
+                                                                .build())
+                                        .collect(Collectors.toList());
+                    }
                     ModuleField.ModuleFieldBuilder moduleFieldBuilder =
                             ModuleField.builder()
                                     .moduleId(moduleInfoResp.getModule().getId().longValue())
                                     .filedType("SIMPLE")
                                     .fieldCode(simpleField.getColumnName())
                                     .tableName(simpleField.getTableName())
-                                    .relationBusinessNo(
-                                            sysFieldRespMap
-                                                    .getOrDefault(
-                                                            simpleField.getTableName()
-                                                                    + "."
-                                                                    + simpleField.getColumnName(),
-                                                            defaultSysFieldResp)
-                                                    .getRelationBusinessNo())
-                                    .relationName(
-                                            sysFieldRespMap
-                                                    .getOrDefault(
-                                                            simpleField.getTableName()
-                                                                    + "."
-                                                                    + simpleField.getColumnName(),
-                                                            defaultSysFieldResp)
-                                                    .getRelationName())
-                                    .encrypted(
-                                            sysFieldRespMap
-                                                    .getOrDefault(
-                                                            simpleField.getTableName()
-                                                                    + "."
-                                                                    + simpleField.getColumnName(),
-                                                            defaultSysFieldResp)
-                                                    .getEncrypted())
-                                    .dataRightFlag(
-                                            sysFieldRespMap
-                                                    .getOrDefault(
-                                                            simpleField.getTableName()
-                                                                    + "."
-                                                                    + simpleField.getColumnName(),
-                                                            defaultSysFieldResp)
-                                                    .getDataRightFlag());
+                                    .relationBusinessNo(sysFieldResp.getRelationBusinessNo())
+                                    .relationName(sysFieldResp.getRelationName())
+                                    .encrypted(sysFieldResp.getEncrypted())
+                                    .dataRightFlag(sysFieldResp.getDataRightFlag())
+                                    .fieldChainValues(fieldChainValueDTOS);
 
                     Integer permissionCode = 0;
                     String fieldName = simpleField.getColumnName();
@@ -1444,6 +1441,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                             .tableName(allFieldItem.getTableName())
                             .relationBusinessNo(allFieldItem.getRelationBusinessNo())
                             .relationName(allFieldItem.getRelationName())
+                            .fieldChainValues(allFieldItem.getFieldChainValues())
                             .build();
 
             formFields.add(formField);

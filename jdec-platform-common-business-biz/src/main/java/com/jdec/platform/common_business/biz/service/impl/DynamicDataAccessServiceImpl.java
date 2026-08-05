@@ -829,6 +829,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             .tableName(allFieldItem.getTableName())
                             .relationName(allFieldItem.getRelationName())
                             .relationBusinessNo(allFieldItem.getRelationBusinessNo())
+                            .fieldChainValues(allFieldItem.getFieldChainValues())
                             .build();
 
             formFields.add(formField);
@@ -2280,6 +2281,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         boolean saveBtnShow = false;
 
         for (MenuListResp menu : targetModules) {
+
             ModuleFilterInfo moduleFilterInfo =
                     moduleInfoWithPermissionService.filterModuleInfo(
                             subjectId, roleId, menu.getModuleId(), "", List.of());
