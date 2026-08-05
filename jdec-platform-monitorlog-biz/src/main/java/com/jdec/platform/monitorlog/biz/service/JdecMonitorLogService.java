@@ -10,7 +10,6 @@ import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.List;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,49 +28,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private final JdecMonitorSystemLogMapper jdecMonitorSystemLogMapper;
 
     private final JdecMonitorMultiTableMapper jdecMonitorMultiTableMapper;
-
-    private static final String USER_INFO_TEMPLATE =
-            "<span class=\"arco-table-td-content\">"
-                    + "<div class=\"flex\">"
-                    + "<span><div class=\"flex flex-items-center\"></div></span>"
-                    + "<div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">"
-                    + "<img class=\"arco-image-img\" src=\"{avatar}\" style=\"width: 28px; height: 28px;\"></div>"
-                    + "<span><span>{userName}</span>"
-                    + "<span class=\"c-#667085\">({workNumber})</span></span>"
-                    + "</div></span>";
-    // 模拟用户信息模板，用于测试
-    private static final String MOCK_USER_INFO_TEMPLATE =
-            "<span class=\"arco-table-td-content\">"
-                    + "<div class=\"flex\">"
-                    + "<span><div class=\"flex flex-items-center\"></div></span>"
-                    + "<div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">"
-                    + "<img class=\"arco-image-img\" src=\"{userAvatar}\" style=\"width: 28px; height: 28px;\"></div>"
-                    + "<span><span>{userName}</span>"
-                    + "<span class=\"c-#667085\">({userWorkNumber})</span>以</span>"
-                    + "<div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">"
-                    + "<img class=\"arco-image-img\" src=\"{mockAvatar}\" style=\"width: 28px; height: 28px;\"></div>"
-                    + "<span><span>{mockUserName}</span>"
-                    + "<span class=\"c-#667085\">({mockWorkNumber})</span>身份操作</span>"
-                    + "</div></span>";
-
-    private static final String USER_MOCK_TEMPLATE =
-            "<span class=\"arco-table-td-content\">"
-                    + "<div class=\"flex\">"
-                    + "<span><div class=\"flex flex-items-center\"></div></span>"
-                    + "<div class=\"arco-image arco-image-with-footer-inner m-r-8px cursor-pointer\" style=\"width: 28px; height: 28px; border-radius: 50%;\">"
-                    + "<img class=\"arco-image-img\" src=\"{avatar}\" style=\"width: 28px; height: 28px;\"></div>"
-                    + "<span><span>{userName}</span>"
-                    + "<span class=\"c-#667085\">({workNumber})</span></span>"
-                    + "<span>{mockRoleName}</span></span>"
-                    + "</div></span>";
-    private static final Set<String> VALID_LOG_TYPES =
-            Set.of(
-                    "messagelog",
-                    "controllog",
-                    "systemlog",
-                    "message_log",
-                    "control_log",
-                    "system_log");
 
     @Override
     public PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq request) {
@@ -105,7 +61,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordOrderRunLog(MonitorControlLogReq req) {
-        validateControlLogReq(req, false);
+        validateControlLogReq(req);
         JdecMonitorControlLog logItem = BeanUtil.toBean(req, JdecMonitorControlLog.class);
         applyDefaults(logItem);
 
@@ -119,7 +75,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordMessageLog(MonitorMessageLogReq req) {
-        validateMessageLogReq(req, true);
+        validateMessageLogReq(req);
         JdecMonitorMessageLog logItem = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
         applyDefaults(logItem);
 
@@ -127,13 +83,13 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     /**
-     * 记录系统控制日志
+     * 记录系统操作日志
      *
      * @param req 监控日志请求参数
      */
     @Override
     public void recordSystemControlLog(MonitorSystemLogReq req) {
-        validateSystemLogReq(req, false);
+        validateSystemLogReq(req);
         JdecMonitorSystemLog logItem = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         applyDefaults(logItem);
 
@@ -141,13 +97,13 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     /**
-     * 记录系统控制日志
+     * 记录系统导航日志
      *
      * @param req 监控日志请求参数
      */
     @Override
     public void recordSystemNavLog(MonitorSystemNavLogReq req) {
-        validateSystemNavLogReq(req, false);
+        validateSystemNavLogReq(req);
         JdecMonitorSystemLog logItem = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         applyDefaults(logItem);
         // 构建用户信息
@@ -185,9 +141,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
      * 校验日志请求参数
      *
      * @param req 监控日志请求参数
-     * @param requireLogRemark 是否需要日志备注
      */
-    private void validateControlLogReq(MonitorControlLogReq req, boolean requireLogRemark) {
+    private void validateControlLogReq(MonitorControlLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
         }
@@ -203,7 +158,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (req.getLogContent().length() > 65535) {
             throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
         }
-        if (requireLogRemark && !StringUtils.hasText(req.getLogRemark())) {
+        if (!StringUtils.hasText(req.getLogRemark())) {
             throw new IllegalArgumentException("日志备注(logRemark)不能为空");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
@@ -215,8 +170,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (StringUtils.hasText(req.getOrderId()) && req.getOrderId().length() > 100) {
             throw new IllegalArgumentException("单据编号(orderId)长度不能超过100字符");
         }
-        if (StringUtils.hasText(req.getControlAme()) && req.getControlAme().length() > 100) {
-            throw new IllegalArgumentException("单据操作名称(controlAme)长度不能超过100字符");
+        if (StringUtils.hasText(req.getControlName()) && req.getControlName().length() > 100) {
+            throw new IllegalArgumentException("单据操作名称(controlName)长度不能超过100字符");
         }
         if (StringUtils.hasText(req.getBrowser()) && req.getBrowser().length() > 100) {
             throw new IllegalArgumentException("浏览器信息(browser)长度不能超过100字符");
@@ -232,7 +187,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
     }
 
-    private void validateSystemLogReq(MonitorSystemLogReq req, boolean requireLogRemark) {
+    private void validateSystemLogReq(MonitorSystemLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
         }
@@ -247,9 +202,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
         if (req.getLogContent().length() > 65535) {
             throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
-        }
-        if (requireLogRemark && !StringUtils.hasText(req.getLogRemark())) {
-            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
@@ -268,7 +220,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
     }
 
-    private void validateSystemNavLogReq(MonitorSystemNavLogReq req, boolean requireLogRemark) {
+    private void validateSystemNavLogReq(MonitorSystemNavLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
         }
@@ -283,9 +235,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
         if (req.getLogContent().length() > 65535) {
             throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
-        }
-        if (requireLogRemark && !StringUtils.hasText(req.getLogRemark())) {
-            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
@@ -304,7 +253,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
     }
 
-    private void validateMessageLogReq(MonitorMessageLogReq req, boolean requireLogRemark) {
+    private void validateMessageLogReq(MonitorMessageLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
         }
@@ -320,7 +269,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (req.getLogContent().length() > 65535) {
             throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
         }
-        if (requireLogRemark && !StringUtils.hasText(req.getLogRemark())) {
+        if (!StringUtils.hasText(req.getLogRemark())) {
             throw new IllegalArgumentException("日志备注(logRemark)不能为空");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
@@ -332,8 +281,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (StringUtils.hasText(req.getOrderId()) && req.getOrderId().length() > 100) {
             throw new IllegalArgumentException("单据编号(orderId)长度不能超过100字符");
         }
-        if (StringUtils.hasText(req.getControlAme()) && req.getControlAme().length() > 100) {
-            throw new IllegalArgumentException("单据操作名称(controlAme)长度不能超过100字符");
+        if (StringUtils.hasText(req.getControlName()) && req.getControlName().length() > 100) {
+            throw new IllegalArgumentException("单据操作名称(controlName)长度不能超过100字符");
         }
         if (StringUtils.hasText(req.getBrowser()) && req.getBrowser().length() > 100) {
             throw new IllegalArgumentException("浏览器信息(browser)长度不能超过100字符");
@@ -361,11 +310,11 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (logItem.getMockUserId() == null) {
             logItem.setMockUserId(0L);
         }
-        if (logItem.getMockRoleId() == null) {
-            logItem.setMockRoleId(0L);
+        if (!StringUtils.hasText(logItem.getLoginUserDeptId())) {
+            logItem.setLoginUserDeptId("0");
         }
-        if (logItem.getLoginUserDeptId() == null) {
-            logItem.setLoginUserDeptId(0L);
+        if (!StringUtils.hasText(logItem.getLoginUserJobId())) {
+            logItem.setLoginUserJobId("0");
         }
         if (!StringUtils.hasText(logItem.getLoginUserName())) {
             logItem.setLoginUserName("");
@@ -382,11 +331,17 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (!StringUtils.hasText(logItem.getLoginUserDeptName())) {
             logItem.setLoginUserDeptName("");
         }
+        if (!StringUtils.hasText(logItem.getLoginUserJobName())) {
+            logItem.setLoginUserJobName("");
+        }
         if (!StringUtils.hasText(logItem.getBrowser())) {
             logItem.setBrowser("chrome");
         }
         if (!StringUtils.hasText(logItem.getPlatForm())) {
             logItem.setPlatForm("windows");
+        }
+        if (!StringUtils.hasText(logItem.getLogRemark())) {
+            logItem.setLogRemark("{}");
         }
     }
 
@@ -405,16 +360,16 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     @Override
-    public MonitorLogPageListResp queryByMenuIdAndDataId(Long menuId, Long dataId, String logType) {
+    public MonitorLogPageListResp queryByMenuIdAndDataId(Long menuId, Long dataId) {
         if (menuId == null || dataId == null) {
             throw new IllegalArgumentException("menuId和dataId不能为空");
         }
-        String type = StringUtils.hasText(logType) ? logType : "";
+        String type = "controllog";
         List<JdecMonitorLogBase> logList =
                 jdecMonitorMultiTableMapper.queryByMenuIdAndDataId(menuId, dataId, type);
         if (logList.isEmpty()) {
             return null;
         }
-        return BeanUtil.copyProperties(logList.get(0), MonitorLogPageListResp.class);
+        return BeanUtil.copyProperties(logList.getFirst(), MonitorLogPageListResp.class);
     }
 }

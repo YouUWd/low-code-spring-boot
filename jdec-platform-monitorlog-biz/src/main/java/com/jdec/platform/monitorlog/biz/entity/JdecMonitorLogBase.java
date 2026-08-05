@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import lombok.Data;
@@ -11,7 +12,7 @@ import lombok.Data;
 @Data
 public class JdecMonitorLogBase implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+    @Serial private static final long serialVersionUID = 1L;
 
     @Schema(description = "ID;自增主键")
     @TableId(type = IdType.AUTO)
@@ -50,11 +51,17 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "登录人角色名称")
     private String loginRoleName;
 
-    @Schema(description = "登录人部门ID")
-    private Long loginUserDeptId;
+    @Schema(description = "登录人部门ID;多个ID，用逗号分割")
+    private String loginUserDeptId;
 
-    @Schema(description = "登录人部门名称")
+    @Schema(description = "登录人部门名称;多个名称，用逗号分割")
     private String loginUserDeptName;
+
+    @Schema(description = "登录人岗位ID;多个ID，用逗号分割")
+    private String loginUserJobId;
+
+    @Schema(description = "登录人岗位名称;多个名称，用逗号分割")
+    private String loginUserJobName;
 
     @Schema(description = "是否mock标记;是否mock标记：0，否；1 是")
     private Integer mockFlag;
@@ -71,10 +78,12 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "模拟用户工号")
     private String mockUserNumber;
 
-    @Schema(description = "模拟用户角色ID;模拟用户角色ID")
+    @Schema(description = "模拟用户角色ID;模拟用户角色ID（兼容保留）")
+    @TableField(exist = false)
     private Long mockRoleId;
 
-    @Schema(description = "模拟用户角色名称")
+    @Schema(description = "模拟用户角色名称（兼容保留）")
+    @TableField(exist = false)
     private String mockRoleName;
 
     @Schema(description = "日志发生的IP地址;日志发生的IP地址")
@@ -92,6 +101,9 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "菜单ID")
     private Long menuId;
 
+    @Schema(description = "菜单名称")
+    private String menuName;
+
     @Schema(description = "单据ID")
     private Long dataId;
 
@@ -99,7 +111,7 @@ public class JdecMonitorLogBase implements Serializable {
     private Integer orderVersion;
 
     @Schema(description = "单据操作名称;元件审核/权限配置/审批链配置")
-    private String controlAme;
+    private String controlName;
 
     @Schema(description = "操作结果/执行结果/处理结果;成功/失败")
     private String operatorResult;

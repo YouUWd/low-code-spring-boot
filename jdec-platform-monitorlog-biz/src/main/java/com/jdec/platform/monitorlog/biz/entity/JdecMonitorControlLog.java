@@ -2,6 +2,7 @@ package com.jdec.platform.monitorlog.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serial;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -9,4 +10,7 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 @TableName("sys_monitor_controllog")
 @Schema(description = "控制日志/单据操作日志")
-public class JdecMonitorControlLog extends JdecMonitorLogBase {}
+public class JdecMonitorControlLog extends JdecMonitorLogBase {
+
+    @Serial private static final long serialVersionUID = 1L;
+}

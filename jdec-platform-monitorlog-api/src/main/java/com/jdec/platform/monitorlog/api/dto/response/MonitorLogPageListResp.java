@@ -50,11 +50,17 @@ public class MonitorLogPageListResp {
     @Schema(description = "登录人角色名称")
     private String loginRoleName;
 
-    @Schema(description = "登录人部门ID")
-    private Long loginUserDeptId;
+    @Schema(description = "登录人部门ID;多个ID，用逗号分割")
+    private String loginUserDeptId;
 
-    @Schema(description = "登录人部门名称")
+    @Schema(description = "登录人部门名称;多个名称，用逗号分割")
     private String loginUserDeptName;
+
+    @Schema(description = "登录人岗位ID;多个ID，用逗号分割")
+    private String loginUserJobId;
+
+    @Schema(description = "登录人岗位名称;多个名称，用逗号分割")
+    private String loginUserJobName;
 
     @Schema(description = "是否mock标记;是否mock标记：0，否；1 是")
     private Integer mockFlag;
@@ -71,12 +77,6 @@ public class MonitorLogPageListResp {
     @Schema(description = "模拟用户工号")
     private String mockUserNumber;
 
-    @Schema(description = "模拟用户角色ID;模拟用户角色ID")
-    private Long mockRoleId;
-
-    @Schema(description = "模拟用户角色名称")
-    private String mockRoleName;
-
     @Schema(description = "日志发生的IP地址;日志发生的IP地址")
     private String ip;
 
@@ -92,6 +92,9 @@ public class MonitorLogPageListResp {
     @Schema(description = "菜单ID")
     private Long menuId;
 
+    @Schema(description = "菜单名称")
+    private String menuName;
+
     @Schema(description = "单据ID")
     private Long dataId;
 
@@ -99,7 +102,7 @@ public class MonitorLogPageListResp {
     private Integer orderVersion;
 
     @Schema(description = "单据操作名称;元件审核/权限配置/审批链配置")
-    private String controlAme;
+    private String controlName;
 
     @Schema(description = "操作结果/执行结果/处理结果;成功/失败")
     private String operatorResult;
