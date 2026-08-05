@@ -40,6 +40,18 @@ public interface SysFieldApi {
             String projectNo, Long subjectId, String tableName, String columnName);
 
     /**
+     * 查询简版字段配置列表（不调用词云 Api）
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @param tableName 表名
+     * @param columnName 列名（可选）
+     * @return 字段配置列表
+     */
+    List<SysFieldResp> querySimpleSysFields(
+            String projectNo, Long subjectId, String tableName, String columnName);
+
+    /**
      * 保存或更新字段配置
      *
      * @param projectNo 项目编码
