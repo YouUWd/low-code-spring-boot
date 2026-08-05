@@ -23,9 +23,7 @@ import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ApprovalApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
-import com.jdec.platform.common_business.biz.dto.FormField;
-import com.jdec.platform.common_business.biz.dto.RightInfoVO;
-import com.jdec.platform.common_business.biz.dto.VersionCompareItem;
+import com.jdec.platform.common_business.biz.dto.*;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.DataConfig;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.DataRightConfigResp;
@@ -278,7 +276,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         }
                     }
 
-                    Map<String, List<VersionCompareItem>> fieldChangeList =
+                    VersionCompareInfo fieldChangeList =
                             buildFieldChangeListData(
                                     moduleFilterInfo.getModuleInfo().getPrimaryTable(),
                                     id,
@@ -302,7 +300,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                                     String.valueOf(
                                                             versionInfo.get("currentVersion"))));
 
-                    dataMap.put("formChangeList", fieldChangeList);
+                    if (Objects.nonNull(fieldChangeList)) {
+                        dataMap.put("formChangeList", fieldChangeList);
+                    }
                 }
 
                 // 主表数据放入返回结果Map
@@ -445,14 +445,14 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         return resultMap;
     }
 
-    private Map<String, List<VersionCompareItem>> buildFieldChangeListData(
+    private VersionCompareInfo buildFieldChangeListData(
             String tableName,
             Long currentRecordId,
             Long lastVersionId,
             Long modifyId,
             Integer lastVersion,
             Integer currentVersion) {
-        Map<String, List<VersionCompareItem>> compareResult = new HashMap<>();
+        Map<String, VersionCompareItemInfo> compareResult = new HashMap<>();
 
         // 获取主表Mapper对象
         BaseMapper primaryMapper =
@@ -464,34 +464,21 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         QueryWrapper queryWrapperCurrent = Wrappers.query();
         if (Objects.isNull(currentRecordId)) {
             log.debug("当前数据主键ID为空，无版本可以对比。");
-            return Map.of();
-        }
-
-        String type = "change";
-        if (Objects.isNull(lastVersionId)) {
-            log.debug("前一生效版本数据主键ID为空，无版本可以对比。");
-            type = "create";
-        }
-
-        if (Objects.isNull(modifyId)) {
-            log.debug("版本内上一修改数据主键ID为空，无版本可以对比。");
-            type = "reject";
+            return null;
         }
 
         queryWrapperCurrent.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", currentRecordId);
-
         Object currentData = primaryMapper.selectOne(queryWrapperCurrent);
         if (Objects.isNull(currentData)) {
             log.debug("当前数据主键ID:{}查询结果为空，无版本可以对比。", currentRecordId);
-            return Map.of();
+            return null;
         }
 
-        QueryWrapper queryWrapperLastVersion = Wrappers.query();
-        if (Objects.isNull(lastVersionId)) {
-            log.debug("前一生效版本数据主键ID为空，无版本可以对比。");
-            type = "create";
-        } else {
-            type = "change";
+        VersionCompareInfo.VersionCompareInfoBuilder versionCompareInfoBuilder =
+                VersionCompareInfo.builder();
+
+        if (Objects.nonNull(lastVersionId)) {
+            QueryWrapper queryWrapperLastVersion = Wrappers.query();
             queryWrapperLastVersion.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", lastVersionId);
 
             Object lastVersionData = primaryMapper.selectOne(queryWrapperLastVersion);
@@ -500,87 +487,89 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             } else {
                 Map<String, Pair> diffResult = compareDiff(lastVersionData, currentData);
                 for (Map.Entry<String, Pair> entry : diffResult.entrySet()) {
-                    VersionCompareItem v1VersionCompareItem =
-                            VersionCompareItem.builder()
-                                    .versionNo(lastVersion)
-                                    .fieldValue(entry.getValue().getLeft())
-                                    .type(type)
-                                    .build();
-                    compareResult
-                            .computeIfAbsent(
-                                    tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey(),
-                                    k -> new ArrayList<>())
-                            .add(v1VersionCompareItem);
-                }
-
-                if (Objects.isNull(modifyId)) {
-                    for (Map.Entry<String, Pair> entry : diffResult.entrySet()) {
-                        VersionCompareItem v1VersionCompareItem =
-                                VersionCompareItem.builder()
-                                        .versionNo(currentVersion)
-                                        .fieldValue(entry.getValue().getRight())
-                                        .type(type)
+                    String diffKey = tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey();
+                    if (compareResult.containsKey(diffKey)) {
+                        VersionCompareItemInfo result = compareResult.get(diffKey);
+                        result.setLastEnableVersionVal(entry.getValue());
+                        result.setType(2);
+                    } else {
+                        VersionCompareItemInfo lastVersionCompareItem =
+                                VersionCompareItemInfo.builder()
+                                        .lastEnableVersionVal(entry.getValue().getLeft())
+                                        .currentVersionVal(entry.getValue().getRight())
+                                        .type(2)
                                         .build();
-                        compareResult
-                                .computeIfAbsent(
-                                        tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey(),
-                                        k -> new ArrayList<>())
-                                .add(v1VersionCompareItem);
+                        compareResult.put(diffKey, lastVersionCompareItem);
                     }
                 }
-                //                compareResult.putAll(diffResult);
             }
-        }
+            if (Objects.nonNull(modifyId)) {
+                QueryWrapper queryWrapperModify = Wrappers.query();
+                queryWrapperModify.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", modifyId);
 
-        QueryWrapper queryWrapperModify = Wrappers.query();
-        if (Objects.isNull(modifyId)) {
-            log.debug("版本内上一修改数据主键ID为空，无版本可以对比。");
+                Object modifyData = primaryMapper.selectOne(queryWrapperModify);
+                if (Objects.isNull(modifyData)) {
+                    log.debug("版本内上一修改数据主键ID:{}查询结果为空，无版本可以对比。", modifyId);
+                }
 
-        } else {
-            type = "reject";
+                Map<String, Pair> diffResult = compareDiff(modifyData, currentData);
+                for (Map.Entry<String, Pair> entry : diffResult.entrySet()) {
+                    String diffKey = tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey();
+                    if (compareResult.containsKey(diffKey)) {
+                        VersionCompareItemInfo result = compareResult.get(diffKey);
+                        result.setType(3);
+                        result.setPreVersionVal(entry.getValue().getLeft());
+                    } else {
+                        log.debug("当前版本和上一启用版本值相同,diffKey:{}，设置type=1", diffKey);
+                        VersionCompareItemInfo lastVersionCompareItem =
+                                VersionCompareItemInfo.builder()
+                                        .preVersionVal(entry.getValue().getLeft())
+                                        .currentVersionVal(entry.getValue().getRight())
+                                        .type(1)
+                                        .build();
+                        compareResult.put(diffKey, lastVersionCompareItem);
+                    }
+                }
+            } else {
+                log.debug("版本内上一修改数据主键ID为空，无版本可以对比。");
+            }
+        } else if (Objects.nonNull(modifyId)) {
+            QueryWrapper queryWrapperModify = Wrappers.query();
             queryWrapperModify.eq(tableName + DB_TABLE_FIELD_SEPARATOR + "id", modifyId);
 
             Object modifyData = primaryMapper.selectOne(queryWrapperModify);
             if (Objects.isNull(modifyData)) {
                 log.debug("版本内上一修改数据主键ID:{}查询结果为空，无版本可以对比。", modifyId);
             } else {
+
                 Map<String, Pair> diffResult = compareDiff(modifyData, currentData);
-
                 for (Map.Entry<String, Pair> entry : diffResult.entrySet()) {
-                    VersionCompareItem v2CurrentVersion =
-                            VersionCompareItem.builder()
-                                    .type(type)
-                                    .fieldValue(entry.getValue().getRight())
-                                    .versionNo(currentVersion)
-                                    .build();
-
-                    VersionCompareItem v2InternalVersion =
-                            VersionCompareItem.builder()
-                                    .type(type)
-                                    .fieldValue(entry.getValue().getLeft())
-                                    .versionNo(currentVersion)
-                                    .build();
-
-                    List<VersionCompareItem> rejectList = new ArrayList<>();
-                    rejectList.add(v2InternalVersion);
-                    rejectList.add(v2CurrentVersion);
-
-                    VersionCompareItem v2Version =
-                            VersionCompareItem.builder()
-                                    .versionNo(currentVersion)
-                                    .rejectList(rejectList)
-                                    .type("change")
-                                    .build();
-
-                    compareResult
-                            .computeIfAbsent(
+                    VersionCompareItemInfo itemInfo =
+                            compareResult.computeIfAbsent(
                                     tableName + DB_TABLE_FIELD_SEPARATOR + entry.getKey(),
-                                    k -> new ArrayList<>())
-                            .add(v2Version);
+                                    k -> {
+                                        VersionCompareItemInfo lastVersionCompareItem =
+                                                VersionCompareItemInfo.builder()
+                                                        .preVersionVal(entry.getValue().getLeft())
+                                                        .currentVersionVal(
+                                                                entry.getValue().getRight())
+                                                        .type(1)
+                                                        .build();
+                                        return lastVersionCompareItem;
+                                    });
+                    itemInfo.setPreVersionVal(entry.getValue().getLeft());
+                    itemInfo.setType(1);
                 }
             }
+        } else {
+            log.debug("前一生效版本数据主键ID和版本内上一修改数据主键ID都为空，无版本可以对比。");
         }
-        return compareResult;
+
+        return versionCompareInfoBuilder
+                .changeItem(compareResult)
+                .lastVersion(lastVersion)
+                .currentVersion(currentVersion)
+                .build();
     }
 
     /** 对比新旧实体差异，返回字段：旧值 -> 新值 */
