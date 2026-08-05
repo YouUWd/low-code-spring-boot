@@ -797,6 +797,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         approvalIdList.add(approvalProcessDTO.getApplicantId().toString());
         approvalChain.setApproverIdList(String.join(",", approvalIdList));
+        approvalBusiness.setApproverIdList(String.join(",", approvalIdList));
         approvalUidList.add(approvalProcessDTO.getApplicantId().toString());
         approvalChain.setApprovalUids(String.join(",", approvalUidList));
         approvalBusiness.setApprovalUids(String.join(",", approvalUidList));
@@ -1072,6 +1073,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         approvalBusiness.setApproverId(businessApprovalChain.getApproverId());
         approvalBusiness.setApproveRoleId(businessApprovalChain.getApproveRoleId());
+        approvalBusiness.setApproverIdList(null);
         approvalBusiness.setApprovalUids(
                 String.join(",", approvalProcessDTO.getApplicantId().toString()));
         approvalBusinessMapper.updateById(approvalBusiness);
