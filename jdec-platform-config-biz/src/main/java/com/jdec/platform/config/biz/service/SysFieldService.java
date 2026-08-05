@@ -152,54 +152,92 @@ public class SysFieldService implements SysFieldApi {
     @Override
     public List<SysFieldResp> querySysFields(
             String projectNo, Long subjectId, String tableName, String columnName) {
-        log.debug("查询项目 {} 主体 {} 表 {} 的完整字段配置列表", projectNo, subjectId, tableName);
+        return querySysFieldsInternal(projectNo, subjectId, tableName, columnName, true);
+    }
+
+    @Override
+    public List<SysFieldResp> querySimpleSysFields(
+            String projectNo, Long subjectId, String tableName, String columnName) {
+        return querySysFieldsInternal(projectNo, subjectId, tableName, columnName, false);
+    }
+
+    private List<SysFieldResp> querySysFieldsInternal(
+            String projectNo,
+            Long subjectId,
+            String tableName,
+            String columnName,
+            boolean includeWordDesc) {
+        log.debug(
+                "查询项目 {} 主体 {} 表 {} 的字段配置列表 (includeWordDesc={})",
+                projectNo,
+                subjectId,
+                tableName,
+                includeWordDesc);
+
+        boolean hasColumnName = columnName != null && !columnName.isBlank();
 
         // 1. 获取数据库中该表所有的列名、列类型和注释
         String sql =
-                """
-                        SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT
-                        FROM INFORMATION_SCHEMA.COLUMNS
-                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                        ORDER BY ORDINAL_POSITION
-                        """;
+                hasColumnName
+                        ? """
+                                SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?
+                                ORDER BY ORDINAL_POSITION
+                                """
+                        : """
+                                SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                                ORDER BY ORDINAL_POSITION
+                                """;
 
-        List<Map<String, Object>> columnRows = jdbcTemplate.queryForList(sql, projectNo, tableName);
+        List<Map<String, Object>> columnRows =
+                hasColumnName
+                        ? jdbcTemplate.queryForList(sql, projectNo, tableName, columnName)
+                        : jdbcTemplate.queryForList(sql, projectNo, tableName);
 
         // 2. 获取已有的配置信息
-        List<SysField> sysFields = querySysFieldEntities(projectNo, subjectId, tableName);
+        List<SysField> sysFields =
+                querySysFieldEntities(projectNo, subjectId, tableName, columnName);
 
         // 2.1 获取关联的扩展值信息
         List<Long> fieldIds = sysFields.stream().map(SysField::getId).toList();
 
-        // 2.1.1 查询并缓存 relationBusinessNo 的词云映射
+        // 2.1.1 查询并缓存 relationBusinessNo 的词云映射（仅在 includeWordDesc 为 true 时查询）
         Map<String, Map<String, String>> wordMapsByBusinessNo = new HashMap<>();
-        for (SysField field : sysFields) {
-            String relationBusinessNo = field.getRelationBusinessNo();
-            if (relationBusinessNo != null && !relationBusinessNo.isBlank()) {
-                wordMapsByBusinessNo.computeIfAbsent(
-                        relationBusinessNo,
-                        k -> {
-                            try {
-                                List<Map<String, Object>> relationWords =
-                                        wordApiClient.getRelationWord(k, new TypeReference<>() {});
-                                if (relationWords != null) {
-                                    Map<String, String> wordMap = new HashMap<>();
-                                    for (Map<String, Object> word : relationWords) {
-                                        Object wordNo = word.get("word_no");
-                                        Object wordName = word.get("word_name");
-                                        if (wordNo != null) {
-                                            wordMap.put(
-                                                    wordNo.toString(),
-                                                    wordName != null ? wordName.toString() : "");
+        if (includeWordDesc) {
+            for (SysField field : sysFields) {
+                String relationBusinessNo = field.getRelationBusinessNo();
+                if (relationBusinessNo != null && !relationBusinessNo.isBlank()) {
+                    wordMapsByBusinessNo.computeIfAbsent(
+                            relationBusinessNo,
+                            k -> {
+                                try {
+                                    List<Map<String, Object>> relationWords =
+                                            wordApiClient.getRelationWord(
+                                                    k, new TypeReference<>() {});
+                                    if (relationWords != null) {
+                                        Map<String, String> wordMap = new HashMap<>();
+                                        for (Map<String, Object> word : relationWords) {
+                                            Object wordNo = word.get("word_no");
+                                            Object wordName = word.get("word_name");
+                                            if (wordNo != null) {
+                                                wordMap.put(
+                                                        wordNo.toString(),
+                                                        wordName != null
+                                                                ? wordName.toString()
+                                                                : "");
+                                            }
                                         }
+                                        return wordMap;
                                     }
-                                    return wordMap;
+                                } catch (Exception e) {
+                                    log.warn("获取关系词列表失败: businessNo={}", k, e);
                                 }
-                            } catch (Exception e) {
-                                log.warn("获取关系词列表失败: businessNo={}", k, e);
-                            }
-                            return Collections.emptyMap();
-                        });
+                                return Collections.emptyMap();
+                            });
+                }
             }
         }
 
@@ -277,45 +315,53 @@ public class SysFieldService implements SysFieldApi {
         Map<String, SysField> configMap =
                 sysFields.stream().collect(Collectors.toMap(SysField::getColumnName, f -> f));
 
-        // 2.2 查询当前 projectNo + subjectId 下的所有模块并映射 simple field 关系
-        List<SysModule> modules =
-                sysModuleMapper.selectList(
-                        new LambdaQueryWrapper<SysModule>()
-                                .eq(SysModule::getProjectNo, projectNo)
-                                .eq(SysModule::getSubjectId, subjectId));
+        // 2.2 先按 tableName 查询涉及的 simple field 关系，再精准匹配模块
+        List<SysModuleField> simpleFields =
+                sysModuleFieldMapper.selectList(
+                        new LambdaQueryWrapper<SysModuleField>()
+                                .eq(SysModuleField::getTableName, tableName)
+                                .eq(SysModuleField::getFieldType, "SIMPLE"));
 
         Map<String, List<SysFieldResp.SysFieldModuleResp>> columnModulesMap =
                 Collections.emptyMap();
-        if (!modules.isEmpty()) {
-            List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
-            List<SysModuleField> simpleFields =
-                    sysModuleFieldMapper.selectList(
-                            new LambdaQueryWrapper<SysModuleField>()
-                                    .in(SysModuleField::getModuleId, moduleIds)
-                                    .eq(SysModuleField::getTableName, tableName)
-                                    .eq(SysModuleField::getFieldType, "SIMPLE"));
-
-            Map<Long, SysModule> moduleMap =
-                    modules.stream()
-                            .collect(Collectors.toMap(SysModule::getId, m -> m, (m1, m2) -> m1));
-
-            columnModulesMap =
+        if (!simpleFields.isEmpty()) {
+            Set<Long> involvedModuleIds =
                     simpleFields.stream()
-                            .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
-                            .collect(
-                                    Collectors.groupingBy(
-                                            SysModuleField::getFieldCode,
-                                            Collectors.mapping(
-                                                    sf -> {
-                                                        SysModule m =
-                                                                moduleMap.get(sf.getModuleId());
-                                                        return SysFieldResp.SysFieldModuleResp
-                                                                .builder()
-                                                                .moduleId(m.getId())
-                                                                .moduleName(m.getModuleName())
-                                                                .build();
-                                                    },
-                                                    Collectors.toList())));
+                            .map(SysModuleField::getModuleId)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toSet());
+
+            if (!involvedModuleIds.isEmpty()) {
+                List<SysModule> modules =
+                        sysModuleMapper.selectList(
+                                new LambdaQueryWrapper<SysModule>()
+                                        .in(SysModule::getId, involvedModuleIds)
+                                        .eq(SysModule::getProjectNo, projectNo)
+                                        .eq(SysModule::getSubjectId, subjectId));
+
+                Map<Long, SysModule> moduleMap =
+                        modules.stream()
+                                .collect(
+                                        Collectors.toMap(SysModule::getId, m -> m, (m1, m2) -> m1));
+
+                columnModulesMap =
+                        simpleFields.stream()
+                                .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
+                                .collect(
+                                        Collectors.groupingBy(
+                                                SysModuleField::getFieldCode,
+                                                Collectors.mapping(
+                                                        sf -> {
+                                                            SysModule m =
+                                                                    moduleMap.get(sf.getModuleId());
+                                                            return SysFieldResp.SysFieldModuleResp
+                                                                    .builder()
+                                                                    .moduleId(m.getId())
+                                                                    .moduleName(m.getModuleName())
+                                                                    .build();
+                                                        },
+                                                        Collectors.toList())));
+            }
         }
 
         // 3. 以元数据驱动进行合并
@@ -380,12 +426,21 @@ public class SysFieldService implements SysFieldApi {
 
     public List<SysField> querySysFieldEntities(
             String projectNo, Long subjectId, String tableName) {
-        return sysFieldMapper.selectList(
+        return querySysFieldEntities(projectNo, subjectId, tableName, null);
+    }
+
+    public List<SysField> querySysFieldEntities(
+            String projectNo, Long subjectId, String tableName, String columnName) {
+        LambdaQueryWrapper<SysField> wrapper =
                 new LambdaQueryWrapper<SysField>()
                         .eq(SysField::getProjectNo, projectNo)
                         .eq(SysField::getSubjectId, subjectId)
                         .eq(SysField::getTableName, tableName)
-                        .eq(SysField::getDeleted, 0));
+                        .eq(SysField::getDeleted, 0);
+        if (columnName != null && !columnName.isBlank()) {
+            wrapper.eq(SysField::getColumnName, columnName);
+        }
+        return sysFieldMapper.selectList(wrapper);
     }
 
     @Override
