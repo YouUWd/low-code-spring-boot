@@ -1,6 +1,6 @@
 package com.jdec.platform.common_business.biz.dto;
 
-import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,9 +10,10 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class VersionCompareItem {
-    private Integer versionNo;
-    private Object fieldValue;
-    private String type;
-    private List<VersionCompareItem> rejectList;
+public class VersionCompareInfo {
+    private Integer currentVersion;
+
+    private Integer lastVersion;
+
+    private Map<String, VersionCompareItemInfo> changeItem;
 }

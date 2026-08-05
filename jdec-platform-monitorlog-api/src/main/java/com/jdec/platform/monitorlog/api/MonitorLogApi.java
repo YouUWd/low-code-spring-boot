@@ -28,5 +28,5 @@ public interface MonitorLogApi {
             Long moduleId, String orderId, String logType);
 
     /** 根据menuId + dataId 查询单条最新日志记录 */
-    MonitorLogPageListResp queryByMenuIdAndDataId(Long menuId, Long dataId, String logType);
+    MonitorLogPageListResp queryByMenuIdAndDataId(Long menuId, Long dataId);
 }

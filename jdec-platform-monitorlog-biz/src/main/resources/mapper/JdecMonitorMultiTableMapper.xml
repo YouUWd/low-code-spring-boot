@@ -17,21 +17,22 @@
         <result column="login_role_name" property="loginRoleName"/>
         <result column="login_user_dept_id" property="loginUserDeptId"/>
         <result column="login_user_dept_name" property="loginUserDeptName"/>
+        <result column="login_user_job_id" property="loginUserJobId"/>
+        <result column="login_user_job_name" property="loginUserJobName"/>
         <result column="mock_flag" property="mockFlag"/>
         <result column="mock_user_id" property="mockUserId"/>
         <result column="mock_user_name" property="mockUserName"/>
         <result column="mock_user_avater" property="mockUserAvater"/>
         <result column="mock_user_number" property="mockUserNumber"/>
-        <result column="mock_role_id" property="mockRoleId"/>
-        <result column="mock_role_name" property="mockRoleName"/>
         <result column="ip" property="ip"/>
         <result column="module_id" property="moduleId"/>
         <result column="module_name" property="moduleName"/>
         <result column="order_id" property="orderId"/>
         <result column="menu_id" property="menuId"/>
+        <result column="menu_name" property="menuName"/>
         <result column="data_id" property="dataId"/>
         <result column="orderVersion" property="orderVersion"/>
-        <result column="control_ame" property="controlAme"/>
+        <result column="control_name" property="controlName"/>
         <result column="operator_result" property="operatorResult"/>
         <result column="font_color" property="fontColor"/>
         <result column="browser" property="browser"/>
@@ -47,10 +48,10 @@
         id, subject_id, subject_name, actionName, actionPath, actionTypeTitle,
         login_user_id, login_user_name, login_avater, login_user_number,
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
+        login_user_job_id, login_user_job_name,
         mock_flag, mock_user_id, mock_user_name, mock_user_avater, mock_user_number,
-        mock_role_id, mock_role_name,
-        ip, module_id, module_name, order_id, menu_id, data_id, orderVersion,
-        control_ame, operator_result, font_color, browser, plat_form, system_name,
+        ip, module_id, module_name, order_id, menu_id, menu_name, data_id, orderVersion,
+        control_name, operator_result, font_color, browser, plat_form, system_name,
         log_content, log_remark, log_date
     </sql>
 
