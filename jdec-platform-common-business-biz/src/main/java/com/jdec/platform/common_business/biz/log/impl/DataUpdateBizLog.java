@@ -11,7 +11,7 @@ import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApi
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
 import com.jdec.platform.common_business.biz.log.BizLog;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
-import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
+import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import java.util.List;
 import java.util.Set;
 import lombok.AllArgsConstructor;
@@ -39,7 +39,7 @@ public class DataUpdateBizLog implements BizLog {
         if (bizLogDTO != null) {
             try {
                 TokenContextHolder.setCurrentUserToken(bizLogDTO.getToken());
-                MonitorLogReq req = getCommonReq(bizLogDTO);
+                MonitorControlLogReq req = getCommonReq(bizLogDTO);
                 String menuTitle = "";
                 ConfigApiResponse<List<MenuListResp>> resp =
                         configCenterApiOpenFeignClient.getMenuList(

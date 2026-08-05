@@ -1,6 +1,7 @@
 package com.jdec.platform.common_business.biz.configcenter.client.openfeign;
 
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
+import feign.Logger;
 import feign.RequestInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.openfeign.EnableFeignClients;
@@ -22,5 +23,10 @@ public class FeignConfig {
             template.header("Authorization", "Bearer " + TokenContextHolder.getCurrentUserToken());
             template.header("X-Project-No", projectNumber);
         };
+    }
+
+    @Bean
+    public Logger.Level feignLoggerLevel() {
+        return Logger.Level.BASIC; // 日志级别，可以根据需要调整
     }
 }
