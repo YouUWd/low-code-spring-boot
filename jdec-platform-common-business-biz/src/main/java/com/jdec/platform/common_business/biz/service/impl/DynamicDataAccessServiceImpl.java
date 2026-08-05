@@ -2281,12 +2281,10 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         boolean saveBtnShow = false;
 
         for (MenuListResp menu : targetModules) {
-            long start = System.currentTimeMillis();
+
             ModuleFilterInfo moduleFilterInfo =
                     moduleInfoWithPermissionService.filterModuleInfo(
                             subjectId, roleId, menu.getModuleId(), "", List.of());
-            long cost = System.currentTimeMillis() - start;
-            log.warn("====" + cost);
 
             if (!saveBtnShow
                     && moduleFilterInfo.getBtnList().stream()
