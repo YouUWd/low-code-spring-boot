@@ -65,6 +65,21 @@ public class SysFieldController {
                 sysFieldApi.querySysFields(projectNo, subjectId, tableName, columnName));
     }
 
+    @Operation(summary = "查询简版字段配置列表", description = "根据租户ID和表名查询已保存的字段显示配置（不调用词云 Api）")
+    @GetMapping("/tables/{tableName}/columns/simple-settings")
+    public ApiResponse<List<SysFieldResp>> querySimpleSysFields(
+            @Parameter(description = "表名", example = "sys_module", required = true) @PathVariable
+                    String tableName,
+            @Parameter(description = "列名（可选）", example = "module_name")
+                    @RequestParam(required = false)
+                    String columnName) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 主体 {} 的表 {} 的简版字段配置列表", projectNo, subjectId, tableName);
+        return ApiResponse.success(
+                sysFieldApi.querySimpleSysFields(projectNo, subjectId, tableName, columnName));
+    }
+
     @Operation(summary = "保存字段配置", description = "保存或更新单个字段的显示名称、关联关系等配置")
     @PostMapping("/tables/{tableName}/columns/settings")
     public ApiResponse<SysFieldResp> saveSysField(
