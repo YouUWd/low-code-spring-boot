@@ -125,7 +125,7 @@ public interface ConfigCenterApiOpenFeignClient {
     ConfigApiResponse<Boolean> sendMessage(
             @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody SendWechatMessageReq req);
 
-    @GetMapping("/tables/{tableName}/columns/settings")
+    @GetMapping("/tables/{tableName}/columns/simple-settings")
     ConfigApiResponse<List<SysFieldResp>> getColumnSettings(
             @RequestHeader("X-Subject-Id") Long subjectId,
             @PathVariable String tableName,
