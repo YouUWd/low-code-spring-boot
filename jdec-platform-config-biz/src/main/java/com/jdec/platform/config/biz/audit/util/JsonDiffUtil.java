@@ -336,6 +336,9 @@ public class JsonDiffUtil {
                 metadata.target = auditField.target();
                 metadata.idField = auditField.idField();
                 metadata.nameField = auditField.nameField();
+                if (auditField.targetClass() != void.class) {
+                    metadata.targetClass = auditField.targetClass();
+                }
             }
 
             if (auditField != null && fieldType == FieldType.ENUM) {
@@ -397,44 +400,7 @@ public class JsonDiffUtil {
         }
 
         try {
-            List<Long> ids = new ArrayList<>();
-
-            // 处理不同类型的值
-            if (value instanceof Long) {
-                ids.add((Long) value);
-            } else if (value instanceof Integer) {
-                ids.add(((Integer) value).longValue());
-            } else if (value instanceof String) {
-                String strValue = (String) value;
-                if (strValue.contains(",")) {
-                    // 逗号分隔的ID列表
-                    for (String id : strValue.split(",")) {
-                        try {
-                            ids.add(Long.parseLong(id.trim()));
-                        } catch (NumberFormatException ignored) {
-                        }
-                    }
-                } else {
-                    try {
-                        ids.add(Long.parseLong(strValue));
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            } else if (value instanceof Collection) {
-                Collection<?> collection = (Collection<?>) value;
-                for (Object item : collection) {
-                    if (item instanceof Long) {
-                        ids.add((Long) item);
-                    } else if (item instanceof Integer) {
-                        ids.add(((Integer) item).longValue());
-                    } else if (item instanceof String) {
-                        try {
-                            ids.add(Long.parseLong((String) item));
-                        } catch (NumberFormatException ignored) {
-                        }
-                    }
-                }
-            }
+            List<Long> ids = extractIds(value);
 
             if (ids.isEmpty()) {
                 return value;
@@ -741,6 +707,147 @@ public class JsonDiffUtil {
         return diffs;
     }
 
+    /**
+     * 根据字段注解解析字段值（编程式入口）
+     *
+     * <p>供编程式审计场景使用：读取目标类上 {@link AuditField} 注解的配置，将字段值转换为审计展示值。 支持 RELATION（关联名称或 targetClass
+     * 对象）、ENUM（中文描述）、DICT（字典 label）三种转换。
+     *
+     * @param fieldName Java字段名
+     * @param value 字段值
+     * @param clazz 字段所在类（需包含 {@link AuditField} 注解）
+     * @return 解析后的审计值，无注解或解析失败时原样返回
+     */
+    public Object resolveFieldValue(String fieldName, Object value, Class<?> clazz) {
+        try {
+            Map<String, FieldMetadata> fieldMetadataMap = buildFieldMetadataMap(clazz);
+            FieldMetadata metadata = fieldMetadataMap.get(fieldName);
+            if (metadata == null) {
+                return value;
+            }
+            return resolveValueByType(value, metadata);
+        } catch (Exception e) {
+            log.error("解析字段值失败: field={}, class={}", fieldName, clazz, e);
+            return value;
+        }
+    }
+
+    /** 按字段元数据解析字段值 */
+    private Object resolveValueByType(Object value, FieldMetadata metadata) {
+        // 处理关联类型字段（ID转中文名或关联对象）
+        if (metadata.fieldType == FieldType.RELATION) {
+            if (metadata.targetClass != null) {
+                return resolveRelationObject(value, metadata);
+            }
+            return resolveRelationValue(value, metadata);
+        }
+
+        // 处理枚举类型字段（枚举值转中文描述）
+        if (metadata.fieldType == FieldType.ENUM) {
+            return resolveEnumValue(value, metadata);
+        }
+
+        // 处理字典类型字段（字典值转中文label）
+        if (metadata.fieldType == FieldType.DICT) {
+            return resolveDictValue(value, metadata);
+        }
+
+        return value;
+    }
+
+    /**
+     * 解析关联字段值为整个关联对象
+     *
+     * <p>将 ID 关联表中的记录按 {@link FieldMetadata#targetClass} 转换后返回对象。
+     *
+     * @param value 字段值（可能是单个ID或ID列表）
+     * @param metadata 字段元数据
+     * @return 解析后的对象（单个对象或对象列表）
+     */
+    private Object resolveRelationObject(Object value, FieldMetadata metadata) {
+        if (value == null) {
+            return null;
+        }
+
+        try {
+            List<Long> ids = extractIds(value);
+            if (ids.isEmpty()) {
+                return value;
+            }
+
+            Map<Long, Object> objMap =
+                    relationFieldQueryService.queryObjectsByIds(
+                            metadata.target, metadata.idField, metadata.targetClass, ids);
+
+            // 如果只有一个ID，返回单个对象
+            if (ids.size() == 1) {
+                Object obj = objMap.get(ids.get(0));
+                return obj != null ? obj : value;
+            }
+
+            // 多个ID，返回对象列表
+            List<Object> objs = new ArrayList<>();
+            for (Long id : ids) {
+                Object obj = objMap.get(id);
+                objs.add(obj != null ? obj : id);
+            }
+            return objs;
+
+        } catch (Exception e) {
+            log.error(
+                    "解析关联对象失败: value={}, target={}, targetClass={}",
+                    value,
+                    metadata.target,
+                    metadata.targetClass,
+                    e);
+            return value;
+        }
+    }
+
+    /** 从字段值中提取ID列表 */
+    private List<Long> extractIds(Object value) {
+        List<Long> ids = new ArrayList<>();
+
+        // 处理不同类型的值
+        if (value instanceof Long) {
+            ids.add((Long) value);
+        } else if (value instanceof Integer) {
+            ids.add(((Integer) value).longValue());
+        } else if (value instanceof String) {
+            String strValue = (String) value;
+            if (strValue.contains(",")) {
+                // 逗号分隔的ID列表
+                for (String id : strValue.split(",")) {
+                    try {
+                        ids.add(Long.parseLong(id.trim()));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            } else {
+                try {
+                    ids.add(Long.parseLong(strValue));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        } else if (value instanceof Collection) {
+            Collection<?> collection = (Collection<?>) value;
+            for (Object item : collection) {
+                if (item instanceof Long) {
+                    ids.add((Long) item);
+                } else if (item instanceof Integer) {
+                    ids.add(((Integer) item).longValue());
+                } else if (item instanceof String) {
+                    try {
+                        ids.add(Long.parseLong((String) item));
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+
+        return ids;
+    }
+
     /** 字段元数据 */
     private static class FieldMetadata {
         String fieldName;
@@ -750,5 +857,6 @@ public class JsonDiffUtil {
         String nameField;
         Class<? extends Enum<?>> enumClass;
         String dictCategoryAlias;
+        Class<?> targetClass;
     }
 }
