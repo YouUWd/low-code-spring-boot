@@ -1,17 +1,14 @@
 package com.jdec.platform.common_business.biz.log.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.HrUserApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.MonitorLogApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
-import com.jdec.platform.common_business.biz.dto.LogContentDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
 import com.jdec.platform.common_business.biz.log.BizLog;
-import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
 import com.jdec.platform.config.api.dto.response.SubjectOptionResp;
 import com.jdec.platform.hr.api.bo.UserBO;
@@ -119,56 +116,56 @@ public class DataUpdateBizLog implements BizLog {
 
                 req.setModuleId(bizLogDTO.getModuleId());
                 req.setModuleName(bizLogDTO.getModuleName());
-                req.setOrderId("");
                 req.setMenuId(bizLogDTO.getMenuId());
                 req.setDataId(Long.valueOf(bizLogDTO.getDataId()));
                 req.setLogRemark(bizLogDTO.getLogRemark());
 
-                String menuTitle = "";
-                ConfigApiResponse<List<MenuListResp>> resp =
-                        configCenterApiOpenFeignClient.getMenuList(
-                                bizLogDTO.getSubjectId(), Integer.valueOf("1"));
-                if (ConfigApiResponse.isSuccessResponse(resp)
-                        && CollectionUtil.isNotEmpty(resp.getData())) {
-                    MenuListResp menu =
-                            resp.getData().stream()
-                                    .filter(x -> x.getId().equals(bizLogDTO.getMenuId()))
-                                    .findFirst()
-                                    .orElse(null);
-                    if (menu != null) {
-                        menuTitle = menu.getParam();
-                        req.setMenuName(menu.getTitle());
-                    }
-                }
-                String hrefUrl = null;
-                if (bizLogDTO.getOrigin() != null) {
-                    if (bizLogDTO.getOrigin().endsWith("/")) {
-                        hrefUrl = bizLogDTO.getOrigin() + menuTitle + "/" + bizLogDTO.getDataId();
-                    } else {
-                        hrefUrl =
-                                bizLogDTO.getOrigin()
-                                        + "/"
-                                        + menuTitle
-                                        + "/"
-                                        + bizLogDTO.getDataId();
-                    }
-                }
-                req.setOrderId(bizLogDTO.getDataId());
+                //                String menuTitle = "";
+                //                ConfigApiResponse<List<MenuListResp>> resp =
+                //                        configCenterApiOpenFeignClient.getMenuList(
+                //                                bizLogDTO.getSubjectId(), Integer.valueOf("1"));
+                //                if (ConfigApiResponse.isSuccessResponse(resp)
+                //                        && CollectionUtil.isNotEmpty(resp.getData())) {
+                //                    MenuListResp menu =
+                //                            resp.getData().stream()
+                //                                    .filter(x ->
+                // x.getId().equals(bizLogDTO.getMenuId()))
+                //                                    .findFirst()
+                //                                    .orElse(null);
+                //                    if (menu != null) {
+                //                        menuTitle = menu.getParam();
+                //                    }
+                //                }
+                //                String hrefUrl = null;
+                //                if (bizLogDTO.getOrigin() != null) {
+                //                    if (bizLogDTO.getOrigin().endsWith("/")) {
+                //                        hrefUrl = bizLogDTO.getOrigin() + menuTitle + "/" +
+                // bizLogDTO.getDataId();
+                //                    } else {
+                //                        hrefUrl =
+                //                                bizLogDTO.getOrigin()
+                //                                        + "/"
+                //                                        + menuTitle
+                //                                        + "/"
+                //                                        + bizLogDTO.getDataId();
+                //                    }
+                //                }
 
-                LogContentDTO logContentDTO =
-                        LogContentDTO.builder()
-                                .module(bizLogDTO.getModuleName())
-                                .orderId(bizLogDTO.getDataId())
-                                .hrefUrl(hrefUrl)
-                                .build();
+                //                LogContentDTO logContentDTO =
+                //                        LogContentDTO.builder()
+                //                                .module(bizLogDTO.getModuleName())
+                //                                .orderId(bizLogDTO.getDataId())
+                //                                .hrefUrl(hrefUrl)
+                //                                .build();
                 if (logEnum == BizLogEnum.DATA_SAVE) {
-                    logContentDTO.setControlName("新增数据");
+                    //                    logContentDTO.setControlName("新增数据");
                     req.setControlName("新增数据");
                 } else {
-                    logContentDTO.setControlName("修改数据");
+                    //                    logContentDTO.setControlName("修改数据");
                     req.setControlName("修改数据");
                 }
-                req.setLogContent(JsonUtil.obj2Json(logContentDTO));
+                // req.setLogContent(JsonUtil.obj2Json(logContentDTO));
+                req.setHrefName(bizLogDTO.getDataId());
                 monitorLogApiOpenFeignClient.recordBusinessLog(req);
                 return Boolean.TRUE;
             } catch (Exception e) {
