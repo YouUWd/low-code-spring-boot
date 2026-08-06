@@ -286,7 +286,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
                 approvalProcessDTO.setModuleId(item.getModuleId());
                 approvalProcessDTO.setRoleId(approvalListReq.getRoleId());
-                if (checkRight(approvalProcessDTO)) {
+                if (!checkRight(approvalProcessDTO)) {
                     toDoList.remove(item);
                 }
             }
