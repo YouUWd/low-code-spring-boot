@@ -136,15 +136,15 @@ public class JdecMonitorLogController {
 
     @GetMapping("/querySystemControlLogByModuleIdAndDataId")
     @Operation(
-            summary = "根据模块ID和单据ID查询单条最新系统操作日志",
-            description = "传入moduleId+dataId查询系统操作日志（controllog）中唯一一条最新记录，按时间倒序取LIMIT 1")
-    public ApiResponse<MonitorLogPageListResp> querySystemControlLogByModuleIdAndDataId(
+            summary = "根据模块ID和单据ID查询系统操作日志列表",
+            description = "传入moduleId+dataId查询系统操作日志（controllog）列表，按时间倒序排列")
+    public ApiResponse<List<MonitorLogPageListResp>> querySystemControlLogByModuleIdAndDataId(
             @Parameter(description = "模块ID", required = true) @RequestParam Long moduleId,
             @Parameter(description = "单据ID（dataId）", required = true) @RequestParam Long dataId,
             @Parameter(description = "项目编号")
                     @RequestHeader(value = "X-Project-No", required = false)
                     String projectNo) {
-        MonitorLogPageListResp result =
+        List<MonitorLogPageListResp> result =
                 jdecMonitorLogService.querySystemControlLogByModuleIdAndDataId(
                         moduleId, dataId, projectNo);
         return ApiResponse.success(result);

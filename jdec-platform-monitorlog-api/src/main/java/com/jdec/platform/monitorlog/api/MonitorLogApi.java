@@ -30,7 +30,7 @@ public interface MonitorLogApi {
     /** 根据menuId + dataId 查询单条最新日志记录 */
     MonitorLogPageListResp queryByMenuIdAndDataId(Long menuId, Long dataId, String projectNo);
 
-    /** 根据moduleId + dataId 查询单条最新系统操作日志记录（唯一一条，按时间倒序） */
-    MonitorLogPageListResp querySystemControlLogByModuleIdAndDataId(
+    /** 根据moduleId + dataId 查询系统操作日志列表（按时间倒序） */
+    List<MonitorLogPageListResp> querySystemControlLogByModuleIdAndDataId(
             Long moduleId, Long dataId, String projectNo);
 }

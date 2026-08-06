@@ -277,12 +277,12 @@
         ORDER BY res.log_date DESC, res.id DESC LIMIT 1
     </select>
 
-    <!-- 按 moduleId + dataId 查询单条最新系统操作日志（仅查 controllog） -->
+    <!-- 按 moduleId + dataId 查询系统操作日志列表（仅查 controllog，按时间倒序） -->
     <select id="querySystemControlLogByModuleIdAndDataId" resultMap="BaseResultMap">
         SELECT <include refid="controlLogColumns"/>, 'control_log' as log_type
         FROM sys_monitor_controllog
         WHERE module_id = #{moduleId} AND data_id = #{dataId}
-        ORDER BY log_date DESC, id DESC LIMIT 1
+        ORDER BY log_date DESC, id DESC
     </select>
 
 </mapper>

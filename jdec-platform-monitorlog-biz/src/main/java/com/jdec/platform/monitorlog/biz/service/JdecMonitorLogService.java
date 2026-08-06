@@ -391,7 +391,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     @Override
-    public MonitorLogPageListResp querySystemControlLogByModuleIdAndDataId(
+    public List<MonitorLogPageListResp> querySystemControlLogByModuleIdAndDataId(
             Long moduleId, Long dataId, String projectNo) {
         if (moduleId == null || dataId == null) {
             throw new IllegalArgumentException("moduleId和dataId不能为空");
@@ -402,9 +402,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
                 jdecMonitorMultiTableMapper.querySystemControlLogByModuleIdAndDataId(
                         moduleId, dataId);
         DataSourceContextHolder.clear();
-        if (logList.isEmpty()) {
-            return null;
-        }
-        return BeanUtil.copyProperties(logList.getFirst(), MonitorLogPageListResp.class);
+        return logList.stream()
+                .map(item -> BeanUtil.copyProperties(item, MonitorLogPageListResp.class))
+                .toList();
     }
 }
