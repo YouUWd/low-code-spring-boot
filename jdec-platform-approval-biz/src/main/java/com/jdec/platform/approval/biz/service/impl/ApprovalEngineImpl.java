@@ -1478,7 +1478,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             return operations;
         }
         // 加载变更页面时显示提交按钮
-        if (Objects.nonNull(btnType) && (btnType.equals("change-change"))) {
+        if (Objects.nonNull(btnType)
+                && (btnType.equals("change-change") || btnType.equals("change"))) {
             operations.add(
                     showButtonInfo(
                             "submit",
@@ -1620,7 +1621,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             // 过滤出 status_value = 99 的数据
             List<Map<String, Object>> sortData =
                     versionList.stream()
-                            .filter(item -> Objects.equals(item.get("status_value"), 99))
+                            .filter(item -> Objects.equals(item.get("statusValue"), 99))
                             .collect(Collectors.toList());
 
             if (CollectionUtil.isNotEmpty(sortData)) {
