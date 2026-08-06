@@ -1,6 +1,9 @@
 package com.jdec.platform.monitorlog.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.jdec.platform.config.api.SysConfigCategoryApi;
+import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
+import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
 import com.jdec.platform.monitorlog.api.dto.request.*;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
@@ -8,7 +11,9 @@ import com.jdec.platform.monitorlog.biz.entity.*;
 import com.jdec.platform.monitorlog.biz.mapper.*;
 import com.jdec.platform.shared.datasource.*;
 import com.jdec.platform.shared.model.PageResult;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +25,8 @@ import org.springframework.util.StringUtils;
 // @DataSource(DataSourceConstants.MonitorLog)
 public class JdecMonitorLogService implements MonitorLogApi {
 
+    private static final String MONITOR_LOG_TYPE_CATEGORY = "monitorLogType";
+
     private final JdecMonitorMessageLogMapper jdecMonitorMessageLogMapper;
 
     private final JdecMonitorControlLogMapper jdecMonitorControlLogMapper;
@@ -30,29 +37,66 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
     private final ProjectProperties projectProperties;
 
+    private final SysConfigCategoryApi sysConfigCategoryApi;
+
     @Override
     public PageResult<MonitorLogPageListResp> queryPageList(
             MonitorLogPageListReq request, String projectNo) {
         String keyWord = StringUtils.hasText(request.getKeyWord()) ? request.getKeyWord() : "";
-        String logType =
-                StringUtils.hasText(request.getLogType()) ? request.getLogType() : "controllog";
+
+        SysConfigCategoryResp category =
+                sysConfigCategoryApi.getByCategoryAlias(MONITOR_LOG_TYPE_CATEGORY);
+        if (category == null) {
+            log.warn(
+                    "未找到监控日志类型配置分类 categoryAlias={}，日志类型 label 将无法正常显示", MONITOR_LOG_TYPE_CATEGORY);
+        }
+
+        List<SysConfigItemTreeResp> configItems =
+                sysConfigCategoryApi.getItemsByCategoryAlias(MONITOR_LOG_TYPE_CATEGORY);
+
+        Map<String, String> valueToLabelMap = new HashMap<>(8);
+        if (configItems != null) {
+            for (SysConfigItemTreeResp item : configItems) {
+                if (item == null
+                        || !StringUtils.hasText(item.getValue())
+                        || !StringUtils.hasText(item.getLabel())) {
+                    continue;
+                }
+                valueToLabelMap.put(item.getValue(), item.getLabel());
+            }
+        }
+
+        String reqLogType = request.getLogType();
+        String logType = StringUtils.hasText(reqLogType) ? reqLogType : "";
+
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
-        List<JdecMonitorLogBase> logList =
-                jdecMonitorMultiTableMapper.queryPageListWithMultiTable(
-                        request.getLastTime(),
-                        request.getLastId(),
-                        request.getPageSize(),
-                        keyWord,
-                        logType);
-        DataSourceContextHolder.clear();
+        List<JdecMonitorLogBase> logList;
+        try {
+            logList =
+                    jdecMonitorMultiTableMapper.queryPageListWithMultiTable(
+                            request.getLastTime(),
+                            request.getLastId(),
+                            request.getPageSize(),
+                            keyWord,
+                            logType);
+        } finally {
+            DataSourceContextHolder.clear();
+        }
 
         List<MonitorLogPageListResp> respList =
                 logList.stream()
                         .map(
-                                logItem ->
-                                        BeanUtil.copyProperties(
-                                                logItem, MonitorLogPageListResp.class))
+                                logItem -> {
+                                    MonitorLogPageListResp resp =
+                                            BeanUtil.copyProperties(
+                                                    logItem, MonitorLogPageListResp.class);
+                                    String rawLogType = resp.getLogType();
+                                    if (StringUtils.hasText(rawLogType)) {
+                                        resp.setLogTypeLabel(valueToLabelMap.get(rawLogType));
+                                    }
+                                    return resp;
+                                })
                         .toList();
 
         return PageResult.of(
@@ -361,7 +405,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (moduleId == null || !StringUtils.hasText(orderId)) {
             throw new IllegalArgumentException("moduleId和orderId不能为空");
         }
-        String type = StringUtils.hasText(logType) ? logType : "controllog";
+        String type = StringUtils.hasText(logType) ? logType : "operationLog";
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
         List<JdecMonitorLogBase> logList =
@@ -378,7 +422,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (menuId == null || dataId == null) {
             throw new IllegalArgumentException("menuId和dataId不能为空");
         }
-        String type = "controllog";
+        String type = "operationLog";
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
         List<JdecMonitorLogBase> logList =

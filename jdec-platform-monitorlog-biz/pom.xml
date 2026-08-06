@@ -23,6 +23,10 @@
             <artifactId>jdec-platform-monitorlog-api</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-config-api</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-impl</artifactId>
         </dependency>
