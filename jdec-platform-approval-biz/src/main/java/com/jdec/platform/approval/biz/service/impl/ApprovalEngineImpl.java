@@ -137,13 +137,30 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         result.put("versionList", versionList);
         // 当前状态
         Map<String, Object> approvalStatus = new HashMap<>();
-        approvalStatus.put("id", approvalVersionRecord.getStatusId());
-        approvalStatus.put("statusValue", approvalVersionRecord.getStatusValue());
-        approvalStatus.put("title", approvalVersionRecord.getStatusTitle());
-        approvalStatus.put("statusBackground", approvalVersionRecord.getStatusBackground());
-        approvalStatus.put("statusFontColor", approvalVersionRecord.getStatusFontColor());
+        if (Objects.nonNull(req.getButton())
+                && (req.getButton().equals("change") || req.getButton().equals("change-change"))) {
+            ModuleApprovalChainConfigResp.StatusNode statusNode =
+                    sysStatusApi.getStatusByValue(1, req.getModuleId());
+            if (Objects.isNull(statusNode)) {
+                throw new BusinessException(601, "单据记录异常");
+            }
+            approvalStatus.put("id", statusNode.getId());
+            approvalStatus.put("statusValue", statusNode.getStatusValue());
+            approvalStatus.put("title", statusNode.getTitle());
+            approvalStatus.put("statusBackground", statusNode.getStatusBackground());
+            approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+        } else {
+            approvalStatus.put("id", approvalVersionRecord.getStatusId());
+            approvalStatus.put("statusValue", approvalVersionRecord.getStatusValue());
+            approvalStatus.put("title", approvalVersionRecord.getStatusTitle());
+            approvalStatus.put("statusBackground", approvalVersionRecord.getStatusBackground());
+            approvalStatus.put("statusFontColor", approvalVersionRecord.getStatusFontColor());
+        }
         result.put("approvalStatus", approvalStatus);
-        if (approvalVersionRecord.getCurrentStep() > 0) {
+        if (approvalVersionRecord.getCurrentStep() > 0
+                && (Objects.isNull(req.getButton())
+                        || (!req.getButton().equals("change")
+                                && !req.getButton().equals("change-change")))) {
             // 审批链步骤
             List<Map<String, Object>> step =
                     approvalChainStep(
