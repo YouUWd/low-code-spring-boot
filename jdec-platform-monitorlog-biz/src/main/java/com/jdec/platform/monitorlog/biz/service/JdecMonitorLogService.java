@@ -212,9 +212,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
             throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
         }
-        if (!StringUtils.hasText(req.getLogContent())) {
-            throw new IllegalArgumentException("日志内容(logContent)不能为空");
-        }
         if (!StringUtils.hasText(req.getLogRemark())) {
             throw new IllegalArgumentException("日志备注(logRemark)不能为空");
         }
