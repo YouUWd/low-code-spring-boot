@@ -1,47 +1,25 @@
 package com.jdec.platform.common_business.api.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.jdec.platform.common_business.api.dto.common.ModuleDataChangeDTO;
+import com.jdec.platform.common_business.api.dto.common.DataAuditContentDTO;
 import java.io.Serializable;
 import java.time.LocalDateTime;
-import java.util.List;
 import lombok.Data;
 
 @Data
 public class OpLogResp implements Serializable {
 
-    /** 自增ID */
-    private Long id;
+    private String actionName;
 
-    /** 数据ID */
-    private Long dataId;
+    private String actionPath;
 
-    /** 用户的主题ID */
-    private Long subjectId;
+    private String actionTypeTitle;
 
-    /** 模块ID */
-    private Long moduleId;
+    private UserResp createdUser;
 
-    /** 模块标识符 */
-    private String moduleSlug;
+    private UserResp realUser;
 
-    /** 模块名称 */
-    private String moduleName;
-
-    /** 变更字段内容 */
-    private List<ModuleDataChangeDTO> modifyModules;
-
-    /** 模拟用户ID */
-    private Long mockUserId;
-
-    /** 模拟用户名称 */
-    private String mockUserName;
-
-    /** 登录用户ID */
-    private Long realUserId;
-
-    /** 登录用户名称 */
-    private String realUserName;
+    private DataAuditContentDTO description;
 
     /** 创建时间 */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

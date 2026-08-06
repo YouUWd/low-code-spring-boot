@@ -13,14 +13,14 @@ public interface BizLog {
     default MonitorControlLogReq getCommonReq(BizLogDTO bizLogDTO) {
         MonitorControlLogReq req = new MonitorControlLogReq();
         //        req.setLogType(bizLogDTO.getLogType());
-        req.setSubjectId(bizLogDTO.getCurrentSubjectId());
+        req.setSubjectId(bizLogDTO.getSubjectId());
         req.setLoginUserId(bizLogDTO.getLoginUserId());
-        req.setLoginRoleId(bizLogDTO.getCurrentRoleId());
+        req.setLoginRoleId(bizLogDTO.getRoleId());
         if (bizLogDTO.getMockUserId() != null
                 && !bizLogDTO.getLoginUserId().equals(bizLogDTO.getMockUserId())) {
             req.setMockFlag(1);
             req.setMockUserId(bizLogDTO.getMockUserId());
-            req.setMockRoleId(bizLogDTO.getCurrentRoleId());
+            req.setMockRoleId(bizLogDTO.getRoleId());
         } else {
             req.setMockFlag(0);
         }

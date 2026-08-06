@@ -1,25 +1,19 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.google.common.collect.Lists;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.biz.change.*;
+import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
-import com.jdec.platform.common_business.biz.dto.BizWechatMsgDTO;
-import com.jdec.platform.common_business.biz.dto.WechatTemplateDetailDTO;
-import com.jdec.platform.common_business.biz.entity.TableChangeLog;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
-import com.jdec.platform.common_business.biz.enums.BizMsgEnum;
 import com.jdec.platform.common_business.biz.log.ComBizLogEventPublisher;
-import com.jdec.platform.common_business.biz.log.ComBizMsgEventPublisher;
 import com.jdec.platform.common_business.biz.mapper.TableChangeLogMapper;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import com.jdec.platform.shared.datasource.DataSource;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +31,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
     private final ConfigCenterApiService configCenterApiService;
 
     @Override
-    public TableChangeLog saveLog(ModuleDataChangeContext context) {
+    public Boolean saveLog(ModuleDataChangeContext context) {
         try {
             List<ModuleDataChangeDTO> modifyModules = compareOutChangeLog(context);
             if (CollectionUtil.isEmpty(modifyModules)) {
@@ -50,70 +44,51 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                         dataChangeContext.getModuleId(),
                         dataChangeContext.getModuleFilterInfo().getModuleInfo().getModuleName());
             }
-            TableChangeLog changeLog = new TableChangeLog();
-            changeLog.setDataId(context.getDataId());
-            changeLog.setModuleId(context.getMainModuleId());
-            changeLog.setSubjectId(context.getSubjectId());
-            changeLog.setModuleSlug("已提交");
-            changeLog.setModuleName(moduleNameMap.get(context.getMainModuleId()));
-            changeLog.setMockUserId(context.getMockUserId());
-            changeLog.setRealUserId(context.getRealUserId());
-            Long operator =
-                    (context.getMockUserId() != null
-                                    && !context.getRealUserId().equals(context.getMockUserId()))
-                            ? context.getMockUserId()
-                            : context.getRealUserId();
-            changeLog.setCreatedBy(operator);
-            changeLog.setUpdatedBy(operator);
-            changeLog.setCreatedDate(LocalDateTime.now());
-            changeLog.setUpdatedDate(LocalDateTime.now());
-            changeLog.setDeleted(Boolean.FALSE);
-            changeLog.setChangeContent(JsonUtil.obj2Json(modifyModules));
-            if (context.getCallType() == CallTypeEnum.EDITE) {
-                tableChangeLogMapper.insert(changeLog);
-            }
+            DataAuditContentDTO dataAuditContentDTO =
+                    DataAuditContentDTO.builder().change(modifyModules).build();
             BizLogDTO bizLogDTO =
                     BizLogDTO.builder()
-                            .logType("operation-log")
+                            .logType(CommonConstant.MONITOR_LOG_OPERATOR_LOG_TYPE)
                             .projectNo(LoginUserUtil.getProjectNoFromHeader())
                             .token(LoginUserUtil.getTokenFromHeader())
                             .platform(LoginUserUtil.getOsFromHeader())
                             .browser(LoginUserUtil.getBrowserFromHeader())
                             .ip(LoginUserUtil.getIpFromHeader())
-                            .loginUserId(context.getRealUserId())
-                            .mockUserId(context.getMockUserId())
-                            .currentSubjectId(context.getSubjectId())
-                            .currentRoleId(context.getRoleId())
-                            .logRemark("{\"change\":" + changeLog.getChangeContent() + "}")
-                            .moduleName(modifyModules.get(0).getName())
+                            .origin(LoginUserUtil.getRefererFromHeader())
+                            .loginUserId(LoginUserUtil.getRealLoginUserId())
+                            .mockUserId(LoginUserUtil.getLoginUserId())
+                            .subjectId(LoginUserUtil.getLongSubjectId())
+                            .roleId(LoginUserUtil.getRoleId())
+                            .logRemark(JsonUtil.obj2Json(dataAuditContentDTO))
+                            .moduleId(context.getMainModuleId())
+                            .moduleName(moduleNameMap.get(context.getMainModuleId()))
                             .dataId(
                                     context.getDataId() != null
                                             ? String.valueOf(context.getDataId())
                                             : null)
                             .menuId(context.getMenuId())
                             .build();
-            if (context.getCallType() == CallTypeEnum.CREATE) {
-                ComBizLogEventPublisher.publishLogEvent(BizLogEnum.DATA_SAVE, bizLogDTO);
-            } else {
+            if (context.getCallType() == CallTypeEnum.EDITE) {
                 ComBizLogEventPublisher.publishLogEvent(BizLogEnum.DATA_UPDATE, bizLogDTO);
             }
-            WechatTemplateDetailDTO wechatTemplateDetailDTO =
-                    configCenterApiService.getWechatTemplateDetail(
-                            LoginUserUtil.getLongSubjectId(), 6L);
-            BizWechatMsgDTO bizWechatMsgDTO =
-                    BizWechatMsgDTO.builder()
-                            .param(new HashMap<>())
-                            .wechatTemplate(wechatTemplateDetailDTO)
-                            .token(LoginUserUtil.getTokenFromHeader())
-                            .acceptorList(Lists.newArrayList(298L))
-                            .subjectId(LoginUserUtil.getLongSubjectId())
-                            .build();
-            ComBizMsgEventPublisher.publishMsgEvent(BizMsgEnum.APPROVAL_CHAIN, bizWechatMsgDTO);
-            return changeLog;
+            //            WechatTemplateDetailDTO wechatTemplateDetailDTO =
+            //                    configCenterApiService.getWechatTemplateDetail(
+            //                            LoginUserUtil.getLongSubjectId(), 6L);
+            //            BizWechatMsgDTO bizWechatMsgDTO =
+            //                    BizWechatMsgDTO.builder()
+            //                            .param(new HashMap<>())
+            //                            .wechatTemplate(wechatTemplateDetailDTO)
+            //                            .token(LoginUserUtil.getTokenFromHeader())
+            //                            .acceptorList(Lists.newArrayList(298L))
+            //                            .subjectId(LoginUserUtil.getLongSubjectId())
+            //                            .build();
+            //            ComBizMsgEventPublisher.publishMsgEvent(BizMsgEnum.APPROVAL_CHAIN,
+            // bizWechatMsgDTO);
+            return Boolean.TRUE;
         } catch (Exception e) {
-            log.error("save log error,context=" + context.toString() + ",e=", e);
+            log.error("save log error,context={},e=", context.toString(), e);
         }
-        return null;
+        return Boolean.FALSE;
     }
 
     @Override
@@ -145,7 +120,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
 
             // 获取模块 的唯一标识字段
             List<ModuleField> fields =
-                    moduleFilterInfo.getSimpleModuleFields().stream()
+                    moduleFilterInfo.getAllFields().stream()
                             .filter(x -> (x.getBizKeyOrder() != null && x.getBizKeyOrder() > 0))
                             .collect(Collectors.toList());
             Map<String, List<String>> tableUniqueFieldMap = new HashMap<>();

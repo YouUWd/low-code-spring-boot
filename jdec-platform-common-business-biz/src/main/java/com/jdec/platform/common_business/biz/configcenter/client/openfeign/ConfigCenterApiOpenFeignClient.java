@@ -5,10 +5,12 @@ import com.jdec.platform.common_business.api.dto.response.MenuResp;
 import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.CheckUserSpecialPermissionResp;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.DataRightConfigResp;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.PersonalSettingResp;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.SysConfigItemTreeResp;
 import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
-import com.jdec.platform.config.api.dto.response.SysFieldResp;
-import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
-import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
+import com.jdec.platform.config.api.dto.response.*;
 import java.util.List;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
@@ -130,4 +132,12 @@ public interface ConfigCenterApiOpenFeignClient {
             @RequestHeader("X-Subject-Id") Long subjectId,
             @PathVariable String tableName,
             @RequestParam(required = false) String columnName);
+
+    @GetMapping("/sys/role/subjects")
+    ConfigApiResponse<List<SubjectOptionResp>> getAllSubjects(
+            @RequestHeader("X-Subject-Id") Long subjectId);
+
+    //    @GetMapping("/sys/role/get-role-config-detail")
+    //    ConfigApiResponse<RoleConfigDetailResp> getRoleConfigDetail(@RequestHeader("X-Subject-Id")
+    // Long subjectId,@RequestParam Long roleId);
 }
