@@ -88,6 +88,8 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "日志时间;日志时间")
     private LocalDateTime logDate;
 
+    // =============== 以下字段用于 ResultMap 多表 UNION ALL 查询的兼容回显（非交集字段，子类型会各自真实映射） ===============
+
     @Schema(description = "动作名称")
     @TableField(exist = false)
     private String actionName;
@@ -124,11 +126,19 @@ public class JdecMonitorLogBase implements Serializable {
     @TableField(exist = false)
     private Long menuId;
 
-    @Schema(description = "菜单名称")
+    @Schema(description = "菜单参数;菜单配置中的参数内容")
+    @TableField(exist = false)
+    private String menuParam;
+
+    @Schema(description = "菜单名称（返回显示用，菜单ID对应的展示名称）")
     @TableField(exist = false)
     private String menuName;
 
-    @Schema(description = "单据ID")
+    @Schema(description = "超链接文本")
+    @TableField(exist = false)
+    private String hrefName;
+
+    @Schema(description = "数据表记录ID")
     @TableField(exist = false)
     private Long dataId;
 
@@ -152,7 +162,9 @@ public class JdecMonitorLogBase implements Serializable {
     @TableField(exist = false)
     private String browser;
 
-    @Schema(description = "日志类型")
+    @Schema(
+            description =
+                    "日志类型（来自UNION ALL的常量列，与配置中心 category=monitorLogType 的 value 对齐：operationLog/systemLog/messageLog）")
     @TableField(exist = false)
     private String logType;
 }
