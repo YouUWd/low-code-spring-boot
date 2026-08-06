@@ -222,6 +222,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         // 主表数据查询结果
         Object primaryData = primaryMapper.selectOne(queryWrapper);
 
+        // 版本对比数据
+        Map<Long, VersionCompareInfo> idToVersionCompareInfo = new HashMap<>();
+
         if (Objects.nonNull(primaryData)) {
 
             Map<String, Object> dataMap = new HashMap<>();
@@ -301,7 +304,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                                             versionInfo.get("currentVersion"))));
 
                     if (Objects.nonNull(fieldChangeList)) {
-                        dataMap.put("formChangeList", fieldChangeList);
+                        idToVersionCompareInfo.put(id, fieldChangeList);
                     }
                 }
 
@@ -404,6 +407,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             resultMap.put("data", dataMap);
 
             resultMap.put("formFieldList", getFormFieldData(moduleFilterInfo, allRightField));
+
+            if (hasApproval) {
+                if (idToVersionCompareInfo.containsKey(id)) {
+                    resultMap.put("formChangeList", idToVersionCompareInfo.get(id));
+                }
+            }
 
             // 将field中的下划线转为驼峰
             List<ModuleField> transformCombineFields =
@@ -563,6 +572,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
         } else {
             log.debug("前一生效版本数据主键ID和版本内上一修改数据主键ID都为空，无版本可以对比。");
+            return null;
         }
 
         return versionCompareInfoBuilder
