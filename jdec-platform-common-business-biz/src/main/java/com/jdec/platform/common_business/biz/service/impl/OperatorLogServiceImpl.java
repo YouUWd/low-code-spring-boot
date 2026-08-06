@@ -1,23 +1,21 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.jdec.platform.common_business.api.OperatorLogServiceApi;
 import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.api.dto.request.OpLogReq;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.api.dto.response.OpLogResp;
+import com.jdec.platform.common_business.api.dto.response.UserResp;
 import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
+import com.jdec.platform.common_business.biz.configcenter.client.openfeign.MonitorLogApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
-import com.jdec.platform.common_business.biz.entity.TableChangeLog;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
-import com.jdec.platform.common_business.biz.mapper.TableChangeLogMapper;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
+import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.shared.datasource.DataSource;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,7 +35,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
 
     private final ConfigCenterApiOpenFeignClient configCenterApiClient;
 
-    private final TableChangeLogMapper tableChangeLogMapper;
+    private final MonitorLogApiOpenFeignClient monitorLogApiOpenFeignClient;
 
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
@@ -61,40 +59,65 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
         if (targetTopMenu == null || targetTopMenu.getModuleId() == null) {
             return new ArrayList<>();
         }
-        LambdaQueryWrapper<TableChangeLog> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(TableChangeLog::getModuleId, targetTopMenu.getModuleId());
-        queryWrapper.eq(TableChangeLog::getDataId, req.getDataId());
-        queryWrapper.eq(TableChangeLog::getDeleted, Boolean.FALSE);
-        queryWrapper.orderByDesc(TableChangeLog::getCreatedDate);
-        List<TableChangeLog> changeLogList = tableChangeLogMapper.selectList(queryWrapper);
-        if (CollectionUtil.isEmpty(changeLogList)) {
+        ConfigApiResponse<List<MonitorLogPageListResp>> logResponse =
+                monitorLogApiOpenFeignClient.querySystemControlLogByModuleIdAndDataId(
+                        targetTopMenu.getModuleId(), req.getDataId(), null);
+        if (!ConfigApiResponse.isSuccessResponse(logResponse)
+                || CollectionUtil.isEmpty(logResponse.getData())) {
             return new ArrayList<>();
         }
-        List<OpLogResp> opLogResps = new ArrayList<>();
-        for (TableChangeLog changeLog : changeLogList) {
-            if (StringUtils.isEmpty(changeLog.getChangeContent())) {
+        List<OpLogResp> result = new ArrayList<>();
+        for (MonitorLogPageListResp resp : logResponse.getData()) {
+            if (StringUtils.isEmpty(resp.getLogRemark())) {
                 continue;
             }
             OpLogResp logResp = new OpLogResp();
-            BeanUtil.copyProperties(
-                    changeLog, logResp, CopyOptions.create().ignoreNullValue().ignoreError());
-            logResp.setModifyModules(null);
+            logResp.setActionName(resp.getActionName());
+            logResp.setActionPath(resp.getActionPath());
+            logResp.setActionTypeTitle(resp.getActionTypeTitle());
+            logResp.setCreatedDate(resp.getLogDate());
 
-            List<ModuleDataChangeDTO> modifyModules = null;
+            if (resp.getMockFlag().equals(Integer.valueOf(1))) {
+                UserResp mockUser = new UserResp();
+                mockUser.setId(resp.getMockUserId());
+                mockUser.setUserName(resp.getMockUserName());
+                mockUser.setDepartName(resp.getLoginUserDeptName());
+                mockUser.setUserAvatar(resp.getMockUserAvater());
+                mockUser.setWorkNumber(resp.getMockUserNumber());
+                mockUser.setPositionName(resp.getLoginUserJobName());
+                logResp.setCreatedUser(mockUser);
+
+                UserResp real = new UserResp();
+                real.setId(resp.getLoginUserId());
+                real.setUserName(resp.getLoginUserName());
+                real.setUserAvatar(resp.getLoginAvater());
+                real.setWorkNumber(resp.getLoginUserNumber());
+                logResp.setRealUser(real);
+            } else {
+                UserResp real = new UserResp();
+                real.setId(resp.getLoginUserId());
+                real.setUserName(resp.getLoginUserName());
+                real.setUserAvatar(resp.getLoginAvater());
+                real.setWorkNumber(resp.getLoginUserNumber());
+                real.setDepartName(resp.getLoginUserDeptName());
+                real.setPositionName(resp.getLoginUserJobName());
+                logResp.setRealUser(real);
+                logResp.setCreatedUser(real);
+            }
+            DataAuditContentDTO dataAuditContent = null;
             try {
-                modifyModules =
+                dataAuditContent =
                         JsonUtil.json2Obj(
-                                changeLog.getChangeContent(),
-                                new TypeReference<List<ModuleDataChangeDTO>>() {});
+                                resp.getLogRemark(), new TypeReference<DataAuditContentDTO>() {});
             } catch (Exception e) {
                 log.error(" json parse error,e=" + e);
             }
-            if (CollectionUtil.isEmpty(modifyModules)) {
+            if (dataAuditContent == null || CollectionUtil.isEmpty(dataAuditContent.getChange())) {
                 continue;
             }
             List<ModuleDataChangeDTO> moduleDataList = new ArrayList<>();
             Map<Long, Map<String, Integer>> moduleMap = new HashMap<>();
-            for (ModuleDataChangeDTO moduleDataChangeDTO : modifyModules) {
+            for (ModuleDataChangeDTO moduleDataChangeDTO : dataAuditContent.getChange()) {
                 DataChangeActionDTO dataChangeActionDTO = moduleDataChangeDTO.getActions();
                 // 没有变更字段
                 if (dataChangeActionDTO == null
@@ -150,10 +173,14 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             if (CollectionUtil.isEmpty(moduleDataList)) {
                 continue;
             }
-            logResp.setModifyModules(moduleDataList);
-            opLogResps.add(logResp);
+            logResp.setDescription(
+                    DataAuditContentDTO.builder()
+                            .change(moduleDataList)
+                            .reason(dataAuditContent.getReason())
+                            .build());
+            result.add(logResp);
         }
-        return opLogResps;
+        return result;
     }
 
     private List<RowChangeDTO> getFilterRowChangeDTO(

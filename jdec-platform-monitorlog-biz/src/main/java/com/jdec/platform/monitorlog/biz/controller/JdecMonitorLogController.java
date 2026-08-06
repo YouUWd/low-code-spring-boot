@@ -134,6 +134,22 @@ public class JdecMonitorLogController {
         return ApiResponse.success(result);
     }
 
+    @GetMapping("/querySystemControlLogByModuleIdAndDataId")
+    @Operation(
+            summary = "根据模块ID和单据ID查询系统操作日志列表",
+            description = "传入moduleId+dataId查询系统操作日志（controllog）列表，按时间倒序排列")
+    public ApiResponse<List<MonitorLogPageListResp>> querySystemControlLogByModuleIdAndDataId(
+            @Parameter(description = "模块ID", required = true) @RequestParam Long moduleId,
+            @Parameter(description = "单据ID（dataId）", required = true) @RequestParam Long dataId,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
+        List<MonitorLogPageListResp> result =
+                jdecMonitorLogService.querySystemControlLogByModuleIdAndDataId(
+                        moduleId, dataId, projectNo);
+        return ApiResponse.success(result);
+    }
+
     private static final Set<String> BASE_LOG_TYPES =
             Set.of("loginin", "loginout", "changerole", "resetuser", "changesubject");
     private static final Set<String> MOCK_LOG_TYPES = Set.of("mockuser", "mockchangerole");

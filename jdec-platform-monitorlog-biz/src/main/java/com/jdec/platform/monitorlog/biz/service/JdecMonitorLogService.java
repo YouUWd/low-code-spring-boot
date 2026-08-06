@@ -387,10 +387,23 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (logList.isEmpty()) {
             return null;
         }
-        BeanUtil.copyProperties(logList.getFirst(), MonitorLogPageListResp.class);
-        if (logList.isEmpty()) {
-            return null;
-        }
         return BeanUtil.copyProperties(logList.getFirst(), MonitorLogPageListResp.class);
+    }
+
+    @Override
+    public List<MonitorLogPageListResp> querySystemControlLogByModuleIdAndDataId(
+            Long moduleId, Long dataId, String projectNo) {
+        if (moduleId == null || dataId == null) {
+            throw new IllegalArgumentException("moduleId和dataId不能为空");
+        }
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
+        List<JdecMonitorLogBase> logList =
+                jdecMonitorMultiTableMapper.querySystemControlLogByModuleIdAndDataId(
+                        moduleId, dataId);
+        DataSourceContextHolder.clear();
+        return logList.stream()
+                .map(item -> BeanUtil.copyProperties(item, MonitorLogPageListResp.class))
+                .toList();
     }
 }

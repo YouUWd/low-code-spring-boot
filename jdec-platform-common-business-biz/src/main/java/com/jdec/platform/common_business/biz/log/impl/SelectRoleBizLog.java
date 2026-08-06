@@ -5,9 +5,9 @@ import com.jdec.platform.common_business.biz.configcenter.client.openfeign.Monit
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
 import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
-import com.jdec.platform.common_business.biz.dto.configcenter.response.RoleConfigDetailResp;
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
 import com.jdec.platform.common_business.biz.log.BizLog;
+import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import java.util.Set;
 import lombok.AllArgsConstructor;
@@ -40,7 +40,7 @@ public class SelectRoleBizLog implements BizLog {
                 MonitorControlLogReq req = getCommonReq(bizLogDTO);
                 ConfigApiResponse<RoleConfigDetailResp> roleConfigDetailRespConfigApiResponse =
                         configCenterApiOpenFeignClient.getRoleConfigDetail(
-                                bizLogDTO.getCurrentSubjectId(), bizLogDTO.getCurrentRoleId());
+                                bizLogDTO.getSubjectId(), bizLogDTO.getRoleId());
                 if (ConfigApiResponse.isSuccessResponse(roleConfigDetailRespConfigApiResponse)
                         && roleConfigDetailRespConfigApiResponse.getData() != null) {
                     RoleConfigDetailResp roleConfigDetailResp =
