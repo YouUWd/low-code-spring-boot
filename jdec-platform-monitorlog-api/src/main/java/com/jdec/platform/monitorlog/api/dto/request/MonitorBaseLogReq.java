@@ -80,10 +80,10 @@ public class MonitorBaseLogReq {
     @Schema(description = "模拟用户工号")
     private String mockUserNumber;
 
-    @Schema(description = "模拟角色ID（兼容保留）")
+    //    @Schema(description = "模拟角色ID（兼容保留）")
     private Long mockRoleId;
 
-    @Schema(description = "模拟角色名称（兼容保留）")
+    //    @Schema(description = "模拟角色名称（兼容保留）")
     private String mockRoleName;
 
     @Schema(description = "IP地址", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -96,16 +96,16 @@ public class MonitorBaseLogReq {
     @Schema(description = "模块名称")
     private String moduleName;
 
-    @Schema(description = "单据编号")
-    private String orderId;
-
     @Schema(description = "菜单ID")
     private Long menuId;
 
-    @Schema(description = "菜单名称")
-    private String menuName;
+    @Schema(description = "菜单参数")
+    private String menuParam;
 
-    @Schema(description = "单据ID")
+    @Schema(description = "超链接文本")
+    private String hrefName;
+
+    @Schema(description = "数据表记录ID")
     private Long dataId;
 
     @Schema(description = "单据版本号")

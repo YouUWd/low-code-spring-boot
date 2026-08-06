@@ -441,7 +441,8 @@ public class JdecMonitorLogController {
                     String mockUserNumber,
             @Parameter(description = "IP地址", required = true) @RequestHeader("X-Real-IP") String ip,
             @Parameter(description = "模块名称") @RequestHeader("Module-Name") String moduleName,
-            @Parameter(description = "菜单名称") @RequestHeader("Menu-Name") String menuName,
+            @Parameter(description = "菜单参数") @RequestHeader("Menu-Param") String menuParam,
+            @Parameter(description = "菜单名称") @RequestHeader("Href-Name") String hrefName,
             @Parameter(description = "菜单URL") @RequestHeader("Href-Url") String hrefUrl,
             @Parameter(description = "菜单操作描述") @RequestHeader("Control-Desc") String controlDesc,
             @Parameter(description = "浏览器", required = true) @RequestHeader("Browser")
@@ -511,8 +512,11 @@ public class JdecMonitorLogController {
         if (moduleName.length() > 100) {
             throw new IllegalArgumentException("模块名称(module-name)长度不能超过100字符");
         }
-        if (!StringUtils.hasText(menuName)) {
-            throw new IllegalArgumentException("菜单名称(menu-name)不能为空");
+        if (!StringUtils.hasText(menuParam)) {
+            throw new IllegalArgumentException("菜单参数(menu-param)不能为空");
+        }
+        if (!StringUtils.hasText(hrefName)) {
+            throw new IllegalArgumentException("菜单名称(href-name)不能为空");
         }
         if (!StringUtils.hasText(hrefUrl)) {
             throw new IllegalArgumentException("菜单操作URL(href-url)不能为空");
@@ -553,7 +557,8 @@ public class JdecMonitorLogController {
         request.setMockUserNumber(mockUserNumber);
         request.setIp(ip);
         request.setModuleName(moduleName);
-        request.setMenuName(menuName);
+        request.setMenuParam(menuParam);
+        request.setHrefName(hrefName);
         request.setControlUrl(hrefUrl);
         request.setControlDesc(controlDesc);
         request.setBrowser(browser);
@@ -564,7 +569,7 @@ public class JdecMonitorLogController {
                         + "-<a style=\"color: #408bee\" href=\""
                         + hrefUrl
                         + "\" target=\"_blank\">"
-                        + menuName
+                        + hrefName
                         + "</a>]<span style=\"font-weight: 700; color: #2e7fed\">"
                         + controlDesc
                         + "</span></span></div></span>");

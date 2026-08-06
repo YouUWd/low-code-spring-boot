@@ -224,9 +224,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (StringUtils.hasText(req.getModuleName()) && req.getModuleName().length() > 100) {
             throw new IllegalArgumentException("模块名称(moduleName)长度不能超过100字符");
         }
-        if (StringUtils.hasText(req.getOrderId()) && req.getOrderId().length() > 100) {
-            throw new IllegalArgumentException("单据编号(orderId)长度不能超过100字符");
-        }
+
         if (StringUtils.hasText(req.getControlName()) && req.getControlName().length() > 100) {
             throw new IllegalArgumentException("单据操作名称(controlName)长度不能超过100字符");
         }
@@ -331,9 +329,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
         if (StringUtils.hasText(req.getModuleName()) && req.getModuleName().length() > 100) {
             throw new IllegalArgumentException("模块名称(moduleName)长度不能超过100字符");
-        }
-        if (StringUtils.hasText(req.getOrderId()) && req.getOrderId().length() > 100) {
-            throw new IllegalArgumentException("单据编号(orderId)长度不能超过100字符");
         }
         if (StringUtils.hasText(req.getControlName()) && req.getControlName().length() > 100) {
             throw new IllegalArgumentException("单据操作名称(controlName)长度不能超过100字符");
