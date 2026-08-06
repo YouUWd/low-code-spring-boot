@@ -24,4 +24,7 @@ public interface JdecMonitorMultiTableMapper {
             @Param("menuId") Long menuId,
             @Param("dataId") Long dataId,
             @Param("logType") String logType);
+
+    List<JdecMonitorLogBase> querySystemControlLogByModuleIdAndDataId(
+            @Param("moduleId") Long moduleId, @Param("dataId") Long dataId);
 }
