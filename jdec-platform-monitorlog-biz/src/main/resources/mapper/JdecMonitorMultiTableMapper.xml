@@ -29,6 +29,7 @@
         <result column="module_name" property="moduleName"/>
         <result column="menu_id" property="menuId"/>
         <result column="menu_param" property="menuParam"/>
+        <result column="menu_name" property="menuName"/>
         <result column="href_name" property="hrefName"/>
         <result column="data_id" property="dataId"/>
         <result column="orderVersion" property="orderVersion"/>
@@ -44,7 +45,13 @@
         <result column="log_type" property="logType"/>
     </resultMap>
 
-    <!-- controllog 完整列（模块/菜单/单据/控件/browser 全有，action 全有） -->
+    <!-- 子类型 ResultMap：返回 JdecMonitorControlLog（继承 BaseResultMap 的全部字段映射） -->
+    <resultMap id="ControlLogResultMap"
+               type="com.jdec.platform.monitorlog.biz.entity.JdecMonitorControlLog"
+               extends="BaseResultMap">
+    </resultMap>
+
+    <!-- controllog 完整列：action 全有 + 模块/菜单(含menu_param/href_name)/单据/控件/browser 全有 -->
     <sql id="controlLogColumns">
         id, subject_id, subject_name,
         actionName, actionPath, actionTypeTitle,
@@ -52,15 +59,19 @@
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
         login_user_job_id, login_user_job_name,
         mock_flag, mock_user_id, mock_user_name, mock_user_avater, mock_user_number,
-        ip, module_id, module_name, menu_id, menu_param, href_name, data_id, orderVersion,
+        ip, module_id, module_name, menu_id, menu_param,
+        CAST(NULL AS CHAR) AS menu_name,
+        href_name, data_id, orderVersion,
         control_name, operator_result, font_color, browser, plat_form, system_name,
         log_content, log_remark, log_date
     </sql>
 
-    <!-- messagelog 列：有 action 系列，无 browser，无模块/菜单/单据/控件 全填 NULL -->
+    <!-- messagelog 列：无 action，无 browser，无模块/菜单/单据/控件，缺失列一律 CAST(NULL AS ...) 占位 -->
     <sql id="messageLogColumns">
         id, subject_id, subject_name,
-        actionName, actionPath, actionTypeTitle,
+        CAST(NULL AS CHAR) AS actionName,
+        CAST(NULL AS CHAR) AS actionPath,
+        CAST(NULL AS CHAR) AS actionTypeTitle,
         login_user_id, login_user_name, login_avater, login_user_number,
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
         login_user_job_id, login_user_job_name,
@@ -70,6 +81,7 @@
         CAST(NULL AS CHAR) AS module_name,
         CAST(NULL AS SIGNED) AS menu_id,
         CAST(NULL AS CHAR) AS menu_param,
+        CAST(NULL AS CHAR) AS menu_name,
         CAST(NULL AS CHAR) AS href_name,
         CAST(NULL AS SIGNED) AS data_id,
         CAST(NULL AS SIGNED) AS orderVersion,
@@ -81,7 +93,7 @@
         log_content, log_remark, log_date
     </sql>
 
-    <!-- systemlog 列：有 browser，无 action 全填 NULL，无模块/菜单/单据/控件 全填 NULL -->
+    <!-- systemlog 列：有 browser，无 action，无模块/菜单/单据/控件，缺失列一律 CAST(NULL AS ...) 占位 -->
     <sql id="systemLogColumns">
         id, subject_id, subject_name,
         CAST(NULL AS CHAR) AS actionName,
@@ -96,6 +108,7 @@
         CAST(NULL AS CHAR) AS module_name,
         CAST(NULL AS SIGNED) AS menu_id,
         CAST(NULL AS CHAR) AS menu_param,
+        CAST(NULL AS CHAR) AS menu_name,
         CAST(NULL AS CHAR) AS href_name,
         CAST(NULL AS SIGNED) AS data_id,
         CAST(NULL AS SIGNED) AS orderVersion,
@@ -106,23 +119,7 @@
         log_content, log_remark, log_date
     </sql>
 
-    <!-- 公共 WHERE 条件（注意：messagelog/systemlog 没有 /module_name，所以在 UNION 场景这些列其实是 NULL，
-         但如果是单个 controllog 查询则是有效的。这里保留原有逻辑，避免破坏单表 controllog 的按单号/模块搜索） -->
-    <sql id="commonWhereCondition">
-        WHERE
-            (
-                <if test="keyWord == null or keyWord == ''">1=1</if>
-                <if test="keyWord != null and keyWord != ''">
-                    log_content LIKE CONCAT('%', #{keyWord}, '%')
-                    OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
-                    OR module_name LIKE CONCAT('%', #{keyWord}, '%')
-                </if>
-            )
-            AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-        ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
-    </sql>
-
-    <!-- WHERE 条件 - controllog 专用（有 module_id、menu_id、data_id 等字段） -->
+    <!-- WHERE 条件 - controllog 专用（支持按 module_name、menu_param、href_name、control_name 模糊匹配） -->
     <sql id="controllogWhereCondition">
         WHERE
             (
@@ -131,13 +128,15 @@
                     log_content LIKE CONCAT('%', #{keyWord}, '%')
                     OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
                     OR module_name LIKE CONCAT('%', #{keyWord}, '%')
+                    OR href_name LIKE CONCAT('%', #{keyWord}, '%')
+                    OR control_name LIKE CONCAT('%', #{keyWord}, '%')
                 </if>
             )
             AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
         ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
     </sql>
 
-    <!-- WHERE 条件 - messagelog / systemlog 专用（去除  module_name 筛选，因为它们无此列或值为 NULL） -->
+    <!-- WHERE 条件 - messagelog / systemlog 专用（去除模块/菜单/控件列的模糊匹配） -->
     <sql id="baseLogWhereCondition">
         WHERE
             (
@@ -151,6 +150,7 @@
         ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
     </sql>
 
+    <!-- 分页 UNION ALL 查询：返回多类型混合列表，使用 BaseResultMap（JdecMonitorLogBase） -->
     <select id="queryPageListWithMultiTable" resultMap="BaseResultMap">
         SELECT res.* FROM (
             <choose>
@@ -195,8 +195,13 @@
         LIMIT #{pageSize}
     </select>
 
-    <!-- 按 moduleId + orderId 查询：仅 controllog 有效，其它表均无对应数据列 -->
-    <select id="queryByModuleIdAndOrderId" resultMap="BaseResultMap">
+    <!--
+      按 moduleId + orderId 查询：
+      - 新 DDL controllog 已无 order_id 列，仅保留按 module_id 过滤
+      - 仅 operationLog（controllog）有物理列有意义，其余两表用 WHERE 1=0 占位维持 UNION 结构
+      - 最终实例化 JdecMonitorControlLog（ControlLogResultMap）
+    -->
+    <select id="queryByModuleIdAndOrderId" resultMap="ControlLogResultMap">
         SELECT res.* FROM (
             <choose>
                 <when test="logType == 'messageLog'">
@@ -224,7 +229,7 @@
                     UNION ALL
                     (SELECT <include refid="controlLogColumns"/>, 'operationLog' as log_type
                     FROM sys_monitor_controllog
-                    WHERE module_id = #{moduleId} )
+                    WHERE module_id = #{moduleId})
                     UNION ALL
                     (SELECT <include refid="systemLogColumns"/>, 'systemLog' as log_type
                     FROM sys_monitor_systemlog
@@ -235,8 +240,12 @@
         ORDER BY res.log_date DESC, res.id DESC
     </select>
 
-    <!-- 按 menuId + dataId 查询：仅 controllog（operationLog）有意义，其它表均无 menu_id/data_id 列 -->
-    <select id="queryByMenuIdAndDataId" resultMap="BaseResultMap">
+    <!--
+      按 menuId + dataId 查询单条最新：
+      - 仅 operationLog（controllog）有 menu_id / data_id 物理列
+      - 返回 JdecMonitorControlLog（ControlLogResultMap）
+    -->
+    <select id="queryByMenuIdAndDataId" resultMap="ControlLogResultMap">
         SELECT res.* FROM (
             <choose>
                 <when test="logType == 'messageLog'">
@@ -275,8 +284,12 @@
         ORDER BY res.log_date DESC, res.id DESC LIMIT 1
     </select>
 
-    <!-- 按 moduleId + dataId 查询系统操作日志列表（仅查 controllog，即 operationLog） -->
-    <select id="querySystemControlLogByModuleIdAndDataId" resultMap="BaseResultMap">
+    <!--
+      按 moduleId + dataId 查询系统操作日志列表（仅查 controllog，即 operationLog）
+      - 直接查询单张表，不做 UNION
+      - 返回 JdecMonitorControlLog（ControlLogResultMap）
+    -->
+    <select id="querySystemControlLogByModuleIdAndDataId" resultMap="ControlLogResultMap">
         SELECT <include refid="controlLogColumns"/>, 'operationLog' as log_type
         FROM sys_monitor_controllog
         WHERE module_id = #{moduleId} AND data_id = #{dataId}

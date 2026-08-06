@@ -1,5 +1,6 @@
 package com.jdec.platform.monitorlog.biz.mapper;
 
+import com.jdec.platform.monitorlog.biz.entity.JdecMonitorControlLog;
 import com.jdec.platform.monitorlog.biz.entity.JdecMonitorLogBase;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
@@ -15,16 +16,16 @@ public interface JdecMonitorMultiTableMapper {
             @Param("keyWord") String keyWord,
             @Param("logType") String logType);
 
-    List<JdecMonitorLogBase> queryByModuleIdAndOrderId(
+    List<JdecMonitorControlLog> queryByModuleIdAndOrderId(
             @Param("moduleId") Long moduleId,
             @Param("orderId") String orderId,
             @Param("logType") String logType);
 
-    List<JdecMonitorLogBase> queryByMenuIdAndDataId(
+    List<JdecMonitorControlLog> queryByMenuIdAndDataId(
             @Param("menuId") Long menuId,
             @Param("dataId") Long dataId,
             @Param("logType") String logType);
 
-    List<JdecMonitorLogBase> querySystemControlLogByModuleIdAndDataId(
+    List<JdecMonitorControlLog> querySystemControlLogByModuleIdAndDataId(
             @Param("moduleId") Long moduleId, @Param("dataId") Long dataId);
 }
