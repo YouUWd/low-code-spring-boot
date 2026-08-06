@@ -27,7 +27,6 @@
         <result column="ip" property="ip"/>
         <result column="module_id" property="moduleId"/>
         <result column="module_name" property="moduleName"/>
-        <result column="order_id" property="orderId"/>
         <result column="menu_id" property="menuId"/>
         <result column="menu_param" property="menuParam"/>
         <result column="href_name" property="hrefName"/>
@@ -53,7 +52,7 @@
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
         login_user_job_id, login_user_job_name,
         mock_flag, mock_user_id, mock_user_name, mock_user_avater, mock_user_number,
-        ip, module_id, module_name, order_id, menu_id, menu_param, href_name, data_id, orderVersion,
+        ip, module_id, module_name, menu_id, menu_param, href_name, data_id, orderVersion,
         control_name, operator_result, font_color, browser, plat_form, system_name,
         log_content, log_remark, log_date
     </sql>
@@ -69,7 +68,6 @@
         ip,
         CAST(NULL AS SIGNED) AS module_id,
         CAST(NULL AS CHAR) AS module_name,
-        CAST(NULL AS CHAR) AS order_id,
         CAST(NULL AS SIGNED) AS menu_id,
         CAST(NULL AS CHAR) AS menu_param,
         CAST(NULL AS CHAR) AS href_name,
@@ -96,7 +94,6 @@
         ip,
         CAST(NULL AS SIGNED) AS module_id,
         CAST(NULL AS CHAR) AS module_name,
-        CAST(NULL AS CHAR) AS order_id,
         CAST(NULL AS SIGNED) AS menu_id,
         CAST(NULL AS CHAR) AS menu_param,
         CAST(NULL AS CHAR) AS href_name,
@@ -109,7 +106,7 @@
         log_content, log_remark, log_date
     </sql>
 
-    <!-- 公共 WHERE 条件（注意：messagelog/systemlog 没有 order_id/module_name，所以在 UNION 场景这些列其实是 NULL，
+    <!-- 公共 WHERE 条件（注意：messagelog/systemlog 没有 /module_name，所以在 UNION 场景这些列其实是 NULL，
          但如果是单个 controllog 查询则是有效的。这里保留原有逻辑，避免破坏单表 controllog 的按单号/模块搜索） -->
     <sql id="commonWhereCondition">
         WHERE
@@ -118,7 +115,6 @@
                 <if test="keyWord != null and keyWord != ''">
                     log_content LIKE CONCAT('%', #{keyWord}, '%')
                     OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
-                    OR order_id LIKE CONCAT('%', #{keyWord}, '%')
                     OR module_name LIKE CONCAT('%', #{keyWord}, '%')
                 </if>
             )
@@ -126,7 +122,7 @@
         ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
     </sql>
 
-    <!-- WHERE 条件 - controllog 专用（有 module_id、order_id、menu_id、data_id 等字段） -->
+    <!-- WHERE 条件 - controllog 专用（有 module_id、menu_id、data_id 等字段） -->
     <sql id="controllogWhereCondition">
         WHERE
             (
@@ -134,7 +130,6 @@
                 <if test="keyWord != null and keyWord != ''">
                     log_content LIKE CONCAT('%', #{keyWord}, '%')
                     OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
-                    OR order_id LIKE CONCAT('%', #{keyWord}, '%')
                     OR module_name LIKE CONCAT('%', #{keyWord}, '%')
                 </if>
             )
@@ -142,7 +137,7 @@
         ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
     </sql>
 
-    <!-- WHERE 条件 - messagelog / systemlog 专用（去除 order_id 和 module_name 筛选，因为它们无此列或值为 NULL） -->
+    <!-- WHERE 条件 - messagelog / systemlog 专用（去除  module_name 筛选，因为它们无此列或值为 NULL） -->
     <sql id="baseLogWhereCondition">
         WHERE
             (
@@ -213,7 +208,7 @@
                 <when test="logType == 'operationLog'">
                     (SELECT <include refid="controlLogColumns"/>, 'operationLog' as log_type
                     FROM sys_monitor_controllog
-                    WHERE module_id = #{moduleId} AND order_id = #{orderId}
+                    WHERE module_id = #{moduleId}
                     ORDER BY log_date DESC, id DESC)
                 </when>
                 <when test="logType == 'systemLog'">
@@ -229,7 +224,7 @@
                     UNION ALL
                     (SELECT <include refid="controlLogColumns"/>, 'operationLog' as log_type
                     FROM sys_monitor_controllog
-                    WHERE module_id = #{moduleId} AND order_id = #{orderId})
+                    WHERE module_id = #{moduleId} )
                     UNION ALL
                     (SELECT <include refid="systemLogColumns"/>, 'systemLog' as log_type
                     FROM sys_monitor_systemlog
