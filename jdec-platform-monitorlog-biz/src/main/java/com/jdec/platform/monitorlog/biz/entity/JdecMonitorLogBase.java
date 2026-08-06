@@ -24,15 +24,6 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "主体名称")
     private String subjectName;
 
-    @Schema(description = "动作名称")
-    private String actionName;
-
-    @Schema(description = "审批动作图标")
-    private String actionPath;
-
-    @Schema(description = "审批结果")
-    private String actionTypeTitle;
-
     @Schema(description = "登录用户ID;登录用户ID")
     private Long loginUserId;
 
@@ -78,49 +69,8 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "模拟用户工号")
     private String mockUserNumber;
 
-    @Schema(description = "模拟用户角色ID;模拟用户角色ID（兼容保留）")
-    @TableField(exist = false)
-    private Long mockRoleId;
-
-    @Schema(description = "模拟用户角色名称（兼容保留）")
-    @TableField(exist = false)
-    private String mockRoleName;
-
     @Schema(description = "日志发生的IP地址;日志发生的IP地址")
     private String ip;
-
-    @Schema(description = "模块ID")
-    private Long moduleId;
-
-    @Schema(description = "模块名称;系统设置/元件管理/")
-    private String moduleName;
-
-    @Schema(description = "单据编号;审批链配置/FHSQ2409230955401/权限配置")
-    private String orderId;
-
-    @Schema(description = "菜单ID")
-    private Long menuId;
-
-    @Schema(description = "菜单名称")
-    private String menuName;
-
-    @Schema(description = "单据ID")
-    private Long dataId;
-
-    @Schema(description = "单据版本号")
-    private Integer orderVersion;
-
-    @Schema(description = "单据操作名称;元件审核/权限配置/审批链配置")
-    private String controlName;
-
-    @Schema(description = "操作结果/执行结果/处理结果;成功/失败")
-    private String operatorResult;
-
-    @Schema(description = "字体颜色;获取系统中配置的颜色，默认为黑色")
-    private String fontColor;
-
-    @Schema(description = "浏览器信息;浏览器信息")
-    private String browser;
 
     @Schema(description = "平台信息;平台信息")
     private String platForm;
@@ -137,6 +87,70 @@ public class JdecMonitorLogBase implements Serializable {
 
     @Schema(description = "日志时间;日志时间")
     private LocalDateTime logDate;
+
+    @Schema(description = "动作名称")
+    @TableField(exist = false)
+    private String actionName;
+
+    @Schema(description = "审批动作图标")
+    @TableField(exist = false)
+    private String actionPath;
+
+    @Schema(description = "审批结果")
+    @TableField(exist = false)
+    private String actionTypeTitle;
+
+    @Schema(description = "模拟用户角色ID;模拟用户角色ID（兼容保留）")
+    @TableField(exist = false)
+    private Long mockRoleId;
+
+    @Schema(description = "模拟用户角色名称（兼容保留）")
+    @TableField(exist = false)
+    private String mockRoleName;
+
+    @Schema(description = "模块ID")
+    @TableField(exist = false)
+    private Long moduleId;
+
+    @Schema(description = "模块名称;系统设置/元件管理/")
+    @TableField(exist = false)
+    private String moduleName;
+
+    @Schema(description = "单据编号;审批链配置/FHSQ2409230955401/权限配置")
+    @TableField(exist = false)
+    private String orderId;
+
+    @Schema(description = "菜单ID")
+    @TableField(exist = false)
+    private Long menuId;
+
+    @Schema(description = "菜单名称")
+    @TableField(exist = false)
+    private String menuName;
+
+    @Schema(description = "单据ID")
+    @TableField(exist = false)
+    private Long dataId;
+
+    @Schema(description = "单据版本号")
+    @TableField(exist = false)
+    private Integer orderVersion;
+
+    @Schema(description = "单据操作名称;元件审核/权限配置/审批链配置")
+    @TableField(exist = false)
+    private String controlName;
+
+    @Schema(description = "操作结果/执行结果/处理结果;成功/失败")
+    @TableField(exist = false)
+    private String operatorResult;
+
+    @Schema(description = "字体颜色;获取系统中配置的颜色，默认为黑色")
+    @TableField(exist = false)
+    private String fontColor;
+
+    @Schema(description = "浏览器信息;浏览器信息")
+    @TableField(exist = false)
+    private String browser;
 
     @Schema(description = "日志类型")
     @TableField(exist = false)

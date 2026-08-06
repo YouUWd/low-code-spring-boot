@@ -44,8 +44,10 @@
         <result column="log_type" property="logType"/>
     </resultMap>
 
-    <sql id="commonSelectColumns">
-        id, subject_id, subject_name, actionName, actionPath, actionTypeTitle,
+    <!-- controllog 完整列（模块/菜单/单据/控件/browser 全有，action 全有） -->
+    <sql id="controlLogColumns">
+        id, subject_id, subject_name,
+        actionName, actionPath, actionTypeTitle,
         login_user_id, login_user_name, login_avater, login_user_number,
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
         login_user_job_id, login_user_job_name,
@@ -55,6 +57,57 @@
         log_content, log_remark, log_date
     </sql>
 
+    <!-- messagelog 列：有 action 系列，无 browser，无模块/菜单/单据/控件 全填 NULL -->
+    <sql id="messageLogColumns">
+        id, subject_id, subject_name,
+        actionName, actionPath, actionTypeTitle,
+        login_user_id, login_user_name, login_avater, login_user_number,
+        login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
+        login_user_job_id, login_user_job_name,
+        mock_flag, mock_user_id, mock_user_name, mock_user_avater, mock_user_number,
+        ip,
+        CAST(NULL AS SIGNED) AS module_id,
+        CAST(NULL AS CHAR) AS module_name,
+        CAST(NULL AS CHAR) AS order_id,
+        CAST(NULL AS SIGNED) AS menu_id,
+        CAST(NULL AS CHAR) AS menu_name,
+        CAST(NULL AS SIGNED) AS data_id,
+        CAST(NULL AS SIGNED) AS orderVersion,
+        CAST(NULL AS CHAR) AS control_name,
+        CAST(NULL AS CHAR) AS operator_result,
+        CAST(NULL AS CHAR) AS font_color,
+        CAST(NULL AS CHAR) AS browser,
+        plat_form, system_name,
+        log_content, log_remark, log_date
+    </sql>
+
+    <!-- systemlog 列：有 browser，无 action 全填 NULL，无模块/菜单/单据/控件 全填 NULL -->
+    <sql id="systemLogColumns">
+        id, subject_id, subject_name,
+        CAST(NULL AS CHAR) AS actionName,
+        CAST(NULL AS CHAR) AS actionPath,
+        CAST(NULL AS CHAR) AS actionTypeTitle,
+        login_user_id, login_user_name, login_avater, login_user_number,
+        login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
+        login_user_job_id, login_user_job_name,
+        mock_flag, mock_user_id, mock_user_name, mock_user_avater, mock_user_number,
+        ip,
+        CAST(NULL AS SIGNED) AS module_id,
+        CAST(NULL AS CHAR) AS module_name,
+        CAST(NULL AS CHAR) AS order_id,
+        CAST(NULL AS SIGNED) AS menu_id,
+        CAST(NULL AS CHAR) AS menu_name,
+        CAST(NULL AS SIGNED) AS data_id,
+        CAST(NULL AS SIGNED) AS orderVersion,
+        CAST(NULL AS CHAR) AS control_name,
+        CAST(NULL AS CHAR) AS operator_result,
+        CAST(NULL AS CHAR) AS font_color,
+        browser, plat_form, system_name,
+        log_content, log_remark, log_date
+    </sql>
+
+    <!-- 公共 WHERE 条件（注意：messagelog/systemlog 没有 order_id/module_name，所以在 UNION 场景这些列其实是 NULL，
+         但如果是单个 controllog 查询则是有效的。这里保留原有逻辑，避免破坏单表 controllog 的按单号/模块搜索） -->
     <sql id="commonWhereCondition">
         WHERE
             (
@@ -70,43 +123,73 @@
         ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
     </sql>
 
+    <!-- WHERE 条件 - controllog 专用（有 module_id、order_id、menu_id、data_id 等字段） -->
+    <sql id="controllogWhereCondition">
+        WHERE
+            (
+                <if test="keyWord == null or keyWord == ''">1=1</if>
+                <if test="keyWord != null and keyWord != ''">
+                    log_content LIKE CONCAT('%', #{keyWord}, '%')
+                    OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
+                    OR order_id LIKE CONCAT('%', #{keyWord}, '%')
+                    OR module_name LIKE CONCAT('%', #{keyWord}, '%')
+                </if>
+            )
+            AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
+        ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+    </sql>
+
+    <!-- WHERE 条件 - messagelog / systemlog 专用（去除 order_id 和 module_name 筛选，因为它们无此列或值为 NULL） -->
+    <sql id="baseLogWhereCondition">
+        WHERE
+            (
+                <if test="keyWord == null or keyWord == ''">1=1</if>
+                <if test="keyWord != null and keyWord != ''">
+                    log_content LIKE CONCAT('%', #{keyWord}, '%')
+                    OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
+                </if>
+            )
+            AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
+        ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+    </sql>
+
     <select id="queryPageListWithMultiTable" resultMap="BaseResultMap">
         SELECT res.* FROM (
             <choose>
                 <when test="logType == 'messagelog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    (SELECT <include refid="messageLogColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    <include refid="commonWhereCondition"/>)
+                    <include refid="baseLogWhereCondition"/>)
                 </when>
 
                 <when test="logType == 'controllog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    (SELECT <include refid="controlLogColumns"/>, 'control_log' as log_type
                     FROM sys_monitor_controllog
-                    <include refid="commonWhereCondition"/>)
+                    <include refid="controllogWhereCondition"/>)
                 </when>
 
                 <when test="logType == 'systemlog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    (SELECT <include refid="systemLogColumns"/>, 'system_log' as log_type
                     FROM sys_monitor_systemlog
-                    <include refid="commonWhereCondition"/>)
+                    <include refid="baseLogWhereCondition"/>)
                 </when>
 
                 <otherwise>
-                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    (SELECT <include refid="messageLogColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    <include refid="commonWhereCondition"/>)
+                    <include refid="baseLogWhereCondition"/>)
 
                     UNION ALL
 
-                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    (SELECT <include refid="controlLogColumns"/>, 'control_log' as log_type
                     FROM sys_monitor_controllog
-                    <include refid="commonWhereCondition"/>)
+                    <include refid="controllogWhereCondition"/>)
 
                     UNION ALL
 
-                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    (SELECT <include refid="systemLogColumns"/>, 'system_log' as log_type
                     FROM sys_monitor_systemlog
-                    <include refid="commonWhereCondition"/>)
+                    <include refid="baseLogWhereCondition"/>)
                 </otherwise>
             </choose>
         ) res
@@ -114,78 +197,80 @@
         LIMIT #{pageSize}
     </select>
 
+    <!-- 按 moduleId + orderId 查询：仅 controllog 有效，其它表均无对应数据列 -->
     <select id="queryByModuleIdAndOrderId" resultMap="BaseResultMap">
         SELECT res.* FROM (
             <choose>
                 <when test="logType == 'messagelog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    (SELECT <include refid="messageLogColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    WHERE module_id = #{moduleId} AND order_id = #{orderId}
+                    WHERE 1 = 0
                     ORDER BY log_date DESC, id DESC)
                 </when>
                 <when test="logType == 'controllog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    (SELECT <include refid="controlLogColumns"/>, 'control_log' as log_type
                     FROM sys_monitor_controllog
                     WHERE module_id = #{moduleId} AND order_id = #{orderId}
                     ORDER BY log_date DESC, id DESC)
                 </when>
                 <when test="logType == 'systemlog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    (SELECT <include refid="systemLogColumns"/>, 'system_log' as log_type
                     FROM sys_monitor_systemlog
-                    WHERE module_id = #{moduleId} AND order_id = #{orderId}
+                    WHERE 1 = 0
                     ORDER BY log_date DESC, id DESC)
                 </when>
                 <otherwise>
-                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    (SELECT <include refid="messageLogColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    WHERE module_id = #{moduleId} AND order_id = #{orderId})
+                    WHERE 1 = 0)
                     UNION ALL
-                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    (SELECT <include refid="controlLogColumns"/>, 'control_log' as log_type
                     FROM sys_monitor_controllog
                     WHERE module_id = #{moduleId} AND order_id = #{orderId})
                     UNION ALL
-                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    (SELECT <include refid="systemLogColumns"/>, 'system_log' as log_type
                     FROM sys_monitor_systemlog
-                    WHERE module_id = #{moduleId} AND order_id = #{orderId})
+                    WHERE 1 = 0)
                 </otherwise>
             </choose>
         ) res
         ORDER BY res.log_date DESC, res.id DESC
     </select>
 
+    <!-- 按 menuId + dataId 查询：仅 controllog 有意义，其它表均无 menu_id/data_id 列 -->
     <select id="queryByMenuIdAndDataId" resultMap="BaseResultMap">
         SELECT res.* FROM (
             <choose>
                 <when test="logType == 'messagelog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    (SELECT <include refid="messageLogColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    WHERE menu_id = #{menuId} AND data_id = #{dataId}
+                    WHERE 1 = 0
                     ORDER BY log_date DESC, id DESC LIMIT 1)
                 </when>
                 <when test="logType == 'controllog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    (SELECT <include refid="controlLogColumns"/>, 'control_log' as log_type
                     FROM sys_monitor_controllog
                     WHERE menu_id = #{menuId} AND data_id = #{dataId}
                     ORDER BY log_date DESC, id DESC LIMIT 1)
                 </when>
                 <when test="logType == 'systemlog'">
-                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    (SELECT <include refid="systemLogColumns"/>, 'system_log' as log_type
                     FROM sys_monitor_systemlog
-                    WHERE menu_id = #{menuId} AND data_id = #{dataId}
+                    WHERE 1 = 0
                     ORDER BY log_date DESC, id DESC LIMIT 1)
                 </when>
                 <otherwise>
-                    (SELECT <include refid="commonSelectColumns"/>, 'message_log' as log_type
+                    (SELECT <include refid="messageLogColumns"/>, 'message_log' as log_type
                     FROM sys_monitor_messagelog
-                    WHERE menu_id = #{menuId} AND data_id = #{dataId})
+                    WHERE 1 = 0)
                     UNION ALL
-                    (SELECT <include refid="commonSelectColumns"/>, 'control_log' as log_type
+                    (SELECT <include refid="controlLogColumns"/>, 'control_log' as log_type
                     FROM sys_monitor_controllog
                     WHERE menu_id = #{menuId} AND data_id = #{dataId})
                     UNION ALL
-                    (SELECT <include refid="commonSelectColumns"/>, 'system_log' as log_type
+                    (SELECT <include refid="systemLogColumns"/>, 'system_log' as log_type
                     FROM sys_monitor_systemlog
-                    WHERE menu_id = #{menuId} AND data_id = #{dataId})
+                    WHERE 1 = 0)
                 </otherwise>
             </choose>
         ) res

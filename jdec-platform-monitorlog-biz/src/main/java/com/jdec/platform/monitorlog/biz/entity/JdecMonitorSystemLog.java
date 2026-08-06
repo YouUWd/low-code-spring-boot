@@ -1,5 +1,6 @@
 package com.jdec.platform.monitorlog.biz.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serial;
@@ -13,4 +14,8 @@ import lombok.EqualsAndHashCode;
 public class JdecMonitorSystemLog extends JdecMonitorLogBase {
 
     @Serial private static final long serialVersionUID = 1L;
+
+    @Schema(description = "浏览器信息;浏览器信息")
+    @TableField("browser")
+    private String browser;
 }

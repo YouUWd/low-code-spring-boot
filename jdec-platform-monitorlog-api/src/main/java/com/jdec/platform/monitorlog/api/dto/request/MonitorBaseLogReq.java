@@ -57,10 +57,12 @@ public class MonitorBaseLogReq {
     @NotBlank(message = "登录人部门名称不能为空")
     private String loginUserDeptName;
 
-    @Schema(description = "登录人岗位ID;多个ID，用逗号分割")
+    @Schema(description = "登录人岗位ID;多个ID，用逗号分割", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "登录人岗位ID不能为空")
     private String loginUserJobId;
 
-    @Schema(description = "登录人岗位名称;多个名称，用逗号分割")
+    @Schema(description = "登录人岗位名称;多个名称，用逗号分割", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "登录人岗位名称不能为空")
     private String loginUserJobName;
 
     @Schema(description = "是否mock标记：0，否；1 是")
@@ -127,8 +129,7 @@ public class MonitorBaseLogReq {
     @Schema(description = "系统名称")
     private String systemName = "unknown";
 
-    @Schema(description = "日志内容", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "日志内容不能为空")
+    @Schema(description = "日志内容")
     private String logContent;
 
     @Schema(description = "日志备注")
