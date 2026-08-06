@@ -15,4 +15,8 @@ public class ProjectProperties {
      * "school", "config_center"）
      */
     private Map<String, String> datasourceMapping = new HashMap<>();
+
+    public String getDataSourceKey(String projectNo) {
+        return datasourceMapping.get(projectNo);
+    }
 }

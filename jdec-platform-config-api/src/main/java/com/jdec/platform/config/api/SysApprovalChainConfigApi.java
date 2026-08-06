@@ -25,5 +25,5 @@ public interface SysApprovalChainConfigApi {
     void delete(Long id);
 
     /** 查询审批链配置详情（返回同模块同类型的所有配置） */
-    ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId);
+    ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId, Long approvalTypeId);
 }
