@@ -228,6 +228,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return resultMap;
     }
 
+    // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
     @Override
     public List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq) {
         List<ApprovalBusiness> toDoList = new ArrayList<>();
@@ -329,6 +330,52 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
         }
         return respList;
+    }
+
+    // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
+    @Override
+    public Long getBusinessNextId(ApprovalProcessReq approvalProcessReq) {
+        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
+        LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
+        todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
+        todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
+        todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
+        todoWrapper.ne(ApprovalBusiness::getCurrentStep, 0);
+        todoWrapper.and(
+                wrapper ->
+                        wrapper.nested(
+                                        wp1 ->
+                                                wp1.eq(
+                                                                ApprovalBusiness::getApproverId,
+                                                                approvalProcessReq.getApplicantId())
+                                                        .eq(
+                                                                ApprovalBusiness::getApproveRoleId,
+                                                                approvalProcessReq.getRoleId()))
+                                .or()
+                                .nested(
+                                        wp2 ->
+                                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                                        .eq(
+                                                                ApprovalBusiness::getApproveRoleId,
+                                                                approvalProcessReq.getRoleId())
+                                                        .apply(
+                                                                "NOT FIND_IN_SET({0}, IFNULL(approver_id_list, ''))",
+                                                                approvalProcessReq
+                                                                        .getApplicantId())));
+        List<ApprovalBusiness> todoList = approvalBusinessMapper.selectList(todoWrapper);
+        List<ApprovalBusiness> submitList = new ArrayList<>();
+        if (checkRight(approvalProcessDTO)) {
+            todoWrapper = new LambdaQueryWrapper<>();
+            todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
+            todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
+            todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
+            todoWrapper.isNull(ApprovalBusiness::getApproverId);
+            todoWrapper.eq(ApprovalBusiness::getCreatedBy, approvalProcessReq.getApplicantId());
+            todoWrapper.eq(ApprovalBusiness::getCurrentStep, 0);
+            submitList = approvalBusinessMapper.selectList(todoWrapper);
+        }
+        todoList.addAll(submitList);
+        return !todoList.isEmpty() ? todoList.getFirst().getRecordId() : 0;
     }
 
     // 查询单据审批操作日志---------------------------------------------------------------------

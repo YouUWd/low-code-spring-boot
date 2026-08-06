@@ -34,6 +34,12 @@ public class ApprovalController {
         return ApiResponse.success(approvalService.getBusinessList(req));
     }
 
+    @PostMapping("/BusinessNextId")
+    @Operation(summary = "查询待办下一个单据ID", description = "查询待办下一个单据ID")
+    public ApiResponse<Long> BusinessNextId(@RequestBody ApprovalProcessReq req) {
+        return ApiResponse.success(approvalService.getBusinessNextId(req));
+    }
+
     @PostMapping("/detail")
     @Operation(summary = "查询单据数据", description = "查询单据数据")
     public ApiResponse<Map<String, Object>> getApprovalDetail(@RequestBody ApprovalProcessReq req) {
