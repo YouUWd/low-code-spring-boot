@@ -92,10 +92,13 @@ public class MonitorLogPageListResp {
     @Schema(description = "菜单ID")
     private Long menuId;
 
-    @Schema(description = "菜单名称")
-    private String menuName;
+    @Schema(description = "菜单参数;菜单配置中的参数内容")
+    private String menuParam;
 
-    @Schema(description = "单据ID")
+    @Schema(description = "超链接文本")
+    private String hrefName;
+
+    @Schema(description = "数据表记录ID")
     private Long dataId;
 
     @Schema(description = "单据版本号")

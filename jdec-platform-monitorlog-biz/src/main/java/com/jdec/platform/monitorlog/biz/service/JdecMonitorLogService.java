@@ -400,7 +400,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         String type = StringUtils.hasText(logType) ? logType : "operationLog";
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
-        List<JdecMonitorLogBase> logList =
+        List<JdecMonitorControlLog> logList =
                 jdecMonitorMultiTableMapper.queryByModuleIdAndOrderId(moduleId, orderId, type);
         DataSourceContextHolder.clear();
         return logList.stream()
@@ -417,7 +417,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         String type = "operationLog";
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
-        List<JdecMonitorLogBase> logList =
+        List<JdecMonitorControlLog> logList =
                 jdecMonitorMultiTableMapper.queryByMenuIdAndDataId(menuId, dataId, type);
         DataSourceContextHolder.clear();
         if (logList.isEmpty()) {
@@ -434,7 +434,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
-        List<JdecMonitorLogBase> logList =
+        List<JdecMonitorControlLog> logList =
                 jdecMonitorMultiTableMapper.querySystemControlLogByModuleIdAndDataId(
                         moduleId, dataId);
         DataSourceContextHolder.clear();
