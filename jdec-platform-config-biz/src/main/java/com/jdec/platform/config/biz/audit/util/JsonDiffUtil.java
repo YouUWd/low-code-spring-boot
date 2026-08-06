@@ -347,6 +347,8 @@ public class JsonDiffUtil {
 
             if (auditField != null && fieldType == FieldType.DICT) {
                 metadata.dictCategoryAlias = auditField.dictCategoryAlias();
+                // 指定了nameField时，使用该字段映射展示值，否则默认用label
+                metadata.nameField = auditField.nameField();
             }
 
             map.put(field.getName(), metadata);
@@ -545,9 +547,10 @@ public class JsonDiffUtil {
                 return value;
             }
 
-            // 查询字典配置获取中文label
+            // 查询字典配置获取展示字段值（默认label，指定nameField则用该字段）
             Map<String, String> labelMap =
-                    dictFieldQueryService.queryLabelsByValues(metadata.dictCategoryAlias, values);
+                    dictFieldQueryService.queryLabelsByValues(
+                            metadata.dictCategoryAlias, values, metadata.nameField);
 
             // 如果只有一个值，返回单个label
             if (values.size() == 1) {

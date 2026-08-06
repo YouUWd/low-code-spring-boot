@@ -138,7 +138,11 @@ public class ApprovalChainConfigSaveReq {
         private Long buttonId;
 
         @Schema(description = "日志对应图标")
-        @AuditField(name = "操作日志图标")
+        @AuditField(
+                name = "操作日志图标",
+                type = FieldType.DICT,
+                dictCategoryAlias = "logStateIcon",
+                nameField = "extra")
         private String icon;
 
         @Schema(description = "日志对应状态描述")

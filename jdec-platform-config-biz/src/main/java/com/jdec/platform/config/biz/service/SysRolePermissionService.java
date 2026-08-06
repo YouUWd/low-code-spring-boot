@@ -21,7 +21,9 @@ import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.ChangeType;
+import com.jdec.platform.shared.enums.EffectiveTypeEnum;
 import java.sql.Connection;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -747,6 +749,12 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     @Override
     public List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(
             Long roleId, Integer category) {
+        // 0. 根据角色有效期更新已失效的关联状态，若角色已失效则直接返回空集合
+        updateExpiredRelationsByRoleId(roleId);
+        if (isRoleExpired(roleId)) {
+            return Collections.emptyList();
+        }
+
         // 1. 直接查询该角色已分配的模块字段权限配置列表
         LambdaQueryWrapper<SysRoleModuleFieldPermission> query = Wrappers.lambdaQuery();
         query.eq(SysRoleModuleFieldPermission::getRoleId, roleId);
@@ -790,6 +798,130 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                             return resp;
                         })
                 .toList();
+    }
+
+    /**
+     * 根据角色ID更新已时效的关联状态
+     *
+     * <p>检查该角色的所有角色-用户和角色-主体关联，如果时效期已过，将状态置为1（失效）
+     *
+     * @param roleId 角色ID
+     */
+    private void updateExpiredRelationsByRoleId(Long roleId) {
+        LocalDate today = LocalDate.now();
+
+        // 1. 更新用户关联表中已时效的记录
+        List<SysRoleUser> validRoleUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getRoleId, roleId)
+                                .eq(SysRoleUser::getStatus, 0));
+        List<Long> expiredUserRelationIds = new ArrayList<>();
+        for (SysRoleUser roleUser : validRoleUsers) {
+            if (!isEffectiveDateValid(
+                    roleUser.getEffectiveType(),
+                    roleUser.getEffectiveStartDate(),
+                    roleUser.getEffectiveEndDate(),
+                    today)) {
+                expiredUserRelationIds.add(roleUser.getId());
+            }
+        }
+        if (!expiredUserRelationIds.isEmpty()) {
+            SysRoleUser updateEntity = new SysRoleUser();
+            updateEntity.setStatus(1);
+            sysRoleUserMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleUser>lambdaQuery()
+                            .in(SysRoleUser::getId, expiredUserRelationIds));
+        }
+
+        // 2. 更新主体关联表中已时效的记录
+        List<SysRoleSubject> validRoleSubjects =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getRoleId, roleId)
+                                .eq(SysRoleSubject::getStatus, 0));
+        List<Long> expiredSubjectRelationIds = new ArrayList<>();
+        for (SysRoleSubject roleSubject : validRoleSubjects) {
+            if (!isEffectiveDateValid(
+                    roleSubject.getEffectiveType(),
+                    roleSubject.getEffectiveStartDate(),
+                    roleSubject.getEffectiveEndDate(),
+                    today)) {
+                expiredSubjectRelationIds.add(roleSubject.getId());
+            }
+        }
+        if (!expiredSubjectRelationIds.isEmpty()) {
+            SysRoleSubject updateEntity = new SysRoleSubject();
+            updateEntity.setStatus(1);
+            sysRoleSubjectMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleSubject>lambdaQuery()
+                            .in(SysRoleSubject::getId, expiredSubjectRelationIds));
+        }
+    }
+
+    /**
+     * 判断角色是否已失效
+     *
+     * <p>角色在用户关联和主体关联中均无有效（status=0）记录时视为失效
+     *
+     * @param roleId 角色ID
+     * @return true-角色已失效
+     */
+    private boolean isRoleExpired(Long roleId) {
+        long validUserCount =
+                sysRoleUserMapper.selectCount(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getRoleId, roleId)
+                                .eq(SysRoleUser::getStatus, 0));
+        long validSubjectCount =
+                sysRoleSubjectMapper.selectCount(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getRoleId, roleId)
+                                .eq(SysRoleSubject::getStatus, 0));
+        return validUserCount == 0 && validSubjectCount == 0;
+    }
+
+    /**
+     * 校验时间有效期
+     *
+     * @param effectiveType 有效期类型：1-永久，2-自定义
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param today 当前日期
+     * @return true-有效，false-无效
+     */
+    private boolean isEffectiveDateValid(
+            Integer effectiveType, LocalDate startDate, LocalDate endDate, LocalDate today) {
+        // 永久有效
+        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
+            return true;
+        }
+
+        // 自定义时间
+        if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
+            // 开始时间和结束时间都为空，视为永久有效
+            if (startDate == null && endDate == null) {
+                return true;
+            }
+
+            // 只有开始时间，检查是否已开始
+            if (startDate != null && endDate == null) {
+                return !today.isBefore(startDate);
+            }
+
+            // 只有结束时间，检查是否未结束
+            if (startDate == null && endDate != null) {
+                return !today.isAfter(endDate);
+            }
+
+            // 开始时间和结束时间都有，检查是否在范围内
+            return !today.isBefore(startDate) && !today.isAfter(endDate);
+        }
+
+        // 其他情况视为无效
+        return false;
     }
 
     @Override
