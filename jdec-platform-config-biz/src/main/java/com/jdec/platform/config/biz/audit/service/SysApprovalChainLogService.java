@@ -1,32 +1,22 @@
 package com.jdec.platform.config.biz.audit.service;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq.ButtonConfig;
-import com.jdec.platform.config.biz.audit.dto.AuditLogContent;
-import com.jdec.platform.config.biz.audit.dto.AuditLogRequest;
+import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysApprovalChainConfig;
 import com.jdec.platform.config.biz.entity.SysApprovalChainConfigButton;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
-import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.TokenContext;
-import com.jdec.platform.shared.security.SecurityUtils;
-import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.client.RestTemplate;
 
 /**
  * 审批链配置审计日志服务
@@ -75,15 +65,12 @@ public class SysApprovalChainLogService {
 
     private final JsonDiffUtil jsonDiffUtil;
     private final SysDataSnapshotService snapshotService;
-    private final RestTemplate restTemplate;
+    private final AuditLogSendService auditLogSendService;
 
-    @Value("${audit.monitor-log-url}")
-    private String monitorLogUrl;
-
-    private static final String MODULE = "系统设置";
     private static final String SUB_MODULE = "审批链步骤";
     private static final String BUTTON_SUB_MODULE = "审批操作配置";
     private static final String TABLE_NAME = "sys_approval_chain_config";
+    private static final String MODULE = "系统设置";
 
     // ==================== 公开方法 ====================
 
@@ -620,103 +607,43 @@ public class SysApprovalChainLogService {
             remarkMap.put("change", moduleActions);
             String remark = JSONUtil.toJsonStr(remarkMap);
 
-            // 构建 logContent
+            // 构建 controlName（单据操作名称）
             String controlName = operation + "了" + SUB_MODULE;
-            String hrefUrl = SecurityUtils.getHrefUrl();
 
-            AuditLogContent logContent =
-                    AuditLogContent.builder()
+            // 构建发送上下文，其余信息（用户/角色/主体/菜单/模块/IP等）由 AuditLogSendService 自动补全
+            AuditLogSendContext context =
+                    AuditLogSendContext.builder()
                             .module(MODULE)
-                            .orderId(SUB_MODULE)
-                            .hrefUrl(hrefUrl != null ? hrefUrl : "")
+                            .subModule(SUB_MODULE)
                             .controlName(controlName)
-                            .build();
-
-            // 判断是否模拟登录
-            boolean isMockLogin = SecurityUtils.isMockLogin();
-            Long currentUserId = AppContext.getUserId();
-            Long currentRoleId = SecurityUtils.getRoleId();
-
-            AuditLogRequest request =
-                    AuditLogRequest.builder()
-                            .logType("operation-log")
-                            .subjectId(AppContext.getSubjectId())
-                            .loginUserId(
-                                    isMockLogin ? SecurityUtils.getRealUserId() : currentUserId)
-                            .loginRoleId(isMockLogin ? null : currentRoleId)
-                            .mockFlag(isMockLogin ? 1 : 0)
-                            .mockUserId(isMockLogin ? SecurityUtils.getMockUserId() : null)
-                            .mockRoleId(isMockLogin ? currentRoleId : null)
-                            .ip(RequestContextUtils.getClientIp())
-                            .browser(RequestContextUtils.getBrowser())
-                            .platForm(RequestContextUtils.getPlatform())
-                            .logContent(JSONUtil.toJsonStr(logContent))
                             .logRemark(remark)
-                            .logDate(DateUtil.now())
                             .build();
 
-            // 在事务提交前发送
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override
-                            public void beforeCommit(boolean readOnly) {
-                                doSendHttpLog(request, operation);
-                            }
-
-                            @Override
-                            public void afterCompletion(int status) {
-                                if (status == STATUS_ROLLED_BACK) {
-                                    log.info("事务已回滚，跳过审批链配置审计日志: operation={}", operation);
-                                }
-                            }
-                        });
-            } else {
-                doSendHttpLog(request, operation);
-            }
+            sendAuditLogRequest(context);
         } catch (Exception e) {
             log.error("审批链配置审计日志发送失败: operation={}", operation, e);
         }
     }
 
-    /** 实际发送 HTTP 请求 */
-    private void doSendHttpLog(AuditLogRequest request, String operation) {
-        try {
-            log.info("发送审批链配置审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
+    /** 在事务提交前发送审计日志（非阻塞，失败不影响业务事务） */
+    private void sendAuditLogRequest(AuditLogSendContext context) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void beforeCommit(boolean readOnly) {
+                            auditLogSendService.sendAuditLog(context);
+                        }
 
-            String url = monitorLogUrl;
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            String token = TokenContext.getToken();
-            if (token != null) {
-                headers.set("Authorization", "Bearer " + token);
-            }
-            String projectNo = AppContext.getProjectNo();
-            if (projectNo != null) {
-                headers.set("X-Project-No", projectNo);
-            }
-            Long subjectId = AppContext.getSubjectId();
-            if (subjectId != null) {
-                headers.set("X-Subject-Id", String.valueOf(subjectId));
-            }
-
-            //            HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request,
-            // headers);
-            //            ResponseEntity<String> response =
-            //                    restTemplate.postForEntity(url, httpRequest, String.class);
-            //
-            //            if (!response.getStatusCode().is2xxSuccessful()) {
-            //                log.error(
-            //                        "审批链配置审计日志发送失败，HTTP状态码: {}, operation={}",
-            //                        response.getStatusCode(),
-            //                        operation);
-            //            }
-        } catch (Exception e) {
-            log.error("审批链配置审计日志发送异常: operation={}", operation, e);
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                throw e;
-            }
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_ROLLED_BACK) {
+                                log.info("事务已回滚，跳过审批链配置审计日志");
+                            }
+                        }
+                    });
+        } else {
+            auditLogSendService.sendAuditLog(context);
         }
     }
 }
