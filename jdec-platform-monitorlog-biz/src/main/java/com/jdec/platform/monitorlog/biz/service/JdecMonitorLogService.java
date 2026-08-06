@@ -6,8 +6,7 @@ import com.jdec.platform.monitorlog.api.dto.request.*;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.monitorlog.biz.entity.*;
 import com.jdec.platform.monitorlog.biz.mapper.*;
-import com.jdec.platform.shared.datasource.DataSource;
-import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.datasource.*;
 import com.jdec.platform.shared.model.PageResult;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +17,7 @@ import org.springframework.util.StringUtils;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.MonitorLog)
+// @DataSource(DataSourceConstants.MonitorLog)
 public class JdecMonitorLogService implements MonitorLogApi {
 
     private final JdecMonitorMessageLogMapper jdecMonitorMessageLogMapper;
@@ -29,11 +28,16 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
     private final JdecMonitorMultiTableMapper jdecMonitorMultiTableMapper;
 
-    @Override
-    public PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq request) {
-        String keyWord = StringUtils.hasText(request.getKeyWord()) ? request.getKeyWord() : "";
-        String logType = StringUtils.hasText(request.getLogType()) ? request.getLogType() : "";
+    private final ProjectProperties projectProperties;
 
+    @Override
+    public PageResult<MonitorLogPageListResp> queryPageList(
+            MonitorLogPageListReq request, String projectNo) {
+        String keyWord = StringUtils.hasText(request.getKeyWord()) ? request.getKeyWord() : "";
+        String logType =
+                StringUtils.hasText(request.getLogType()) ? request.getLogType() : "controllog";
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
         List<JdecMonitorLogBase> logList =
                 jdecMonitorMultiTableMapper.queryPageListWithMultiTable(
                         request.getLastTime(),
@@ -41,6 +45,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
                         request.getPageSize(),
                         keyWord,
                         logType);
+        DataSourceContextHolder.clear();
 
         List<MonitorLogPageListResp> respList =
                 logList.stream()
@@ -60,12 +65,14 @@ public class JdecMonitorLogService implements MonitorLogApi {
      * @param req 监控日志请求参数
      */
     @Override
-    public void recordOrderRunLog(MonitorControlLogReq req) {
+    public void recordOrderRunLog(MonitorControlLogReq req, String projectNo) {
         validateControlLogReq(req);
         JdecMonitorControlLog logItem = BeanUtil.toBean(req, JdecMonitorControlLog.class);
         applyDefaults(logItem);
-
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
         jdecMonitorControlLogMapper.insert(logItem);
+        DataSourceContextHolder.clear();
     }
 
     /**
@@ -74,12 +81,15 @@ public class JdecMonitorLogService implements MonitorLogApi {
      * @param req 监控日志请求参数
      */
     @Override
-    public void recordMessageLog(MonitorMessageLogReq req) {
+    public void recordMessageLog(MonitorMessageLogReq req, String projectNo) {
         validateMessageLogReq(req);
         JdecMonitorMessageLog logItem = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
         applyDefaults(logItem);
 
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
         jdecMonitorMessageLogMapper.insert(logItem);
+        DataSourceContextHolder.clear();
     }
 
     /**
@@ -88,12 +98,15 @@ public class JdecMonitorLogService implements MonitorLogApi {
      * @param req 监控日志请求参数
      */
     @Override
-    public void recordSystemControlLog(MonitorSystemLogReq req) {
+    public void recordSystemControlLog(MonitorSystemLogReq req, String projectNo) {
         validateSystemLogReq(req);
         JdecMonitorSystemLog logItem = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         applyDefaults(logItem);
 
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
         jdecMonitorSystemLogMapper.insert(logItem);
+        DataSourceContextHolder.clear();
     }
 
     /**
@@ -102,7 +115,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
      * @param req 监控日志请求参数
      */
     @Override
-    public void recordSystemNavLog(MonitorSystemNavLogReq req) {
+    public void recordSystemNavLog(MonitorSystemNavLogReq req, String projectNo) {
         validateSystemNavLogReq(req);
         JdecMonitorSystemLog logItem = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         applyDefaults(logItem);
@@ -134,7 +147,10 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
          */
 
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
         jdecMonitorSystemLogMapper.insert(logItem);
+        DataSourceContextHolder.clear();
     }
 
     /**
@@ -341,26 +357,37 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
     @Override
     public List<MonitorLogPageListResp> queryByModuleIdAndOrderId(
-            Long moduleId, String orderId, String logType) {
+            Long moduleId, String orderId, String logType, String projectNo) {
         if (moduleId == null || !StringUtils.hasText(orderId)) {
             throw new IllegalArgumentException("moduleId和orderId不能为空");
         }
-        String type = StringUtils.hasText(logType) ? logType : "";
+        String type = StringUtils.hasText(logType) ? logType : "controllog";
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
         List<JdecMonitorLogBase> logList =
                 jdecMonitorMultiTableMapper.queryByModuleIdAndOrderId(moduleId, orderId, type);
+        DataSourceContextHolder.clear();
         return logList.stream()
                 .map(item -> BeanUtil.copyProperties(item, MonitorLogPageListResp.class))
                 .toList();
     }
 
     @Override
-    public MonitorLogPageListResp queryByMenuIdAndDataId(Long menuId, Long dataId) {
+    public MonitorLogPageListResp queryByMenuIdAndDataId(
+            Long menuId, Long dataId, String projectNo) {
         if (menuId == null || dataId == null) {
             throw new IllegalArgumentException("menuId和dataId不能为空");
         }
         String type = "controllog";
+        String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
+        DataSourceContextHolder.set(dataSourceKey);
         List<JdecMonitorLogBase> logList =
                 jdecMonitorMultiTableMapper.queryByMenuIdAndDataId(menuId, dataId, type);
+        DataSourceContextHolder.clear();
+        if (logList.isEmpty()) {
+            return null;
+        }
+        BeanUtil.copyProperties(logList.getFirst(), MonitorLogPageListResp.class);
         if (logList.isEmpty()) {
             return null;
         }

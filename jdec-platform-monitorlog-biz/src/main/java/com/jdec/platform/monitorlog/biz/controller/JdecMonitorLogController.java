@@ -26,7 +26,10 @@ public class JdecMonitorLogController {
     @PostMapping("/queryPage")
     @Operation(summary = "查询监控日志列表", description = "根据时间范围、日志类型、关键词查询监控日志")
     public ApiResponse<PageResult<MonitorLogPageListResp>> query(
-            @Valid @RequestBody MonitorLogPageListReq request) {
+            @Valid @RequestBody MonitorLogPageListReq request,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
         if (request.getPageNum() == null || request.getPageNum() < 1) {
             request.setPageNum(1L);
         }
@@ -34,7 +37,8 @@ public class JdecMonitorLogController {
             request.setPageSize(10L);
         }
 
-        PageResult<MonitorLogPageListResp> records = jdecMonitorLogService.queryPageList(request);
+        PageResult<MonitorLogPageListResp> records =
+                jdecMonitorLogService.queryPageList(request, projectNo);
         return ApiResponse.success(records);
     }
 
@@ -45,8 +49,12 @@ public class JdecMonitorLogController {
                     "记录系统日志，如系统登录、退出等操作"
                             + "     * logContent 为日志详细内容"
                             + "     * logRemark 为日志备注(JSON格式)")
-    public ApiResponse<Void> addSystemLog(@Valid @RequestBody MonitorSystemLogReq request) {
-        jdecMonitorLogService.recordSystemControlLog(request);
+    public ApiResponse<Void> addSystemLog(
+            @Valid @RequestBody MonitorSystemLogReq request,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
+        jdecMonitorLogService.recordSystemControlLog(request, projectNo);
         return ApiResponse.success();
     }
 
@@ -57,8 +65,12 @@ public class JdecMonitorLogController {
                     "记录控制日志/单据操作日志"
                             + "     * logContent 为日志详细内容"
                             + "     * logRemark 为备注信息(自定义json，后台不做解析)")
-    public ApiResponse<Void> addControlLog(@Valid @RequestBody MonitorControlLogReq request) {
-        jdecMonitorLogService.recordOrderRunLog(request);
+    public ApiResponse<Void> addControlLog(
+            @Valid @RequestBody MonitorControlLogReq request,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
+        jdecMonitorLogService.recordOrderRunLog(request, projectNo);
         return ApiResponse.success();
     }
 
@@ -79,8 +91,12 @@ public class JdecMonitorLogController {
                             + "            \"messageType\":\"操作类型/消息类型\","
                             + "            \"messageReceivers\":\"消息接收人[userid1,userid2,...]\""
                             + "        }")
-    public ApiResponse<Void> addMessageLog(@Valid @RequestBody MonitorMessageLogReq request) {
-        jdecMonitorLogService.recordMessageLog(request);
+    public ApiResponse<Void> addMessageLog(
+            @Valid @RequestBody MonitorMessageLogReq request,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
+        jdecMonitorLogService.recordMessageLog(request, projectNo);
         return ApiResponse.success();
     }
 
@@ -93,9 +109,13 @@ public class JdecMonitorLogController {
             @Parameter(description = "单据编号", required = true) @RequestParam String orderId,
             @Parameter(description = "日志类型(messagelog/controllog/systemlog，不传则查全表)")
                     @RequestParam(required = false)
-                    String logType) {
+                    String logType,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
         List<MonitorLogPageListResp> result =
-                jdecMonitorLogService.queryByModuleIdAndOrderId(moduleId, orderId, logType);
+                jdecMonitorLogService.queryByModuleIdAndOrderId(
+                        moduleId, orderId, logType, projectNo);
         return ApiResponse.success(result);
     }
 
@@ -105,9 +125,12 @@ public class JdecMonitorLogController {
             description = "传入menuId+dataId查询单条最新日志记录；可选logType指定日志类型")
     public ApiResponse<MonitorLogPageListResp> queryByMenuIdAndDataId(
             @Parameter(description = "菜单ID", required = true) @RequestParam Long menuId,
-            @Parameter(description = "单据ID", required = true) @RequestParam Long dataId) {
+            @Parameter(description = "单据ID", required = true) @RequestParam Long dataId,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
         MonitorLogPageListResp result =
-                jdecMonitorLogService.queryByMenuIdAndDataId(menuId, dataId);
+                jdecMonitorLogService.queryByMenuIdAndDataId(menuId, dataId, projectNo);
         return ApiResponse.success(result);
     }
 
@@ -305,7 +328,7 @@ public class JdecMonitorLogController {
                         mockFlug,
                         subjectName));
 
-        jdecMonitorLogService.recordSystemControlLog(request);
+        jdecMonitorLogService.recordSystemControlLog(request, projectNo);
         return ApiResponse.success();
     }
 
@@ -529,7 +552,7 @@ public class JdecMonitorLogController {
                         + "</a>]<span style=\"font-weight: 700; color: #2e7fed\">"
                         + controlDesc
                         + "</span></span></div></span>");
-        jdecMonitorLogService.recordSystemNavLog(request);
+        jdecMonitorLogService.recordSystemNavLog(request, projectNo);
         return ApiResponse.success();
     }
 }
