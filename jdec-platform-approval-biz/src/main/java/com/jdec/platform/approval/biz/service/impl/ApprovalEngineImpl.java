@@ -1458,6 +1458,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 查询审批步骤绑定的操作按钮------------------------------------------------------------------
     private List<Map<String, Object>> getOperationButton(
             ApprovalProcessReq approvalProcessReq, AtomicReference<Integer> canEdit) {
+        String btnType = approvalProcessReq.getButton();
+        List<Map<String, Object>> operations = new ArrayList<>();
+        if (Objects.nonNull(btnType) && (btnType.equals("change-view"))) {
+            return operations;
+        }
         Long userId = approvalProcessReq.getApplicantId();
         Long roleId = approvalProcessReq.getRoleId();
         // 查询单据当前信息
@@ -1468,13 +1473,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 .last("LIMIT 1");
         ;
         ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
-        List<Map<String, Object>> operations = new ArrayList<>();
+
         if (Objects.isNull(approvalChainBusiness)) {
             return operations;
         }
-        String btnType = approvalProcessReq.getButton();
         // 加载变更页面时显示提交按钮
-        if (Objects.nonNull(btnType) && (btnType.equals("change"))) {
+        if (Objects.nonNull(btnType) && (btnType.equals("change-change"))) {
             operations.add(
                     showButtonInfo(
                             "submit",
@@ -1605,14 +1609,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             map.put("recordId", item.getRecordId());
             map.put("versionNo", item.getVersionNo());
             map.put("statusValue", item.getStatusValue());
-            map.put("btnType", "change".equals(btnType) ? "change-view" : "");
+            map.put("btnType", btnType.contains("change") ? "change-view" : "");
             versionList.add(map);
         }
 
         int versionNo = 0;
 
         // 3. 处理 change 模式：追加一个新版本
-        if ("change".equals(btnType) && CollectionUtil.isNotEmpty(versionList)) {
+        if (btnType.contains("change") && CollectionUtil.isNotEmpty(versionList)) {
             // 过滤出 status_value = 99 的数据
             List<Map<String, Object>> sortData =
                     versionList.stream()
@@ -1625,6 +1629,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 // 取第一条
                 Map<String, Object> lastData = new HashMap<>(sortData.get(0));
                 lastData.put("id", 0);
+                lastData.put("recordId", sortData.get(0).get("recordId"));
+                lastData.put("statusValue", 1);
                 lastData.put("btnType", "change-change");
                 versionNo = versionList.size() + 1;
                 lastData.put("versionNo", versionNo);
