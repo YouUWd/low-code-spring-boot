@@ -7,7 +7,9 @@ import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Joiner;
@@ -55,6 +57,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.ReflectionUtils;
 
 @Slf4j
 @Service
@@ -1159,9 +1162,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             throw new RuntimeException(e);
         }
 
+        Map<String, Object> fillDataMap = new HashMap<>();
+        fillDataMap.put("moduleId", targetTopMenu.getModuleId());
+        fillDataMap.put("deleted", false);
+
         // 创建前先填充module_id、deleted字段值
-        createPreProcessDataFillModuleIdAndDeleted(
-                copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+        fillModuleData(
+                copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId(), fillDataMap);
 
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
         Object o =
@@ -1241,14 +1248,53 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             buttonType = ApprovalButtonType.VIEW;
         }
 
-        Long recordId;
+        Long recordId = null;
+
+        // 获取主模块信息
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        targetTopMenu.getModuleId(),
+                        FormButtonEnum.CREATE.getKey(),
+                        List.of());
 
         switch (buttonType) {
-            case CREATE -> {
+            case CREATE, CHANGE -> {
                 log.debug("当前提交为创建或变更，插入业务数据。");
+
+                if (buttonType == ApprovalButtonType.CHANGE) {
+                    // 获取变更前数据id
+                    Long oldRecordId =
+                            getDataRecordId(
+                                    moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                    approvalProcessReq.setOldRecordId(oldRecordId);
+                    log.debug("变更后提交，获取上一条已启用数据id:{}", oldRecordId);
+
+                    // 去除提交数据中的主键id,走新建数据逻辑
+                    removeModuleData(
+                            moduleSaveList,
+                            subjectId,
+                            roleId,
+                            targetTopMenu.getModuleId(),
+                            moduleFilterInfo,
+                            Set.of("id"));
+
+                    // 提交给审批链的btnType置为submit
+                    approvalOperation.setBtnType(ApprovalButtonType.SUBMIT.getKey());
+                }
+
+                Map<String, Object> fillDataMap = new HashMap<>();
+                fillDataMap.put("moduleId", targetTopMenu.getModuleId());
+                fillDataMap.put("deleted", false);
+
                 // 创建前先填充module_id、deleted字段值
-                createPreProcessDataFillModuleIdAndDeleted(
-                        moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                fillModuleData(
+                        moduleSaveList,
+                        subjectId,
+                        roleId,
+                        targetTopMenu.getModuleId(),
+                        fillDataMap);
 
                 Object primaryData =
                         createMultiModuleDataWithApproval(
@@ -1256,11 +1302,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 roleId,
                                 moduleSaveList,
                                 targetTopMenu.getModuleId(),
-                                true);
+                                false);
                 recordId = Long.parseLong(String.valueOf(primaryData));
+
+                insertSnapshot(moduleFilterInfo.getModuleInfo().getPrimaryTable(), null, recordId);
             }
-            case SUBMIT -> {
-                log.debug("当前提交为变更，插入业务数据。");
+            case SUBMIT, REJECT, PASS -> {
+                log.debug("提交表单，更新业务数据。");
                 // 深拷贝模块表单数据
                 List<ModuleSaveReq> copyModuleSaveList;
                 try {
@@ -1271,28 +1319,120 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 } catch (JsonProcessingException e) {
                     throw new RuntimeException(e);
                 }
-                // 更新上一条数据的deleted
-                editPreProcessDataUpdateDelete(
-                        moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
-                editMultiModuleData(subjectId, roleId, moduleSaveList);
 
                 // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
                 Long oldRecordId =
-                        editPreProcessDataRemoveId(
-                                copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
-                approvalProcessReq.setOldRecordId(oldRecordId);
-
-                // 创建前先填充module_id、deleted字段值
-                createPreProcessDataFillModuleIdAndDeleted(
-                        copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
-                Object primaryData =
-                        createMultiModuleDataWithApproval(
+                        removeModuleData(
+                                copyModuleSaveList,
                                 subjectId,
                                 roleId,
-                                copyModuleSaveList,
                                 targetTopMenu.getModuleId(),
-                                false);
-                recordId = Long.parseLong(String.valueOf(primaryData));
+                                moduleFilterInfo,
+                                Set.of("id"));
+                recordId = oldRecordId;
+
+                String tableName = moduleFilterInfo.getModuleInfo().getPrimaryTable();
+
+                BaseMapper primaryMapper =
+                        SpringBeanUtil.getBean(
+                                StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX,
+                                BaseMapper.class);
+
+                Object mainOldData = primaryMapper.selectById((Serializable) oldRecordId);
+
+                try {
+                    Object sourceIdObj = getField(mainOldData, "sourceId");
+                    if (Objects.nonNull(sourceIdObj)) {
+                        Long sourceId = Long.parseLong(String.valueOf(sourceIdObj));
+                        if (sourceId == -1L) {
+                            log.debug("该条业务数据实时保存过。recordId:{}", oldRecordId);
+                            // 主表查询构造条件
+                            QueryWrapper queryWrapper = Wrappers.query();
+                            queryWrapper.eq("source_id", oldRecordId);
+                            Object snapshotData = primaryMapper.selectOne(queryWrapper);
+
+                            if (Objects.nonNull(snapshotData)) {
+                                log.debug("recordId:{}对应的快照数据不为空，保存旧数据到快照记录", oldRecordId);
+
+                                //
+                                // BeanUtils.copyProperties(mainOldData , snapshotData , "id");
+                                //                                Field field =
+                                //                                        ReflectionUtils.findField(
+                                //
+                                // snapshotData.getClass(), "sourceId");
+                                //                                field.setAccessible(true);
+                                //                                ReflectionUtils.setField(field ,
+                                // snapshotData , oldRecordId);
+                                //
+                                // primaryMapper.updateById(snapshotData);
+                                approvalProcessReq.setOldRecordId(recordId);
+                            } else {
+                                log.debug("recordId:{}对应的快照数据为空，新建快照记录", oldRecordId);
+
+                                //                                insertSnapshot(tableName ,
+                                // mainOldData , oldRecordId);
+                            }
+
+                        } else {
+                            log.debug("该条业务数据未发生变化。recordId:{}", oldRecordId);
+                        }
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+
+                Map<String, Object> fillDataMap = new HashMap<>();
+                fillDataMap.put("sourceId", 0L);
+                fillModuleData(
+                        moduleSaveList,
+                        subjectId,
+                        roleId,
+                        targetTopMenu.getModuleId(),
+                        fillDataMap);
+
+                // 更新主数据
+                editMultiModuleData(subjectId, roleId, moduleSaveList);
+            }
+                // 实时保存
+            case REAL_TIME_CHANGE -> {
+                log.debug("实时保存，更新当前数据。");
+
+                recordId =
+                        getDataRecordId(
+                                moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+
+                BaseMapper primaryMapper =
+                        SpringBeanUtil.getBean(
+                                StrUtil.toCamelCase(
+                                                moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                                        + MYBATIS_MAPPER_SUFFIX,
+                                BaseMapper.class);
+
+                Object mainOldData = primaryMapper.selectById((Serializable) recordId);
+
+                Field field =
+                        ReflectionUtils.findField(mainOldData.getClass(), DEFAULT_PRIMARY_KEY);
+                field.setAccessible(true);
+
+                Long sourceId =
+                        Long.parseLong(
+                                String.valueOf(ReflectionUtils.getField(field, mainOldData)));
+
+                if (Objects.isNull(sourceId) || sourceId == -1L) {
+                    log.debug("recordId:{}当前第一次实时保存，拷贝老数据到快照", recordId);
+                }
+
+                Map<String, Object> fillDataMap = new HashMap<>();
+                fillDataMap.put("sourceId", -1L);
+                fillModuleData(
+                        moduleSaveList,
+                        subjectId,
+                        roleId,
+                        targetTopMenu.getModuleId(),
+                        fillDataMap);
+
+                // 保存当前recordId对应的数据
+                editMultiModuleData(subjectId, roleId, moduleSaveList);
             }
             case CANCEL -> {
                 log.debug("当前提交为取消，修改业务数据删除标识。");
@@ -1308,86 +1448,149 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         }
 
-        approvalProcessReq.setSubjectId(subjectId);
-        approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
-        approvalProcessReq.setRoleId(roleId);
-        approvalProcessReq.setRecordId(recordId);
-        approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
-        approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
-        approvalProcessReq.setButton(approvalOperation.getBtnType());
-        approvalProcessReq.setReason(approvalOperation.getReason());
-        approvalProcessReq.setRejectStep(approvalOperation.getRejectStep());
+        // 非实时保存，调用审批链process
+        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE) {
 
-        ConfigApiResponse<Map<String, Object>> processResult =
-                approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
+            approvalProcessReq.setSubjectId(subjectId);
+            approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
+            approvalProcessReq.setRoleId(roleId);
+            approvalProcessReq.setRecordId(recordId);
+            approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
+            approvalProcessReq.setButton(approvalOperation.getBtnType());
+            approvalProcessReq.setReason(approvalOperation.getReason());
+            approvalProcessReq.setRejectStep(approvalOperation.getRejectStep());
 
-        if (ConfigApiResponse.isSuccessResponse(processResult)) {
-            Map<String, Object> processResultMap = processResult.getData();
-            // 判断审批链是否完成，若完成则更新真实表数据
-            if (Objects.nonNull(processResultMap.get("end"))
-                    && 1 == Integer.parseInt(String.valueOf(processResultMap.get("end")))) {
-                if (Objects.nonNull(processResultMap.get("businessId"))) {
-                    Long bussinessId =
-                            Long.parseLong(String.valueOf(processResultMap.get("businessId")));
-                    log.debug(
-                            "真实业务表businessId不为空,更新businessId:{}对应的数据",
-                            processResultMap.get("businessId"));
+            ConfigApiResponse<Map<String, Object>> processResult =
+                    approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
 
-                    // 替换审批链record表的ID为要更新的真实业务表的主键ID
-                    editPreProcessDataReplaceId(
-                            originalCopyModuleSaveList,
-                            subjectId,
-                            roleId,
-                            targetTopMenu.getModuleId(),
-                            bussinessId);
+            if (ConfigApiResponse.isSuccessResponse(processResult)) {
+                Map<String, Object> processResultMap = processResult.getData();
+                // 判断审批链是否完成，若完成则更新真实表数据
+                if (Objects.nonNull(processResultMap.get("end"))
+                        && 1 == Integer.parseInt(String.valueOf(processResultMap.get("end")))) {
+                    if (Objects.nonNull(processResultMap.get("businessId"))) {
+                        Long bussinessId =
+                                Long.parseLong(String.valueOf(processResultMap.get("businessId")));
+                        log.debug(
+                                "真实业务表businessId不为空,更新businessId:{}对应的数据",
+                                processResultMap.get("businessId"));
 
-                    editMultiRealTableData(subjectId, roleId, originalCopyModuleSaveList);
-                } else {
-                    log.debug("真实业务表businessId为空,插入数据");
-                    // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
-                    editPreProcessDataRemoveId(
-                            originalCopyModuleSaveList,
-                            subjectId,
-                            roleId,
-                            targetTopMenu.getModuleId());
+                        // 替换审批链record表的ID为要更新的真实业务表的主键ID
+                        editPreProcessDataReplaceId(
+                                originalCopyModuleSaveList,
+                                subjectId,
+                                roleId,
+                                targetTopMenu.getModuleId(),
+                                bussinessId);
 
-                    Object businessId =
-                            createMultiModuleDataToRealTable(
-                                    subjectId, roleId, originalCopyModuleSaveList);
-                    SaveBusinessIdReq saveBusinessIdReq = new SaveBusinessIdReq();
-                    saveBusinessIdReq.setSubjectId(subjectId);
-                    saveBusinessIdReq.setModuleId(targetTopMenu.getModuleId());
-                    saveBusinessIdReq.setRecordId(recordId);
-                    saveBusinessIdReq.setBusinessId(Long.parseLong(String.valueOf(businessId)));
-                    approvalApiOpenFeignClient.saveBusinessId(subjectId, saveBusinessIdReq);
-                }
-            } else if (Objects.nonNull(processResultMap.get("versionNo"))) {
-                // 取消提交且versionNo不为初始版本1
-                if (buttonType == ApprovalButtonType.CANCEL) {
-                    if (Integer.parseInt(String.valueOf(processResultMap.get("versionNo"))) != 1) {
-                        editMultiModuleData(subjectId, roleId, moduleSaveList);
+                        editMultiRealTableData(subjectId, roleId, originalCopyModuleSaveList);
+                    } else {
+                        log.debug("真实业务表businessId为空,插入数据");
+                        // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
+                        removeModuleData(
+                                originalCopyModuleSaveList,
+                                subjectId,
+                                roleId,
+                                targetTopMenu.getModuleId(),
+                                moduleFilterInfo,
+                                Set.of("id"));
+
+                        Object businessId =
+                                createMultiModuleDataToRealTable(
+                                        subjectId, roleId, originalCopyModuleSaveList);
+                        SaveBusinessIdReq saveBusinessIdReq = new SaveBusinessIdReq();
+                        saveBusinessIdReq.setSubjectId(subjectId);
+                        saveBusinessIdReq.setModuleId(targetTopMenu.getModuleId());
+                        saveBusinessIdReq.setRecordId(recordId);
+                        saveBusinessIdReq.setBusinessId(Long.parseLong(String.valueOf(businessId)));
+                        approvalApiOpenFeignClient.saveBusinessId(subjectId, saveBusinessIdReq);
+                    }
+                } else if (Objects.nonNull(processResultMap.get("versionNo"))) {
+                    // 取消提交且versionNo不为初始版本1
+                    if (buttonType == ApprovalButtonType.CANCEL) {
+                        if (Integer.parseInt(String.valueOf(processResultMap.get("versionNo")))
+                                != 1) {
+                            editMultiModuleData(subjectId, roleId, moduleSaveList);
+                        }
                     }
                 }
-            }
 
-        } else {
-            try {
-                log.debug(
-                        "调用审批链:{}方法失败 , 请求参数:{}", "process", JsonUtil.obj2Json(approvalProcessReq));
-            } catch (JsonProcessingException e) {
-                log.debug("请求参数json序列化失败。");
+            } else {
+                try {
+                    log.debug(
+                            "调用审批链:{}方法失败 , 请求参数:{}",
+                            "process",
+                            JsonUtil.obj2Json(approvalProcessReq));
+                } catch (JsonProcessingException e) {
+                    log.debug("请求参数json序列化失败。");
+                }
+                // 主动抛出异常，回滚事务
+                ApiResponseCodeEnum apiResponseCodeEnum =
+                        ApiResponseCodeEnum.getEnumByCode(processResult.getStatus());
+                if (Objects.isNull(apiResponseCodeEnum)) {
+                    apiResponseCodeEnum = ApiResponseCodeEnum.APPROVAL_PROCEDURE_CHANGE;
+                }
+                throw new BusinessException(
+                        apiResponseCodeEnum.getCode(), apiResponseCodeEnum.getMessage());
             }
-            // 主动抛出异常，回滚事务
-            ApiResponseCodeEnum apiResponseCodeEnum =
-                    ApiResponseCodeEnum.getEnumByCode(processResult.getStatus());
-            if (Objects.isNull(apiResponseCodeEnum)) {
-                apiResponseCodeEnum = ApiResponseCodeEnum.APPROVAL_PROCEDURE_CHANGE;
-            }
-            throw new BusinessException(
-                    apiResponseCodeEnum.getCode(), apiResponseCodeEnum.getMessage());
         }
 
         return recordId;
+    }
+
+    /**
+     * 插入快照数据，快照数据更新不用记录操作日志
+     *
+     * @param tableName
+     * @param mainOldData
+     * @param oldRecordId
+     */
+    private void insertSnapshot(String tableName, Object mainOldData, Long oldRecordId) {
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+
+        QueryWrapper queryWrapper = Wrappers.query();
+        queryWrapper.eq("id", oldRecordId);
+
+        if (Objects.isNull(mainOldData)) {
+            mainOldData = primaryMapper.selectById(oldRecordId);
+        }
+
+        Class<?> primaryEntity = getEntityClass(primaryMapper);
+        if (primaryEntity == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    "表[" + tableName + "]mapper不存在");
+        }
+
+        try {
+            Constructor<?> primaryConstructor = null;
+            primaryConstructor = primaryEntity.getDeclaredConstructor();
+            primaryConstructor.setAccessible(true);
+            Object snapshotData = primaryConstructor.newInstance();
+
+            BeanUtils.copyProperties(mainOldData, snapshotData, "id");
+
+            Field sourceIdField = ReflectionUtils.findField(snapshotData.getClass(), "sourceId");
+            sourceIdField.setAccessible(true);
+            ReflectionUtils.setField(sourceIdField, snapshotData, oldRecordId);
+
+            Field deletedField = ReflectionUtils.findField(snapshotData.getClass(), "deleted");
+            deletedField.setAccessible(true);
+            ReflectionUtils.setField(deletedField, snapshotData, true);
+
+            primaryMapper.insert(snapshotData);
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        } catch (InstantiationException e) {
+            throw new RuntimeException(e);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        } catch (InvocationTargetException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void insertDataToRealTable(
@@ -1412,6 +1615,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         for (ModuleSaveReq ele : req) {
             if (finded) {
                 break;
+            }
+            if (!moduleId.equals(ele.getModuleId())) {
+                continue;
             }
             for (Map<String, Object> item : ele.getModuleData()) {
                 if (item.containsKey(primaryTablePrimaryKey)) {
@@ -1480,7 +1686,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     }
 
     /**
-     * 新建时补充modueleId和deleted标识
+     * 填充模块公共数据
      *
      * @param req
      * @param subjectId
@@ -1488,8 +1694,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
      * @param moduleId
      * @return
      */
-    private void createPreProcessDataFillModuleIdAndDeleted(
-            List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
+    private void fillModuleData(
+            List<ModuleSaveReq> req,
+            Long subjectId,
+            Long roleId,
+            Long moduleId,
+            Map<String, Object> dataMap) {
         for (ModuleSaveReq ele : req) {
             for (Map<String, Object> item : ele.getModuleData()) {
                 Set<String> tableNames = new HashSet<>();
@@ -1504,9 +1714,16 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 log.debug("模块:{}对应的数据表为:{},顶层模块ID为:{}", ele.getModuleId(), tableNames, moduleId);
                 if (!CollectionUtils.isEmpty(tableNames)) {
                     for (String tableName : tableNames) {
-                        log.debug("填充数据表:{}的module_id:{}和deleted:{}字段", tableName, moduleId, false);
-                        item.put(tableName + DB_TABLE_FIELD_SEPARATOR + "moduleId", moduleId);
-                        item.put(tableName + DB_TABLE_FIELD_SEPARATOR + "deleted", false);
+                        for (Map.Entry<String, Object> dataEntry : dataMap.entrySet()) {
+                            log.debug(
+                                    "填充数据表:{}的字段:{}字段值:{}",
+                                    tableName,
+                                    dataEntry.getKey(),
+                                    dataEntry.getValue());
+                            item.put(
+                                    tableName + DB_TABLE_FIELD_SEPARATOR + dataEntry.getKey(),
+                                    dataEntry.getValue());
+                        }
                     }
                 }
             }
@@ -1522,12 +1739,19 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
      * @param moduleId
      * @return
      */
-    private Long editPreProcessDataRemoveId(
-            List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
+    private Long removeModuleData(
+            List<ModuleSaveReq> req,
+            Long subjectId,
+            Long roleId,
+            Long moduleId,
+            ModuleFilterInfo moduleFilterInfo,
+            Set<String> keySet) {
         // 获取主模块信息
-        ModuleFilterInfo moduleFilterInfo =
-                moduleInfoWithPermissionService.filterModuleInfo(
-                        subjectId, roleId, moduleId, FormButtonEnum.CREATE.getKey(), List.of());
+        if (Objects.isNull(moduleFilterInfo)) {
+            moduleFilterInfo =
+                    moduleInfoWithPermissionService.filterModuleInfo(
+                            subjectId, roleId, moduleId, FormButtonEnum.CREATE.getKey(), List.of());
+        }
 
         String primaryTablePrimaryKey =
                 moduleFilterInfo.getModuleInfo().getPrimaryTable()
@@ -1548,12 +1772,15 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 nextEntry.getKey(),
                                 nextEntry.getValue());
                     }
-                    if (nextEntry
-                            .getKey()
-                            .endsWith(DB_TABLE_FIELD_SEPARATOR + DEFAULT_PRIMARY_KEY)) {
-                        log.debug("模块数据:{}是数据表主键，移除主键走新建逻辑。", nextEntry.getKey());
+
+                    if (keySet.stream()
+                            .anyMatch(
+                                    keyStr ->
+                                            nextEntry
+                                                    .getKey()
+                                                    .endsWith(DB_TABLE_FIELD_SEPARATOR + keyStr))) {
+                        log.debug("模块数据:{}移除", nextEntry.getKey());
                         iterator.remove();
-                        break;
                     }
                 }
             }
@@ -2944,32 +3171,6 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         }
     }
-
-    //    private void fillCreateDateField(Object instance, Set<String> fieldSet)
-    //            throws IllegalAccessException {
-    //        Field[] fields = instance.getClass().getDeclaredFields();
-    //        for (Field f : fields) {
-    //            TableField tf = f.getDeclaredAnnotation(TableField.class);
-    //            if (tf != null && fieldSet.contains(tf.value())) {
-    //                fillField(instance, f, LocalDateTime.now());
-    //            }
-    //        }
-    //    }
-    //
-    //    private void fillSubjectField(
-    //            Object instance, List<String> fieldSet, Long subjectId, String subjectName)
-    //            throws IllegalAccessException {
-    //        Field[] fields = instance.getClass().getDeclaredFields();
-    //        for (Field f : fields) {
-    //            TableField tf = f.getDeclaredAnnotation(TableField.class);
-    //            if (tf != null && fieldSet.get(0).equals(tf.value())) {
-    //                fillField(instance, f, subjectId);
-    //            }
-    //            if (tf != null && fieldSet.get(1).equals(tf.value())) {
-    //                fillField(instance, f, subjectName);
-    //            }
-    //        }
-    //    }
 
     private Object getId(Object instance) throws IllegalAccessException {
         Field[] fields = instance.getClass().getDeclaredFields();

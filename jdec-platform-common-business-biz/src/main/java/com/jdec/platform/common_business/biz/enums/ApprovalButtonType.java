@@ -1,5 +1,8 @@
 package com.jdec.platform.common_business.biz.enums;
 
+import lombok.Getter;
+
+@Getter
 public enum ApprovalButtonType {
     VIEW("view", "查阅"),
     SUBMIT("submit", "提交"),
@@ -10,10 +13,11 @@ public enum ApprovalButtonType {
     HANDLE("handle", "办理"),
 
     CREATE("create", "创建"),
-    CHANGE("change", "变更");
+    CHANGE("change", "变更"),
+    REAL_TIME_CHANGE("realTime", "实时保存");
 
-    final String key;
-    final String title;
+    private final String key;
+    private final String title;
 
     ApprovalButtonType(String key, String title) {
         this.key = key;

@@ -63,4 +63,6 @@ public interface DynamicDataAccessServiceApi {
 
     List<Map<String, Object>> dynamicQuerygetApprovalStep(
             Long subjectId, Long roleId, Long menuId, Long id);
+
+    Long getApprovalToDoId(Long subjectId, Long roleId, Long menuId);
 }

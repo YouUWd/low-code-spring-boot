@@ -64,4 +64,9 @@ public interface ApprovalApiOpenFeignClient {
     @PostMapping("/ApprovalStep")
     ConfigApiResponse<List<Map<String, Object>>> getApprovalStep(
             @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody ApprovalDataReq req);
+
+    // 查询下一条待处理的单据ID
+    @PostMapping("/BusinessNextId")
+    ConfigApiResponse<Long> getBusinessNextId(
+            @RequestHeader("X-Subject-Id") Long subjectId, ApprovalProcessReq processReq);
 }
