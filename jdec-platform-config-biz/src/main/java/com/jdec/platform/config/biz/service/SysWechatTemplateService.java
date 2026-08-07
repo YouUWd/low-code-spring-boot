@@ -16,6 +16,8 @@ import com.jdec.platform.config.api.dto.request.WechatTemplateQueryReq;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
+import com.jdec.platform.config.biz.audit.service.SysWechatTemplateLogService;
+import com.jdec.platform.config.biz.audit.service.SysWechatTemplateParamLogService;
 import com.jdec.platform.config.biz.entity.SysMessageRecord;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
@@ -40,6 +42,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -59,6 +62,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     private final UserApi userApi;
     private final WeChatWorkService weChatWorkService;
     private final SysMessageRecordMapper sysMessageRecordMapper;
+    private final SysWechatTemplateLogService wechatTemplateLogService;
+    private final SysWechatTemplateParamLogService wechatTemplateParamLogService;
 
     // --- 模板主表实现 ---
 
@@ -115,6 +120,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         copyTemplateProperties(projectNo, subjectId, req, template);
         template.setDeleted(0);
         sysWechatTemplateMapper.insert(template);
+        // 记录新增审计日志并维护快照
+        wechatTemplateLogService.logCreate(req, template.getId());
         return toTemplateDetailResp(template);
     }
 
@@ -126,8 +133,15 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (template == null || template.getDeleted() == 1) {
             throw new BusinessException(404, "模板不存在");
         }
+        // 审计用：保存修改前的模板（copyTemplateProperties 会复用同一对象并修改）
+        SysWechatTemplate oldTemplate = new SysWechatTemplate();
+        BeanUtils.copyProperties(template, oldTemplate);
+
         copyTemplateProperties(projectNo, subjectId, req, template);
         sysWechatTemplateMapper.updateById(template);
+
+        // 记录修改审计日志并维护快照
+        wechatTemplateLogService.logUpdate(req, req.getId(), oldTemplate);
         return toTemplateDetailResp(template);
     }
 
@@ -138,6 +152,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (template != null) {
             template.setDeleted(1);
             sysWechatTemplateMapper.updateById(template);
+            // 记录删除审计日志并删除快照
+            wechatTemplateLogService.logDelete(template);
         }
     }
 
@@ -359,6 +375,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         copyParamProperties(projectNo, subjectId, req, param);
         param.setDeleted(0);
         sysWechatTemplateParamMapper.insert(param);
+        // 记录新增审计日志并维护快照
+        wechatTemplateParamLogService.logCreate(req, param.getId());
         return getParamById(param.getId());
     }
 
@@ -370,8 +388,15 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (param == null || param.getDeleted() == 1) {
             throw new BusinessException(404, "参数不存在");
         }
+        // 审计用：保存修改前的参数（copyParamProperties 会复用同一对象并修改）
+        SysWechatTemplateParam oldParam = new SysWechatTemplateParam();
+        BeanUtils.copyProperties(param, oldParam);
+
         copyParamProperties(projectNo, subjectId, req, param);
         sysWechatTemplateParamMapper.updateById(param);
+
+        // 记录修改审计日志并维护快照
+        wechatTemplateParamLogService.logUpdate(req, req.getId(), oldParam);
         return getParamById(param.getId());
     }
 
@@ -382,6 +407,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (param != null) {
             param.setDeleted(1);
             sysWechatTemplateParamMapper.updateById(param);
+            // 记录删除审计日志并删除快照
+            wechatTemplateParamLogService.logDelete(param);
         }
     }
 
