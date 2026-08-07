@@ -1,9 +1,9 @@
 package com.jdec.platform.config.biz.audit.aspect;
 
-import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.biz.audit.dto.*;
+import com.jdec.platform.config.biz.audit.service.AuditLogSendService;
 import com.jdec.platform.config.biz.audit.util.AuditLogFormatter;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
@@ -11,11 +11,6 @@ import com.jdec.platform.config.biz.service.SysDataSnapshotService;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.EnumDescribable;
 import com.jdec.platform.shared.audit.enums.OperationType;
-import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.TokenContext;
-import com.jdec.platform.shared.security.SecurityUtils;
-import com.jdec.platform.shared.security.model.LoginUser;
-import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,17 +22,12 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.client.RestTemplate;
 
 /** 数据审计切面 拦截 @DataAudit 注解的方法，记录数据变更审计日志 */
 @Slf4j
@@ -49,11 +39,8 @@ public class DataAuditAspect {
     private final SysDataSnapshotService snapshotService;
     private final JsonDiffUtil jsonDiffUtil;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate;
     private final AuditLogFormatter auditLogFormatter;
-
-    @Value("${audit.monitor-log-url}")
-    private String monitorLogUrl;
+    private final AuditLogSendService auditLogSendService;
 
     private final ExpressionParser parser = new SpelExpressionParser();
 
@@ -681,18 +668,16 @@ public class DataAuditAspect {
     }
 
     /**
-     * 发送审计日志到HTTP接口
+     * 发送审计日志到监控服务（非阻塞）。
      *
-     * <p>封装为统一的HTTP请求格式，从 UserContext 获取用户信息
+     * <p>仅组装调用方自定义的字段（单据ID、操作名称、备注），其余信息（登录用户/模拟用户、角色、主体、菜单、模块、IP、浏览器、平台等） 由 {@link
+     * AuditLogSendService} 根据当前请求上下文统一补全后发送。
      *
-     * <p>注意：此方法会在事务提交前调用，如果发送失败会抛出异常触发事务回滚
+     * <p>注意：此方法在事务提交前调用，发送失败仅记录日志，不会影响业务事务。
      */
     private void sendAuditLog(AuditResult auditResult) {
-        // 从 UserContext 获取登录用户信息
-        LoginUser loginUser = SecurityUtils.getLoginUser();
-
-        // 构建logContent
-        String operatorResult =
+        // 构建controlName（单据操作名称）- 简化为"修改了XX配置"、"新增了XX配置"、"删除了XX配置"
+        String controlName =
                 auditResult.getOperation()
                         + "了"
                         + (auditResult.getSubModule() != null
@@ -700,22 +685,10 @@ public class DataAuditAspect {
                                 ? auditResult.getSubModule()
                                 : "配置");
 
-        AuditLogContent logContent =
-                AuditLogContent.builder()
-                        .module(auditResult.getModule())
-                        .orderId(
-                                auditResult.getSubModule() != null
-                                                && !auditResult.getSubModule().isEmpty()
-                                        ? auditResult.getSubModule()
-                                        : auditResult.getTableName())
-                        .hrefUrl(loginUser != null ? loginUser.getHrefUrl() : "")
-                        .controlName(operatorResult)
-                        .build();
-
         // 构建remark（新格式：ModuleAction列表的JSON）
         String remark = "";
         if (auditResult.getDiffs() != null && !auditResult.getDiffs().isEmpty()) {
-            List<ModuleAction> moduleActions = null;
+            List<ModuleAction> moduleActions;
             String moduleName =
                     auditResult.getSubModule() != null && !auditResult.getSubModule().isEmpty()
                             ? auditResult.getSubModule()
@@ -748,89 +721,16 @@ public class DataAuditAspect {
             }
         }
 
-        // 从 UserContext 获取用户信息和模拟登录标识
-        Long loginUserId = loginUser != null ? loginUser.getRealUserId() : AppContext.getUserId();
-        Long roleId = loginUser != null ? loginUser.getRoleId() : null;
-        boolean isMockLogin = loginUser != null && Boolean.TRUE.equals(loginUser.getIsMockLogin());
-        Long mockUserId = isMockLogin && loginUser != null ? loginUser.getMockUserId() : null;
-
-        // 获取请求上下文信息
-        String ip = RequestContextUtils.getClientIp();
-        String browser = RequestContextUtils.getBrowser();
-        String platform = RequestContextUtils.getPlatform();
-
-        // 构建HTTP请求体
-        AuditLogRequest request =
-                AuditLogRequest.builder()
-                        .logType("operation-log")
-                        .subjectId(
-                                loginUser != null
-                                        ? loginUser.getSubjectId()
-                                        : AppContext.getSubjectId())
-                        .loginUserId(loginUserId)
-                        .loginRoleId(roleId)
-                        .mockFlag(isMockLogin ? 1 : 0)
-                        .mockUserId(mockUserId != null ? mockUserId : 0L)
-                        .mockRoleId(0L) // 暂时为0，后续可扩展
-                        .ip(ip)
-                        .browser(browser)
-                        .platForm(platform)
-                        .logContent(JSONUtil.toJsonStr(logContent))
+        // 构建发送上下文，其余信息（用户/角色/主体/菜单/模块/IP等）由 AuditLogSendService 自动补全
+        AuditLogSendContext context =
+                AuditLogSendContext.builder()
+                        .module(auditResult.getModule())
+                        .subModule(auditResult.getSubModule())
+                        .dataId(auditResult.getDataId())
+                        .controlName(controlName)
                         .logRemark(remark)
-                        .logDate(DateUtil.now())
                         .build();
 
-        log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
-
-        // 发送HTTP请求
-        String url = monitorLogUrl;
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        String token = TokenContext.getToken();
-        if (token != null) {
-            headers.set("Authorization", "Bearer " + token);
-        }
-        String projectNo = AppContext.getProjectNo();
-        if (projectNo != null) {
-            headers.set("X-Project-No", projectNo);
-        }
-        Long subjectId = AppContext.getSubjectId();
-        if (subjectId != null) {
-            headers.set("X-Subject-Id", String.valueOf(subjectId));
-        }
-
-        HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-        //        ResponseEntity<LogResponse> response =
-        //                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
-
-        // 检查HTTP状态码
-        //        if (!response.getStatusCode().is2xxSuccessful()) {
-        //            String errorMsg =
-        //                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s",
-        // response.getStatusCode(), url);
-        //            log.error(errorMsg);
-        //            throw new RuntimeException(errorMsg);
-        //        }
-        //
-        //        // 检查业务状态码
-        //        LogResponse body = response.getBody();
-        //        if (body == null) {
-        //            String errorMsg = "审计日志发送失败，响应体为空";
-        //            log.error(errorMsg);
-        //            throw new RuntimeException(errorMsg);
-        //        }
-        //        if (body.status() != 200) {
-        //            String errorMsg =
-        //                    String.format(
-        //                            "审计日志发送失败，业务状态码: %d，消息: %s",
-        //                            body.status(), body.msg() != null ? body.msg() : "无");
-        //            log.error(errorMsg);
-        //            throw new RuntimeException(errorMsg);
-        //        }
-        //
-        //        log.info("审计日志发送成功: url={}, status={}", url, body.status());
+        auditLogSendService.sendAuditLog(context);
     }
-
-    record LogResponse(int status, String msg, Object data) {}
 }

@@ -154,6 +154,24 @@
     <select id="queryPageListWithMultiTable" resultMap="BaseResultMap">
         SELECT res.* FROM (
             <choose>
+                <when test="logType == null or logType == ''">
+                    (SELECT <include refid="messageLogColumns"/>, 'messageLog' as log_type
+                    FROM sys_monitor_messagelog
+                    <include refid="baseLogWhereCondition"/>)
+
+                    UNION ALL
+
+                    (SELECT <include refid="controlLogColumns"/>, 'operationLog' as log_type
+                    FROM sys_monitor_controllog
+                    <include refid="controllogWhereCondition"/>)
+
+                    UNION ALL
+
+                    (SELECT <include refid="systemLogColumns"/>, 'systemLog' as log_type
+                    FROM sys_monitor_systemlog
+                    <include refid="baseLogWhereCondition"/>)
+                </when>
+
                 <when test="logType == 'messageLog'">
                     (SELECT <include refid="messageLogColumns"/>, 'messageLog' as log_type
                     FROM sys_monitor_messagelog

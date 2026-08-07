@@ -168,4 +168,16 @@ public interface SysWechatTemplateApi {
      * @return 是否发送成功
      */
     boolean sendWechatMessage(String projectNo, Long subjectId, SendWechatMessageReq req);
+
+    /**
+     * 根据模块ID和触发类型查询微信模板
+     *
+     * @param projectNo 项目编号
+     * @param subjectId 主体 ID
+     * @param moduleId 模块 ID
+     * @param triggerType 触发类型
+     * @return 微信模板
+     */
+    WechatTemplateEntryResp getTemplateByModuleId(
+            String projectNo, Long subjectId, Long moduleId, String triggerType);
 }

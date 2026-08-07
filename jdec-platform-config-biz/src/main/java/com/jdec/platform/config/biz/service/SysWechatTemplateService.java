@@ -13,6 +13,7 @@ import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateReq;
 import com.jdec.platform.config.api.dto.request.WechatTemplateParamQueryReq;
 import com.jdec.platform.config.api.dto.request.WechatTemplateQueryReq;
+import com.jdec.platform.config.api.dto.response.SysConfigItemResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
@@ -59,6 +60,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     private final UserApi userApi;
     private final WeChatWorkService weChatWorkService;
     private final SysMessageRecordMapper sysMessageRecordMapper;
+    private final SysConfigCategoryService sysConfigCategoryService;
 
     // --- 模板主表实现 ---
 
@@ -291,10 +293,13 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     @Override
     public List<WechatTemplateParamEntryResp> listParamsByModuleId(
             String projectNo, Long subjectId, Long moduleId) {
+        List<Long> moduleIds =
+                moduleId != null ? List.of(0L, moduleId) : Collections.singletonList(0L);
+
         LambdaQueryWrapper<SysWechatTemplateParam> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(SysWechatTemplateParam::getProjectNo, projectNo)
                 .eq(subjectId != null, SysWechatTemplateParam::getSubjectId, subjectId)
-                .eq(moduleId != null, SysWechatTemplateParam::getModuleId, moduleId)
+                .in(SysWechatTemplateParam::getModuleId, moduleIds)
                 .eq(SysWechatTemplateParam::getDeleted, 0)
                 .orderByDesc(SysWechatTemplateParam::getCreatedDate);
 
@@ -381,6 +386,29 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
             sysWechatTemplateParamMapper.updateById(param);
         }
     }
+
+    // 根据模块ID和触发类型查询微信模板
+    @Override
+    public WechatTemplateEntryResp getTemplateByModuleId(
+            String projectNo, Long subjectId, Long moduleId, String triggerType) {
+        SysConfigItemResp sysConfigItem =
+                sysConfigCategoryService.getConfigItemsByValue("wxTriggerType", triggerType);
+        if (Objects.isNull(sysConfigItem)) {
+            return null;
+        }
+        LambdaQueryWrapper<SysWechatTemplate> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysWechatTemplate::getModuleId, moduleId);
+        wrapper.eq(SysWechatTemplate::getSubjectId, subjectId);
+        wrapper.eq(SysWechatTemplate::getProjectNo, projectNo);
+        wrapper.eq(SysWechatTemplate::getTemplateTriggerType, sysConfigItem.getId());
+        wrapper.eq(SysWechatTemplate::getDeleted, false).last("LIMIT 1");
+        SysWechatTemplate sysWechatTemplate = sysWechatTemplateMapper.selectOne(wrapper);
+        if (Objects.isNull(sysWechatTemplate)) {
+            return null;
+        }
+        return toTemplateEntryResp(sysWechatTemplate);
+    }
+    ;
 
     // --- 内部辅助方法 ---
 
