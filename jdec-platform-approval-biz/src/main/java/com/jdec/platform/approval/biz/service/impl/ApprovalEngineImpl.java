@@ -117,7 +117,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> result = new HashMap<>();
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
-        businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId());
+        businessWrapper
+                .eq(ApprovalVersionRecord::getRecordId, req.getRecordId())
+                .orderByDesc(ApprovalVersionRecord::getId)
+                .last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalVersionRecord)) {
@@ -125,8 +128,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         // 单据编号
         result.put("businessNumber", approvalVersionRecord.getBusinessNumber());
-        // 当前版本号
-        result.put("versionNo", approvalVersionRecord.getVersionNo());
         // 创建日期
         result.put("createdDate", approvalVersionRecord.getCreatedDate());
         // 版本号列表
@@ -149,12 +150,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalStatus.put("title", statusNode.getTitle());
             approvalStatus.put("statusBackground", statusNode.getStatusBackground());
             approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+            // 当前版本号
+            result.put("versionNo", versionList.getFirst().get("versionNo"));
         } else {
             approvalStatus.put("id", approvalVersionRecord.getStatusId());
             approvalStatus.put("statusValue", approvalVersionRecord.getStatusValue());
             approvalStatus.put("title", approvalVersionRecord.getStatusTitle());
             approvalStatus.put("statusBackground", approvalVersionRecord.getStatusBackground());
             approvalStatus.put("statusFontColor", approvalVersionRecord.getStatusFontColor());
+            // 当前版本号
+            result.put("versionNo", approvalVersionRecord.getVersionNo());
         }
         result.put("approvalStatus", approvalStatus);
         if (approvalVersionRecord.getCurrentStep() > 0
