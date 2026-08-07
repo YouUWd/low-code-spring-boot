@@ -9,6 +9,7 @@ import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigPageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.audit.service.SysApprovalChainLogService;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckResult;
 import com.jdec.platform.config.biz.check.ReferenceChecker;
@@ -45,6 +46,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
     private final SysApprovalChainConfigButtonMapper sysApprovalChainConfigButtonMapper;
     private final SysButtonMapper sysButtonMapper;
     private final SysWechatTemplateMapper sysWechatTemplateMapper;
+    private final SysApprovalChainLogService sysApprovalChainLogService;
 
     @Override
     public List<ApprovalChainCascadeResp> getCascadeOptions() {
@@ -870,6 +872,8 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
     @Transactional(rollbackFor = Exception.class)
     public ApprovalChainConfigSaveResp save(ApprovalChainConfigSaveReq request) {
         Long id = request.getTargetId();
+        boolean isCreate = (id == null || id == 0);
+        SysApprovalChainConfig oldConfig = null;
 
         if (request.getUpStep() == null) request.setUpStep(0);
         if (request.getDefaultFlag() == null) request.setDefaultFlag(0);
@@ -966,8 +970,8 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                             config.getApprovalChainTypeId()));
 
         } else {
-            SysApprovalChainConfig exist = sysApprovalChainConfigMapper.selectById(id);
-            if (exist == null) {
+            oldConfig = sysApprovalChainConfigMapper.selectById(id);
+            if (oldConfig == null) {
                 throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "配置不存在");
             }
 
@@ -980,11 +984,15 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                     .eq(
                                             SysApprovalChainConfig::getProjectNo,
                                             AppContext.getProjectNo())
-                                    .eq(SysApprovalChainConfig::getModuleId, exist.getModuleId())
+                                    .eq(
+                                            SysApprovalChainConfig::getModuleId,
+                                            oldConfig.getModuleId())
                                     .eq(
                                             SysApprovalChainConfig::getApprovalChainTypeId,
-                                            exist.getApprovalChainTypeId())
-                                    .eq(SysApprovalChainConfig::getCurrentStep, exist.getUpStep()));
+                                            oldConfig.getApprovalChainTypeId())
+                                    .eq(
+                                            SysApprovalChainConfig::getCurrentStep,
+                                            oldConfig.getUpStep()));
 
             nextConfig =
                     sysApprovalChainConfigMapper.selectOne(
@@ -995,13 +1003,15 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                     .eq(
                                             SysApprovalChainConfig::getProjectNo,
                                             AppContext.getProjectNo())
-                                    .eq(SysApprovalChainConfig::getModuleId, exist.getModuleId())
+                                    .eq(
+                                            SysApprovalChainConfig::getModuleId,
+                                            oldConfig.getModuleId())
                                     .eq(
                                             SysApprovalChainConfig::getApprovalChainTypeId,
-                                            exist.getApprovalChainTypeId())
+                                            oldConfig.getApprovalChainTypeId())
                                     .eq(
                                             SysApprovalChainConfig::getCurrentStep,
-                                            exist.getNextStep()));
+                                            oldConfig.getNextStep()));
 
             config.setId(id);
             config.setButtonList(null);
@@ -1010,11 +1020,20 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
 
         // 处理按钮列表：先删除该配置的所有旧按钮，再根据请求重新插入
         Long finalId = id;
+        // 修改时先捕获旧按钮配置，用于审计日志的差异对比
+        List<SysApprovalChainConfigButton> oldButtons = null;
+        if (!isCreate) {
+            oldButtons =
+                    sysApprovalChainConfigButtonMapper.selectList(
+                            new LambdaQueryWrapper<SysApprovalChainConfigButton>()
+                                    .eq(SysApprovalChainConfigButton::getPid, finalId));
+        }
         sysApprovalChainConfigButtonMapper.delete(
                 new LambdaQueryWrapper<SysApprovalChainConfigButton>()
                         .eq(SysApprovalChainConfigButton::getPid, finalId));
+        List<SysApprovalChainConfigButton> newButtons = null;
         if (request.getButtonConfigs() != null && !request.getButtonConfigs().isEmpty()) {
-            List<SysApprovalChainConfigButton> buttons =
+            newButtons =
                     request.getButtonConfigs().stream()
                             .map(
                                     btn -> {
@@ -1033,10 +1052,10 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                     })
                             .collect(Collectors.toList());
 
-            sysApprovalChainConfigButtonMapper.insert(buttons);
+            sysApprovalChainConfigButtonMapper.insert(newButtons);
 
             String buttonListIds =
-                    buttons.stream()
+                    newButtons.stream()
                             .map(btn -> String.valueOf(btn.getId()))
                             .collect(Collectors.joining(","));
 
@@ -1047,6 +1066,13 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
         }
 
         rearrangeStepsAfterSave(config, id, upConfig, nextConfig);
+
+        // 记录审计日志并维护快照
+        if (isCreate) {
+            sysApprovalChainLogService.logCreate(request, id, newButtons);
+        } else {
+            sysApprovalChainLogService.logUpdate(request, id, oldConfig, oldButtons, newButtons);
+        }
 
         return new ApprovalChainConfigSaveResp(id, 1);
     }
@@ -1194,6 +1220,9 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                         .eq(SysApprovalChainConfigButton::getPid, id));
 
         rearrangeStepsAfterDelete(deletedConfig, upStepConfig, nextStepConfig);
+
+        // 记录删除审计日志并删除快照
+        sysApprovalChainLogService.logDelete(deletedConfig);
     }
 
     /** 查询审批链配置详情（返回同模块同类型的所有配置） */

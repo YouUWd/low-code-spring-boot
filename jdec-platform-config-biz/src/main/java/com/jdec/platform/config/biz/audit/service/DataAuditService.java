@@ -1,34 +1,23 @@
 package com.jdec.platform.config.biz.audit.service;
 
-import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jdec.platform.config.biz.audit.dto.AuditLogContent;
-import com.jdec.platform.config.biz.audit.dto.AuditLogRequest;
+import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
 import com.jdec.platform.config.biz.audit.dto.FieldDiff;
 import com.jdec.platform.config.biz.audit.dto.ModuleAction;
 import com.jdec.platform.config.biz.audit.util.AuditLogFormatter;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
-import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.TokenContext;
-import com.jdec.platform.shared.security.SecurityUtils;
-import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.client.RestTemplate;
 
 /**
  * 数据审计编程式API服务
@@ -43,11 +32,8 @@ public class DataAuditService {
     private final SysDataSnapshotService snapshotService;
     private final JsonDiffUtil jsonDiffUtil;
     private final ObjectMapper objectMapper;
-    private final RestTemplate restTemplate;
     private final AuditLogFormatter auditLogFormatter;
-
-    @Value("${audit.monitor-log-url}")
-    private String monitorLogUrl;
+    private final AuditLogSendService auditLogSendService;
 
     /**
      * 记录数据变更审计（带差异对比）
@@ -488,17 +474,6 @@ public class DataAuditService {
                             + (subModule != null && !subModule.isEmpty() ? subModule : "配置");
         }
 
-        // 获取 hrefUrl
-        String hrefUrl = SecurityUtils.getHrefUrl();
-
-        AuditLogContent logContent =
-                AuditLogContent.builder()
-                        .module(module)
-                        .orderId(subModule != null && !subModule.isEmpty() ? subModule : tableName)
-                        .hrefUrl(hrefUrl != null ? hrefUrl : "")
-                        .controlName(controlName)
-                        .build();
-
         // 构建remark（新格式：ModuleAction列表的JSON）
         String remark = "";
         if (diffs != null && !diffs.isEmpty()) {
@@ -522,50 +497,17 @@ public class DataAuditService {
             }
         }
 
-        // 判断是否模拟登录
-        boolean isMockLogin = SecurityUtils.isMockLogin();
-        Long currentUserId = AppContext.getUserId();
-        Long currentRoleId = SecurityUtils.getRoleId();
-
-        // 构建HTTP请求体
-        AuditLogRequest request =
-                AuditLogRequest.builder()
-                        .logType("operation-log")
-                        .subjectId(AppContext.getSubjectId())
-                        .loginUserId(isMockLogin ? SecurityUtils.getRealUserId() : currentUserId)
-                        .loginRoleId(isMockLogin ? null : currentRoleId)
-                        .mockFlag(isMockLogin ? 1 : 0)
-                        .mockUserId(isMockLogin ? SecurityUtils.getMockUserId() : null)
-                        .mockRoleId(isMockLogin ? currentRoleId : null)
-                        .ip(RequestContextUtils.getClientIp())
-                        .browser(RequestContextUtils.getBrowser())
-                        .platForm(RequestContextUtils.getPlatform())
-                        .logContent(JSONUtil.toJsonStr(logContent))
+        // 构建发送上下文，其余信息（用户/角色/主体/菜单/模块/IP等）由 AuditLogSendService 自动补全
+        AuditLogSendContext context =
+                AuditLogSendContext.builder()
+                        .module(module)
+                        .subModule(subModule)
+                        .dataId(dataId)
+                        .controlName(controlName)
                         .logRemark(remark)
-                        .logDate(DateUtil.now())
                         .build();
 
-        // 在事务提交前发送（失败会触发事务回滚）
-        // 如果业务方法抛出未捕获异常导致事务回滚，beforeCommit 不会被调用，审计日志不会发送
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(
-                    new TransactionSynchronization() {
-                        @Override
-                        public void beforeCommit(boolean readOnly) {
-                            // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
-                            doSendAuditLog(request);
-                        }
-
-                        @Override
-                        public void afterCompletion(int status) {
-                            if (status == STATUS_ROLLED_BACK) {
-                                log.info("事务已回滚，跳过审计日志: subModule={}", subModule);
-                            }
-                        }
-                    });
-        } else {
-            doSendAuditLog(request);
-        }
+        sendAuditLogRequest(context);
     }
 
     /** 发送审计日志（使用自定义remark） */
@@ -587,119 +529,48 @@ public class DataAuditService {
                             + (subModule != null && !subModule.isEmpty() ? subModule : "配置");
         }
 
-        // 获取 hrefUrl
-        String hrefUrl = SecurityUtils.getHrefUrl();
-
-        AuditLogContent logContent =
-                AuditLogContent.builder()
-                        .module(module)
-                        .orderId(subModule != null && !subModule.isEmpty() ? subModule : tableName)
-                        .hrefUrl(hrefUrl != null ? hrefUrl : "")
-                        .controlName(controlName)
-                        .build();
-
         // 使用自定义remark
         String remark = remarkJson != null ? remarkJson : "";
 
-        // 判断是否模拟登录
-        boolean isMockLogin = SecurityUtils.isMockLogin();
-        Long currentUserId = AppContext.getUserId();
-        Long currentRoleId = SecurityUtils.getRoleId();
-
-        // 构建HTTP请求体
-        AuditLogRequest request =
-                AuditLogRequest.builder()
-                        .logType("operation-log")
-                        .subjectId(AppContext.getSubjectId())
-                        .loginUserId(isMockLogin ? SecurityUtils.getRealUserId() : currentUserId)
-                        .loginRoleId(isMockLogin ? null : currentRoleId)
-                        .mockFlag(isMockLogin ? 1 : 0)
-                        .mockUserId(isMockLogin ? SecurityUtils.getMockUserId() : null)
-                        .mockRoleId(isMockLogin ? currentRoleId : null)
-                        .ip(RequestContextUtils.getClientIp())
-                        .browser(RequestContextUtils.getBrowser())
-                        .platForm(RequestContextUtils.getPlatform())
-                        .logContent(JSONUtil.toJsonStr(logContent))
+        // 构建发送上下文，其余信息（用户/角色/主体/菜单/模块/IP等）由 AuditLogSendService 自动补全
+        AuditLogSendContext context =
+                AuditLogSendContext.builder()
+                        .module(module)
+                        .subModule(subModule)
+                        .controlName(controlName)
                         .logRemark(remark)
-                        .logDate(DateUtil.now())
                         .build();
 
-        // 在事务提交前发送（失败会触发事务回滚）
+        sendAuditLogRequest(context);
+    }
+
+    /**
+     * 注册事务同步，在事务提交前构建并发送审计日志（非阻塞，失败不影响业务事务）。
+     *
+     * <p>如果业务方法抛出未捕获异常导致事务回滚，beforeCommit 不会被调用，审计日志不会发送。
+     *
+     * @param context 审计日志发送上下文
+     */
+    private void sendAuditLogRequest(AuditLogSendContext context) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
                         public void beforeCommit(boolean readOnly) {
-                            doSendAuditLog(request);
+                            auditLogSendService.sendAuditLog(context);
                         }
 
                         @Override
                         public void afterCompletion(int status) {
                             if (status == STATUS_ROLLED_BACK) {
-                                log.info("事务已回滚，跳过审计日志: subModule={}", subModule);
+                                log.info("事务已回滚，跳过审计日志: subModule={}", context.getSubModule());
                             }
                         }
                     });
         } else {
-            doSendAuditLog(request);
+            auditLogSendService.sendAuditLog(context);
         }
     }
-
-    /** 实际发送HTTP请求 - 失败时抛出异常触发事务回滚 */
-    private void doSendAuditLog(AuditLogRequest request) {
-        log.info("发送审计日志到HTTP接口 - request={}", JSONUtil.toJsonStr(request));
-
-        String url = monitorLogUrl;
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        String token = TokenContext.getToken();
-        if (token != null) {
-            headers.set("Authorization", "Bearer " + token);
-        }
-        String projectNo = AppContext.getProjectNo();
-        if (projectNo != null) {
-            headers.set("X-Project-No", projectNo);
-        }
-        Long subjectId = AppContext.getSubjectId();
-        if (subjectId != null) {
-            headers.set("X-Subject-Id", String.valueOf(subjectId));
-        }
-
-        HttpEntity<AuditLogRequest> httpRequest = new HttpEntity<>(request, headers);
-
-        //        ResponseEntity<LogResponse> response =
-        //                restTemplate.postForEntity(url, httpRequest, LogResponse.class);
-        //
-        //        // 检查HTTP状态码
-        //        if (!response.getStatusCode().is2xxSuccessful()) {
-        //            String errorMsg =
-        //                    String.format("审计日志发送失败，HTTP状态码: %s，url: %s",
-        // response.getStatusCode(), url);
-        //            log.error(errorMsg);
-        //            throw new RuntimeException(errorMsg);
-        //        }
-        //
-        //        // 检查业务状态码
-        //        LogResponse body = response.getBody();
-        //        if (body == null) {
-        //            String errorMsg = "审计日志发送失败，响应体为空";
-        //            log.error(errorMsg);
-        //            throw new RuntimeException(errorMsg);
-        //        }
-        //        if (body.status() != 200) {
-        //            String errorMsg =
-        //                    String.format(
-        //                            "审计日志发送失败，业务状态码: %d，消息: %s",
-        //                            body.status(), body.msg() != null ? body.msg() : "无");
-        //            log.error(errorMsg);
-        //            throw new RuntimeException(errorMsg);
-        //        }
-
-        //        log.info("审计日志发送成功: url={}, status={}", url, body.status());
-    }
-
-    record LogResponse(int status, String msg, Object data) {}
 
     /** 更新快照 */
     private void updateSnapshot(

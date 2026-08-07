@@ -1,5 +1,8 @@
 package com.jdec.platform.config.api.dto.request;
 
+import com.jdec.platform.config.api.dto.response.ButtonStyleDTO;
+import com.jdec.platform.shared.audit.annotation.AuditField;
+import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
@@ -18,6 +21,12 @@ public class ApprovalChainConfigSaveReq {
 
     @Schema(description = "所属模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "模块ID不能为空")
+    @AuditField(
+            name = "模块名称",
+            type = FieldType.RELATION,
+            target = "sys_module",
+            idField = "id",
+            nameField = "module_name")
     private Long moduleId;
 
     @Schema(description = "上一步步骤")
@@ -31,9 +40,16 @@ public class ApprovalChainConfigSaveReq {
 
     @Schema(description = "审批链分类ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotNull(message = "审批链分类ID不能为空")
+    @AuditField(
+            name = "审批链分类",
+            type = FieldType.RELATION,
+            target = "sys_approval_chain_type",
+            idField = "id",
+            nameField = "title")
     private Long approvalChainTypeId;
 
     @Schema(description = "审批规则")
+    @AuditField(name = "审批规则类型", type = FieldType.DICT, dictCategoryAlias = "approvalRule")
     private String approvalRule;
 
     @Schema(description = "驳回规则")
@@ -100,13 +116,33 @@ public class ApprovalChainConfigSaveReq {
     @Schema(description = "按钮配置")
     public static class ButtonConfig {
 
+        @Schema(description = "按钮配置主键ID（编辑时已存在的子项会携带，新增子项为空）")
+        private Long id;
+
         @Schema(description = "操作类型ID")
+        @AuditField(
+                name = "操作类型",
+                type = FieldType.RELATION,
+                target = "sys_config_item",
+                idField = "id",
+                nameField = "label")
         private Long buttonTypeId;
 
         @Schema(description = "按钮ID")
+        @AuditField(
+                name = "按钮样式",
+                type = FieldType.RELATION,
+                target = "sys_button",
+                idField = "id",
+                targetClass = ButtonStyleDTO.class)
         private Long buttonId;
 
         @Schema(description = "日志对应图标")
+        @AuditField(
+                name = "操作日志图标",
+                type = FieldType.DICT,
+                dictCategoryAlias = "logStateIcon",
+                nameField = "extra")
         private String icon;
 
         @Schema(description = "日志对应状态描述")
@@ -116,6 +152,12 @@ public class ApprovalChainConfigSaveReq {
         private Integer autoNextTaskFlag;
 
         @Schema(description = "消息模板ID集合")
+        @AuditField(
+                name = "消息类型",
+                type = FieldType.RELATION,
+                target = "sys_wechat_template",
+                idField = "id",
+                nameField = "template_title")
         private String msgTemplateIds;
     }
 }
