@@ -1434,13 +1434,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 Object mainOldData = primaryMapper.selectById((Serializable) recordId);
 
-                Field sourceIdField =
-                        ReflectionUtils.findField(mainOldData.getClass(), "sourceId");
+                Field sourceIdField = ReflectionUtils.findField(mainOldData.getClass(), "sourceId");
                 sourceIdField.setAccessible(true);
 
                 Long sourceId =
                         Long.parseLong(
-                                String.valueOf(ReflectionUtils.getField(sourceIdField, mainOldData)));
+                                String.valueOf(
+                                        ReflectionUtils.getField(sourceIdField, mainOldData)));
 
                 if (Objects.isNull(sourceId) || sourceId != -1L) {
                     log.debug("recordId:{}当前第一次实时保存，拷贝老数据到快照", recordId);
