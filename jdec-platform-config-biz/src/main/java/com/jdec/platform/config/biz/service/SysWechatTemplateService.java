@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -101,6 +102,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public WechatTemplateDetailResp getTemplateById(Long id) {
         SysWechatTemplate template = sysWechatTemplateMapper.selectById(id);
         if (template == null || template.getDeleted() == 1) {
@@ -183,6 +185,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean sendWechatMessage(String projectNo, Long subjectId, SendWechatMessageReq req) {
         if (req == null || req.getReceivers() == null || req.getReceivers().isEmpty()) {
             return false;
@@ -308,6 +311,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<WechatTemplateParamEntryResp> listParamsByIds(
             String projectNo, Long subjectId, List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -389,6 +393,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
     // 根据模块ID和触发类型查询微信模板
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public WechatTemplateEntryResp getTemplateByModuleId(
             String projectNo, Long subjectId, Long moduleId, String triggerType) {
         SysConfigItemResp sysConfigItem =
