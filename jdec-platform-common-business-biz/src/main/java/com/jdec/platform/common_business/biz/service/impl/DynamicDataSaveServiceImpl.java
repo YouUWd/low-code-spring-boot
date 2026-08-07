@@ -19,9 +19,7 @@ import com.google.common.base.Splitter;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
-import com.jdec.platform.common_business.api.dto.common.ModuleField;
-import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
-import com.jdec.platform.common_business.api.dto.common.ModuleTable;
+import com.jdec.platform.common_business.api.dto.common.*;
 import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
@@ -1279,6 +1277,10 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         FormButtonEnum.CREATE.getKey(),
                         List.of());
 
+        // 开启数据变更记录 追踪
+        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE) {
+            DataUpdateContextHolder.openDataChangeFlag();
+        }
         switch (buttonType) {
             case CREATE, CHANGE -> {
                 log.debug("当前提交为创建或变更，插入业务数据。");
@@ -1475,6 +1477,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         // 非实时保存，调用审批链process
         if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE) {
 
+            ConfigApiResponse<Map<String, Object>> processResult = null;
             approvalProcessReq.setSubjectId(subjectId);
             approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
             approvalProcessReq.setRoleId(roleId);
@@ -1484,9 +1487,17 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setButton(approvalOperation.getBtnType());
             approvalProcessReq.setReason(approvalOperation.getReason());
             approvalProcessReq.setRejectStep(approvalOperation.getRejectStep());
-
-            ConfigApiResponse<Map<String, Object>> processResult =
-                    approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
+            try {
+                // 获取字段变更对比日志大json
+                String reason =
+                        systemModuleDataChangeLogService.compareOutChangeLogJson(
+                                DataUpdateContextHolder.getModuleDataChangeContext(),
+                                approvalOperation.getReason());
+                approvalProcessReq.setReason(reason);
+                processResult = approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
+            } finally {
+                DataUpdateContextHolder.clear();
+            }
 
             if (ConfigApiResponse.isSuccessResponse(processResult)) {
                 Map<String, Object> processResultMap = processResult.getData();
