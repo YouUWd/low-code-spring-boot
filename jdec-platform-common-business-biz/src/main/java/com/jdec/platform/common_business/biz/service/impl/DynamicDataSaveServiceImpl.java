@@ -1394,7 +1394,10 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             }
 
                         } else {
-                            log.debug("该条业务数据未发生变化。recordId:{}", oldRecordId);
+                            log.debug("该条业务数据未实时保存，正常提交。recordId:{}", oldRecordId);
+
+                            // 复制老数据更新到快照
+                            updateSnapshot(tableName, mainOldData, recordId);
                         }
                     }
                 } catch (IllegalAccessException e) {
@@ -1421,25 +1424,26 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         getDataRecordId(
                                 moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
 
+                String tableName =
+                        StrUtil.toCamelCase(moduleFilterInfo.getModuleInfo().getPrimaryTable());
+
                 BaseMapper primaryMapper =
-                        SpringBeanUtil.getBean(
-                                StrUtil.toCamelCase(
-                                                moduleFilterInfo.getModuleInfo().getPrimaryTable())
-                                        + MYBATIS_MAPPER_SUFFIX,
-                                BaseMapper.class);
+                        SpringBeanUtil.getBean(tableName + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
 
                 Object mainOldData = primaryMapper.selectById((Serializable) recordId);
 
-                Field field =
+                Field idField =
                         ReflectionUtils.findField(mainOldData.getClass(), DEFAULT_PRIMARY_KEY);
-                field.setAccessible(true);
+                idField.setAccessible(true);
 
                 Long sourceId =
                         Long.parseLong(
-                                String.valueOf(ReflectionUtils.getField(field, mainOldData)));
+                                String.valueOf(ReflectionUtils.getField(idField, mainOldData)));
 
                 if (Objects.isNull(sourceId) || sourceId == -1L) {
                     log.debug("recordId:{}当前第一次实时保存，拷贝老数据到快照", recordId);
+
+                    updateSnapshot(tableName, mainOldData, recordId);
                 }
 
                 Map<String, Object> fillDataMap = new HashMap<>();
@@ -1611,6 +1615,32 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         } catch (InvocationTargetException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void updateSnapshot(String tableName, Object mainOldData, Long oldRecordId) {
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
+
+        if (Objects.isNull(mainOldData)) {
+            mainOldData = primaryMapper.selectById((Serializable) oldRecordId);
+        }
+
+        QueryWrapper queryWrapper = Wrappers.query();
+        queryWrapper.eq("source_id", oldRecordId);
+        Object snapshotData = primaryMapper.selectOne(queryWrapper);
+
+        BeanUtils.copyProperties(mainOldData, snapshotData, "id");
+
+        Field sourceIdField = ReflectionUtils.findField(snapshotData.getClass(), "sourceId");
+        sourceIdField.setAccessible(true);
+        ReflectionUtils.setField(sourceIdField, snapshotData, oldRecordId);
+
+        Field deletedField = ReflectionUtils.findField(snapshotData.getClass(), "deleted");
+        deletedField.setAccessible(true);
+        ReflectionUtils.setField(deletedField, snapshotData, true);
+
+        primaryMapper.updateById(snapshotData);
     }
 
     private void insertDataToRealTable(
