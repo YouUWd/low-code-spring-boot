@@ -186,6 +186,16 @@ public class DynamicQueryController {
                         subjectId, roleId, menuId));
     }
 
+    @GetMapping("/approval/getToDoId")
+    @Operation(summary = "获取带审批的模块待办、已办、全部数量", description = "获取带审批的模块待办、已办、全部数量")
+    public ApiResponse<Long> getApprovalToDoId(
+            @Schema(description = "主体ID") @RequestHeader("X-Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "X-Role-Id") Long roleId,
+            @Schema(description = "菜单ID") @RequestParam Long menuId) {
+        return ApiResponse.success(
+                dynamicDataAccessService.getApprovalToDoId(subjectId, roleId, menuId));
+    }
+
     @GetMapping("/approval/log")
     @Operation(summary = "获取单据操作日志", description = "获取单据操作日志")
     public ApiResponse<Object> getApprovalOperationLogs(

@@ -67,6 +67,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             return new ArrayList<>();
         }
         List<OpLogResp> result = new ArrayList<>();
+        Map<Long, Map<String, Integer>> moduleMap = new HashMap<>();
         for (MonitorLogPageListResp resp : logResponse.getData()) {
             if (StringUtils.isEmpty(resp.getLogRemark())) {
                 continue;
@@ -116,7 +117,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 continue;
             }
             List<ModuleDataChangeDTO> moduleDataList = new ArrayList<>();
-            Map<Long, Map<String, Integer>> moduleMap = new HashMap<>();
+
             for (ModuleDataChangeDTO moduleDataChangeDTO : dataAuditContent.getChange()) {
                 DataChangeActionDTO dataChangeActionDTO = moduleDataChangeDTO.getActions();
                 // 没有变更字段

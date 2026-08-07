@@ -251,7 +251,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             if (Objects.nonNull(tablePrefixResultMap)) {
 
                 // 查询版本对比信息数据
-                if (hasApproval) {
+                if (hasApproval && !approvalInfo.containsKey("showChangeList")) {
                     ApprovalDataReq approvalDataReq = new ApprovalDataReq();
                     // 此处应用顶层主模块ID
                     approvalDataReq.setModuleId(moduleId);
@@ -279,6 +279,25 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         }
                     }
 
+                    // 查询快照数据
+                    QueryWrapper snapshotQuery = Wrappers.query();
+                    snapshotQuery.eq("source_id", id);
+                    Object snapshotData = primaryMapper.selectOne(snapshotQuery);
+
+                    Long snapshotDataId = null;
+                    if (Objects.nonNull(snapshotData)) {
+                        log.debug("recordId:{}存在快照数据，返回版本对比数据。", id);
+
+                        Field field =
+                                ReflectionUtils.findField(
+                                        snapshotData.getClass(), DEFAULT_PRIMARY_KEY);
+                        field.setAccessible(true);
+                        snapshotDataId =
+                                Long.parseLong(
+                                        String.valueOf(
+                                                ReflectionUtils.getField(field, snapshotData)));
+                    }
+
                     VersionCompareInfo fieldChangeList =
                             buildFieldChangeListData(
                                     moduleFilterInfo.getModuleInfo().getPrimaryTable(),
@@ -288,10 +307,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                             : Long.parseLong(
                                                     String.valueOf(
                                                             versionInfo.get("sourceRecordId"))),
-                                    versionInfo.get("preRecordId") == null
-                                            ? null
-                                            : Long.parseLong(
-                                                    String.valueOf(versionInfo.get("preRecordId"))),
+                                    snapshotDataId,
                                     versionInfo.get("sourceVersion") == null
                                             ? null
                                             : Integer.parseInt(
@@ -2895,6 +2911,69 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         return null;
+    }
+
+    @Override
+    public Long getApprovalToDoId(Long subjectId, Long roleId, Long menuId) {
+        ConfigApiResponse<List<MenuListResp>> response =
+                configCenterApiClient.getMenuList(subjectId, 1);
+
+        if (!ConfigApiResponse.isSuccessResponse(response)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        List<MenuListResp> menuRespList = response.getData();
+        if (CollectionUtil.isEmpty(menuRespList)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        // 筛选业务菜单，去掉系统设置菜单
+        List<MenuListResp> bizMenuList = new ArrayList<>();
+        bizMenuList.addAll(
+                menuRespList.stream().filter(ele -> ele.getCategory().equals(1)).toList());
+        bizMenuList.sort(Comparator.comparing(MenuListResp::getSortOrder));
+
+        MenuListResp targetTopMenu =
+                bizMenuList.stream()
+                        .filter(ele -> menuId.equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        // 模块相关信息
+        ModuleInfoResp moduleInfoResp =
+                configCenterApiService.getModuleInfoComplete(
+                        subjectId, targetTopMenu.getModuleId());
+
+        if (Objects.nonNull(moduleInfoResp)) {
+
+            ApprovalProcessReq processReq = new ApprovalProcessReq();
+            processReq.setSubjectId(subjectId);
+            processReq.setRoleId(roleId);
+            processReq.setModuleId(
+                    moduleInfoResp.getModule().getDetailModuleId()); // 使用列表关联的详情模块的模块ID
+            processReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            processReq.setApplicantId(LoginUserUtil.getLoginUserId());
+
+            ConfigApiResponse<Long> numResultMap =
+                    approvalApiOpenFeignClient.getBusinessNextId(subjectId, processReq);
+
+            if (ConfigApiResponse.isSuccessResponse(numResultMap)) {
+                return numResultMap.getData();
+            } else {
+                try {
+                    log.debug(
+                            "调用审批链:{}方法失败 , 请求参数:{}",
+                            "getBusinessTypeList",
+                            JsonUtil.obj2Json(processReq));
+                } catch (JsonProcessingException e) {
+                    log.debug("请求参数json序列化失败。");
+                }
+            }
+        }
+
+        return 0L;
     }
 
     private Map<String, ?> dynamicQueryListSelectDataWithSearch(
