@@ -1,5 +1,7 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
+import static org.bouncycastle.asn1.x500.style.RFC4519Style.o;
+
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
@@ -141,8 +143,36 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
         if (CollectionUtil.isNotEmpty(primaryTableDataList)
                 && primaryTableDataList.get(0) != null) {
+            Object result = null;
             try {
-                return getId(primaryTableDataList.get(0));
+                result = getId(primaryTableDataList.get(0));
+                // 根据标志位 获取跟踪数据变更记录
+                if (DataUpdateContextHolder.getDataChangeFlag()) {
+                    List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
+                    if (CollectionUtil.isNotEmpty(targets)) {
+                        ModuleDataChangeContext context = new ModuleDataChangeContext();
+                        context.setSubjectId(subjectId);
+                        context.setMainModuleId(reqList.get(0).getModuleId());
+                        context.setMenuId(reqList.get(0).getMenuId());
+                        context.setDataId((Long) result);
+                        context.setRealUserId(LoginUserUtil.getRealLoginUserId());
+                        context.setMockUserId(
+                                !LoginUserUtil.getRealLoginUserId()
+                                                .equals(LoginUserUtil.getLoginUserId())
+                                        ? LoginUserUtil.getLoginUserId()
+                                        : null);
+                        context.setRoleId(roleId);
+                        List<DataChangeContext> dataChangeContextList = new ArrayList<>();
+                        for (Object object : targets) {
+                            DataChangeContext dataChangeContext = (DataChangeContext) object;
+                            dataChangeContextList.add(dataChangeContext);
+                        }
+                        context.setCallType(CallTypeEnum.CREATE);
+                        context.setDataChangeContextList(dataChangeContextList);
+                        DataUpdateContextHolder.setModuleDataChangeContext(context);
+                    }
+                }
+                return result;
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -867,14 +897,42 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
         if (CollectionUtil.isNotEmpty(primaryTableDataList)
                 && primaryTableDataList.get(0) != null) {
+            Object result = null;
             try {
-                return getId(primaryTableDataList.get(0));
+                result = getId(primaryTableDataList.get(0));
+                // 根据标志位 获取跟踪 数据变更记录
+                if (DataUpdateContextHolder.getDataChangeFlag()) {
+                    List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
+                    if (CollectionUtil.isNotEmpty(targets)) {
+                        ModuleDataChangeContext context = new ModuleDataChangeContext();
+                        context.setSubjectId(subjectId);
+                        context.setMainModuleId(reqList.get(0).getModuleId());
+                        context.setMenuId(reqList.get(0).getMenuId());
+                        context.setDataId((Long) result);
+                        context.setRealUserId(LoginUserUtil.getRealLoginUserId());
+                        context.setMockUserId(
+                                !LoginUserUtil.getRealLoginUserId()
+                                                .equals(LoginUserUtil.getLoginUserId())
+                                        ? LoginUserUtil.getLoginUserId()
+                                        : null);
+                        context.setRoleId(roleId);
+                        List<DataChangeContext> dataChangeContextList = new ArrayList<>();
+                        for (Object object : targets) {
+                            DataChangeContext dataChangeContext = (DataChangeContext) object;
+                            dataChangeContextList.add(dataChangeContext);
+                        }
+                        context.setCallType(CallTypeEnum.EDITE);
+                        context.setDataChangeContextList(dataChangeContextList);
+                        DataUpdateContextHolder.setModuleDataChangeContext(context);
+                    }
+                }
             } catch (Exception e) {
                 throw new BusinessException(
                         ApiResponseCodeEnum.SERVER_ERROR.getCode(),
                         ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
                         e);
             }
+            return result;
         }
         return null;
     }
@@ -919,6 +977,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
                                 BeanUtils.copyProperties(ele, moduleSaveReq);
                                 moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveReq.setMenuId(target.getId());
                                 moduleSaveList.add(moduleSaveReq);
                             }
                         });
@@ -928,29 +987,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         try {
             DataUpdateContextHolder.openDataChangeFlag();
             o = editMultiModuleData(subjectId, roleId, moduleSaveList);
-
-            List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
-            if (CollectionUtil.isNotEmpty(targets)) {
-                ModuleDataChangeContext context = new ModuleDataChangeContext();
-                context.setSubjectId(subjectId);
-                context.setMainModuleId(moduleSaveList.get(0).getModuleId());
-                context.setMenuId(req.get(0).getMenuId());
-                context.setDataId((Long) o);
-                context.setRealUserId(LoginUserUtil.getRealLoginUserId());
-                context.setMockUserId(
-                        !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
-                                ? LoginUserUtil.getLoginUserId()
-                                : null);
-                context.setRoleId(roleId);
-                List<DataChangeContext> dataChangeContextList = new ArrayList<>();
-                for (Object object : targets) {
-                    DataChangeContext dataChangeContext = (DataChangeContext) object;
-                    dataChangeContextList.add(dataChangeContext);
-                }
-                context.setCallType(CallTypeEnum.EDITE);
-                context.setDataChangeContextList(dataChangeContextList);
-                systemModuleDataChangeLogService.saveLog(context);
-            }
+            systemModuleDataChangeLogService.saveLog(
+                    DataUpdateContextHolder.getModuleDataChangeContext());
         } finally {
             DataUpdateContextHolder.clear();
         }
@@ -1002,6 +1040,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
                                 BeanUtils.copyProperties(ele, moduleSaveReq);
                                 moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveReq.setMenuId(target.getId());
                                 moduleSaveList.add(moduleSaveReq);
                             }
                         });
@@ -1011,32 +1050,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         try {
             DataUpdateContextHolder.openDataChangeFlag();
             o = createMultiModuleData(subjectId, roleId, moduleSaveList);
-
-            List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
-            if (CollectionUtil.isNotEmpty(targets)) {
-                ModuleDataChangeContext context = new ModuleDataChangeContext();
-                context.setSubjectId(subjectId);
-                context.setMainModuleId(moduleSaveList.get(0).getModuleId());
-                context.setMenuId(req.get(0).getMenuId());
-                context.setDataId((Long) o);
-                context.setRealUserId(LoginUserUtil.getRealLoginUserId());
-                context.setMockUserId(
-                        !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
-                                ? LoginUserUtil.getLoginUserId()
-                                : null);
-                context.setRoleId(roleId);
-                List<DataChangeContext> dataChangeContextList = new ArrayList<>();
-                for (Object object : targets) {
-                    DataChangeContext dataChangeContext = (DataChangeContext) object;
-                    dataChangeContextList.add(dataChangeContext);
-                }
-                context.setCallType(CallTypeEnum.CREATE);
-                context.setDataChangeContextList(dataChangeContextList);
-                systemModuleDataChangeLogService.saveLog(context);
-            }
+            systemModuleDataChangeLogService.saveLog(
+                    DataUpdateContextHolder.getModuleDataChangeContext());
         } finally {
             DataUpdateContextHolder.clear();
         }
+
         return o;
     }
 
@@ -1219,6 +1238,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
                                 BeanUtils.copyProperties(ele, moduleSaveReq);
                                 moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveReq.setMenuId(target.getId());
                                 moduleSaveList.add(moduleSaveReq);
                             }
                         });
