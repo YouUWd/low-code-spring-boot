@@ -334,7 +334,10 @@ public class TableUtils {
     }
 
     public static final <T> RowChangeDTO getInsertOrDeleteFieldChangeList(
-            T t, Map<String, SysFieldDTO> showName, Boolean insert) {
+            T t,
+            Map<String, SysFieldDTO> showName,
+            Map<String, List<String>> tableUniqueFieldMap,
+            Boolean insert) {
         if (t == null) {
             return null;
         }
@@ -420,13 +423,17 @@ public class TableUtils {
             }
             fieldChangeDTOS.add(dto);
         }
-        String uniqName = getUniqName(tableName, fieldMap, t);
+        String uniqName = getUniqName(tableName, tableUniqueFieldMap, fieldMap, t);
         return RowChangeDTO.builder().columns(fieldChangeDTOS).name(uniqName).build();
     }
 
-    public static <T> String getUniqName(String tableName, Map<String, Field> fieldMap, T t) {
-        if (TABLE_UNIQ_FIELD_CONFIG.containsKey(tableName)) {
-            List<String> fs = TABLE_UNIQ_FIELD_CONFIG.get(tableName);
+    public static <T> String getUniqName(
+            String tableName,
+            Map<String, List<String>> tableUniqueFieldMap,
+            Map<String, Field> fieldMap,
+            T t) {
+        if (tableUniqueFieldMap.containsKey(tableName)) {
+            List<String> fs = tableUniqueFieldMap.get(tableName);
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < fs.size(); i++) {
                 try {
@@ -445,26 +452,37 @@ public class TableUtils {
     }
 
     public static final <T> RowChangeDTO getInsertOrDeleteRowChange(
-            T t, Map<String, SysFieldDTO> showName, Boolean insert) {
-        RowChangeDTO rowChangeDTO = getInsertOrDeleteFieldChangeList(t, showName, insert);
+            T t,
+            Map<String, SysFieldDTO> showName,
+            Map<String, List<String>> tableUniqueFieldMap,
+            Boolean insert) {
+        RowChangeDTO rowChangeDTO =
+                getInsertOrDeleteFieldChangeList(t, showName, tableUniqueFieldMap, insert);
         return rowChangeDTO;
     }
 
     public static final <T> List<RowChangeDTO> getInsertOrDeleteRowChangeList(
-            List<T> tList, Map<String, SysFieldDTO> showName, Boolean insert) {
+            List<T> tList,
+            Map<String, SysFieldDTO> showName,
+            Map<String, List<String>> tableUniqueFieldMap,
+            Boolean insert) {
         if (CollectionUtil.isEmpty(tList)) {
             return null;
         }
         List<RowChangeDTO> rows = new ArrayList<>();
         for (T t : tList) {
-            RowChangeDTO rowChangeDTO = getInsertOrDeleteRowChange(t, showName, insert);
+            RowChangeDTO rowChangeDTO =
+                    getInsertOrDeleteRowChange(t, showName, tableUniqueFieldMap, insert);
             rows.add(rowChangeDTO);
         }
         return rows;
     }
 
     public static final <T> RowChangeDTO getUpdateFieldChangeList(
-            T t1, T t2, Map<String, SysFieldDTO> showName) {
+            T t1,
+            T t2,
+            Map<String, SysFieldDTO> showName,
+            Map<String, List<String>> tableUniqueFieldMap) {
         if (t1 == null) {
             return null;
         }
@@ -574,13 +592,16 @@ public class TableUtils {
                 fieldChangeDTOS.add(dto);
             }
         }
-        String uniqName = getUniqName(tableName, fieldMap, t2);
+        String uniqName = getUniqName(tableName, tableUniqueFieldMap, fieldMap, t2);
         return RowChangeDTO.builder().columns(fieldChangeDTOS).name(uniqName).build();
     }
 
     public static final <T> RowChangeDTO getUpdateFieldChangeRow(
-            T t1, T t2, Map<String, SysFieldDTO> showName) {
-        RowChangeDTO rowChangeDTO = getUpdateFieldChangeList(t1, t2, showName);
+            T t1,
+            T t2,
+            Map<String, SysFieldDTO> showName,
+            Map<String, List<String>> tableUniqueFieldMap) {
+        RowChangeDTO rowChangeDTO = getUpdateFieldChangeList(t1, t2, showName, tableUniqueFieldMap);
         if (rowChangeDTO == null || CollectionUtil.isEmpty(rowChangeDTO.getColumns())) {
             return null;
         }
@@ -588,13 +609,17 @@ public class TableUtils {
     }
 
     public static final List<RowChangeDTO> getUpdateFieldChangeRowList(
-            Map<?, ?> ttMap, Map<String, SysFieldDTO> showName) {
+            Map<?, ?> ttMap,
+            Map<String, SysFieldDTO> showName,
+            Map<String, List<String>> tableUniqueFieldMap) {
         if (CollectionUtil.isEmpty(ttMap)) {
             return null;
         }
         List<RowChangeDTO> rows = new ArrayList<>();
         for (Map.Entry<?, ?> e : ttMap.entrySet()) {
-            RowChangeDTO row = getUpdateFieldChangeRow(e.getKey(), e.getValue(), showName);
+            RowChangeDTO row =
+                    getUpdateFieldChangeRow(
+                            e.getKey(), e.getValue(), showName, tableUniqueFieldMap);
             if (row != null && CollectionUtil.isNotEmpty(row.getColumns())) {
                 rows.add(row);
             }

@@ -6,6 +6,7 @@ import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.api.dto.response.UserTreeResp;
 import com.jdec.platform.common_business.biz.dto.WechatTemplateDetailDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import java.util.List;
 
@@ -44,4 +45,6 @@ public interface ConfigCenterApiService {
 
     List<WechatTemplateParamEntryResp> getWechatTemplateParamEntryByIds(
             Long subjectId, List<Long> ids);
+
+    List<SysFieldResp> getColumnSettings(Long subjectId, String tableName, String columnName);
 }

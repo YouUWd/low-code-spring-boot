@@ -123,15 +123,14 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
         }
         LinkedHashMap<Long, List<DataChangeContext>> dataChangeMap = new LinkedHashMap<>();
 
-        LinkedHashMap<Long, String> moduleNameMap = new LinkedHashMap<>();
+        LinkedHashMap<Long, ModuleFilterInfo> moduleNameMap = new LinkedHashMap<>();
         for (DataChangeContext dataChangeContext : context.getDataChangeContextList()) {
             if (!dataChangeMap.containsKey(dataChangeContext.getModuleId())) {
                 dataChangeMap.put(dataChangeContext.getModuleId(), new ArrayList<>());
             }
             dataChangeMap.get(dataChangeContext.getModuleId()).add(dataChangeContext);
             moduleNameMap.put(
-                    dataChangeContext.getModuleId(),
-                    dataChangeContext.getModuleFilterInfo().getModuleInfo().getModuleName());
+                    dataChangeContext.getModuleId(), dataChangeContext.getModuleFilterInfo());
         }
         // OperationChangeDTO operationChangeDTO = new OperationChangeDTO();
 
@@ -141,7 +140,25 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             Long moduleId = entry.getKey();
             ModuleDataChangeDTO moduleDataChangeDTO = new ModuleDataChangeDTO();
             moduleDataChangeDTO.setMId(moduleId);
-            moduleDataChangeDTO.setName(moduleNameMap.get(moduleId));
+            ModuleFilterInfo moduleFilterInfo = moduleNameMap.get(moduleId);
+            moduleDataChangeDTO.setName(moduleFilterInfo.getModuleInfo().getModuleName());
+
+            // 获取模块 的唯一标识字段
+            List<ModuleField> fields =
+                    moduleFilterInfo.getSimpleModuleFields().stream()
+                            .filter(x -> (x.getBizKeyOrder() != null && x.getBizKeyOrder() > 0))
+                            .collect(Collectors.toList());
+            Map<String, List<String>> tableUniqueFieldMap = new HashMap<>();
+            if (CollectionUtil.isNotEmpty(fields)) {
+                fields.sort(Comparator.comparing(ModuleField::getBizKeyOrder));
+                for (ModuleField f : fields) {
+                    if (!tableUniqueFieldMap.containsKey(f.getTableName())) {
+                        tableUniqueFieldMap.put(f.getTableName(), new ArrayList<>());
+                    }
+                    tableUniqueFieldMap.get(f.getTableName()).add(f.getFieldCode());
+                }
+            }
+
             // List<TableDataChangeDTO> modifyTables = new ArrayList<>();
 
             List<RowChangeDTO> insertRows = new ArrayList<>();
@@ -168,7 +185,10 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                 if (dataChangeContext.getBefore() == null && dataChangeContext.getAfter() != null) {
                     RowChangeDTO rowChangeDTO =
                             TableUtils.getInsertOrDeleteRowChange(
-                                    dataChangeContext.getAfter(), sysFieldMap, true);
+                                    dataChangeContext.getAfter(),
+                                    sysFieldMap,
+                                    tableUniqueFieldMap,
+                                    true);
                     if (rowChangeDTO != null
                             && CollectionUtil.isNotEmpty(rowChangeDTO.getColumns())) {
                         insertRows.add(rowChangeDTO);
@@ -181,7 +201,8 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                             TableUtils.getUpdateFieldChangeRow(
                                     dataChangeContext.getBefore(),
                                     dataChangeContext.getAfter(),
-                                    sysFieldMap);
+                                    sysFieldMap,
+                                    tableUniqueFieldMap);
                     if (rowChangeDTO != null
                             && CollectionUtil.isNotEmpty(rowChangeDTO.getColumns())) {
                         updateRows.add(rowChangeDTO);
@@ -190,7 +211,10 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                     // 删除操作
                     RowChangeDTO rowChangeDTO =
                             TableUtils.getInsertOrDeleteRowChange(
-                                    dataChangeContext.getBefore(), sysFieldMap, false);
+                                    dataChangeContext.getBefore(),
+                                    sysFieldMap,
+                                    tableUniqueFieldMap,
+                                    false);
                     if (rowChangeDTO != null
                             && CollectionUtil.isNotEmpty(rowChangeDTO.getColumns())) {
                         deleteRows.add(rowChangeDTO);

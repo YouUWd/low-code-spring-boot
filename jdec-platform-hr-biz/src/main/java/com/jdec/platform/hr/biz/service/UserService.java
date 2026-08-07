@@ -19,13 +19,18 @@ import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 用户服务 */
+/**
+ * 用户服务
+ *
+ * <p>只读查询方法统一使用 {@code @Transactional(propagation = NOT_SUPPORTED)}：跨库（config/auth → hr）调用时挂起
+ * 调用方事务，避免复用调用方已绑定的连接导致数据源路由失效。
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 @DataSource(DataSourceConstants.HR_MANAGE)
 public class UserService implements UserApi {
 
@@ -33,6 +38,7 @@ public class UserService implements UserApi {
     private final DepartmentMapper departmentMapper;
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Optional<Integer> getSubjectIdByPhone(String phone) {
         return Optional.ofNullable(
                         userMapper.selectOne(
@@ -41,11 +47,13 @@ public class UserService implements UserApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Optional<Integer> getSubjectIdByUserId(Long userId) {
         return Optional.ofNullable(userMapper.selectById(userId)).map(User::getSubjectId);
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Optional<String> getWeChatUserIdByPhone(String phone) {
         return Optional.ofNullable(
                         userMapper.selectOne(
@@ -54,6 +62,7 @@ public class UserService implements UserApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Optional<UserBasicInfoResp> getUserBasicInfoByPhone(String phone) {
         return Optional.ofNullable(
                         userMapper.selectOne(
@@ -112,6 +121,7 @@ public class UserService implements UserApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<UserBO> listByIds(Set<Long> allUserIds) {
         List<User> users =
                 userMapper.selectList(
@@ -122,6 +132,7 @@ public class UserService implements UserApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<UserBO> listBySubjectId(Long subjectId) {
         List<User> users =
                 userMapper.selectList(
@@ -155,6 +166,7 @@ public class UserService implements UserApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<UserTreeNodeResp> getUserTreeList(Integer userType) {
         // userType: 0=全部, 1=内部, 2=外部。当前项目仅支持内部用户树
         if (userType != null && userType == 2) {

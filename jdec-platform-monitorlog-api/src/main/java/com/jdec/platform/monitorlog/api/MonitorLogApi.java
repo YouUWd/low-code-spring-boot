@@ -1,52 +1,32 @@
 package com.jdec.platform.monitorlog.api;
 
-import com.jdec.platform.monitorlog.api.dto.request.MonitorLogPageListReq;
-import com.jdec.platform.monitorlog.api.dto.request.MonitorLogReq;
+import com.jdec.platform.monitorlog.api.dto.request.*;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.shared.model.PageResult;
 import java.sql.SQLException;
+import java.util.List;
 
 /** 监控日志 Service */
 public interface MonitorLogApi {
     /** 分页查询监控日志 */
-    PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq req);
-
-    /** 记录审批链日志 形如：[元件管理-FHSQ2409230955401 V2] 元件审核已驳回 带remark 如：驳回原因：审批不通过.. */
-    void recordApprovalChainRunLog(MonitorLogReq req) throws SQLException;
-
-    /** 记录审批链配置日志 形如：[系统设置-审批链配置]修改了配置 带remark 如：[审批链分类] :PFD\r\n[模块名称]:PFD->PFD-1 */
-    void recordApprovalChainConfigLog(MonitorLogReq req) throws SQLException;
-
-    /** 记录权限日志 形如：[系统设置-审批链配置]修改了配置 */
-    void recordAuthorityChangeLog(MonitorLogReq req) throws SQLException;
+    PageResult<MonitorLogPageListResp> queryPageList(MonitorLogPageListReq req, String projectNo);
 
     /** 记录消息日志 */
-    void recordMessageLog(MonitorLogReq req) throws SQLException;
+    void recordMessageLog(MonitorMessageLogReq req, String projectNo) throws SQLException;
 
-    /** 记录登录日志 形如：登录ipd系统 [ip：126.214.120.01] */
-    void recordLoginLog(MonitorLogReq req) throws SQLException;
+    /** 记录系统操作日志 形如：登录ipd系统 [ip：126.214.120.01] */
+    void recordSystemControlLog(MonitorSystemLogReq req, String projectNo) throws SQLException;
 
-    /** 记录退出日志 形如：退出ipd系统 [ip：126.214.120.01] */
-    void recordLogoutLog(MonitorLogReq req) throws SQLException;
-
-    /** 记录导航日志 形如： [元件管理-列表] 进入列表页面 */
-    void recordNavLog(MonitorLogReq req) throws SQLException;
-
-    /** 记录切换模拟用户日志 形如：切换身份：肖国平 (J10006721) 超级管理员 */
-    void recordMockUser(MonitorLogReq req) throws SQLException;
-
-    /** 记录切换角色日志 形如：切换角色：元件管理审核 */
-    void recordChaneRole(MonitorLogReq req) throws SQLException;
-
-    /** 记录切换模拟角色日志 形如：切换模拟角色：[模拟用户名]（[模拟用户ID]） */
-    void recordMockChaneRole(MonitorLogReq req) throws SQLException;
-
-    /** 记录重置模拟用户日志 形如：重置模拟用户：管理员 */
-    void recordMockReset(MonitorLogReq req) throws SQLException;
-
-    /** 记录切换主题日志 形如：切换主题：[主题名称]，用户：[用户名]，角色：[角色名称] */
-    void recordChangeSubject(Long userId, Long roleId, String subjectName) throws SQLException;
+    /** 记录系统导航日志 */
+    void recordSystemNavLog(MonitorSystemNavLogReq req, String projectNo) throws SQLException;
 
     /*记录业务单据变化日志*/
-    void recordOrderRunLog(MonitorLogReq req) throws SQLException;
+    void recordOrderRunLog(MonitorControlLogReq req, String projectNo) throws SQLException;
+
+    /** 根据moduleId + orderId 查询多条日志记录（按时间倒序） */
+    List<MonitorLogPageListResp> queryByModuleIdAndOrderId(
+            Long moduleId, String orderId, String logType, String projectNo);
+
+    /** 根据menuId + dataId 查询单条最新日志记录 */
+    MonitorLogPageListResp queryByMenuIdAndDataId(Long menuId, Long dataId, String projectNo);
 }

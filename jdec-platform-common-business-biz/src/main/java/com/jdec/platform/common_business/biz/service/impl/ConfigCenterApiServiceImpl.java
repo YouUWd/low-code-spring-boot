@@ -11,6 +11,7 @@ import com.jdec.platform.common_business.biz.dto.WechatTemplateDetailDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import java.util.ArrayList;
@@ -215,6 +216,17 @@ public class ConfigCenterApiServiceImpl implements ConfigCenterApiService {
             Long subjectId, List<Long> ids) {
         ConfigApiResponse<List<WechatTemplateParamEntryResp>> configApiResponse =
                 configCenterApiClient.getWechatTemplateParamEntryByIds(subjectId, ids);
+        if (ConfigApiResponse.isSuccessResponse(configApiResponse)) {
+            return configApiResponse.getData();
+        }
+        return List.of();
+    }
+
+    @Override
+    public List<SysFieldResp> getColumnSettings(
+            Long subjectId, String tableName, String columnName) {
+        ConfigApiResponse<List<SysFieldResp>> configApiResponse =
+                configCenterApiClient.getColumnSettings(subjectId, tableName, columnName);
         if (ConfigApiResponse.isSuccessResponse(configApiResponse)) {
             return configApiResponse.getData();
         }
