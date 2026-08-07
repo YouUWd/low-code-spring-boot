@@ -117,7 +117,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> result = new HashMap<>();
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
-        businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId());
+        businessWrapper
+                .eq(ApprovalVersionRecord::getRecordId, req.getRecordId())
+                .orderByDesc(ApprovalVersionRecord::getId)
+                .last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalVersionRecord)) {
