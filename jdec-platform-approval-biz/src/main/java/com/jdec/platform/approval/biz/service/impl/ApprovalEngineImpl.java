@@ -152,6 +152,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
             // 当前版本号
             result.put("versionNo", versionList.getFirst().get("versionNo"));
+            // 是否显示对比
+            result.put("showChangeList", false);
         } else {
             approvalStatus.put("id", approvalVersionRecord.getStatusId());
             approvalStatus.put("statusValue", approvalVersionRecord.getStatusValue());
