@@ -2,7 +2,6 @@ package com.jdec.platform.monitorlog.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.SysConfigCategoryApi;
-import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
 import com.jdec.platform.monitorlog.api.dto.request.*;
@@ -44,12 +43,13 @@ public class JdecMonitorLogService implements MonitorLogApi {
             MonitorLogPageListReq request, String projectNo) {
         String keyWord = StringUtils.hasText(request.getKeyWord()) ? request.getKeyWord() : "";
 
-        SysConfigCategoryResp category =
-                sysConfigCategoryApi.getByCategoryAlias(MONITOR_LOG_TYPE_CATEGORY);
-        if (category == null) {
-            log.warn(
-                    "未找到监控日志类型配置分类 categoryAlias={}，日志类型 label 将无法正常显示", MONITOR_LOG_TYPE_CATEGORY);
-        }
+        //        SysConfigCategoryResp category =
+        //                sysConfigCategoryApi.getByCategoryAlias(MONITOR_LOG_TYPE_CATEGORY);
+        //        if (category == null) {
+        //            log.warn(
+        //                    "未找到监控日志类型配置分类 categoryAlias={}，日志类型 label 将无法正常显示",
+        // MONITOR_LOG_TYPE_CATEGORY);
+        //        }
 
         List<SysConfigItemTreeResp> configItems =
                 sysConfigCategoryApi.getItemsByCategoryAlias(MONITOR_LOG_TYPE_CATEGORY);
