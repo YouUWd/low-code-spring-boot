@@ -18,4 +18,7 @@ public class ModuleSaveReq implements Serializable {
 
     @Schema(description = "模块更新数据")
     private List<Map<String, Object>> moduleData;
+
+    @Schema(description = "菜单id")
+    private Long menuId;
 }

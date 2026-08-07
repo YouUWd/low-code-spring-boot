@@ -198,7 +198,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             }
 
             if (CollectionUtil.isNotEmpty(insertRows)) {
-                dataChangeActionDTO.setA(insertRows);
+                dataChangeActionDTO.setI(insertRows);
             }
 
             if (CollectionUtil.isNotEmpty(updateRows)) {
@@ -209,7 +209,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                 dataChangeActionDTO.setD(deleteRows);
             }
 
-            if (CollectionUtil.isNotEmpty(dataChangeActionDTO.getA())
+            if (CollectionUtil.isNotEmpty(dataChangeActionDTO.getI())
                     || CollectionUtil.isNotEmpty(dataChangeActionDTO.getU())
                     || CollectionUtil.isNotEmpty(dataChangeActionDTO.getD())) {
                 moduleDataChangeDTO.setActions(dataChangeActionDTO);

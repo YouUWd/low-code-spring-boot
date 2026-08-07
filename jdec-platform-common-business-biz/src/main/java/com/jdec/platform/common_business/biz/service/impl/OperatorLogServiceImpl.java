@@ -121,7 +121,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 DataChangeActionDTO dataChangeActionDTO = moduleDataChangeDTO.getActions();
                 // 没有变更字段
                 if (dataChangeActionDTO == null
-                        || (CollectionUtil.isEmpty(dataChangeActionDTO.getA())
+                        || (CollectionUtil.isEmpty(dataChangeActionDTO.getI())
                                 && CollectionUtil.isEmpty(dataChangeActionDTO.getU())
                                 && CollectionUtil.isEmpty(dataChangeActionDTO.getD()))) {
                     continue;
@@ -147,7 +147,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 Map<String, Integer> fieldMap = moduleMap.get(moduleDataChangeDTO.getMId());
 
                 List<RowChangeDTO> insertRows =
-                        getFilterRowChangeDTO(dataChangeActionDTO.getA(), fieldMap);
+                        getFilterRowChangeDTO(dataChangeActionDTO.getI(), fieldMap);
                 List<RowChangeDTO> updateRows =
                         getFilterRowChangeDTO(dataChangeActionDTO.getU(), fieldMap);
                 List<RowChangeDTO> deleteRows =
@@ -163,7 +163,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 mChangeDTO.setName(moduleDataChangeDTO.getName());
                 mChangeDTO.setMId(moduleDataChangeDTO.getMId());
                 DataChangeActionDTO actionDTO = new DataChangeActionDTO();
-                actionDTO.setA(insertRows);
+                actionDTO.setI(insertRows);
                 actionDTO.setU(updateRows);
                 actionDTO.setD(deleteRows);
                 mChangeDTO.setActions(actionDTO);
