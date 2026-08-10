@@ -1,7 +1,5 @@
 package com.jdec.platform.common_business.biz.service.impl;
 
-import static org.bouncycastle.asn1.x500.style.RFC4519Style.o;
-
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
@@ -19,7 +17,9 @@ import com.google.common.base.Splitter;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
-import com.jdec.platform.common_business.api.dto.common.*;
+import com.jdec.platform.common_business.api.dto.common.ModuleField;
+import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
+import com.jdec.platform.common_business.api.dto.common.ModuleTable;
 import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
@@ -1080,6 +1080,16 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         Object primaryData = createMultiModuleData(subjectId, roleId, moduleSaveList);
 
         if (needProcess) {
+            // 新建快照数据
+            ModuleFilterInfo moduleFilterInfo =
+                    moduleInfoWithPermissionService.filterModuleInfo(
+                            subjectId, roleId, moduleId, FormButtonEnum.CREATE.getKey(), List.of());
+
+            upsertSnapshot(
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                    null,
+                    Long.parseLong(String.valueOf(primaryData)));
+
             // 有审批链操作时，执行审批链
             ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
             approvalProcessReq.setSubjectId(subjectId);
@@ -1327,7 +1337,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 false);
                 recordId = Long.parseLong(String.valueOf(primaryData));
 
-                insertSnapshot(moduleFilterInfo.getModuleInfo().getPrimaryTable(), null, recordId);
+                upsertSnapshot(moduleFilterInfo.getModuleInfo().getPrimaryTable(), null, recordId);
             }
             case SUBMIT, REJECT, PASS -> {
                 log.debug("提交表单，更新业务数据。");
@@ -1369,7 +1379,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             log.debug("该条业务数据未实时保存，正常提交。recordId:{}", oldRecordId);
 
                             // 复制老数据更新到快照
-                            updateSnapshot(tableName, mainOldData, recordId);
+                            upsertSnapshot(tableName, mainOldData, recordId);
                         }
                     }
                 } catch (IllegalAccessException e) {
@@ -1415,7 +1425,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 if (Objects.isNull(sourceId) || sourceId != -1L) {
                     log.debug("recordId:{}当前第一次实时保存，拷贝老数据到快照", recordId);
 
-                    updateSnapshot(tableName, mainOldData, recordId);
+                    upsertSnapshot(tableName, mainOldData, recordId);
                 }
 
                 Map<String, Object> fillDataMap = new HashMap<>();
@@ -1550,61 +1560,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         return recordId;
     }
 
-    /**
-     * 插入快照数据，快照数据更新不用记录操作日志
-     *
-     * @param tableName
-     * @param mainOldData
-     * @param oldRecordId
-     */
-    private void insertSnapshot(String tableName, Object mainOldData, Long oldRecordId) {
-        BaseMapper primaryMapper =
-                SpringBeanUtil.getBean(
-                        StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
-
-        QueryWrapper queryWrapper = Wrappers.query();
-        queryWrapper.eq("id", oldRecordId);
-
-        if (Objects.isNull(mainOldData)) {
-            mainOldData = primaryMapper.selectById(oldRecordId);
-        }
-
-        Class<?> primaryEntity = getEntityClass(primaryMapper);
-        if (primaryEntity == null) {
-            throw new BusinessException(
-                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
-                    "表[" + tableName + "]mapper不存在");
-        }
-
-        try {
-            Constructor<?> primaryConstructor = null;
-            primaryConstructor = primaryEntity.getDeclaredConstructor();
-            primaryConstructor.setAccessible(true);
-            Object snapshotData = primaryConstructor.newInstance();
-
-            BeanUtils.copyProperties(mainOldData, snapshotData, "id");
-
-            Field sourceIdField = ReflectionUtils.findField(snapshotData.getClass(), "sourceId");
-            sourceIdField.setAccessible(true);
-            ReflectionUtils.setField(sourceIdField, snapshotData, oldRecordId);
-
-            Field deletedField = ReflectionUtils.findField(snapshotData.getClass(), "deleted");
-            deletedField.setAccessible(true);
-            ReflectionUtils.setField(deletedField, snapshotData, true);
-
-            primaryMapper.insert(snapshotData);
-        } catch (NoSuchMethodException e) {
-            throw new RuntimeException(e);
-        } catch (InstantiationException e) {
-            throw new RuntimeException(e);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
-        } catch (InvocationTargetException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private void updateSnapshot(String tableName, Object mainOldData, Long oldRecordId) {
+    private void upsertSnapshot(String tableName, Object mainOldData, Long oldRecordId) {
         BaseMapper primaryMapper =
                 SpringBeanUtil.getBean(
                         StrUtil.toCamelCase(tableName) + MYBATIS_MAPPER_SUFFIX, BaseMapper.class);
@@ -1617,6 +1573,31 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         queryWrapper.eq("source_id", oldRecordId);
         Object snapshotData = primaryMapper.selectOne(queryWrapper);
 
+        boolean exist = true;
+
+        if (Objects.isNull(snapshotData)) {
+            exist = false;
+            try {
+                Class primaryEntity = getEntityClass(primaryMapper);
+                if (primaryEntity == null) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                            "表[" + tableName + "]mapper不存在");
+                }
+                Constructor<?> primaryConstructor = primaryEntity.getDeclaredConstructor();
+                primaryConstructor.setAccessible(true);
+                snapshotData = primaryConstructor.newInstance();
+            } catch (NoSuchMethodException e) {
+                throw new RuntimeException(e);
+            } catch (InstantiationException e) {
+                throw new RuntimeException(e);
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            } catch (InvocationTargetException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         BeanUtils.copyProperties(mainOldData, snapshotData, "id");
 
         Field sourceIdField = ReflectionUtils.findField(snapshotData.getClass(), "sourceId");
@@ -1627,7 +1608,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         deletedField.setAccessible(true);
         ReflectionUtils.setField(deletedField, snapshotData, true);
 
-        primaryMapper.updateById(snapshotData);
+        if (exist) {
+            primaryMapper.updateById(snapshotData);
+        } else {
+            primaryMapper.insert(snapshotData);
+        }
     }
 
     private void insertDataToRealTable(
