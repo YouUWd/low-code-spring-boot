@@ -12,6 +12,7 @@ public enum ApiResponseCodeEnum {
     // 审批链相关
     APPROVAL_PROCESS_ERROR(600, "审批链已发生变化,页面将刷新!"),
     APPROVAL_PROCEDURE_CHANGE(601, "审批流程异常"),
+    APPROVAL_FIELD_VALUE_CHAIN_TYPE_CONFIG_ERROR(602, "配置错误，多个字段值关联了审批链分类"),
 
     WARNING(700, "页面无任何可查看的字段。"),
     BAD_JSON_ENCODE_ERROR(701, "JSON序列化异常"),
