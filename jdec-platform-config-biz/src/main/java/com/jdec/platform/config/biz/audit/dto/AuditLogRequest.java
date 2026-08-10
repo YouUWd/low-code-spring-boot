@@ -68,12 +68,6 @@ public class AuditLogRequest {
     /** 模拟用户工号 */
     private String mockUserNumber;
 
-    /** 模拟角色ID */
-    private Long mockRoleId;
-
-    /** 模拟角色名称 */
-    private String mockRoleName;
-
     /** IP地址 */
     private String ip;
 
