@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -198,7 +199,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             }
 
             if (CollectionUtil.isNotEmpty(insertRows)) {
-                dataChangeActionDTO.setA(insertRows);
+                dataChangeActionDTO.setI(insertRows);
             }
 
             if (CollectionUtil.isNotEmpty(updateRows)) {
@@ -209,7 +210,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                 dataChangeActionDTO.setD(deleteRows);
             }
 
-            if (CollectionUtil.isNotEmpty(dataChangeActionDTO.getA())
+            if (CollectionUtil.isNotEmpty(dataChangeActionDTO.getI())
                     || CollectionUtil.isNotEmpty(dataChangeActionDTO.getU())
                     || CollectionUtil.isNotEmpty(dataChangeActionDTO.getD())) {
                 moduleDataChangeDTO.setActions(dataChangeActionDTO);
@@ -217,6 +218,22 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
             }
         }
         return modifyModules;
+    }
+
+    @Override
+    public String compareOutChangeLogJson(ModuleDataChangeContext context, String reason) {
+        try {
+            List<ModuleDataChangeDTO> modifyModules = compareOutChangeLog(context);
+            if (CollectionUtil.isEmpty(modifyModules) && StringUtils.isEmpty(reason)) {
+                return null;
+            }
+            DataAuditContentDTO auditContentDTO =
+                    DataAuditContentDTO.builder().change(modifyModules).comment(reason).build();
+            return JsonUtil.obj2Json(auditContentDTO);
+        } catch (Exception e) {
+            log.error("compareOutChangeLogJson error,e=", e);
+        }
+        return null;
     }
 
     //    @Override

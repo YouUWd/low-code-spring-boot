@@ -67,6 +67,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             return new ArrayList<>();
         }
         List<OpLogResp> result = new ArrayList<>();
+        Map<Long, Map<String, Integer>> moduleMap = new HashMap<>();
         for (MonitorLogPageListResp resp : logResponse.getData()) {
             if (StringUtils.isEmpty(resp.getLogRemark())) {
                 continue;
@@ -116,12 +117,12 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 continue;
             }
             List<ModuleDataChangeDTO> moduleDataList = new ArrayList<>();
-            Map<Long, Map<String, Integer>> moduleMap = new HashMap<>();
+
             for (ModuleDataChangeDTO moduleDataChangeDTO : dataAuditContent.getChange()) {
                 DataChangeActionDTO dataChangeActionDTO = moduleDataChangeDTO.getActions();
                 // 没有变更字段
                 if (dataChangeActionDTO == null
-                        || (CollectionUtil.isEmpty(dataChangeActionDTO.getA())
+                        || (CollectionUtil.isEmpty(dataChangeActionDTO.getI())
                                 && CollectionUtil.isEmpty(dataChangeActionDTO.getU())
                                 && CollectionUtil.isEmpty(dataChangeActionDTO.getD()))) {
                     continue;
@@ -147,7 +148,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 Map<String, Integer> fieldMap = moduleMap.get(moduleDataChangeDTO.getMId());
 
                 List<RowChangeDTO> insertRows =
-                        getFilterRowChangeDTO(dataChangeActionDTO.getA(), fieldMap);
+                        getFilterRowChangeDTO(dataChangeActionDTO.getI(), fieldMap);
                 List<RowChangeDTO> updateRows =
                         getFilterRowChangeDTO(dataChangeActionDTO.getU(), fieldMap);
                 List<RowChangeDTO> deleteRows =
@@ -163,7 +164,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
                 mChangeDTO.setName(moduleDataChangeDTO.getName());
                 mChangeDTO.setMId(moduleDataChangeDTO.getMId());
                 DataChangeActionDTO actionDTO = new DataChangeActionDTO();
-                actionDTO.setA(insertRows);
+                actionDTO.setI(insertRows);
                 actionDTO.setU(updateRows);
                 actionDTO.setD(deleteRows);
                 mChangeDTO.setActions(actionDTO);
@@ -176,7 +177,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             logResp.setDescription(
                     DataAuditContentDTO.builder()
                             .change(moduleDataList)
-                            .reason(dataAuditContent.getReason())
+                            .comment(dataAuditContent.getComment())
                             .build());
             result.add(logResp);
         }

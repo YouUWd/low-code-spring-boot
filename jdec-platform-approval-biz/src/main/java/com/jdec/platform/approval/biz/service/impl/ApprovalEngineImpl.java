@@ -16,7 +16,10 @@ import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
 import com.jdec.platform.approval.biz.util.ToolUtils;
 import com.jdec.platform.config.api.*;
+import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.hr.api.SubjectApi;
+import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -25,6 +28,7 @@ import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -49,6 +53,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final ApprovalVersionRecordMapper approvalVersionRecordMapper;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final SysUserApi sysUserApi;
+    private final SubjectApi subjectApi;
     private final SysStatusApi sysStatusApi;
     private final SysConfigCategoryApi sysConfigCategoryApi;
     private final SysButtonApi sysButtonApi;
@@ -86,6 +91,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             result.put("versionNo", approvalBusiness.getVersionNo());
             result.put("statusTitle", approvalBusiness.getStatusTitle());
             return result;
+        } else {
+            throw new BusinessException(603, "审批操作异常");
         }
 
         result.put("ok", 1);
@@ -152,6 +159,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
             // 当前版本号
             result.put("versionNo", versionList.getFirst().get("versionNo"));
+            // 是否显示对比
+            result.put("showChangeList", false);
         } else {
             approvalStatus.put("id", approvalVersionRecord.getStatusId());
             approvalStatus.put("statusValue", approvalVersionRecord.getStatusValue());
@@ -525,7 +534,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     getSendUserList(
                             approvalBusiness,
                             Long.valueOf((String) templateId),
-                            req.getRejectStep());
+                            req.getCurrentUserId());
 
             Map<String, Object> item = new HashMap<>();
             item.put("template_id", templateId);
@@ -678,6 +687,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
+        // 发送消息
+        sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId());
+
         return approvalBusiness;
     }
 
@@ -818,6 +830,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
+        // 发送消息
+        sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId());
+
         return approvalBusiness;
     }
 
@@ -950,15 +965,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 throw new BusinessException(601, "单据记录异常");
             }
 
-            if (Objects.isNull(approvalProcessDTO.getOldRecordId())) {
-                approvalRecord.setCurrentStep(approvalBusiness.getCurrentStep());
-                approvalRecord.setStatusId(approvalBusiness.getStatusId());
-                approvalRecord.setStatusTitle(approvalChainStatus.getTitle());
-                approvalRecord.setStatusBackground(approvalChainStatus.getStatusBackground());
-                approvalRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
-                approvalRecord.setStatusValue(approvalChainStatus.getStatusValue());
-                approvalVersionRecordMapper.updateById(approvalRecord);
-            } else {
+            // if (Objects.isNull(approvalProcessDTO.getOldRecordId())) {
+            approvalRecord.setCurrentStep(approvalBusiness.getCurrentStep());
+            approvalRecord.setStatusId(approvalBusiness.getStatusId());
+            approvalRecord.setStatusTitle(approvalChainStatus.getTitle());
+            approvalRecord.setStatusBackground(approvalChainStatus.getStatusBackground());
+            approvalRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
+            approvalRecord.setStatusValue(approvalChainStatus.getStatusValue());
+            approvalVersionRecordMapper.updateById(approvalRecord);
+            /* } else {
                 // 生成编号
                 approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo() + 1);
 
@@ -992,7 +1007,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalVersionRecord.setUpdatedBy(approvalProcessDTO.getApplicantId());
                 approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
                 approvalVersionRecordMapper.insert(approvalVersionRecord);
-            }
+            }*/
         }
 
         // 写入日志
@@ -1011,6 +1026,23 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+
+        // 发送消息
+        LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
+        buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalChain.getSerialNumber());
+        buttonWrapper.eq(ApprovalChainButton::getSerialNo, approvalChain.getSerialNo());
+        buttonWrapper.eq(ApprovalChainButton::getCurrentStep, approvalChain.getCurrentStep());
+        buttonWrapper.eq(ApprovalChainButton::getButtonTypeValue, "pass").last("LIMIT 1");
+        ApprovalChainButton button = approvalChainButtonMapper.selectOne(buttonWrapper);
+        if (Objects.nonNull(button) && !StringUtils.isBlank(button.getMsgTemplateIds())) {
+            String[] ids = button.getMsgTemplateIds().split(",");
+            for (String id : ids) {
+                sendWechatMessageById(
+                        approvalBusiness,
+                        Long.parseLong(id),
+                        approvalProcessDTO.getCurrentUserId());
+            }
+        }
 
         return approvalBusiness;
     }
@@ -1164,6 +1196,23 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
+        // 发送消息
+        LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
+        buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalChain.getSerialNumber());
+        buttonWrapper.eq(ApprovalChainButton::getSerialNo, approvalChain.getSerialNo());
+        buttonWrapper.eq(ApprovalChainButton::getCurrentStep, approvalChain.getCurrentStep());
+        buttonWrapper.eq(ApprovalChainButton::getButtonTypeValue, "reject").last("LIMIT 1");
+        ApprovalChainButton button = approvalChainButtonMapper.selectOne(buttonWrapper);
+        if (Objects.nonNull(button) && !StringUtils.isBlank(button.getMsgTemplateIds())) {
+            String[] ids = button.getMsgTemplateIds().split(",");
+            for (String id : ids) {
+                sendWechatMessageById(
+                        approvalBusiness,
+                        Long.parseLong(id),
+                        approvalProcessDTO.getCurrentUserId());
+            }
+        }
+
         return approvalBusiness;
     }
 
@@ -1265,6 +1314,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+        // 发送消息
+        sendWechatMessage(approvalBusiness, "cancel", approvalProcessDTO.getCurrentUserId());
         return approvalBusiness;
     }
 
@@ -1895,7 +1946,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 获取消息接收人列表------------------------------------------------------------------
     private Set<Long> getSendUserList(
-            ApprovalBusiness business, Long templateId, Integer rejectStep) {
+            ApprovalBusiness business, Long templateId, Long loginUserId) {
         // 1. 查询微信模板
         WechatTemplateDetailResp sysWeChatTemplate =
                 sysWechatTemplateApi.getTemplateById(templateId);
@@ -1913,13 +1964,21 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             SysConfigItemResp aliasConfig = sysConfigCategoryApi.getConfigItemsById(item);
 
             // ================== 额外接收人 ==================
+            if ("login_user".equals(aliasConfig.getValue())) {
+                userList.add(loginUserId);
+                continue;
+            }
+
+            // ================== 额外接收人 ==================
             if ("extra_receiver".equals(aliasConfig.getValue())) {
                 userList.addAll(sysWeChatTemplate.getExtraReceiverIds());
+                continue;
             }
 
             // ================== 申请人 ==================
             if ("apply_person".equals(aliasConfig.getValue())) {
                 userList.add(business.getCreatedBy());
+                continue;
             }
 
             // ================== 下一步审批人 ==================
@@ -1928,30 +1987,30 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
                 approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
                 approvalWrapper
-                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep() + 1)
+                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep())
                         .last("LIMIT 1");
                 ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
                 if (approvalChain != null) {
                     List<Long> approverUserList = getApproverUserList(approvalChain);
                     userList.addAll(approverUserList);
                 }
+                continue;
             }
 
             // ================== 上一步审批人（注释保留） ==================
             if ("prev_approval_person".equals(aliasConfig.getValue())) {
-                Integer preStrp = business.getCurrentStep() - 1;
-                if (Objects.nonNull(rejectStep) && !rejectStep.equals(0)) {
-                    preStrp = rejectStep;
-                }
                 LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
                 approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
                 approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
-                approvalWrapper.eq(ApprovalChain::getCurrentStep, preStrp).last("LIMIT 1");
+                approvalWrapper
+                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep())
+                        .last("LIMIT 1");
                 ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
                 if (approvalChain != null) {
                     List<Long> approverUserList = getApproverUserList(approvalChain);
                     userList.addAll(approverUserList);
                 }
+                continue;
             }
 
             // ================== 已审批人 ==================
@@ -1962,6 +2021,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .map(approvalUid -> Long.valueOf((String) approvalUid))
                                 .toList();
                 userList.addAll(approverUserList);
+                continue;
             }
 
             // ================== 状态关联人（注释保留） ==================
@@ -2000,6 +2060,174 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return userList;
     }
 
+    // ======================================组装并发送审批消息==========================================
+    // 根据模板ID发送消息-----------------------------------
+    private void sendWechatMessageById(
+            ApprovalBusiness business, Long templateId, Long loginUserId) {
+        WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
+        String content = formatWechatMessage(template, business, loginUserId);
+        List<String> userIds =
+                getSendUserList(business, templateId, loginUserId).stream()
+                        .map(String::valueOf)
+                        .toList();
+        SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
+        sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
+        sendWechatMessageReq.setMessageType("markdown");
+        sendWechatMessageReq.setMessageContent(content);
+        sendWechatMessageReq.setReceivers(userIds);
+        sysWechatTemplateApi.sendWechatMessage(
+                AppContext.getProjectNo(), business.getSubjectId(), sendWechatMessageReq);
+    }
+
+    // 发送提交和取消消息-----------------------------------
+    private void sendWechatMessage(
+            ApprovalBusiness business, String triggerType, Long loginUserId) {
+        String projectNo = AppContext.getProjectNo();
+        WechatTemplateEntryResp template =
+                sysWechatTemplateApi.getTemplateByModuleId(
+                        projectNo, business.getSubjectId(), business.getModuleId(), triggerType);
+        String content = formatWechatMessage(template, business, loginUserId);
+        List<String> userIds =
+                getSendUserList(business, template.getId(), loginUserId).stream()
+                        .map(String::valueOf)
+                        .toList();
+        SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
+        sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
+        sendWechatMessageReq.setMessageType("markdown");
+        sendWechatMessageReq.setMessageContent(content);
+        sendWechatMessageReq.setReceivers(userIds);
+        sysWechatTemplateApi.sendWechatMessage(
+                projectNo, business.getSubjectId(), sendWechatMessageReq);
+    }
+
+    // 组装消息
+    private String formatWechatMessage(
+            WechatTemplateEntryResp template, ApprovalBusiness business, Long loginUserId) {
+        try {
+            // 1. 转换对象
+            Map<String, Object> sourceMap = BeanUtil.beanToMap(business, true, true);
+            // 2. 获取参数替换映射
+            Map<String, String> params = getParametersByTemplate(loginUserId, template, sourceMap);
+            // 3. 替换模板内容中的占位符
+            String content = template.getTemplateContent();
+            for (Map.Entry<String, String> entry : params.entrySet()) {
+                String placeholder = entry.getKey();
+                String value = entry.getValue();
+                if (value == null) {
+                    value = "";
+                }
+                content = content.replace(placeholder, value);
+            }
+            return content;
+        } catch (Exception e) {
+            log.error("消息发送失败", e);
+            return "";
+        }
+    }
+
+    /** 根据模板获取参数映射 */
+    private Map<String, String> getParametersByTemplate(
+            Long loginUserId, WechatTemplateEntryResp template, Object sourceData) {
+        // 解析param_id字段，获取参数ID列表
+        List<Long> paramIds = template.getConfigParamIds();
+        if (paramIds.isEmpty()) {
+            throw new BusinessException("当前模板参数有误");
+        }
+        // 查询所有参数配置
+        List<WechatTemplateParamEntryResp> paramList =
+                sysWechatTemplateApi.listParamsByIds(
+                        template.getProjectNo(), template.getSubjectId(), paramIds);
+        // 转为Map，key为param_slug
+        Map<String, WechatTemplateParamEntryResp> paramMap =
+                paramList.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        WechatTemplateParamEntryResp::getTemplateParamSlug,
+                                        p -> p,
+                                        (v1, v2) -> v1));
+        Map<String, String> result = new HashMap<>();
+        for (Map.Entry<String, WechatTemplateParamEntryResp> entry : paramMap.entrySet()) {
+            // 例如 "p-systemName"
+            String slug = entry.getKey();
+            WechatTemplateParamEntryResp param = entry.getValue();
+            // 去掉前缀得到真实标识
+            String formatSlug = slug.replace("p-", "");
+            String replaceText = getParamTextWithCommonParam(loginUserId, formatSlug, sourceData);
+            result.put(slug, replaceText);
+        }
+        return result;
+    }
+
+    /** 处理通用参数（系统名称、当前时间、当前登录用户、前端URL、以及Model中的基础字段） */
+    private String getParamTextWithCommonParam(Long loginUserId, String slug, Object sourceData) {
+        Long createdBy = (Long) getFieldValueFromSource(sourceData, "created_by");
+        UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(createdBy);
+        // 系统内置参数
+        switch (slug) {
+            case "systemName":
+                return "学生管理系统";
+            case "frontUrl":
+                return "http://192.168.60.6:5008";
+            case "currentTime":
+                return LocalDateTime.now()
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            case "loginUser":
+                UserDetailResp loginUser = sysUserApi.getUserDetailByUserId(loginUserId);
+                if (createByUser != null && createByUser.getUserName() != null) {
+                    return loginUser.getUserName();
+                } else {
+                    return String.valueOf(loginUser);
+                }
+            case "created_by":
+                if (createByUser != null && createByUser.getUserName() != null) {
+                    return createByUser.getUserName();
+                } else {
+                    return String.valueOf(createdBy);
+                }
+            case "created_date":
+                LocalDateTime createdDate =
+                        (LocalDateTime) getFieldValueFromSource(sourceData, "created_date");
+                return createdDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            case "id":
+                Long recordId = (Long) getFieldValueFromSource(sourceData, "record_id");
+                return String.valueOf(recordId);
+            case "business_no":
+                return (String) getFieldValueFromSource(sourceData, "business_number");
+            case "version_no_label":
+                Integer versionNo = (Integer) getFieldValueFromSource(sourceData, "version_no");
+                return Objects.isNull(versionNo) || versionNo == 1 ? "" : "V" + versionNo;
+            case "subject_name":
+                List<SubjectBO> subjectList = subjectApi.getSubjectList();
+                Long subjectId = (Long) getFieldValueFromSource(sourceData, "subject_id");
+                if (!subjectList.isEmpty()) {
+                    return subjectList.stream()
+                            .filter(s -> subjectId.equals(s.getId()))
+                            .findFirst()
+                            .map(SubjectBO::getSubjectName)
+                            .orElse("");
+                } else {
+                    return "";
+                }
+            default:
+                // 其他字段直接从sourceData中获取
+                Object value = getFieldValueFromSource(sourceData, slug);
+                return value != null ? value.toString() : "";
+        }
+    }
+
+    /** 从sourceData中获取指定字段的值，支持Map或普通Java对象 */
+    private Object getFieldValueFromSource(Object sourceData, String fieldName) {
+        if (sourceData == null) {
+            return null;
+        }
+        if (sourceData instanceof Map) {
+            return ((Map<?, ?>) sourceData).get(fieldName);
+        } else {
+            return null;
+        }
+    }
+
+    // 转换对象--------------------------------------------------------------------------
     private Map<String, Object> convertMapResp(
             ApprovalBusiness approvalBusiness, Integer approvalType) {
         Map<String, Object> approvalListResp = new HashMap<>();

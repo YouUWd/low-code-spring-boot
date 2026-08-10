@@ -12,7 +12,7 @@ import lombok.*;
 @NoArgsConstructor
 public class DataAuditContentDTO {
 
-    private String reason;
+    private String comment;
 
     private List<ModuleDataChangeDTO> change;
 }

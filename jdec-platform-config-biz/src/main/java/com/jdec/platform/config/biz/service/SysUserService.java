@@ -727,6 +727,7 @@ public class SysUserService implements SysUserApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public UserDetailResp getUserDetailByUserId(Long userId) {
         String projectNo = AppContext.getProjectNo();
         LocalDate today = LocalDate.now();

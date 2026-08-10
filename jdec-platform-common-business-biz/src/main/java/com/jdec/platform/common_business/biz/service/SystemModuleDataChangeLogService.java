@@ -9,4 +9,6 @@ public interface SystemModuleDataChangeLogService {
     public Boolean saveLog(ModuleDataChangeContext context);
 
     public List<ModuleDataChangeDTO> compareOutChangeLog(ModuleDataChangeContext context);
+
+    public String compareOutChangeLogJson(ModuleDataChangeContext context, String reason);
 }
