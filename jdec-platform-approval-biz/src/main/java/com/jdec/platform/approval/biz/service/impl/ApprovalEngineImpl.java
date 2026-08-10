@@ -91,6 +91,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             result.put("versionNo", approvalBusiness.getVersionNo());
             result.put("statusTitle", approvalBusiness.getStatusTitle());
             return result;
+        } else {
+            throw new BusinessException(603, "审批操作异常");
         }
 
         result.put("ok", 1);
