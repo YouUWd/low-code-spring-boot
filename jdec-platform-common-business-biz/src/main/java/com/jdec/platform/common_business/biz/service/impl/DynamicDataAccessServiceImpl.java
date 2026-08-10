@@ -85,7 +85,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
     private static final String KEY_ASTERISK_STR = "*";
 
     private static final String[] versionCompareExclude = {
-        "createDate , updateDate",
+        "createDate",
+        "updateDate",
         "moduleId",
         "deleted",
         "sourceId",
