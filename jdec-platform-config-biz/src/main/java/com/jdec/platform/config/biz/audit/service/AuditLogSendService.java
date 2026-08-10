@@ -3,9 +3,12 @@ package com.jdec.platform.config.biz.audit.service;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jdec.platform.config.biz.audit.dto.AuditLogRequest;
 import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
+import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysRole;
+import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMapper;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.UserApi;
@@ -44,6 +47,8 @@ import org.springframework.web.client.RestTemplate;
  *       值）。
  *   <li><b>菜单参数/链接名称</b>：菜单参数 {@code menuParam} 直接透传请求头 {@code href-url}，{@code hrefName}
  *       为调用方传入的业务子模块名称。
+ *   <li><b>模块ID</b>：通过去掉前导{@code /}后的 {@code href-url} 匹配 {@code sys_menu.param} 反查菜单，
+ *       按当前主体+项目编码过滤后取其关联模块ID。
  *   <li><b>IP/浏览器/平台</b>：通过 {@link RequestContextUtils} 从当前请求获取。
  * </ul>
  *
@@ -59,6 +64,7 @@ import org.springframework.web.client.RestTemplate;
 public class AuditLogSendService {
 
     private final SysRoleMapper sysRoleMapper;
+    private final SysMenuMapper sysMenuMapper;
     private final UserApi userApi;
     private final SubjectApi subjectApi;
     private final RestTemplate restTemplate;
@@ -102,8 +108,7 @@ public class AuditLogSendService {
         UserInfo loginUser = loadUser(loginUserId);
 
         // 模拟用户：仅模拟登录时存在
-        Long mockUserId =
-                isMockLogin && loginUserInfo != null ? loginUserInfo.getMockUserId() : null;
+        Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : null;
         UserInfo mockUser = loadUser(mockUserId);
 
         // 角色：非模拟时登录角色=当前角色；模拟时当前角色归属模拟用户，登录角色为空
@@ -111,8 +116,13 @@ public class AuditLogSendService {
         Long loginRoleId = isMockLogin ? null : currentRoleId;
         Long mockRoleId = isMockLogin ? currentRoleId : null;
 
-        // 菜单参数：直接透传前端请求头 href-url，不再反查菜单/模块
-        String hrefUrl = loginUserInfo != null ? loginUserInfo.getHrefUrl() : null;
+        // 菜单参数：直接透传前端请求头 href-url（去掉前导/）
+        String hrefUrl =
+                loginUserInfo != null
+                        ? StrUtil.removePrefix(loginUserInfo.getHrefUrl(), "/")
+                        : null;
+        // 模块ID：通过去掉前导/后的 hrefUrl 匹配菜单 param，反查菜单关联模块ID
+        Long moduleId = resolveModuleId(hrefUrl);
 
         return AuditLogRequest.builder()
                 .subjectId(subjectId)
@@ -136,6 +146,7 @@ public class AuditLogSendService {
                 .mockRoleName(resolveRoleName(mockRoleId))
                 .ip(RequestContextUtils.getClientIp())
                 .moduleName(context != null ? context.getModule() : null)
+                .moduleId(moduleId)
                 .menuParam(hrefUrl)
                 .hrefName(context != null ? context.getSubModule() : null)
                 .dataId(context != null ? context.getDataId() : null)
@@ -232,6 +243,39 @@ public class AuditLogSendService {
             log.warn("查询用户信息失败(userApi): userId={}", userId, e);
         }
         return null;
+    }
+
+    /**
+     * 通过菜单参数反查模块ID。
+     *
+     * <p>用去掉前导{@code /}后的 {@code href-url} 匹配 {@code sys_menu.param}，并按当前主体+项目编码过滤， 取命中菜单的关联模块ID。
+     *
+     * @param hrefUrl 去掉前导{@code /}后的菜单参数
+     * @return 关联模块ID，未匹配到菜单返回 {@code null}
+     */
+    private Long resolveModuleId(String hrefUrl) {
+        if (StrUtil.isBlank(hrefUrl)) {
+            return null;
+        }
+        try {
+            SysMenu menu =
+                    sysMenuMapper.selectOne(
+                            new LambdaQueryWrapper<SysMenu>()
+                                    .eq(SysMenu::getParam, hrefUrl)
+                                    .eq(
+                                            AppContext.getSubjectId() != null,
+                                            SysMenu::getSubjectId,
+                                            AppContext.getSubjectId())
+                                    .eq(
+                                            StrUtil.isNotBlank(AppContext.getProjectNo()),
+                                            SysMenu::getProjectNo,
+                                            AppContext.getProjectNo())
+                                    .last("limit 1"));
+            return menu != null ? menu.getModuleId() : null;
+        } catch (Exception e) {
+            log.warn("反查菜单模块ID失败: hrefUrl={}", hrefUrl, e);
+            return null;
+        }
     }
 
     /**
