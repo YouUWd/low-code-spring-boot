@@ -133,7 +133,6 @@ public class ApprovalChainConfigSaveReq {
                 name = "按钮样式",
                 type = FieldType.RELATION,
                 target = "sys_button",
-                idField = "id",
                 targetClass = ButtonStyleDTO.class)
         private Long buttonId;
 

@@ -1,7 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -9,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
+import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
@@ -23,10 +23,7 @@ import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.hr.api.DepartmentApi;
-import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
-import com.jdec.platform.hr.api.bo.UserBO;
-import com.jdec.platform.hr.api.dto.response.UserBasicInfoResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -53,7 +50,6 @@ public class SysUserService implements SysUserApi {
     private final SysRoleMapper sysRoleMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final DepartmentApi departmentApi;
-    private final UserApi userApi;
 
     @Override
     public PageResult<SysUserPageResp> getUserPage(QuerySysUserPageReq query) {
@@ -286,6 +282,20 @@ public class SysUserService implements SysUserApi {
         return users.stream().map(this::toUserPageResp).toList();
     }
 
+    @Override
+    public List<SysUserPageResp> getUsersByUserIds(QueryUsersByIdsReq req) {
+        if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<SysUser> users =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, req.getUserIds())
+                                .eq(SysUser::getDeleted, Boolean.FALSE)
+                                .orderByDesc(SysUser::getCreatedDate));
+        return users.stream().map(this::toUserPageResp).toList();
+    }
+
     private boolean isEffectiveDateValid(
             Integer effectiveType,
             java.time.LocalDate startDate,
@@ -318,41 +328,15 @@ public class SysUserService implements SysUserApi {
             return Collections.emptyList();
         }
 
-        // 2. 获取用户列表
-        List<SysRole> sysRoles =
-                sysRoleMapper.selectList(
-                        new LambdaQueryWrapper<SysRole>()
-                                .eq(SysRole::getSubjectId, AppContext.getSubjectId())
-                                .eq(SysRole::getProjectNo, AppContext.getProjectNo()));
-        List<Long> roleIds = sysRoles.stream().map(SysRole::getId).toList();
-        if (CollUtil.isEmpty(roleIds)) {
-            return Collections.emptyList();
-        }
-        java.time.LocalDate today = java.time.LocalDate.now();
-        List<Long> roleUserIds =
-                sysRoleUserMapper
-                        .selectList(
-                                new LambdaQueryWrapper<SysRoleUser>()
-                                        .in(SysRoleUser::getRoleId, roleIds)
-                                        .eq(SysRoleUser::getStatus, 0))
-                        .stream()
-                        .filter(
-                                ru ->
-                                        isEffectiveDateValid(
-                                                ru.getEffectiveType(),
-                                                ru.getEffectiveStartDate(),
-                                                ru.getEffectiveEndDate(),
-                                                today))
-                        .map(SysRoleUser::getUserId)
-                        .distinct()
-                        .toList();
-        if (CollUtil.isEmpty(roleUserIds)) {
-            return Collections.emptyList();
-        }
+        // 2. 获取用户列表：直接查询当前主体下所有 sys_user（角色保存时已同步主体下用户，无需再查角色关联）
         List<SysUser> users =
                 sysUserMapper.selectList(
                         new LambdaQueryWrapper<SysUser>()
-                                .in(SysUser::getUserId, roleUserIds)
+                                .eq(
+                                        userType != null && userType != 0,
+                                        SysUser::getUserType,
+                                        userType)
+                                .eq(SysUser::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysUser::getDeleted, Boolean.FALSE));
 
         // 3. 将用户按部门分类
@@ -567,34 +551,21 @@ public class SysUserService implements SysUserApi {
         String projectNo = AppContext.getProjectNo();
         LocalDate today = LocalDate.now();
 
-        // 1. 先从 sys_user 表查询用户
+        // 1. 从 sys_user 表查询用户（角色保存时已同步主体下用户，无需再调 HR）
         SysUser sysUser =
                 sysUserMapper.selectOne(
                         Wrappers.<SysUser>lambdaQuery()
                                 .eq(SysUser::getPhone, phone)
                                 .eq(SysUser::getDeleted, Boolean.FALSE));
 
-        Long userId;
-        Long subjectId;
-        UserBasicInfoResp hrUser = null;
-
-        if (sysUser != null) {
-            // 配置中心找到用户
-            userId = sysUser.getUserId();
-            subjectId = sysUser.getSubjectId();
-        } else {
-            // 2. 配置中心未找到，从人力模块查询用户
-            Optional<UserBasicInfoResp> hrUserOpt = userApi.getUserBasicInfoByPhone(phone);
-            if (hrUserOpt.isEmpty()) {
-                return CheckUserPermissionByPhoneResp.builder().permissionFlag(false).build();
-            }
-
-            hrUser = hrUserOpt.get();
-            userId = hrUser.getId();
-            subjectId = hrUser.getSubjectId() != null ? hrUser.getSubjectId().longValue() : null;
+        if (sysUser == null) {
+            // sys_user 中不存在该用户，视为无权限
+            return CheckUserPermissionByPhoneResp.builder().permissionFlag(false).build();
         }
+        Long userId = sysUser.getUserId();
+        Long subjectId = sysUser.getSubjectId();
 
-        // 3. 检查系统设置：userId -> sys_role_user -> sys_role
+        // 2. 检查系统设置：userId -> sys_role_user -> sys_role
         boolean hasSystemPermission = false;
         if (userId != null) {
             List<Long> systemRoleIds =
@@ -625,7 +596,7 @@ public class SysUserService implements SysUserApi {
             }
         }
 
-        // 4. 检查主体设置：subjectId -> sys_role_subject -> sys_role
+        // 3. 检查主体设置：subjectId -> sys_role_subject -> sys_role
         boolean hasSubjectPermission = false;
         if (subjectId != null) {
             List<Long> subjectRoleIds =
@@ -656,15 +627,15 @@ public class SysUserService implements SysUserApi {
             }
         }
 
-        // 5. 判断是否有权限
+        // 4. 判断是否有权限
         boolean hasPermission = hasSystemPermission || hasSubjectPermission;
 
-        // 6. 构建响应，只有有权限时才填充用户信息
+        // 5. 构建响应，只有有权限时才填充用户信息
         if (!hasPermission) {
             return CheckUserPermissionByPhoneResp.builder().permissionFlag(false).build();
         }
 
-        return buildCheckUserPermissionResp(sysUser, hrUser, true);
+        return buildCheckUserPermissionResp(sysUser, true);
     }
 
     /**
@@ -685,43 +656,30 @@ public class SysUserService implements SysUserApi {
     }
 
     private CheckUserPermissionByPhoneResp buildCheckUserPermissionResp(
-            SysUser sysUser, UserBasicInfoResp hrUser, boolean hasPermission) {
+            SysUser sysUser, boolean hasPermission) {
         CheckUserPermissionByPhoneResp.CheckUserPermissionByPhoneRespBuilder builder =
                 CheckUserPermissionByPhoneResp.builder().permissionFlag(hasPermission);
 
-        if (sysUser != null) {
-            builder.id(sysUser.getId())
-                    .userId(sysUser.getUserId())
-                    .companyId(sysUser.getCompanyId())
-                    .subjectId(sysUser.getSubjectId())
-                    .userType(sysUser.getUserType())
-                    .userName(sysUser.getUserName())
-                    .workNumber(sysUser.getWorkNumber())
-                    .userAvatar(sysUser.getUserAvatar())
-                    .phone(sysUser.getPhone())
-                    .sex(sysUser.getSex())
-                    .companyName(sysUser.getCompanyName())
-                    .deptIds(formatDeptIds(sysUser.getDepartIds()))
-                    .departName(sysUser.getDepartName())
-                    .leaderName(sysUser.getLeaderName())
-                    .positionName(sysUser.getPositionName())
-                    .subjectName(sysUser.getSubjectName())
-                    .statusFlag(sysUser.getStatusFlag())
-                    .employedStatus(sysUser.getEmployedStatus())
-                    .superFlag(sysUser.getSuperFlag())
-                    .createdDate(sysUser.getCreatedDate());
-        } else if (hrUser != null) {
-            builder.userId(hrUser.getId())
-                    .userName(hrUser.getUserName())
-                    .workNumber(hrUser.getWorkNumber())
-                    .phone(hrUser.getPhone())
-                    .deptIds(formatDeptIds(hrUser.getDeptIds()))
-                    .subjectId(
-                            hrUser.getSubjectId() != null
-                                    ? hrUser.getSubjectId().longValue()
-                                    : null)
-                    .departName(hrUser.getDepartmentName());
-        }
+        builder.id(sysUser.getId())
+                .userId(sysUser.getUserId())
+                .companyId(sysUser.getCompanyId())
+                .subjectId(sysUser.getSubjectId())
+                .userType(sysUser.getUserType())
+                .userName(sysUser.getUserName())
+                .workNumber(sysUser.getWorkNumber())
+                .userAvatar(sysUser.getUserAvatar())
+                .phone(sysUser.getPhone())
+                .sex(sysUser.getSex())
+                .companyName(sysUser.getCompanyName())
+                .deptIds(formatDeptIds(sysUser.getDepartIds()))
+                .departName(sysUser.getDepartName())
+                .leaderName(sysUser.getLeaderName())
+                .positionName(sysUser.getPositionName())
+                .subjectName(sysUser.getSubjectName())
+                .statusFlag(sysUser.getStatusFlag())
+                .employedStatus(sysUser.getEmployedStatus())
+                .superFlag(sysUser.getSuperFlag())
+                .createdDate(sysUser.getCreatedDate());
 
         return builder.build();
     }
@@ -732,31 +690,19 @@ public class SysUserService implements SysUserApi {
         String projectNo = AppContext.getProjectNo();
         LocalDate today = LocalDate.now();
 
-        // 1. 先从 sys_user 表根据 userId 查询用户
+        // 1. 从 sys_user 表根据 userId 查询用户（角色保存时已同步主体下用户，无需再调 HR）
         SysUser sysUser =
                 sysUserMapper.selectOne(
                         Wrappers.<SysUser>lambdaQuery()
                                 .eq(SysUser::getUserId, userId)
                                 .eq(SysUser::getDeleted, Boolean.FALSE));
 
-        Long subjectId;
-        UserBO hrUser = null;
-
-        if (sysUser != null) {
-            // 配置中心找到用户
-            subjectId = sysUser.getSubjectId();
-        } else {
-            // 2. 配置中心未找到，从人力模块查询用户
-            List<UserBO> hrUsers = userApi.listByIds(Set.of(userId));
-            if (hrUsers.isEmpty()) {
-                throw new BusinessException("用户不存在");
-            }
-
-            hrUser = hrUsers.getFirst();
-            subjectId = hrUser.getSubjectId() != null ? hrUser.getSubjectId().longValue() : null;
+        if (sysUser == null) {
+            throw new BusinessException("用户不存在");
         }
+        Long subjectId = sysUser.getSubjectId();
 
-        // 3. 检查系统设置：userId -> sys_role_user -> sys_role
+        // 2. 检查系统设置：userId -> sys_role_user -> sys_role
         boolean hasSystemPermission = false;
         List<Long> systemRoleIds =
                 sysRoleUserMapper
@@ -785,7 +731,7 @@ public class SysUserService implements SysUserApi {
             hasSystemPermission = validRoleCount > 0;
         }
 
-        // 4. 检查主体设置：subjectId -> sys_role_subject -> sys_role
+        // 3. 检查主体设置：subjectId -> sys_role_subject -> sys_role
         boolean hasSubjectPermission = false;
         if (subjectId != null) {
             List<Long> subjectRoleIds =
@@ -816,52 +762,39 @@ public class SysUserService implements SysUserApi {
             }
         }
 
-        // 5. 判断是否有权限
+        // 4. 判断是否有权限
         boolean hasPermission = hasSystemPermission || hasSubjectPermission;
         if (!hasPermission) {
             throw new BusinessException("用户不存在");
         }
 
-        // 6. 返回用户详情
-        return buildUserDetailResp(sysUser, hrUser);
+        // 5. 返回用户详情
+        return buildUserDetailResp(sysUser);
     }
 
-    private UserDetailResp buildUserDetailResp(SysUser sysUser, UserBO hrUser) {
+    private UserDetailResp buildUserDetailResp(SysUser sysUser) {
         UserDetailResp.UserDetailRespBuilder builder = UserDetailResp.builder();
 
-        if (sysUser != null) {
-            builder.id(sysUser.getId())
-                    .userId(sysUser.getUserId())
-                    .companyId(sysUser.getCompanyId())
-                    .subjectId(sysUser.getSubjectId())
-                    .userType(sysUser.getUserType())
-                    .userName(sysUser.getUserName())
-                    .workNumber(sysUser.getWorkNumber())
-                    .userAvatar(sysUser.getUserAvatar())
-                    .phone(sysUser.getPhone())
-                    .sex(sysUser.getSex())
-                    .companyName(sysUser.getCompanyName())
-                    .departName(sysUser.getDepartName())
-                    .leaderName(sysUser.getLeaderName())
-                    .positionName(sysUser.getPositionName())
-                    .subjectName(sysUser.getSubjectName())
-                    .statusFlag(sysUser.getStatusFlag())
-                    .employedStatus(sysUser.getEmployedStatus())
-                    .superFlag(sysUser.getSuperFlag())
-                    .createdDate(sysUser.getCreatedDate());
-        } else if (hrUser != null) {
-            builder.userId(hrUser.getId())
-                    .userName(hrUser.getUserName())
-                    .workNumber(hrUser.getWorkNumber())
-                    .phone(hrUser.getPhone())
-                    .subjectId(
-                            hrUser.getSubjectId() != null
-                                    ? hrUser.getSubjectId().longValue()
-                                    : null)
-                    .sex(hrUser.getSex())
-                    .userAvatar(hrUser.getUserAvatar())
-                    .departName(hrUser.getDepartmentName());
-        }
+        builder.id(sysUser.getId())
+                .userId(sysUser.getUserId())
+                .companyId(sysUser.getCompanyId())
+                .subjectId(sysUser.getSubjectId())
+                .userType(sysUser.getUserType())
+                .userName(sysUser.getUserName())
+                .workNumber(sysUser.getWorkNumber())
+                .userAvatar(sysUser.getUserAvatar())
+                .phone(sysUser.getPhone())
+                .sex(sysUser.getSex())
+                .companyName(sysUser.getCompanyName())
+                .departName(sysUser.getDepartName())
+                .leaderName(sysUser.getLeaderName())
+                .positionName(sysUser.getPositionName())
+                .subjectName(sysUser.getSubjectName())
+                .statusFlag(sysUser.getStatusFlag())
+                .employedStatus(sysUser.getEmployedStatus())
+                .superFlag(sysUser.getSuperFlag())
+                .createdDate(sysUser.getCreatedDate());
+
         return builder.build();
     }
 }

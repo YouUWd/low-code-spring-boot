@@ -6,27 +6,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysWechatTemplateApi;
-import com.jdec.platform.config.api.dto.request.CreateWechatTemplateParamReq;
-import com.jdec.platform.config.api.dto.request.CreateWechatTemplateReq;
-import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
-import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateParamReq;
-import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateReq;
-import com.jdec.platform.config.api.dto.request.WechatTemplateParamQueryReq;
-import com.jdec.platform.config.api.dto.request.WechatTemplateQueryReq;
-import com.jdec.platform.config.api.dto.response.SysConfigItemResp;
+import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
-import com.jdec.platform.config.biz.entity.SysMessageRecord;
-import com.jdec.platform.config.biz.entity.SysModule;
-import com.jdec.platform.config.biz.entity.SysModuleField;
-import com.jdec.platform.config.biz.entity.SysWechatTemplate;
-import com.jdec.platform.config.biz.entity.SysWechatTemplateParam;
-import com.jdec.platform.config.biz.mapper.SysMessageRecordMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleMapper;
-import com.jdec.platform.config.biz.mapper.SysWechatTemplateMapper;
-import com.jdec.platform.config.biz.mapper.SysWechatTemplateParamMapper;
+import com.jdec.platform.config.biz.audit.service.SysWechatTemplateLogService;
+import com.jdec.platform.config.biz.audit.service.SysWechatTemplateParamLogService;
+import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -41,8 +28,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -61,7 +48,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     private final UserApi userApi;
     private final WeChatWorkService weChatWorkService;
     private final SysMessageRecordMapper sysMessageRecordMapper;
-    private final SysConfigCategoryService sysConfigCategoryService;
+    private final SysWechatTemplateLogService wechatTemplateLogService;
+    private final SysWechatTemplateParamLogService wechatTemplateParamLogService;
 
     // --- 模板主表实现 ---
 
@@ -102,7 +90,6 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public WechatTemplateDetailResp getTemplateById(Long id) {
         SysWechatTemplate template = sysWechatTemplateMapper.selectById(id);
         if (template == null || template.getDeleted() == 1) {
@@ -119,6 +106,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         copyTemplateProperties(projectNo, subjectId, req, template);
         template.setDeleted(0);
         sysWechatTemplateMapper.insert(template);
+        // 记录新增审计日志并维护快照
+        wechatTemplateLogService.logCreate(req, template.getId());
         return toTemplateDetailResp(template);
     }
 
@@ -130,8 +119,15 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (template == null || template.getDeleted() == 1) {
             throw new BusinessException(404, "模板不存在");
         }
+        // 审计用：保存修改前的模板（copyTemplateProperties 会复用同一对象并修改）
+        SysWechatTemplate oldTemplate = new SysWechatTemplate();
+        BeanUtils.copyProperties(template, oldTemplate);
+
         copyTemplateProperties(projectNo, subjectId, req, template);
         sysWechatTemplateMapper.updateById(template);
+
+        // 记录修改审计日志并维护快照
+        wechatTemplateLogService.logUpdate(req, req.getId(), oldTemplate);
         return toTemplateDetailResp(template);
     }
 
@@ -142,6 +138,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (template != null) {
             template.setDeleted(1);
             sysWechatTemplateMapper.updateById(template);
+            // 记录删除审计日志并删除快照
+            wechatTemplateLogService.logDelete(template);
         }
     }
 
@@ -185,7 +183,6 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean sendWechatMessage(String projectNo, Long subjectId, SendWechatMessageReq req) {
         if (req == null || req.getReceivers() == null || req.getReceivers().isEmpty()) {
             return false;
@@ -231,6 +228,12 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
             record.setUpdatedDate(LocalDateTime.now());
             sysMessageRecordMapper.updateById(record);
         }
+    }
+
+    @Override
+    public WechatTemplateEntryResp getTemplateByModuleId(
+            String projectNo, Long subjectId, Long moduleId, String triggerType) {
+        return null;
     }
 
     private String formatContent(String content, List<SysWechatTemplateParam> params) {
@@ -311,7 +314,6 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<WechatTemplateParamEntryResp> listParamsByIds(
             String projectNo, Long subjectId, List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -365,6 +367,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         copyParamProperties(projectNo, subjectId, req, param);
         param.setDeleted(0);
         sysWechatTemplateParamMapper.insert(param);
+        // 记录新增审计日志并维护快照
+        wechatTemplateParamLogService.logCreate(req, param.getId());
         return getParamById(param.getId());
     }
 
@@ -376,8 +380,15 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (param == null || param.getDeleted() == 1) {
             throw new BusinessException(404, "参数不存在");
         }
+        // 审计用：保存修改前的参数（copyParamProperties 会复用同一对象并修改）
+        SysWechatTemplateParam oldParam = new SysWechatTemplateParam();
+        BeanUtils.copyProperties(param, oldParam);
+
         copyParamProperties(projectNo, subjectId, req, param);
         sysWechatTemplateParamMapper.updateById(param);
+
+        // 记录修改审计日志并维护快照
+        wechatTemplateParamLogService.logUpdate(req, req.getId(), oldParam);
         return getParamById(param.getId());
     }
 
@@ -388,32 +399,10 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (param != null) {
             param.setDeleted(1);
             sysWechatTemplateParamMapper.updateById(param);
+            // 记录删除审计日志并删除快照
+            wechatTemplateParamLogService.logDelete(param);
         }
     }
-
-    // 根据模块ID和触发类型查询微信模板
-    @Override
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public WechatTemplateEntryResp getTemplateByModuleId(
-            String projectNo, Long subjectId, Long moduleId, String triggerType) {
-        SysConfigItemResp sysConfigItem =
-                sysConfigCategoryService.getConfigItemsByValue("wxTriggerType", triggerType);
-        if (Objects.isNull(sysConfigItem)) {
-            return null;
-        }
-        LambdaQueryWrapper<SysWechatTemplate> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysWechatTemplate::getModuleId, moduleId);
-        wrapper.eq(SysWechatTemplate::getSubjectId, subjectId);
-        wrapper.eq(SysWechatTemplate::getProjectNo, projectNo);
-        wrapper.eq(SysWechatTemplate::getTemplateTriggerType, sysConfigItem.getId());
-        wrapper.eq(SysWechatTemplate::getDeleted, false).last("LIMIT 1");
-        SysWechatTemplate sysWechatTemplate = sysWechatTemplateMapper.selectOne(wrapper);
-        if (Objects.isNull(sysWechatTemplate)) {
-            return null;
-        }
-        return toTemplateEntryResp(sysWechatTemplate);
-    }
-    ;
 
     // --- 内部辅助方法 ---
 

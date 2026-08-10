@@ -296,7 +296,13 @@ public class SysRoleService implements SysRoleApi {
 
         Long roleId =
                 doSaveRoleUser(
-                        request, allUserIds, hrUserMap, deptMap, subjectMap, allSubjectUsers);
+                        request,
+                        allUserIds,
+                        hrUserMap,
+                        deptMap,
+                        subjectMap,
+                        allSubjectUsers,
+                        oldSubjectIds);
 
         // === 有变更时：记录审批日志并发送变更消息 ===
         if (!isUpdate || hasChanges) {
@@ -521,7 +527,8 @@ public class SysRoleService implements SysRoleApi {
             Map<Long, UserBO> hrUserMap,
             Map<Long, DepartmentBO> deptMap,
             Map<Long, SubjectBO> subjectMap,
-            List<UserBO> subjectUsers) {
+            List<UserBO> subjectUsers,
+            Set<Long> oldSubjectIds) {
         Long roleId = request.getId();
         boolean isCreate = roleId == null;
 
@@ -639,6 +646,9 @@ public class SysRoleService implements SysRoleApi {
             saveRoleSubjects(request, roleId);
         }
 
+        // 需求1：同步主体下所有用户到 sys_user（有则更新，无则新增）
+        syncSubjectUsers(subjectUsers, deptMap, subjectMap);
+
         // 保存新的单独用户关联（过滤掉属于该主体的用户）
         if (!allUserIds.isEmpty()) {
             // 收集内部用户ID用于判断用户类型
@@ -654,18 +664,27 @@ public class SysRoleService implements SysRoleApi {
             saveUserRelations(request, roleId);
         }
 
-        // 清理孤立数据：检查之前关联的用户是否现在没有任何角色绑定，删除这些用户的sys_user记录
-        if (!previousUserIds.isEmpty()) {
-            // 计算哪些旧用户不在新关联中
-            Set<Long> currentUserIds = collectUserIds(request);
-            Set<Long> removedUserIds = new HashSet<>(previousUserIds);
-            removedUserIds.removeAll(currentUserIds);
-
-            // 对每个被移除的用户，检查是否还有其他角色绑定
-            if (!removedUserIds.isEmpty()) {
-                cleanupOrphanedUsers(removedUserIds);
-            }
+        // 需求2：清理孤立用户 —— 本次操作相关且既无有效角色绑定、也不属于有效角色绑定主体的用户，逻辑删除
+        Set<Long> candidateUserIds = new HashSet<>(previousUserIds);
+        candidateUserIds.addAll(allUserIds);
+        if (subjectUsers != null) {
+            candidateUserIds.addAll(
+                    subjectUsers.stream().map(UserBO::getId).collect(Collectors.toSet()));
         }
+        // 被移除的主体下，仍在 sys_user 中的用户也要纳入候选
+        Set<Long> removedSubjectIds = new HashSet<>(oldSubjectIds);
+        if (request.getSubjectIds() != null) {
+            removedSubjectIds.removeAll(request.getSubjectIds());
+        }
+        if (!removedSubjectIds.isEmpty()) {
+            List<SysUser> removedSubjectUsers =
+                    sysUserMapper.selectList(
+                            Wrappers.<SysUser>lambdaQuery()
+                                    .in(SysUser::getSubjectId, removedSubjectIds)
+                                    .eq(SysUser::getDeleted, 0));
+            removedSubjectUsers.forEach(u -> candidateUserIds.add(u.getUserId()));
+        }
+        cleanupOrphanedUsers(candidateUserIds);
 
         return roleId;
     }
@@ -1087,10 +1106,17 @@ public class SysRoleService implements SysRoleApi {
             }
         }
 
-        // 路径2（步骤4）: 从hr-manage模块获取用户自己的主体ID，查询主体角色关联，并与当前主体角色取交集
+        // 路径2（步骤4）: 从 sys_user 表获取用户所属主体ID（角色保存时已同步主体下用户，无需再调 HR）
         // 注意：这里需要获取用户自己所属的主体ID，不是当前请求的主体ID
-        Long userSubjectId =
-                userApi.getSubjectIdByUserId(userId).map(Integer::longValue).orElse(null);
+        Long userSubjectId = null;
+        SysUser userForSubject =
+                sysUserMapper.selectOne(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .eq(SysUser::getUserId, userId)
+                                .eq(SysUser::getDeleted, 0));
+        if (userForSubject != null) {
+            userSubjectId = userForSubject.getSubjectId();
+        }
 
         if (userSubjectId != null) {
             // 查询用户所属主体的角色关联（状态有效且在时效内）
@@ -1276,24 +1302,58 @@ public class SysRoleService implements SysRoleApi {
         return respList;
     }
 
-    /** 清理孤立用户：检查用户是否没有任何角色绑定，如果有则删除sys_user记录 */
+    /**
+     * 清理孤立用户：候选用户中，既没有有效的角色绑定，也不属于任何有效角色绑定主体的用户， 将其 sys_user 记录逻辑删除（deleted=1）。判断基于时效（仅算有效期内）。
+     *
+     * @param userIds 候选用户ID（与本次角色操作相关的用户）
+     */
     private void cleanupOrphanedUsers(Set<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return;
         }
 
-        // 批量查询这些用户的角色绑定情况
-        List<SysRoleUser> roleUsers =
-                sysRoleUserMapper.selectList(
-                        new LambdaQueryWrapper<SysRoleUser>().in(SysRoleUser::getUserId, userIds));
+        // 候选用户在 sys_user 中的未删除记录（用于取 subjectId 判断主体覆盖）
+        List<SysUser> candidates =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, userIds)
+                                .eq(SysUser::getDeleted, 0));
+        if (candidates.isEmpty()) {
+            return;
+        }
+        Map<Long, SysUser> candidateMap =
+                candidates.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
 
-        // 收集有角色绑定的用户ID
-        Set<Long> usersWithRoles =
-                roleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toSet());
+        // 有有效角色绑定的用户（时效有效）
+        Set<Long> protectedUserIds =
+                filterValidRoleUsers(
+                                sysRoleUserMapper.selectList(
+                                        Wrappers.<SysRoleUser>lambdaQuery()
+                                                .in(SysRoleUser::getUserId, candidateMap.keySet())
+                                                .eq(SysRoleUser::getStatus, 0)))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .collect(Collectors.toSet());
 
-        // 找出没有任何角色绑定的用户ID
-        Set<Long> orphanedUserIds = new HashSet<>(userIds);
-        orphanedUserIds.removeAll(usersWithRoles);
+        // 有有效角色绑定的主体（时效有效），属于这些主体的用户视为被覆盖
+        Set<Long> coveredSubjectIds =
+                filterValidRoleSubjects(
+                                sysRoleSubjectMapper.selectList(
+                                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                                .eq(SysRoleSubject::getStatus, 0)))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .collect(Collectors.toSet());
+
+        // 孤儿用户 = 候选用户 - 有效角色绑定用户 - 属于有效角色绑定主体的用户
+        Set<Long> orphanedUserIds = new HashSet<>(candidateMap.keySet());
+        orphanedUserIds.removeAll(protectedUserIds);
+        orphanedUserIds.removeIf(
+                uid -> {
+                    SysUser user = candidateMap.get(uid);
+                    return user.getSubjectId() != null
+                            && coveredSubjectIds.contains(user.getSubjectId());
+                });
 
         // 批量逻辑删除孤立用户
         if (!orphanedUserIds.isEmpty()) {
@@ -1301,7 +1361,7 @@ public class SysRoleService implements SysRoleApi {
             updateEntity.setDeleted(1);
             sysUserMapper.update(
                     updateEntity,
-                    new LambdaQueryWrapper<SysUser>()
+                    Wrappers.<SysUser>lambdaQuery()
                             .in(SysUser::getUserId, orphanedUserIds)
                             .eq(SysUser::getDeleted, 0));
         }
@@ -1452,6 +1512,84 @@ public class SysRoleService implements SysRoleApi {
         if (!newUsers.isEmpty()) {
             sysUserMapper.insert(newUsers);
         }
+    }
+
+    /**
+     * 同步主体下所有用户到 sys_user 表：按 user_id 对比，有则更新（含恢复被逻辑删除的记录），无则新增。
+     *
+     * @param subjectUsers 本次选中主体下的全部用户（来自 HR 模块）
+     * @param deptMap 部门信息映射
+     * @param subjectMap 主体信息映射
+     */
+    private void syncSubjectUsers(
+            List<UserBO> subjectUsers,
+            Map<Long, DepartmentBO> deptMap,
+            Map<Long, SubjectBO> subjectMap) {
+        if (CollUtil.isEmpty(subjectUsers)) {
+            return;
+        }
+
+        Set<Long> userIds = subjectUsers.stream().map(UserBO::getId).collect(Collectors.toSet());
+        // 查询已存在记录（不过滤 deleted，便于恢复被逻辑删除的用户）
+        List<SysUser> existingUsers =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery().in(SysUser::getUserId, userIds));
+        Map<Long, SysUser> existingMap =
+                existingUsers.stream()
+                        .collect(Collectors.toMap(SysUser::getUserId, u -> u, (a, b) -> a));
+
+        List<SysUser> toInsert = new ArrayList<>();
+        List<SysUser> toUpdate = new ArrayList<>();
+        for (UserBO user : subjectUsers) {
+            SysUser sysUser = existingMap.get(user.getId());
+            if (sysUser != null) {
+                fillSubjectUserFields(sysUser, user, deptMap, subjectMap);
+                sysUser.setDeleted(0); // 恢复被逻辑删除的记录
+                toUpdate.add(sysUser);
+            } else {
+                SysUser newUser = new SysUser();
+                newUser.setUserId(user.getId());
+                newUser.setUserType(UserTypeEnum.INSIDE.getCode());
+                newUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
+                newUser.setEmployedStatus(EmployedStatusEnum.EMPLOYED_STATUS_ENABLED.getCode());
+                newUser.setDeleted(0);
+                fillSubjectUserFields(newUser, user, deptMap, subjectMap);
+                toInsert.add(newUser);
+            }
+        }
+
+        if (!toInsert.isEmpty()) {
+            sysUserMapper.insert(toInsert);
+        }
+        if (!toUpdate.isEmpty()) {
+            sysUserMapper.updateById(toUpdate);
+        }
+    }
+
+    /** 将 HR 用户信息填充到 sys_user（不覆盖用户类型、启用状态等管理字段） */
+    private void fillSubjectUserFields(
+            SysUser sysUser,
+            UserBO user,
+            Map<Long, DepartmentBO> deptMap,
+            Map<Long, SubjectBO> subjectMap) {
+        sysUser.setUserName(user.getUserName());
+        sysUser.setSex(user.getSex());
+        sysUser.setUserAvatar(user.getUserAvatar());
+        sysUser.setWorkNumber(user.getWorkNumber());
+        sysUser.setPhone(user.getPhone());
+        sysUser.setShortName(user.getShortName());
+        if (user.getSubjectId() != null) {
+            sysUser.setSubjectId(Long.valueOf(user.getSubjectId()));
+            SubjectBO subject = subjectMap.get(user.getSubjectId().longValue());
+            if (subject != null) {
+                sysUser.setSubjectName(subject.getSubjectName());
+                sysUser.setCompanyName(subject.getCompanyName());
+            }
+        }
+        sysUser.setDepartIds(user.getDepartmentId());
+        sysUser.setDepartName(user.getDepartmentName());
+        sysUser.setLeaderName(getManagerByDepartId(user.getDepartmentId(), deptMap));
+        sysUser.setPositionName(user.getJobName());
     }
 
     private String getManagerByDepartId(String departIds, Map<Long, DepartmentBO> departMap) {
@@ -1917,18 +2055,28 @@ public class SysRoleService implements SysRoleApi {
                         .distinct()
                         .toList();
 
-        // 4. 查询 sys_user 表的用户信息
-        List<SysUser> sysUsers =
-                userIds.isEmpty()
-                        ? Collections.emptyList()
-                        : sysUserMapper.selectList(
-                                Wrappers.<SysUser>lambdaQuery()
-                                        .in(SysUser::getUserId, userIds)
-                                        .eq(SysUser::getDeleted, Boolean.FALSE)
-                                        .like(
-                                                userName != null && !userName.trim().isEmpty(),
-                                                SysUser::getUserName,
-                                                userName));
+        // 4. 查询 sys_user 表的用户信息（角色直接绑定用户 + 主体下用户；角色保存时已同步主体下用户到 sys_user）
+        boolean hasUserNameFilter = userName != null && !userName.trim().isEmpty();
+        Map<Long, SysUser> sysUserMap = new LinkedHashMap<>();
+        if (!userIds.isEmpty()) {
+            sysUserMapper
+                    .selectList(
+                            Wrappers.<SysUser>lambdaQuery()
+                                    .in(SysUser::getUserId, userIds)
+                                    .eq(SysUser::getDeleted, Boolean.FALSE)
+                                    .like(hasUserNameFilter, SysUser::getUserName, userName))
+                    .forEach(u -> sysUserMap.putIfAbsent(u.getUserId(), u));
+        }
+        if (!subjectIds.isEmpty()) {
+            sysUserMapper
+                    .selectList(
+                            Wrappers.<SysUser>lambdaQuery()
+                                    .in(SysUser::getSubjectId, subjectIds)
+                                    .eq(SysUser::getDeleted, Boolean.FALSE)
+                                    .like(hasUserNameFilter, SysUser::getUserName, userName))
+                    .forEach(u -> sysUserMap.putIfAbsent(u.getUserId(), u));
+        }
+        List<SysUser> sysUsers = new ArrayList<>(sysUserMap.values());
 
         // 5. 转换为响应对象
         List<UserSwitchDataResp.SysUserInfo> userInfoList =

@@ -68,17 +68,14 @@ public class AuditLogRequest {
     /** 模拟用户工号 */
     private String mockUserNumber;
 
-    /** 模拟角色ID */
-    private Long mockRoleId;
-
-    /** 模拟角色名称 */
-    private String mockRoleName;
-
     /** IP地址 */
     private String ip;
 
     /** 模块名称（@DataAudit 注解中的 module 值，如：系统设置） */
     private String moduleName;
+
+    /** 模块ID（通过菜单 param 匹配 href-url 反查菜单获取的关联模块ID） */
+    private Long moduleId;
 
     /** 菜单参数（前端请求头 href-url 原样透传） */
     private String menuParam;

@@ -8,7 +8,6 @@ import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
-import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
@@ -121,35 +120,12 @@ public class SysRoleController {
             return ApiResponse.success(Collections.emptyList());
         }
 
-        // 1. 通过 API 层查询用户和主体数据
+        // 1. 通过 API 层查询用户数据（sys_user 已在角色保存时同步主体下用户，无需再调 HR）
         UserSwitchDataResp data = sysRoleApi.getUserSwitchData(userName);
         List<UserSwitchDataResp.SysUserInfo> sysUsers = data.getSysUsers();
-        List<Long> subjectIds = data.getSubjectIds();
 
-        // 2. 调用HR模块查询用户信息
-        List<UserBO> hrUsers = new ArrayList<>();
-        if (!subjectIds.isEmpty()) {
-            for (Long sid : subjectIds) {
-                List<UserBO> users = userApi.listBySubjectId(sid);
-                // 根据userName过滤HR用户
-                if (userName != null && !userName.trim().isEmpty()) {
-                    users =
-                            users.stream()
-                                    .filter(
-                                            u ->
-                                                    u.getUserName() != null
-                                                            && u.getUserName()
-                                                                    .contains(userName.trim()))
-                                    .toList();
-                }
-                hrUsers.addAll(users);
-            }
-        }
-
-        // 3. 合并用户信息（去重，优先使用 sys_user 中的数据）
+        // 2. 构建用户节点（去重）
         Map<Long, UserSearchTreeNodeResp> userMap = new LinkedHashMap<>();
-
-        // 先添加 sys_user 中的用户
         for (UserSwitchDataResp.SysUserInfo user : sysUsers) {
             String deptIds = user.getDepartIds();
             if (deptIds == null || deptIds.isEmpty()) {
@@ -179,53 +155,16 @@ public class SysRoleController {
             }
         }
 
-        // 再添加 HR 模块中的用户（如果不在 sys_user 中）
-        for (UserBO hrUser : hrUsers) {
-            if (!userMap.containsKey(hrUser.getId())) {
-                String deptId = hrUser.getDepartmentId();
-                if (deptId == null || deptId.isEmpty()) {
-                    continue;
-                }
-                // HR模块的 departmentId 可能是逗号分隔的多个部门ID
-                for (String dept : deptId.split(",")) {
-                    dept = dept.trim();
-                    if (dept.isEmpty()) {
-                        continue;
-                    }
-                    UserSearchTreeNodeResp userNode =
-                            UserSearchTreeNodeResp.builder()
-                                    .id("U" + hrUser.getId())
-                                    .sysId(null)
-                                    .label(hrUser.getUserName())
-                                    .departId("D" + dept)
-                                    .sex(hrUser.getSex() != null ? hrUser.getSex() : 1)
-                                    .avatar(hrUser.getUserAvatar())
-                                    .workNumber(
-                                            hrUser.getWorkNumber() != null
-                                                    ? hrUser.getWorkNumber()
-                                                    : "")
-                                    .type(3)
-                                    .departName(
-                                            hrUser.getDepartmentName() != null
-                                                    ? hrUser.getDepartmentName()
-                                                    : "")
-                                    .subjectId(Long.valueOf(hrUser.getSubjectId()))
-                                    .build();
-                    userMap.put(hrUser.getId(), userNode);
-                }
-            }
-        }
-
-        // 4. 将用户按部门分类
+        // 3. 将用户按部门分类
         Map<String, List<UserSearchTreeNodeResp>> deptUsers = new LinkedHashMap<>();
         for (UserSearchTreeNodeResp userNode : userMap.values()) {
             deptUsers.computeIfAbsent(userNode.getDepartId(), k -> new ArrayList<>()).add(userNode);
         }
 
-        // 5. 从HR模块获取部门列表
+        // 4. 从HR模块获取部门列表
         List<DepartmentBO> departmentList = departmentApi.getDepartmentList();
 
-        // 6. 构建部门节点并挂载用户
+        // 5. 构建部门节点并挂载用户
         List<UserSearchTreeNodeResp> departListWithUsers = new ArrayList<>();
         for (DepartmentBO dept : departmentList) {
             String pid = (dept.getPid() != null && dept.getPid() != 0) ? "D" + dept.getPid() : "D0";
@@ -243,10 +182,10 @@ public class SysRoleController {
             departListWithUsers.add(node);
         }
 
-        // 7. 构建嵌套树
+        // 6. 构建嵌套树
         List<UserSearchTreeNodeResp> tree = buildNestedTree(departListWithUsers, "D0");
 
-        // 8. 过滤掉没有用户的部门
+        // 7. 过滤掉没有用户的部门
         return ApiResponse.success(filterEmptyDepartments(tree));
     }
 
