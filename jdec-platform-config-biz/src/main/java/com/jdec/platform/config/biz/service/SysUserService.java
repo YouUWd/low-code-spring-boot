@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
+import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
@@ -276,6 +277,20 @@ public class SysUserService implements SysUserApi {
                 sysUserMapper.selectList(
                         Wrappers.<SysUser>lambdaQuery()
                                 .in(SysUser::getUserId, userIds)
+                                .eq(SysUser::getDeleted, Boolean.FALSE)
+                                .orderByDesc(SysUser::getCreatedDate));
+        return users.stream().map(this::toUserPageResp).toList();
+    }
+
+    @Override
+    public List<SysUserPageResp> getUsersByUserIds(QueryUsersByIdsReq req) {
+        if (req.getUserIds() == null || req.getUserIds().isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<SysUser> users =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .in(SysUser::getUserId, req.getUserIds())
                                 .eq(SysUser::getDeleted, Boolean.FALSE)
                                 .orderByDesc(SysUser::getCreatedDate));
         return users.stream().map(this::toUserPageResp).toList();
