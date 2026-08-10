@@ -17,4 +17,7 @@ public class MonitorControlLogReq extends MonitorBaseLogReq {
 
     @Schema(description = "审批结果")
     private String actionTypeTitle;
+
+    @Schema(description = "审批动作类型")
+    private String actionType;
 }

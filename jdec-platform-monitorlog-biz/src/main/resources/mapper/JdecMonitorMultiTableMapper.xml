@@ -9,6 +9,7 @@
         <result column="actionName" property="actionName"/>
         <result column="actionPath" property="actionPath"/>
         <result column="actionTypeTitle" property="actionTypeTitle"/>
+        <result column="actionType" property="actionType"/>
         <result column="login_user_id" property="loginUserId"/>
         <result column="login_user_name" property="loginUserName"/>
         <result column="login_avater" property="loginAvater"/>
@@ -54,7 +55,7 @@
     <!-- controllog 完整列：action 全有 + 模块/菜单(含menu_param/href_name)/单据/控件/browser 全有 -->
     <sql id="controlLogColumns">
         id, subject_id, subject_name,
-        actionName, actionPath, actionTypeTitle,
+        actionName, actionPath, actionTypeTitle,actionType,
         login_user_id, login_user_name, login_avater, login_user_number,
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
         login_user_job_id, login_user_job_name,
@@ -72,6 +73,7 @@
         CAST(NULL AS CHAR) AS actionName,
         CAST(NULL AS CHAR) AS actionPath,
         CAST(NULL AS CHAR) AS actionTypeTitle,
+        CAST(NULL AS CHAR) AS actionType,
         login_user_id, login_user_name, login_avater, login_user_number,
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
         login_user_job_id, login_user_job_name,
@@ -99,6 +101,7 @@
         CAST(NULL AS CHAR) AS actionName,
         CAST(NULL AS CHAR) AS actionPath,
         CAST(NULL AS CHAR) AS actionTypeTitle,
+        CAST(NULL AS CHAR) AS actionType,
         login_user_id, login_user_name, login_avater, login_user_number,
         login_role_id, login_role_name, login_user_dept_id, login_user_dept_name,
         login_user_job_id, login_user_job_name,

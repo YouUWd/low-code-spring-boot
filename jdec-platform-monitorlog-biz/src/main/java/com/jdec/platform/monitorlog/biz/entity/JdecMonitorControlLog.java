@@ -27,6 +27,10 @@ public class JdecMonitorControlLog extends JdecMonitorLogBase {
     @TableField("actionTypeTitle")
     private String actionTypeTitle;
 
+    @Schema(description = "审批动作类型")
+    @TableField("actionType")
+    private String actionType;
+
     @Schema(description = "模块ID")
     @TableField("module_id")
     private Long moduleId;
