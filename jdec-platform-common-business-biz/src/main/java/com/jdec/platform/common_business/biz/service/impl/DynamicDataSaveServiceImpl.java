@@ -1331,26 +1331,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
             case SUBMIT, REJECT, PASS -> {
                 log.debug("提交表单，更新业务数据。");
-                // 深拷贝模块表单数据
-                List<ModuleSaveReq> copyModuleSaveList;
-                try {
-                    String originJsonStr = JsonUtil.obj2Json(moduleSaveList);
-                    copyModuleSaveList =
-                            JsonUtil.json2Obj(
-                                    originJsonStr, new TypeReference<List<ModuleSaveReq>>() {});
-                } catch (JsonProcessingException e) {
-                    throw new RuntimeException(e);
-                }
 
-                // 审批链编辑都是在record表中新建记录，所以获取参数中的recordId作为oldRecordId参数，去除id主键走新建步骤
+                // 获取变更前数据id
                 Long oldRecordId =
-                        removeModuleData(
-                                copyModuleSaveList,
-                                subjectId,
-                                roleId,
-                                targetTopMenu.getModuleId(),
-                                moduleFilterInfo,
-                                Set.of("id"));
+                        getDataRecordId(
+                                moduleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
                 recordId = oldRecordId;
 
                 String tableName = moduleFilterInfo.getModuleInfo().getPrimaryTable();
@@ -1375,24 +1360,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                             if (Objects.nonNull(snapshotData)) {
                                 log.debug("recordId:{}对应的快照数据不为空，保存旧数据到快照记录", oldRecordId);
-
-                                //
-                                // BeanUtils.copyProperties(mainOldData , snapshotData , "id");
-                                //                                Field field =
-                                //                                        ReflectionUtils.findField(
-                                //
-                                // snapshotData.getClass(), "sourceId");
-                                //                                field.setAccessible(true);
-                                //                                ReflectionUtils.setField(field ,
-                                // snapshotData , oldRecordId);
-                                //
-                                // primaryMapper.updateById(snapshotData);
                                 approvalProcessReq.setOldRecordId(recordId);
                             } else {
                                 log.debug("recordId:{}对应的快照数据为空，新建快照记录", oldRecordId);
-
-                                //                                insertSnapshot(tableName ,
-                                // mainOldData , oldRecordId);
                             }
 
                         } else {
@@ -1482,6 +1452,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
             approvalProcessReq.setRoleId(roleId);
             approvalProcessReq.setRecordId(recordId);
+
+            // oldRecordId没有设置过
+            if (Objects.isNull(approvalProcessReq.getOldRecordId())) {
+                approvalProcessReq.setOldRecordId(recordId);
+            }
+
             approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
             approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
             approvalProcessReq.setButton(approvalOperation.getBtnType());
