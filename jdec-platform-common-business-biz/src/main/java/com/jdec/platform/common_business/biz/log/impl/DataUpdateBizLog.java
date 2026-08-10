@@ -57,6 +57,7 @@ public class DataUpdateBizLog implements BizLog {
                     }
                 }
                 req.setActionName("已提交");
+                req.setActionType("submit");
                 req.setActionPath("http://192.168.60.8:9001/jdec-platform/image/create.svg");
                 req.setActionTypeTitle(bizLogDTO.getModuleName() + "保存");
 
