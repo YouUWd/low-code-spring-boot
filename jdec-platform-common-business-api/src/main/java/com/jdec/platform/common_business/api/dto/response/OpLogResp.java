@@ -15,6 +15,8 @@ public class OpLogResp implements Serializable {
 
     private String actionTypeTitle;
 
+    private String actionIcon;
+
     private UserResp createdUser;
 
     private UserResp realUser;
