@@ -20,23 +20,23 @@ public class BizLogDTO implements Serializable {
 
     private String browser;
 
+    private String ip;
+
+    private String origin;
+
     private Long loginUserId;
 
     private Long mockUserId;
 
-    private Long preSubjectId;
+    private Long subjectId;
 
-    private Long currentSubjectId;
-
-    private Long preRoleId;
-
-    private Long currentRoleId;
-
-    private String ip;
+    private Long roleId;
 
     private String logRemark;
 
     private Long menuId;
+
+    private Long moduleId;
 
     private String moduleName;
 

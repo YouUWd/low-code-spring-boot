@@ -211,6 +211,28 @@ public class LoginUserUtil {
     }
 
     /**
+     * 获取请求的源
+     *
+     * @return
+     */
+    public static String getRefererFromHeader() {
+
+        // 2. 安全获取 RequestContext 属性，防止在异步线程中调用时抛出异常
+        RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (!(requestAttributes instanceof ServletRequestAttributes)) {
+            // 如果不在 Web 上下文中，直接返回 userId，Header 参数给 null（或根据业务需求抛出异常）
+            return null;
+        }
+        HttpServletRequest request = ((ServletRequestAttributes) requestAttributes).getRequest();
+        String referer = request.getHeader("Origin");
+
+        if (StringUtils.isEmpty(referer)) {
+            referer = request.getHeader("Referer");
+        }
+        return referer;
+    }
+
+    /**
      * 获取当前用户 的 Os
      *
      * @return

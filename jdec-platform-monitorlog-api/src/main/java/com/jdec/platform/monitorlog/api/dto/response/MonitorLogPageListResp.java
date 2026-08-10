@@ -29,6 +29,9 @@ public class MonitorLogPageListResp {
     @Schema(description = "审批动作图标")
     private String actionPath;
 
+    @Schema(description = "动作类型")
+    private String actionType;
+
     @Schema(description = "审批结果")
     private String actionTypeTitle;
 
@@ -92,10 +95,13 @@ public class MonitorLogPageListResp {
     @Schema(description = "菜单ID")
     private Long menuId;
 
-    @Schema(description = "菜单名称")
-    private String menuName;
+    @Schema(description = "菜单参数;菜单配置中的参数内容")
+    private String menuParam;
 
-    @Schema(description = "单据ID")
+    @Schema(description = "超链接文本")
+    private String hrefName;
+
+    @Schema(description = "数据表记录ID")
     private Long dataId;
 
     @Schema(description = "单据版本号")
@@ -130,4 +136,7 @@ public class MonitorLogPageListResp {
 
     @Schema(description = "日志类型: message_log/control_log/system_log")
     private String logType;
+
+    @Schema(description = "日志类型显示名称（来自系统配置的中文 label，如：系统日志/消息日志/操作日志）")
+    private String logTypeLabel;
 }

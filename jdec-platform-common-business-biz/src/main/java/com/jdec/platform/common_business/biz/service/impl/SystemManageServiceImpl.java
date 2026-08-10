@@ -10,13 +10,10 @@ import com.jdec.platform.common_business.api.dto.response.SelectRoleResp;
 import com.jdec.platform.common_business.api.dto.response.SubjectResp;
 import com.jdec.platform.common_business.biz.common.CommonConstant;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
-import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.requst.CheckUserSpecialPermissionReq;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
-import com.jdec.platform.common_business.biz.enums.BizLogEnum;
-import com.jdec.platform.common_business.biz.log.ComBizLogEventPublisher;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
@@ -428,22 +425,6 @@ public class SystemManageServiceImpl implements SystemManageServiceApi {
                             ApiResponseCodeEnum.SERVER_ERROR.getMessage());
                 }
             }
-            BizLogDTO bizLogDTO =
-                    BizLogDTO.builder()
-                            .logType("system-log")
-                            .projectNo(LoginUserUtil.getProjectNoFromHeader())
-                            .token(LoginUserUtil.getTokenFromHeader())
-                            .platform(LoginUserUtil.getOsFromHeader())
-                            .browser(LoginUserUtil.getBrowserFromHeader())
-                            .ip(LoginUserUtil.getIpFromHeader())
-                            .loginUserId(realLoginUserId)
-                            .mockUserId(realLoginUserId.equals(loginUserId) ? null : loginUserId)
-                            .preSubjectId(oldSubjectRole.getSubjectId())
-                            .currentSubjectId(finalSubjectId)
-                            .preRoleId(oldSubjectRole.getRoleId())
-                            .currentRoleId(oldSubjectRole.getRoleId())
-                            .build();
-            ComBizLogEventPublisher.publishLogEvent(BizLogEnum.SELECT_ROLE, bizLogDTO);
             return apiResponse;
         } catch (Exception e) {
             log.error(

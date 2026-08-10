@@ -79,6 +79,18 @@ public class ClassVersion extends Model<ClassVersion> {
     @TableField("module_id")
     private Long moduleId;
 
+    /** 业务状态 */
+    @TableField("business_status")
+    private Integer businessStatus;
+
+    /** 版本号 */
+    @TableField("version_no")
+    private Integer versionNo;
+
+    /** 来源ID，快照数据保存第一次创建那条数据的ID。 */
+    @TableField("source_id")
+    private Long sourceId;
+
     @Override
     public Serializable pkVal() {
         return this.id;

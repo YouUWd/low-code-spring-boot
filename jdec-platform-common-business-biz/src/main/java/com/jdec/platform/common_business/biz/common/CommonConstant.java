@@ -53,4 +53,6 @@ public interface CommonConstant {
     String CONFIG_CENTER_SIMULATE_LOGIN_RIGHT_CODE = "simulate_login";
 
     String CONFIG_CENTER_CATEGORY_ALIAS_WX_ACCEPT_TYPE = "wxAcceptType";
+
+    String MONITOR_LOG_OPERATOR_LOG_TYPE = "operation-log";
 }

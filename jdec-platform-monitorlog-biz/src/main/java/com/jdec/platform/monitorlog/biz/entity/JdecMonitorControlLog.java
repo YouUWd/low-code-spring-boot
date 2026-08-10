@@ -27,6 +27,10 @@ public class JdecMonitorControlLog extends JdecMonitorLogBase {
     @TableField("actionTypeTitle")
     private String actionTypeTitle;
 
+    @Schema(description = "审批动作类型")
+    @TableField("actionType")
+    private String actionType;
+
     @Schema(description = "模块ID")
     @TableField("module_id")
     private Long moduleId;
@@ -35,19 +39,19 @@ public class JdecMonitorControlLog extends JdecMonitorLogBase {
     @TableField("module_name")
     private String moduleName;
 
-    @Schema(description = "单据编号;审批链配置/FHSQ2409230955401/权限配置")
-    @TableField("order_id")
-    private String orderId;
-
     @Schema(description = "菜单ID")
     @TableField("menu_id")
     private Long menuId;
 
-    @Schema(description = "菜单名称")
-    @TableField("menu_name")
-    private String menuName;
+    @Schema(description = "超链接文本")
+    @TableField("href_name")
+    private String hrefName;
 
-    @Schema(description = "单据ID")
+    @Schema(description = "菜单参数;菜单配置中的参数内容")
+    @TableField("menu_param")
+    private String menuParam;
+
+    @Schema(description = "数据表记录ID")
     @TableField("data_id")
     private Long dataId;
 

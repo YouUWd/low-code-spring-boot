@@ -16,6 +16,9 @@ public interface IApprovalEngine {
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
     List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq);
 
+    // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
+    Long getBusinessNextId(ApprovalProcessReq approvalProcessDTO);
+
     // 处理业务数据的审批流转---------------------------------------------------------------------
     Map<String, Object> process(ApprovalProcessReq approvalProcessDTO);
 

@@ -22,6 +22,16 @@ public class MessageReceiverReq {
     @NotBlank(message = "业务记录ID不能为空")
     private Long recordId;
 
+    // 登录用户ID
+    @Schema(description = "登录用户ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "登录用户ID不能为空")
+    private Long currentUserId;
+
+    // 操作人ID
+    @Schema(description = "操作用户ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "操作用户ID不能为空")
+    private Long applicantId;
+
     // 交互动作
     @Schema(description = "交互动作(submit/pass/reject)")
     private String button;
