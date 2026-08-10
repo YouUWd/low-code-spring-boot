@@ -1583,7 +1583,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             // 分页查询时放入总数
             if (Objects.nonNull(page)) {
-                resultMap.put("total", dataList.size());
+                resultMap.put("total", pageData.getTotal());
             }
         }
 
