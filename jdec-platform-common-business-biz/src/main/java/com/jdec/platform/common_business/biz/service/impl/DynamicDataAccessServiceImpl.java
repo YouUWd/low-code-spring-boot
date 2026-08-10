@@ -1240,6 +1240,15 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             asteriskPrefixMap);
                 }
             }
+
+            // 设置筛选条件为审批链过滤后的主键集合
+            if (!recordIdToApprovalData.isEmpty()) {
+                queryWrapper.in(
+                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + DEFAULT_PRIMARY_KEY,
+                        recordIdToApprovalData.keySet().toArray());
+            }
         }
 
         // 筛选id参数不为空， 则将关联id字段进行筛选 比如学生详情里要以学生ID做筛选查询分数列表
