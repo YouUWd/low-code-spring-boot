@@ -1446,9 +1446,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             monitorControlLogReq.setIp(RequestContextUtils.getClientIp());
             monitorControlLogReq.setBrowser(RequestContextUtils.getBrowser());
             monitorControlLogReq.setSystemName(RequestContextUtils.getPlatform());
-            monitorControlLogReq.setLogContent("");
+            monitorControlLogReq.setLogContent(null);
             monitorControlLogReq.setDataId(approvalProcessDTO.getRecordId());
-            monitorControlLogReq.setLogRemark(approvalProcessDTO.getReason());
+            if (Objects.nonNull(approvalProcessDTO.getReason())) {
+                monitorControlLogReq.setLogRemark(approvalProcessDTO.getReason());
+            }
             SysConfigItemResp modelConfig =
                     sysConfigCategoryApi.getConfigItemsByValue(
                             "logStateIcon", approvalProcessDTO.getButton());
