@@ -76,6 +76,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             logResp.setActionName(resp.getActionName());
             logResp.setActionPath(resp.getActionPath());
             logResp.setActionTypeTitle(resp.getActionTypeTitle());
+            logResp.setActionIcon(resp.getActionType());
             logResp.setCreatedDate(resp.getLogDate());
 
             if (resp.getMockFlag().equals(Integer.valueOf(1))) {
