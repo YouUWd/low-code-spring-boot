@@ -1100,6 +1100,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
             approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
             approvalProcessReq.setPrefix("CLS");
+            approvalProcessReq.setMenuId(moduleSaveList.get(0).getMenuId());
 
             ConfigApiResponse<Map<String, Object>> processResult =
                     approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
@@ -1175,6 +1176,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
                                 BeanUtils.copyProperties(ele, moduleSaveReq);
                                 moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveReq.setMenuId(target.getId());
                                 moduleSaveList.add(moduleSaveReq);
                             }
                         });
@@ -1462,6 +1464,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
             approvalProcessReq.setRoleId(roleId);
             approvalProcessReq.setRecordId(recordId);
+            approvalProcessReq.setMenuId(moduleSaveList.get(0).getMenuId());
 
             // oldRecordId没有设置过
             if (Objects.isNull(approvalProcessReq.getOldRecordId())) {
