@@ -29,6 +29,9 @@ public class MonitorLogPageListResp {
     @Schema(description = "审批动作图标")
     private String actionPath;
 
+    @Schema(description = "动作类型")
+    private String actionType;
+
     @Schema(description = "审批结果")
     private String actionTypeTitle;
 
