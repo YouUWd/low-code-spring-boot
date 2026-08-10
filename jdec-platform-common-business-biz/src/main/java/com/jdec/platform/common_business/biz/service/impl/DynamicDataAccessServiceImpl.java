@@ -84,6 +84,16 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
     private static final String KEY_ASTERISK_STR = "*";
 
+    private static final String[] versionCompareExclude = {
+        "createDate , updateDate",
+        "moduleId",
+        "deleted",
+        "sourceId",
+        "versionNo",
+        "businessStatus",
+        "id"
+    };
+
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     private final ConfigCenterApiOpenFeignClient configCenterApiClient;
@@ -607,6 +617,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         Class<?> clazz = oldObj.getClass();
         Field[] fields = clazz.getDeclaredFields();
         for (Field field : fields) {
+            if (Arrays.stream(versionCompareExclude).anyMatch(field.getName()::equals)) {
+                continue;
+            }
             field.setAccessible(true);
             try {
                 Object oldVal = field.get(oldObj);
