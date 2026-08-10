@@ -209,4 +209,4 @@ monitor-center:
 
 # ===== 审计日志配置 =====
 audit:
-  monitor-log-url: http://119.36.78.123:5009/api/monitorlog/addOrderRunLog
+  monitor-log-url: http://119.36.78.123:5009/api/monitorlog/addControlLog

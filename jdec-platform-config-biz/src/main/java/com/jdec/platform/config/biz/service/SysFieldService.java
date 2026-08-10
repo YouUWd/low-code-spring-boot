@@ -11,6 +11,7 @@ import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
+import com.jdec.platform.config.biz.audit.service.SysFieldLogService;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.check.ReferenceContext;
@@ -53,6 +54,7 @@ public class SysFieldService implements SysFieldApi {
     private final AuditLogHelper auditLogHelper;
     private final SysDataSnapshotService snapshotService;
     private final ObjectMapper objectMapper;
+    private final SysFieldLogService sysFieldLogService;
 
     // ==================== 元数据查询逻辑 ====================
 
@@ -454,16 +456,21 @@ public class SysFieldService implements SysFieldApi {
                 tableName,
                 req.getColumnName());
 
-        // 更新时查询旧的 relationBusinessNo
-        String oldBusinessNo = null;
-        Integer oldDataRightFlag = null;
+        // 更新时捕获修改前的字段配置及字段值，用于审计日志差异对比
+        SysField oldField = null;
+        List<SysFieldValue> oldFieldValues = Collections.emptyList();
         if (req.getId() != null) {
-            SysField oldField = sysFieldMapper.selectById(req.getId());
+            oldField = sysFieldMapper.selectById(req.getId());
             if (oldField != null) {
-                oldBusinessNo = oldField.getRelationBusinessNo();
-                oldDataRightFlag = oldField.getDataRightFlag();
+                oldFieldValues =
+                        sysFieldValueMapper.selectList(
+                                new LambdaQueryWrapper<SysFieldValue>()
+                                        .eq(SysFieldValue::getFieldId, oldField.getId())
+                                        .eq(SysFieldValue::getDeleted, 0));
             }
         }
+        String oldBusinessNo = oldField != null ? oldField.getRelationBusinessNo() : null;
+        Integer oldDataRightFlag = oldField != null ? oldField.getDataRightFlag() : null;
 
         SysField entity =
                 SysField.builder()
@@ -577,6 +584,9 @@ public class SysFieldService implements SysFieldApi {
         if (req.getRelationBusinessNo() != null && !req.getRelationBusinessNo().isBlank()) {
             saveToWordSystem(oldBusinessNo, req.getRelationBusinessNo(), tableName, subjectId);
         }
+
+        // 记录字段配置修改审计日志（仅更新操作，子表按主键 id 对比 i/u/d）
+        sysFieldLogService.logUpdate(oldField, tableName, req, oldFieldValues);
 
         // 查询并返回保存后的完整数据
         return getSysFieldById(fieldId, projectNo, subjectId, tableName);
