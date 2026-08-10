@@ -23,6 +23,13 @@ public interface SysMenuApi {
     List<SysMenuResp> list(Integer category);
 
     /**
+     * 根据Id查询菜单
+     *
+     * @param Id 菜单ID
+     */
+    SysMenuResp getMenuById(Long Id);
+
+    /**
      * 新增/编辑菜单
      *
      * @return 保存后的菜单信息

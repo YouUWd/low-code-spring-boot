@@ -45,6 +45,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 角色 Service 实现 */
@@ -787,6 +788,7 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public RoleConfigDetailResp getRoleConfigDetail(Long roleId) {
         // 先更新已时效的关联状态
         updateExpiredRelations();

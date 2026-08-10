@@ -21,7 +21,7 @@ public class ActionLogResp {
     private String actionTypeTitle;
 
     /** 日志内容 */
-    private String description;
+    private Object description;
 
     /** 创建时间 */
     private LocalDateTime createdDate;

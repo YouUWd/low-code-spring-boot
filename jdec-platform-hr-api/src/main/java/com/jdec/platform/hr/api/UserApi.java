@@ -62,6 +62,8 @@ public interface UserApi {
 
     List<UserBO> listByIds(Set<Long> allUserIds);
 
+    UserBO getUserById(Long userId);
+
     List<UserBO> listBySubjectId(Long subjectId);
 
     /**

@@ -133,6 +133,13 @@ public class UserService implements UserApi {
 
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public UserBO getUserById(Long userId) {
+        User user = userMapper.selectById(userId);
+        return BeanUtil.copyProperties(user, UserBO.class);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<UserBO> listBySubjectId(Long subjectId) {
         List<User> users =
                 userMapper.selectList(
