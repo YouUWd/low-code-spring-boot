@@ -534,7 +534,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     getSendUserList(
                             approvalBusiness,
                             Long.valueOf((String) templateId),
-                            req.getRejectStep());
+                            req.getCurrentUserId());
 
             Map<String, Object> item = new HashMap<>();
             item.put("template_id", templateId);
@@ -688,11 +688,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 payload);
 
         // 发送消息
-        sendWechatMessage(
-                approvalBusiness,
-                "submit",
-                approvalProcessDTO.getCurrentUserId(),
-                approvalProcessDTO.getRejectStep());
+        sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId());
 
         return approvalBusiness;
     }
@@ -835,11 +831,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 payload);
 
         // 发送消息
-        sendWechatMessage(
-                approvalBusiness,
-                "submit",
-                approvalProcessDTO.getCurrentUserId(),
-                approvalProcessDTO.getRejectStep());
+        sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId());
 
         return approvalBusiness;
     }
@@ -1048,8 +1040,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 sendWechatMessageById(
                         approvalBusiness,
                         Long.parseLong(id),
-                        approvalProcessDTO.getCurrentUserId(),
-                        approvalProcessDTO.getRejectStep());
+                        approvalProcessDTO.getCurrentUserId());
             }
         }
 
@@ -1218,8 +1209,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 sendWechatMessageById(
                         approvalBusiness,
                         Long.parseLong(id),
-                        approvalProcessDTO.getCurrentUserId(),
-                        approvalProcessDTO.getRejectStep());
+                        approvalProcessDTO.getCurrentUserId());
             }
         }
 
@@ -1325,11 +1315,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
         // 发送消息
-        sendWechatMessage(
-                approvalBusiness,
-                "cancel",
-                approvalProcessDTO.getCurrentUserId(),
-                approvalProcessDTO.getRejectStep());
+        sendWechatMessage(approvalBusiness, "cancel", approvalProcessDTO.getCurrentUserId());
         return approvalBusiness;
     }
 
@@ -1960,7 +1946,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 获取消息接收人列表------------------------------------------------------------------
     private Set<Long> getSendUserList(
-            ApprovalBusiness business, Long templateId, Integer rejectStep) {
+            ApprovalBusiness business, Long templateId, Long loginUserId) {
         // 1. 查询微信模板
         WechatTemplateDetailResp sysWeChatTemplate =
                 sysWechatTemplateApi.getTemplateById(templateId);
@@ -1978,13 +1964,21 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             SysConfigItemResp aliasConfig = sysConfigCategoryApi.getConfigItemsById(item);
 
             // ================== 额外接收人 ==================
+            if ("login_user".equals(aliasConfig.getValue())) {
+                userList.add(loginUserId);
+                continue;
+            }
+
+            // ================== 额外接收人 ==================
             if ("extra_receiver".equals(aliasConfig.getValue())) {
                 userList.addAll(sysWeChatTemplate.getExtraReceiverIds());
+                continue;
             }
 
             // ================== 申请人 ==================
             if ("apply_person".equals(aliasConfig.getValue())) {
                 userList.add(business.getCreatedBy());
+                continue;
             }
 
             // ================== 下一步审批人 ==================
@@ -1993,30 +1987,30 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
                 approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
                 approvalWrapper
-                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep() + 1)
+                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep())
                         .last("LIMIT 1");
                 ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
                 if (approvalChain != null) {
                     List<Long> approverUserList = getApproverUserList(approvalChain);
                     userList.addAll(approverUserList);
                 }
+                continue;
             }
 
             // ================== 上一步审批人（注释保留） ==================
             if ("prev_approval_person".equals(aliasConfig.getValue())) {
-                Integer preStrp = business.getCurrentStep() - 1;
-                if (Objects.nonNull(rejectStep) && !rejectStep.equals(0)) {
-                    preStrp = rejectStep;
-                }
                 LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
                 approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
                 approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
-                approvalWrapper.eq(ApprovalChain::getCurrentStep, preStrp).last("LIMIT 1");
+                approvalWrapper
+                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep())
+                        .last("LIMIT 1");
                 ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
                 if (approvalChain != null) {
                     List<Long> approverUserList = getApproverUserList(approvalChain);
                     userList.addAll(approverUserList);
                 }
+                continue;
             }
 
             // ================== 已审批人 ==================
@@ -2027,6 +2021,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .map(approvalUid -> Long.valueOf((String) approvalUid))
                                 .toList();
                 userList.addAll(approverUserList);
+                continue;
             }
 
             // ================== 状态关联人（注释保留） ==================
@@ -2068,11 +2063,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // ======================================组装并发送审批消息==========================================
     // 根据模板ID发送消息-----------------------------------
     private void sendWechatMessageById(
-            ApprovalBusiness business, Long templateId, Long loginUserId, Integer rejectStep) {
+            ApprovalBusiness business, Long templateId, Long loginUserId) {
         WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
         String content = formatWechatMessage(template, business, loginUserId);
         List<String> userIds =
-                getSendUserList(business, templateId, rejectStep).stream()
+                getSendUserList(business, templateId, loginUserId).stream()
                         .map(String::valueOf)
                         .toList();
         SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
@@ -2086,14 +2081,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 发送提交和取消消息-----------------------------------
     private void sendWechatMessage(
-            ApprovalBusiness business, String triggerType, Long loginUserId, Integer rejectStep) {
+            ApprovalBusiness business, String triggerType, Long loginUserId) {
         String projectNo = AppContext.getProjectNo();
         WechatTemplateEntryResp template =
                 sysWechatTemplateApi.getTemplateByModuleId(
                         projectNo, business.getSubjectId(), business.getModuleId(), triggerType);
         String content = formatWechatMessage(template, business, loginUserId);
         List<String> userIds =
-                getSendUserList(business, template.getId(), rejectStep).stream()
+                getSendUserList(business, template.getId(), loginUserId).stream()
                         .map(String::valueOf)
                         .toList();
         SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
