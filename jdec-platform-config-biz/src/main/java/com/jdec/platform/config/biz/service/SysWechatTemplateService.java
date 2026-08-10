@@ -6,28 +6,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysWechatTemplateApi;
-import com.jdec.platform.config.api.dto.request.CreateWechatTemplateParamReq;
-import com.jdec.platform.config.api.dto.request.CreateWechatTemplateReq;
-import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
-import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateParamReq;
-import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateReq;
-import com.jdec.platform.config.api.dto.request.WechatTemplateParamQueryReq;
-import com.jdec.platform.config.api.dto.request.WechatTemplateQueryReq;
+import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import com.jdec.platform.config.biz.audit.service.SysWechatTemplateLogService;
 import com.jdec.platform.config.biz.audit.service.SysWechatTemplateParamLogService;
-import com.jdec.platform.config.biz.entity.SysMessageRecord;
-import com.jdec.platform.config.biz.entity.SysModule;
-import com.jdec.platform.config.biz.entity.SysModuleField;
-import com.jdec.platform.config.biz.entity.SysWechatTemplate;
-import com.jdec.platform.config.biz.entity.SysWechatTemplateParam;
-import com.jdec.platform.config.biz.mapper.SysMessageRecordMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleMapper;
-import com.jdec.platform.config.biz.mapper.SysWechatTemplateMapper;
-import com.jdec.platform.config.biz.mapper.SysWechatTemplateParamMapper;
+import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -242,6 +228,12 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
             record.setUpdatedDate(LocalDateTime.now());
             sysMessageRecordMapper.updateById(record);
         }
+    }
+
+    @Override
+    public WechatTemplateEntryResp getTemplateByModuleId(
+            String projectNo, Long subjectId, Long moduleId, String triggerType) {
+        return null;
     }
 
     private String formatContent(String content, List<SysWechatTemplateParam> params) {

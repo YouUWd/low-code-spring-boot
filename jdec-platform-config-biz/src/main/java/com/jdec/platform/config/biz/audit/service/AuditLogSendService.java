@@ -112,9 +112,7 @@ public class AuditLogSendService {
         UserInfo mockUser = loadUser(mockUserId);
 
         // 角色：非模拟时登录角色=当前角色；模拟时当前角色归属模拟用户，登录角色为空
-        Long currentRoleId = loginUserInfo != null ? loginUserInfo.getRoleId() : null;
-        Long loginRoleId = isMockLogin ? null : currentRoleId;
-        Long mockRoleId = isMockLogin ? currentRoleId : null;
+        Long loginRoleId = loginUserInfo != null ? loginUserInfo.getRoleId() : null;
 
         // 菜单参数：直接透传前端请求头 href-url（去掉前导/）
         String hrefUrl =
@@ -142,8 +140,6 @@ public class AuditLogSendService {
                 .mockUserName(mockUser != null ? mockUser.userName() : null)
                 .mockUserAvater(mockUser != null ? mockUser.avatar() : null)
                 .mockUserNumber(mockUser != null ? mockUser.number() : null)
-                .mockRoleId(mockRoleId)
-                .mockRoleName(resolveRoleName(mockRoleId))
                 .ip(RequestContextUtils.getClientIp())
                 .moduleName(context != null ? context.getModule() : null)
                 .moduleId(moduleId)
