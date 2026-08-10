@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
+import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
@@ -64,6 +65,13 @@ public class SysUserController {
             @Parameter(description = "角色ID", required = true, example = "1") @PathVariable
                     Long roleId) {
         return ApiResponse.success(sysUserApi.getUsersByRoleId(roleId));
+    }
+
+    @PostMapping("/list-by-ids")
+    @Operation(summary = "根据用户ID列表批量查询用户", description = "根据sys_user表的user_id字段批量查询用户")
+    public ApiResponse<List<SysUserPageResp>> getUsersByUserIds(
+            @Valid @RequestBody QueryUsersByIdsReq req) {
+        return ApiResponse.success(sysUserApi.getUsersByUserIds(req));
     }
 
     @GetMapping("/subjects/{userId}")

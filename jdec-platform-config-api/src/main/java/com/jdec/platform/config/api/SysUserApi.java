@@ -2,6 +2,7 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.bo.SysUserBO;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
+import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
@@ -35,6 +36,16 @@ public interface SysUserApi {
 
     /** 根据角色ID查询用户列表 */
     List<SysUserPageResp> getUsersByRoleId(Long roleId);
+
+    /**
+     * 根据用户ID列表批量查询用户
+     *
+     * <p>根据sys_user表的user_id字段批量查询用户信息
+     *
+     * @param req 用户ID列表请求
+     * @return 用户列表
+     */
+    List<SysUserPageResp> getUsersByUserIds(QueryUsersByIdsReq req);
 
     /** 根据用户ID反查关联的主体ID列表 */
     List<Long> getSubjectIdsByUserId(Long userId);
