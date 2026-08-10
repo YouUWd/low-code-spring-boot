@@ -177,7 +177,7 @@ public class OperatorLogServiceImpl implements OperatorLogServiceApi {
             logResp.setDescription(
                     DataAuditContentDTO.builder()
                             .change(moduleDataList)
-                            .reason(dataAuditContent.getReason())
+                            .comment(dataAuditContent.getComment())
                             .build());
             result.add(logResp);
         }

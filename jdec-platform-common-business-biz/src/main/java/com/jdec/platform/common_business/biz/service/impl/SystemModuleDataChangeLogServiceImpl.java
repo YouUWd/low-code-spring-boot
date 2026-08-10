@@ -228,7 +228,7 @@ public class SystemModuleDataChangeLogServiceImpl implements SystemModuleDataCha
                 return null;
             }
             DataAuditContentDTO auditContentDTO =
-                    DataAuditContentDTO.builder().change(modifyModules).reason(reason).build();
+                    DataAuditContentDTO.builder().change(modifyModules).comment(reason).build();
             return JsonUtil.obj2Json(auditContentDTO);
         } catch (Exception e) {
             log.error("compareOutChangeLogJson error,e=", e);
