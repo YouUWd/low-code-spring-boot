@@ -454,6 +454,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .eq(ApprovalVersionRecord::getRecordId, recordId)
                                 .eq(ApprovalVersionRecord::getSubjectId, subjectId)
                                 .eq(ApprovalVersionRecord::getModuleId, moduleId)
+                                .orderByDesc(ApprovalVersionRecord::getId)
                                 .last("LIMIT 1"));
         if (Objects.isNull(approvalVersionRecord)) {
             return respList;
