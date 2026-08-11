@@ -326,9 +326,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
         }
-        if (!StringUtils.hasText(req.getLogRemark())) {
-            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
-        }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
         }
@@ -413,9 +410,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
         if (req.getLogContent().length() > 65535) {
             throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
-        }
-        if (!StringUtils.hasText(req.getLogRemark())) {
-            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
