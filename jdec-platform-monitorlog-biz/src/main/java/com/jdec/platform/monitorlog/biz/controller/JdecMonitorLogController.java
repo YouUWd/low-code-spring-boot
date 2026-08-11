@@ -160,7 +160,8 @@ public class JdecMonitorLogController {
             description =
                     "通过Header参数记录系统控制日志，根据logType类型进行不同字段校验："
                             + "loginin/loginout/changerole/resetuser/changesubject 校验基础字段；"
-                            + "mockuser/mockchangerole 额外校验模拟用户字段")
+                            + "mockuser/mockchangerole 额外校验模拟用户字段。"
+                            + "传入loginUserId和loginRoleId，服务端自动获取用户、角色和模拟用户信息")
     public ApiResponse<Void> sendSystemLog(
             @Parameter(
                             description =
@@ -171,54 +172,24 @@ public class JdecMonitorLogController {
             @Parameter(description = "项目编号")
                     @RequestHeader(value = "X-Project-No", required = false)
                     String projectNo,
+            @Parameter(description = "登录用户ID", required = true)
+                    @RequestHeader(value = "Login-User-Id")
+                    Long loginUserId,
+            @Parameter(description = "登录角色ID", required = true)
+                    @RequestHeader(value = "Login-Role-Id")
+                    Long loginRoleId,
             @Parameter(description = "主体ID")
                     @RequestHeader(value = "X-Subject-Id", required = false)
                     Long subjectId,
             @Parameter(description = "主体名称")
                     @RequestHeader(value = "Subject-Name", required = false)
                     String subjectName,
-            @Parameter(description = "登录用户ID") @RequestHeader(value = "User-Id", required = false)
-                    Long loginUserId,
-            @Parameter(description = "登录用户名称") @RequestHeader(value = "UserName", required = false)
-                    String loginUserName,
-            @Parameter(description = "登录用户头像")
-                    @RequestHeader(value = "User-Avater", required = false)
-                    String loginAvater,
-            @Parameter(description = "登录用户工号")
-                    @RequestHeader(value = "User-Number", required = false)
-                    String loginUserNumber,
-            @Parameter(description = "登录角色ID") @RequestHeader(value = "Role-Id", required = false)
-                    Long loginRoleId,
-            @Parameter(description = "登录角色名称")
-                    @RequestHeader(value = "Rrole-Name", required = false)
-                    String loginRoleName,
-            @Parameter(description = "登录人部门ID;多个ID，用逗号分割")
-                    @RequestHeader(value = "Dept-Id", required = false)
-                    String loginUserDeptId,
-            @Parameter(description = "登录人部门名称;多个名称，用逗号分割")
-                    @RequestHeader(value = "Dept-Name", required = false)
-                    String loginUserDeptName,
-            @Parameter(description = "登录人岗位ID;多个ID，用逗号分割")
-                    @RequestHeader(value = "Job-Id", required = false)
-                    String loginUserJobId,
-            @Parameter(description = "登录人岗位名称;多个名称，用逗号分割")
-                    @RequestHeader(value = "Job-Name", required = false)
-                    String loginUserJobName,
             @Parameter(description = "是否mock标记：0否；1是")
                     @RequestHeader(value = "Mock-Flug", required = false)
                     Integer mockFlug,
-            @Parameter(description = "模拟用户ID")
+            @Parameter(description = "模拟用户ID(mockFlag=1时必传)")
                     @RequestHeader(value = "Mock-User-Id", required = false)
                     Long mockUserId,
-            @Parameter(description = "模拟用户名称")
-                    @RequestHeader(value = "Mock-UserName", required = false)
-                    String mockUserName,
-            @Parameter(description = "模拟用户头像")
-                    @RequestHeader(value = "Mock-User-Avater", required = false)
-                    String mockUserAvater,
-            @Parameter(description = "模拟用户工号")
-                    @RequestHeader(value = "Mock-User-Number", required = false)
-                    String mockUserNumber,
             @Parameter(description = "IP地址") @RequestHeader(value = "X-Real-IP", required = false)
                     String ip,
             @Parameter(description = "浏览器") @RequestHeader(value = "Browser", required = false)
@@ -239,35 +210,17 @@ public class JdecMonitorLogController {
         if (!StringUtils.hasText(projectNo)) {
             throw new IllegalArgumentException("项目编号(X-Project-No)不能为空");
         }
+        if (loginUserId == null || loginUserId <= 0) {
+            throw new IllegalArgumentException("登录用户ID(Login-User-Id)不能为空且必须大于0");
+        }
+        if (loginRoleId == null || loginRoleId <= 0) {
+            throw new IllegalArgumentException("登录角色ID(Login-Role-Id)不能为空且必须大于0");
+        }
         if (subjectId == null || subjectId <= 0) {
             throw new IllegalArgumentException("主体ID(X-Subject-Id)不能为空且必须大于0");
         }
         if (!StringUtils.hasText(subjectName)) {
             throw new IllegalArgumentException("主体名称(Subject-Name)不能为空");
-        }
-        if (loginUserId == null || loginUserId <= 0) {
-            throw new IllegalArgumentException("登录用户ID(User-Id)不能为空且必须大于0");
-        }
-        if (!StringUtils.hasText(loginUserName)) {
-            throw new IllegalArgumentException("登录用户名称(UserName)不能为空");
-        }
-        if (!StringUtils.hasText(loginAvater)) {
-            throw new IllegalArgumentException("登录用户头像(User-Avater)不能为空");
-        }
-        if (!StringUtils.hasText(loginUserNumber)) {
-            throw new IllegalArgumentException("登录用户工号(User-Number)不能为空");
-        }
-        if (loginRoleId == null || loginRoleId <= 0) {
-            throw new IllegalArgumentException("登录角色ID(Role-Id)不能为空且必须大于0");
-        }
-        if (!StringUtils.hasText(loginRoleName)) {
-            throw new IllegalArgumentException("登录角色名称(Role-Name)不能为空");
-        }
-        if (!StringUtils.hasText(loginUserDeptId)) {
-            throw new IllegalArgumentException("登录部门ID(Dept-Id)不能为空");
-        }
-        if (!StringUtils.hasText(loginUserDeptName)) {
-            throw new IllegalArgumentException("登录部门名称(Dept-Name)不能为空");
         }
         if (!StringUtils.hasText(systemName)) {
             throw new IllegalArgumentException("系统名称(System-Name)不能为空");
@@ -288,21 +241,6 @@ public class JdecMonitorLogController {
             throw new IllegalArgumentException("浏览器(Browser)长度不能超过100字符");
         }
 
-        if (isMockType) {
-            if (mockUserId == null || mockUserId < 0) {
-                throw new IllegalArgumentException("模拟用户ID(Mock-User-Id)不能为空且不能为负");
-            }
-            if (!StringUtils.hasText(mockUserName)) {
-                throw new IllegalArgumentException("模拟用户名称(Mock-UserName)不能为空");
-            }
-            if (!StringUtils.hasText(mockUserAvater)) {
-                throw new IllegalArgumentException("模拟用户头像(Mock-User-Avater)不能为空");
-            }
-            if (!StringUtils.hasText(mockUserNumber)) {
-                throw new IllegalArgumentException("模拟用户工号(Mock-User-Number)不能为空");
-            }
-        }
-
         if (mockFlug == null) {
             mockFlug = isMockType ? 1 : 0;
         }
@@ -310,135 +248,48 @@ public class JdecMonitorLogController {
             throw new IllegalArgumentException("mock标记(Mock-Flug)只能为0或1");
         }
 
+        if (isMockType || mockFlug == 1) {
+            if (mockUserId == null || mockUserId <= 0) {
+                throw new IllegalArgumentException("模拟用户ID(Mock-User-Id)不能为空且必须大于0");
+            }
+        }
+
         MonitorSystemLogReq request = new MonitorSystemLogReq();
+        request.setUserId(loginUserId);
+        request.setRoleId(loginRoleId);
+        request.setLogType(logType);
         request.setSubjectId(subjectId);
         request.setSubjectName(subjectName);
-        request.setLoginUserId(loginUserId);
-        request.setLoginUserName(loginUserName);
-        request.setLoginAvater(loginAvater);
-        request.setLoginUserNumber(loginUserNumber);
-        request.setLoginRoleId(loginRoleId);
-        request.setLoginRoleName(loginRoleName);
-        request.setLoginUserDeptId(loginUserDeptId);
-        request.setLoginUserDeptName(loginUserDeptName);
-        request.setLoginUserJobId(loginUserJobId);
-        request.setLoginUserJobName(loginUserJobName);
         request.setMockFlag(mockFlug);
         request.setMockUserId(mockUserId);
-        request.setMockUserName(mockUserName);
-        request.setMockUserAvater(mockUserAvater);
-        request.setMockUserNumber(mockUserNumber);
         request.setIp(ip);
         request.setBrowser(browser);
         request.setSystemName(systemName);
-        request.setLogContent(
-                buildLogContent(
-                        logType,
-                        systemName,
-                        ip,
-                        loginUserName,
-                        loginUserNumber,
-                        loginRoleName,
-                        mockUserName,
-                        mockUserNumber,
-                        mockFlug,
-                        subjectName));
 
         jdecMonitorLogService.recordSystemControlLog(request, projectNo);
         return ApiResponse.success();
     }
 
-    private String buildLogContent(
-            String logType,
-            String systemName,
-            String ip,
-            String loginUserName,
-            String loginUserNumber,
-            String loginRoleName,
-            String mockUserName,
-            String mockUserNumber,
-            Integer mockFlug,
-            String subjectName) {
-        return switch (logType) {
-            case "loginin" -> "登录" + systemName + "系统 [ip：" + ip + "]";
-            case "loginout" -> "退出" + systemName + "系统 [ip：" + ip + "]";
-            case "changerole" -> "切换角色：" + loginRoleName;
-            case "mockuser" ->
-                    "切换身份：" + loginUserName + "(" + loginUserNumber + ")  " + loginRoleName;
-            case "mockchangerole" ->
-                    "切换角色："
-                            + loginUserName
-                            + "("
-                            + loginUserNumber
-                            + ") 以 "
-                            + mockUserName
-                            + "("
-                            + mockUserNumber
-                            + ")的身份切换角色： "
-                            + loginRoleName;
-            case "resetuser" ->
-                    "重置用户：" + loginUserName + "(" + loginUserNumber + ")重置角色：" + loginRoleName;
-            case "changesubject" ->
-                    "切换主体：["
-                            + subjectName
-                            + "]，用户："
-                            + loginUserName
-                            + "("
-                            + loginUserNumber
-                            + ")，角色：["
-                            + loginRoleName
-                            + "]";
-            default -> {
-                String operator =
-                        (mockFlug != null && mockFlug == 1 && StringUtils.hasText(mockUserName))
-                                ? mockUserName + "(模拟)"
-                                : StringUtils.hasText(loginUserName) ? loginUserName : "";
-                yield operator + " - 系统操作";
-            }
-        };
-    }
-
     @PostMapping("/sendSystemNavLog")
-    @Operation(summary = "发送系统导航日志(Header传参)", description = "通过Header参数记录系统导航日志，所有参数均从Header中获取")
+    @Operation(
+            summary = "发送系统导航日志(Header传参)",
+            description = "通过Header参数记录系统导航日志，传入loginUserId和loginRoleId，服务端自动获取用户、角色和模拟用户信息")
     public ApiResponse<Void> sendSystemNavLog(
             @Parameter(description = "项目编号", required = true) @RequestHeader("X-Project-No")
                     String projectNo,
+            @Parameter(description = "登录用户ID", required = true) @RequestHeader("Login-User-Id")
+                    Long loginUserId,
+            @Parameter(description = "登录角色ID", required = true) @RequestHeader("Login-Role-Id")
+                    Long loginRoleId,
             @Parameter(description = "主体ID", required = true) @RequestHeader("X-Subject-Id")
                     Long subjectId,
             @Parameter(description = "主体名称", required = true) @RequestHeader("Subject-Name")
                     String subjectName,
-            @Parameter(description = "登录用户ID", required = true) @RequestHeader("User-Id")
-                    Long loginUserId,
-            @Parameter(description = "登录用户名", required = true) @RequestHeader("UserName")
-                    String loginUserName,
-            @Parameter(description = "登录人头像", required = true) @RequestHeader("User-Avater")
-                    String loginAvater,
-            @Parameter(description = "登录人工号", required = true) @RequestHeader("User-Number")
-                    String loginUserNumber,
-            @Parameter(description = "登录角色ID", required = true) @RequestHeader("Role-Id")
-                    Long loginRoleId,
-            @Parameter(description = "登录角色名称", required = true) @RequestHeader("Rrole-Name")
-                    String loginRoleName,
-            @Parameter(description = "登录人部门ID;多个ID，用逗号分割", required = true)
-                    @RequestHeader("Dept-Id")
-                    String loginUserDeptId,
-            @Parameter(description = "登录人部门名称;多个名称，用逗号分割", required = true)
-                    @RequestHeader("Dept-Name")
-                    String loginUserDeptName,
-            @Parameter(description = "登录人岗位ID;多个ID，用逗号分割")
-                    @RequestHeader(value = "Job-Id", required = false)
-                    String loginUserJobId,
-            @Parameter(description = "登录人岗位名称;多个名称，用逗号分割")
-                    @RequestHeader(value = "Job-Name", required = false)
-                    String loginUserJobName,
             @Parameter(description = "是否mock标记：0否；1是", required = true) @RequestHeader("Mock-Flug")
                     Integer mockFlug,
-            @Parameter(description = "模拟用户ID") @RequestHeader("Mock-User-Id") Long mockUserId,
-            @Parameter(description = "模拟用户名称") @RequestHeader("Mock-UserName") String mockUserName,
-            @Parameter(description = "模拟用户头像") @RequestHeader("Mock-User-Avater")
-                    String mockUserAvater,
-            @Parameter(description = "模拟用户工号") @RequestHeader("Mock-User-Number")
-                    String mockUserNumber,
+            @Parameter(description = "模拟用户ID(mockFlag=1时必传)")
+                    @RequestHeader(value = "Mock-User-Id", required = false)
+                    Long mockUserId,
             @Parameter(description = "IP地址", required = true) @RequestHeader("X-Real-IP") String ip,
             @Parameter(description = "模块名称") @RequestHeader("Module-Name") String moduleName,
             @Parameter(description = "菜单参数") @RequestHeader("Menu-Param") String menuParam,
@@ -453,51 +304,24 @@ public class JdecMonitorLogController {
         if (!StringUtils.hasText(projectNo)) {
             throw new IllegalArgumentException("项目编号(X-Project-No)不能为空");
         }
+        if (loginUserId == null || loginUserId <= 0) {
+            throw new IllegalArgumentException("登录用户ID(Login-User-Id)不能为空且必须大于0");
+        }
+        if (loginRoleId == null || loginRoleId <= 0) {
+            throw new IllegalArgumentException("登录角色ID(Login-Role-Id)不能为空且必须大于0");
+        }
         if (subjectId == null || subjectId <= 0) {
             throw new IllegalArgumentException("主体ID(subject-id)不能为空且必须大于0");
         }
         if (!StringUtils.hasText(subjectName)) {
             throw new IllegalArgumentException("主体名称(subject-name)不能为空");
         }
-        if (loginUserId == null || loginUserId <= 0) {
-            throw new IllegalArgumentException("登录用户ID(login-user-id)不能为空且必须大于0");
-        }
-        if (!StringUtils.hasText(loginUserName)) {
-            throw new IllegalArgumentException("登录用户名(login-user-name)不能为空");
-        }
-        if (!StringUtils.hasText(loginAvater)) {
-            throw new IllegalArgumentException("登录人头像(login-avater)不能为空");
-        }
-        if (!StringUtils.hasText(loginUserNumber)) {
-            throw new IllegalArgumentException("登录人工号(login-user-number)不能为空");
-        }
-        if (loginRoleId == null || loginRoleId <= 0) {
-            throw new IllegalArgumentException("登录角色ID(login-role-id)不能为空且必须大于0");
-        }
-        if (!StringUtils.hasText(loginRoleName)) {
-            throw new IllegalArgumentException("登录角色名称(login-role-name)不能为空");
-        }
-        if (!StringUtils.hasText(loginUserDeptId)) {
-            throw new IllegalArgumentException("登录人部门ID(login-user-dept-id)不能为空");
-        }
-        if (!StringUtils.hasText(loginUserDeptName)) {
-            throw new IllegalArgumentException("登录人部门名称(login-user-dept-name)不能为空");
-        }
         if (mockFlug == null || (mockFlug != 0 && mockFlug != 1)) {
             throw new IllegalArgumentException("mock标记(mock-flug)不能为空且只能为0或1");
         }
         if (mockFlug == 1) {
-            if (mockUserId == null || mockUserId < 0) {
-                throw new IllegalArgumentException("模拟用户ID(mock-user-id)不能为空且不能为负");
-            }
-            if (!StringUtils.hasText(mockUserName)) {
-                throw new IllegalArgumentException("模拟用户名称(mock-user-name)不能为空");
-            }
-            if (!StringUtils.hasText(mockUserAvater)) {
-                throw new IllegalArgumentException("模拟用户头像(mock-user-avater)不能为空");
-            }
-            if (!StringUtils.hasText(mockUserNumber)) {
-                throw new IllegalArgumentException("模拟用户工号(mock-user-number)不能为空");
+            if (mockUserId == null || mockUserId <= 0) {
+                throw new IllegalArgumentException("模拟用户ID(mock-user-id)不能为空且必须大于0");
             }
         }
         if (!StringUtils.hasText(ip)) {
@@ -538,23 +362,12 @@ public class JdecMonitorLogController {
         }
 
         MonitorSystemNavLogReq request = new MonitorSystemNavLogReq();
+        request.setUserId(loginUserId);
+        request.setRoleId(loginRoleId);
         request.setSubjectId(subjectId);
         request.setSubjectName(subjectName);
-        request.setLoginUserId(loginUserId);
-        request.setLoginUserName(loginUserName);
-        request.setLoginAvater(loginAvater);
-        request.setLoginUserNumber(loginUserNumber);
-        request.setLoginRoleId(loginRoleId);
-        request.setLoginRoleName(loginRoleName);
-        request.setLoginUserDeptId(loginUserDeptId);
-        request.setLoginUserDeptName(loginUserDeptName);
-        request.setLoginUserJobId(loginUserJobId);
-        request.setLoginUserJobName(loginUserJobName);
         request.setMockFlag(mockFlug);
         request.setMockUserId(mockUserId);
-        request.setMockUserName(mockUserName);
-        request.setMockUserAvater(mockUserAvater);
-        request.setMockUserNumber(mockUserNumber);
         request.setIp(ip);
         request.setModuleName(moduleName);
         request.setMenuParam(menuParam);

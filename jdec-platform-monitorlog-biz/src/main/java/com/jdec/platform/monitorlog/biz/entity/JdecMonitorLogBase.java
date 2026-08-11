@@ -81,7 +81,7 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "日志内容;日志内容")
     private String logContent;
 
-    @Schema(description = "日志备注;日志备注")
+    @Schema(description = "日志备注(JSON格式)")
     @TableField("log_remark")
     private String logRemark;
 
