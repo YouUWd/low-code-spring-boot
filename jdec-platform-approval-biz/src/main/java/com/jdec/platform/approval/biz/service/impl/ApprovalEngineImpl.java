@@ -1479,7 +1479,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             monitorControlLogReq.setActionTypeTitle(modelConfig.getLabel());
             monitorControlLogReq.setActionPath(modelConfig.getExtra());
             monitorControlLogReq.setHrefName(approvalBusiness.getBusinessNumber());
-            monitorControlLogReq.setOrderVersion(approvalBusiness.getVersionNo());
+            monitorControlLogReq.setOrderVersion(
+                    Objects.isNull(approvalBusiness.getVersionNo())
+                            ? 1
+                            : approvalBusiness.getVersionNo());
             monitorControlLogReq.setControlName(modelConfig.getLabel());
             monitorControlLogReq.setOperatorResult("成功");
             monitorControlLogReq.setFontColor("");
