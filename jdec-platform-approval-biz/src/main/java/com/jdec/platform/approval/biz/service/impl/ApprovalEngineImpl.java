@@ -570,7 +570,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 查询当前单据记录
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
-        businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId()).last("LIMIT 1");
+        businessWrapper
+                .eq(ApprovalVersionRecord::getRecordId, req.getRecordId())
+                .orderByDesc(ApprovalVersionRecord::getId)
+                .last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         // 查询步骤列表 + 关联状态
