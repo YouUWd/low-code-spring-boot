@@ -1348,6 +1348,27 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
         return result;
     }
 
+    /** 根据模块ID和角色ID查询包含角色的审批链类型ID列表 */
+    @Override
+    public List<Long> getApprovalTypeIdList(List<Long> moduleIds, Long roleId) {
+        // 1. 查询审批链配置列表
+        LambdaQueryWrapper<SysApprovalChainConfig> chainConfigQuery = Wrappers.lambdaQuery();
+        chainConfigQuery.in(SysApprovalChainConfig::getModuleId, moduleIds);
+        chainConfigQuery.eq(SysApprovalChainConfig::getApproveRoleId, roleId);
+        chainConfigQuery
+                .select(SysApprovalChainConfig::getApprovalChainTypeId)
+                .groupBy(SysApprovalChainConfig::getApprovalChainTypeId);
+        List<SysApprovalChainConfig> chainConfigs =
+                sysApprovalChainConfigMapper.selectList(chainConfigQuery);
+
+        if (CollectionUtils.isEmpty(chainConfigs)) {
+            return List.of();
+        }
+        return chainConfigs.stream()
+                .map(SysApprovalChainConfig::getApprovalChainTypeId)
+                .collect(Collectors.toList());
+    }
+
     private void rearrangeStepsAfterDelete(
             SysApprovalChainConfig deletedConfig,
             SysApprovalChainConfig upStepConfig,
