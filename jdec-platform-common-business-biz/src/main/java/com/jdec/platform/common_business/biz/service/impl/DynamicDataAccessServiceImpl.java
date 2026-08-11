@@ -95,6 +95,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         "id"
     };
 
+    private static final String[] realTimeSaveExclude = {"change", "change-change"};
+
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     private final ConfigCenterApiOpenFeignClient configCenterApiClient;
@@ -3732,6 +3734,15 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         resultMap.putAll(approvalInfo);
+
+        // 设置实时保存标志位
+        if (Arrays.stream(realTimeSaveExclude).anyMatch(btnType::equals)) {
+            resultMap.put("realTimeSaveFlag", false);
+        } else if (approvalBtnType.equals("view")) {
+            resultMap.put("realTimeSaveFlag", false);
+        } else {
+            resultMap.put("realTimeSaveFlag", true);
+        }
 
         return resultMap;
     }
