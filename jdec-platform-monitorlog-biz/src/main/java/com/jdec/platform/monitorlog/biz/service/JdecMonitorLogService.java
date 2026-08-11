@@ -212,9 +212,9 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
             throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
         }
-        if (!StringUtils.hasText(req.getLogRemark())) {
-            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
-        }
+        //        if (!StringUtils.hasText(req.getLogRemark())) {
+        //            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
+        //        }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
         }
