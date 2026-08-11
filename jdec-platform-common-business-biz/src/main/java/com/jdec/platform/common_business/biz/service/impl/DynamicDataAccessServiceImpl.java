@@ -92,8 +92,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         "sourceId",
         "versionNo",
         "businessStatus",
-        "id"
+        "id",
+        "createBy",
+        "updateBy"
     };
+
+    private static final String[] realTimeSaveExclude = {"change", "change-change"};
 
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
@@ -1583,7 +1587,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             // 分页查询时放入总数
             if (Objects.nonNull(page)) {
-                resultMap.put("total", dataList.size());
+                resultMap.put("total", pageData.getTotal());
             }
         }
 
@@ -1660,8 +1664,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         .build();
 
         resultMap.putAll(dynamicQueryListData(listQueryParam, page));
-
-        mergeApprovalData(resultMap, approvalListResps);
 
         return resultMap;
     }
@@ -1806,7 +1808,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         boolean isDefault = (startDate == null && endDate == null);
         if (isDefault) {
             // 默认今天
-            throw new BusinessException("开始时间和结束时间不能都为空。");
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_REQUEST.getCode(), "开始时间和结束时间不能都为空。");
         } else if (Objects.nonNull(startDate) && Objects.isNull(endDate)) {
             // 只有开始时间，不处理 endTime
             return Pair.of("egt", startDate);
@@ -1816,7 +1819,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         } else {
             // 都有
             if (startDate.isAfter(endDate)) {
-                throw new BusinessException("开始时间不能大于结束时间");
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_REQUEST.getCode(), "开始时间不能大于结束时间");
             }
             return Pair.of("between", List.of(startDate, endDate));
         }
@@ -1959,7 +1963,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if ((startObj == null || startObj.toString().isEmpty())
                 && (endObj == null || endObj.toString().isEmpty())) {
-            throw new BusinessException("区间范围传值，必须存在一项");
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "区间范围传值，必须存在一项");
         }
 
         return switch (operator) {
@@ -3732,6 +3736,15 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         }
 
         resultMap.putAll(approvalInfo);
+
+        // 设置实时保存标志位
+        if (Arrays.stream(realTimeSaveExclude).anyMatch(btnType::equals)) {
+            resultMap.put("realTimeSaveFlag", false);
+        } else if (approvalBtnType.equals("view")) {
+            resultMap.put("realTimeSaveFlag", false);
+        } else {
+            resultMap.put("realTimeSaveFlag", true);
+        }
 
         return resultMap;
     }

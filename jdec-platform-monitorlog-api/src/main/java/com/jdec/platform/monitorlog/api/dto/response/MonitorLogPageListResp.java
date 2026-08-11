@@ -128,7 +128,7 @@ public class MonitorLogPageListResp {
     @Schema(description = "日志内容;日志内容")
     private String logContent;
 
-    @Schema(description = "日志备注;日志备注")
+    @Schema(description = "日志备注(JSON格式)")
     private String logRemark;
 
     @Schema(description = "日志时间;日志时间")

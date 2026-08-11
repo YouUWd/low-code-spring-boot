@@ -17,6 +17,7 @@ import com.google.common.base.Splitter;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
+import com.jdec.platform.common_business.api.dto.common.FieldChainValueDTO;
 import com.jdec.platform.common_business.api.dto.common.ModuleField;
 import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
 import com.jdec.platform.common_business.api.dto.common.ModuleTable;
@@ -91,11 +92,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
     private static final Set<String> DEFAULT_CREATE_DATE_FIELD = Set.of("createDate", "updateDate");
     private static final List<String> DEFAULT_CREATE_SUBJECT_FIELD =
-            List.of("subjectId", "subjectName");
+            List.of("subjectId", "subjectName", "createBy", "updateBy");
     private static final Set<String> DEFAULT_EDITE_DATE_FIELD = Set.of("updateDate");
 
+    private static final List<String> DEFAULT_EDITE_SUBJECT_FIELD = List.of("updateBy");
+
     private static final Set<String> DEFAULT_EDITE_UN_FILLED_FIELD =
-            Set.of("createDate", "subjectId", "subjectName");
+            Set.of("createDate", "subjectId", "subjectName", "createBy");
     private static final Set<String> DEFAULT_CREATE_UN_FILLED_FIELD = Set.of();
 
     private static final Map<Long, String> SUBJECT_MAP = Map.of(1L, "环保", 2L, "电气", 3L, "能化");
@@ -320,7 +323,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
             try {
                 Map<String, Object> extraDataMap =
-                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                        getCreateModuleExtraMap(
+                                subjectId,
+                                SUBJECT_MAP.get(subjectId),
+                                LoginUserUtil.getLoginUserId(),
+                                LoginUserUtil.getLoginUserId());
                 Object primaryObject =
                         insertModuleTable(
                                 moduleFilterInfo, primaryTable, primaryData, extraDataMap);
@@ -486,7 +493,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
             try {
                 Map<String, Object> extraDataMap =
-                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                        getCreateModuleExtraMap(
+                                subjectId,
+                                SUBJECT_MAP.get(subjectId),
+                                LoginUserUtil.getLoginUserId(),
+                                LoginUserUtil.getLoginUserId());
                 Object primaryObject =
                         insertRealTable(
                                 moduleFilterInfo, realPrimaryTable, primaryData, extraDataMap);
@@ -645,7 +656,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
             try {
                 Map<String, Object> extraDataMap =
-                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                        getCreateModuleExtraMap(
+                                subjectId,
+                                SUBJECT_MAP.get(subjectId),
+                                LoginUserUtil.getLoginUserId(),
+                                LoginUserUtil.getLoginUserId());
                 Object primaryObject =
                         insertModuleTable(
                                 moduleFilterInfo, primaryRealTable, primaryData, extraDataMap);
@@ -764,7 +779,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
             try {
                 Map<String, Object> extraDataMap =
-                        getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId));
+                        getCreateModuleExtraMap(
+                                subjectId,
+                                SUBJECT_MAP.get(subjectId),
+                                LoginUserUtil.getLoginUserId(),
+                                LoginUserUtil.getLoginUserId());
                 Object primaryObject =
                         insertModuleTable(
                                 moduleFilterInfo, primaryTable, primaryData, extraDataMap);
@@ -1090,6 +1109,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                     null,
                     Long.parseLong(String.valueOf(primaryData)));
 
+            Long approvalChainTypeId =
+                    getMatchedApprovalChainTypeId(moduleFilterInfo, moduleSaveList);
+
             // 有审批链操作时，执行审批链
             ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
             approvalProcessReq.setSubjectId(subjectId);
@@ -1100,6 +1122,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
             approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
             approvalProcessReq.setPrefix("CLS");
+            approvalProcessReq.setMenuId(moduleSaveList.get(0).getMenuId());
+
+            if (Objects.nonNull(approvalChainTypeId)) {
+                approvalProcessReq.setApprovalTypeId(approvalChainTypeId);
+            }
 
             ConfigApiResponse<Map<String, Object>> processResult =
                     approvalApiOpenFeignClient.process(subjectId, approvalProcessReq);
@@ -1127,6 +1154,82 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
 
         return primaryData;
+    }
+
+    private Long getMatchedApprovalChainTypeId(
+            ModuleFilterInfo moduleFilterInfo, List<ModuleSaveReq> moduleSaveList) {
+        List<ModuleField> fieldChainConfigs =
+                moduleFilterInfo.getSimpleModuleFields().stream()
+                        .filter(ele -> !CollectionUtils.isEmpty(ele.getFieldChainValues()))
+                        .collect(Collectors.toList());
+
+        if (CollectionUtils.isEmpty(fieldChainConfigs)) {
+            log.debug("模块字段没有配置审批链分类");
+            return null;
+        } else if (fieldChainConfigs.size() > 1) {
+            log.debug("模块有多于一个字段配置了审批链分类配置");
+            throw new BusinessException(
+                    ApiResponseCodeEnum.APPROVAL_FIELD_VALUE_CHAIN_TYPE_CONFIG_ERROR.getCode(),
+                    ApiResponseCodeEnum.APPROVAL_FIELD_VALUE_CHAIN_TYPE_CONFIG_ERROR.getMessage());
+        } else {
+            Map<String, List<FieldChainValueDTO>> fieldChainValueGroupByFieldKey =
+                    fieldChainConfigs.stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            ele ->
+                                                    ele.getTableName()
+                                                            + DB_TABLE_FIELD_SEPARATOR
+                                                            + ToolUtils.snakeToCamelCase(
+                                                                    ele.getFieldCode()),
+                                            x -> x.getFieldChainValues()));
+            String fieldKey = fieldChainValueGroupByFieldKey.keySet().toArray(new String[0])[0];
+            ModuleSaveReq moduleData =
+                    moduleSaveList.stream()
+                            .filter(
+                                    ele ->
+                                            ele.getModuleId()
+                                                    .equals(
+                                                            moduleFilterInfo
+                                                                    .getModuleInfo()
+                                                                    .getModuleId()))
+                            .findFirst()
+                            .orElse(null);
+
+            if (Objects.nonNull(moduleData)) {
+                for (Map<String, Object> dataMap : moduleData.getModuleData()) {
+                    if (dataMap.containsKey(fieldKey)) {
+                        Object moduleValue = dataMap.get(fieldKey);
+                        log.debug(
+                                "字段:{}配置了审批链分类，匹配值集合为:{} , 表单数据值:{}",
+                                fieldKey,
+                                fieldChainValueGroupByFieldKey.get(fieldKey).stream()
+                                        .map(FieldChainValueDTO::getFieldValue)
+                                        .collect(Collectors.toSet()),
+                                moduleValue);
+                        FieldChainValueDTO matchValueConfig =
+                                fieldChainValueGroupByFieldKey.get(fieldKey).stream()
+                                        .filter(
+                                                ele ->
+                                                        ele.getFieldValue()
+                                                                .equals(
+                                                                        String.valueOf(
+                                                                                moduleValue)))
+                                        .findFirst()
+                                        .orElse(null);
+
+                        if (Objects.nonNull(matchValueConfig)) {
+                            log.debug(
+                                    "字段审批链分类匹配成功，表单数据值:{}，审批链分类id:{}",
+                                    moduleValue,
+                                    matchValueConfig.getApprovalChainTypeId());
+                            return matchValueConfig.getApprovalChainTypeId();
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     @Override
@@ -1175,6 +1278,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 ModuleSaveReq moduleSaveReq = new ModuleSaveReq();
                                 BeanUtils.copyProperties(ele, moduleSaveReq);
                                 moduleSaveReq.setModuleId(target.getModuleId());
+                                moduleSaveReq.setMenuId(target.getId());
                                 moduleSaveList.add(moduleSaveReq);
                             }
                         });
@@ -1462,6 +1566,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setModuleId(targetTopMenu.getModuleId());
             approvalProcessReq.setRoleId(roleId);
             approvalProcessReq.setRecordId(recordId);
+            approvalProcessReq.setMenuId(moduleSaveList.get(0).getMenuId());
 
             // oldRecordId没有设置过
             if (Objects.isNull(approvalProcessReq.getOldRecordId())) {
@@ -1473,6 +1578,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setButton(approvalOperation.getBtnType());
             approvalProcessReq.setReason(approvalOperation.getReason());
             approvalProcessReq.setRejectStep(approvalOperation.getRejectStep());
+
+            Long approvalChainTypeId =
+                    getMatchedApprovalChainTypeId(moduleFilterInfo, moduleSaveList);
+            if (Objects.nonNull(approvalChainTypeId)) {
+                approvalProcessReq.setApprovalTypeId(approvalChainTypeId);
+            }
+
             try {
                 // 获取字段变更对比日志大json
                 String reason =
@@ -1945,7 +2057,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                     moduleFilterInfo.getModuleInfo().getModuleId(),
                                     primaryRealTable));
                 }
-                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+                Map<String, Object> extraDataMap =
+                        getUpdateModuleExtraMap(LoginUserUtil.getLoginUserId());
 
                 // 更新主表 数据
                 Object primaryObject =
@@ -2139,7 +2252,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                     moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
                 }
                 Object primaryObject;
-                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+                Map<String, Object> extraDataMap =
+                        getUpdateModuleExtraMap(LoginUserUtil.getLoginUserId());
                 Boolean isMainTableInsert = false;
                 // 更新
                 if (isDataHasTableId(primaryTable, primaryData)) {
@@ -2154,7 +2268,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                     moduleFilterInfo,
                                     primaryTable,
                                     primaryData,
-                                    getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
+                                    getCreateModuleExtraMap(
+                                            subjectId,
+                                            SUBJECT_MAP.get(subjectId),
+                                            LoginUserUtil.getLoginUserId(),
+                                            LoginUserUtil.getLoginUserId()));
                     isMainTableInsert = true;
                 }
 
@@ -2331,7 +2449,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                     "[模块数据编辑][%d]主模块主表[%s]数据没有ID字段值",
                                     moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
                 }
-                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+                Map<String, Object> extraDataMap =
+                        getUpdateModuleExtraMap(LoginUserUtil.getLoginUserId());
 
                 // 更新主表 数据
                 Object primaryObject =
@@ -2516,7 +2635,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                     moduleFilterInfo.getModuleInfo().getModuleId(), primaryTable));
                 }
                 Object primaryObject;
-                Map<String, Object> extraDataMap = getUpdateModuleExtraMap();
+                Map<String, Object> extraDataMap =
+                        getUpdateModuleExtraMap(LoginUserUtil.getLoginUserId());
                 Boolean isMainTableInsert = false;
                 // 更新
                 if (isDataHasTableId(primaryTable, primaryData)) {
@@ -2531,7 +2651,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                     moduleFilterInfo,
                                     primaryTable,
                                     primaryData,
-                                    getCreateModuleExtraMap(subjectId, SUBJECT_MAP.get(subjectId)));
+                                    getCreateModuleExtraMap(
+                                            subjectId,
+                                            SUBJECT_MAP.get(subjectId),
+                                            LoginUserUtil.getLoginUserId(),
+                                            LoginUserUtil.getLoginUserId()));
                     isMainTableInsert = true;
                 }
 
@@ -3087,8 +3211,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             dataMap.put(key, LocalDateTime.now());
         }
         if (values != null) {
-            // 约定 0...1 是 subject 信息
-            for (int i = 0; i < values.length && i <= 1; i++) {
+            // 约定 0...1 是 subject 信息, 2  ...3 是 createBy updateBy
+            for (int i = 0; i < values.length && i <= 3; i++) {
                 dataMap.put(DEFAULT_CREATE_SUBJECT_FIELD.get(i), values[i]);
             }
         }
@@ -3100,12 +3224,12 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         for (String key : DEFAULT_EDITE_DATE_FIELD) {
             dataMap.put(key, LocalDateTime.now());
         }
-        //        if (values != null) {
-        //            // 约定 0...1 是 subject 信息
-        //            for (int i = 0; i < values.length && i <= 1; i++) {
-        //                dataMap.put(DEFAULT_CREATE_SUBJECT_FIELD.get(i), values[i]);
-        //            }
-        //        }
+        if (values != null) {
+            // 约定 0...约定是 createBy字段
+            for (int i = 0; i < values.length && i <= 0; i++) {
+                dataMap.put(DEFAULT_EDITE_SUBJECT_FIELD.get(i), values[i]);
+            }
+        }
         return dataMap;
     }
 

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysWechatTemplateApi;
 import com.jdec.platform.config.api.dto.request.*;
+import com.jdec.platform.config.api.dto.response.SysConfigItemResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
@@ -30,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -50,6 +52,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     private final SysMessageRecordMapper sysMessageRecordMapper;
     private final SysWechatTemplateLogService wechatTemplateLogService;
     private final SysWechatTemplateParamLogService wechatTemplateParamLogService;
+    private final SysConfigCategoryService sysConfigCategoryService;
 
     // --- 模板主表实现 ---
 
@@ -90,6 +93,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public WechatTemplateDetailResp getTemplateById(Long id) {
         SysWechatTemplate template = sysWechatTemplateMapper.selectById(id);
         if (template == null || template.getDeleted() == 1) {
@@ -183,6 +187,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean sendWechatMessage(String projectNo, Long subjectId, SendWechatMessageReq req) {
         if (req == null || req.getReceivers() == null || req.getReceivers().isEmpty()) {
             return false;
@@ -230,10 +235,27 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         }
     }
 
+    // 根据模块ID和触发类型查询微信模板
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public WechatTemplateEntryResp getTemplateByModuleId(
             String projectNo, Long subjectId, Long moduleId, String triggerType) {
-        return null;
+        SysConfigItemResp sysConfigItem =
+                sysConfigCategoryService.getConfigItemsByValue("wxTriggerType", triggerType);
+        if (Objects.isNull(sysConfigItem)) {
+            return null;
+        }
+        LambdaQueryWrapper<SysWechatTemplate> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysWechatTemplate::getModuleId, moduleId);
+        wrapper.eq(SysWechatTemplate::getSubjectId, subjectId);
+        wrapper.eq(SysWechatTemplate::getProjectNo, projectNo);
+        wrapper.eq(SysWechatTemplate::getTemplateTriggerType, sysConfigItem.getId());
+        wrapper.eq(SysWechatTemplate::getDeleted, false).last("LIMIT 1");
+        SysWechatTemplate sysWechatTemplate = sysWechatTemplateMapper.selectOne(wrapper);
+        if (Objects.isNull(sysWechatTemplate)) {
+            return null;
+        }
+        return toTemplateEntryResp(sysWechatTemplate);
     }
 
     private String formatContent(String content, List<SysWechatTemplateParam> params) {
@@ -314,6 +336,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<WechatTemplateParamEntryResp> listParamsByIds(
             String projectNo, Long subjectId, List<Long> ids) {
         if (ids == null || ids.isEmpty()) {

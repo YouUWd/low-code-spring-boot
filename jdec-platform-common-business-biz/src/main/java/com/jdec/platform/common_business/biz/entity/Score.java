@@ -71,6 +71,14 @@ public class Score extends Model<Score> {
     @TableField("subject_name")
     private String subjectName;
 
+    /** 创建人 */
+    @TableField("create_by")
+    private Long createBy;
+
+    /** 修改人 */
+    @TableField("update_by")
+    private Long updateBy;
+
     @Override
     public Serializable pkVal() {
         return this.id;

@@ -2,7 +2,11 @@ package com.jdec.platform.monitorlog.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.SysConfigCategoryApi;
+import com.jdec.platform.config.api.SysRoleApi;
+import com.jdec.platform.config.api.SysUserApi;
+import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
+import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
 import com.jdec.platform.monitorlog.api.dto.request.*;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
@@ -13,6 +17,7 @@ import com.jdec.platform.shared.model.PageResult;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,7 +26,6 @@ import org.springframework.util.StringUtils;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-// @DataSource(DataSourceConstants.MonitorLog)
 public class JdecMonitorLogService implements MonitorLogApi {
 
     private static final String MONITOR_LOG_TYPE_CATEGORY = "monitorLogType";
@@ -37,6 +41,14 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private final ProjectProperties projectProperties;
 
     private final SysConfigCategoryApi sysConfigCategoryApi;
+
+    private static final Set<String> BASE_LOG_TYPES =
+            Set.of("loginin", "loginout", "changerole", "resetuser", "changesubject");
+    private static final Set<String> MOCK_LOG_TYPES = Set.of("mockuser", "mockchangerole");
+
+    private final SysUserApi sysUserApi;
+
+    private final SysRoleApi sysRoleApi;
 
     @Override
     public PageResult<MonitorLogPageListResp> queryPageList(
@@ -110,6 +122,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordOrderRunLog(MonitorControlLogReq req, String projectNo) {
+        populateUserAndRoleInfo(req);
         validateControlLogReq(req);
         JdecMonitorControlLog logItem = BeanUtil.toBean(req, JdecMonitorControlLog.class);
         applyDefaults(logItem);
@@ -126,6 +139,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordMessageLog(MonitorMessageLogReq req, String projectNo) {
+        populateUserAndRoleInfo(req);
         validateMessageLogReq(req);
         JdecMonitorMessageLog logItem = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
         applyDefaults(logItem);
@@ -143,6 +157,9 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordSystemControlLog(MonitorSystemLogReq req, String projectNo) {
+        populateUserAndRoleInfo(req);
+        populateMockUserInfo(req);
+        buildSystemLogContent(req);
         validateSystemLogReq(req);
         JdecMonitorSystemLog logItem = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         applyDefaults(logItem);
@@ -160,41 +177,146 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordSystemNavLog(MonitorSystemNavLogReq req, String projectNo) {
+        populateUserAndRoleInfo(req);
+        populateMockUserInfo(req);
         validateSystemNavLogReq(req);
         JdecMonitorSystemLog logItem = BeanUtil.toBean(req, JdecMonitorSystemLog.class);
         applyDefaults(logItem);
-        // 构建用户信息
-        //        if (req.getMockFlag() == 0) {
-        //            String userInfo =
-        //                    USER_INFO_TEMPLATE
-        //                            .replace("{avatar}", userDetail.getUserAvatar())
-        //                            .replace("{userName}", userDetail.getUserName())
-        //                            .replace("{workNumber}", userDetail.getWorkNumber());
-        //            log.setUserInfo(userInfo);
-        //        } else {
-        //            String mockUserInfo =
-        //                    MOCK_USER_INFO_TEMPLATE
-        //                            .replace("{userAvatar}", userDetail.getUserAvatar())
-        //                            .replace("{userName}", userDetail.getUserName())
-        //                            .replace("{userWorkNumber}", userDetail.getWorkNumber())
-        //                            .replace("{mockAvatar}", mockUserDetail.getUserAvatar())
-        //                            .replace("{mockUserName}", mockUserDetail.getUserName())
-        //                            .replace("{mockWorkNumber}", mockUserDetail.getWorkNumber());
-        //            log.setUserInfo(mockUserInfo);
-        //        }
-        /*
-        {
-            "moduleName": "模块名称/功能名称/页面名称",
-            "controlName": "操作名称/单据名称",
-            "hrefUrl": "单据详情页/订单详情页/业务详情页/任务详情页",
-            "workDesc":"操作描述"
-        }
-         */
 
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
         jdecMonitorSystemLogMapper.insert(logItem);
         DataSourceContextHolder.clear();
+    }
+
+    /**
+     * 根据userId和roleId自动填充用户和角色信息
+     *
+     * @param req 监控日志请求参数
+     */
+    private void populateUserAndRoleInfo(MonitorBaseLogReq req) {
+        if (req.getUserId() == null || req.getUserId() <= 0) {
+            throw new IllegalArgumentException("用户ID(userId)不能为空且必须大于0");
+        }
+        if (req.getRoleId() == null || req.getRoleId() <= 0) {
+            throw new IllegalArgumentException("角色ID(roleId)不能为空且必须大于0");
+        }
+
+        UserDetailResp userDetail = sysUserApi.getUserDetailByUserId(req.getUserId());
+        if (userDetail != null) {
+            req.setLoginUserId(userDetail.getUserId());
+            req.setLoginUserName(userDetail.getUserName());
+            req.setLoginAvater(userDetail.getUserAvatar());
+            req.setLoginUserNumber(userDetail.getWorkNumber());
+            req.setLoginUserDeptName(userDetail.getDepartName());
+            req.setLoginUserJobName(userDetail.getPositionName());
+        }
+
+        RoleConfigDetailResp roleDetail = sysRoleApi.getRoleConfigDetail(req.getRoleId());
+        if (roleDetail != null) {
+            req.setLoginRoleId(roleDetail.getId());
+            req.setLoginRoleName(roleDetail.getRoleName());
+        }
+    }
+
+    /**
+     * 根据mockUserId自动填充模拟用户信息
+     *
+     * @param req 监控日志请求参数
+     */
+    private void populateMockUserInfo(MonitorBaseLogReq req) {
+        if (req.getMockFlag() == null || req.getMockFlag() != 1) {
+            return;
+        }
+        if (req.getMockUserId() == null || req.getMockUserId() <= 0) {
+            return;
+        }
+
+        UserDetailResp mockUserDetail = sysUserApi.getUserDetailByUserId(req.getMockUserId());
+        if (mockUserDetail != null) {
+            req.setMockUserName(mockUserDetail.getUserName());
+            req.setMockUserAvater(mockUserDetail.getUserAvatar());
+            req.setMockUserNumber(mockUserDetail.getWorkNumber());
+        }
+    }
+
+    /**
+     * 根据logType构建系统日志内容
+     *
+     * @param req 监控系统日志请求
+     */
+    private void buildSystemLogContent(MonitorSystemLogReq req) {
+        if (!StringUtils.hasText(req.getLogType())) {
+            return;
+        }
+        if (StringUtils.hasText(req.getLogContent())) {
+            return;
+        }
+
+        String logType = req.getLogType();
+        if (!BASE_LOG_TYPES.contains(logType) && !MOCK_LOG_TYPES.contains(logType)) {
+            return;
+        }
+
+        String systemName = StringUtils.hasText(req.getSystemName()) ? req.getSystemName() : "";
+        String ip = StringUtils.hasText(req.getIp()) ? req.getIp() : "";
+        String loginUserName =
+                StringUtils.hasText(req.getLoginUserName()) ? req.getLoginUserName() : "";
+        String loginUserNumber =
+                StringUtils.hasText(req.getLoginUserNumber()) ? req.getLoginUserNumber() : "";
+        String loginRoleName =
+                StringUtils.hasText(req.getLoginRoleName()) ? req.getLoginRoleName() : "";
+        String mockUserName =
+                StringUtils.hasText(req.getMockUserName()) ? req.getMockUserName() : "";
+        String mockUserNumber =
+                StringUtils.hasText(req.getMockUserNumber()) ? req.getMockUserNumber() : "";
+        Integer mockFlug = req.getMockFlag() != null ? req.getMockFlag() : Integer.valueOf(0);
+        String subjectName = StringUtils.hasText(req.getSubjectName()) ? req.getSubjectName() : "";
+
+        String content =
+                switch (logType) {
+                    case "loginin" -> "登录" + systemName + "系统 [ip：" + ip + "]";
+                    case "loginout" -> "退出" + systemName + "系统 [ip：" + ip + "]";
+                    case "changerole" -> "切换角色：" + loginRoleName;
+                    case "mockuser" ->
+                            "切换身份：" + loginUserName + "(" + loginUserNumber + ")  " + loginRoleName;
+                    case "mockchangerole" ->
+                            "切换角色："
+                                    + loginUserName
+                                    + "("
+                                    + loginUserNumber
+                                    + ") 以 "
+                                    + mockUserName
+                                    + "("
+                                    + mockUserNumber
+                                    + ")的身份切换角色： "
+                                    + loginRoleName;
+                    case "resetuser" ->
+                            "重置用户："
+                                    + loginUserName
+                                    + "("
+                                    + loginUserNumber
+                                    + ")重置角色："
+                                    + loginRoleName;
+                    case "changesubject" ->
+                            "切换主体：["
+                                    + subjectName
+                                    + "]，用户："
+                                    + loginUserName
+                                    + "("
+                                    + loginUserNumber
+                                    + ")，角色：["
+                                    + loginRoleName
+                                    + "]";
+                    default -> {
+                        String operator =
+                                (mockFlug == 1 && StringUtils.hasText(mockUserName))
+                                        ? mockUserName + "(模拟)"
+                                        : StringUtils.hasText(loginUserName) ? loginUserName : "";
+                        yield operator + " - 系统操作";
+                    }
+                };
+        req.setLogContent(content);
     }
 
     /**
@@ -205,12 +327,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private void validateControlLogReq(MonitorControlLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
-        }
-        if (req.getSubjectId() == null || req.getSubjectId() <= 0) {
-            throw new IllegalArgumentException("主体ID(subjectId)不能为空且必须大于0");
-        }
-        if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
-            throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
         }
         if (!StringUtils.hasText(req.getLogRemark())) {
             throw new IllegalArgumentException("日志备注(logRemark)不能为空");
@@ -243,13 +359,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
         }
-        if (req.getSubjectId() == null || req.getSubjectId() <= 0) {
-            throw new IllegalArgumentException("主体ID(subjectId)不能为空且必须大于0");
-        }
-        if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
-            throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
-        }
-        if (req.getLogContent().length() > 65535) {
+        if (req.getLogContent() != null && req.getLogContent().length() > 65535) {
             throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
@@ -272,12 +382,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private void validateSystemNavLogReq(MonitorSystemNavLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
-        }
-        if (req.getSubjectId() == null || req.getSubjectId() <= 0) {
-            throw new IllegalArgumentException("主体ID(subjectId)不能为空且必须大于0");
-        }
-        if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
-            throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
         }
         if (!StringUtils.hasText(req.getLogContent())) {
             throw new IllegalArgumentException("日志内容(logContent)不能为空");
@@ -305,12 +409,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private void validateMessageLogReq(MonitorMessageLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
-        }
-        if (req.getSubjectId() == null || req.getSubjectId() <= 0) {
-            throw new IllegalArgumentException("主体ID(subjectId)不能为空且必须大于0");
-        }
-        if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
-            throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
         }
         if (!StringUtils.hasText(req.getLogContent())) {
             throw new IllegalArgumentException("日志内容(logContent)不能为空");

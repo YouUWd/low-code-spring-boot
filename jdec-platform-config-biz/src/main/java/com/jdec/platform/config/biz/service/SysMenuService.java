@@ -25,6 +25,7 @@ import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
@@ -581,5 +582,14 @@ public class SysMenuService implements SysMenuApi {
             siblings.get(i).setSortOrder(i);
         }
         sysMenuMapper.updateById(siblings);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public SysMenuResp getMenuById(Long Id) {
+        SysMenuResp resp = new SysMenuResp();
+        SysMenu menu = sysMenuMapper.selectById(Id);
+        BeanUtils.copyProperties(menu, resp);
+        return resp;
     }
 }

@@ -7,6 +7,9 @@ public class ApprovalProcessDTO {
     // 模块ID
     private Long moduleId;
 
+    // 菜单ID
+    private Long menuId;
+
     // 审批分类ID
     private Long approvalTypeId;
 

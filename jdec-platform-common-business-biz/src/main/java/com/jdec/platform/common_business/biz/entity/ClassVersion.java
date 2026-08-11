@@ -91,6 +91,14 @@ public class ClassVersion extends Model<ClassVersion> {
     @TableField("source_id")
     private Long sourceId;
 
+    /** 创建人 * */
+    @TableField("create_by")
+    private Long createBy;
+
+    /** 修改人 * */
+    @TableField("update_by")
+    private Long updateBy;
+
     @Override
     public Serializable pkVal() {
         return this.id;

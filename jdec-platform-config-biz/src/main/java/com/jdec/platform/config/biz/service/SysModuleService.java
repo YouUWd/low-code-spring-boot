@@ -36,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -116,6 +117,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SysModuleCompleteResp getModuleCompleteById(
             String projectNo, Long subjectId, Long moduleId) {
         SysModule module = sysModuleMapper.selectById(moduleId);

@@ -20,7 +20,6 @@ public interface BizLog {
                 && !bizLogDTO.getLoginUserId().equals(bizLogDTO.getMockUserId())) {
             req.setMockFlag(1);
             req.setMockUserId(bizLogDTO.getMockUserId());
-            req.setMockRoleId(bizLogDTO.getRoleId());
         } else {
             req.setMockFlag(0);
         }

@@ -118,6 +118,10 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                     FieldChainValueDTO.builder()
                                                             .fieldValue(x.getFieldValue())
                                                             .fieldValueDesc(x.getFieldValueDesc())
+                                                            .approvalChainTypeId(
+                                                                    x.getApprovalChainTypeId())
+                                                            .approvalChainTypeName(
+                                                                    x.getApprovalChainTypeName())
                                                             .build())
                                     .collect(Collectors.toList());
                 }
@@ -481,6 +485,11 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                                 .fieldValue(x.getFieldValue())
                                                                 .fieldValueDesc(
                                                                         x.getFieldValueDesc())
+                                                                .approvalChainTypeId(
+                                                                        x.getApprovalChainTypeId())
+                                                                .approvalChainTypeName(
+                                                                        x
+                                                                                .getApprovalChainTypeName())
                                                                 .build())
                                         .collect(Collectors.toList());
                     }

@@ -8,6 +8,7 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.req.*;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
@@ -19,13 +20,18 @@ import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.hr.api.SubjectApi;
+import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.SubjectBO;
+import com.jdec.platform.hr.api.bo.UserBO;
+import com.jdec.platform.monitorlog.api.MonitorLogApi;
+import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
+import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -53,6 +59,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final ApprovalVersionRecordMapper approvalVersionRecordMapper;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final SysUserApi sysUserApi;
+    private final UserApi userApi;
+    private final SysRoleApi sysRoleApi;
     private final SubjectApi subjectApi;
     private final SysStatusApi sysStatusApi;
     private final SysConfigCategoryApi sysConfigCategoryApi;
@@ -61,6 +69,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final SysRolePermissionApi sysRolePermissionApi;
     private final SysWechatTemplateApi sysWechatTemplateApi;
     private final ConfigChangeMessagePublisher messagePublisher;
+    private final ObjectMapper objectMapper;
+    private final SysMenuApi sysMenuApi;
+    private final SysModuleApi sysModuleApi;
+    private final MonitorLogApi monitorLogApi;
 
     @Override
     @Transactional
@@ -452,6 +464,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             actionLogResp.setActionPath(modelConfig.getExtra());
             actionLogResp.setCreatedUser(convertUserResp(log.getCreatedBy()));
             actionLogResp.setRealUser(convertUserResp(log.getRealUserId()));
+            if (Objects.nonNull(log.getDescription())) {
+                try {
+                    actionLogResp.setDescription(
+                            objectMapper.readValue(log.getDescription(), Object.class));
+                } catch (Exception e) {
+                    actionLogResp.setDescription(log.getDescription());
+                }
+            }
             respList.add(actionLogResp);
         }
         return respList;
@@ -550,7 +570,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 查询当前单据记录
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
-        businessWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId()).last("LIMIT 1");
+        businessWrapper
+                .eq(ApprovalVersionRecord::getRecordId, req.getRecordId())
+                .orderByDesc(ApprovalVersionRecord::getId)
+                .last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         // 查询步骤列表 + 关联状态
@@ -674,7 +697,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecordMapper.insert(approvalVersionRecord);
 
         // 写入日志
-        saveActionLog(0L, 0L, approvalProcessDTO);
+        saveActionLog(0L, 0L, approvalProcessDTO, approvalBusiness);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
@@ -817,7 +840,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecordMapper.insert(approvalVersionRecord);
 
         // 写入日志
-        saveActionLog(0L, 0L, approvalProcessDTO);
+        saveActionLog(0L, 0L, approvalProcessDTO, approvalBusiness);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
@@ -881,7 +904,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         approvalIdList.add(approvalProcessDTO.getApplicantId().toString());
         approvalChain.setApproverIdList(String.join(",", approvalIdList));
-        approvalBusiness.setApproverIdList(String.join(",", approvalIdList));
         approvalUidList.add(approvalProcessDTO.getApplicantId().toString());
         approvalChain.setApprovalUids(String.join(",", approvalUidList));
         approvalBusiness.setApprovalUids(String.join(",", approvalUidList));
@@ -905,6 +927,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     sysUserApi.getUsersByRoleId(approvalChain.getApproveRoleId()).size();
             if (currentApproverIdNumber / allApproverIdNumber < percent / 100) {
                 approved = false;
+            } else {
+                approvalBusiness.setApproverIdList(String.join(",", approvalIdList));
             }
         }
         if (approved) {
@@ -1014,7 +1038,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
-                approvalProcessDTO);
+                approvalProcessDTO,
+                approvalBusiness);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
@@ -1183,7 +1208,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         saveActionLog(
                 approvalChain.getCurrentStatusGroupId(),
                 approvalChain.getCurrentStatusChildId(),
-                approvalProcessDTO);
+                approvalProcessDTO,
+                approvalBusiness);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
@@ -1302,7 +1328,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
 
         // 写入日志
-        saveActionLog(statusNode.getPid(), statusNode.getId(), approvalProcessDTO);
+        saveActionLog(
+                statusNode.getPid(), statusNode.getId(), approvalProcessDTO, approvalBusiness);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
@@ -1323,7 +1350,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 注意：此方法必须在 @Transactional 事务方法内部调用，不单独加 @Transactional
     // 这样可以确保日志保存失败时，整个事务（包括业务数据和快照）都会回滚
     private void saveActionLog(
-            Long oldStatusGroupId, Long oldStatusId, ApprovalProcessDTO approvalProcessDTO) {
+            Long oldStatusGroupId,
+            Long oldStatusId,
+            ApprovalProcessDTO approvalProcessDTO,
+            ApprovalBusiness approvalBusiness) {
         try {
             // 1. 获取对应节点 action 的操作日志描述
             String actionName = "";
@@ -1373,7 +1403,83 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
             // 3. 插入日志记录
             int insertResult = approvalActionLogMapper.insert(logEntity);
-
+            MonitorControlLogReq monitorControlLogReq = new MonitorControlLogReq();
+            monitorControlLogReq.setSubjectId(approvalProcessDTO.getSubjectId());
+            List<SubjectBO> subjectList = subjectApi.getSubjectList();
+            String subjectName = "";
+            if (!subjectList.isEmpty()) {
+                subjectName =
+                        subjectList.stream()
+                                .filter(s -> approvalProcessDTO.getSubjectId().equals(s.getId()))
+                                .findFirst()
+                                .map(SubjectBO::getSubjectName)
+                                .orElse("");
+            }
+            monitorControlLogReq.setSubjectName(subjectName);
+            UserBO loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
+            monitorControlLogReq.setLoginUserId(approvalProcessDTO.getCurrentUserId());
+            if (Objects.nonNull(loginUser)) {
+                monitorControlLogReq.setLoginUserName(loginUser.getUserName());
+                monitorControlLogReq.setLoginAvater(loginUser.getUserAvatar());
+                monitorControlLogReq.setLoginUserNumber(loginUser.getWorkNumber());
+                monitorControlLogReq.setLoginUserDeptId(loginUser.getDepartmentId());
+                monitorControlLogReq.setLoginUserDeptName(loginUser.getDepartmentName());
+                monitorControlLogReq.setLoginUserJobId(loginUser.getJobId());
+                monitorControlLogReq.setLoginUserJobName(loginUser.getJobName());
+            }
+            monitorControlLogReq.setLoginRoleId(approvalProcessDTO.getRoleId());
+            RoleConfigDetailResp roleDetail =
+                    sysRoleApi.getRoleConfigDetail(approvalProcessDTO.getRoleId());
+            if (Objects.nonNull(roleDetail)) {
+                monitorControlLogReq.setLoginRoleName(roleDetail.getRoleName());
+            }
+            boolean mockFlag =
+                    approvalProcessDTO.getCurrentUserId() != null
+                            && approvalProcessDTO.getApplicantId() != null
+                            && !approvalProcessDTO
+                                    .getCurrentUserId()
+                                    .equals(approvalProcessDTO.getApplicantId());
+            monitorControlLogReq.setMockFlag(mockFlag ? 1 : 0);
+            if (mockFlag) {
+                UserBO mockUser = userApi.getUserById(approvalProcessDTO.getApplicantId());
+                monitorControlLogReq.setMockUserId(approvalProcessDTO.getApplicantId());
+                monitorControlLogReq.setMockUserName(mockUser.getUserName());
+                monitorControlLogReq.setMockUserAvater(mockUser.getUserAvatar());
+                monitorControlLogReq.setMockUserNumber(mockUser.getWorkNumber());
+            }
+            monitorControlLogReq.setIp(RequestContextUtils.getClientIp());
+            monitorControlLogReq.setBrowser(RequestContextUtils.getBrowser());
+            monitorControlLogReq.setPlatForm(RequestContextUtils.getPlatform());
+            monitorControlLogReq.setLogContent(null);
+            monitorControlLogReq.setDataId(approvalProcessDTO.getRecordId());
+            if (Objects.nonNull(approvalProcessDTO.getReason())) {
+                monitorControlLogReq.setLogRemark(approvalProcessDTO.getReason());
+            }
+            SysConfigItemResp modelConfig =
+                    sysConfigCategoryApi.getConfigItemsByValue(
+                            "logStateIcon", approvalProcessDTO.getButton());
+            monitorControlLogReq.setActionName(actionName);
+            monitorControlLogReq.setActionType(approvalProcessDTO.getButton());
+            monitorControlLogReq.setActionTypeTitle(modelConfig.getLabel());
+            monitorControlLogReq.setActionPath(modelConfig.getExtra());
+            monitorControlLogReq.setHrefName(approvalBusiness.getBusinessNumber());
+            monitorControlLogReq.setOrderVersion(approvalBusiness.getVersionNo());
+            monitorControlLogReq.setControlName(modelConfig.getLabel());
+            monitorControlLogReq.setOperatorResult("成功");
+            monitorControlLogReq.setFontColor("");
+            if (Objects.nonNull(approvalProcessDTO.getMenuId())) {
+                monitorControlLogReq.setMenuId(approvalProcessDTO.getMenuId());
+                SysMenuResp menu = sysMenuApi.getMenuById(approvalProcessDTO.getMenuId());
+                monitorControlLogReq.setMenuParam(menu.getParam());
+            }
+            monitorControlLogReq.setModuleId(approvalProcessDTO.getModuleId());
+            SysModuleCompleteResp module =
+                    sysModuleApi.getModuleCompleteById(
+                            AppContext.getProjectNo(),
+                            approvalProcessDTO.getSubjectId(),
+                            approvalProcessDTO.getModuleId());
+            monitorControlLogReq.setModuleName(module.getModule().getModuleName());
+            monitorLogApi.recordOrderRunLog(monitorControlLogReq, AppContext.getProjectNo());
             // 4. 确保插入成功，否则抛出异常触发事务回滚
             if (insertResult <= 0) {
                 throw new BusinessException("审批操作日志保存失败，事务回滚");
@@ -1666,18 +1772,26 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalVersionRecord> wrapper =
                 new LambdaQueryWrapper<ApprovalVersionRecord>()
                         .eq(ApprovalVersionRecord::getBusinessNumber, getBusinessNumber)
-                        .ne(ApprovalVersionRecord::getCurrentStep, 0)
                         .select(
                                 ApprovalVersionRecord::getId,
                                 ApprovalVersionRecord::getRecordId,
                                 ApprovalVersionRecord::getVersionNo,
-                                ApprovalVersionRecord::getStatusValue);
+                                ApprovalVersionRecord::getCurrentStep,
+                                ApprovalVersionRecord::getStatusValue)
+                        .orderByDesc(
+                                ApprovalVersionRecord::getVersionNo,
+                                ApprovalVersionRecord::getCurrentStep);
         List<ApprovalVersionRecord> versionDataList =
                 approvalVersionRecordMapper.selectList(wrapper);
 
         // 2. 组装版本列表
         List<Map<String, Object>> versionList = new ArrayList<>();
+        Integer currentVersionNo = 0;
         for (ApprovalVersionRecord item : versionDataList) {
+            if (currentVersionNo.equals(item.getVersionNo())) {
+                continue;
+            }
+            currentVersionNo = item.getVersionNo();
             Map<String, Object> map = new HashMap<>();
             map.put("id", item.getId());
             map.put("recordId", item.getRecordId());
