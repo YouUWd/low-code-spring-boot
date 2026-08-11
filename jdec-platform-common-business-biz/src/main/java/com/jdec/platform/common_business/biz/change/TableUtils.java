@@ -294,7 +294,8 @@ public class TableUtils {
                     "create_date",
                     "update_date",
                     "subject_id",
-                    "subject_name");
+                    "subject_name",
+                    "source_id");
 
     public static final Map<String, List<String>> TABLE_UNIQ_FIELD_CONFIG =
             Map.ofEntries(Map.entry("score", List.of("semester", "course_id")));
