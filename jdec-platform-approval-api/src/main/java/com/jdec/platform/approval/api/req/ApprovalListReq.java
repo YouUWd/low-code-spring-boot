@@ -14,12 +14,12 @@ public class ApprovalListReq {
     private Integer approvalType;
 
     // 所属主体ID
-    @Schema(description = "主体ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "主体ID，多主体查询", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "主体ID不能为空")
     private List<Long> subjectIdList;
 
     // "模块ID"
-    @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "模块ID，多主体查询", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "模块ID不能为空")
     private List<Long> moduleIdList;
 

@@ -212,14 +212,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 查询操作人在当前模块下的审批链业务代办/已办/全部数量-------------------------------------------
     @Override
-    public Map<String, Object> getBusinessTypeList(ApprovalProcessReq approvalProcessReq) {
-        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
+    public Map<String, Object> getBusinessTypeList(ApprovalListReq approvalProcessReq) {
         Map<String, Object> resultMap = new HashMap<>();
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
-        todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
-        todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
-        todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
-        todoWrapper.ne(ApprovalBusiness::getCurrentStep, 0);
+        todoWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
+        todoWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         todoWrapper.and(
                 wrapper ->
                         wrapper.nested(
@@ -229,7 +226,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                                                 approvalProcessReq.getApplicantId())
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
-                                                                approvalProcessReq.getRoleId()))
+                                                                approvalProcessReq.getRoleId())
+                                                        .ne(ApprovalBusiness::getCurrentStep, 0))
                                 .or()
                                 .nested(
                                         wp2 ->
@@ -237,34 +235,48 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
                                                                 approvalProcessReq.getRoleId())
+                                                        .ne(ApprovalBusiness::getCurrentStep, 0)
                                                         .apply(
                                                                 "NOT FIND_IN_SET({0}, IFNULL(approver_id_list, ''))",
                                                                 approvalProcessReq
-                                                                        .getApplicantId())));
+                                                                        .getApplicantId()))
+                                .or()
+                                .nested(
+                                        wp3 ->
+                                                wp3.isNull(ApprovalBusiness::getApproverId)
+                                                        .eq(
+                                                                ApprovalBusiness::getCreatedBy,
+                                                                approvalProcessReq.getApplicantId())
+                                                        .eq(ApprovalBusiness::getCurrentStep, 0)));
+        todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
         List<ApprovalBusiness> todoList = approvalBusinessMapper.selectList(todoWrapper);
-        List<ApprovalBusiness> submitList = new ArrayList<>();
-        if (checkRight(approvalProcessDTO)) {
-            todoWrapper = new LambdaQueryWrapper<>();
-            todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
-            todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
-            todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
-            todoWrapper.isNull(ApprovalBusiness::getApproverId);
-            todoWrapper.eq(ApprovalBusiness::getCreatedBy, approvalProcessReq.getApplicantId());
-            todoWrapper.eq(ApprovalBusiness::getCurrentStep, 0);
-            submitList = approvalBusinessMapper.selectList(todoWrapper);
+        List<ApprovalBusiness> submitList =
+                todoList.stream().filter(item -> item.getCurrentStep() == 0).toList();
+        for (ApprovalBusiness item : submitList) {
+            ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
+            approvalProcessDTO.setModuleId(item.getModuleId());
+            approvalProcessDTO.setRoleId(approvalProcessReq.getRoleId());
+            if (!checkRight(approvalProcessDTO)) {
+                todoList.remove(item);
+            }
         }
-        resultMap.put("todoNum", todoList.size() + submitList.size());
+        resultMap.put("todoNum", todoList.size());
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
-        processWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
-        processWrapper.eq(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectId());
+        processWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
+        processWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         // processWrapper.eq(ApprovalBusiness::getApprovalUids,
         // approvalProcessReq.getApplicantId());
         processWrapper.apply(
                 "FIND_IN_SET({0}, approval_uids)", approvalProcessReq.getApplicantId());
         List<ApprovalBusiness> processList = approvalBusinessMapper.selectList(processWrapper);
+
+        List<Long> approvalTypeIds =
+                sysApprovalChainConfigApi.getApprovalTypeIdList(
+                        approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
         LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
-        allWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
-        allWrapper.eq(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectId());
+        allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
+        allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+        allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
         resultMap.put("doneNum", processList.size());
         resultMap.put("allNum", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
 
@@ -357,9 +369,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             .collect(Collectors.toList());
         }
         if (approvalListReq.getApprovalType() == 3) {
+            List<Long> approvalTypeIds =
+                    sysApprovalChainConfigApi.getApprovalTypeIdList(
+                            approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
             allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
             allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+            allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
             allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
             Set<Long> ids =
@@ -1463,7 +1479,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             monitorControlLogReq.setActionTypeTitle(modelConfig.getLabel());
             monitorControlLogReq.setActionPath(modelConfig.getExtra());
             monitorControlLogReq.setHrefName(approvalBusiness.getBusinessNumber());
-            monitorControlLogReq.setOrderVersion(approvalBusiness.getVersionNo());
+            monitorControlLogReq.setOrderVersion(
+                    Objects.isNull(approvalBusiness.getVersionNo())
+                            ? 1
+                            : approvalBusiness.getVersionNo());
             monitorControlLogReq.setControlName(modelConfig.getLabel());
             monitorControlLogReq.setOperatorResult("成功");
             monitorControlLogReq.setFontColor("");
