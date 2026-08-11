@@ -255,8 +255,8 @@ public class JdecMonitorLogController {
         }
 
         MonitorSystemLogReq request = new MonitorSystemLogReq();
-        request.setUserId(loginUserId);
-        request.setRoleId(loginRoleId);
+        request.setLoginUserId(loginUserId);
+        request.setLoginRoleId(loginRoleId);
         request.setLogType(logType);
         request.setSubjectId(subjectId);
         request.setSubjectName(subjectName);
@@ -362,8 +362,8 @@ public class JdecMonitorLogController {
         }
 
         MonitorSystemNavLogReq request = new MonitorSystemNavLogReq();
-        request.setUserId(loginUserId);
-        request.setRoleId(loginRoleId);
+        request.setLoginUserId(loginUserId);
+        request.setLoginRoleId(loginRoleId);
         request.setSubjectId(subjectId);
         request.setSubjectName(subjectName);
         request.setMockFlag(mockFlug);
