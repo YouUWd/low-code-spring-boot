@@ -904,7 +904,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         approvalIdList.add(approvalProcessDTO.getApplicantId().toString());
         approvalChain.setApproverIdList(String.join(",", approvalIdList));
-        approvalBusiness.setApproverIdList(String.join(",", approvalIdList));
         approvalUidList.add(approvalProcessDTO.getApplicantId().toString());
         approvalChain.setApprovalUids(String.join(",", approvalUidList));
         approvalBusiness.setApprovalUids(String.join(",", approvalUidList));
@@ -928,6 +927,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     sysUserApi.getUsersByRoleId(approvalChain.getApproveRoleId()).size();
             if (currentApproverIdNumber / allApproverIdNumber < percent / 100) {
                 approved = false;
+            } else {
+                approvalBusiness.setApproverIdList(String.join(",", approvalIdList));
             }
         }
         if (approved) {
