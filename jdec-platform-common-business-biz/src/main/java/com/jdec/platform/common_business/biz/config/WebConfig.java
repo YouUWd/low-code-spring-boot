@@ -26,7 +26,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/student/config/get/role-list",
                         "/api/student/config/get/role/subjects",
                         "/api/student/config/select/role",
-                        "/api/student/query/get-data-right")
+                        "/api/student/common/query/get-data-right")
                 .order(1);
     }
 }
