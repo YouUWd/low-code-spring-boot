@@ -1791,18 +1791,26 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalVersionRecord> wrapper =
                 new LambdaQueryWrapper<ApprovalVersionRecord>()
                         .eq(ApprovalVersionRecord::getBusinessNumber, getBusinessNumber)
-                        .ne(ApprovalVersionRecord::getCurrentStep, 0)
                         .select(
                                 ApprovalVersionRecord::getId,
                                 ApprovalVersionRecord::getRecordId,
                                 ApprovalVersionRecord::getVersionNo,
-                                ApprovalVersionRecord::getStatusValue);
+                                ApprovalVersionRecord::getCurrentStep,
+                                ApprovalVersionRecord::getStatusValue)
+                        .orderByDesc(
+                                ApprovalVersionRecord::getVersionNo,
+                                ApprovalVersionRecord::getCurrentStep);
         List<ApprovalVersionRecord> versionDataList =
                 approvalVersionRecordMapper.selectList(wrapper);
 
         // 2. 组装版本列表
         List<Map<String, Object>> versionList = new ArrayList<>();
+        Integer currentVersionNo = 0;
         for (ApprovalVersionRecord item : versionDataList) {
+            if (currentVersionNo.equals(item.getVersionNo())) {
+                continue;
+            }
+            currentVersionNo = item.getVersionNo();
             Map<String, Object> map = new HashMap<>();
             map.put("id", item.getId());
             map.put("recordId", item.getRecordId());
