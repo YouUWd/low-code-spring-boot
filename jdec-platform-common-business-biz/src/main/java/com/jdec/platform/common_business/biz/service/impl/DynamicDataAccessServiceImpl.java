@@ -2563,7 +2563,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             queryWrapper.select(dataRightAccessReq.getColumn());
 
-            queryWrapper.eq("subject_id", subjectId);
+            queryWrapper.in("subject_id", dataRightAccessReq.getSubjectIds());
 
             List<Object> dataList = moduleTableMapper.selectList(queryWrapper);
 
