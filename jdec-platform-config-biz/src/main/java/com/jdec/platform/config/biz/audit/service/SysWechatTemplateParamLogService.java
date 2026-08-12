@@ -385,13 +385,13 @@ public class SysWechatTemplateParamLogService {
         }
     }
 
-    /** 在事务提交前发送审计日志（非阻塞，失败不影响业务事务） */
+    /** 在事务提交成功后发送审计日志（非阻塞，失败不影响业务事务） */
     private void sendAuditLogRequest(AuditLogSendContext context) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
-                        public void beforeCommit(boolean readOnly) {
+                        public void afterCommit() {
                             auditLogSendService.sendAuditLog(context);
                         }
 

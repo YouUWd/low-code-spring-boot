@@ -545,9 +545,9 @@ public class DataAuditService {
     }
 
     /**
-     * 注册事务同步，在事务提交前构建并发送审计日志（非阻塞，失败不影响业务事务）。
+     * 注册事务同步，在事务提交成功后发送审计日志（非阻塞，失败不影响业务事务）。
      *
-     * <p>如果业务方法抛出未捕获异常导致事务回滚，beforeCommit 不会被调用，审计日志不会发送。
+     * <p>仅事务提交成功后才发送审计日志；如果业务方法抛出未捕获异常导致事务回滚，则不会发送。
      *
      * @param context 审计日志发送上下文
      */
@@ -556,7 +556,7 @@ public class DataAuditService {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
-                        public void beforeCommit(boolean readOnly) {
+                        public void afterCommit() {
                             auditLogSendService.sendAuditLog(context);
                         }
 
