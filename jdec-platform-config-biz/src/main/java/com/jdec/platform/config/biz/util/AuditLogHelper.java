@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  *
  * <pre>
  * // 1. 不带diff比较
- * auditLogHelper.logWithoutCompare("角色管理", "sys_role", "新增了管理员角色");
+ * auditLogHelper.logWithoutCompare("角色管理", "sys_role", "新增了管理员角色", 123L);
  *
  * // 2. 带diff比较
  * auditLogHelper.logWithCompare("角色管理", "sys_role", "修改", 123L, newRoleData);
@@ -54,10 +54,12 @@ public class AuditLogHelper {
      * @param subModule 子模块名称（如："角色管理"、"权限管理"）
      * @param tableName 表名（如："sys_role"、"sys_permission"）
      * @param operation 操作内容
+     * @param dataId 数据ID
      */
-    public void logWithoutCompare(String subModule, String tableName, String operation) {
+    public void logWithoutCompare(
+            String subModule, String tableName, String operation, Long dataId) {
         try {
-            dataAuditService.auditWithoutCompare(MODULE, subModule, operation, tableName);
+            dataAuditService.auditWithoutCompare(MODULE, subModule, operation, tableName, dataId);
             log.info("审计日志（无diff）: subModule={}, operation={}", subModule, operation);
         } catch (Exception e) {
             log.error("记录审计日志失败（无diff）: subModule={}, operation={}", subModule, operation, e);
@@ -109,12 +111,18 @@ public class AuditLogHelper {
      * @param subModule 子模块名称（如："角色管理"、"权限管理"）
      * @param tableName 表名（如："sys_role"、"sys_permission"）
      * @param operation 操作内容（已包含完整描述，如："修改了test角色的邓由由用户的有效期"）
+     * @param dataId 数据ID
      * @param diffs 手动构建的字段差异列表
      */
     public void logWithCustomDiff(
-            String subModule, String tableName, String operation, List<FieldDiff> diffs) {
+            String subModule,
+            String tableName,
+            String operation,
+            Long dataId,
+            List<FieldDiff> diffs) {
         try {
-            dataAuditService.auditWithCustomDiff(MODULE, subModule, operation, tableName, diffs);
+            dataAuditService.auditWithCustomDiff(
+                    MODULE, subModule, operation, tableName, dataId, diffs);
             log.info("审计日志（自定义diff）: subModule={}, operation={}", subModule, operation);
         } catch (Exception e) {
             log.error("记录审计日志失败（自定义diff）: subModule={}, operation={}", subModule, operation, e);
@@ -129,13 +137,14 @@ public class AuditLogHelper {
      * @param subModule 子模块名称（如："角色菜单权限"、"角色交互权限"）
      * @param tableName 表名（如："sys_role_menu"、"sys_role_interaction_permission"）
      * @param operation 操作描述（如："新增权限"、"取消权限"）
+     * @param dataId 数据ID
      * @param remarkJson 自定义的 logRemark JSON 字符串
      */
     public void logWithCustomRemark(
-            String subModule, String tableName, String operation, String remarkJson) {
+            String subModule, String tableName, String operation, Long dataId, String remarkJson) {
         try {
             dataAuditService.auditWithCustomRemark(
-                    MODULE, subModule, operation, tableName, remarkJson);
+                    MODULE, subModule, operation, tableName, dataId, remarkJson);
             log.info("审计日志（自定义remark）: subModule={}, operation={}", subModule, operation);
         } catch (Exception e) {
             log.error("记录审计日志失败（自定义remark）: subModule={}, operation={}", subModule, operation, e);

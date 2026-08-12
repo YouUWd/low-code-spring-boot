@@ -1567,7 +1567,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
 
             // 5. 发送审计日志
             String operation = (checkFlag == 1) ? "新增权限" : "取消权限";
-            auditLogHelper.logWithCustomRemark(subModuleStr, tableName, operation, remarkJson);
+            auditLogHelper.logWithCustomRemark(
+                    subModuleStr, tableName, operation, roleId, remarkJson);
 
         } catch (Exception e) {
             log.error("记录{}审计日志失败: roleId={}, checkFlag={}", subModuleStr, roleId, checkFlag, e);
