@@ -70,7 +70,8 @@ public class Knife4jConfig {
                 .displayName("通用业务管理")
                 .packagesToScan(
                         "com.jdec.platform.common_business.biz.controller",
-                        "com.jdec.platform.common_business.biz.auth.controller")
+                        "com.jdec.platform.common_business.biz.auth.controller",
+                        "com.jdec.platform.approval.biz.controller")
                 .build();
     }
 }

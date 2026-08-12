@@ -269,16 +269,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         processWrapper.apply(
                 "FIND_IN_SET({0}, approval_uids)", approvalProcessReq.getApplicantId());
         List<ApprovalBusiness> processList = approvalBusinessMapper.selectList(processWrapper);
-
+        resultMap.put("doneNum", processList.size());
         List<Long> approvalTypeIds =
                 sysApprovalChainConfigApi.getApprovalTypeIdList(
                         approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
-        LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
-        allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-        allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
-        allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
-        resultMap.put("doneNum", processList.size());
-        resultMap.put("allNum", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
+        if (approvalTypeIds.isEmpty()) {
+            resultMap.put("allNum", 0);
+        } else {
+            LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
+            allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
+            allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+            allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
+            resultMap.put(
+                    "allNum", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
+        }
 
         return resultMap;
     }
@@ -372,20 +376,24 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             List<Long> approvalTypeIds =
                     sysApprovalChainConfigApi.getApprovalTypeIdList(
                             approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
-            LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
-            allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-            allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
-            allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
-            List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
-            Set<Long> ids =
-                    toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
-            for (ApprovalBusiness item : allList) {
-                if (ids.contains(item.getId())) {
-                    respList.add(convertMapResp(item, 1));
-                } else {
-                    respList.add(convertMapResp(item, 3));
+            if (!approvalTypeIds.isEmpty()) {
+                LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
+                allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+                allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+                allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
+                allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
+                List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
+                Set<Long> ids =
+                        toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
+                for (ApprovalBusiness item : allList) {
+                    if (ids.contains(item.getId())) {
+                        respList.add(convertMapResp(item, 1));
+                    } else {
+                        respList.add(convertMapResp(item, 3));
+                    }
                 }
+            } else {
+                respList = List.of();
             }
         }
         return respList;
