@@ -1210,11 +1210,11 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (hasApproval) {
 
-            ConfigApiResponse<List<Map<String, Object>>> buttonListResult =
+            ConfigApiResponse<List<Map<String, Object>>> approvalListResult =
                     approvalApiOpenFeignClient.getBusinessList(
                             queryParam.getSubjectId(), approvalListReq);
-            if (ConfigApiResponse.isSuccessResponse(buttonListResult)) {
-                approvalListResps = buttonListResult.getData();
+            if (ConfigApiResponse.isSuccessResponse(approvalListResult)) {
+                approvalListResps = approvalListResult.getData();
             } else {
                 try {
                     log.debug(
@@ -1245,13 +1245,65 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 }
             }
 
-            // 设置筛选条件为审批链过滤后的主键集合
+            Set<Long> approvalFilterIds;
             if (!recordIdToApprovalData.isEmpty()) {
-                queryWrapper.in(
-                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
-                                + DB_TABLE_FIELD_SEPARATOR
-                                + DEFAULT_PRIMARY_KEY,
-                        recordIdToApprovalData.keySet().toArray());
+                approvalFilterIds = recordIdToApprovalData.keySet();
+            } else {
+                approvalFilterIds = new HashSet<>();
+            }
+
+            if (queryParam.getType() == 3) {
+                log.debug("审批链列表查询全部，构造创建人、审批链参与人、数据权限的or条件。");
+                queryWrapper.and(
+                        qr -> {
+                            QueryWrapper<?> qrCast = (QueryWrapper<?>) qr;
+                            qrCast.eq(
+                                    queryParam
+                                                    .getModuleFilterInfo()
+                                                    .getModuleInfo()
+                                                    .getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + "create_by",
+                                    LoginUserUtil.getLoginUserId());
+                            if (!CollectionUtils.isEmpty(approvalFilterIds)) {
+                                qrCast.or()
+                                        .in(
+                                                queryParam
+                                                                .getModuleFilterInfo()
+                                                                .getModuleInfo()
+                                                                .getPrimaryTable()
+                                                        + DB_TABLE_FIELD_SEPARATOR
+                                                        + DEFAULT_PRIMARY_KEY,
+                                                approvalFilterIds);
+                            }
+
+                            // 表字段有数据权限
+                            if (tableNameToConfigItems.containsKey(
+                                    queryParam
+                                            .getModuleFilterInfo()
+                                            .getModuleInfo()
+                                            .getPrimaryTable())) {
+                                qrCast.or(
+                                        qrdataRight -> {
+                                            applyDataRightFilter(
+                                                    queryParam
+                                                            .getModuleFilterInfo()
+                                                            .getModuleInfo()
+                                                            .getPrimaryTable(),
+                                                    tableNameToConfigItems,
+                                                    qrdataRight);
+                                        });
+                            }
+                        });
+            } else {
+                // 设置筛选条件为审批链过滤后的主键集合
+                if (!CollectionUtils.isEmpty(approvalFilterIds)) {
+                    queryWrapper.in(
+                            queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                                    + DB_TABLE_FIELD_SEPARATOR
+                                    + DEFAULT_PRIMARY_KEY,
+                            approvalFilterIds);
+                }
             }
         }
 
@@ -1291,10 +1343,13 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
         }
 
-        applyDataRightFilter(
-                queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable(),
-                tableNameToConfigItems,
-                queryWrapper);
+        if (queryParam.getDataRightFilter()) {
+            log.debug("不带审批链的查询，数据权限生效。");
+            applyDataRightFilter(
+                    queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable(),
+                    tableNameToConfigItems,
+                    queryWrapper);
+        }
 
         if (hasApproval) {
             queryWrapper.eq(
@@ -1611,6 +1666,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             Page page,
             ModuleFilterInfo moduleFilterInfo,
             List<Long> moduleSkip) {
+
+        // 提前过滤子表和主表筛选条件和公共筛选条件,缩小范围
         Map<String, Object> resultMap = new HashMap<>();
         List<Object> finalPrimaryTableDataList = new ArrayList<>();
 
@@ -1641,8 +1698,11 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         Integer type = null;
 
+        boolean dataRightFilter = true;
+
         // 是带审批链的列表查询，则最终的Id集合需要审批链接口提供
         if (req instanceof ApprovalListQueryReq) {
+            dataRightFilter = false;
             if (!CollectionUtils.isEmpty(finalPrimaryTableDataList)) {
                 ApprovalListQueryReq approvalReq = (ApprovalListQueryReq) req;
                 type = approvalReq.getType();
@@ -1661,6 +1721,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         .primaryTableDataList(finalPrimaryTableDataList)
                         .orderItems(req.getOrder())
                         .type(type)
+                        .dataRightFilter(dataRightFilter)
                         .build();
 
         resultMap.putAll(dynamicQueryListData(listQueryParam, page));
@@ -1768,10 +1829,10 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     subjectId);
         }
 
-        applyDataRightFilter(
-                moduleFilterInfo.getModuleInfo().getPrimaryTable(),
-                tableNameToConfigItems,
-                queryWrapper);
+        //        applyDataRightFilter(
+        //                moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+        //                tableNameToConfigItems,
+        //                queryWrapper);
 
         if (returnResult) {
             // 获取主表Mapper对象
@@ -2118,8 +2179,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
 
             // 数据权限过滤
-            applyDataRightFilter(
-                    moduleTable.getTableName(), tableNameToConfigItems, moduleTableQueryWrapper);
+            //            applyDataRightFilter(
+            //                    moduleTable.getTableName(), tableNameToConfigItems,
+            // moduleTableQueryWrapper);
 
             // 子表筛选条件进行筛选
             if (tableNameToSearchItem.containsKey(moduleTable.getTableName())) {
@@ -2239,10 +2301,10 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
         }
 
-        applyDataRightFilter(
-                moduleFilterInfo.getModuleInfo().getPrimaryTable(),
-                tableNameToConfigItems,
-                queryWrapper);
+        //        applyDataRightFilter(
+        //                moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+        //                tableNameToConfigItems,
+        //                queryWrapper);
 
         // 主表筛选条件进行筛选
         if (tableNameToSearchItem.containsKey(moduleFilterInfo.getModuleInfo().getPrimaryTable())) {
@@ -2345,6 +2407,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             try {
                 if ("LIST".equals(moduleFilterInfo.getModuleInfo().getModuleType())) {
+                    boolean dataRightFilter = true;
                     ListQueryParam listQueryParam =
                             ListQueryParam.builder()
                                     .subjectId(subjectId)
@@ -2357,6 +2420,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     .primaryTableDataList(List.of())
                                     .orderItems(List.of())
                                     .type(null)
+                                    .dataRightFilter(dataRightFilter)
                                     .build();
                     resultMap.put(menu.getId(), dynamicQueryListData(listQueryParam, null));
                 } else {
@@ -2484,6 +2548,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             if ("LIST".equals(moduleFilterInfo.getModuleInfo().getModuleType())) {
                 try {
+                    boolean dataRightFilter = true;
                     ListQueryParam listQueryParam =
                             ListQueryParam.builder()
                                     .subjectId(subjectId)
@@ -2496,6 +2561,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     .primaryTableDataList(List.of())
                                     .orderItems(List.of())
                                     .type(null)
+                                    .dataRightFilter(dataRightFilter)
                                     .build();
 
                     Map<String, Object> map = dynamicQueryListData(listQueryParam, null);
@@ -3046,6 +3112,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             true);
         }
 
+        boolean dataRightFilter = true;
         ListQueryParam.ListQueryParamBuilder builder =
                 ListQueryParam.builder()
                         .subjectId(subjectId)
@@ -3055,11 +3122,13 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         .moduleFilterInfo(moduleFilterInfo)
                         .moduleSkip(moduleSkip)
                         .columnFilter(columnFilter)
-                        .primaryTableDataList(finalPrimaryTableDataList);
+                        .primaryTableDataList(finalPrimaryTableDataList)
+                        .dataRightFilter(dataRightFilter);
 
         // 待审批链的查询
         if (Objects.nonNull(queryReq.getType())) {
             builder.type(queryReq.getType());
+            builder.dataRightFilter(false);
         }
         ListQueryParam listQueryParam = builder.build();
 
@@ -3291,6 +3360,58 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             Long.parseLong(String.valueOf(item.get("recordId"))),
                             asteriskPrefixMap);
                 }
+            }
+
+            Set<Long> approvalFilterIds;
+            if (!recordIdToApprovalData.isEmpty()) {
+                approvalFilterIds = recordIdToApprovalData.keySet();
+            } else {
+                approvalFilterIds = new HashSet<>();
+            }
+
+            if (queryParam.getType() == 3) {
+                log.debug("审批链列表查询全部，构造创建人、审批链参与人、数据权限的or条件。");
+                queryWrapper.and(
+                        qr -> {
+                            QueryWrapper<?> qrCast = (QueryWrapper<?>) qr;
+                            qrCast.eq(
+                                    queryParam
+                                                    .getModuleFilterInfo()
+                                                    .getModuleInfo()
+                                                    .getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + "create_by",
+                                    LoginUserUtil.getLoginUserId());
+                            if (!CollectionUtils.isEmpty(approvalFilterIds)) {
+                                qrCast.or()
+                                        .in(
+                                                queryParam
+                                                                .getModuleFilterInfo()
+                                                                .getModuleInfo()
+                                                                .getPrimaryTable()
+                                                        + DB_TABLE_FIELD_SEPARATOR
+                                                        + DEFAULT_PRIMARY_KEY,
+                                                approvalFilterIds);
+                            }
+
+                            // 表字段有数据权限
+                            if (tableNameToConfigItems.containsKey(
+                                    queryParam
+                                            .getModuleFilterInfo()
+                                            .getModuleInfo()
+                                            .getPrimaryTable())) {
+                                qrCast.or(
+                                        qrdataRight -> {
+                                            applyDataRightFilter(
+                                                    queryParam
+                                                            .getModuleFilterInfo()
+                                                            .getModuleInfo()
+                                                            .getPrimaryTable(),
+                                                    tableNameToConfigItems,
+                                                    qrdataRight);
+                                        });
+                            }
+                        });
             }
         }
 
@@ -3690,6 +3811,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
             try {
                 if ("LIST".equals(moduleFilterInfo.getModuleInfo().getModuleType())) {
+                    boolean dataRightFilter = true;
                     ListQueryParam listQueryParam =
                             ListQueryParam.builder()
                                     .subjectId(subjectId)
@@ -3702,6 +3824,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     .primaryTableDataList(List.of())
                                     .orderItems(List.of())
                                     .type(null)
+                                    .dataRightFilter(dataRightFilter)
                                     .build();
                     resultMap.put(menu.getId(), dynamicQueryListData(listQueryParam, null));
                 } else {
@@ -3785,16 +3908,17 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (Objects.nonNull(moduleInfoResp)) {
 
-            ApprovalProcessReq processReq = new ApprovalProcessReq();
-            processReq.setSubjectId(subjectId);
-            processReq.setRoleId(roleId);
-            processReq.setModuleId(
-                    moduleInfoResp.getModule().getDetailModuleId()); // 使用列表关联的详情模块的模块ID
-            processReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
-            processReq.setApplicantId(LoginUserUtil.getLoginUserId());
+            ApprovalListReq approvalListReq = new ApprovalListReq();
+            approvalListReq.setSubjectIdList(Arrays.asList(subjectId));
+            approvalListReq.setRoleId(roleId);
+            approvalListReq.setModuleIdList(
+                    Arrays.asList(
+                            moduleInfoResp.getModule().getDetailModuleId())); // 使用列表关联的详情模块的模块ID
+            approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            approvalListReq.setApplicantId(LoginUserUtil.getLoginUserId());
 
             ConfigApiResponse<Map<String, Object>> numResultMap =
-                    approvalApiOpenFeignClient.getBusinessTypeList(subjectId, processReq);
+                    approvalApiOpenFeignClient.getBusinessTypeList(subjectId, approvalListReq);
 
             if (ConfigApiResponse.isSuccessResponse(numResultMap)) {
                 return numResultMap.getData();
@@ -3803,7 +3927,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     log.debug(
                             "调用审批链:{}方法失败 , 请求参数:{}",
                             "getBusinessTypeList",
-                            JsonUtil.obj2Json(processReq));
+                            JsonUtil.obj2Json(approvalListReq));
                 } catch (JsonProcessingException e) {
                     log.debug("请求参数json序列化失败。");
                 }
