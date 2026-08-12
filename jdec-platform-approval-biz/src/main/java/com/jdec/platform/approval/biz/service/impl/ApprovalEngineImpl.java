@@ -300,18 +300,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
         allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
+        allList.removeIf(
+                item ->
+                        !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
+                                && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
         for (ApprovalBusiness item : submitList) {
             ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
             approvalProcessDTO.setModuleId(item.getModuleId());
             approvalProcessDTO.setRoleId(approvalProcessReq.getRoleId());
             if (!checkRight(approvalProcessDTO)) {
-                allList.remove(item);
+                allList.removeIf(iterate -> iterate.getId().equals(item.getId()));
             }
         }
-        allList.removeIf(
-                item ->
-                        !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
-                                && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
         resultMap.put("allNum", allList.size());
         return resultMap;
     }
@@ -429,7 +429,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     item ->
                             !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
                                     && item.getCurrentStep().equals(0)
-                                    && !ids.contains(item.getApprovalChainTypeId()));
+                                    && !ids.contains(item.getId()));
             for (ApprovalBusiness item : allList) {
                 if (ids.contains(item.getId())) {
                     respList.add(convertMapResp(item, 1));
