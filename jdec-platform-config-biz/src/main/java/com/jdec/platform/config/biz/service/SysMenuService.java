@@ -592,4 +592,22 @@ public class SysMenuService implements SysMenuApi {
         BeanUtils.copyProperties(menu, resp);
         return resp;
     }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public SysMenuResp getMenuByParam(String param) {
+        SysMenu menu =
+                sysMenuMapper.selectOne(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getParam, param)
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, AppContext.getProjectNo())
+                                .last("LIMIT 1"));
+        if (menu == null) {
+            throw new BusinessException("菜单不存在");
+        }
+        SysMenuResp resp = new SysMenuResp();
+        BeanUtils.copyProperties(menu, resp);
+        return resp;
+    }
 }

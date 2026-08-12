@@ -51,6 +51,21 @@ public class SysProjectSubjectService implements SysProjectSubjectApi {
     }
 
     @Override
+    public SysProjectSubjectResp getBySubjectIdAndProjectNo(Long subjectId, String projectNo) {
+        SysProjectSubject entity =
+                sysProjectSubjectMapper.selectOne(
+                        Wrappers.<SysProjectSubject>lambdaQuery()
+                                .eq(SysProjectSubject::getSubjectId, subjectId)
+                                .eq(SysProjectSubject::getProjectNo, projectNo));
+        if (entity == null) {
+            return null;
+        }
+        SysProjectSubjectResp resp = new SysProjectSubjectResp();
+        BeanUtils.copyProperties(entity, resp);
+        return resp;
+    }
+
+    @Override
     public void deleteProjectSubject(Long id) {
         sysProjectSubjectMapper.deleteById(id);
     }
