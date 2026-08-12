@@ -17,7 +17,6 @@ import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
 import com.jdec.platform.approval.biz.util.ToolUtils;
 import com.jdec.platform.config.api.*;
-import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.UserApi;
@@ -81,11 +80,17 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness = new ApprovalBusiness();
         Map<String, Object> result = new HashMap<>();
         if (List.of("submit", "edit", "change").contains(approvalProcessDTO.getButton())) {
-            approvalBusiness = businessSubmit(approvalProcessDTO);
+            Map<String, Object> processResp = businessSubmit(approvalProcessDTO);
+            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
+            result.put("templateList", processResp.get("templateList"));
         } else if ("create".equals(approvalProcessDTO.getButton())) {
-            approvalBusiness = businessCreate(approvalProcessDTO);
+            Map<String, Object> processResp = businessCreate(approvalProcessDTO);
+            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
+            result.put("templateList", processResp.get("templateList"));
         } else if ("pass".equals(approvalProcessDTO.getButton())) {
-            approvalBusiness = businessApprove(approvalProcessDTO);
+            Map<String, Object> processResp = businessApprove(approvalProcessDTO);
+            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
+            result.put("templateList", processResp.get("templateList"));
             if (approvalBusiness.getStatusValue().equals(99)) {
                 result.put("ok", 1);
                 result.put("end", 1);
@@ -94,10 +99,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 return result;
             }
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
-            approvalBusiness = businessReject(approvalProcessDTO);
-            result.put("statusTitle", approvalBusiness.getStatusTitle());
+            Map<String, Object> processResp = businessReject(approvalProcessDTO);
+            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
+            result.put("templateList", processResp.get("templateList"));
         } else if ("cancel".equals(approvalProcessDTO.getButton())) {
-            approvalBusiness = businessRevoke(approvalProcessDTO);
+            Map<String, Object> processResp = businessRevoke(approvalProcessDTO);
+            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
+            result.put("templateList", processResp.get("templateList"));
             result.put("ok", 1);
             result.put("end", 0);
             result.put("versionNo", approvalBusiness.getVersionNo());
@@ -274,7 +282,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 sysApprovalChainConfigApi.getApprovalTypeIdList(
                         approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
         if (approvalTypeIds.isEmpty()) {
-            resultMap.put("allNum", 0);
+            resultMap.put("allNum", todoList.size() + processList.size());
         } else {
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
             allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
@@ -393,6 +401,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     }
                 }
             } else {
+                Set<Long> ids =
+                        toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
                 respList = List.of();
             }
         }
@@ -636,7 +646,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 新建业务发起审批申请------------------------------------------------------------------------
     @Transactional
-    public ApprovalBusiness businessCreate(ApprovalProcessDTO approvalProcessDTO) {
+    public Map<String, Object> businessCreate(ApprovalProcessDTO approvalProcessDTO) {
         // 生成唯一编号
         String prefix = "JD";
         if (Objects.nonNull(approvalProcessDTO.getPrefix())
@@ -736,15 +746,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
-        sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId());
-
-        return approvalBusiness;
+        templates.add(
+                sendWechatMessage(
+                        approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId()));
+        result.put("templateList", templates);
+        result.put("approvalBusiness", approvalBusiness);
+        return result;
     }
 
     // 变更业务发起审批申请------------------------------------------------------------------------
     @Transactional
-    public ApprovalBusiness businessSubmit(ApprovalProcessDTO approvalProcessDTO) {
+    public Map<String, Object> businessSubmit(ApprovalProcessDTO approvalProcessDTO) {
         // 查询业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -879,15 +894,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
-        sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId());
-
-        return approvalBusiness;
+        templates.add(
+                sendWechatMessage(
+                        approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId()));
+        result.put("templateList", templates);
+        result.put("approvalBusiness", approvalBusiness);
+        return result;
     }
 
     // 审批通过---------------------------------------------------------------------
     @Transactional
-    public ApprovalBusiness businessApprove(ApprovalProcessDTO approvalProcessDTO) {
+    public Map<String, Object> businessApprove(ApprovalProcessDTO approvalProcessDTO) {
         Long recordId =
                 Objects.nonNull(approvalProcessDTO.getOldRecordId())
                         ? approvalProcessDTO.getOldRecordId()
@@ -1015,7 +1035,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 throw new BusinessException(601, "单据记录异常");
             }
 
-            // if (Objects.isNull(approvalProcessDTO.getOldRecordId())) {
             approvalRecord.setCurrentStep(approvalBusiness.getCurrentStep());
             approvalRecord.setStatusId(approvalBusiness.getStatusId());
             approvalRecord.setStatusTitle(approvalChainStatus.getTitle());
@@ -1023,41 +1042,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
             approvalRecord.setStatusValue(approvalChainStatus.getStatusValue());
             approvalVersionRecordMapper.updateById(approvalRecord);
-            /* } else {
-                // 生成编号
-                approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo() + 1);
-
-                // 更新业务单据记录
-                approvalBusiness.setSerialNo(approvalProcessDTO.getSerialNo());
-                approvalBusiness.setRecordId(approvalProcessDTO.getRecordId());
-                approvalBusinessMapper.updateById(approvalBusiness);
-
-                // 创建业务单据详细内容记录
-                ApprovalVersionRecord approvalVersionRecord = new ApprovalVersionRecord();
-                approvalVersionRecord.setSubjectId(approvalProcessDTO.getSubjectId());
-                approvalVersionRecord.setModuleId(approvalProcessDTO.getModuleId());
-                approvalVersionRecord.setRecordId(approvalProcessDTO.getRecordId());
-                approvalVersionRecord.setBusinessId(approvalBusiness.getBusinessId());
-                approvalVersionRecord.setBusinessNumber(approvalBusiness.getBusinessNumber());
-                approvalVersionRecord.setVersionNo(approvalBusiness.getVersionNo());
-                approvalVersionRecord.setSerialNumber(approvalProcessDTO.getSerialNumber());
-                approvalVersionRecord.setSerialNo(approvalProcessDTO.getSerialNo());
-                approvalVersionRecord.setCurrentStep(approvalBusiness.getCurrentStep());
-                approvalVersionRecord.setStatusId(approvalBusiness.getStatusId());
-                approvalVersionRecord.setStatusTitle(approvalChainStatus.getTitle());
-                approvalVersionRecord.setStatusBackground(
-                        approvalChainStatus.getStatusBackground());
-                approvalVersionRecord.setStatusFontColor(approvalChainStatus.getStatusFontColor());
-                approvalVersionRecord.setStatusValue(approvalChainStatus.getStatusValue());
-                approvalVersionRecord.setSourceId(approvalRecord.getSourceId());
-                approvalVersionRecord.setApprovalChainTypeId(
-                        approvalBusiness.getApprovalChainTypeId());
-                approvalVersionRecord.setCreatedBy(approvalProcessDTO.getApplicantId());
-                approvalVersionRecord.setCreatedDate(LocalDateTime.now());
-                approvalVersionRecord.setUpdatedBy(approvalProcessDTO.getApplicantId());
-                approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
-                approvalVersionRecordMapper.insert(approvalVersionRecord);
-            }*/
         }
 
         // 写入日志
@@ -1078,29 +1062,35 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
-        LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
-        buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalChain.getSerialNumber());
-        buttonWrapper.eq(ApprovalChainButton::getSerialNo, approvalChain.getSerialNo());
-        buttonWrapper.eq(ApprovalChainButton::getCurrentStep, approvalChain.getCurrentStep());
-        buttonWrapper.eq(ApprovalChainButton::getButtonTypeValue, "pass").last("LIMIT 1");
-        ApprovalChainButton button = approvalChainButtonMapper.selectOne(buttonWrapper);
-        if (Objects.nonNull(button) && !StringUtils.isBlank(button.getMsgTemplateIds())) {
-            String[] ids = button.getMsgTemplateIds().split(",");
-            for (String id : ids) {
-                sendWechatMessageById(
-                        approvalBusiness,
-                        Long.parseLong(id),
-                        approvalProcessDTO.getCurrentUserId());
+        if (approved) {
+            LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
+            buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalChain.getSerialNumber());
+            buttonWrapper.eq(ApprovalChainButton::getSerialNo, approvalChain.getSerialNo());
+            buttonWrapper.eq(ApprovalChainButton::getCurrentStep, approvalChain.getCurrentStep());
+            buttonWrapper.eq(ApprovalChainButton::getButtonTypeValue, "pass").last("LIMIT 1");
+            ApprovalChainButton button = approvalChainButtonMapper.selectOne(buttonWrapper);
+            if (Objects.nonNull(button) && !StringUtils.isBlank(button.getMsgTemplateIds())) {
+                String[] ids = button.getMsgTemplateIds().split(",");
+                for (String id : ids) {
+                    templates.add(
+                            sendWechatMessageById(
+                                    approvalBusiness,
+                                    Long.parseLong(id),
+                                    approvalProcessDTO.getCurrentUserId()));
+                }
             }
         }
-
-        return approvalBusiness;
+        result.put("templateList", templates);
+        result.put("approvalBusiness", approvalBusiness);
+        return result;
     }
 
     // 审批驳回------------------------------------------------------------------
     @Transactional
-    public ApprovalBusiness businessReject(ApprovalProcessDTO approvalProcessDTO) {
+    public Map<String, Object> businessReject(ApprovalProcessDTO approvalProcessDTO) {
         // 查询业务记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -1248,6 +1238,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
         LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
         buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalChain.getSerialNumber());
@@ -1258,19 +1250,21 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.nonNull(button) && !StringUtils.isBlank(button.getMsgTemplateIds())) {
             String[] ids = button.getMsgTemplateIds().split(",");
             for (String id : ids) {
-                sendWechatMessageById(
-                        approvalBusiness,
-                        Long.parseLong(id),
-                        approvalProcessDTO.getCurrentUserId());
+                templates.add(
+                        sendWechatMessageById(
+                                approvalBusiness,
+                                Long.parseLong(id),
+                                approvalProcessDTO.getCurrentUserId()));
             }
         }
-
-        return approvalBusiness;
+        result.put("templateList", templates);
+        result.put("approvalBusiness", approvalBusiness);
+        return result;
     }
 
     // 撤销申请-------------------------------------------------------------------------
     @Transactional
-    public ApprovalBusiness businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
+    public Map<String, Object> businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
         // 查询单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -1367,9 +1361,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
+
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
-        sendWechatMessage(approvalBusiness, "cancel", approvalProcessDTO.getCurrentUserId());
-        return approvalBusiness;
+        templates.add(
+                sendWechatMessage(
+                        approvalBusiness, "cancel", approvalProcessDTO.getCurrentUserId()));
+        result.put("templateList", templates);
+        result.put("approvalBusiness", approvalBusiness);
+        return result;
     }
 
     // 保存操作日志-----------------------------------------------------------------------
@@ -2205,67 +2206,61 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // ======================================组装并发送审批消息==========================================
     // 根据模板ID发送消息-----------------------------------
-    private void sendWechatMessageById(
+    private Map<String, Object> sendWechatMessageById(
             ApprovalBusiness business, Long templateId, Long loginUserId) {
         WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
-        String content = formatWechatMessage(template, business, loginUserId);
+        Map<String, String> content = formatWechatMessage(template, business, loginUserId);
         List<String> userIds =
                 getSendUserList(business, templateId, loginUserId).stream()
                         .map(String::valueOf)
                         .toList();
-        SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
-        sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
-        sendWechatMessageReq.setMessageType("markdown");
-        sendWechatMessageReq.setMessageContent(content);
-        sendWechatMessageReq.setReceivers(userIds);
-        sysWechatTemplateApi.sendWechatMessage(
-                AppContext.getProjectNo(), business.getSubjectId(), sendWechatMessageReq);
+        Map<String, Object> result = new HashMap<>();
+        result.put("templateId", templateId);
+        result.put("receivers", userIds);
+        result.put("params", content);
+        return result;
     }
 
     // 发送提交和取消消息-----------------------------------
-    private void sendWechatMessage(
+    private Map<String, Object> sendWechatMessage(
             ApprovalBusiness business, String triggerType, Long loginUserId) {
         String projectNo = AppContext.getProjectNo();
         WechatTemplateEntryResp template =
                 sysWechatTemplateApi.getTemplateByModuleId(
                         projectNo, business.getSubjectId(), business.getModuleId(), triggerType);
-        String content = formatWechatMessage(template, business, loginUserId);
+        Map<String, String> content = formatWechatMessage(template, business, loginUserId);
         List<String> userIds =
                 getSendUserList(business, template.getId(), loginUserId).stream()
                         .map(String::valueOf)
                         .toList();
-        SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
-        sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
-        sendWechatMessageReq.setMessageType("markdown");
-        sendWechatMessageReq.setMessageContent(content);
-        sendWechatMessageReq.setReceivers(userIds);
-        sysWechatTemplateApi.sendWechatMessage(
-                projectNo, business.getSubjectId(), sendWechatMessageReq);
+        Map<String, Object> result = new HashMap<>();
+        result.put("templateId", template.getId());
+        result.put("receivers", userIds);
+        result.put("params", content);
+        return result;
     }
 
     // 组装消息
-    private String formatWechatMessage(
+    private Map<String, String> formatWechatMessage(
             WechatTemplateEntryResp template, ApprovalBusiness business, Long loginUserId) {
+        Map<String, String> result = new HashMap<>();
         try {
             // 1. 转换对象
             Map<String, Object> sourceMap = BeanUtil.beanToMap(business, true, true);
             // 2. 获取参数替换映射
             Map<String, String> params = getParametersByTemplate(loginUserId, template, sourceMap);
-            // 3. 替换模板内容中的占位符
-            String content = template.getTemplateContent();
             for (Map.Entry<String, String> entry : params.entrySet()) {
                 String placeholder = entry.getKey();
                 String value = entry.getValue();
                 if (value == null) {
                     value = "";
                 }
-                content = content.replace(placeholder, value);
+                result.put(placeholder, value);
             }
-            return content;
         } catch (Exception e) {
             log.error("消息发送失败", e);
-            return "";
         }
+        return result;
     }
 
     /** 根据模板获取参数映射 */
