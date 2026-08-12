@@ -30,6 +30,13 @@ public interface SysMenuApi {
     SysMenuResp getMenuById(Long Id);
 
     /**
+     * 根据参数查询菜单详情
+     *
+     * @param param 菜单参数
+     */
+    SysMenuResp getMenuByParam(String param);
+
+    /**
      * 新增/编辑菜单
      *
      * @return 保存后的菜单信息
