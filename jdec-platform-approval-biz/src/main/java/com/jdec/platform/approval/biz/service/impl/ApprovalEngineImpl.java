@@ -2209,7 +2209,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private Map<String, Object> sendWechatMessageById(
             ApprovalBusiness business, Long templateId, Long loginUserId) {
         WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
-        Map<String, Object> content = formatWechatMessage(template, business, loginUserId);
+        Map<String, String> content = formatWechatMessage(template, business, loginUserId);
         List<String> userIds =
                 getSendUserList(business, templateId, loginUserId).stream()
                         .map(String::valueOf)
@@ -2217,7 +2217,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> result = new HashMap<>();
         result.put("templateId", templateId);
         result.put("receivers", userIds);
-        result.putAll(content);
+        result.put("params", content);
         return result;
     }
 
@@ -2228,7 +2228,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         WechatTemplateEntryResp template =
                 sysWechatTemplateApi.getTemplateByModuleId(
                         projectNo, business.getSubjectId(), business.getModuleId(), triggerType);
-        Map<String, Object> content = formatWechatMessage(template, business, loginUserId);
+        Map<String, String> content = formatWechatMessage(template, business, loginUserId);
         List<String> userIds =
                 getSendUserList(business, template.getId(), loginUserId).stream()
                         .map(String::valueOf)
@@ -2236,14 +2236,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> result = new HashMap<>();
         result.put("templateId", template.getId());
         result.put("receivers", userIds);
-        result.putAll(content);
+        result.put("params", content);
         return result;
     }
 
     // 组装消息
-    private Map<String, Object> formatWechatMessage(
+    private Map<String, String> formatWechatMessage(
             WechatTemplateEntryResp template, ApprovalBusiness business, Long loginUserId) {
-        Map<String, Object> result = new HashMap<>();
+        Map<String, String> result = new HashMap<>();
         try {
             // 1. 转换对象
             Map<String, Object> sourceMap = BeanUtil.beanToMap(business, true, true);
