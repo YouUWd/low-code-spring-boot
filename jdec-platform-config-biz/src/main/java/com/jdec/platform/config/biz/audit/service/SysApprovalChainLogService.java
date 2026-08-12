@@ -97,7 +97,7 @@ public class SysApprovalChainLogService {
 
             // 4. 构建步骤记录并发送
             Map<String, Object> stepRecord = buildStepRecord(stepName, stepColumns, children);
-            sendApprovalLog("新增", buildModuleActions("i", stepRecord));
+            sendApprovalLog("新增", configId, buildModuleActions("i", stepRecord));
 
             // 5. 保存快照（完整保存 ApprovalChainConfigSaveReq）
             saveSnapshot(configId, request, newButtons);
@@ -149,7 +149,7 @@ public class SysApprovalChainLogService {
 
             // 4. 构建步骤记录并发送
             Map<String, Object> stepRecord = buildStepRecord(stepName, stepColumns, children);
-            sendApprovalLog("修改", buildModuleActions("u", stepRecord));
+            sendApprovalLog("修改", configId, buildModuleActions("u", stepRecord));
 
             // 5. 更新快照（完整保存 ApprovalChainConfigSaveReq）
             snapshotService.saveOrUpdateSnapshot(
@@ -178,7 +178,7 @@ public class SysApprovalChainLogService {
 
             Map<String, Object> stepRecord = new LinkedHashMap<>();
             stepRecord.put("name", stepName);
-            sendApprovalLog("删除", buildModuleActions("d", stepRecord));
+            sendApprovalLog("删除", deletedConfig.getId(), buildModuleActions("d", stepRecord));
 
             // 删除快照
             snapshotService.deleteSnapshot(TABLE_NAME, deletedConfig.getId());
@@ -598,9 +598,11 @@ public class SysApprovalChainLogService {
      * 发送审计日志到监控服务
      *
      * @param operation 操作描述（新增/修改/删除）
+     * @param dataId 业务单据主键ID
      * @param moduleActions ModuleAction 列表
      */
-    private void sendApprovalLog(String operation, List<Map<String, Object>> moduleActions) {
+    private void sendApprovalLog(
+            String operation, Long dataId, List<Map<String, Object>> moduleActions) {
         try {
             // 构建 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
@@ -615,6 +617,7 @@ public class SysApprovalChainLogService {
                     AuditLogSendContext.builder()
                             .module(MODULE)
                             .subModule(SUB_MODULE)
+                            .dataId(dataId)
                             .controlName(controlName)
                             .logRemark(remark)
                             .build();

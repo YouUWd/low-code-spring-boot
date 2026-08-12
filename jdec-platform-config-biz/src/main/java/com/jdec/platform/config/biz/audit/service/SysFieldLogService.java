@@ -121,7 +121,7 @@ public class SysFieldLogService {
             if (children != null) {
                 record.put("children", children);
             }
-            sendFieldLog("修改", buildModuleActions("u", record));
+            sendFieldLog("修改", oldField.getId(), buildModuleActions("u", record));
         } catch (Exception e) {
             log.error("记录字段配置修改审计日志失败: fieldId={}", oldField != null ? oldField.getId() : null, e);
         }
@@ -391,9 +391,11 @@ public class SysFieldLogService {
      * 发送审计日志到监控服务
      *
      * @param operation 操作描述（新增/修改/删除）
+     * @param dataId 业务单据主键ID
      * @param moduleActions ModuleAction 列表
      */
-    private void sendFieldLog(String operation, List<Map<String, Object>> moduleActions) {
+    private void sendFieldLog(
+            String operation, Long dataId, List<Map<String, Object>> moduleActions) {
         try {
             // 构建 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
@@ -408,6 +410,7 @@ public class SysFieldLogService {
                     AuditLogSendContext.builder()
                             .module(MODULE)
                             .subModule(SUB_MODULE)
+                            .dataId(dataId)
                             .controlName(controlName)
                             .logRemark(remark)
                             .build();

@@ -82,7 +82,7 @@ public class SysWechatTemplateLogService {
             // 构建新增记录（所有字段 old 为空）
             TemplateValues values = fromRequest(request);
             Map<String, Object> record = buildCreateRecord(values);
-            sendTemplateLog("新增", buildModuleActions("i", record));
+            sendTemplateLog("新增", templateId, buildModuleActions("i", record));
 
             // 保存快照
             snapshotService.saveSnapshot(TABLE_NAME, templateId, JSONUtil.toJsonStr(request));
@@ -116,7 +116,7 @@ public class SysWechatTemplateLogService {
             record.put(
                     "name", buildRecordName(oldValues.templateTitle(), newValues.templateTitle()));
             record.put("columns", columns);
-            sendTemplateLog("修改", buildModuleActions("u", record));
+            sendTemplateLog("修改", templateId, buildModuleActions("u", record));
 
             // 更新快照
             snapshotService.saveOrUpdateSnapshot(
@@ -140,7 +140,7 @@ public class SysWechatTemplateLogService {
                     deletedTemplate.getTemplateTitle() != null
                             ? deletedTemplate.getTemplateTitle()
                             : "");
-            sendTemplateLog("删除", buildModuleActions("d", record));
+            sendTemplateLog("删除", deletedTemplate.getId(), buildModuleActions("d", record));
 
             // 删除快照
             snapshotService.deleteSnapshot(TABLE_NAME, deletedTemplate.getId());
@@ -421,9 +421,11 @@ public class SysWechatTemplateLogService {
      * 发送审计日志到监控服务
      *
      * @param operation 操作描述（新增/修改/删除）
+     * @param dataId 业务单据主键ID
      * @param moduleActions ModuleAction 列表
      */
-    private void sendTemplateLog(String operation, List<Map<String, Object>> moduleActions) {
+    private void sendTemplateLog(
+            String operation, Long dataId, List<Map<String, Object>> moduleActions) {
         try {
             // 构建 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
@@ -438,6 +440,7 @@ public class SysWechatTemplateLogService {
                     AuditLogSendContext.builder()
                             .module(MODULE)
                             .subModule(SUB_MODULE)
+                            .dataId(dataId)
                             .controlName(controlName)
                             .logRemark(remark)
                             .build();
