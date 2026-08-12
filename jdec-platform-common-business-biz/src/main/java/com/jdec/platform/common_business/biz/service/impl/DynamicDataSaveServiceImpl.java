@@ -1407,6 +1407,32 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                     approvalProcessReq.setOldRecordId(oldRecordId);
                     log.debug("变更后提交，获取上一条已启用数据id:{}", oldRecordId);
 
+                    // 深拷贝模块表单数据
+                    List<ModuleSaveReq> copyModuleSaveList;
+                    try {
+                        String originJsonStr = JsonUtil.obj2Json(moduleSaveList);
+                        copyModuleSaveList =
+                                JsonUtil.json2Obj(
+                                        originJsonStr, new TypeReference<List<ModuleSaveReq>>() {});
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    Map<String, Object> oldDatafillDataMap = new HashMap<>();
+                    oldDatafillDataMap.put("moduleId", targetTopMenu.getModuleId());
+                    oldDatafillDataMap.put("deleted", true);
+
+                    // 创建前先填充module_id、deleted字段值
+                    fillModuleData(
+                            copyModuleSaveList,
+                            subjectId,
+                            roleId,
+                            targetTopMenu.getModuleId(),
+                            oldDatafillDataMap);
+
+                    // 更新启用的数据,设置标志位
+                    editMultiModuleData(subjectId, roleId, copyModuleSaveList);
+
                     // 去除提交数据中的主键id,走新建数据逻辑
                     removeModuleData(
                             moduleSaveList,
