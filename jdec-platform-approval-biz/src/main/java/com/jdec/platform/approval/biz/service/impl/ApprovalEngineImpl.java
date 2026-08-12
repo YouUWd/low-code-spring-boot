@@ -300,6 +300,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
         allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
+        for (ApprovalBusiness item : submitList) {
+            ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
+            approvalProcessDTO.setModuleId(item.getModuleId());
+            approvalProcessDTO.setRoleId(approvalProcessReq.getRoleId());
+            if (!checkRight(approvalProcessDTO)) {
+                allList.remove(item);
+            }
+        }
         allList.removeIf(
                 item ->
                         !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
@@ -417,6 +425,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                     && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
             Set<Long> ids =
                     toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
+            allList.removeIf(
+                    item ->
+                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
+                                    && item.getCurrentStep().equals(0)
+                                    && !ids.contains(item.getApprovalChainTypeId()));
             for (ApprovalBusiness item : allList) {
                 if (ids.contains(item.getId())) {
                     respList.add(convertMapResp(item, 1));
