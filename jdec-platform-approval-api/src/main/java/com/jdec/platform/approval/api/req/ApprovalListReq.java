@@ -2,6 +2,7 @@ package com.jdec.platform.approval.api.req;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
 import lombok.Data;
 
@@ -15,12 +16,12 @@ public class ApprovalListReq {
 
     // 所属主体ID
     @Schema(description = "主体ID，多主体查询", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "主体ID不能为空")
+    @NotEmpty(message = "主体ID不能为空")
     private List<Long> subjectIdList;
 
     // "模块ID"
     @Schema(description = "模块ID，多主体查询", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "模块ID不能为空")
+    @NotEmpty(message = "模块ID不能为空")
     private List<Long> moduleIdList;
 
     // 业务记录ID
