@@ -24,10 +24,7 @@ import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ApprovalApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.dto.*;
-import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
-import com.jdec.platform.common_business.biz.dto.configcenter.response.DataConfig;
-import com.jdec.platform.common_business.biz.dto.configcenter.response.DataRightConfigResp;
-import com.jdec.platform.common_business.biz.dto.configcenter.response.ModuleInfoResp;
+import com.jdec.platform.common_business.biz.dto.configcenter.response.*;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.enums.QueryOpEnum;
@@ -902,7 +899,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             if (!includeNull) {
                                 queryWrapper.in(
                                         tableName + "." + dataConfig.getColumnName(),
-                                        dataConfig.getBizNames().toArray());
+                                        dataConfig.getBizNames());
                             } else {
                                 log.debug("筛选条件包含空值");
                                 dataConfig.getBizNames().remove("Null");
@@ -929,8 +926,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                                                                             + dataConfig
                                                                                                     .getColumnName(),
                                                                                     dataConfig
-                                                                                            .getBizNames()
-                                                                                            .toArray());
+                                                                                            .getBizNames());
                                                                 });
                                             });
                                 }
@@ -1087,7 +1083,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
                                 + DB_TABLE_FIELD_SEPARATOR
                                 + DEFAULT_PRIMARY_KEY,
-                        idList.toArray());
+                        idList);
             } else {
                 log.debug("列头筛选模式下，主表的主键id列表为空，则直接返回。");
                 buildConfigData(
@@ -2320,7 +2316,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     moduleFilterInfo.getModuleInfo().getPrimaryTable(),
                     entry.getKey(),
                     entry.getValue());
-            queryWrapper.in(entry.getKey(), entry.getValue().toArray());
+            queryWrapper.in(entry.getKey(), entry.getValue());
         }
 
         List<Object> primaryTableDataList = primaryMapper.selectList(queryWrapper);
@@ -3209,7 +3205,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
                                 + DB_TABLE_FIELD_SEPARATOR
                                 + DEFAULT_PRIMARY_KEY,
-                        idList.toArray());
+                        idList);
             } else {
                 log.debug("列头筛选模式下，主表的主键id列表为空，则直接返回。");
                 return resultMap;
@@ -3902,18 +3898,70 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                         .orElse(null);
 
         // 模块相关信息
-        ModuleInfoResp moduleInfoResp =
+        ModuleInfoResp targetModuleInfo =
                 configCenterApiService.getModuleInfoComplete(
                         subjectId, targetTopMenu.getModuleId());
 
-        if (Objects.nonNull(moduleInfoResp)) {
+        if (Objects.nonNull(targetModuleInfo)) {
+            List<Long> subjectIds = Arrays.asList(subjectId);
+            List<Long> moduleIds = Arrays.asList(targetModuleInfo.getModule().getDetailModuleId());
+
+            if (!CollectionUtils.isEmpty(targetModuleInfo.getModule().getSourceSubjects())) {
+                Long detailModuleId = targetModuleInfo.getModule().getDetailModuleId();
+                List<Integer> sourceSubjectIds =
+                        targetModuleInfo.getModule().getSourceSubjects().stream()
+                                .map(SubjectResp::getId)
+                                .collect(Collectors.toList());
+
+                List<ModuleResp> moduleRespList =
+                        configCenterApiService.getModuleList(subjectId, true);
+                ModuleResp targetDetailModule =
+                        moduleRespList.stream()
+                                .filter(
+                                        ele -> {
+                                            Integer eleModuleId = ele.getId();
+                                            return Long.parseLong(String.valueOf(eleModuleId))
+                                                    == detailModuleId;
+                                        })
+                                .findFirst()
+                                .orElse(null);
+
+                if (Objects.isNull(targetDetailModule)) {
+                    log.debug("查找不到列表关联的详情模块id:{}", detailModuleId);
+                } else {
+                    String originDetailModuleCode = targetDetailModule.getModuleCode();
+                    log.debug(
+                            "菜单id:{},菜单名称:{} , 模块id:{},模块名称:{},数据来源于其他主体:{},详情模块标识:{}",
+                            menuId,
+                            targetTopMenu.getTitle(),
+                            targetTopMenu.getModuleId(),
+                            targetModuleInfo.getModule().getModuleName(),
+                            sourceSubjectIds,
+                            originDetailModuleCode);
+
+                    List<Long> matchedModuleIds =
+                            moduleRespList.stream()
+                                    .filter(
+                                            ele ->
+                                                    originDetailModuleCode.equals(
+                                                                    ele.getModuleCode())
+                                                            && sourceSubjectIds.contains(
+                                                                    ele.getSubjectId()))
+                                    .map(ele -> Long.parseLong(String.valueOf(ele.getId())))
+                                    .collect(Collectors.toList());
+
+                    moduleIds = matchedModuleIds;
+                    subjectIds =
+                            sourceSubjectIds.stream()
+                                    .map(ele -> Long.parseLong(String.valueOf(ele)))
+                                    .collect(Collectors.toList());
+                }
+            }
 
             ApprovalListReq approvalListReq = new ApprovalListReq();
-            approvalListReq.setSubjectIdList(Arrays.asList(subjectId));
+            approvalListReq.setSubjectIdList(subjectIds);
             approvalListReq.setRoleId(roleId);
-            approvalListReq.setModuleIdList(
-                    Arrays.asList(
-                            moduleInfoResp.getModule().getDetailModuleId())); // 使用列表关联的详情模块的模块ID
+            approvalListReq.setModuleIdList(moduleIds); // 使用列表关联的详情模块的模块ID
             approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
             approvalListReq.setApplicantId(LoginUserUtil.getLoginUserId());
 
