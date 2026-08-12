@@ -1,5 +1,7 @@
 package com.jdec.platform.monitorlog.biz.controller;
 
+import com.jdec.platform.config.api.SysProjectSubjectApi;
+import com.jdec.platform.config.api.dto.response.SysProjectSubjectResp;
 import com.jdec.platform.monitorlog.api.dto.request.*;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.monitorlog.biz.service.JdecMonitorLogService;
@@ -22,6 +24,8 @@ import org.springframework.web.bind.annotation.*;
 public class JdecMonitorLogController {
 
     private final JdecMonitorLogService jdecMonitorLogService;
+
+    private final SysProjectSubjectApi sysProjectSubjectApi;
 
     @PostMapping("/queryPage")
     @Operation(summary = "查询监控日志列表", description = "根据时间范围、日志类型、关键词查询监控日志")
@@ -54,6 +58,7 @@ public class JdecMonitorLogController {
             @Parameter(description = "项目编号")
                     @RequestHeader(value = "X-Project-No", required = false)
                     String projectNo) {
+        populateSubjectNameIfAbsent(request);
         jdecMonitorLogService.recordSystemControlLog(request, projectNo);
         return ApiResponse.success();
     }
@@ -70,6 +75,7 @@ public class JdecMonitorLogController {
             @Parameter(description = "项目编号")
                     @RequestHeader(value = "X-Project-No", required = false)
                     String projectNo) {
+        populateSubjectNameIfAbsent(request);
         jdecMonitorLogService.recordOrderRunLog(request, projectNo);
         return ApiResponse.success();
     }
@@ -96,6 +102,7 @@ public class JdecMonitorLogController {
             @Parameter(description = "项目编号")
                     @RequestHeader(value = "X-Project-No", required = false)
                     String projectNo) {
+        populateSubjectNameIfAbsent(request);
         jdecMonitorLogService.recordMessageLog(request, projectNo);
         return ApiResponse.success();
     }
@@ -181,9 +188,6 @@ public class JdecMonitorLogController {
             @Parameter(description = "主体ID")
                     @RequestHeader(value = "X-Subject-Id", required = false)
                     Long subjectId,
-            @Parameter(description = "主体名称")
-                    @RequestHeader(value = "Subject-Name", required = false)
-                    String subjectName,
             @Parameter(description = "是否mock标记：0否；1是")
                     @RequestHeader(value = "Mock-Flug", required = false)
                     Integer mockFlug,
@@ -219,8 +223,13 @@ public class JdecMonitorLogController {
         if (subjectId == null || subjectId <= 0) {
             throw new IllegalArgumentException("主体ID(X-Subject-Id)不能为空且必须大于0");
         }
+        SysProjectSubjectResp subjectResp = sysProjectSubjectApi.getById(subjectId);
+        if (subjectResp == null) {
+            throw new IllegalArgumentException("主体信息不存在(X-Subject-Id=" + subjectId + ")");
+        }
+        String subjectName = subjectResp.getSubjectName();
         if (!StringUtils.hasText(subjectName)) {
-            throw new IllegalArgumentException("主体名称(Subject-Name)不能为空");
+            throw new IllegalArgumentException("主体名称不能为空");
         }
         if (!StringUtils.hasText(systemName)) {
             throw new IllegalArgumentException("系统名称(System-Name)不能为空");
@@ -283,8 +292,6 @@ public class JdecMonitorLogController {
                     Long loginRoleId,
             @Parameter(description = "主体ID", required = true) @RequestHeader("X-Subject-Id")
                     Long subjectId,
-            @Parameter(description = "主体名称", required = true) @RequestHeader("Subject-Name")
-                    String subjectName,
             @Parameter(description = "是否mock标记：0否；1是", required = true) @RequestHeader("Mock-Flug")
                     Integer mockFlug,
             @Parameter(description = "模拟用户ID(mockFlag=1时必传)")
@@ -313,8 +320,13 @@ public class JdecMonitorLogController {
         if (subjectId == null || subjectId <= 0) {
             throw new IllegalArgumentException("主体ID(subject-id)不能为空且必须大于0");
         }
+        SysProjectSubjectResp subjectResp = sysProjectSubjectApi.getById(subjectId);
+        if (subjectResp == null) {
+            throw new IllegalArgumentException("主体信息不存在(subject-id=" + subjectId + ")");
+        }
+        String subjectName = subjectResp.getSubjectName();
         if (!StringUtils.hasText(subjectName)) {
-            throw new IllegalArgumentException("主体名称(subject-name)不能为空");
+            throw new IllegalArgumentException("主体名称不能为空");
         }
         if (mockFlug == null || (mockFlug != 0 && mockFlug != 1)) {
             throw new IllegalArgumentException("mock标记(mock-flug)不能为空且只能为0或1");
@@ -388,5 +400,18 @@ public class JdecMonitorLogController {
                         + "</span></span></div></span>");
         jdecMonitorLogService.recordSystemNavLog(request, projectNo);
         return ApiResponse.success();
+    }
+
+    private void populateSubjectNameIfAbsent(MonitorBaseLogReq req) {
+        if (req.getSubjectId() == null || req.getSubjectId() <= 0) {
+            return;
+        }
+        if (StringUtils.hasText(req.getSubjectName())) {
+            return;
+        }
+        SysProjectSubjectResp subjectResp = sysProjectSubjectApi.getById(req.getSubjectId());
+        if (subjectResp != null && StringUtils.hasText(subjectResp.getSubjectName())) {
+            req.setSubjectName(subjectResp.getSubjectName());
+        }
     }
 }
