@@ -44,4 +44,7 @@ public class ListQueryParam {
 
     @Schema(description = "带审批链的查询，查询种类 单据类型（待办=1，已办=2，全部=3）")
     private Integer type;
+
+    @Schema(description = "是否过滤数据权限，审批链待办、已办以及全部的前置查询不需要过滤数据权限")
+    private Boolean dataRightFilter;
 }
