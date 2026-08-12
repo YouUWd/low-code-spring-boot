@@ -11,6 +11,9 @@ public interface SysProjectSubjectApi {
     /** 根据ID查询项目主体 */
     SysProjectSubjectResp getById(Long id);
 
+    /** 根据主体ID和项目编码查询项目主体 */
+    SysProjectSubjectResp getBySubjectIdAndProjectNo(Long subjectId, String projectNo);
+
     /** 删除项目主体 */
     void deleteProjectSubject(Long id);
 }

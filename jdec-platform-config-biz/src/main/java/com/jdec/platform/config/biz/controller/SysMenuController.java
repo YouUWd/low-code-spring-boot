@@ -44,6 +44,13 @@ public class SysMenuController {
         return ApiResponse.success(sysMenuApi.tree(category));
     }
 
+    @GetMapping("/param")
+    @Operation(summary = "根据参数查询菜单详情", description = "根据菜单参数查询菜单详情")
+    public ApiResponse<SysMenuResp> getByParam(
+            @Parameter(description = "菜单参数", example = "param") @RequestParam String param) {
+        return ApiResponse.success(sysMenuApi.getMenuByParam(param));
+    }
+
     @PostMapping("/save")
     @Operation(summary = "新增/编辑菜单", description = "id为空则新增，不为空则修改，返回保存后的菜单信息")
     public ApiResponse<SysMenuResp> save(@RequestBody SysMenuSaveReq request) {
