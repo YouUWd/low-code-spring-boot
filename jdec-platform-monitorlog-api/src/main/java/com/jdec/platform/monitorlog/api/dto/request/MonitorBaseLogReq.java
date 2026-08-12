@@ -14,50 +14,44 @@ public class MonitorBaseLogReq {
     @Schema(description = "ID")
     private Long id;
 
-    @Schema(description = "用户ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "用户ID不能为空")
-    @Min(value = 1, message = "用户ID必须大于0")
-    private Long userId;
-
-    @Schema(description = "角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotNull(message = "角色ID不能为空")
-    @Min(value = 1, message = "角色ID必须大于0")
-    private Long roleId;
-
     @Schema(description = "主体ID")
     private Long subjectId;
 
     @Schema(description = "主体名称")
     private String subjectName;
 
-    @Schema(description = "登录用户ID（服务端根据userId自动获取）")
+    @Schema(description = "登录用户ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "登录用户ID不能为空")
+    @Min(value = 1, message = "登录用户ID必须大于0")
     private Long loginUserId;
 
-    @Schema(description = "登录用户名（服务端根据userId自动获取）")
+    @Schema(description = "登录用户名（服务端根据loginUserId自动获取）")
     private String loginUserName;
 
-    @Schema(description = "登录人头像（服务端根据userId自动获取）")
+    @Schema(description = "登录人头像（服务端根据loginUserId自动获取）")
     private String loginAvater;
 
-    @Schema(description = "登录人工号（服务端根据userId自动获取）")
+    @Schema(description = "登录人工号（服务端根据loginUserId自动获取）")
     private String loginUserNumber;
 
-    @Schema(description = "登录角色ID（服务端根据roleId自动获取）")
+    @Schema(description = "登录角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotNull(message = "登录角色ID不能为空")
+    @Min(value = 1, message = "登录角色ID必须大于0")
     private Long loginRoleId;
 
-    @Schema(description = "登录角色名称（服务端根据roleId自动获取）")
+    @Schema(description = "登录角色名称（服务端根据loginRoleId自动获取）")
     private String loginRoleName;
 
-    @Schema(description = "登录人部门ID;多个ID，用逗号分割（服务端根据userId自动获取）")
+    @Schema(description = "登录人部门ID;多个ID，用逗号分割（服务端根据loginUserId自动获取）")
     private String loginUserDeptId;
 
-    @Schema(description = "登录人部门名称;多个名称，用逗号分割（服务端根据userId自动获取）")
+    @Schema(description = "登录人部门名称;多个名称，用逗号分割（服务端根据loginUserId自动获取）")
     private String loginUserDeptName;
 
-    @Schema(description = "登录人岗位ID;多个ID，用逗号分割（服务端根据userId自动获取）")
+    @Schema(description = "登录人岗位ID;多个ID，用逗号分割（服务端根据loginUserId自动获取）")
     private String loginUserJobId;
 
-    @Schema(description = "登录人岗位名称;多个名称，用逗号分割（服务端根据userId自动获取）")
+    @Schema(description = "登录人岗位名称;多个名称，用逗号分割（服务端根据loginUserId自动获取）")
     private String loginUserJobName;
 
     @Schema(description = "是否mock标记：0，否；1 是")

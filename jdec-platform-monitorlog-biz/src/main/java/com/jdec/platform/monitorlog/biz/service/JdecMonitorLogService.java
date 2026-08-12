@@ -190,21 +190,20 @@ public class JdecMonitorLogService implements MonitorLogApi {
     }
 
     /**
-     * 根据userId和roleId自动填充用户和角色信息
+     * 根据loginUserId和loginRoleId自动填充用户和角色信息
      *
      * @param req 监控日志请求参数
      */
     private void populateUserAndRoleInfo(MonitorBaseLogReq req) {
-        if (req.getUserId() == null || req.getUserId() <= 0) {
-            throw new IllegalArgumentException("用户ID(userId)不能为空且必须大于0");
+        if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
+            throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
         }
-        if (req.getRoleId() == null || req.getRoleId() <= 0) {
-            throw new IllegalArgumentException("角色ID(roleId)不能为空且必须大于0");
+        if (req.getLoginRoleId() == null || req.getLoginRoleId() <= 0) {
+            throw new IllegalArgumentException("登录角色ID(loginRoleId)不能为空且必须大于0");
         }
 
-        UserDetailResp userDetail = sysUserApi.getUserDetailByUserId(req.getUserId());
+        UserDetailResp userDetail = sysUserApi.getUserDetailByUserId(req.getLoginUserId());
         if (userDetail != null) {
-            req.setLoginUserId(userDetail.getUserId());
             req.setLoginUserName(userDetail.getUserName());
             req.setLoginAvater(userDetail.getUserAvatar());
             req.setLoginUserNumber(userDetail.getWorkNumber());
@@ -212,9 +211,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
             req.setLoginUserJobName(userDetail.getPositionName());
         }
 
-        RoleConfigDetailResp roleDetail = sysRoleApi.getRoleConfigDetail(req.getRoleId());
+        RoleConfigDetailResp roleDetail = sysRoleApi.getRoleConfigDetail(req.getLoginRoleId());
         if (roleDetail != null) {
-            req.setLoginRoleId(roleDetail.getId());
             req.setLoginRoleName(roleDetail.getRoleName());
         }
     }
@@ -328,9 +326,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
         }
-        if (!StringUtils.hasText(req.getLogRemark())) {
-            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
-        }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
         }
@@ -415,9 +410,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
         }
         if (req.getLogContent().length() > 65535) {
             throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
-        }
-        if (!StringUtils.hasText(req.getLogRemark())) {
-            throw new IllegalArgumentException("日志备注(logRemark)不能为空");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");

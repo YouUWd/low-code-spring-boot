@@ -11,7 +11,7 @@ import java.util.Map;
 
 public interface IApprovalEngine {
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部数量------------------------------------------------
-    Map<String, Object> getBusinessTypeList(ApprovalProcessReq approvalProcessDTO);
+    Map<String, Object> getBusinessTypeList(ApprovalListReq approvalProcessDTO);
 
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
     List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq);
