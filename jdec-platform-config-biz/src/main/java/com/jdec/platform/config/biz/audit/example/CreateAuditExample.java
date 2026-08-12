@@ -106,7 +106,8 @@ public class CreateAuditExample {
         auditLogHelper.logWithoutCompare(
                 "角色管理", // subModule
                 "sys_role", // tableName
-                "新增了" + request.getRoleName() + "角色" // operation（完整描述）
+                "新增了" + request.getRoleName() + "角色", // operation（完整描述）
+                newId // dataId
                 );
     }
 
@@ -144,8 +145,9 @@ public class CreateAuditExample {
                         .map(RoleCreateReq::getRoleName)
                         .collect(java.util.stream.Collectors.joining("、"));
 
+        // 汇总日志为多条记录的聚合，无单一主键，dataId 传 null
         auditLogHelper.logWithoutCompare(
-                "角色管理", "sys_role", "批量新增了" + roleNames + "等" + requests.size() + "个角色");
+                "角色管理", "sys_role", "批量新增了" + roleNames + "等" + requests.size() + "个角色", null);
     }
 
     // ==================== DTO定义 ====================
