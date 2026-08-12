@@ -221,6 +221,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 查询操作人在当前模块下的审批链业务代办/已办/全部数量-------------------------------------------
     @Override
     public Map<String, Object> getBusinessTypeList(ApprovalListReq approvalProcessReq) {
+        List<Long> approvalTypeIds =
+                sysApprovalChainConfigApi.getApprovalTypeIdList(
+                        approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
         Map<String, Object> resultMap = new HashMap<>();
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
         todoWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
@@ -268,6 +271,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 todoList.remove(item);
             }
         }
+        todoList.removeIf(
+                item ->
+                        !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
+                                && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
         resultMap.put("todoNum", todoList.size());
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
         processWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
@@ -277,21 +284,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         processWrapper.apply(
                 "FIND_IN_SET({0}, approval_uids)", approvalProcessReq.getApplicantId());
         List<ApprovalBusiness> processList = approvalBusinessMapper.selectList(processWrapper);
+        processList.removeIf(
+                item ->
+                        !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
+                                && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
         resultMap.put("doneNum", processList.size());
-        List<Long> approvalTypeIds =
-                sysApprovalChainConfigApi.getApprovalTypeIdList(
-                        approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
-        if (approvalTypeIds.isEmpty()) {
-            resultMap.put("allNum", todoList.size() + processList.size());
-        } else {
-            LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
-            allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-            allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
-            allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
-            resultMap.put(
-                    "allNum", Math.toIntExact(approvalBusinessMapper.selectCount(allWrapper)));
-        }
-
+        LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
+        allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
+        allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+        List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
+        allList.removeIf(
+                item ->
+                        !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
+                                && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
+        resultMap.put("allNum", allList.size());
         return resultMap;
     }
 
@@ -300,6 +306,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     public List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq) {
         List<ApprovalBusiness> toDoList = new ArrayList<>();
         List<Map<String, Object>> respList = new ArrayList<>();
+        List<Long> approvalTypeIds =
+                sysApprovalChainConfigApi.getApprovalTypeIdList(
+                        approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
         if (approvalListReq.getApprovalType() != 2) {
             LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
             todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
@@ -358,7 +367,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     toDoList.remove(item);
                 }
             }
-
+            toDoList.removeIf(
+                    item ->
+                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
+                                    && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
             if (approvalListReq.getApprovalType() == 1) {
                 respList =
                         toDoList.stream()
@@ -375,35 +387,33 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
             processWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
+            resultList.removeIf(
+                    item ->
+                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
+                                    && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
             respList =
                     resultList.stream()
                             .map(business -> convertMapResp(business, 2))
                             .collect(Collectors.toList());
         }
         if (approvalListReq.getApprovalType() == 3) {
-            List<Long> approvalTypeIds =
-                    sysApprovalChainConfigApi.getApprovalTypeIdList(
-                            approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
-            if (!approvalTypeIds.isEmpty()) {
-                LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
-                allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-                allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-                allWrapper.in(ApprovalBusiness::getApprovalChainTypeId, approvalTypeIds);
-                allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
-                List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
-                Set<Long> ids =
-                        toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
-                for (ApprovalBusiness item : allList) {
-                    if (ids.contains(item.getId())) {
-                        respList.add(convertMapResp(item, 1));
-                    } else {
-                        respList.add(convertMapResp(item, 3));
-                    }
+            LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
+            allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+            allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
+            List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
+            allList.removeIf(
+                    item ->
+                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
+                                    && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
+            Set<Long> ids =
+                    toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
+            for (ApprovalBusiness item : allList) {
+                if (ids.contains(item.getId())) {
+                    respList.add(convertMapResp(item, 1));
+                } else {
+                    respList.add(convertMapResp(item, 3));
                 }
-            } else {
-                Set<Long> ids =
-                        toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
-                respList = List.of();
             }
         }
         return respList;
