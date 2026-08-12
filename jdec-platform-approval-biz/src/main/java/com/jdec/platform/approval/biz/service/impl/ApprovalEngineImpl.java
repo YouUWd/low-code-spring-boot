@@ -227,6 +227,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             resultMap.put("todoNum", 0);
             resultMap.put("doneNum", 0);
             resultMap.put("allNum", 0);
+            return resultMap;
         }
         List<Long> approvalTypeIds =
                 sysApprovalChainConfigApi.getApprovalTypeIdList(
