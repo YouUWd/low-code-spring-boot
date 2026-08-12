@@ -186,7 +186,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
 
                     Long subjectId = AppContext.getSubjectId();
                     if (subjectId != null) {
-                        headers.set("Subject-Id", String.valueOf(subjectId));
+                        headers.set("X-Subject-Id", String.valueOf(subjectId));
                     }
                     if (projectNo != null) {
                         headers.set("X-Project-No", projectNo);
