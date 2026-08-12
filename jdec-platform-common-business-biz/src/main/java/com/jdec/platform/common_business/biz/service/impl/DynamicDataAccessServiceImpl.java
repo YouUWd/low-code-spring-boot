@@ -3785,16 +3785,17 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (Objects.nonNull(moduleInfoResp)) {
 
-            ApprovalProcessReq processReq = new ApprovalProcessReq();
-            processReq.setSubjectId(subjectId);
-            processReq.setRoleId(roleId);
-            processReq.setModuleId(
-                    moduleInfoResp.getModule().getDetailModuleId()); // 使用列表关联的详情模块的模块ID
-            processReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
-            processReq.setApplicantId(LoginUserUtil.getLoginUserId());
+            ApprovalListReq approvalListReq = new ApprovalListReq();
+            approvalListReq.setSubjectIdList(Arrays.asList(subjectId));
+            approvalListReq.setRoleId(roleId);
+            approvalListReq.setModuleIdList(
+                    Arrays.asList(
+                            moduleInfoResp.getModule().getDetailModuleId())); // 使用列表关联的详情模块的模块ID
+            approvalListReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
+            approvalListReq.setApplicantId(LoginUserUtil.getLoginUserId());
 
             ConfigApiResponse<Map<String, Object>> numResultMap =
-                    approvalApiOpenFeignClient.getBusinessTypeList(subjectId, processReq);
+                    approvalApiOpenFeignClient.getBusinessTypeList(subjectId, approvalListReq);
 
             if (ConfigApiResponse.isSuccessResponse(numResultMap)) {
                 return numResultMap.getData();
@@ -3803,7 +3804,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                     log.debug(
                             "调用审批链:{}方法失败 , 请求参数:{}",
                             "getBusinessTypeList",
-                            JsonUtil.obj2Json(processReq));
+                            JsonUtil.obj2Json(approvalListReq));
                 } catch (JsonProcessingException e) {
                     log.debug("请求参数json序列化失败。");
                 }

@@ -21,7 +21,7 @@ public interface ApprovalApiOpenFeignClient {
     @PostMapping("/BusinessNum")
     ConfigApiResponse<Map<String, Object>> getBusinessTypeList(
             @RequestHeader("X-Subject-Id") Long subjectId,
-            @RequestBody ApprovalProcessReq approvalProcessDTO);
+            @RequestBody ApprovalListReq approvalListreq);
 
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
     @PostMapping("/BusinessList")
