@@ -38,6 +38,7 @@ import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.ApprovalButtonType;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.service.SystemModuleApprovalMsgService;
 import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
@@ -112,6 +113,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     private final ApprovalApiOpenFeignClient approvalApiOpenFeignClient;
 
     private final SystemModuleDataChangeLogService systemModuleDataChangeLogService;
+
+    private final SystemModuleApprovalMsgService systemModuleApprovalMsgService;
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     private Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
@@ -1133,6 +1136,18 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
             if (ConfigApiResponse.isSuccessResponse(processResult)) {
                 log.debug("调用审批链方{}方法成功。", "process");
+                // 消息推送
+                Map<String, Object> data = processResult.getData();
+                if (data.containsKey("templateList")) {
+                    try {
+                        List<Map<String, Object>> templateList =
+                                (List<Map<String, Object>>) data.get("templateList");
+                        systemModuleApprovalMsgService.processApprovalMsg(
+                                subjectId, templateList, moduleFilterInfo, moduleSaveList);
+                    } catch (Exception e) {
+                        log.error("获取消息模版参数异常,e=", e);
+                    }
+                }
             } else {
                 try {
                     log.debug(
@@ -1672,6 +1687,17 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 != 1) {
                             editMultiModuleData(subjectId, roleId, moduleSaveList);
                         }
+                    }
+                }
+                // 消息推送
+                if (processResultMap.containsKey("templateList")) {
+                    try {
+                        List<Map<String, Object>> templateList =
+                                (List<Map<String, Object>>) processResultMap.get("templateList");
+                        systemModuleApprovalMsgService.processApprovalMsg(
+                                subjectId, templateList, moduleFilterInfo, moduleSaveList);
+                    } catch (Exception e) {
+                        log.error("获取消息模版参数异常,e=", e);
                     }
                 }
 
