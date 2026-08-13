@@ -1645,6 +1645,14 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         // 组装返回数据
         resultMap.put("records", dataList);
 
+        if (hasApproval) {
+            log.debug(
+                    "审批链查询返回总条数:{} ，查询type={} , 查询数据总条数:{}",
+                    approvalListResps.size(),
+                    queryParam.getType(),
+                    Objects.nonNull(page) ? pageData.getTotal() : dataList.size());
+        }
+
         buildConfigData(
                 resultMap,
                 queryParam.getModuleFilterInfo(),
