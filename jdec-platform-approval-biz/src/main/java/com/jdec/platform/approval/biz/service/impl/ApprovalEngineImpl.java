@@ -781,9 +781,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> result = new HashMap<>();
         List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
-        templates.add(
-                sendWechatMessage(
-                        approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId()));
+        templates.add(sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO));
         result.put("templateList", templates);
         result.put("approvalBusiness", approvalBusiness);
         return result;
@@ -929,9 +927,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> result = new HashMap<>();
         List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
-        templates.add(
-                sendWechatMessage(
-                        approvalBusiness, "submit", approvalProcessDTO.getCurrentUserId()));
+        templates.add(sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO));
         result.put("templateList", templates);
         result.put("approvalBusiness", approvalBusiness);
         return result;
@@ -1109,9 +1105,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 for (String id : ids) {
                     templates.add(
                             sendWechatMessageById(
-                                    approvalBusiness,
-                                    Long.parseLong(id),
-                                    approvalProcessDTO.getCurrentUserId()));
+                                    approvalBusiness, Long.parseLong(id), approvalProcessDTO));
                 }
             }
         }
@@ -1284,9 +1278,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             for (String id : ids) {
                 templates.add(
                         sendWechatMessageById(
-                                approvalBusiness,
-                                Long.parseLong(id),
-                                approvalProcessDTO.getCurrentUserId()));
+                                approvalBusiness, Long.parseLong(id), approvalProcessDTO));
             }
         }
         result.put("templateList", templates);
@@ -1397,9 +1389,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> result = new HashMap<>();
         List<Map<String, Object>> templates = new ArrayList<>();
         // 发送消息
-        templates.add(
-                sendWechatMessage(
-                        approvalBusiness, "cancel", approvalProcessDTO.getCurrentUserId()));
+        templates.add(sendWechatMessage(approvalBusiness, "cancel", approvalProcessDTO));
         result.put("templateList", templates);
         result.put("approvalBusiness", approvalBusiness);
         return result;
@@ -2227,11 +2217,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // ======================================组装并发送审批消息==========================================
     // 根据模板ID发送消息-----------------------------------
     private Map<String, Object> sendWechatMessageById(
-            ApprovalBusiness business, Long templateId, Long loginUserId) {
+            ApprovalBusiness business, Long templateId, ApprovalProcessDTO approvalProcessDTO) {
         WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
-        Map<String, String> content = formatWechatMessage(template, business, loginUserId);
+        Map<String, String> content = formatWechatMessage(template, business, approvalProcessDTO);
         List<String> userIds =
-                getSendUserList(business, templateId, loginUserId).stream()
+                getSendUserList(business, templateId, approvalProcessDTO.getCurrentUserId())
+                        .stream()
                         .map(String::valueOf)
                         .toList();
         Map<String, Object> result = new HashMap<>();
@@ -2243,14 +2234,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 发送提交和取消消息-----------------------------------
     private Map<String, Object> sendWechatMessage(
-            ApprovalBusiness business, String triggerType, Long loginUserId) {
+            ApprovalBusiness business, String triggerType, ApprovalProcessDTO approvalProcessDTO) {
         String projectNo = AppContext.getProjectNo();
         WechatTemplateEntryResp template =
                 sysWechatTemplateApi.getTemplateByModuleId(
                         projectNo, business.getSubjectId(), business.getModuleId(), triggerType);
-        Map<String, String> content = formatWechatMessage(template, business, loginUserId);
+        Map<String, String> content = formatWechatMessage(template, business, approvalProcessDTO);
         List<String> userIds =
-                getSendUserList(business, template.getId(), loginUserId).stream()
+                getSendUserList(business, template.getId(), approvalProcessDTO.getCurrentUserId())
+                        .stream()
                         .map(String::valueOf)
                         .toList();
         Map<String, Object> result = new HashMap<>();
@@ -2262,13 +2254,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 组装消息
     private Map<String, String> formatWechatMessage(
-            WechatTemplateEntryResp template, ApprovalBusiness business, Long loginUserId) {
+            WechatTemplateEntryResp template,
+            ApprovalBusiness business,
+            ApprovalProcessDTO approvalProcessDTO) {
         Map<String, String> result = new HashMap<>();
         try {
             // 1. 转换对象
             Map<String, Object> sourceMap = BeanUtil.beanToMap(business, true, true);
             // 2. 获取参数替换映射
-            Map<String, String> params = getParametersByTemplate(loginUserId, template, sourceMap);
+            Map<String, String> params =
+                    getParametersByTemplate(approvalProcessDTO, template, sourceMap);
             for (Map.Entry<String, String> entry : params.entrySet()) {
                 String placeholder = entry.getKey();
                 String value = entry.getValue();
@@ -2285,7 +2280,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     /** 根据模板获取参数映射 */
     private Map<String, String> getParametersByTemplate(
-            Long loginUserId, WechatTemplateEntryResp template, Object sourceData) {
+            ApprovalProcessDTO approvalProcessDTO,
+            WechatTemplateEntryResp template,
+            Object sourceData) {
         // 解析param_id字段，获取参数ID列表
         List<Long> paramIds = template.getConfigParamIds();
         if (paramIds.isEmpty()) {
@@ -2310,14 +2307,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             WechatTemplateParamEntryResp param = entry.getValue();
             // 去掉前缀得到真实标识
             String formatSlug = slug.replace("p-", "");
-            String replaceText = getParamTextWithCommonParam(loginUserId, formatSlug, sourceData);
+            String replaceText =
+                    getParamTextWithCommonParam(approvalProcessDTO, formatSlug, sourceData);
             result.put(slug, replaceText);
         }
         return result;
     }
 
     /** 处理通用参数（系统名称、当前时间、当前登录用户、前端URL、以及Model中的基础字段） */
-    private String getParamTextWithCommonParam(Long loginUserId, String slug, Object sourceData) {
+    private String getParamTextWithCommonParam(
+            ApprovalProcessDTO approvalProcessDTO, String slug, Object sourceData) {
         Long createdBy = (Long) getFieldValueFromSource(sourceData, "created_by");
         UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(createdBy);
         // 系统内置参数
@@ -2330,7 +2329,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 return LocalDateTime.now()
                         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
             case "loginUser":
-                UserDetailResp loginUser = sysUserApi.getUserDetailByUserId(loginUserId);
+                UserDetailResp loginUser =
+                        sysUserApi.getUserDetailByUserId(approvalProcessDTO.getCurrentUserId());
                 if (createByUser != null && createByUser.getUserName() != null) {
                     return loginUser.getUserName();
                 } else {
@@ -2366,19 +2366,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 }
                 return "";
             case "reason":
-                String serialNumber = (String) getFieldValueFromSource(sourceData, "serial_number");
-                Integer serialNo = (Integer) getFieldValueFromSource(sourceData, "serial_no");
-                LambdaQueryWrapper<ApprovalVersionRecord> wrapper =
-                        new LambdaQueryWrapper<ApprovalVersionRecord>()
-                                .eq(ApprovalVersionRecord::getSerialNumber, serialNumber)
-                                .eq(ApprovalVersionRecord::getSerialNo, serialNo)
-                                .last("LIMIT 1");
-                ApprovalVersionRecord approvalVersionRecord =
-                        approvalVersionRecordMapper.selectOne(wrapper);
-                if (Objects.nonNull(approvalVersionRecord)) {
-                    return approvalVersionRecord.getReason();
-                }
-                return "";
+                return Objects.nonNull(approvalProcessDTO.getReason())
+                        ? approvalProcessDTO.getReason()
+                        : "";
             default:
                 // 其他字段直接从sourceData中获取
                 Object value = getFieldValueFromSource(sourceData, slug);
