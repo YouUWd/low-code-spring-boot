@@ -2363,9 +2363,22 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             .findFirst()
                             .map(SubjectBO::getSubjectName)
                             .orElse("");
-                } else {
-                    return "";
                 }
+                return "";
+            case "reason":
+                String serialNumber = (String) getFieldValueFromSource(sourceData, "serial_number");
+                Integer serialNo = (Integer) getFieldValueFromSource(sourceData, "serial_no");
+                LambdaQueryWrapper<ApprovalVersionRecord> wrapper =
+                        new LambdaQueryWrapper<ApprovalVersionRecord>()
+                                .eq(ApprovalVersionRecord::getSerialNumber, serialNumber)
+                                .eq(ApprovalVersionRecord::getSerialNo, serialNo)
+                                .last("LIMIT 1");
+                ApprovalVersionRecord approvalVersionRecord =
+                        approvalVersionRecordMapper.selectOne(wrapper);
+                if (Objects.nonNull(approvalVersionRecord)) {
+                    return approvalVersionRecord.getReason();
+                }
+                return "";
             default:
                 // 其他字段直接从sourceData中获取
                 Object value = getFieldValueFromSource(sourceData, slug);
