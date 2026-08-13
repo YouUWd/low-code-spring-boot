@@ -285,9 +285,11 @@ public class TableUtils {
     public static final Set<String> NONE_RECORD_FIELD =
             Set.of(
                     "created_by",
+                    "create_by",
                     "created_name",
                     "created_date",
                     "updated_by",
+                    "update_by",
                     "updated_name",
                     "updated_date",
                     "deleted",
