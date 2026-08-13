@@ -303,10 +303,9 @@ public class JdecMonitorLogController {
                       "moduleName": "模块名称",      // required, <=100字符
                       "menuParam": "菜单参数",        // required
                       "hrefName": "超链接文本",       // required
-                      "hrefUrl": "菜单跳转URL",       // required（用于拼装HTML，不单独存字段）
                       "menuId": 123,                 // 可选
                       "dataId": 456,                 // 可选
-                      "controlDesc": "操作描述",      // required（用于拼装HTML，不单独存字段）
+                      "controlDesc": "操作描述",      // required
                       "browser": "Chrome",           // required, <=100字符，默认"unknown"
                       "platForm": "Windows",         // 可选，默认"unknown"
                       "systemName": "系统名称"        // required, <=100字符，默认"unknown"
@@ -317,7 +316,7 @@ public class JdecMonitorLogController {
                     String projectNo,
             @Parameter(description = "登录用户ID", required = true) @RequestHeader("Login-User-Id")
                     Long loginUserId,
-            @Parameter(description = "登录角色ID", required = true) @RequestHeader("Login-Role-Id")
+            @Parameter(description = "登录角色ID", required = true) @RequestHeader("Role-Id")
                     Long loginRoleId,
             @Parameter(description = "主体ID", required = true) @RequestHeader("X-Subject-Id")
                     Long subjectId,
@@ -369,7 +368,6 @@ public class JdecMonitorLogController {
         String moduleName = postReq.getModuleName();
         String menuParam = postReq.getMenuParam();
         String hrefName = postReq.getHrefName();
-        String hrefUrl = postReq.getHrefUrl();
         String controlDesc = postReq.getControlDesc();
         String browser = postReq.getBrowser();
         String systemName = postReq.getSystemName();
@@ -388,18 +386,9 @@ public class JdecMonitorLogController {
         request.setMenuParam(menuParam);
         request.setHrefName(hrefName);
         request.setBrowser(browser);
+        request.setControlName(controlDesc);
         request.setPlatForm(postReq.getPlatForm());
         request.setSystemName(systemName);
-        request.setLogContent(
-                "<span class=\"arco-table-td-content\"><div class=\"flex\"><span>["
-                        + moduleName
-                        + "-<a style=\"color: #408bee\" href=\""
-                        + hrefUrl
-                        + "\" target=\"_blank\">"
-                        + hrefName
-                        + "</a>]<span style=\"font-weight: 700; color: #2e7fed\">"
-                        + controlDesc
-                        + "</span></span></div></span>");
         jdecMonitorLogService.recordSystemNavLog(request, projectNo);
         return ApiResponse.success();
     }
