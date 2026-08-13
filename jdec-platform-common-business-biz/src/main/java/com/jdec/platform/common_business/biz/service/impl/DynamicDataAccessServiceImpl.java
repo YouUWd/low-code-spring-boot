@@ -802,6 +802,16 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
         }
 
+        // 主表增加业务状态字段
+        allRightField.add(
+                ModuleField.builder()
+                        .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                        .filedType("SIMPLE")
+                        .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                        .fieldCode("business_status")
+                        .permissionCode(1)
+                        .build());
+
         return allRightField;
     }
 
@@ -1635,10 +1645,11 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                 primaryTablePrefixResultMap.get(
                                         finalModuleFilterInfo4.getModuleInfo().getPrimaryTable()
                                                 + DB_TABLE_FIELD_SEPARATOR
-                                                + DEFAULT_BUSINESS_STATUS_KEY);
+                                                + ToolUtils.snakeToCamelCase(
+                                                        DEFAULT_BUSINESS_STATUS_KEY));
 
                         if (Objects.nonNull(businessStatus)
-                                && Integer.parseInt(String.valueOf(businessStatus)) == -99) {
+                                && Integer.parseInt(String.valueOf(businessStatus)) == -88) {
                             primaryTablePrefixResultMap.put(
                                     "btnList",
                                     Set.of(

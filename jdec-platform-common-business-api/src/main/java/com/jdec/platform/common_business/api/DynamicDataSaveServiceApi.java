@@ -1,5 +1,6 @@
 package com.jdec.platform.common_business.api;
 
+import com.jdec.platform.common_business.api.dto.request.ApprovalModuleSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import java.util.List;
@@ -12,7 +13,7 @@ public interface DynamicDataSaveServiceApi {
 
     // 带审批链的创建
     Object createMultiMenuModuleDataWithApproval(
-            Long subjectId, Long roleId, List<MenuSaveReq> req);
+            Long subjectId, Long roleId, ApprovalModuleSaveReq req);
 
     Object editMultiMenuModuleDataWithApproval(
             Long subjectId,
