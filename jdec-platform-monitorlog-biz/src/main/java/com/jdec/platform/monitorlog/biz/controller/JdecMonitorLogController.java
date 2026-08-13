@@ -7,6 +7,7 @@ import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
 import com.jdec.platform.monitorlog.biz.service.JdecMonitorLogService;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
+import com.jdec.platform.shared.utils.RequestContextUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -84,19 +85,25 @@ public class JdecMonitorLogController {
     @Operation(
             summary = "添加消息日志",
             description =
-                    "添加消息日志"
-                            + "日志内容为：发送消息的文本，如企业微信消息MD文本"
-                            + "     *  logRemark 如：[元件管理-FHSQ2409230955401 V2] 消息类型：元件驳回"
-                            + "                                  消息接收人：张三J10006821  李四J10006822"
-                            + "remark是Json格式的字符串，格式如下："
-                            + "{"
-                            + "            \"module\": \"模块名称/功能名称/页面名称\","
-                            + "            \"orderId\": \"单据编号/订单编号/业务编号/任务编号\","
-                            + "            \"hrefUrl\": \"单据详情页/订单详情页/业务详情页/任务详情页\","
-                            + "            \"orderVersion\": \"单据版本号/订单版本号/业务版本号/任务版本号\","
-                            + "            \"messageType\":\"操作类型/消息类型\","
-                            + "            \"messageReceivers\":\"消息接收人[userid1,userid2,...]\""
-                            + "        }")
+                    """
+                    添加消息日志
+                    日志内容为：发送消息的文本，如企业微信消息MD文本
+                         *  logRemark 如：[元件管理-FHSQ2409230955401 V2] 消息类型：元件驳回
+                                                          消息接收人：张三J10006821  李四J10006822
+                    remark是Json格式的字符串，格式如下：
+                    {
+                                "moduleId": "模块ID",
+                                "moduleName": "模块名称",
+                                "menuId": "菜单ID",
+                                "menuParam": "菜单参数",
+                                "hrefName": "超链接文本",
+                                "dataId": "数据表记录ID",
+                                "orderVersion": "单据版本号/订单版本号/业务版本号/任务版本号",
+                                "controlName":"操作类型/消息类型",
+                                "messageReceivers":"消息接收人[userid1,userid2,...]",
+                                "usersDetails":"消息接收人详情[{"UserName":"张三","UserNumber":"J10006821","UserAvatar":"https://example.com/avatar.jpg"},"UserName":"李四","UserNumber":"J10006822","UserAvatar":"https://example.com/avatar.jpg"}]"
+                            }
+                    """)
     public ApiResponse<Void> addMessageLog(
             @Valid @RequestBody MonitorMessageLogReq request,
             @Parameter(description = "项目编号")
@@ -194,8 +201,6 @@ public class JdecMonitorLogController {
             @Parameter(description = "模拟用户ID(mockFlag=1时必传)")
                     @RequestHeader(value = "Mock-User-Id", required = false)
                     Long mockUserId,
-            @Parameter(description = "IP地址") @RequestHeader(value = "X-Real-IP", required = false)
-                    String ip,
             @Parameter(description = "浏览器") @RequestHeader(value = "Browser", required = false)
                     String browser,
             @Parameter(description = "系统名称") @RequestHeader(value = "System-Name", required = false)
@@ -237,11 +242,12 @@ public class JdecMonitorLogController {
         if (systemName.length() > 100) {
             throw new IllegalArgumentException("系统名称(System-Name)长度不能超过100字符");
         }
+        String ip = RequestContextUtils.getClientIp();
         if (!StringUtils.hasText(ip)) {
-            throw new IllegalArgumentException("IP地址(X-Real-IP)不能为空");
+            throw new IllegalArgumentException("IP地址获取失败，请检查HTTP请求");
         }
         if (ip.length() > 20) {
-            throw new IllegalArgumentException("IP地址(X-Real-IP)长度不能超过20字符");
+            throw new IllegalArgumentException("IP地址长度不能超过20字符，当前IP：" + ip);
         }
         if (!StringUtils.hasText(browser)) {
             throw new IllegalArgumentException("浏览器(Browser)不能为空");
@@ -281,8 +287,25 @@ public class JdecMonitorLogController {
 
     @PostMapping("/sendSystemNavLog")
     @Operation(
-            summary = "发送系统导航日志(Header传参)",
-            description = "通过Header参数记录系统导航日志，传入loginUserId和loginRoleId，服务端自动获取用户、角色和模拟用户信息")
+            summary = "发送系统导航日志(Header+Body传参)",
+            description =
+                    """
+                    通过Header传基础字段（项目编号、登录用户ID、登录角色ID、主体ID、mock标记、模拟用户ID），\
+                    POST Body传业务字段。服务端自动获取用户、角色、模拟用户信息，以及IP地址从HTTP请求获取。
+                    请求体内容和格式如下：
+                    {
+                      "moduleName": "模块名称",      // required, <=100字符
+                      "menuParam": "菜单参数",        // required
+                      "hrefName": "超链接文本",       // required
+                      "hrefUrl": "菜单跳转URL",       // required（用于拼装HTML，不单独存字段）
+                      "menuId": 123,                 // 可选
+                      "dataId": 456,                 // 可选
+                      "controlDesc": "操作描述",      // required（用于拼装HTML，不单独存字段）
+                      "browser": "Chrome",           // required, <=100字符，默认"unknown"
+                      "platForm": "Windows",         // 可选，默认"unknown"
+                      "systemName": "系统名称"        // required, <=100字符，默认"unknown"
+                    }
+                    """)
     public ApiResponse<Void> sendSystemNavLog(
             @Parameter(description = "项目编号", required = true) @RequestHeader("X-Project-No")
                     String projectNo,
@@ -297,16 +320,7 @@ public class JdecMonitorLogController {
             @Parameter(description = "模拟用户ID(mockFlag=1时必传)")
                     @RequestHeader(value = "Mock-User-Id", required = false)
                     Long mockUserId,
-            @Parameter(description = "IP地址", required = true) @RequestHeader("X-Real-IP") String ip,
-            @Parameter(description = "模块名称") @RequestHeader("Module-Name") String moduleName,
-            @Parameter(description = "菜单参数") @RequestHeader("Menu-Param") String menuParam,
-            @Parameter(description = "菜单名称") @RequestHeader("Href-Name") String hrefName,
-            @Parameter(description = "菜单URL") @RequestHeader("Href-Url") String hrefUrl,
-            @Parameter(description = "菜单操作描述") @RequestHeader("Control-Desc") String controlDesc,
-            @Parameter(description = "浏览器", required = true) @RequestHeader("Browser")
-                    String browser,
-            @Parameter(description = "系统名称", required = true) @RequestHeader("System-Name")
-                    String systemName) {
+            @Valid @RequestBody MonitorSystemNavPostReq postReq) {
 
         if (!StringUtils.hasText(projectNo)) {
             throw new IllegalArgumentException("项目编号(X-Project-No)不能为空");
@@ -318,60 +332,39 @@ public class JdecMonitorLogController {
             throw new IllegalArgumentException("登录角色ID(Login-Role-Id)不能为空且必须大于0");
         }
         if (subjectId == null || subjectId <= 0) {
-            throw new IllegalArgumentException("主体ID(subject-id)不能为空且必须大于0");
+            throw new IllegalArgumentException("主体ID(X-Subject-Id)不能为空且必须大于0");
         }
         SysProjectSubjectResp subjectResp = sysProjectSubjectApi.getById(subjectId);
         if (subjectResp == null) {
-            throw new IllegalArgumentException("主体信息不存在(subject-id=" + subjectId + ")");
+            throw new IllegalArgumentException("主体信息不存在(X-Subject-Id=" + subjectId + ")");
         }
         String subjectName = subjectResp.getSubjectName();
         if (!StringUtils.hasText(subjectName)) {
             throw new IllegalArgumentException("主体名称不能为空");
         }
         if (mockFlug == null || (mockFlug != 0 && mockFlug != 1)) {
-            throw new IllegalArgumentException("mock标记(mock-flug)不能为空且只能为0或1");
+            throw new IllegalArgumentException("mock标记(Mock-Flug)不能为空且只能为0或1");
         }
         if (mockFlug == 1) {
             if (mockUserId == null || mockUserId <= 0) {
-                throw new IllegalArgumentException("模拟用户ID(mock-user-id)不能为空且必须大于0");
+                throw new IllegalArgumentException("模拟用户ID(Mock-User-Id)不能为空且必须大于0");
             }
         }
+        String ip = RequestContextUtils.getClientIp();
         if (!StringUtils.hasText(ip)) {
-            throw new IllegalArgumentException("IP地址(ip)不能为空");
+            throw new IllegalArgumentException("IP地址获取失败，请检查HTTP请求");
         }
         if (ip.length() > 20) {
-            throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
+            throw new IllegalArgumentException("IP地址长度不能超过20字符，当前IP：" + ip);
         }
-        if (!StringUtils.hasText(moduleName)) {
-            throw new IllegalArgumentException("模块名称(module-name)不能为空");
-        }
-        if (moduleName.length() > 100) {
-            throw new IllegalArgumentException("模块名称(module-name)长度不能超过100字符");
-        }
-        if (!StringUtils.hasText(menuParam)) {
-            throw new IllegalArgumentException("菜单参数(menu-param)不能为空");
-        }
-        if (!StringUtils.hasText(hrefName)) {
-            throw new IllegalArgumentException("菜单名称(href-name)不能为空");
-        }
-        if (!StringUtils.hasText(hrefUrl)) {
-            throw new IllegalArgumentException("菜单操作URL(href-url)不能为空");
-        }
-        if (!StringUtils.hasText(controlDesc)) {
-            throw new IllegalArgumentException("操作描述(control-desc)不能为空");
-        }
-        if (!StringUtils.hasText(browser)) {
-            throw new IllegalArgumentException("浏览器(browser)不能为空");
-        }
-        if (browser.length() > 100) {
-            throw new IllegalArgumentException("浏览器(browser)长度不能超过100字符");
-        }
-        if (!StringUtils.hasText(systemName)) {
-            throw new IllegalArgumentException("系统名称(system-name)不能为空");
-        }
-        if (systemName.length() > 100) {
-            throw new IllegalArgumentException("系统名称(system-name)长度不能超过100字符");
-        }
+
+        String moduleName = postReq.getModuleName();
+        String menuParam = postReq.getMenuParam();
+        String hrefName = postReq.getHrefName();
+        String hrefUrl = postReq.getHrefUrl();
+        String controlDesc = postReq.getControlDesc();
+        String browser = postReq.getBrowser();
+        String systemName = postReq.getSystemName();
 
         MonitorSystemNavLogReq request = new MonitorSystemNavLogReq();
         request.setLoginUserId(loginUserId);
@@ -382,11 +375,12 @@ public class JdecMonitorLogController {
         request.setMockUserId(mockUserId);
         request.setIp(ip);
         request.setModuleName(moduleName);
+        request.setMenuId(postReq.getMenuId());
+        request.setDataId(postReq.getDataId());
         request.setMenuParam(menuParam);
         request.setHrefName(hrefName);
-        request.setControlUrl(hrefUrl);
-        request.setControlDesc(controlDesc);
         request.setBrowser(browser);
+        request.setPlatForm(postReq.getPlatForm());
         request.setSystemName(systemName);
         request.setLogContent(
                 "<span class=\"arco-table-td-content\"><div class=\"flex\"><span>["
