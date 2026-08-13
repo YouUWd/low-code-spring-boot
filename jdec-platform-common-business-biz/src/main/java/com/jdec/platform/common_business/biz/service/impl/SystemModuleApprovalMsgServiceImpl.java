@@ -21,6 +21,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -30,12 +31,16 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
 
     private final ConfigCenterApiService configCenterApiService;
 
+    @Value("${app.front-url}")
+    private String appFrontUrl;
+
     @Override
     public Boolean processApprovalMsg(
             Long subjectId,
             List<Map<String, Object>> processResult,
             ModuleFilterInfo moduleFilterInfo,
-            List<ModuleSaveReq> moduleSaveReqList) {
+            List<ModuleSaveReq> moduleSaveReqList,
+            Long dataId) {
         try {
             // 模块数据
             Map<String, Object> moduleData =
@@ -141,9 +146,22 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
                     }
                 }
                 Map<String, String> param = new HashMap<>();
-                param.putAll(parameterDTO.getApprovalParam());
-                param.putAll(bizParam);
-
+                if (CollectionUtil.isNotEmpty(parameterDTO.getApprovalParam())) {
+                    param.putAll(parameterDTO.getApprovalParam());
+                }
+                if (CollectionUtil.isNotEmpty(bizParam)) {
+                    param.putAll(bizParam);
+                }
+                // 构建项目地址参数  p-frontUrl
+                String origin = appFrontUrl;
+                if (origin != null) {
+                    if (origin.endsWith("/")) {
+                        origin = origin.substring(0, origin.lastIndexOf("/"));
+                    }
+                    param.put("p-frontUrl", origin);
+                }
+                // 构建系统名称  LoginUserUtil.getProjectNoFromHeader() 通过接口获取，目前写死定制
+                param.put("p-systemName", "学生管理系统");
                 BizWechatMsgDTO bizWechatMsgDTO =
                         BizWechatMsgDTO.builder()
                                 .token(LoginUserUtil.getTokenFromHeader())
@@ -151,6 +169,19 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
                                 .wechatTemplate(wechatTemplateDetailDTO)
                                 .acceptorList(parameterDTO.getAcceptorList())
                                 .param(param)
+                                .projectNo(LoginUserUtil.getProjectNoFromHeader())
+                                .logType("message-log")
+                                .platform(LoginUserUtil.getOsFromHeader())
+                                .browser(LoginUserUtil.getBrowserFromHeader())
+                                .ip(LoginUserUtil.getIpFromHeader())
+                                .origin(LoginUserUtil.getRefererFromHeader())
+                                .loginUserId(LoginUserUtil.getRealLoginUserId())
+                                .mockUserId(LoginUserUtil.getLoginUserId())
+                                .roleId(LoginUserUtil.getRoleId())
+                                .menuId(moduleSaveReqList.get(0).getMenuId())
+                                .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                                .moduleName(moduleFilterInfo.getModuleInfo().getModuleName())
+                                .dataId(String.valueOf(dataId))
                                 .build();
                 ComBizMsgEventPublisher.publishMsgEvent(BizMsgEnum.APPROVAL_CHAIN, bizWechatMsgDTO);
             }

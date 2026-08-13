@@ -1,6 +1,7 @@
 package com.jdec.platform.common_business.biz.dto;
 
 import java.io.Serializable;
+import java.util.List;
 import lombok.Builder;
 import lombok.Data;
 import lombok.ToString;
@@ -34,6 +35,8 @@ public class BizLogDTO implements Serializable {
 
     private String logRemark;
 
+    private String logContent;
+
     private Long menuId;
 
     private Long moduleId;
@@ -41,4 +44,13 @@ public class BizLogDTO implements Serializable {
     private String moduleName;
 
     private String dataId;
+
+    // 消息日志使用
+    private String hrefName;
+
+    private String orderVersion;
+
+    private String controlName;
+
+    private List<Long> messageReceivers;
 }

@@ -1143,7 +1143,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         List<Map<String, Object>> templateList =
                                 (List<Map<String, Object>>) data.get("templateList");
                         systemModuleApprovalMsgService.processApprovalMsg(
-                                subjectId, templateList, moduleFilterInfo, moduleSaveList);
+                                subjectId,
+                                templateList,
+                                moduleFilterInfo,
+                                moduleSaveList,
+                                approvalProcessReq.getRecordId());
                     } catch (Exception e) {
                         log.error("获取消息模版参数异常,e=", e);
                     }
@@ -1684,7 +1688,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         List<Map<String, Object>> templateList =
                                 (List<Map<String, Object>>) processResultMap.get("templateList");
                         systemModuleApprovalMsgService.processApprovalMsg(
-                                subjectId, templateList, moduleFilterInfo, moduleSaveList);
+                                subjectId,
+                                templateList,
+                                moduleFilterInfo,
+                                moduleSaveList,
+                                approvalProcessReq.getRecordId());
                     } catch (Exception e) {
                         log.error("获取消息模版参数异常,e=", e);
                     }

@@ -1,5 +1,7 @@
 package com.jdec.platform.common_business.biz.log.impl;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.MonitorLogApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
@@ -8,6 +10,7 @@ import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApi
 import com.jdec.platform.common_business.biz.enums.BizLogEnum;
 import com.jdec.platform.common_business.biz.log.BizLog;
 import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
+import com.jdec.platform.monitorlog.api.dto.request.MonitorBaseLogReq;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import java.util.Set;
 import lombok.AllArgsConstructor;
@@ -37,7 +40,12 @@ public class SelectRoleBizLog implements BizLog {
         if (bizLogDTO != null) {
             try {
                 TokenContextHolder.setCurrentUserToken(bizLogDTO.getToken());
-                MonitorControlLogReq req = getCommonReq(bizLogDTO);
+                MonitorBaseLogReq monitorBaseLogReq = getCommonReq(bizLogDTO);
+                MonitorControlLogReq req = new MonitorControlLogReq();
+                BeanUtil.copyProperties(
+                        monitorBaseLogReq,
+                        req,
+                        CopyOptions.create().ignoreNullValue().ignoreError());
                 ConfigApiResponse<RoleConfigDetailResp> roleConfigDetailRespConfigApiResponse =
                         configCenterApiOpenFeignClient.getRoleConfigDetail(
                                 bizLogDTO.getSubjectId(), bizLogDTO.getRoleId());

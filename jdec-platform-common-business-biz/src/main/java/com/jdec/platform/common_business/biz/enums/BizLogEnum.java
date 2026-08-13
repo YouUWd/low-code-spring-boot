@@ -4,5 +4,5 @@ public enum BizLogEnum {
     SELECT_ROLE,
     DATA_SAVE,
     DATA_UPDATE,
-    ;
+    MSG;
 }
