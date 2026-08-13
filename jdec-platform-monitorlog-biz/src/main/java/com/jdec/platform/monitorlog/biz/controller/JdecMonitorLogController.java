@@ -175,7 +175,8 @@ public class JdecMonitorLogController {
                     "通过Header参数记录系统控制日志，根据logType类型进行不同字段校验："
                             + "loginin/loginout/changerole/resetuser/changesubject 校验基础字段；"
                             + "mockuser/mockchangerole 额外校验模拟用户字段。"
-                            + "传入loginUserId和loginRoleId，服务端自动获取用户、角色和模拟用户信息")
+                            + "传入loginUserId和loginRoleId，服务端自动获取用户、角色和模拟用户信息。"
+                            + "Mock标记服务端自动推断：Mock-User-Id>0时为1，否则为0，无需传Mock-Flug。")
     public ApiResponse<Void> sendSystemLog(
             @Parameter(
                             description =
@@ -195,10 +196,7 @@ public class JdecMonitorLogController {
             @Parameter(description = "主体ID")
                     @RequestHeader(value = "X-Subject-Id", required = false)
                     Long subjectId,
-            @Parameter(description = "是否mock标记：0否；1是")
-                    @RequestHeader(value = "Mock-Flug", required = false)
-                    Integer mockFlug,
-            @Parameter(description = "模拟用户ID(mockFlag=1时必传)")
+            @Parameter(description = "模拟用户ID，大于0时自动开启mock模式")
                     @RequestHeader(value = "Mock-User-Id", required = false)
                     Long mockUserId,
             @Parameter(description = "浏览器") @RequestHeader(value = "Browser", required = false)
@@ -256,16 +254,23 @@ public class JdecMonitorLogController {
             throw new IllegalArgumentException("浏览器(Browser)长度不能超过100字符");
         }
 
-        if (mockFlug == null) {
-            mockFlug = isMockType ? 1 : 0;
-        }
-        if (mockFlug != 0 && mockFlug != 1) {
-            throw new IllegalArgumentException("mock标记(Mock-Flug)只能为0或1");
+        int mockFlug;
+        if (mockUserId != null && mockUserId > 0) {
+            if (mockUserId.equals(loginUserId)) {
+                mockUserId = null;
+                mockFlug = 0;
+            } else {
+                mockFlug = 1;
+            }
+        } else {
+            mockUserId = null;
+            mockFlug = 0;
         }
 
         if (isMockType || mockFlug == 1) {
-            if (mockUserId == null || mockUserId <= 0) {
-                throw new IllegalArgumentException("模拟用户ID(Mock-User-Id)不能为空且必须大于0");
+            if (mockUserId == null) {
+                throw new IllegalArgumentException(
+                        "模拟用户ID(Mock-User-Id)必须大于0且不能与Login-User-Id相同，日志类型为mockuser/mockchangerole或开启mock时必填");
             }
         }
 
@@ -290,8 +295,9 @@ public class JdecMonitorLogController {
             summary = "发送系统导航日志(Header+Body传参)",
             description =
                     """
-                    通过Header传基础字段（项目编号、登录用户ID、登录角色ID、主体ID、mock标记、模拟用户ID），\
-                    POST Body传业务字段。服务端自动获取用户、角色、模拟用户信息，以及IP地址从HTTP请求获取。
+                    通过Header传基础字段（项目编号、登录用户ID、登录角色ID、主体ID、模拟用户ID），\
+                    POST Body传业务字段。服务端自动获取用户、角色、模拟用户信息，以及IP地址从HTTP请求获取。\
+                    Mock标记服务端自动推断：Mock-User-Id>0时为1，否则为0，无需传Mock-Flug。
                     请求体内容和格式如下：
                     {
                       "moduleName": "模块名称",      // required, <=100字符
@@ -315,9 +321,7 @@ public class JdecMonitorLogController {
                     Long loginRoleId,
             @Parameter(description = "主体ID", required = true) @RequestHeader("X-Subject-Id")
                     Long subjectId,
-            @Parameter(description = "是否mock标记：0否；1是", required = true) @RequestHeader("Mock-Flug")
-                    Integer mockFlug,
-            @Parameter(description = "模拟用户ID(mockFlag=1时必传)")
+            @Parameter(description = "模拟用户ID，大于0时自动开启mock模式")
                     @RequestHeader(value = "Mock-User-Id", required = false)
                     Long mockUserId,
             @Valid @RequestBody MonitorSystemNavPostReq postReq) {
@@ -342,13 +346,17 @@ public class JdecMonitorLogController {
         if (!StringUtils.hasText(subjectName)) {
             throw new IllegalArgumentException("主体名称不能为空");
         }
-        if (mockFlug == null || (mockFlug != 0 && mockFlug != 1)) {
-            throw new IllegalArgumentException("mock标记(Mock-Flug)不能为空且只能为0或1");
-        }
-        if (mockFlug == 1) {
-            if (mockUserId == null || mockUserId <= 0) {
-                throw new IllegalArgumentException("模拟用户ID(Mock-User-Id)不能为空且必须大于0");
+        int mockFlug;
+        if (mockUserId != null && mockUserId > 0) {
+            if (mockUserId.equals(loginUserId)) {
+                mockUserId = null;
+                mockFlug = 0;
+            } else {
+                mockFlug = 1;
             }
+        } else {
+            mockUserId = null;
+            mockFlug = 0;
         }
         String ip = RequestContextUtils.getClientIp();
         if (!StringUtils.hasText(ip)) {
