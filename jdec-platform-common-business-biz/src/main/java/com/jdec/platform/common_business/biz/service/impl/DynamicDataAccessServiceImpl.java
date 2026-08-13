@@ -1629,7 +1629,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                         Long.parseLong(String.valueOf(primaryId))));
                     } else {
                         log.debug("recordId:{}数据存在于业务表，但审批链部分无数据，数据不返回。", primaryId);
-                        continue;
                     }
                 }
 
