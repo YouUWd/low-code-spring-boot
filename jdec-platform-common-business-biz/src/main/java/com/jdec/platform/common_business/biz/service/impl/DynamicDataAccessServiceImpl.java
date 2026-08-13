@@ -73,6 +73,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
     private static final String DEFAULT_PRIMARY_KEY = "id";
 
+    private static final String DEFAULT_BUSINESS_STATUS_KEY = "business_status";
+
     private static final String DEFAULT_SUBJECT_KEY = "subject_id";
 
     private static final String ONE2MULTI_RESULT_KEY_SUFFIX = "List";
@@ -1628,7 +1630,31 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                 recordIdToApprovalData.get(
                                         Long.parseLong(String.valueOf(primaryId))));
                     } else {
-                        log.debug("recordId:{}数据存在于业务表，但审批链部分无数据，数据不返回。", primaryId);
+                        log.debug("recordId:{}数据存在于业务表，但审批链部分无数据，手动补全相关信息。", primaryId);
+                        Object businessStatus =
+                                primaryTablePrefixResultMap.get(
+                                        finalModuleFilterInfo4.getModuleInfo().getPrimaryTable()
+                                                + DB_TABLE_FIELD_SEPARATOR
+                                                + DEFAULT_BUSINESS_STATUS_KEY);
+
+                        if (Objects.nonNull(businessStatus)
+                                && Integer.parseInt(String.valueOf(businessStatus)) == -99) {
+                            primaryTablePrefixResultMap.put(
+                                    "btnList",
+                                    Set.of(
+                                            FormButton.builder()
+                                                    .buttonKey("edit")
+                                                    .buttonName("编辑草稿")
+                                                    .build()));
+                        } else {
+                            primaryTablePrefixResultMap.put(
+                                    "btnList",
+                                    Set.of(
+                                            FormButton.builder()
+                                                    .buttonKey("view")
+                                                    .buttonName("查阅")
+                                                    .build()));
+                        }
                     }
                 }
 

@@ -8,6 +8,7 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.req.*;
@@ -2366,9 +2367,17 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 }
                 return "";
             case "reason":
-                return Objects.nonNull(approvalProcessDTO.getReason())
-                        ? approvalProcessDTO.getReason()
-                        : "";
+                String reason = "";
+                if (Objects.nonNull(approvalProcessDTO.getReason())) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    try {
+                        JsonNode jsonNode = mapper.readTree(approvalProcessDTO.getReason());
+                        reason = jsonNode.path("comment").asText("");
+                    } catch (Exception e) {
+                        reason = "";
+                    }
+                }
+                return reason;
             default:
                 // 其他字段直接从sourceData中获取
                 Object value = getFieldValueFromSource(sourceData, slug);
