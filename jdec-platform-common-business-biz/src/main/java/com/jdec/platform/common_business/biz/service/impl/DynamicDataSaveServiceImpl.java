@@ -1516,8 +1516,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 upsertSnapshot(moduleFilterInfo.getModuleInfo().getPrimaryTable(), null, recordId);
             }
-            case SUBMIT, REJECT, PASS -> {
+            case SUBMIT, REJECT, PASS, DRAFT_SUBMIT -> {
                 log.debug("提交表单，更新业务数据。");
+
+                if (buttonType == ApprovalButtonType.DRAFT_SUBMIT) {
+                    // 提交给审批链的btnType置为submit
+                    approvalOperation.setBtnType(ApprovalButtonType.CREATE.getKey());
+                }
 
                 // 获取变更前数据id
                 Long oldRecordId =
@@ -1565,6 +1570,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 Map<String, Object> fillDataMap = new HashMap<>();
                 fillDataMap.put("sourceId", 0L);
+                // 将businessStatus恢复原值
+                fillDataMap.put("businessStatus", 0);
                 fillModuleData(
                         moduleSaveList,
                         subjectId,
@@ -1613,6 +1620,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         roleId,
                         targetTopMenu.getModuleId(),
                         fillDataMap);
+
+                // 保存当前recordId对应的数据
+                editMultiModuleData(subjectId, roleId, moduleSaveList);
+            }
+                // 实时保存
+            case DRAFT_REAL_TIME_CHANGE -> {
+                log.debug("草稿实时保存，更新当前数据。");
 
                 // 保存当前recordId对应的数据
                 editMultiModuleData(subjectId, roleId, moduleSaveList);
