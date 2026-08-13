@@ -1,6 +1,9 @@
 package com.jdec.platform.common_business.biz.log.impl;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.collection.CollectionUtil;
+import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.HrUserApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.MonitorLogApiOpenFeignClient;
@@ -12,6 +15,7 @@ import com.jdec.platform.common_business.biz.log.BizLog;
 import com.jdec.platform.config.api.dto.response.RoleConfigDetailResp;
 import com.jdec.platform.config.api.dto.response.SubjectOptionResp;
 import com.jdec.platform.hr.api.bo.UserBO;
+import com.jdec.platform.monitorlog.api.dto.request.MonitorBaseLogReq;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -42,7 +46,12 @@ public class DataUpdateBizLog implements BizLog {
         if (bizLogDTO != null) {
             try {
                 TokenContextHolder.setCurrentUserToken(bizLogDTO.getToken());
-                MonitorControlLogReq req = getCommonReq(bizLogDTO);
+                MonitorBaseLogReq monitorBaseLogReq = getCommonReq(bizLogDTO);
+                MonitorControlLogReq req = new MonitorControlLogReq();
+                BeanUtil.copyProperties(
+                        monitorBaseLogReq,
+                        req,
+                        CopyOptions.create().ignoreNullValue().ignoreError());
                 ConfigApiResponse<List<SubjectOptionResp>> subjectResponse =
                         configCenterApiOpenFeignClient.getAllSubjects(bizLogDTO.getSubjectId());
                 if (ConfigApiResponse.isSuccessResponse(subjectResponse)
@@ -121,22 +130,22 @@ public class DataUpdateBizLog implements BizLog {
                 req.setDataId(Long.valueOf(bizLogDTO.getDataId()));
                 req.setLogRemark(bizLogDTO.getLogRemark());
 
-                //                String menuTitle = "";
-                //                ConfigApiResponse<List<MenuListResp>> resp =
-                //                        configCenterApiOpenFeignClient.getMenuList(
-                //                                bizLogDTO.getSubjectId(), Integer.valueOf("1"));
-                //                if (ConfigApiResponse.isSuccessResponse(resp)
-                //                        && CollectionUtil.isNotEmpty(resp.getData())) {
-                //                    MenuListResp menu =
-                //                            resp.getData().stream()
-                //                                    .filter(x ->
-                // x.getId().equals(bizLogDTO.getMenuId()))
-                //                                    .findFirst()
-                //                                    .orElse(null);
-                //                    if (menu != null) {
-                //                        menuTitle = menu.getParam();
-                //                    }
-                //                }
+                String menuParam = "";
+                ConfigApiResponse<List<MenuListResp>> resp =
+                        configCenterApiOpenFeignClient.getMenuList(
+                                bizLogDTO.getSubjectId(), Integer.valueOf("1"));
+                if (ConfigApiResponse.isSuccessResponse(resp)
+                        && CollectionUtil.isNotEmpty(resp.getData())) {
+                    MenuListResp menu =
+                            resp.getData().stream()
+                                    .filter(x -> x.getId().equals(bizLogDTO.getMenuId()))
+                                    .findFirst()
+                                    .orElse(null);
+                    if (menu != null) {
+                        menuParam = menu.getParam();
+                    }
+                }
+                req.setMenuParam(menuParam);
                 //                String hrefUrl = null;
                 //                if (bizLogDTO.getOrigin() != null) {
                 //                    if (bizLogDTO.getOrigin().endsWith("/")) {

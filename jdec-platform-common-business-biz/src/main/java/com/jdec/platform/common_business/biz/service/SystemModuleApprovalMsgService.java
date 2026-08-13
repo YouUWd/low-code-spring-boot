@@ -11,5 +11,6 @@ public interface SystemModuleApprovalMsgService {
             Long subjectId,
             List<Map<String, Object>> processResult,
             ModuleFilterInfo moduleFilterInfo,
-            List<ModuleSaveReq> moduleSaveReqList);
+            List<ModuleSaveReq> moduleSaveReqList,
+            Long dataId);
 }

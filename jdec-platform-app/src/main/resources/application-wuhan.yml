@@ -194,11 +194,11 @@ biz:
 
 config:
   center:
-    base: http://119.36.78.123:5009
+    base: http://127.0.0.1:8080
 
 
 app:
-  front-url: http://119.36.78.123:5988
+  front-url: http://192.168.60.253:5008
   system-name: 人力资源系统-Java
   internal:
     url: http://192.168.2.41:5101/home
