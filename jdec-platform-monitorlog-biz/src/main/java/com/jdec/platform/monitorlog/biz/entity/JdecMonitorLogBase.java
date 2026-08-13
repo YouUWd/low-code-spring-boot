@@ -102,6 +102,10 @@ public class JdecMonitorLogBase implements Serializable {
     @TableField(exist = false)
     private String actionTypeTitle;
 
+    @Schema(description = "审批动作类型")
+    @TableField(exist = false)
+    private String actionType;
+
     @Schema(description = "模拟用户角色ID;模拟用户角色ID（兼容保留）")
     @TableField(exist = false)
     private Long mockRoleId;

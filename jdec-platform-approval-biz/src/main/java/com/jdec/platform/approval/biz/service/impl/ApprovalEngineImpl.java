@@ -221,10 +221,17 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 查询操作人在当前模块下的审批链业务代办/已办/全部数量-------------------------------------------
     @Override
     public Map<String, Object> getBusinessTypeList(ApprovalListReq approvalProcessReq) {
+        Map<String, Object> resultMap = new HashMap<>();
+        if (approvalProcessReq.getModuleIdList().isEmpty()
+                || approvalProcessReq.getSubjectIdList().isEmpty()) {
+            resultMap.put("todoNum", 0);
+            resultMap.put("doneNum", 0);
+            resultMap.put("allNum", 0);
+            return resultMap;
+        }
         List<Long> approvalTypeIds =
                 sysApprovalChainConfigApi.getApprovalTypeIdList(
                         approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
-        Map<String, Object> resultMap = new HashMap<>();
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
         todoWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
         todoWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
@@ -297,6 +304,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 item ->
                         !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
                                 && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
+        for (ApprovalBusiness item : submitList) {
+            ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
+            approvalProcessDTO.setModuleId(item.getModuleId());
+            approvalProcessDTO.setRoleId(approvalProcessReq.getRoleId());
+            if (!checkRight(approvalProcessDTO)) {
+                allList.removeIf(iterate -> iterate.getId().equals(item.getId()));
+            }
+        }
         resultMap.put("allNum", allList.size());
         return resultMap;
     }
@@ -306,6 +321,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     public List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq) {
         List<ApprovalBusiness> toDoList = new ArrayList<>();
         List<Map<String, Object>> respList = new ArrayList<>();
+        if (approvalListReq.getModuleIdList().isEmpty()
+                || approvalListReq.getSubjectIdList().isEmpty()) {
+            return respList;
+        }
         List<Long> approvalTypeIds =
                 sysApprovalChainConfigApi.getApprovalTypeIdList(
                         approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
@@ -381,8 +400,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
             processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
             processWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-            // processWrapper.eq(ApprovalBusiness::getApprovalUids,
-            // approvalListReq.getApplicantId());
             processWrapper.apply(
                     "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
             processWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
@@ -408,6 +425,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                     && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
             Set<Long> ids =
                     toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
+            allList.removeIf(
+                    item ->
+                            Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
+                                    && item.getCurrentStep().equals(0)
+                                    && !ids.contains(item.getId()));
             for (ApprovalBusiness item : allList) {
                 if (ids.contains(item.getId())) {
                     respList.add(convertMapResp(item, 1));
@@ -1620,18 +1642,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             map.put("isCollaboration", item.getCollaborated());
             map.put("approvalRule", item.getApprovalRule());
             data.add(map);
-
-            // 注释代码完全保留（和PHP一致）
-            /*
-            if (isHighlight == 1) {
-                List<String> ruleList = Arrays.asList("all_data_upload_done_role_group", ...);
-                if (ruleList.contains(item.getApprovalRule())) {
-                    if (index > 0 && data.get(index-1).get("is_operate").equals(1)) {
-                        data.get(index-1).put("can_do", 1);
-                    }
-                }
-            }
-            */
 
             // 6. 最后一步追加【下一状态】
             if (x == length) {

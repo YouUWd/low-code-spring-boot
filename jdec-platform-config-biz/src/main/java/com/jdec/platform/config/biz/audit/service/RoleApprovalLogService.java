@@ -54,7 +54,7 @@ public class RoleApprovalLogService {
                 buildCreateActions(request, subjectMap, hrUserMap);
 
         // 2. 发送审批日志
-        sendApprovalLog("新增", moduleActions);
+        sendApprovalLog("新增", roleId, moduleActions);
     }
 
     /**
@@ -96,7 +96,7 @@ public class RoleApprovalLogService {
         moduleAction.put("actions", Collections.singletonList(actionDetail));
 
         // 3. 发送审批日志
-        sendApprovalLog("修改", Collections.singletonList(moduleAction));
+        sendApprovalLog("修改", roleId, Collections.singletonList(moduleAction));
     }
 
     /**
@@ -110,7 +110,7 @@ public class RoleApprovalLogService {
         List<Map<String, Object>> moduleActions = buildDeleteActions(roleName);
 
         // 发送审批日志
-        sendApprovalLog("删除", moduleActions);
+        sendApprovalLog("删除", roleId, moduleActions);
     }
 
     // ==================== 构建新增操作 ====================
@@ -280,9 +280,11 @@ public class RoleApprovalLogService {
      * 发送审批日志到监控服务
      *
      * @param operation 操作描述（新增/修改/删除）
+     * @param dataId 业务单据主键ID
      * @param moduleActions ModuleAction 列表
      */
-    private void sendApprovalLog(String operation, List<Map<String, Object>> moduleActions) {
+    private void sendApprovalLog(
+            String operation, Long dataId, List<Map<String, Object>> moduleActions) {
         try {
             // 构建 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
@@ -297,6 +299,7 @@ public class RoleApprovalLogService {
                     AuditLogSendContext.builder()
                             .module(MODULE)
                             .subModule(SUB_MODULE)
+                            .dataId(dataId)
                             .controlName(controlName)
                             .logRemark(remark)
                             .build();
@@ -307,13 +310,13 @@ public class RoleApprovalLogService {
         }
     }
 
-    /** 在事务提交前发送审计日志（非阻塞，失败不影响业务事务） */
+    /** 在事务提交成功后发送审计日志（非阻塞，失败不影响业务事务） */
     private void sendAuditLogRequest(AuditLogSendContext context) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
-                        public void beforeCommit(boolean readOnly) {
+                        public void afterCommit() {
                             auditLogSendService.sendAuditLog(context);
                         }
 

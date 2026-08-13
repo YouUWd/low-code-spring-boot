@@ -175,13 +175,14 @@ public class DataAuditService {
      * @param subModule 业务子模块
      * @param operation 操作类型（如：修改、删除）
      * @param tableName 表名
+     * @param dataId 数据ID
      */
     public void auditWithoutCompare(
-            String module, String subModule, String operation, String tableName) {
+            String module, String subModule, String operation, String tableName, Long dataId) {
         try {
             // 发送审计日志（无差异）
             sendAuditLog(
-                    module, subModule, operation, tableName, null, Collections.emptyList(), "");
+                    module, subModule, operation, tableName, dataId, Collections.emptyList(), "");
 
         } catch (Exception e) {
             log.error("数据审计失败（无对比）: module={}, table={}", module, tableName, e);
@@ -407,6 +408,7 @@ public class DataAuditService {
      * @param subModule 业务子模块
      * @param operation 操作描述（如:"修改了test角色的邓由由用户的有效期"）
      * @param tableName 表名
+     * @param dataId 数据ID
      * @param diffs 自定义的字段差异列表
      */
     public void auditWithCustomDiff(
@@ -414,10 +416,11 @@ public class DataAuditService {
             String subModule,
             String operation,
             String tableName,
+            Long dataId,
             List<FieldDiff> diffs) {
         try {
             // 发送审计日志
-            sendAuditLog(module, subModule, operation, tableName, null, diffs, "");
+            sendAuditLog(module, subModule, operation, tableName, dataId, diffs, "");
 
         } catch (Exception e) {
             log.error("数据审计失败（自定义diff）: module={}, table={}", module, tableName, e);
@@ -434,6 +437,7 @@ public class DataAuditService {
      * @param subModule 业务子模块
      * @param operation 操作描述（如："新增权限"、"取消权限"）
      * @param tableName 表名
+     * @param dataId 数据ID
      * @param remarkJson 自定义的 logRemark JSON 字符串
      */
     public void auditWithCustomRemark(
@@ -441,9 +445,10 @@ public class DataAuditService {
             String subModule,
             String operation,
             String tableName,
+            Long dataId,
             String remarkJson) {
         try {
-            sendAuditLogWithRemark(module, subModule, operation, tableName, remarkJson);
+            sendAuditLogWithRemark(module, subModule, operation, tableName, dataId, remarkJson);
         } catch (Exception e) {
             log.error("数据审计失败（自定义remark）: module={}, table={}", module, tableName, e);
         }
@@ -516,6 +521,7 @@ public class DataAuditService {
             String subModule,
             String operation,
             String tableName,
+            Long dataId,
             String remarkJson) {
 
         // 构建logContent
@@ -537,6 +543,7 @@ public class DataAuditService {
                 AuditLogSendContext.builder()
                         .module(module)
                         .subModule(subModule)
+                        .dataId(dataId)
                         .controlName(controlName)
                         .logRemark(remark)
                         .build();
@@ -545,9 +552,9 @@ public class DataAuditService {
     }
 
     /**
-     * 注册事务同步，在事务提交前构建并发送审计日志（非阻塞，失败不影响业务事务）。
+     * 注册事务同步，在事务提交成功后发送审计日志（非阻塞，失败不影响业务事务）。
      *
-     * <p>如果业务方法抛出未捕获异常导致事务回滚，beforeCommit 不会被调用，审计日志不会发送。
+     * <p>仅事务提交成功后才发送审计日志；如果业务方法抛出未捕获异常导致事务回滚，则不会发送。
      *
      * @param context 审计日志发送上下文
      */
@@ -556,7 +563,7 @@ public class DataAuditService {
             TransactionSynchronizationManager.registerSynchronization(
                     new TransactionSynchronization() {
                         @Override
-                        public void beforeCommit(boolean readOnly) {
+                        public void afterCommit() {
                             auditLogSendService.sendAuditLog(context);
                         }
 

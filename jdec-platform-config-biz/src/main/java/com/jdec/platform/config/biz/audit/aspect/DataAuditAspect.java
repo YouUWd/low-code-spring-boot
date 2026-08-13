@@ -132,13 +132,13 @@ public class DataAuditAspect {
                             .operateTime(LocalDateTime.now())
                             .build();
 
-            // 注册事务同步回调，在事务提交前发送审计日志（失败触发回滚）
+            // 注册事务同步回调，事务提交成功后发送审计日志（回滚则不发送）
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
-                            public void beforeCommit(boolean readOnly) {
-                                // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
+                            public void afterCommit() {
+                                // 仅在事务提交成功后发送审计日志
                                 sendAuditLog(auditResult);
                             }
 
@@ -233,19 +233,15 @@ public class DataAuditAspect {
                             .build();
 
             // 注册事务同步回调
-            // 注意：审计日志在 beforeCommit 中发送，发送失败会触发事务回滚
-            // 快照更新在 afterCommit 中执行（事务已提交，快照与日志无强一致性要求）
+            // 注意：审计日志在 afterCommit 中发送，仅事务提交成功后才发送（回滚则不发送）
+            // 快照更新也在 afterCommit 中执行（事务已提交，快照与日志无强一致性要求）
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
-                            public void beforeCommit(boolean readOnly) {
-                                // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
-                                sendAuditLog(auditResult);
-                            }
-
-                            @Override
                             public void afterCommit() {
+                                // 事务提交成功后发送审计日志
+                                sendAuditLog(auditResult);
                                 // 事务提交后更新或创建快照
                                 if (isCreate) {
                                     // 新增：创建快照
@@ -316,19 +312,15 @@ public class DataAuditAspect {
                             .build();
 
             // 注册事务同步回调
-            // 注意：审计日志在 beforeCommit 中发送，发送失败会触发事务回滚
-            // 快照创建在 afterCommit 中执行
+            // 注意：审计日志在 afterCommit 中发送，仅事务提交成功后才发送（回滚则不发送）
+            // 快照创建也在 afterCommit 中执行
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
-                            public void beforeCommit(boolean readOnly) {
-                                // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
-                                sendAuditLog(auditResult);
-                            }
-
-                            @Override
                             public void afterCommit() {
+                                // 事务提交成功后发送审计日志
+                                sendAuditLog(auditResult);
                                 // 创建快照（检查是否已存在，避免业务代码手动创建后重复）
                                 SysDataSnapshot existingSnapshot =
                                         snapshotService.getLatestSnapshot(tableName, dataId);
@@ -435,13 +427,13 @@ public class DataAuditAspect {
                             .operateTime(LocalDateTime.now())
                             .build();
 
-            // 注册事务同步回调，在事务提交前发送审计日志（失败触发回滚）
+            // 注册事务同步回调，事务提交成功后发送审计日志（回滚则不发送）
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
                         new TransactionSynchronization() {
                             @Override
-                            public void beforeCommit(boolean readOnly) {
-                                // 在事务提交前发送审计日志，失败则抛异常触发事务回滚
+                            public void afterCommit() {
+                                // 仅在事务提交成功后发送审计日志
                                 sendAuditLog(auditResult);
                             }
 
@@ -673,7 +665,7 @@ public class DataAuditAspect {
      * <p>仅组装调用方自定义的字段（单据ID、操作名称、备注），其余信息（登录用户/模拟用户、角色、主体、菜单、模块、IP、浏览器、平台等） 由 {@link
      * AuditLogSendService} 根据当前请求上下文统一补全后发送。
      *
-     * <p>注意：此方法在事务提交前调用，发送失败仅记录日志，不会影响业务事务。
+     * <p>注意：此方法在事务提交成功后调用，发送失败仅记录日志，不会影响业务事务。
      */
     private void sendAuditLog(AuditResult auditResult) {
         // 构建controlName（单据操作名称）- 简化为"修改了XX配置"、"新增了XX配置"、"删除了XX配置"
