@@ -427,7 +427,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
             allList.removeIf(
                     item ->
-                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
+                            Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
                                     && item.getCurrentStep().equals(0)
                                     && !ids.contains(item.getId()));
             for (ApprovalBusiness item : allList) {
