@@ -265,76 +265,107 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             if (Objects.nonNull(tablePrefixResultMap)) {
 
                 // 查询版本对比信息数据
-                if (hasApproval && !approvalInfo.containsKey("showChangeList")) {
-                    ApprovalDataReq approvalDataReq = new ApprovalDataReq();
-                    // 此处应用顶层主模块ID
-                    approvalDataReq.setModuleId(moduleId);
-                    approvalDataReq.setRecordId(id);
-                    approvalDataReq.setSubjectId(subjectId);
+                if (hasApproval) {
+                    if (!approvalInfo.isEmpty()) {
+                        if (!approvalInfo.containsKey("showChangeList")) {
+                            ApprovalDataReq approvalDataReq = new ApprovalDataReq();
+                            // 此处应用顶层主模块ID
+                            approvalDataReq.setModuleId(moduleId);
+                            approvalDataReq.setRecordId(id);
+                            approvalDataReq.setSubjectId(subjectId);
 
-                    Integer versionNo =
-                            Integer.parseInt(String.valueOf(approvalInfo.get("versionNo")));
+                            Integer versionNo =
+                                    Integer.parseInt(String.valueOf(approvalInfo.get("versionNo")));
 
-                    Map<String, Object> versionInfo = new HashMap<>();
+                            Map<String, Object> versionInfo = new HashMap<>();
 
-                    ConfigApiResponse<Map<String, Object>> versionInfoResult =
-                            approvalApiOpenFeignClient.getApprovalChangeData(
-                                    subjectId, approvalDataReq);
-                    if (ConfigApiResponse.isSuccessResponse(versionInfoResult)) {
-                        versionInfo = versionInfoResult.getData();
-                    } else {
-                        try {
-                            log.debug(
-                                    "调用审批链:{}方法失败 , 请求参数:{}",
-                                    "getApprovalChangeData",
-                                    JsonUtil.obj2Json(approvalDataReq));
-                        } catch (JsonProcessingException e) {
-                            log.debug("请求参数json序列化失败。");
+                            ConfigApiResponse<Map<String, Object>> versionInfoResult =
+                                    approvalApiOpenFeignClient.getApprovalChangeData(
+                                            subjectId, approvalDataReq);
+                            if (ConfigApiResponse.isSuccessResponse(versionInfoResult)) {
+                                versionInfo = versionInfoResult.getData();
+                            } else {
+                                try {
+                                    log.debug(
+                                            "调用审批链:{}方法失败 , 请求参数:{}",
+                                            "getApprovalChangeData",
+                                            JsonUtil.obj2Json(approvalDataReq));
+                                } catch (JsonProcessingException e) {
+                                    log.debug("请求参数json序列化失败。");
+                                }
+                            }
+
+                            // 查询快照数据
+                            QueryWrapper snapshotQuery = Wrappers.query();
+                            snapshotQuery.eq("source_id", id);
+                            Object snapshotData = primaryMapper.selectOne(snapshotQuery);
+
+                            Long snapshotDataId = null;
+                            if (Objects.nonNull(snapshotData)) {
+                                log.debug("recordId:{}存在快照数据，返回版本对比数据。", id);
+
+                                Field field =
+                                        ReflectionUtils.findField(
+                                                snapshotData.getClass(), DEFAULT_PRIMARY_KEY);
+                                field.setAccessible(true);
+                                snapshotDataId =
+                                        Long.parseLong(
+                                                String.valueOf(
+                                                        ReflectionUtils.getField(
+                                                                field, snapshotData)));
+                            }
+
+                            VersionCompareInfo fieldChangeList =
+                                    buildFieldChangeListData(
+                                            moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                                            id,
+                                            versionInfo.get("sourceRecordId") == null
+                                                    ? null
+                                                    : Long.parseLong(
+                                                            String.valueOf(
+                                                                    versionInfo.get(
+                                                                            "sourceRecordId"))),
+                                            snapshotDataId,
+                                            versionInfo.get("sourceVersion") == null
+                                                    ? null
+                                                    : Integer.parseInt(
+                                                            String.valueOf(
+                                                                    versionInfo.get(
+                                                                            "sourceVersion"))),
+                                            versionInfo.get("currentVersion") == null
+                                                    ? null
+                                                    : Integer.parseInt(
+                                                            String.valueOf(
+                                                                    versionInfo.get(
+                                                                            "currentVersion"))));
+
+                            if (Objects.nonNull(fieldChangeList)) {
+                                idToVersionCompareInfo.put(id, fieldChangeList);
+                            }
                         }
-                    }
+                    } else if (tablePrefixResultMap.containsKey(
+                                    finalModuleFilterInfo2.getModuleInfo().getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + "businessStatus")
+                            && Integer.parseInt(
+                                            String.valueOf(
+                                                    tablePrefixResultMap.get(
+                                                            finalModuleFilterInfo2
+                                                                            .getModuleInfo()
+                                                                            .getPrimaryTable()
+                                                                    + DB_TABLE_FIELD_SEPARATOR
+                                                                    + "businessStatus")))
+                                    == -88) {
 
-                    // 查询快照数据
-                    QueryWrapper snapshotQuery = Wrappers.query();
-                    snapshotQuery.eq("source_id", id);
-                    Object snapshotData = primaryMapper.selectOne(snapshotQuery);
-
-                    Long snapshotDataId = null;
-                    if (Objects.nonNull(snapshotData)) {
-                        log.debug("recordId:{}存在快照数据，返回版本对比数据。", id);
-
-                        Field field =
-                                ReflectionUtils.findField(
-                                        snapshotData.getClass(), DEFAULT_PRIMARY_KEY);
-                        field.setAccessible(true);
-                        snapshotDataId =
-                                Long.parseLong(
-                                        String.valueOf(
-                                                ReflectionUtils.getField(field, snapshotData)));
-                    }
-
-                    VersionCompareInfo fieldChangeList =
-                            buildFieldChangeListData(
-                                    moduleFilterInfo.getModuleInfo().getPrimaryTable(),
-                                    id,
-                                    versionInfo.get("sourceRecordId") == null
-                                            ? null
-                                            : Long.parseLong(
-                                                    String.valueOf(
-                                                            versionInfo.get("sourceRecordId"))),
-                                    snapshotDataId,
-                                    versionInfo.get("sourceVersion") == null
-                                            ? null
-                                            : Integer.parseInt(
-                                                    String.valueOf(
-                                                            versionInfo.get("sourceVersion"))),
-                                    versionInfo.get("currentVersion") == null
-                                            ? null
-                                            : Integer.parseInt(
-                                                    String.valueOf(
-                                                            versionInfo.get("currentVersion"))));
-
-                    if (Objects.nonNull(fieldChangeList)) {
-                        idToVersionCompareInfo.put(id, fieldChangeList);
+                        if (moduleFilterInfo.getBtnList().stream()
+                                .anyMatch(
+                                        ele ->
+                                                FormButtonEnum.EDITE
+                                                        .getKey()
+                                                        .equals(ele.getButtonKey()))) {
+                            log.debug("该条数据为草稿数据且有编辑权限,数据id:{}", id);
+                            resultMap.put("draftFlag", true);
+                        }
                     }
                 }
 
@@ -3832,6 +3863,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             }
         }
 
+        // 页面能否编辑标志位
+        boolean canEdit = false;
         String approvalBtnType = "view";
         if (approvalInfo.containsKey("canEdit")) {
             approvalBtnType =
@@ -3845,9 +3878,16 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
         int count = 0;
 
         for (MenuListResp menu : targetModules) {
-            ModuleFilterInfo moduleFilterInfo =
-                    moduleInfoWithPermissionService.filterModuleInfoWithApproval(
-                            subjectId, roleId, menu.getModuleId(), approvalBtnType, List.of());
+            ModuleFilterInfo moduleFilterInfo = null;
+            if (approvalInfo.isEmpty()) {
+                moduleFilterInfo =
+                        moduleInfoWithPermissionService.filterModuleInfo(
+                                subjectId, roleId, menu.getModuleId(), "", List.of());
+            } else {
+                moduleFilterInfo =
+                        moduleInfoWithPermissionService.filterModuleInfoWithApproval(
+                                subjectId, roleId, menu.getModuleId(), approvalBtnType, List.of());
+            }
 
             try {
                 if ("LIST".equals(moduleFilterInfo.getModuleInfo().getModuleType())) {
@@ -3866,10 +3906,17 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     .type(null)
                                     .dataRightFilter(dataRightFilter)
                                     .build();
-                    resultMap.put(menu.getId(), dynamicQueryListData(listQueryParam, null));
+                    Map<String, Object> listResultMap = dynamicQueryListData(listQueryParam, null);
+                    if (listResultMap.containsKey("draftFlag")
+                            && Boolean.getBoolean(String.valueOf(listResultMap.get("draftFlag")))) {
+                        if (!canEdit) {
+                            log.debug("草稿查看且可以编辑。");
+                            canEdit = true;
+                        }
+                    }
+                    resultMap.put(menu.getId(), listResultMap);
                 } else {
-                    resultMap.put(
-                            menu.getId(),
+                    Map<String, Object> detailResultMap =
                             dynamicQueryDetailData(
                                     subjectId,
                                     roleId,
@@ -3878,7 +3925,16 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     null,
                                     moduleFilterInfo,
                                     true,
-                                    approvalInfo));
+                                    approvalInfo);
+                    if (detailResultMap.containsKey("draftFlag")
+                            && Boolean.parseBoolean(
+                                    String.valueOf(detailResultMap.get("draftFlag")))) {
+                        if (!canEdit) {
+                            log.debug("草稿查看且可以编辑。");
+                            canEdit = true;
+                        }
+                    }
+                    resultMap.put(menu.getId(), detailResultMap);
                 }
             } catch (BusinessException e) {
                 log.debug(
@@ -3907,6 +3963,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             resultMap.put("realTimeSaveFlag", false);
         } else {
             resultMap.put("realTimeSaveFlag", true);
+        }
+
+        if (canEdit) {
+            log.debug("草稿查看模式且模块有编辑权限，显示提交按钮并放开实时保存。");
+            resultMap.put(
+                    "btnList",
+                    Set.of(
+                            FormButton.builder()
+                                    .buttonKey("draft-submit")
+                                    .buttonName("提交")
+                                    .build()));
+            resultMap.put("realTimeSaveFlag", true);
+            resultMap.put("draftFlag", true);
         }
 
         return resultMap;

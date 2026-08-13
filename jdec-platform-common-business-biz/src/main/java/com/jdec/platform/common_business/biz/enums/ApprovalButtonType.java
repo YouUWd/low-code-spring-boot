@@ -6,6 +6,7 @@ import lombok.Getter;
 public enum ApprovalButtonType {
     VIEW("view", "查阅"),
     SUBMIT("submit", "提交"),
+    DRAFT_SUBMIT("draft-submit", "提交"),
     EDIT("edit", "编辑"),
     CANCEL("cancel", "取消"),
     PASS("pass", "通过"),
@@ -16,6 +17,7 @@ public enum ApprovalButtonType {
     CHANGE("change", "变更"),
 
     REAL_TIME_CHANGE("realTime", "实时保存"),
+    DRAFT_REAL_TIME_CHANGE("draf-realTime", "实时保存"),
     DRAFT("draft", "草稿保存");
 
     private final String key;
