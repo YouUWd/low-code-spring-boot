@@ -1629,7 +1629,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                         Long.parseLong(String.valueOf(primaryId))));
                     } else {
                         log.debug("recordId:{}数据存在于业务表，但审批链部分无数据，数据不返回。", primaryId);
-                        continue;
                     }
                 }
 
@@ -1644,6 +1643,14 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         // 组装返回数据
         resultMap.put("records", dataList);
+
+        if (hasApproval) {
+            log.debug(
+                    "审批链查询返回总条数:{} ，查询type={} , 查询数据总条数:{}",
+                    approvalListResps.size(),
+                    queryParam.getType(),
+                    Objects.nonNull(page) ? pageData.getTotal() : dataList.size());
+        }
 
         buildConfigData(
                 resultMap,

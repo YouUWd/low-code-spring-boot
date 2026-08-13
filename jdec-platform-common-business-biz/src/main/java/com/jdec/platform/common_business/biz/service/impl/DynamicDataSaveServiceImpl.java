@@ -1433,20 +1433,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         throw new RuntimeException(e);
                     }
 
-                    Map<String, Object> oldDatafillDataMap = new HashMap<>();
-                    oldDatafillDataMap.put("moduleId", targetTopMenu.getModuleId());
-                    oldDatafillDataMap.put("deleted", true);
-
-                    // 创建前先填充module_id、deleted字段值
-                    fillModuleData(
-                            copyModuleSaveList,
-                            subjectId,
-                            roleId,
-                            targetTopMenu.getModuleId(),
-                            oldDatafillDataMap);
-
                     // 更新启用的数据,设置标志位
-                    editMultiModuleData(subjectId, roleId, copyModuleSaveList);
+                    editPreProcessDataUpdateDelete(
+                            copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
 
                     // 去除提交数据中的主键id,走新建数据逻辑
                     removeModuleData(
