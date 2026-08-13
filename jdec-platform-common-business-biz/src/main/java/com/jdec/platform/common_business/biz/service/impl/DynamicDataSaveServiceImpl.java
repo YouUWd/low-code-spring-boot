@@ -21,6 +21,7 @@ import com.jdec.platform.common_business.api.dto.common.FieldChainValueDTO;
 import com.jdec.platform.common_business.api.dto.common.ModuleField;
 import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
 import com.jdec.platform.common_business.api.dto.common.ModuleTable;
+import com.jdec.platform.common_business.api.dto.request.ApprovalModuleSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
@@ -1097,9 +1098,28 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             Long roleId,
             List<ModuleSaveReq> moduleSaveList,
             Long moduleId,
-            boolean needProcess) {
+            boolean needProcess,
+            ApprovalButtonType approvalButtonType) {
+        Object primaryId = null;
+        switch (approvalButtonType) {
+            case DRAFT -> {
+                log.debug("保存草稿。");
+                Map<String, Object> fillDataMap = new HashMap<>();
+                fillDataMap.put("businessStatus", -88);
+                fillModuleData(moduleSaveList, subjectId, roleId, moduleId, fillDataMap);
+                needProcess = false;
+            }
+            case CREATE -> {
+                log.debug("不存草稿，直接提交审批链");
+            }
+            default -> {
+                return null;
+            }
+        }
+
+        log.debug("提交表单");
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
-        Object primaryData = createMultiModuleData(subjectId, roleId, moduleSaveList);
+        primaryId = createMultiModuleData(subjectId, roleId, moduleSaveList);
 
         if (needProcess) {
             // 新建快照数据
@@ -1110,7 +1130,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             upsertSnapshot(
                     moduleFilterInfo.getModuleInfo().getPrimaryTable(),
                     null,
-                    Long.parseLong(String.valueOf(primaryData)));
+                    Long.parseLong(String.valueOf(primaryId)));
 
             Long approvalChainTypeId =
                     getMatchedApprovalChainTypeId(moduleFilterInfo, moduleSaveList);
@@ -1120,7 +1140,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setSubjectId(subjectId);
             approvalProcessReq.setButton("create");
             approvalProcessReq.setModuleId(moduleId);
-            approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryData)));
+            approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryId)));
             approvalProcessReq.setRoleId(roleId);
             approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
             approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
@@ -1168,7 +1188,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         }
 
-        return primaryData;
+        return primaryId;
     }
 
     private Long getMatchedApprovalChainTypeId(
@@ -1250,7 +1270,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     @Override
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public Object createMultiMenuModuleDataWithApproval(
-            Long subjectId, Long roleId, List<MenuSaveReq> req) {
+            Long subjectId, Long roleId, ApprovalModuleSaveReq req) {
         List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
 
         ConfigApiResponse<List<MenuListResp>> response =
@@ -1275,12 +1295,17 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
         MenuListResp targetTopMenu =
                 bizMenuList.stream()
-                        .filter(ele -> req.get(0).getMenuId().equals(ele.getId()))
+                        .filter(
+                                ele ->
+                                        req.getModuleSaveData()
+                                                .get(0)
+                                                .getMenuId()
+                                                .equals(ele.getId()))
                         .findFirst()
                         .orElse(null);
 
         // 将menuId替换为moduleId
-        req.stream()
+        req.getModuleSaveData().stream()
                 .forEach(
                         ele -> {
                             MenuListResp target =
@@ -1317,9 +1342,22 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId(), fillDataMap);
 
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
+        ApprovalButtonType approvalButtonType =
+                ApprovalButtonType.getApprovalButtonTypeByKey(
+                        req.getApprovalOperation().getBtnType());
+
+        if (Objects.isNull(approvalButtonType)) {
+            approvalButtonType = ApprovalButtonType.DRAFT;
+        }
+
         Object o =
                 createMultiModuleDataWithApproval(
-                        subjectId, roleId, copyModuleSaveList, targetTopMenu.getModuleId(), true);
+                        subjectId,
+                        roleId,
+                        copyModuleSaveList,
+                        targetTopMenu.getModuleId(),
+                        true,
+                        approvalButtonType);
         return o;
     }
 
@@ -1468,7 +1506,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 roleId,
                                 moduleSaveList,
                                 targetTopMenu.getModuleId(),
-                                false);
+                                false,
+                                ApprovalButtonType.CREATE);
                 recordId = Long.parseLong(String.valueOf(primaryData));
 
                 upsertSnapshot(moduleFilterInfo.getModuleInfo().getPrimaryTable(), null, recordId);
