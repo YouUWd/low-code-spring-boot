@@ -9,6 +9,9 @@ import lombok.Data;
 @Schema(description = "记录监控系统导航日志请求体")
 public class MonitorSystemNavPostReq {
 
+    @Schema(description = "模块ID")
+    private Long moduleId;
+
     @NotBlank(message = "模块名称(moduleName)不能为空")
     @Size(max = 100, message = "模块名称(moduleName)长度不能超过100字符")
     @Schema(description = "模块名称", requiredMode = Schema.RequiredMode.REQUIRED)

@@ -106,14 +106,6 @@ public class JdecMonitorLogBase implements Serializable {
     @TableField(exist = false)
     private String actionType;
 
-    @Schema(description = "模拟用户角色ID;模拟用户角色ID（兼容保留）")
-    @TableField(exist = false)
-    private Long mockRoleId;
-
-    @Schema(description = "模拟用户角色名称（兼容保留）")
-    @TableField(exist = false)
-    private String mockRoleName;
-
     @Schema(description = "模块ID")
     @TableField(exist = false)
     private Long moduleId;
