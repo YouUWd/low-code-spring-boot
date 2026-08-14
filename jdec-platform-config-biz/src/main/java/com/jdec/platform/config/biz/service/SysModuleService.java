@@ -14,6 +14,7 @@ import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq.SaveSysModuleReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.api.enums.ModuleTypeEnum;
+import com.jdec.platform.config.biz.audit.event.SysModuleChangeEvent;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckResult;
 import com.jdec.platform.config.biz.check.ReferenceChecker;
@@ -34,6 +35,7 @@ import java.util.stream.Stream;
 import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -72,6 +74,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     private final DataSourceResolver dataSourceResolver;
     private final ObjectMapper objectMapper;
     private final SubjectApi subjectApi;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public List<SysModuleListResp> listModules(String projectNo, Long subjectId, Integer category) {
@@ -432,6 +435,11 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                 log.info("模块ID {} 保存成功，无权限变更", moduleId);
             }
 
+            // 7. 发布模块变更事件（审计日志监听器统一处理历史快照查询与记录）
+            eventPublisher.publishEvent(
+                    SysModuleChangeEvent.createSaveEvent(
+                            projectNo, subjectId, moduleId, null, request));
+
             return moduleId;
         } finally {
             PERMISSION_CHANGES.remove();
@@ -592,6 +600,10 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             throw new BusinessException(400, "该模块已被角色字段权限引用，请先解除关联");
         }
 
+        // 提前获取删除前的完整数据供审计构建
+        SysModuleCompleteResp deletedCompleteData =
+                getModuleCompleteById(module.getProjectNo(), module.getSubjectId(), moduleId);
+
         // ========== 级联删除：模块内部附属配置 ==========
 
         // 删除模块
@@ -608,6 +620,14 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
         // 删除状态
         sysModuleStatusMapper.delete(
                 Wrappers.<SysModuleStatus>lambdaQuery().eq(SysModuleStatus::getModuleId, moduleId));
+
+        // 发布删除事件（审计日志由事件监听器构建处理）
+        eventPublisher.publishEvent(
+                SysModuleChangeEvent.createDeleteEvent(
+                        module.getProjectNo(),
+                        module.getSubjectId(),
+                        moduleId,
+                        deletedCompleteData));
     }
 
     @Override
@@ -709,7 +729,29 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
         resp.setParentId(latest.getParentId());
         resp.setSortOrder(latest.getSortOrder());
         resp.setUpdatedDate(latest.getUpdatedDate());
+
+        // 发布移动事件（审计逻辑在事件监听器中执行）
+        String oldParentName = getModuleNameById(oldParentId);
+        String newParentName = getModuleNameById(targetParentId);
+        eventPublisher.publishEvent(
+                com.jdec.platform.config.biz.audit.event.SysModuleChangeEvent.createMoveEvent(
+                        module.getProjectNo(),
+                        module.getSubjectId(),
+                        moduleId,
+                        request,
+                        module.getModuleName(),
+                        oldParentName,
+                        newParentName));
+
         return resp;
+    }
+
+    private String getModuleNameById(Long parentId) {
+        if (parentId == null || parentId == 0L) {
+            return "根模块";
+        }
+        SysModule parent = sysModuleMapper.selectById(parentId);
+        return parent != null ? parent.getModuleName() : "未知模块";
     }
 
     /**
