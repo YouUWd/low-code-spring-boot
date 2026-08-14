@@ -1249,6 +1249,37 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (hasApproval) {
 
+            if (queryParam.getType() == 3) {
+                QueryWrapper dataRightQueryWrapper = new QueryWrapper();
+
+                applyDataRightFilter(
+                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable(),
+                        tableNameToConfigItems,
+                        dataRightQueryWrapper);
+
+                dataRightQueryWrapper.select(
+                        queryParam.getModuleFilterInfo().getModuleInfo().getPrimaryTable()
+                                + DB_TABLE_FIELD_SEPARATOR
+                                + DEFAULT_PRIMARY_KEY);
+
+                List<Object> dataRightList = primaryMapper.selectList(dataRightQueryWrapper);
+
+                List<Long> dataRightIds =
+                        dataRightList.stream()
+                                .map(
+                                        e -> {
+                                            Field field =
+                                                    ReflectionUtils.findField(
+                                                            e.getClass(), DEFAULT_PRIMARY_KEY);
+                                            field.setAccessible(true);
+                                            return Long.parseLong(
+                                                    String.valueOf(
+                                                            ReflectionUtils.getField(field, e)));
+                                        })
+                                .collect(Collectors.toList());
+                //                approvalListReq.set
+            }
+
             ConfigApiResponse<List<Map<String, Object>>> approvalListResult =
                     approvalApiOpenFeignClient.getBusinessList(
                             queryParam.getSubjectId(), approvalListReq);
@@ -1342,6 +1373,16 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                     + DB_TABLE_FIELD_SEPARATOR
                                     + DEFAULT_PRIMARY_KEY,
                             approvalFilterIds);
+                } else {
+                    log.debug("审批链筛选后匹配数据ID集合为空，则直接返回。");
+                    buildConfigData(
+                            resultMap,
+                            queryParam.getModuleFilterInfo(),
+                            queryParam.getSubjectId(),
+                            queryParam.getRoleId());
+                    resultMap.put("records", List.of());
+                    resultMap.put("total", 0);
+                    return resultMap;
                 }
             }
         }
@@ -1764,8 +1805,6 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             queryWrapper,
                             true);
         }
-
-        List<ApprovalListResp> approvalListResps = new ArrayList<>();
 
         Integer type = null;
 
