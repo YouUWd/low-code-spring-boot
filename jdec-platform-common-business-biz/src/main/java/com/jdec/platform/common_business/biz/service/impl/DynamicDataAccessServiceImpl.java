@@ -1741,6 +1741,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             Map<String, Object> statusMap = new HashMap<>();
                             statusMap.put("title", "等待提交");
                             statusMap.put("statusValue", 1);
+                            statusMap.put("statusBackground", "rgb(225, 242, 255)");
+                            statusMap.put("statusFontColor", "rgb(54, 172, 245)");
 
                             primaryTablePrefixResultMap.put("*.approvalStatus", statusMap);
                         } else {
