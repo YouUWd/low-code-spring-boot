@@ -300,14 +300,15 @@ public class JdecMonitorLogController {
                     Mock标记服务端自动推断：Mock-User-Id>0时为1，否则为0，无需传Mock-Flug。
                     请求体内容和格式如下：
                     {
-                      "moduleName": "模块名称",      // required, <=100字符
+                      "moduleId": "模块ID",      // required,
+                      "moduleName": "模块名称",      // required,
+                      "menuId": "菜单ID",      // required,
                       "menuParam": "菜单参数",        // required
                       "hrefName": "超链接文本",       // required
-                      "menuId": 123,                 // 可选
                       "dataId": 456,                 // 可选
                       "controlDesc": "操作描述",      // required
                       "browser": "Chrome",           // required, <=100字符，默认"unknown"
-                      "platForm": "Windows",         // 可选，默认"unknown"
+                      "platForm": "Windows",         // required, <=100字符，默认"unknown"
                       "systemName": "系统名称"        // required, <=100字符，默认"unknown"
                     }
                     """)
@@ -371,6 +372,7 @@ public class JdecMonitorLogController {
         String controlDesc = postReq.getControlDesc();
         String browser = postReq.getBrowser();
         String systemName = postReq.getSystemName();
+        Long moduleId = postReq.getModuleId();
 
         MonitorSystemNavLogReq request = new MonitorSystemNavLogReq();
         request.setLoginUserId(loginUserId);
@@ -380,6 +382,7 @@ public class JdecMonitorLogController {
         request.setMockFlag(mockFlug);
         request.setMockUserId(mockUserId);
         request.setIp(ip);
+        request.setModuleId(moduleId);
         request.setModuleName(moduleName);
         request.setMenuId(postReq.getMenuId());
         request.setDataId(postReq.getDataId());
