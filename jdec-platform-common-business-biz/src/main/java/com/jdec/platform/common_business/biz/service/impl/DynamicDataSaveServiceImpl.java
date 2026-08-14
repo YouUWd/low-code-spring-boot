@@ -1449,7 +1449,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         List.of());
 
         // 开启数据变更记录 追踪
-        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE) {
+        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE
+                && buttonType != ApprovalButtonType.DRAFT_SUBMIT) {
             DataUpdateContextHolder.openDataChangeFlag();
         }
         switch (buttonType) {
