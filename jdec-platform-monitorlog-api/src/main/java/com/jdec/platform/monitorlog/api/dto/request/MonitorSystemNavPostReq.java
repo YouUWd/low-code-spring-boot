@@ -22,10 +22,6 @@ public class MonitorSystemNavPostReq {
     @Schema(description = "超链接文本/菜单名称", requiredMode = Schema.RequiredMode.REQUIRED)
     private String hrefName;
 
-    @NotBlank(message = "菜单操作URL(hrefUrl)不能为空")
-    @Schema(description = "菜单URL/控制URL", requiredMode = Schema.RequiredMode.REQUIRED)
-    private String hrefUrl;
-
     @Schema(description = "菜单ID")
     private Long menuId;
 

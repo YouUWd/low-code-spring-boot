@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /** 数据源解析器 负责根据 projectNo 解析对应的物理数据源 */
@@ -59,5 +60,16 @@ public class DataSourceResolver {
             throw new BusinessException("系统配置错误：找不到对应的数据源 [" + dsName + "]");
         }
         return DSL.using(ds, SQLDialect.MYSQL);
+    }
+
+    /**
+     * 根据 projectNo 获取绑定对应物理 DataSource 的 JdbcTemplate。
+     *
+     * @param projectNo 项目编号
+     * @return 针对该数据源实例化的 JdbcTemplate
+     */
+    public JdbcTemplate getJdbcTemplate(String projectNo) {
+        DataSource ds = resolve(projectNo);
+        return new JdbcTemplate(ds);
     }
 }
