@@ -1277,7 +1277,10 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                                             ReflectionUtils.getField(field, e)));
                                         })
                                 .collect(Collectors.toList());
-                //                approvalListReq.set
+                if (!CollectionUtils.isEmpty(dataRightIds)) {
+                    log.debug("数据权限查询的记录ID列表不为空。数据权限ID数目:{}", dataRightIds.size());
+                    approvalListReq.setAllowedIdList(dataRightIds);
+                }
             }
 
             ConfigApiResponse<List<Map<String, Object>>> approvalListResult =
