@@ -1478,6 +1478,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                     // 更新启用的数据,设置标志位
                     editPreProcessDataUpdateDelete(
                             copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                    editMultiModuleData(subjectId, roleId, copyModuleSaveList);
 
                     // 去除提交数据中的主键id,走新建数据逻辑
                     removeModuleData(
