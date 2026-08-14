@@ -298,6 +298,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             // 查询快照数据
                             QueryWrapper snapshotQuery = Wrappers.query();
                             snapshotQuery.eq("source_id", id);
+                            snapshotQuery.eq("deleted", true);
                             Object snapshotData = primaryMapper.selectOne(snapshotQuery);
 
                             Long snapshotDataId = null;
