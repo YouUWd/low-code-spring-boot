@@ -1725,11 +1725,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
                         if (Objects.nonNull(businessStatus)
                                 && Integer.parseInt(String.valueOf(businessStatus)) == -88) {
+                            Map<String, String> btnView = new HashMap<>();
                             primaryTablePrefixResultMap.put(
                                     "btnList",
                                     Set.of(
                                             FormButton.builder()
-                                                    .buttonKey("edit")
+                                                    .buttonKey("view")
                                                     .buttonName("编辑草稿")
                                                     .build()));
                         } else {
@@ -4009,13 +4010,10 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (canEdit) {
             log.debug("草稿查看模式且模块有编辑权限，显示提交按钮并放开实时保存。");
-            resultMap.put(
-                    "btnList",
-                    Set.of(
-                            FormButton.builder()
-                                    .buttonKey("draft-submit")
-                                    .buttonName("提交")
-                                    .build()));
+            Map<String, String> draftBtn = new HashMap<>();
+            draftBtn.put("buttonKey", "draft-submit");
+            draftBtn.put("showTitle", "提交");
+            resultMap.put("btnList", Set.of(draftBtn));
             resultMap.put("realTimeSaveFlag", true);
             resultMap.put("draftFlag", true);
         }
