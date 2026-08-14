@@ -313,6 +313,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 allList.removeIf(iterate -> iterate.getId().equals(item.getId()));
             }
         }
+        LambdaQueryWrapper<ApprovalBusiness> allowedWrapper = new LambdaQueryWrapper<>();
+        allowedWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
+        allowedWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+        allowedWrapper.in(ApprovalBusiness::getRecordId, approvalProcessReq.getAllowedIdList());
+        List<ApprovalBusiness> allowedList = approvalBusinessMapper.selectList(allowedWrapper);
+        allList.addAll(allowedList);
         resultMap.put("allNum", allList.size());
         return resultMap;
     }
@@ -431,6 +437,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                             Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
                                     && item.getCurrentStep().equals(0)
                                     && !ids.contains(item.getId()));
+            LambdaQueryWrapper<ApprovalBusiness> allowedWrapper = new LambdaQueryWrapper<>();
+            allowedWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            allowedWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+            allowedWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getAllowedIdList());
+            List<ApprovalBusiness> allowedList = approvalBusinessMapper.selectList(allowedWrapper);
+            allList.addAll(allowedList);
             for (ApprovalBusiness item : allList) {
                 if (ids.contains(item.getId())) {
                     respList.add(convertMapResp(item, 1));
