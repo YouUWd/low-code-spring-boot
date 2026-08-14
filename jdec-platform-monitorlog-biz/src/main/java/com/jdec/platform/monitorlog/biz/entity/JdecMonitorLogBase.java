@@ -126,10 +126,6 @@ public class JdecMonitorLogBase implements Serializable {
     @TableField(exist = false)
     private String menuParam;
 
-    @Schema(description = "菜单名称（返回显示用，菜单ID对应的展示名称）")
-    @TableField(exist = false)
-    private String menuName;
-
     @Schema(description = "超链接文本")
     @TableField(exist = false)
     private String hrefName;
