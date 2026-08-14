@@ -1646,7 +1646,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
 
         // 非实时保存，调用审批链process
-        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE) {
+
+        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE
+                && buttonType != ApprovalButtonType.DRAFT_REAL_TIME_CHANGE) {
 
             ConfigApiResponse<Map<String, Object>> processResult = null;
             approvalProcessReq.setSubjectId(subjectId);
