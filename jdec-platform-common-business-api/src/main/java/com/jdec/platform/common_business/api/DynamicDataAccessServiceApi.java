@@ -50,9 +50,11 @@ public interface DynamicDataAccessServiceApi {
     Map<String, Object> dynamicQueryListSelectDataWithSearchByMenuId(
             Long subjectId, Long roleId, ListSelectQueryReq req, ModuleFilterInfo moduleFilterInfo);
 
+    /** 带审批链的详情页面查看接口 * */
     Map<Object, Object> dynamicQueryAllModuleDetailDataWithApproval(
             Long subjectId, Long roleId, Long menuId, Long id, Long relateSearchId, String btnType);
 
+    /** 获取带审批链列表已办、待办、全部数目 * */
     Map<String, Object> dynamicQuerygetListNumWithApproval(
             Long subjectId, Long roleId, Long menuId);
 
@@ -61,6 +63,7 @@ public interface DynamicDataAccessServiceApi {
 
     Object dynamicQuerygetApprovalLogs(Long subjectId, Long roleId, Long menuId, Long id);
 
+    /** 获取审批链步骤列表，供驳回到指定步骤下拉列表使用 * */
     List<Map<String, Object>> dynamicQuerygetApprovalStep(
             Long subjectId, Long roleId, Long menuId, Long id);
 
