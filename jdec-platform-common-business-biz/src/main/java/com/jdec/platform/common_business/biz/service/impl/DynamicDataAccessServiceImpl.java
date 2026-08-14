@@ -4113,7 +4113,59 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                 }
             }
 
+            // 查询数据权限配置
+            List<DataRightConfigResp> dataRightconfigs =
+                    configCenterApiService.getDataRightConfigItem(subjectId, roleId);
+            Map<String, List<DataRightConfigResp>> tableNameToConfigItems =
+                    dataRightconfigs.stream()
+                            .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
+
             ApprovalListReq approvalListReq = new ApprovalListReq();
+
+            String primaryTableName = targetModuleInfo.getModule().getPrimaryTable();
+
+            if (tableNameToConfigItems.containsKey(primaryTableName)) {
+                log.debug(
+                        "模块名称:{},模块ID:{} , 主表名称:{}的字段存在数据权限配置。",
+                        targetModuleInfo.getModule().getModuleName(),
+                        targetModuleInfo.getModule().getId(),
+                        primaryTableName);
+
+                QueryWrapper dataRightQueryWrapper = new QueryWrapper();
+
+                applyDataRightFilter(
+                        primaryTableName, tableNameToConfigItems, dataRightQueryWrapper);
+
+                dataRightQueryWrapper.select(
+                        primaryTableName + DB_TABLE_FIELD_SEPARATOR + DEFAULT_PRIMARY_KEY);
+
+                // 获取主表Mapper对象
+                BaseMapper primaryMapper =
+                        SpringBeanUtil.getBean(
+                                ToolUtils.snakeToCamelCase(primaryTableName)
+                                        + MYBATIS_MAPPER_SUFFIX,
+                                BaseMapper.class);
+
+                List<Object> dataRightList = primaryMapper.selectList(dataRightQueryWrapper);
+
+                List<Long> dataRightIds =
+                        dataRightList.stream()
+                                .map(
+                                        e -> {
+                                            Field field =
+                                                    ReflectionUtils.findField(
+                                                            e.getClass(), DEFAULT_PRIMARY_KEY);
+                                            field.setAccessible(true);
+                                            return Long.parseLong(
+                                                    String.valueOf(
+                                                            ReflectionUtils.getField(field, e)));
+                                        })
+                                .collect(Collectors.toList());
+                if (!CollectionUtils.isEmpty(dataRightIds)) {
+                    approvalListReq.setAllowedIdList(dataRightIds);
+                }
+            }
+
             approvalListReq.setSubjectIdList(subjectIds);
             approvalListReq.setRoleId(roleId);
             approvalListReq.setModuleIdList(moduleIds); // 使用列表关联的详情模块的模块ID
