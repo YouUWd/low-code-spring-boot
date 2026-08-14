@@ -300,6 +300,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
         allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
         allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+        if (Objects.nonNull(approvalProcessReq.getRecordIdList())
+                && !approvalProcessReq.getRecordIdList().isEmpty()) {
+            allWrapper.in(ApprovalBusiness::getRecordId, approvalProcessReq.getRecordIdList());
+        }
+        if (Objects.nonNull(approvalProcessReq.getAllowedIdList())
+                && !approvalProcessReq.getAllowedIdList().isEmpty()) {
+            allWrapper.notIn(ApprovalBusiness::getRecordId, approvalProcessReq.getAllowedIdList());
+        }
         List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
         allList.removeIf(
                 item ->
@@ -434,6 +442,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.nonNull(approvalListReq.getRecordIdList())
                     && !approvalListReq.getRecordIdList().isEmpty()) {
                 allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
+            }
+            if (Objects.nonNull(approvalListReq.getAllowedIdList())
+                    && !approvalListReq.getAllowedIdList().isEmpty()) {
+                allWrapper.notIn(ApprovalBusiness::getRecordId, approvalListReq.getAllowedIdList());
             }
             List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
             allList.removeIf(
