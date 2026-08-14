@@ -106,14 +106,6 @@ public class JdecMonitorLogBase implements Serializable {
     @TableField(exist = false)
     private String actionType;
 
-    @Schema(description = "模拟用户角色ID;模拟用户角色ID（兼容保留）")
-    @TableField(exist = false)
-    private Long mockRoleId;
-
-    @Schema(description = "模拟用户角色名称（兼容保留）")
-    @TableField(exist = false)
-    private String mockRoleName;
-
     @Schema(description = "模块ID")
     @TableField(exist = false)
     private Long moduleId;
@@ -133,10 +125,6 @@ public class JdecMonitorLogBase implements Serializable {
     @Schema(description = "菜单参数;菜单配置中的参数内容")
     @TableField(exist = false)
     private String menuParam;
-
-    @Schema(description = "菜单名称（返回显示用，菜单ID对应的展示名称）")
-    @TableField(exist = false)
-    private String menuName;
 
     @Schema(description = "超链接文本")
     @TableField(exist = false)

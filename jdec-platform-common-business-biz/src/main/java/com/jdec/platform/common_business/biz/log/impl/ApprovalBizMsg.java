@@ -5,10 +5,13 @@ import com.google.common.collect.Sets;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.HrUserApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.TokenContextHolder;
+import com.jdec.platform.common_business.biz.dto.BizLogDTO;
 import com.jdec.platform.common_business.biz.dto.BizWechatMsgDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
+import com.jdec.platform.common_business.biz.enums.BizLogEnum;
 import com.jdec.platform.common_business.biz.enums.BizMsgEnum;
 import com.jdec.platform.common_business.biz.log.BizMsg;
+import com.jdec.platform.common_business.biz.log.ComBizLogEventPublisher;
 import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.hr.api.bo.UserBO;
 import java.util.List;
@@ -87,7 +90,42 @@ public class ApprovalBizMsg implements BizMsg {
             req.setMessageTitle(templateTitle);
             req.setReceivers(accptorList);
             req.setMessageType("markdown");
-            configCenterApiOpenFeignClient.sendMessage(bizWechatMsgDTO.getSubjectId(), req);
+            // 发送消息
+            ConfigApiResponse<Boolean> apiResponse =
+                    configCenterApiOpenFeignClient.sendMessage(bizWechatMsgDTO.getSubjectId(), req);
+            // 记录消息日志
+            if (ConfigApiResponse.isSuccessResponse(apiResponse)) {
+                // 业务单号 从消息参数中获取
+                String businessNo = bizWechatMsgDTO.getParam().get("p-business_no");
+                // 版本号
+                String versionNo = bizWechatMsgDTO.getParam().get("p-version_no_label");
+                BizLogDTO bizLogDTO =
+                        BizLogDTO.builder()
+                                .projectNo(bizWechatMsgDTO.getProjectNo())
+                                .token(bizWechatMsgDTO.getToken())
+                                .logType(bizWechatMsgDTO.getLogType())
+                                .platform(bizWechatMsgDTO.getPlatform())
+                                .browser(bizWechatMsgDTO.getBrowser())
+                                .ip(bizWechatMsgDTO.getIp())
+                                .origin(bizWechatMsgDTO.getOrigin())
+                                .loginUserId(bizWechatMsgDTO.getLoginUserId())
+                                .mockUserId(bizWechatMsgDTO.getMockUserId())
+                                .subjectId(bizWechatMsgDTO.getSubjectId())
+                                .roleId(bizWechatMsgDTO.getRoleId())
+                                .menuId(bizWechatMsgDTO.getMenuId())
+                                .moduleId(bizWechatMsgDTO.getModuleId())
+                                .moduleName(bizWechatMsgDTO.getModuleName())
+                                .dataId(bizWechatMsgDTO.getDataId())
+                                // 消息完整的内容
+                                .logContent(templateContent)
+                                .logRemark(null)
+                                .hrefName(businessNo)
+                                .orderVersion(versionNo)
+                                .controlName(templateTitle)
+                                .messageReceivers(bizWechatMsgDTO.getAcceptorList())
+                                .build();
+                ComBizLogEventPublisher.publishLogEvent(BizLogEnum.MSG, bizLogDTO);
+            }
             return Boolean.TRUE;
         } catch (Exception e) {
             log.error("processBizMsg logEnum={},log={},e=", msgEnum, msg.toString(), e);

@@ -21,6 +21,7 @@ import com.jdec.platform.common_business.api.dto.common.FieldChainValueDTO;
 import com.jdec.platform.common_business.api.dto.common.ModuleField;
 import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
 import com.jdec.platform.common_business.api.dto.common.ModuleTable;
+import com.jdec.platform.common_business.api.dto.request.ApprovalModuleSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
@@ -38,6 +39,7 @@ import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.ApprovalButtonType;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
+import com.jdec.platform.common_business.biz.service.SystemModuleApprovalMsgService;
 import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
@@ -112,6 +114,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     private final ApprovalApiOpenFeignClient approvalApiOpenFeignClient;
 
     private final SystemModuleDataChangeLogService systemModuleDataChangeLogService;
+
+    private final SystemModuleApprovalMsgService systemModuleApprovalMsgService;
 
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     private Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
@@ -1094,9 +1098,28 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             Long roleId,
             List<ModuleSaveReq> moduleSaveList,
             Long moduleId,
-            boolean needProcess) {
+            boolean needProcess,
+            ApprovalButtonType approvalButtonType) {
+        Object primaryId = null;
+        switch (approvalButtonType) {
+            case DRAFT -> {
+                log.debug("保存草稿。");
+                Map<String, Object> fillDataMap = new HashMap<>();
+                fillDataMap.put("businessStatus", -88);
+                fillModuleData(moduleSaveList, subjectId, roleId, moduleId, fillDataMap);
+                needProcess = false;
+            }
+            case CREATE -> {
+                log.debug("不存草稿，直接提交审批链");
+            }
+            default -> {
+                return null;
+            }
+        }
+
+        log.debug("提交表单");
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
-        Object primaryData = createMultiModuleData(subjectId, roleId, moduleSaveList);
+        primaryId = createMultiModuleData(subjectId, roleId, moduleSaveList);
 
         if (needProcess) {
             // 新建快照数据
@@ -1107,7 +1130,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             upsertSnapshot(
                     moduleFilterInfo.getModuleInfo().getPrimaryTable(),
                     null,
-                    Long.parseLong(String.valueOf(primaryData)));
+                    Long.parseLong(String.valueOf(primaryId)));
 
             Long approvalChainTypeId =
                     getMatchedApprovalChainTypeId(moduleFilterInfo, moduleSaveList);
@@ -1117,7 +1140,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             approvalProcessReq.setSubjectId(subjectId);
             approvalProcessReq.setButton("create");
             approvalProcessReq.setModuleId(moduleId);
-            approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryData)));
+            approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryId)));
             approvalProcessReq.setRoleId(roleId);
             approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
             approvalProcessReq.setApplicantId(LoginUserUtil.getLoginUserId());
@@ -1133,6 +1156,22 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
             if (ConfigApiResponse.isSuccessResponse(processResult)) {
                 log.debug("调用审批链方{}方法成功。", "process");
+                // 消息推送
+                Map<String, Object> data = processResult.getData();
+                if (data.containsKey("templateList")) {
+                    try {
+                        List<Map<String, Object>> templateList =
+                                (List<Map<String, Object>>) data.get("templateList");
+                        systemModuleApprovalMsgService.processApprovalMsg(
+                                subjectId,
+                                templateList,
+                                moduleFilterInfo,
+                                moduleSaveList,
+                                approvalProcessReq.getRecordId());
+                    } catch (Exception e) {
+                        log.error("获取消息模版参数异常,e=", e);
+                    }
+                }
             } else {
                 try {
                     log.debug(
@@ -1153,7 +1192,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         }
 
-        return primaryData;
+        return primaryId;
     }
 
     private Long getMatchedApprovalChainTypeId(
@@ -1235,7 +1274,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     @Override
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public Object createMultiMenuModuleDataWithApproval(
-            Long subjectId, Long roleId, List<MenuSaveReq> req) {
+            Long subjectId, Long roleId, ApprovalModuleSaveReq req) {
         List<ModuleSaveReq> moduleSaveList = new ArrayList<>();
 
         ConfigApiResponse<List<MenuListResp>> response =
@@ -1260,12 +1299,17 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
         MenuListResp targetTopMenu =
                 bizMenuList.stream()
-                        .filter(ele -> req.get(0).getMenuId().equals(ele.getId()))
+                        .filter(
+                                ele ->
+                                        req.getModuleSaveData()
+                                                .get(0)
+                                                .getMenuId()
+                                                .equals(ele.getId()))
                         .findFirst()
                         .orElse(null);
 
         // 将menuId替换为moduleId
-        req.stream()
+        req.getModuleSaveData().stream()
                 .forEach(
                         ele -> {
                             MenuListResp target =
@@ -1302,9 +1346,22 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId(), fillDataMap);
 
         // 本类方法调用，可能有事务失效问题，最终应该是用外层事务嵌套。
+        ApprovalButtonType approvalButtonType =
+                ApprovalButtonType.getApprovalButtonTypeByKey(
+                        req.getApprovalOperation().getBtnType());
+
+        if (Objects.isNull(approvalButtonType)) {
+            approvalButtonType = ApprovalButtonType.DRAFT;
+        }
+
         Object o =
                 createMultiModuleDataWithApproval(
-                        subjectId, roleId, copyModuleSaveList, targetTopMenu.getModuleId(), true);
+                        subjectId,
+                        roleId,
+                        copyModuleSaveList,
+                        targetTopMenu.getModuleId(),
+                        true,
+                        approvalButtonType);
         return o;
     }
 
@@ -1407,6 +1464,22 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                     approvalProcessReq.setOldRecordId(oldRecordId);
                     log.debug("变更后提交，获取上一条已启用数据id:{}", oldRecordId);
 
+                    // 深拷贝模块表单数据
+                    List<ModuleSaveReq> copyModuleSaveList;
+                    try {
+                        String originJsonStr = JsonUtil.obj2Json(moduleSaveList);
+                        copyModuleSaveList =
+                                JsonUtil.json2Obj(
+                                        originJsonStr, new TypeReference<List<ModuleSaveReq>>() {});
+                    } catch (JsonProcessingException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    // 更新启用的数据,设置标志位
+                    editPreProcessDataUpdateDelete(
+                            copyModuleSaveList, subjectId, roleId, targetTopMenu.getModuleId());
+                    editMultiModuleData(subjectId, roleId, copyModuleSaveList);
+
                     // 去除提交数据中的主键id,走新建数据逻辑
                     removeModuleData(
                             moduleSaveList,
@@ -1438,13 +1511,19 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 roleId,
                                 moduleSaveList,
                                 targetTopMenu.getModuleId(),
-                                false);
+                                false,
+                                ApprovalButtonType.CREATE);
                 recordId = Long.parseLong(String.valueOf(primaryData));
 
                 upsertSnapshot(moduleFilterInfo.getModuleInfo().getPrimaryTable(), null, recordId);
             }
-            case SUBMIT, REJECT, PASS -> {
+            case SUBMIT, REJECT, PASS, DRAFT_SUBMIT -> {
                 log.debug("提交表单，更新业务数据。");
+
+                if (buttonType == ApprovalButtonType.DRAFT_SUBMIT) {
+                    // 提交给审批链的btnType置为submit
+                    approvalOperation.setBtnType(ApprovalButtonType.CREATE.getKey());
+                }
 
                 // 获取变更前数据id
                 Long oldRecordId =
@@ -1492,6 +1571,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 Map<String, Object> fillDataMap = new HashMap<>();
                 fillDataMap.put("sourceId", 0L);
+                // 将businessStatus恢复原值
+                fillDataMap.put("businessStatus", 0);
                 fillModuleData(
                         moduleSaveList,
                         subjectId,
@@ -1544,6 +1625,13 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 // 保存当前recordId对应的数据
                 editMultiModuleData(subjectId, roleId, moduleSaveList);
             }
+                // 实时保存
+            case DRAFT_REAL_TIME_CHANGE -> {
+                log.debug("草稿实时保存，更新当前数据。");
+
+                // 保存当前recordId对应的数据
+                editMultiModuleData(subjectId, roleId, moduleSaveList);
+            }
             case CANCEL -> {
                 log.debug("当前提交为取消，修改业务数据删除标识。");
                 recordId =
@@ -1559,7 +1647,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
 
         // 非实时保存，调用审批链process
-        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE) {
+
+        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE
+                && buttonType != ApprovalButtonType.DRAFT_REAL_TIME_CHANGE) {
 
             ConfigApiResponse<Map<String, Object>> processResult = null;
             approvalProcessReq.setSubjectId(subjectId);
@@ -1646,6 +1736,21 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                                 != 1) {
                             editMultiModuleData(subjectId, roleId, moduleSaveList);
                         }
+                    }
+                }
+                // 消息推送
+                if (processResultMap.containsKey("templateList")) {
+                    try {
+                        List<Map<String, Object>> templateList =
+                                (List<Map<String, Object>>) processResultMap.get("templateList");
+                        systemModuleApprovalMsgService.processApprovalMsg(
+                                subjectId,
+                                templateList,
+                                moduleFilterInfo,
+                                moduleSaveList,
+                                approvalProcessReq.getRecordId());
+                    } catch (Exception e) {
+                        log.error("获取消息模版参数异常,e=", e);
                     }
                 }
 

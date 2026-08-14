@@ -1,6 +1,10 @@
 package com.jdec.platform.monitorlog.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.SysUserApi;
@@ -14,6 +18,7 @@ import com.jdec.platform.monitorlog.biz.entity.*;
 import com.jdec.platform.monitorlog.biz.mapper.*;
 import com.jdec.platform.shared.datasource.*;
 import com.jdec.platform.shared.model.PageResult;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +54,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private final SysUserApi sysUserApi;
 
     private final SysRoleApi sysRoleApi;
+
+    private final ObjectMapper objectMapper;
 
     @Override
     public PageResult<MonitorLogPageListResp> queryPageList(
@@ -140,6 +147,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
     @Override
     public void recordMessageLog(MonitorMessageLogReq req, String projectNo) {
         populateUserAndRoleInfo(req);
+        populateMessageReceiversDetails(req);
         validateMessageLogReq(req);
         JdecMonitorMessageLog logItem = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
         applyDefaults(logItem);
@@ -148,6 +156,53 @@ public class JdecMonitorLogService implements MonitorLogApi {
         DataSourceContextHolder.set(dataSourceKey);
         jdecMonitorMessageLogMapper.insert(logItem);
         DataSourceContextHolder.clear();
+    }
+
+    /**
+     * 根据logRemark中的messageReceivers用户ID列表，查询用户详情并填充到usersDetails字段
+     *
+     * @param req 监控消息日志请求参数
+     */
+    private void populateMessageReceiversDetails(MonitorMessageLogReq req) {
+        if (!StringUtils.hasText(req.getLogRemark())) {
+            return;
+        }
+        try {
+            JsonNode rootNode = objectMapper.readTree(req.getLogRemark());
+            if (!rootNode.has("messageReceivers") || rootNode.get("messageReceivers").isNull()) {
+                return;
+            }
+            JsonNode receiversNode = rootNode.get("messageReceivers");
+            if (!receiversNode.isArray()) {
+                return;
+            }
+            List<Long> receiverIds = new ArrayList<>();
+            for (JsonNode idNode : receiversNode) {
+                if (idNode.canConvertToLong()) {
+                    receiverIds.add(idNode.asLong());
+                }
+            }
+            if (receiverIds.isEmpty()) {
+                return;
+            }
+            ArrayNode usersDetailsNode = objectMapper.createArrayNode();
+            for (Long userId : receiverIds) {
+                UserDetailResp userDetail = sysUserApi.getUserDetailByUserId(userId);
+                if (userDetail != null) {
+                    ObjectNode userNode = objectMapper.createObjectNode();
+                    userNode.put("UserName", userDetail.getUserName());
+                    userNode.put("UserNumber", userDetail.getWorkNumber());
+                    userNode.put("UserAvatar", userDetail.getUserAvatar());
+                    usersDetailsNode.add(userNode);
+                }
+            }
+            if (rootNode instanceof ObjectNode) {
+                ((ObjectNode) rootNode).set("usersDetails", usersDetailsNode);
+                req.setLogRemark(objectMapper.writeValueAsString(rootNode));
+            }
+        } catch (Exception e) {
+            log.warn("解析logRemark并填充usersDetails失败，logRemark={}", req.getLogRemark(), e);
+        }
     }
 
     /**
@@ -377,12 +432,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private void validateSystemNavLogReq(MonitorSystemNavLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
-        }
-        if (!StringUtils.hasText(req.getLogContent())) {
-            throw new IllegalArgumentException("日志内容(logContent)不能为空");
-        }
-        if (req.getLogContent().length() > 65535) {
-            throw new IllegalArgumentException("日志内容(logContent)长度不能超过65535字符");
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");

@@ -158,7 +158,7 @@ public class DynamicQueryController {
     public ApiResponse<Object> createApproval(
             @Schema(description = "主体ID") @RequestHeader("X-Subject-Id") Long subjectId,
             @Schema(description = "角色ID") @RequestHeader(name = "X-Role-Id") Long roleId,
-            @RequestBody List<MenuSaveReq> req) {
+            @RequestBody ApprovalModuleSaveReq req) {
         return ApiResponse.success(
                 dynamicDataSaveService.createMultiMenuModuleDataWithApproval(
                         subjectId, roleId, req));

@@ -1,6 +1,7 @@
 package com.jdec.platform.common_business.biz.dto;
 
 import java.io.Serializable;
+import java.util.List;
 import lombok.Builder;
 import lombok.Data;
 import lombok.ToString;
@@ -10,11 +11,21 @@ import lombok.ToString;
 @ToString
 public class LogContentDTO implements Serializable {
 
-    private String module;
+    private Long moduleId;
 
-    private String orderId;
+    private String moduleName;
 
-    private String hrefUrl;
+    private Long menuId;
+
+    private String menuParam;
+
+    private String hrefName;
+
+    private String dataId;
+
+    private String orderVersion;
 
     private String controlName;
+
+    private List<Long> messageReceivers;
 }

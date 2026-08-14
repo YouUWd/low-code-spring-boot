@@ -2,7 +2,9 @@ package com.jdec.platform.common_business.biz.configcenter.client.openfeign;
 
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
+import com.jdec.platform.monitorlog.api.dto.request.MonitorMessageLogReq;
 import com.jdec.platform.monitorlog.api.dto.response.MonitorLogPageListResp;
+import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Parameter;
 import java.util.List;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -20,6 +22,9 @@ public interface MonitorLogApiOpenFeignClient {
 
     @PostMapping("/addControlLog")
     ConfigApiResponse<Void> recordBusinessLog(@RequestBody MonitorControlLogReq request);
+
+    @PostMapping("/addMessageLog")
+    public ApiResponse<Void> addMessageLog(@RequestBody MonitorMessageLogReq request);
 
     @GetMapping("/querySystemControlLogByModuleIdAndDataId")
     public ConfigApiResponse<List<MonitorLogPageListResp>> querySystemControlLogByModuleIdAndDataId(

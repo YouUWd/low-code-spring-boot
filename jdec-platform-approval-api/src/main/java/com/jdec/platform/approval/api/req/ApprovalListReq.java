@@ -28,6 +28,10 @@ public class ApprovalListReq {
     @Schema(description = "业务记录ID列表")
     private List<Long> recordIdList;
 
+    // 业务数据权限记录ID
+    @Schema(description = "业务数据权限记录ID列表")
+    private List<Long> allowedIdList;
+
     // 操作角色ID
     @Schema(description = "操作角色ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "操作角色ID不能为空")
