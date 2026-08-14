@@ -15,6 +15,10 @@ public class JdecMonitorControlLog extends JdecMonitorLogBase {
 
     @Serial private static final long serialVersionUID = 1L;
 
+    @Schema(description = "审批类型：0，自动审批。1，手动审批")
+    @TableField("approvalType")
+    private Integer approvalType;
+
     @Schema(description = "动作名称")
     @TableField("actionName")
     private String actionName;

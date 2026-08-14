@@ -129,7 +129,10 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordOrderRunLog(MonitorControlLogReq req, String projectNo) {
-        populateUserAndRoleInfo(req);
+        boolean isAutoApproval = req.getApprovalType() != null && req.getApprovalType() == 0;
+        if (!isAutoApproval) {
+            populateUserAndRoleInfo(req);
+        }
         validateControlLogReq(req);
         JdecMonitorControlLog logItem = BeanUtil.toBean(req, JdecMonitorControlLog.class);
         applyDefaults(logItem);
@@ -380,6 +383,19 @@ public class JdecMonitorLogService implements MonitorLogApi {
     private void validateControlLogReq(MonitorControlLogReq req) {
         if (req == null) {
             throw new IllegalArgumentException("日志请求参数不能为空");
+        }
+        if (req.getApprovalType() != null
+                && (req.getApprovalType() < 0 || req.getApprovalType() > 1)) {
+            throw new IllegalArgumentException("审批类型(approvalType)只能为0或1");
+        }
+        boolean isAutoApproval = req.getApprovalType() != null && req.getApprovalType() == 0;
+        if (!isAutoApproval) {
+            if (req.getLoginUserId() == null || req.getLoginUserId() <= 0) {
+                throw new IllegalArgumentException("登录用户ID(loginUserId)不能为空且必须大于0");
+            }
+            if (req.getLoginRoleId() == null || req.getLoginRoleId() <= 0) {
+                throw new IllegalArgumentException("登录角色ID(loginRoleId)不能为空且必须大于0");
+            }
         }
         if (StringUtils.hasText(req.getIp()) && req.getIp().length() > 20) {
             throw new IllegalArgumentException("IP地址(ip)长度不能超过20字符");
