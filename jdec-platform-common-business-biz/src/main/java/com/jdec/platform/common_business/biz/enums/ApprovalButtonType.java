@@ -17,7 +17,7 @@ public enum ApprovalButtonType {
     CHANGE("change", "变更"),
 
     REAL_TIME_CHANGE("realTime", "实时保存"),
-    DRAFT_REAL_TIME_CHANGE("draf-realTime", "实时保存"),
+    DRAFT_REAL_TIME_CHANGE("draft-realTime", "实时保存"),
     DRAFT("draft", "草稿保存");
 
     private final String key;
