@@ -1615,6 +1615,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             moduleTableIdMap);
                 }
             }
+
+            // 填充登记人数据
+            SysUserResp user =
+                    configCenterApiService.getUserDetailByUserId(
+                            queryParam.getSubjectId(), LoginUserUtil.getLoginUserId());
+
             // 遍历主表数据，根据关联key的值填充关联表数据
             for (Object item : primaryData) {
 
@@ -1795,6 +1801,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             statusMap.put("statusFontColor", "rgb(54, 172, 245)");
 
                             primaryTablePrefixResultMap.put("*.approvalStatus", statusMap);
+
+                            if (Objects.isNull(user)) {
+                                log.debug("登记人id：{}用户信息查询结果为空。", LoginUserUtil.getLoginUserId());
+                            } else {
+                                Map<String, Object> currentUser = new HashMap<>();
+                                currentUser.put("id", LoginUserUtil.getLoginUserId());
+                                currentUser.put("departName", user.getDepartName());
+                                currentUser.put("positionName", user.getPositionName());
+                                currentUser.put("userAvatar", user.getUserAvatar());
+                                currentUser.put("userName", user.getUserName());
+                                currentUser.put("workNumber", user.getWorkNumber());
+                                primaryTablePrefixResultMap.put("*.createUser", currentUser);
+                            }
                         } else {
                             primaryTablePrefixResultMap.put(
                                     "btnList",
