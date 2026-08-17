@@ -587,8 +587,16 @@ public class SysMenuService implements SysMenuApi {
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SysMenuResp getMenuById(Long Id) {
+        SysMenu menu =
+                sysMenuMapper.selectOne(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getId, Id)
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, AppContext.getProjectNo()));
+        if (menu == null) {
+            throw new BusinessException("菜单不存在");
+        }
         SysMenuResp resp = new SysMenuResp();
-        SysMenu menu = sysMenuMapper.selectById(Id);
         BeanUtils.copyProperties(menu, resp);
         return resp;
     }
