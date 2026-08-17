@@ -1779,7 +1779,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
         if (approvalChainBusiness.getStatusValue().equals(99)) {
             // 查询时如果启用状态有权限显示变更按钮
-            if (approvalChain.getCreatedBy().equals(userId) && checkRight(approvalProcessDTO)) {
+            if (approvalChainBusiness.getCreatedBy().equals(userId)
+                    && checkRight(approvalProcessDTO)) {
                 operations.add(
                         showButtonInfo(
                                 "change",
