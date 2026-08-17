@@ -105,6 +105,12 @@ public class ApprovalChainConfigDetailResp {
     @Schema(description = "按钮配置列表")
     private List<ButtonConfigDetail> buttonConfigs;
 
+    @Schema(description = "upAdd")
+    private Integer upAdd;
+
+    @Schema(description = "downAdd")
+    private Integer downAdd;
+
     /** 状态节点 */
     @Data
     @Schema(description = "状态节点")

@@ -1369,6 +1369,32 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                         });
                             }
                         });
+            } else if (queryParam.getType() == 1) {
+                log.debug("审批链列表查询全部待办，构造创建人、草稿数据。");
+                queryWrapper.and(
+                        qr -> {
+                            QueryWrapper<?> qrCast = (QueryWrapper<?>) qr;
+                            qrCast.eq(
+                                    queryParam
+                                                    .getModuleFilterInfo()
+                                                    .getModuleInfo()
+                                                    .getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + "create_by",
+                                    LoginUserUtil.getLoginUserId());
+                            qrCast.eq("business_status", -88);
+                            if (!CollectionUtils.isEmpty(approvalFilterIds)) {
+                                qrCast.or()
+                                        .in(
+                                                queryParam
+                                                                .getModuleFilterInfo()
+                                                                .getModuleInfo()
+                                                                .getPrimaryTable()
+                                                        + DB_TABLE_FIELD_SEPARATOR
+                                                        + DEFAULT_PRIMARY_KEY,
+                                                approvalFilterIds);
+                            }
+                        });
             } else {
                 // 设置筛选条件为审批链过滤后的主键集合
                 if (!CollectionUtils.isEmpty(approvalFilterIds)) {
@@ -1729,13 +1755,37 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             log.debug("该条数据为草稿数据，recordId:{}", primaryId);
 
                             // 填充构造的按钮数据
-                            primaryTablePrefixResultMap.put(
-                                    "btnList",
-                                    Set.of(
-                                            FormButton.builder()
-                                                    .buttonKey("view")
-                                                    .buttonName("编辑草稿")
-                                                    .build()));
+                            if (finalModuleFilterInfo4.getBtnList().stream()
+                                    .anyMatch(
+                                            ele ->
+                                                    FormButtonEnum.EDITE
+                                                            .getKey()
+                                                            .equals(ele.getButtonKey()))) {
+                                // 填充构造的按钮数据
+                                primaryTablePrefixResultMap.put(
+                                        "btnList",
+                                        Set.of(
+                                                FormButton.builder()
+                                                        .buttonKey("view")
+                                                        .buttonName("编辑草稿")
+                                                        .build()));
+
+                            } else if (finalModuleFilterInfo4.getBtnList().stream()
+                                    .anyMatch(
+                                            ele ->
+                                                    FormButtonEnum.VIEW
+                                                            .getKey()
+                                                            .equals(ele.getButtonKey()))) {
+                                primaryTablePrefixResultMap.put(
+                                        "btnList",
+                                        Set.of(
+                                                FormButton.builder()
+                                                        .buttonKey("view")
+                                                        .buttonName("查看草稿")
+                                                        .build()));
+                            } else {
+                                primaryTablePrefixResultMap.put("btnList", Set.of());
+                            }
 
                             // 填充构造的状态数据
                             Map<String, Object> statusMap = new HashMap<>();
@@ -4025,6 +4075,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             Map<String, String> draftBtn = new HashMap<>();
             draftBtn.put("buttonKey", "draft-submit");
             draftBtn.put("showTitle", "提交");
+            draftBtn.put("statusBackground", "rgb(225, 242, 255)");
+            draftBtn.put("statusFontColor", "rgb(54, 172, 245)");
             resultMap.put("btnList", Set.of(draftBtn));
             resultMap.put("realTimeSaveFlag", true);
             resultMap.put("draftFlag", true);
