@@ -2041,7 +2041,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 新增或者变更业务时初始化审批链-------------------------------------------------------
     @Transactional
     protected void initApprovalChainForModule(ApprovalProcessDTO approvalProcessDTO) {
-        Long userId = approvalProcessDTO.getCurrentUserId();
+        Long userId = approvalProcessDTO.getApplicantId();
         // 1. 查询审批链配置列表
         ModuleApprovalChainConfigResp approvalConfig =
                 sysApprovalChainConfigApi.getApprovalConfig(
