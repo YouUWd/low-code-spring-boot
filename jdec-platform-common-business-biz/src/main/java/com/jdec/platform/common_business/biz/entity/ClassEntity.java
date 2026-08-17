@@ -79,6 +79,10 @@ public class ClassEntity extends Model<ClassEntity> {
     @TableField("update_by")
     private Long updateBy;
 
+    /** 业务状态 */
+    @TableField("business_status")
+    private Integer businessStatus;
+
     @Override
     public Serializable pkVal() {
         return this.id;
