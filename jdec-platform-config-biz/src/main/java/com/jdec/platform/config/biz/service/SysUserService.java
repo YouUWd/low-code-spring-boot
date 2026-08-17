@@ -557,6 +557,7 @@ public class SysUserService implements SysUserApi {
                     .userId(VirtualUserConstants.SCHEDULED_TASK_USER_ID)
                     .userName(VirtualUserConstants.SCHEDULED_TASK_USERNAME)
                     .phone(VirtualUserConstants.SCHEDULED_TASK_PHONE)
+                    .subjectId(3L)
                     .build();
         }
 
