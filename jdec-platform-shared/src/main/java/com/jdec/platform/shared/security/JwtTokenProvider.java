@@ -39,8 +39,27 @@ public class JwtTokenProvider {
      */
     public String generateToken(
             Long userId, String username, String phone, Map<String, Object> extra) {
+        return generateToken(userId, username, phone, extra, expirationMs);
+    }
+
+    /**
+     * 签发 JWT 令牌（指定过期时间）。
+     *
+     * @param userId 用户 ID
+     * @param username 用户名
+     * @param phone 手机号
+     * @param extra 额外声明（可选）
+     * @param customExpirationMs 自定义过期时间（毫秒）
+     * @return JWT 字符串
+     */
+    public String generateToken(
+            Long userId,
+            String username,
+            String phone,
+            Map<String, Object> extra,
+            long customExpirationMs) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + expirationMs);
+        Date expiry = new Date(now.getTime() + customExpirationMs);
 
         var builder =
                 Jwts.builder()
