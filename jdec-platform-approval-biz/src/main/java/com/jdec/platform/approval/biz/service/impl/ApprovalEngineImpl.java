@@ -92,6 +92,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             Map<String, Object> processResp = businessApprove(approvalProcessDTO);
             approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
             result.put("templateList", processResp.get("templateList"));
+            result.put("autoApproval", processResp.get("autoApproval"));
+            result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
             if (approvalBusiness.getStatusValue().equals(99)) {
                 result.put("ok", 1);
                 result.put("end", 1);
@@ -1046,6 +1048,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalBusiness.setApproverIdList(String.join(",", approvalIdList));
             }
         }
+        ApprovalChain approvalChainNext = null;
         if (approved) {
             approvalChain.setApproved(true);
             approvalChainMapper.updateById(approvalChain);
@@ -1056,7 +1059,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalNextWrapper
                     .eq(ApprovalChain::getCurrentStep, approvalChain.getNextStep())
                     .last("LIMIT 1");
-            ApprovalChain approvalChainNext = approvalChainMapper.selectOne(approvalNextWrapper);
+            approvalChainNext = approvalChainMapper.selectOne(approvalNextWrapper);
             LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                     new LambdaQueryWrapper<>();
             approvalChainStatusWrapper.eq(
@@ -1152,6 +1155,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         result.put("templateList", templates);
         result.put("approvalBusiness", approvalBusiness);
+
+        if (Objects.nonNull(approvalChainNext) && approvalChainNext.getAutoApproved()) {
+            int time =
+                    Objects.nonNull(approvalChainNext.getAutoApprovedTime())
+                            ? approvalChainNext.getAutoApprovedTime()
+                            : 0;
+            result.put("autoApproval", 1);
+            result.put("autoApprovalTime", LocalDateTime.now().plusHours(time));
+        } else {
+            result.put("autoApproval", 0);
+            result.put("autoApprovalTime", 0);
+        }
         return result;
     }
 
