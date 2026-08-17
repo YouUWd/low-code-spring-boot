@@ -1268,8 +1268,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             updateWrapper.set(ApprovalChain::getApprovalUid, null);
             approvalChainMapper.update(updateWrapper);
 
-            approvalBusiness.setCurrentStep(approvalChain.getUpStep());
-            approvalVersionRecord.setCurrentStep(approvalChain.getUpStep());
+            approvalBusiness.setCurrentStep(specifyStep);
+            approvalVersionRecord.setCurrentStep(specifyStep);
             LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                     new LambdaQueryWrapper<>();
             approvalChainStatusWrapper.eq(
