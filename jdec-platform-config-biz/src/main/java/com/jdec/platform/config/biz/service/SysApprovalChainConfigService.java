@@ -276,6 +276,16 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                                     resp.setDeadlineTime(config.getDeadlineTime());
                                     resp.setButtonList(config.getButtonList());
 
+                                    // up_add / down_add 逻辑
+                                    resp.setUpAdd(1);
+                                    resp.setDownAdd(1);
+
+                                    SysStatus nextStatus =
+                                            sysStatusMapper.selectById(config.getNextStatusId());
+                                    if (nextStatus != null && nextStatus.getStatusValue() == 99) {
+                                        resp.setDownAdd(0);
+                                    }
+
                                     if (config.getButtonList() != null
                                             && !config.getButtonList().isEmpty()) {
                                         List<ApprovalChainConfigPageResp.ButtonConfig>
@@ -671,6 +681,25 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                             resp.setApprovalChainTypeId(chainConfig.getApprovalChainTypeId());
                             resp.setApprovalChainTypeName(
                                     finalChainTypeMap.get(chainConfig.getApprovalChainTypeId()));
+
+                            resp.setUpAdd(1);
+
+                            int downAdd = 1;
+                            if (chainConfig.getNextStatusId() != null) {
+                                SysStatus nextStatus =
+                                        sysStatusMapper.selectOne(
+                                                Wrappers.<SysStatus>lambdaQuery()
+                                                        .eq(
+                                                                SysStatus::getId,
+                                                                chainConfig.getNextStatusId())
+                                                        .select(SysStatus::getStatusValue));
+                                if (nextStatus != null && nextStatus.getStatusValue() == 99) {
+                                    downAdd = 0;
+                                }
+                            }
+
+                            resp.setDownAdd(downAdd);
+
                             resp.setApprovalRule(chainConfig.getApprovalRule());
                             resp.setRejectRule(chainConfig.getRejectRule());
                             resp.setRoleApprovalPercent(chainConfig.getRoleApprovalPercent());

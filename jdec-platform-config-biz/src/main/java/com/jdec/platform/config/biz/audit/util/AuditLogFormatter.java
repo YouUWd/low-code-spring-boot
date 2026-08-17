@@ -50,10 +50,10 @@ public class AuditLogFormatter {
                         .columns(columns)
                         .build();
 
-        // 构建操作详情（新增操作，放在 a 字段）
+        // 构建操作详情（新增操作，放在 i 字段）
         ActionDetail actionDetail =
                 ActionDetail.builder()
-                        .a(Collections.singletonList(recordChange))
+                        .i(Collections.singletonList(recordChange))
                         .u(null)
                         .d(null)
                         .build();
@@ -63,7 +63,7 @@ public class AuditLogFormatter {
                 ModuleAction.builder()
                         .name(moduleName)
                         .mId("") // 暂时为空
-                        .actions(Collections.singletonList(actionDetail))
+                        .actions(actionDetail)
                         .build();
 
         return Collections.singletonList(moduleAction);
@@ -106,7 +106,7 @@ public class AuditLogFormatter {
         // 构建操作详情（修改操作，放在 u 字段）
         ActionDetail actionDetail =
                 ActionDetail.builder()
-                        .a(null)
+                        .i(null)
                         .u(Collections.singletonList(recordChange))
                         .d(null)
                         .build();
@@ -116,7 +116,7 @@ public class AuditLogFormatter {
                 ModuleAction.builder()
                         .name(moduleName)
                         .mId("") // 暂时为空
-                        .actions(Collections.singletonList(actionDetail))
+                        .actions(actionDetail)
                         .build();
 
         return Collections.singletonList(moduleAction);
@@ -142,7 +142,7 @@ public class AuditLogFormatter {
         // 构建操作详情（删除操作，放在 d 字段）
         ActionDetail actionDetail =
                 ActionDetail.builder()
-                        .a(null)
+                        .i(null)
                         .u(null)
                         .d(Collections.singletonList(recordChange))
                         .build();
@@ -152,7 +152,7 @@ public class AuditLogFormatter {
                 ModuleAction.builder()
                         .name(moduleName)
                         .mId("") // 暂时为空
-                        .actions(Collections.singletonList(actionDetail))
+                        .actions(actionDetail)
                         .build();
 
         return Collections.singletonList(moduleAction);
