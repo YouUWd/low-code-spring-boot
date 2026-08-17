@@ -117,7 +117,6 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
     private final SystemModuleApprovalMsgService systemModuleApprovalMsgService;
 
-    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     private Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
         List<Long> moduleIdList =
                 reqList.stream().map(x -> x.getModuleId()).collect(Collectors.toList());
@@ -155,31 +154,37 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             try {
                 result = getId(primaryTableDataList.get(0));
                 // 根据标志位 获取跟踪数据变更记录
-                if (DataUpdateContextHolder.getDataChangeFlag()) {
-                    List<Object> targets = DataUpdateContextHolder.getDataUpdateContext();
-                    if (CollectionUtil.isNotEmpty(targets)) {
-                        ModuleDataChangeContext context = new ModuleDataChangeContext();
-                        context.setSubjectId(subjectId);
-                        context.setMainModuleId(reqList.get(0).getModuleId());
-                        context.setMenuId(reqList.get(0).getMenuId());
-                        context.setDataId((Long) result);
-                        context.setRealUserId(LoginUserUtil.getRealLoginUserId());
-                        context.setMockUserId(
-                                !LoginUserUtil.getRealLoginUserId()
-                                                .equals(LoginUserUtil.getLoginUserId())
-                                        ? LoginUserUtil.getLoginUserId()
-                                        : null);
-                        context.setRoleId(roleId);
-                        List<DataChangeContext> dataChangeContextList = new ArrayList<>();
-                        for (Object object : targets) {
-                            DataChangeContext dataChangeContext = (DataChangeContext) object;
-                            dataChangeContextList.add(dataChangeContext);
-                        }
-                        context.setCallType(CallTypeEnum.CREATE);
-                        context.setDataChangeContextList(dataChangeContextList);
-                        DataUpdateContextHolder.setModuleDataChangeContext(context);
-                    }
-                }
+                //                if (DataUpdateContextHolder.getDataChangeFlag()) {
+                //                    List<Object> targets =
+                // DataUpdateContextHolder.getDataUpdateContext();
+                //                    if (CollectionUtil.isNotEmpty(targets)) {
+                //                        ModuleDataChangeContext context = new
+                // ModuleDataChangeContext();
+                //                        context.setSubjectId(subjectId);
+                //                        context.setMainModuleId(reqList.get(0).getModuleId());
+                //                        context.setMenuId(reqList.get(0).getMenuId());
+                //                        context.setDataId((Long) result);
+                //                        context.setRealUserId(LoginUserUtil.getRealLoginUserId());
+                //                        context.setMockUserId(
+                //                                !LoginUserUtil.getRealLoginUserId()
+                //
+                // .equals(LoginUserUtil.getLoginUserId())
+                //                                        ? LoginUserUtil.getLoginUserId()
+                //                                        : null);
+                //                        context.setRoleId(roleId);
+                //                        List<DataChangeContext> dataChangeContextList = new
+                // ArrayList<>();
+                //                        for (Object object : targets) {
+                //                            DataChangeContext dataChangeContext =
+                // (DataChangeContext) object;
+                //                            dataChangeContextList.add(dataChangeContext);
+                //                        }
+                //                        context.setCallType(CallTypeEnum.CREATE);
+                //                        context.setDataChangeContextList(dataChangeContextList);
+                //
+                // DataUpdateContextHolder.setModuleDataChangeContext(context);
+                //                    }
+                //                }
                 return result;
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -891,7 +896,6 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         return null;
     }
 
-    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     private Object editMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
         List<Long> moduleIdList =
                 reqList.stream().map(x -> x.getModuleId()).collect(Collectors.toList());
@@ -1448,11 +1452,6 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         FormButtonEnum.CREATE.getKey(),
                         List.of());
 
-        // 开启数据变更记录 追踪
-        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE
-                && buttonType != ApprovalButtonType.DRAFT_SUBMIT) {
-            DataUpdateContextHolder.openDataChangeFlag();
-        }
         switch (buttonType) {
             case CREATE, CHANGE -> {
                 log.debug("当前提交为创建或变更，插入业务数据。");
@@ -1541,6 +1540,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 Object mainOldData = primaryMapper.selectById((Serializable) oldRecordId);
 
+                boolean submitAfterReal = false;
+                Object snapshotData = null;
+
                 try {
                     Object sourceIdObj = getField(mainOldData, "sourceId");
                     if (Objects.nonNull(sourceIdObj)) {
@@ -1550,7 +1552,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             // 主表查询构造条件
                             QueryWrapper queryWrapper = Wrappers.query();
                             queryWrapper.eq("source_id", oldRecordId);
-                            Object snapshotData = primaryMapper.selectOne(queryWrapper);
+                            snapshotData = primaryMapper.selectOne(queryWrapper);
 
                             if (Objects.nonNull(snapshotData)) {
                                 log.debug("recordId:{}对应的快照数据不为空，保存旧数据到快照记录", oldRecordId);
@@ -1558,7 +1560,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                             } else {
                                 log.debug("recordId:{}对应的快照数据为空，新建快照记录", oldRecordId);
                             }
-
+                            // 实时保存之后的提交
+                            submitAfterReal = true;
                         } else {
                             log.debug("该条业务数据未实时保存，正常提交。recordId:{}", oldRecordId);
 
@@ -1583,6 +1586,16 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
 
                 // 更新主数据
                 editMultiModuleData(subjectId, roleId, moduleSaveList);
+                if (submitAfterReal) {
+                    //// 实时保存之后的提交,记录 快照和当前记录的 字段对比
+                    buildSnapshotAndCurrentDataDiff(
+                            moduleFilterInfo,
+                            subjectId,
+                            req.get(0).getMenuId(),
+                            oldRecordId,
+                            snapshotData,
+                            mainOldData);
+                }
             }
                 // 实时保存
             case REAL_TIME_CHANGE -> {
@@ -1830,6 +1843,48 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             primaryMapper.updateById(snapshotData);
         } else {
             primaryMapper.insert(snapshotData);
+        }
+    }
+
+    private void buildSnapshotAndCurrentDataDiff(
+            ModuleFilterInfo moduleFilterInfo,
+            Long subjectId,
+            Long menuId,
+            Long result,
+            Object snapshotData,
+            Object after) {
+        DataUpdateContextHolder.openDataChangeFlag();
+        if (snapshotData != null) {
+            // 当前记录
+            DataChangeContext context =
+                    DataChangeContext.builder()
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .moduleFilterInfo(moduleFilterInfo)
+                            .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                            .before(snapshotData)
+                            .after(after)
+                            .build();
+            DataUpdateContextHolder.addDataUpdateToContext(context);
+
+            ModuleDataChangeContext moduleContext = new ModuleDataChangeContext();
+            moduleContext.setSubjectId(subjectId);
+            moduleContext.setMainModuleId(moduleFilterInfo.getModuleInfo().getModuleId());
+            moduleContext.setMenuId(menuId);
+            moduleContext.setDataId((Long) result);
+            moduleContext.setRealUserId(LoginUserUtil.getRealLoginUserId());
+            moduleContext.setMockUserId(
+                    !LoginUserUtil.getRealLoginUserId().equals(LoginUserUtil.getLoginUserId())
+                            ? LoginUserUtil.getLoginUserId()
+                            : null);
+            moduleContext.setRoleId(LoginUserUtil.getRoleId());
+            List<DataChangeContext> dataChangeContextList = new ArrayList<>();
+            for (Object object : DataUpdateContextHolder.getDataUpdateContext()) {
+                DataChangeContext dataChangeContext = (DataChangeContext) object;
+                dataChangeContextList.add(dataChangeContext);
+            }
+            moduleContext.setCallType(CallTypeEnum.EDITE);
+            moduleContext.setDataChangeContextList(dataChangeContextList);
+            DataUpdateContextHolder.setModuleDataChangeContext(moduleContext);
         }
     }
 
