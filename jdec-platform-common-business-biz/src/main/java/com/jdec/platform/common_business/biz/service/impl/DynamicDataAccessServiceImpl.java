@@ -4096,12 +4096,13 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
             draftBtn.put("showTitle", "提交");
 
             Map<String, String> extraProperty = new HashMap<>();
-            extraProperty.put("defaultBgColor", "rgb(0, 175,41)");
+            extraProperty.put("defaultBgColor", "#1890FF");
             extraProperty.put("defaultFontColor", "#FFFFFF");
-            extraProperty.put("levitateBgColor", "rgb(0, 154, 41)");
+            extraProperty.put("levitateBgColor", "#1D78FA");
             extraProperty.put("levitateFontColor", "#FFFFFF");
-            extraProperty.put("selectedBgColor", "rgb(0, 138, 37)");
+            extraProperty.put("selectedBgColor", "#125ACF");
             extraProperty.put("selectedFontColor", "#FFFFFF");
+
             draftBtn.put("extraProperty", extraProperty);
 
             resultMap.put("btnList", Set.of(draftBtn));
