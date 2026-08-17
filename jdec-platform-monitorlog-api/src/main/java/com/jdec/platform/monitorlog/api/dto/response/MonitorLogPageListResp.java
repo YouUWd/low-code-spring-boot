@@ -35,6 +35,9 @@ public class MonitorLogPageListResp {
     @Schema(description = "审批结果")
     private String actionTypeTitle;
 
+    @Schema(description = "审批类型：0，自动审批。1，手动审批")
+    private Integer approvalType;
+
     @Schema(description = "登录用户ID;登录用户ID")
     private Long loginUserId;
 

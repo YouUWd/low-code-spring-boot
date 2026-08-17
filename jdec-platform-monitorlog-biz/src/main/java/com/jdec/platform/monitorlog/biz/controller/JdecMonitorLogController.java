@@ -72,7 +72,7 @@ public class JdecMonitorLogController {
                             + "     * logContent 为日志详细内容"
                             + "     * logRemark 为备注信息(自定义json，后台不做解析)")
     public ApiResponse<Void> addControlLog(
-            @Valid @RequestBody MonitorControlLogReq request,
+            @RequestBody MonitorControlLogReq request,
             @Parameter(description = "项目编号")
                     @RequestHeader(value = "X-Project-No", required = false)
                     String projectNo) {

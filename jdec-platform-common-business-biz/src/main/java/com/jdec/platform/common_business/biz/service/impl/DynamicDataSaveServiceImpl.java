@@ -1452,6 +1452,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         FormButtonEnum.CREATE.getKey(),
                         List.of());
 
+        String prefix = "";
         switch (buttonType) {
             case CREATE, CHANGE -> {
                 log.debug("当前提交为创建或变更，插入业务数据。");
@@ -1523,6 +1524,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 if (buttonType == ApprovalButtonType.DRAFT_SUBMIT) {
                     // 提交给审批链的btnType置为submit
                     approvalOperation.setBtnType(ApprovalButtonType.CREATE.getKey());
+                    prefix = "CLS";
                 }
 
                 // 获取变更前数据id
@@ -1675,6 +1677,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             // oldRecordId没有设置过
             if (Objects.isNull(approvalProcessReq.getOldRecordId())) {
                 approvalProcessReq.setOldRecordId(recordId);
+            }
+
+            // 创建时prefix不为空，调用审批链时传入前缀
+            if (StringUtils.isNotBlank(prefix)) {
+                approvalProcessReq.setPrefix(prefix);
             }
 
             approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
@@ -1891,6 +1898,15 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     private void insertDataToRealTable(
             Long subjectId, Long roleId, List<ModuleSaveReq> moduleSaveList) {}
 
+    /**
+     * 获取前端提交的模块数据主模块对应的数据表主键ID
+     *
+     * @param req
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @return
+     */
     private Long getDataRecordId(
             List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
         // 获取主模块信息
@@ -1926,6 +1942,15 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         return recordId;
     }
 
+    /**
+     * 清空表单数据，只保留主键ID，填充moduleId和deleted标识字段
+     *
+     * @param req
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @return
+     */
     private Long editPreProcessDataUpdateDelete(
             List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
         // 获取主模块信息
