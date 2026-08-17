@@ -573,8 +573,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     sysConfigCategoryApi.getConfigItemsByValue("logStateIcon", log.getActionIcon());
             actionLogResp.setActionTypeTitle(modelConfig.getLabel());
             actionLogResp.setActionPath(modelConfig.getExtra());
-            actionLogResp.setCreatedUser(convertUserResp(log.getCreatedBy()));
-            actionLogResp.setRealUser(convertUserResp(log.getRealUserId()));
+            if (!log.getCreatedBy().equals(9999999L)) {
+                actionLogResp.setCreatedUser(convertUserResp(log.getCreatedBy()));
+                actionLogResp.setRealUser(convertUserResp(log.getRealUserId()));
+            }
             if (Objects.nonNull(log.getDescription())) {
                 try {
                     actionLogResp.setDescription(
@@ -1522,7 +1524,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .orElse("");
             }
             monitorControlLogReq.setSubjectName(subjectName);
-            UserBO loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
+            UserBO loginUser = new UserBO();
+            if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
+                monitorControlLogReq.setApprovalType(1);
+                loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
+            } else {
+                loginUser.setId(9999999L);
+                loginUser.setUserName("系统自动审批");
+                monitorControlLogReq.setApprovalType(0);
+            }
             monitorControlLogReq.setLoginUserId(approvalProcessDTO.getCurrentUserId());
             if (Objects.nonNull(loginUser)) {
                 monitorControlLogReq.setLoginUserName(loginUser.getUserName());
@@ -1547,7 +1557,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                     .equals(approvalProcessDTO.getApplicantId());
             monitorControlLogReq.setMockFlag(mockFlag ? 1 : 0);
             if (mockFlag) {
-                UserBO mockUser = userApi.getUserById(approvalProcessDTO.getApplicantId());
+                UserBO mockUser = new UserBO();
+                if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
+                    mockUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
+                } else {
+                    mockUser.setId(9999999L);
+                    mockUser.setUserName("系统自动审批");
+                }
                 monitorControlLogReq.setMockUserId(approvalProcessDTO.getApplicantId());
                 monitorControlLogReq.setMockUserName(mockUser.getUserName());
                 monitorControlLogReq.setMockUserAvater(mockUser.getUserAvatar());
@@ -2494,7 +2510,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     private ActionLogResp.UserVO convertUserResp(Long userId) {
-        UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(userId);
+        UserDetailResp createByUser = new UserDetailResp();
+        if (!userId.equals(9999999L)) {
+            createByUser = sysUserApi.getUserDetailByUserId(userId);
+        } else {
+            createByUser.setId(9999999L);
+            createByUser.setUserName("系统自动审批");
+        }
         ActionLogResp.UserVO userVO = new ActionLogResp.UserVO();
         if (createByUser != null) {
             userVO.setId(createByUser.getUserId());
