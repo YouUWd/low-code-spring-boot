@@ -131,7 +131,7 @@ public class ApprovalChain extends Model<ApprovalChain> {
 
     /** 系统自动办理时间 auto_approved为1时必填 */
     @TableField("auto_approved_time")
-    private LocalDateTime autoApprovedTime;
+    private Integer autoApprovedTime;
 
     /** 办理人未办理的最迟时间 auto_approved_time为0时可填 */
     @TableField("deadline_time")
