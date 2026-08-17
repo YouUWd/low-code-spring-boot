@@ -1165,7 +1165,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             result.put("autoApprovalTime", LocalDateTime.now().plusHours(time));
         } else {
             result.put("autoApproval", 0);
-            result.put("autoApprovalTime", 0);
+            result.put("autoApprovalTime", LocalDateTime.now());
         }
         return result;
     }
