@@ -57,11 +57,6 @@ public class JwtTokenProvider {
         return builder.signWith(secretKey).compact();
     }
 
-    /** 签发 JWT 令牌（无额外声明）。 */
-    public String generateToken(Long userId, String username, String phone) {
-        return generateToken(userId, username, phone, null);
-    }
-
     /**
      * 解析 JWT 令牌，返回 Claims。
      *
@@ -87,22 +82,5 @@ public class JwtTokenProvider {
     public Long getUserId(String token) {
         Claims claims = parseToken(token);
         return claims != null ? Long.parseLong(claims.getSubject()) : null;
-    }
-
-    /** 从令牌中获取用户名。 */
-    public String getUsername(String token) {
-        Claims claims = parseToken(token);
-        return claims != null ? claims.get("username", String.class) : null;
-    }
-
-    /** 从令牌中获取手机号。 */
-    public String getPhone(String token) {
-        Claims claims = parseToken(token);
-        return claims != null ? claims.get("phone", String.class) : null;
-    }
-
-    /** 校验令牌是否有效（可解析且未过期）。 */
-    public boolean validateToken(String token) {
-        return parseToken(token) != null;
     }
 }

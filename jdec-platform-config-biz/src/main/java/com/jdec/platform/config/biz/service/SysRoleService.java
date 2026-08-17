@@ -241,18 +241,27 @@ public class SysRoleService implements SysRoleApi {
         boolean hasChanges = true; // 新增时默认需要记录日志
         Set<Long> oldUserIds = new HashSet<>();
         Set<Long> oldSubjectIds = new HashSet<>();
+        String oldRoleName = "";
+        List<SysRoleUser> oldRoleUsers = new ArrayList<>();
+        List<SysRoleSubject> oldRoleSubjects = new ArrayList<>();
 
         if (isUpdate) {
             Long roleId = request.getId();
+            // 查询旧角色名称
+            SysRole oldRole = sysRoleMapper.selectById(roleId);
+            if (oldRole != null) {
+                oldRoleName = oldRole.getRoleName();
+            }
+
             // 查询旧用户列表
-            List<SysRoleUser> oldRoleUsers =
+            oldRoleUsers =
                     sysRoleUserMapper.selectList(
                             Wrappers.<SysRoleUser>lambdaQuery().eq(SysRoleUser::getRoleId, roleId));
             Set<Long> oldUserIdsTemp =
                     oldRoleUsers.stream().map(SysRoleUser::getUserId).collect(Collectors.toSet());
 
             // 查询旧主体列表
-            List<SysRoleSubject> oldRoleSubjects =
+            oldRoleSubjects =
                     sysRoleSubjectMapper.selectList(
                             Wrappers.<SysRoleSubject>lambdaQuery()
                                     .eq(SysRoleSubject::getRoleId, roleId));
@@ -329,7 +338,18 @@ public class SysRoleService implements SysRoleApi {
             // 记录审批日志
             try {
                 if (isUpdate) {
-                    roleApprovalLogService.logRoleUpdate(roleId, request, subjectMap, hrUserMap);
+                    // 转换旧数据为 RoleUserReq 和 RoleSubjectReq
+                    List<RoleUserReq> oldUserReqs = convertToRoleUserReqs(oldRoleUsers, hrUserMap);
+                    List<RoleSubjectReq> oldSubjectReqs = convertToRoleSubjectReqs(oldRoleSubjects);
+
+                    roleApprovalLogService.logRoleUpdate(
+                            roleId,
+                            oldRoleName,
+                            request,
+                            oldUserReqs,
+                            oldSubjectReqs,
+                            subjectMap,
+                            hrUserMap);
                 } else {
                     roleApprovalLogService.logRoleCreate(roleId, request, subjectMap, hrUserMap);
                 }
@@ -2098,5 +2118,52 @@ public class SysRoleService implements SysRoleApi {
                         .toList();
 
         return UserSwitchDataResp.builder().sysUsers(userInfoList).subjectIds(subjectIds).build();
+    }
+
+    /** 将 SysRoleUser 列表转换为 RoleUserReq 列表 */
+    private List<RoleUserReq> convertToRoleUserReqs(
+            List<SysRoleUser> roleUsers, Map<Long, UserBO> hrUserMap) {
+        if (roleUsers == null || roleUsers.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return roleUsers.stream()
+                .map(
+                        ru -> {
+                            RoleUserReq req = new RoleUserReq();
+                            req.setUserId(String.valueOf(ru.getUserId()));
+                            req.setUserType(ru.getUserType());
+                            req.setEffectiveType(ru.getEffectiveType());
+                            req.setEffectiveStartDate(ru.getEffectiveStartDate());
+                            req.setEffectiveEndDate(ru.getEffectiveEndDate());
+
+                            // 从 hrUserMap 获取用户名
+                            UserBO user = hrUserMap.get(ru.getUserId());
+                            if (user != null) {
+                                req.setUserName(user.getUserName());
+                            }
+
+                            return req;
+                        })
+                .toList();
+    }
+
+    /** 将 SysRoleSubject 列表转换为 RoleSubjectReq 列表 */
+    private List<RoleSubjectReq> convertToRoleSubjectReqs(List<SysRoleSubject> roleSubjects) {
+        if (roleSubjects == null || roleSubjects.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return roleSubjects.stream()
+                .map(
+                        rs -> {
+                            RoleSubjectReq req = new RoleSubjectReq();
+                            req.setSubjectId(rs.getSubjectId());
+                            req.setEffectiveType(rs.getEffectiveType());
+                            req.setEffectiveStartDate(rs.getEffectiveStartDate());
+                            req.setEffectiveEndDate(rs.getEffectiveEndDate());
+                            return req;
+                        })
+                .toList();
     }
 }

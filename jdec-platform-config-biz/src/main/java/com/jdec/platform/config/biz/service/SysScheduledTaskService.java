@@ -266,7 +266,7 @@ public class SysScheduledTaskService extends ServiceImpl<SysScheduledTaskMapper,
             return new HashMap<>();
         }
         try {
-            return JSON.parseObject(json, new TypeReference<Map<String, String>>() {});
+            return JSON.parseObject(json, new TypeReference<>() {});
         } catch (Exception e) {
             log.warn("JSON 解析失败，按空处理: {}", json);
             return new HashMap<>();
