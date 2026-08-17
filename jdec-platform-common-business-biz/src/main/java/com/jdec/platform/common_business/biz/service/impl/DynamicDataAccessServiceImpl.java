@@ -4072,11 +4072,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (canEdit) {
             log.debug("草稿查看模式且模块有编辑权限，显示提交按钮并放开实时保存。");
-            Map<String, String> draftBtn = new HashMap<>();
+            Map<String, Object> draftBtn = new HashMap<>();
             draftBtn.put("buttonKey", "draft-submit");
             draftBtn.put("showTitle", "提交");
-            draftBtn.put("statusBackground", "rgb(225, 242, 255)");
-            draftBtn.put("statusFontColor", "rgb(54, 172, 245)");
+
+            Map<String, String> extraProperty = new HashMap<>();
+            extraProperty.put("defaultBgColor", "rgb(0, 175,41)");
+            extraProperty.put("defaultFontColor", "#FFFFFF");
+            extraProperty.put("levitateBgColor", "rgb(0, 154, 41)");
+            extraProperty.put("levitateFontColor", "#FFFFFF");
+            extraProperty.put("selectedBgColor", "rgb(0, 138, 37)");
+            extraProperty.put("selectedFontColor", "#FFFFFF");
+            draftBtn.put("extraProperty", extraProperty);
+
             resultMap.put("btnList", Set.of(draftBtn));
             resultMap.put("realTimeSaveFlag", true);
             resultMap.put("draftFlag", true);
