@@ -94,6 +94,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             result.put("templateList", processResp.get("templateList"));
             result.put("autoApproval", processResp.get("autoApproval"));
             result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
+            result.put("autoRoleId", approvalBusiness.getApproveRoleId());
             if (approvalBusiness.getStatusValue().equals(99)) {
                 result.put("ok", 1);
                 result.put("end", 1);
