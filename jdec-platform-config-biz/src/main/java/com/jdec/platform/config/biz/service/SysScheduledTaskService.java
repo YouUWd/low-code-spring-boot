@@ -10,20 +10,24 @@ import com.jdec.platform.config.api.dto.request.CreateScheduledTaskReq;
 import com.jdec.platform.config.api.dto.response.ScheduledTaskResp;
 import com.jdec.platform.config.biz.entity.SysScheduledTask;
 import com.jdec.platform.config.biz.mapper.SysScheduledTaskMapper;
+import com.jdec.platform.shared.constant.VirtualUserConstants;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.security.JwtTokenProvider;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -69,6 +73,8 @@ public class SysScheduledTaskService extends ServiceImpl<SysScheduledTaskMapper,
 
     private final ThreadPoolTaskScheduler scheduledTaskScheduler;
     private final RestTemplate restTemplate;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final StringRedisTemplate stringRedisTemplate;
 
     /** 延迟获取自身代理，避免构造循环依赖；用于从调度线程调用时让数据源切面生效 */
     private final ObjectProvider<SysScheduledTaskService> selfProvider;
@@ -232,6 +238,22 @@ public class SysScheduledTaskService extends ServiceImpl<SysScheduledTaskMapper,
         String url = buildUrl(task.getRequestUrl(), parseMap(task.getRequestParams()));
         HttpMethod method = HttpMethod.valueOf(task.getRequestMethod().toUpperCase());
         HttpHeaders headers = buildHeaders(task.getRequestHeaders());
+
+        // 生成虚拟用户的 JWT token（1天过期）
+        String token =
+                jwtTokenProvider.generateToken(
+                        VirtualUserConstants.SCHEDULED_TASK_USER_ID,
+                        VirtualUserConstants.SCHEDULED_TASK_USERNAME,
+                        VirtualUserConstants.SCHEDULED_TASK_PHONE,
+                        null,
+                        VirtualUserConstants.TOKEN_EXPIRATION_ONE_DAY);
+
+        // 将 token 存入 Redis，key 为 token:手机号
+        String redisKey = "token:" + VirtualUserConstants.SCHEDULED_TASK_PHONE;
+        stringRedisTemplate.opsForValue().set(redisKey, token, 1, TimeUnit.DAYS);
+
+        headers.set("Authorization", "Bearer " + token);
+
         HttpEntity<String> entity =
                 (method == HttpMethod.GET || method == HttpMethod.DELETE)
                         ? new HttpEntity<>(headers)
@@ -266,7 +288,7 @@ public class SysScheduledTaskService extends ServiceImpl<SysScheduledTaskMapper,
             return new HashMap<>();
         }
         try {
-            return JSON.parseObject(json, new TypeReference<Map<String, String>>() {});
+            return JSON.parseObject(json, new TypeReference<>() {});
         } catch (Exception e) {
             log.warn("JSON 解析失败，按空处理: {}", json);
             return new HashMap<>();
