@@ -111,6 +111,12 @@ public class ApprovalChainConfigPageResp {
     @Schema(description = "按钮配置列表")
     private List<ButtonConfig> buttonConfigs;
 
+    @Schema(description = "upAdd")
+    private Integer upAdd;
+
+    @Schema(description = "downAdd")
+    private Integer downAdd;
+
     /** 按钮配置 */
     @Data
     @Schema(description = "按钮配置")
