@@ -58,29 +58,61 @@ public class RoleApprovalLogService {
     }
 
     /**
-     * 记录角色修改的审批日志，直接记录变更后的完整数据
+     * 记录角色修改的审批日志，对比旧数据和新数据
      *
      * @param roleId 角色ID
-     * @param request 保存请求
+     * @param oldRoleName 旧角色名称
+     * @param request 保存请求（新数据）
+     * @param oldRoleUsers 旧用户列表
+     * @param oldRoleSubjects 旧主体列表
      * @param subjectMap 主体名称映射
      * @param hrUserMap 用户信息映射
      */
     public void logRoleUpdate(
             Long roleId,
+            String oldRoleName,
             SaveRoleUserReq request,
+            List<RoleUserReq> oldRoleUsers,
+            List<RoleSubjectReq> oldRoleSubjects,
             Map<Long, SubjectBO> subjectMap,
             Map<Long, UserBO> hrUserMap) {
 
-        // 1. 构建修改后的数据快照
+        // 1. 构建字段变更列表
         List<Map<String, Object>> columns = new ArrayList<>();
-        columns.add(buildColumn("角色名称", "", request.getRoleName(), "roleName"));
 
-        List<String> subjectDisplayNames =
+        // 角色名称对比（如果变化）
+        if (!oldRoleName.equals(request.getRoleName())) {
+            columns.add(buildColumn("角色名称", oldRoleName, request.getRoleName(), "roleName"));
+        }
+
+        // 授权主体对比（简单字符串拼接，不对齐）
+        List<String> oldSubjectDisplayNames = buildSubjectDisplayNames(oldRoleSubjects, subjectMap);
+        List<String> newSubjectDisplayNames =
                 buildSubjectDisplayNames(request.getSubjectList(), subjectMap);
-        columns.add(buildColumn("授权主体", "", subjectDisplayNames, "subject"));
 
-        List<String> userDisplayNames = buildUserDisplayNames(request.getUsers(), hrUserMap);
-        columns.add(buildColumn("指定成员", "", userDisplayNames, "userName"));
+        String oldSubjectStr =
+                oldSubjectDisplayNames.isEmpty() ? "" : String.join(",", oldSubjectDisplayNames);
+        String newSubjectStr =
+                newSubjectDisplayNames.isEmpty() ? "" : String.join(",", newSubjectDisplayNames);
+
+        if (!oldSubjectStr.equals(newSubjectStr)) {
+            columns.add(buildColumn("授权主体", oldSubjectStr, newSubjectStr, "subject"));
+        }
+
+        // 指定成员对比（对齐显示，返回数组格式）
+        List<String> oldUserDisplayNames = buildUserDisplayNames(oldRoleUsers, hrUserMap);
+        List<String> newUserDisplayNames = buildUserDisplayNames(request.getUsers(), hrUserMap);
+
+        if (!isSameList(oldUserDisplayNames, newUserDisplayNames)) {
+            AlignedChangeArray userChange =
+                    buildAlignedChangeArray(oldUserDisplayNames, newUserDisplayNames);
+            columns.add(buildColumn("指定成员", userChange.oldValue, userChange.newValue, "userName"));
+        }
+
+        // 如果没有任何字段变更，不发送日志
+        if (columns.isEmpty()) {
+            return;
+        }
 
         // 2. 构建 ModuleAction
         Map<String, Object> recordChange = new LinkedHashMap<>();
@@ -127,9 +159,10 @@ public class RoleApprovalLogService {
         // 授权主体
         List<String> subjectDisplayNames =
                 buildSubjectDisplayNames(request.getSubjectList(), subjectMap);
-        columns.add(buildColumn("授权主体", "", subjectDisplayNames, "subject"));
+        String subjectDisplayStr = String.join(",", subjectDisplayNames);
+        columns.add(buildColumn("授权主体", "", subjectDisplayStr, "subject"));
 
-        // 指定成员
+        // 指定成员（数组格式）
         List<String> userDisplayNames = buildUserDisplayNames(request.getUsers(), hrUserMap);
         columns.add(buildColumn("指定成员", "", userDisplayNames, "userName"));
 
@@ -330,5 +363,110 @@ public class RoleApprovalLogService {
         } else {
             auditLogSendService.sendAuditLog(context);
         }
+    }
+
+    // ==================== 对齐变更辅助方法 ====================
+
+    /** 对齐变更结果（字符串格式） */
+    private static class AlignedChange {
+        String oldValue;
+        String newValue;
+
+        AlignedChange(String oldValue, String newValue) {
+            this.oldValue = oldValue;
+            this.newValue = newValue;
+        }
+    }
+
+    /** 对齐变更结果（数组格式） */
+    private static class AlignedChangeArray {
+        List<String> oldValue;
+        List<String> newValue;
+
+        AlignedChangeArray(List<String> oldValue, List<String> newValue) {
+            this.oldValue = oldValue;
+            this.newValue = newValue;
+        }
+    }
+
+    /** 判断两个列表是否相同 */
+    private boolean isSameList(List<String> list1, List<String> list2) {
+        if (list1.size() != list2.size()) {
+            return false;
+        }
+        for (int i = 0; i < list1.size(); i++) {
+            if (!list1.get(i).equals(list2.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 构建对齐的变更记录（数组格式）
+     *
+     * <p>示例： 旧：[万勇杰, 邓由(2026-08-17之后)] 新：[邓由(2026-08-17之后), 冯露娜]
+     *
+     * <p>对齐结果： old: ["万勇杰", "邓由(2026-08-17之后)", "--"] newer: ["--", "邓由(2026-08-17之后)", "冯露娜"]
+     *
+     * @param oldList 旧列表
+     * @param newList 新列表
+     * @return 对齐的变更记录（数组格式）
+     */
+    private AlignedChangeArray buildAlignedChangeArray(List<String> oldList, List<String> newList) {
+        // 使用 LinkedHashSet 保持顺序，同时去重
+        Set<String> oldSet = new LinkedHashSet<>(oldList);
+        Set<String> newSet = new LinkedHashSet<>(newList);
+
+        // 找出被移除的、保持不变的、新增的
+        List<String> removed = new ArrayList<>(); // 在旧列表但不在新列表
+        List<String> kept = new ArrayList<>(); // 同时在新旧列表
+        List<String> added = new ArrayList<>(); // 在新列表但不在旧列表
+
+        // 按旧列表顺序遍历
+        for (String item : oldList) {
+            if (newSet.contains(item)) {
+                if (!kept.contains(item)) {
+                    kept.add(item);
+                }
+            } else {
+                if (!removed.contains(item)) {
+                    removed.add(item);
+                }
+            }
+        }
+
+        // 按新列表顺序遍历，找出新增项
+        for (String item : newList) {
+            if (!oldSet.contains(item)) {
+                if (!added.contains(item)) {
+                    added.add(item);
+                }
+            }
+        }
+
+        // 构建对齐的数组
+        List<String> oldAligned = new ArrayList<>();
+        List<String> newAligned = new ArrayList<>();
+
+        // 1. 先放被移除的（old有，new用--占位）
+        for (String item : removed) {
+            oldAligned.add(item);
+            newAligned.add("--");
+        }
+
+        // 2. 再放保持不变的（old和new都有）
+        for (String item : kept) {
+            oldAligned.add(item);
+            newAligned.add(item);
+        }
+
+        // 3. 最后放新增的（old用--占位，new有）
+        for (String item : added) {
+            oldAligned.add("--");
+            newAligned.add(item);
+        }
+
+        return new AlignedChangeArray(oldAligned, newAligned);
     }
 }

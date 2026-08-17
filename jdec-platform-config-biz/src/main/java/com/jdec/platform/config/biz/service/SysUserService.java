@@ -24,6 +24,7 @@ import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
+import com.jdec.platform.shared.constant.VirtualUserConstants;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -548,6 +549,17 @@ public class SysUserService implements SysUserApi {
 
     @Override
     public CheckUserPermissionByPhoneResp checkUserPermissionByPhone(String phone) {
+        // 0. 检查是否为虚拟用户（定时任务系统用户）
+        if (VirtualUserConstants.SCHEDULED_TASK_PHONE.equals(phone)) {
+            return CheckUserPermissionByPhoneResp.builder()
+                    .permissionFlag(true)
+                    .id(VirtualUserConstants.SCHEDULED_TASK_USER_ID)
+                    .userId(VirtualUserConstants.SCHEDULED_TASK_USER_ID)
+                    .userName(VirtualUserConstants.SCHEDULED_TASK_USERNAME)
+                    .phone(VirtualUserConstants.SCHEDULED_TASK_PHONE)
+                    .build();
+        }
+
         String projectNo = AppContext.getProjectNo();
         LocalDate today = LocalDate.now();
 
