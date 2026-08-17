@@ -1,6 +1,5 @@
 package com.jdec.platform.config.biz.audit.dto;
 
-import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,6 +22,6 @@ public class ModuleAction {
     /** 模块ID（暂时为空） */
     private String mId;
 
-    /** 操作列表（新增a、修改u、删除d） */
-    private List<ActionDetail> actions;
+    /** 操作详情（新增a、修改u、删除d） */
+    private ActionDetail actions;
 }

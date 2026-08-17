@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 /**
  * 操作详情
  *
- * <p>包含新增(a)、修改(u)、删除(d)三种操作类型
+ * <p>包含新增(i)、修改(u)、删除(d)三种操作类型
  */
 @Data
 @Builder
@@ -17,8 +17,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ActionDetail {
 
-    /** 新增操作（add） */
-    private List<RecordChange> a;
+    /** 新增操作（insert） */
+    private List<RecordChange> i;
 
     /** 修改操作（update） */
     private List<RecordChange> u;
