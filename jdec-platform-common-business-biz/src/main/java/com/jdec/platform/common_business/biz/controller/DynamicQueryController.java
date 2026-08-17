@@ -187,7 +187,7 @@ public class DynamicQueryController {
     }
 
     @GetMapping("/approval/getToDoId")
-    @Operation(summary = "获取带审批的模块待办、已办、全部数量", description = "获取带审批的模块待办、已办、全部数量")
+    @Operation(summary = "查询待办下一个单据ID", description = "查询待办下一个单据ID")
     public ApiResponse<Long> getApprovalToDoId(
             @Schema(description = "主体ID") @RequestHeader("X-Subject-Id") Long subjectId,
             @Schema(description = "角色ID") @RequestHeader(name = "X-Role-Id") Long roleId,

@@ -94,6 +94,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             result.put("templateList", processResp.get("templateList"));
             result.put("autoApproval", processResp.get("autoApproval"));
             result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
+            result.put("autoRoleId", approvalBusiness.getApproveRoleId());
             if (approvalBusiness.getStatusValue().equals(99)) {
                 result.put("ok", 1);
                 result.put("end", 1);
@@ -1268,8 +1269,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             updateWrapper.set(ApprovalChain::getApprovalUid, null);
             approvalChainMapper.update(updateWrapper);
 
-            approvalBusiness.setCurrentStep(approvalChain.getUpStep());
-            approvalVersionRecord.setCurrentStep(approvalChain.getUpStep());
+            approvalBusiness.setCurrentStep(specifyStep);
+            approvalVersionRecord.setCurrentStep(specifyStep);
             LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                     new LambdaQueryWrapper<>();
             approvalChainStatusWrapper.eq(
@@ -1779,7 +1780,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
         if (approvalChainBusiness.getStatusValue().equals(99)) {
             // 查询时如果启用状态有权限显示变更按钮
-            if (approvalChain.getCreatedBy().equals(userId) && checkRight(approvalProcessDTO)) {
+            if (approvalChainBusiness.getCreatedBy().equals(userId)
+                    && checkRight(approvalProcessDTO)) {
                 operations.add(
                         showButtonInfo(
                                 "change",
@@ -2041,7 +2043,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 新增或者变更业务时初始化审批链-------------------------------------------------------
     @Transactional
     protected void initApprovalChainForModule(ApprovalProcessDTO approvalProcessDTO) {
-        Long userId = approvalProcessDTO.getCurrentUserId();
+        Long userId = approvalProcessDTO.getApplicantId();
         // 1. 查询审批链配置列表
         ModuleApprovalChainConfigResp approvalConfig =
                 sysApprovalChainConfigApi.getApprovalConfig(
