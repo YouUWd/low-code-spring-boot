@@ -132,8 +132,12 @@
                     OR control_name LIKE CONCAT('%', #{keyWord}, '%')
                 </if>
             )
-            AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-        ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+            <if test="startTime != null and startTime != ''">
+                AND log_date <![CDATA[ >= ]]> #{startTime}
+            </if>
+            <if test="endTime != null and endTime != ''">
+                AND log_date <![CDATA[ <= ]]> #{endTime}
+            </if>
     </sql>
 
     <!-- WHERE 条件 - messagelog / systemlog 专用（去除模块/菜单/控件列的模糊匹配） -->
@@ -146,8 +150,12 @@
                     OR log_remark LIKE CONCAT('%', #{keyWord}, '%')
                 </if>
             )
-            AND (log_date &lt; #{lastTime} OR (log_date = #{lastTime} AND id &lt; #{lastId}))
-        ORDER BY log_date DESC, id DESC LIMIT #{pageSize}
+            <if test="startTime != null and startTime != ''">
+                AND log_date <![CDATA[ >= ]]> #{startTime}
+            </if>
+            <if test="endTime != null and endTime != ''">
+                AND log_date <![CDATA[ <= ]]> #{endTime}
+            </if>
     </sql>
 
     <!-- 分页 UNION ALL 查询：返回多类型混合列表，使用 BaseResultMap（JdecMonitorLogBase） -->
@@ -210,7 +218,68 @@
             </choose>
         ) res
         ORDER BY res.log_date DESC, res.id DESC
-        LIMIT #{pageSize}
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 总数查询 COUNT -->
+    <select id="countPageListWithMultiTable" resultType="long">
+        SELECT COUNT(1) FROM (
+            <choose>
+                <when test="logType == null or logType == ''">
+                    (SELECT id
+                    FROM sys_monitor_messagelog
+                    <include refid="baseLogWhereCondition"/>)
+
+                    UNION ALL
+
+                    (SELECT id
+                    FROM sys_monitor_controllog
+                    <include refid="controllogWhereCondition"/>)
+
+                    UNION ALL
+
+                    (SELECT id
+                    FROM sys_monitor_systemlog
+                    <include refid="baseLogWhereCondition"/>)
+                </when>
+
+                <when test="logType == 'messageLog'">
+                    (SELECT id
+                    FROM sys_monitor_messagelog
+                    <include refid="baseLogWhereCondition"/>)
+                </when>
+
+                <when test="logType == 'operationLog'">
+                    (SELECT id
+                    FROM sys_monitor_controllog
+                    <include refid="controllogWhereCondition"/>)
+                </when>
+
+                <when test="logType == 'systemLog'">
+                    (SELECT id
+                    FROM sys_monitor_systemlog
+                    <include refid="baseLogWhereCondition"/>)
+                </when>
+
+                <otherwise>
+                    (SELECT id
+                    FROM sys_monitor_messagelog
+                    <include refid="baseLogWhereCondition"/>)
+
+                    UNION ALL
+
+                    (SELECT id
+                    FROM sys_monitor_controllog
+                    <include refid="controllogWhereCondition"/>)
+
+                    UNION ALL
+
+                    (SELECT id
+                    FROM sys_monitor_systemlog
+                    <include refid="baseLogWhereCondition"/>)
+                </otherwise>
+            </choose>
+        ) res
     </select>
 
     <!--
