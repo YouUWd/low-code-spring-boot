@@ -92,6 +92,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             Map<String, Object> processResp = businessApprove(approvalProcessDTO);
             approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
             result.put("templateList", processResp.get("templateList"));
+            result.put("autoApproval", processResp.get("autoApproval"));
+            result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
+            result.put("autoRoleId", approvalBusiness.getApproveRoleId());
             if (approvalBusiness.getStatusValue().equals(99)) {
                 result.put("ok", 1);
                 result.put("end", 1);
@@ -1046,6 +1049,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 approvalBusiness.setApproverIdList(String.join(",", approvalIdList));
             }
         }
+        ApprovalChain approvalChainNext = null;
         if (approved) {
             approvalChain.setApproved(true);
             approvalChainMapper.updateById(approvalChain);
@@ -1056,7 +1060,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalNextWrapper
                     .eq(ApprovalChain::getCurrentStep, approvalChain.getNextStep())
                     .last("LIMIT 1");
-            ApprovalChain approvalChainNext = approvalChainMapper.selectOne(approvalNextWrapper);
+            approvalChainNext = approvalChainMapper.selectOne(approvalNextWrapper);
             LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                     new LambdaQueryWrapper<>();
             approvalChainStatusWrapper.eq(
@@ -1152,6 +1156,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         result.put("templateList", templates);
         result.put("approvalBusiness", approvalBusiness);
+
+        if (Objects.nonNull(approvalChainNext) && approvalChainNext.getAutoApproved()) {
+            int time =
+                    Objects.nonNull(approvalChainNext.getAutoApprovedTime())
+                            ? approvalChainNext.getAutoApprovedTime()
+                            : 0;
+            result.put("autoApproval", 1);
+            result.put("autoApprovalTime", LocalDateTime.now().plusHours(time));
+        } else {
+            result.put("autoApproval", 0);
+            result.put("autoApprovalTime", LocalDateTime.now());
+        }
         return result;
     }
 
@@ -1253,8 +1269,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             updateWrapper.set(ApprovalChain::getApprovalUid, null);
             approvalChainMapper.update(updateWrapper);
 
-            approvalBusiness.setCurrentStep(approvalChain.getUpStep());
-            approvalVersionRecord.setCurrentStep(approvalChain.getUpStep());
+            approvalBusiness.setCurrentStep(specifyStep);
+            approvalVersionRecord.setCurrentStep(specifyStep);
             LambdaQueryWrapper<ApprovalChainStatus> approvalChainStatusWrapper =
                     new LambdaQueryWrapper<>();
             approvalChainStatusWrapper.eq(
@@ -1764,7 +1780,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
         if (approvalChainBusiness.getStatusValue().equals(99)) {
             // 查询时如果启用状态有权限显示变更按钮
-            if (approvalChain.getCreatedBy().equals(userId) && checkRight(approvalProcessDTO)) {
+            if (approvalChainBusiness.getCreatedBy().equals(userId)
+                    && checkRight(approvalProcessDTO)) {
                 operations.add(
                         showButtonInfo(
                                 "change",
@@ -2026,7 +2043,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 新增或者变更业务时初始化审批链-------------------------------------------------------
     @Transactional
     protected void initApprovalChainForModule(ApprovalProcessDTO approvalProcessDTO) {
-        Long userId = approvalProcessDTO.getCurrentUserId();
+        Long userId = approvalProcessDTO.getApplicantId();
         // 1. 查询审批链配置列表
         ModuleApprovalChainConfigResp approvalConfig =
                 sysApprovalChainConfigApi.getApprovalConfig(
