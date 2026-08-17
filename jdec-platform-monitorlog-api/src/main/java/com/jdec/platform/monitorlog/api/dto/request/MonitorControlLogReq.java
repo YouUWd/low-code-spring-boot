@@ -9,6 +9,9 @@ import lombok.EqualsAndHashCode;
 @Schema(description = "记录监控操作日志请求")
 public class MonitorControlLogReq extends MonitorBaseLogReq {
 
+    @Schema(description = "审批类型：0，自动审批。1，手动审批")
+    private Integer approvalType = 1;
+
     @Schema(description = "动作名称")
     private String actionName;
 

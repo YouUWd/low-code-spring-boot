@@ -1449,7 +1449,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         List.of());
 
         // 开启数据变更记录 追踪
-        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE) {
+        if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE
+                && buttonType != ApprovalButtonType.DRAFT_SUBMIT) {
             DataUpdateContextHolder.openDataChangeFlag();
         }
         switch (buttonType) {
@@ -1832,9 +1833,15 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
     }
 
-    private void insertDataToRealTable(
-            Long subjectId, Long roleId, List<ModuleSaveReq> moduleSaveList) {}
-
+    /**
+     * 获取前端提交的模块数据主模块对应的数据表主键ID
+     *
+     * @param req
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @return
+     */
     private Long getDataRecordId(
             List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
         // 获取主模块信息
@@ -1870,6 +1877,15 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         return recordId;
     }
 
+    /**
+     * 清空表单数据，只保留主键ID，填充moduleId和deleted标识字段
+     *
+     * @param req
+     * @param subjectId
+     * @param roleId
+     * @param moduleId
+     * @return
+     */
     private Long editPreProcessDataUpdateDelete(
             List<ModuleSaveReq> req, Long subjectId, Long roleId, Long moduleId) {
         // 获取主模块信息

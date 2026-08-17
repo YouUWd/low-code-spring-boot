@@ -298,6 +298,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             // 查询快照数据
                             QueryWrapper snapshotQuery = Wrappers.query();
                             snapshotQuery.eq("source_id", id);
+                            snapshotQuery.eq("deleted", true);
                             Object snapshotData = primaryMapper.selectOne(snapshotQuery);
 
                             Long snapshotDataId = null;
@@ -1725,7 +1726,9 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
                         if (Objects.nonNull(businessStatus)
                                 && Integer.parseInt(String.valueOf(businessStatus)) == -88) {
-                            Map<String, String> btnView = new HashMap<>();
+                            log.debug("该条数据为草稿数据，recordId:{}", primaryId);
+
+                            // 填充构造的按钮数据
                             primaryTablePrefixResultMap.put(
                                     "btnList",
                                     Set.of(
@@ -1733,6 +1736,15 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                                     .buttonKey("view")
                                                     .buttonName("编辑草稿")
                                                     .build()));
+
+                            // 填充构造的状态数据
+                            Map<String, Object> statusMap = new HashMap<>();
+                            statusMap.put("title", "等待提交");
+                            statusMap.put("statusValue", 1);
+                            statusMap.put("statusBackground", "rgb(225, 242, 255)");
+                            statusMap.put("statusFontColor", "rgb(54, 172, 245)");
+
+                            primaryTablePrefixResultMap.put("*.approvalStatus", statusMap);
                         } else {
                             primaryTablePrefixResultMap.put(
                                     "btnList",
