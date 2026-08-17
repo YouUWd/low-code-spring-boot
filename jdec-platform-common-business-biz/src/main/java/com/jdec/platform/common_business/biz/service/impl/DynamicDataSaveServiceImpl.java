@@ -1448,6 +1448,8 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         FormButtonEnum.CREATE.getKey(),
                         List.of());
 
+        String prefix = "";
+
         // 开启数据变更记录 追踪
         if (buttonType != ApprovalButtonType.REAL_TIME_CHANGE
                 && buttonType != ApprovalButtonType.DRAFT_SUBMIT) {
@@ -1524,6 +1526,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 if (buttonType == ApprovalButtonType.DRAFT_SUBMIT) {
                     // 提交给审批链的btnType置为submit
                     approvalOperation.setBtnType(ApprovalButtonType.CREATE.getKey());
+                    prefix = "CLS";
                 }
 
                 // 获取变更前数据id
@@ -1662,6 +1665,11 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             // oldRecordId没有设置过
             if (Objects.isNull(approvalProcessReq.getOldRecordId())) {
                 approvalProcessReq.setOldRecordId(recordId);
+            }
+
+            // 创建时prefix不为空，调用审批链时传入前缀
+            if (StringUtils.isNotBlank(prefix)) {
+                approvalProcessReq.setPrefix(prefix);
             }
 
             approvalProcessReq.setCurrentUserId(LoginUserUtil.getRealLoginUserId());
