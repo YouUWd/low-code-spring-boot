@@ -3,6 +3,7 @@ package com.jdec.platform.common_business.api;
 import com.jdec.platform.common_business.api.dto.request.ApprovalModuleSaveReq;
 import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
 import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
+import com.jdec.platform.common_business.api.dto.request.ScheduledTaskCallBackReq;
 import java.util.List;
 
 public interface DynamicDataSaveServiceApi {
@@ -20,4 +21,6 @@ public interface DynamicDataSaveServiceApi {
             Long roleId,
             List<MenuSaveReq> req,
             ApprovalOperationReq approvalOperation);
+
+    Object autoApproval(Long subjectId, Long roleId, ScheduledTaskCallBackReq req);
 }
