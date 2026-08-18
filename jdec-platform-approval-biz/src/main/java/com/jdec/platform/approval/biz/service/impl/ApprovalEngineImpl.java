@@ -2528,7 +2528,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private ActionLogResp.UserVO convertUserResp(Long userId) {
         UserDetailResp createByUser = new UserDetailResp();
         if (!userId.equals(9999999L)) {
-            createByUser = sysUserApi.getUserDetailByUserId(userId);
+            try {
+                createByUser = sysUserApi.getUserDetailByUserId(userId);
+            } catch (Exception e) {
+                createByUser.setId(userId);
+                createByUser.setUserName("");
+            }
         } else {
             createByUser.setId(9999999L);
             createByUser.setUserName("系统自动审批");
