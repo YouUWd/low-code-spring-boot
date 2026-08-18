@@ -170,13 +170,15 @@ public class JdecMonitorLogController {
 
     @PostMapping("/sendSystemLog")
     @Operation(
-            summary = "发送系统日志(Header传参)",
+            summary = "发送系统日志(Header+Body传参)",
             description =
                     "通过Header参数记录系统控制日志，根据logType类型进行不同字段校验："
                             + "loginin/loginout/changerole/resetuser/changesubject 校验基础字段；"
                             + "mockuser/mockchangerole 额外校验模拟用户字段。"
                             + "传入loginUserId和loginRoleId，服务端自动获取用户、角色和模拟用户信息。"
-                            + "Mock标记服务端自动推断：Mock-User-Id>0时为1，否则为0，无需传Mock-Flug。")
+                            + "Mock标记服务端自动推断：Mock-User-Id>0时为1，否则为0，无需传Mock-Flug。"
+                            + "浏览器和系统名称通过Body传递，请求体格式："
+                            + "{\"browser\": \"Chrome\", \"systemName\": \"系统名称\"}")
     public ApiResponse<Void> sendSystemLog(
             @Parameter(
                             description =
@@ -198,10 +200,7 @@ public class JdecMonitorLogController {
             @Parameter(description = "模拟用户ID，大于0时自动开启mock模式")
                     @RequestHeader(value = "Mock-User-Id", required = false)
                     Long mockUserId,
-            @Parameter(description = "浏览器") @RequestHeader(value = "Browser", required = false)
-                    String browser,
-            @Parameter(description = "系统名称") @RequestHeader(value = "System-Name", required = true)
-                    String systemName) {
+            @Valid @RequestBody MonitorSendSystemLogPostReq postReq) {
 
         if (!StringUtils.hasText(logType)) {
             throw new IllegalArgumentException("日志类型(Log-Type)不能为空");
@@ -233,12 +232,8 @@ public class JdecMonitorLogController {
         if (!StringUtils.hasText(subjectName)) {
             throw new IllegalArgumentException("主体名称不能为空");
         }
-        if (!StringUtils.hasText(systemName)) {
-            throw new IllegalArgumentException("系统名称(System-Name)不能为空");
-        }
-        if (systemName.length() > 100) {
-            throw new IllegalArgumentException("系统名称(System-Name)长度不能超过100字符");
-        }
+        String browser = postReq.getBrowser();
+        String systemName = postReq.getSystemName();
         String ip = RequestContextUtils.getClientIp();
         if (!StringUtils.hasText(ip)) {
             throw new IllegalArgumentException("IP地址获取失败，请检查HTTP请求");
@@ -248,9 +243,6 @@ public class JdecMonitorLogController {
         }
         if (!StringUtils.hasText(browser)) {
             browser = "unknown";
-        }
-        if (browser.length() > 100) {
-            throw new IllegalArgumentException("浏览器(Browser)长度不能超过100字符");
         }
 
         int mockFlug;
