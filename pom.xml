@@ -45,7 +45,6 @@
         <knife4j.version>4.4.0</knife4j.version>
         <jackson.version>2.18.2</jackson.version>
         <jooq.version>3.19.15</jooq.version>
-        <druid.version>1.2.23</druid.version>
     </properties>
     <!-- 配置云效私服仓库 -->
     <repositories>
@@ -193,12 +192,6 @@
                 <groupId>org.jooq</groupId>
                 <artifactId>jooq</artifactId>
                 <version>${jooq.version}</version>
-            </dependency>
-            <!-- Druid 数据源 + 监控 -->
-            <dependency>
-                <groupId>com.alibaba</groupId>
-                <artifactId>druid-spring-boot-3-starter</artifactId>
-                <version>${druid.version}</version>
             </dependency>
             <!-- fastjson2 解析json -->
             <dependency>

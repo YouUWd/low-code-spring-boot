@@ -1,6 +1,6 @@
 package com.jdec.platform.shared.datasource;
 
-import com.alibaba.druid.pool.DruidDataSource;
+import com.zaxxer.hikari.HikariDataSource;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -37,35 +37,21 @@ public class DynamicDataSourceConfig {
             String name = entry.getKey();
             DynamicDataSourceProperties.DataSourceProperty prop = entry.getValue();
 
-            // 使用 Druid 数据源
-            DruidDataSource ds = new DruidDataSource();
-            ds.setName("DruidPool-" + name);
-            ds.setUrl(prop.getUrl());
+            // 使用 HikariCP 数据源
+            HikariDataSource ds = new HikariDataSource();
+            ds.setPoolName("HikariPool-" + name);
+            ds.setJdbcUrl(prop.getUrl());
             ds.setUsername(prop.getUsername());
             ds.setPassword(prop.getPassword());
             ds.setDriverClassName(prop.getDriverClassName());
 
             // 连接池配置
-            ds.setInitialSize(5);
-            ds.setMinIdle(5);
-            ds.setMaxActive(20);
-            ds.setMaxWait(60000);
-            ds.setTimeBetweenEvictionRunsMillis(60000);
-            ds.setMinEvictableIdleTimeMillis(300000);
-            ds.setValidationQuery("SELECT 1");
-            ds.setTestWhileIdle(true);
-            ds.setTestOnBorrow(false);
-            ds.setTestOnReturn(false);
-
-            // 开启 Druid 监控统计功能
-            try {
-                ds.setFilters("stat,wall,slf4j");
-            } catch (Exception e) {
-                log.error("Druid 配置 filters 失败: {}", e.getMessage());
-            }
-
-            // 慢 SQL 记录（超过 2 秒）
-            ds.setConnectionProperties("druid.stat.mergeSql=true;druid.stat.slowSqlMillis=2000");
+            ds.setMinimumIdle(5);
+            ds.setMaximumPoolSize(20);
+            ds.setConnectionTimeout(60000);
+            ds.setIdleTimeout(600000);
+            ds.setMaxLifetime(1800000);
+            ds.setConnectionTestQuery("SELECT 1");
 
             targetDataSources.put(name, ds);
             log.info("注册数据源: {} → {}", name, prop.getUrl());
