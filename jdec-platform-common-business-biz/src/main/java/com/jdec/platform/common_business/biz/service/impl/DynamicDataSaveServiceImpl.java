@@ -1783,8 +1783,10 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                     // 处理下一步是  自动审批
                     if (Objects.nonNull(processResultMap.get("autoApproval"))
                             && processResultMap.get("autoApproval").equals(Integer.valueOf(1))) {
-                        String autoApprovalTime = (String) processResultMap.get("autoApprovalTime");
-                        Long autoRoleId = (Long) processResultMap.get("autoRoleId");
+                        String autoApprovalTime =
+                                String.valueOf(processResultMap.get("autoApprovalTime"));
+                        Long autoRoleId =
+                                Long.valueOf(processResultMap.get("autoRoleId").toString());
                         AutoApprovalTaskDTO taskDTO =
                                 AutoApprovalTaskDTO.builder()
                                         .autoApprovalTime(autoApprovalTime)
@@ -1986,7 +1988,6 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             req.setExecuteTime(
                     DateUtil.parseLocalDateTime(
                             taskDTO.getAutoApprovalTime(), DatePattern.NORM_DATETIME_PATTERN));
-            req.setRequestUrl(null);
             req.setRequestMethod("POST");
             req.setRequestUrl(appBackendUrl + "/api/student/common/query/approval/auto");
 
@@ -1999,6 +2000,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             requestHeader.put("X-Subject-Id", taskDTO.getSubjectId());
             requestHeader.put("X-Role-Id", taskDTO.getRoleId());
             requestHeader.put("X-Project-No", LoginUserUtil.getProjectNoFromHeader());
+            requestHeader.put("Content-Type", "application/json");
             req.setRequestBody(JsonUtil.obj2Json(requestBody));
             req.setRequestHeaders(JsonUtil.obj2Json(requestHeader));
 
