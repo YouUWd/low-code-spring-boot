@@ -62,14 +62,6 @@ public class JdecMonitorLogService implements MonitorLogApi {
             MonitorLogPageListReq request, String projectNo) {
         String keyWord = StringUtils.hasText(request.getKeyWord()) ? request.getKeyWord() : "";
 
-        //        SysConfigCategoryResp category =
-        //                sysConfigCategoryApi.getByCategoryAlias(MONITOR_LOG_TYPE_CATEGORY);
-        //        if (category == null) {
-        //            log.warn(
-        //                    "未找到监控日志类型配置分类 categoryAlias={}，日志类型 label 将无法正常显示",
-        // MONITOR_LOG_TYPE_CATEGORY);
-        //        }
-
         List<SysConfigItemTreeResp> configItems =
                 sysConfigCategoryApi.getItemsByCategoryAlias(MONITOR_LOG_TYPE_CATEGORY);
 
@@ -88,17 +80,36 @@ public class JdecMonitorLogService implements MonitorLogApi {
         String reqLogType = request.getLogType();
         String logType = StringUtils.hasText(reqLogType) ? reqLogType : "";
 
+        String startTime =
+                StringUtils.hasText(request.getStartTime())
+                        ? request.getStartTime() + " 00:00:00"
+                        : null;
+        String endTime =
+                StringUtils.hasText(request.getEndTime())
+                        ? request.getEndTime() + " 23:59:59"
+                        : null;
+        Long offset = (request.getPageNum() - 1) * request.getPageSize();
+
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         DataSourceContextHolder.set(dataSourceKey);
         List<JdecMonitorLogBase> logList;
+        long total;
         try {
-            logList =
-                    jdecMonitorMultiTableMapper.queryPageListWithMultiTable(
-                            request.getLastTime(),
-                            request.getLastId(),
-                            request.getPageSize(),
-                            keyWord,
-                            logType);
+            total =
+                    jdecMonitorMultiTableMapper.countPageListWithMultiTable(
+                            startTime, endTime, keyWord, logType);
+            if (total > 0) {
+                logList =
+                        jdecMonitorMultiTableMapper.queryPageListWithMultiTable(
+                                startTime,
+                                endTime,
+                                offset,
+                                request.getPageSize(),
+                                keyWord,
+                                logType);
+            } else {
+                logList = List.of();
+            }
         } finally {
             DataSourceContextHolder.clear();
         }
@@ -118,8 +129,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
                                 })
                         .toList();
 
-        return PageResult.of(
-                request.getPageNum(), request.getPageSize(), (long) respList.size(), respList);
+        return PageResult.of(request.getPageNum(), request.getPageSize(), total, respList);
     }
 
     /**

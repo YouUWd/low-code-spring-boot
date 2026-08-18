@@ -1615,6 +1615,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             moduleTableIdMap);
                 }
             }
+
+            // 填充登记人数据
+            SysUserResp user =
+                    configCenterApiService.getUserDetailByUserId(
+                            queryParam.getSubjectId(), LoginUserUtil.getLoginUserId());
+
             // 遍历主表数据，根据关联key的值填充关联表数据
             for (Object item : primaryData) {
 
@@ -1795,6 +1801,19 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             statusMap.put("statusFontColor", "rgb(54, 172, 245)");
 
                             primaryTablePrefixResultMap.put("*.approvalStatus", statusMap);
+
+                            if (Objects.isNull(user)) {
+                                log.debug("登记人id：{}用户信息查询结果为空。", LoginUserUtil.getLoginUserId());
+                            } else {
+                                Map<String, Object> currentUser = new HashMap<>();
+                                currentUser.put("id", LoginUserUtil.getLoginUserId());
+                                currentUser.put("departName", user.getDepartName());
+                                currentUser.put("positionName", user.getPositionName());
+                                currentUser.put("userAvatar", user.getUserAvatar());
+                                currentUser.put("userName", user.getUserName());
+                                currentUser.put("workNumber", user.getWorkNumber());
+                                primaryTablePrefixResultMap.put("*.createUser", currentUser);
+                            }
                         } else {
                             primaryTablePrefixResultMap.put(
                                     "btnList",
@@ -4072,11 +4091,20 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         if (canEdit) {
             log.debug("草稿查看模式且模块有编辑权限，显示提交按钮并放开实时保存。");
-            Map<String, String> draftBtn = new HashMap<>();
+            Map<String, Object> draftBtn = new HashMap<>();
             draftBtn.put("buttonKey", "draft-submit");
             draftBtn.put("showTitle", "提交");
-            draftBtn.put("statusBackground", "rgb(225, 242, 255)");
-            draftBtn.put("statusFontColor", "rgb(54, 172, 245)");
+
+            Map<String, String> extraProperty = new HashMap<>();
+            extraProperty.put("defaultBgColor", "#1890FF");
+            extraProperty.put("defaultFontColor", "#FFFFFF");
+            extraProperty.put("levitateBgColor", "#1D78FA");
+            extraProperty.put("levitateFontColor", "#FFFFFF");
+            extraProperty.put("selectedBgColor", "#125ACF");
+            extraProperty.put("selectedFontColor", "#FFFFFF");
+
+            draftBtn.put("extraProperty", extraProperty);
+
             resultMap.put("btnList", Set.of(draftBtn));
             resultMap.put("realTimeSaveFlag", true);
             resultMap.put("draftFlag", true);
