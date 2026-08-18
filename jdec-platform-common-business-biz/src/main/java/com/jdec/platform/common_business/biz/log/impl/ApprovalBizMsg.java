@@ -116,6 +116,7 @@ public class ApprovalBizMsg implements BizMsg {
                                 .moduleId(bizWechatMsgDTO.getModuleId())
                                 .moduleName(bizWechatMsgDTO.getModuleName())
                                 .dataId(bizWechatMsgDTO.getDataId())
+                                .autoApproval(bizWechatMsgDTO.getAutoApproval())
                                 // 消息完整的内容
                                 .logContent(templateContent)
                                 .logRemark(null)

@@ -9,6 +9,7 @@ import com.jdec.platform.common_business.biz.dto.configcenter.response.CheckUser
 import com.jdec.platform.common_business.biz.dto.configcenter.response.DataRightConfigResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.PersonalSettingResp;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.SysConfigItemTreeResp;
+import com.jdec.platform.config.api.dto.request.CreateScheduledTaskReq;
 import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.response.*;
 import java.util.List;
@@ -140,4 +141,8 @@ public interface ConfigCenterApiOpenFeignClient {
     //    @GetMapping("/sys/role/get-role-config-detail")
     //    ConfigApiResponse<RoleConfigDetailResp> getRoleConfigDetail(@RequestHeader("X-Subject-Id")
     // Long subjectId,@RequestParam Long roleId);
+
+    @GetMapping("/scheduled-tasks/create")
+    ConfigApiResponse<Long> createScheduledTask(
+            @RequestHeader("X-Subject-Id") Long subjectId, @RequestBody CreateScheduledTaskReq req);
 }

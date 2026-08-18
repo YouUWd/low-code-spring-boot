@@ -26,8 +26,6 @@ import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.datasource.DataSource;
-import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
@@ -49,7 +47,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.STUDENT_MANAGE)
 public class ApprovalEngineImpl implements IApprovalEngine {
 
     private final ApprovalChainMapper approvalChainMapper;
@@ -106,6 +103,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             Map<String, Object> processResp = businessReject(approvalProcessDTO);
             approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
             result.put("templateList", processResp.get("templateList"));
+            result.put("autoApproval", processResp.get("autoApproval"));
+            result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
+            result.put("autoRoleId", approvalBusiness.getApproveRoleId());
         } else if ("cancel".equals(approvalProcessDTO.getButton())) {
             Map<String, Object> processResp = businessRevoke(approvalProcessDTO);
             approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
@@ -573,8 +573,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     sysConfigCategoryApi.getConfigItemsByValue("logStateIcon", log.getActionIcon());
             actionLogResp.setActionTypeTitle(modelConfig.getLabel());
             actionLogResp.setActionPath(modelConfig.getExtra());
-            actionLogResp.setCreatedUser(convertUserResp(log.getCreatedBy()));
-            actionLogResp.setRealUser(convertUserResp(log.getRealUserId()));
+            if (!log.getCreatedBy().equals(9999999L)) {
+                actionLogResp.setCreatedUser(convertUserResp(log.getCreatedBy()));
+                actionLogResp.setRealUser(convertUserResp(log.getRealUserId()));
+            }
             if (Objects.nonNull(log.getDescription())) {
                 try {
                     actionLogResp.setDescription(
@@ -1032,7 +1034,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalRule(approvalProcessDTO, approvalChain);
         boolean approved = true;
         if (List.of("all_members_done", "percent_of_group")
-                .contains(approvalChain.getApprovalRule())) {
+                        .contains(approvalChain.getApprovalRule())
+                && !approvalProcessDTO.getApplicantId().equals(9999999L)) {
             int percent =
                     "all_members_done".equals(approvalChain.getApprovalRule())
                             ? 100
@@ -1340,6 +1343,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         result.put("templateList", templates);
         result.put("approvalBusiness", approvalBusiness);
+        if (!businessApprovalChain.getCurrentStep().equals(approvalChain.getCurrentStep())
+                && businessApprovalChain.getAutoApproved()) {
+            int time =
+                    Objects.nonNull(businessApprovalChain.getAutoApprovedTime())
+                            ? businessApprovalChain.getAutoApprovedTime()
+                            : 0;
+            result.put("autoApproval", 1);
+            result.put("autoApprovalTime", LocalDateTime.now().plusHours(time));
+        } else {
+            result.put("autoApproval", 0);
+            result.put("autoApprovalTime", LocalDateTime.now());
+        }
         return result;
     }
 
@@ -1522,7 +1537,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .orElse("");
             }
             monitorControlLogReq.setSubjectName(subjectName);
-            UserBO loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
+            UserBO loginUser = new UserBO();
+            if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
+                monitorControlLogReq.setApprovalType(1);
+                loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
+            } else {
+                loginUser.setId(9999999L);
+                loginUser.setUserName("系统自动审批");
+                monitorControlLogReq.setApprovalType(0);
+            }
             monitorControlLogReq.setLoginUserId(approvalProcessDTO.getCurrentUserId());
             if (Objects.nonNull(loginUser)) {
                 monitorControlLogReq.setLoginUserName(loginUser.getUserName());
@@ -1547,7 +1570,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                     .equals(approvalProcessDTO.getApplicantId());
             monitorControlLogReq.setMockFlag(mockFlag ? 1 : 0);
             if (mockFlag) {
-                UserBO mockUser = userApi.getUserById(approvalProcessDTO.getApplicantId());
+                UserBO mockUser = new UserBO();
+                if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
+                    mockUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
+                } else {
+                    mockUser.setId(9999999L);
+                    mockUser.setUserName("系统自动审批");
+                }
                 monitorControlLogReq.setMockUserId(approvalProcessDTO.getApplicantId());
                 monitorControlLogReq.setMockUserName(mockUser.getUserName());
                 monitorControlLogReq.setMockUserAvater(mockUser.getUserAvatar());
@@ -2387,12 +2416,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 return LocalDateTime.now()
                         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
             case "loginUser":
-                UserDetailResp loginUser =
-                        sysUserApi.getUserDetailByUserId(approvalProcessDTO.getCurrentUserId());
-                if (createByUser != null && createByUser.getUserName() != null) {
+                if (approvalProcessDTO.getApplicantId().equals(9999999L)) {
+                    return "系统自动审批";
+                }
+                try {
+                    UserDetailResp loginUser =
+                            sysUserApi.getUserDetailByUserId(approvalProcessDTO.getApplicantId());
                     return loginUser.getUserName();
-                } else {
-                    return String.valueOf(loginUser);
+                } catch (Exception e) {
+                    return "";
                 }
             case "created_by":
                 if (createByUser != null && createByUser.getUserName() != null) {
@@ -2494,7 +2526,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     private ActionLogResp.UserVO convertUserResp(Long userId) {
-        UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(userId);
+        UserDetailResp createByUser = new UserDetailResp();
+        if (!userId.equals(9999999L)) {
+            try {
+                createByUser = sysUserApi.getUserDetailByUserId(userId);
+            } catch (Exception e) {
+                createByUser.setId(userId);
+                createByUser.setUserName("");
+            }
+        } else {
+            createByUser.setId(9999999L);
+            createByUser.setUserName("系统自动审批");
+        }
         ActionLogResp.UserVO userVO = new ActionLogResp.UserVO();
         if (createByUser != null) {
             userVO.setId(createByUser.getUserId());

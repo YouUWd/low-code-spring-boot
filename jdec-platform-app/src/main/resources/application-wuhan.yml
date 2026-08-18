@@ -199,6 +199,7 @@ config:
 
 app:
   front-url: http://192.168.60.253:5008
+  backend-url: http://127.0.0.1:8080
   system-name: 人力资源系统-Java
   internal:
     url: http://192.168.2.41:5101/home

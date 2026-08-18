@@ -6,6 +6,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
@@ -14,17 +15,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
+import com.google.common.collect.Lists;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.req.SaveBusinessIdReq;
 import com.jdec.platform.common_business.api.DynamicDataSaveServiceApi;
-import com.jdec.platform.common_business.api.dto.common.FieldChainValueDTO;
-import com.jdec.platform.common_business.api.dto.common.ModuleField;
-import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
-import com.jdec.platform.common_business.api.dto.common.ModuleTable;
-import com.jdec.platform.common_business.api.dto.request.ApprovalModuleSaveReq;
-import com.jdec.platform.common_business.api.dto.request.ApprovalOperationReq;
-import com.jdec.platform.common_business.api.dto.request.MenuSaveReq;
-import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
+import com.jdec.platform.common_business.api.dto.common.*;
+import com.jdec.platform.common_business.api.dto.request.*;
 import com.jdec.platform.common_business.api.dto.response.MenuListResp;
 import com.jdec.platform.common_business.biz.change.CallTypeEnum;
 import com.jdec.platform.common_business.biz.change.DataChangeContext;
@@ -34,6 +30,7 @@ import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ApprovalApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.DataUpdateContextHolder;
+import com.jdec.platform.common_business.biz.dto.ApprovalMsgDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.ApprovalButtonType;
@@ -44,6 +41,7 @@ import com.jdec.platform.common_business.biz.service.SystemModuleDataChangeLogSe
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
 import com.jdec.platform.common_business.biz.util.ToolUtils;
+import com.jdec.platform.config.api.dto.request.CreateScheduledTaskReq;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.utils.SpringBeanUtil;
@@ -56,6 +54,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -116,6 +115,9 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
     private final SystemModuleDataChangeLogService systemModuleDataChangeLogService;
 
     private final SystemModuleApprovalMsgService systemModuleApprovalMsgService;
+
+    @Value("${app.backend-url}")
+    private String appBackendUrl;
 
     private Object createMultiModuleData(Long subjectId, Long roleId, List<ModuleSaveReq> reqList) {
         List<Long> moduleIdList =
@@ -1142,7 +1144,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             // 有审批链操作时，执行审批链
             ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
             approvalProcessReq.setSubjectId(subjectId);
-            approvalProcessReq.setButton("create");
+            approvalProcessReq.setButton(ApprovalButtonType.CREATE.getKey());
             approvalProcessReq.setModuleId(moduleId);
             approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryId)));
             approvalProcessReq.setRoleId(roleId);
@@ -1162,16 +1164,36 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                 log.debug("调用审批链方{}方法成功。", "process");
                 // 消息推送
                 Map<String, Object> data = processResult.getData();
+
+                // 处理下一步是  自动审批
+                if (Objects.nonNull(data.get("autoApproval"))
+                        && data.get("autoApproval").equals(Integer.valueOf(1))) {
+                    String autoApprovalTime = (String) data.get("autoApprovalTime");
+                    Long autoRoleId = (Long) data.get("autoRoleId");
+                    AutoApprovalTaskDTO taskDTO =
+                            AutoApprovalTaskDTO.builder()
+                                    .autoApprovalTime(autoApprovalTime)
+                                    .roleId(autoRoleId)
+                                    .subjectId(subjectId)
+                                    .menuId(moduleSaveList.get(0).getMenuId())
+                                    .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                                    .recordId(Long.parseLong(String.valueOf(primaryId)))
+                                    .build();
+                    createAutoApprovalTask(taskDTO);
+                }
                 if (data.containsKey("templateList")) {
                     try {
                         List<Map<String, Object>> templateList =
                                 (List<Map<String, Object>>) data.get("templateList");
                         systemModuleApprovalMsgService.processApprovalMsg(
-                                subjectId,
-                                templateList,
-                                moduleFilterInfo,
-                                moduleSaveList,
-                                approvalProcessReq.getRecordId());
+                                ApprovalMsgDTO.builder()
+                                        .subjectId(subjectId)
+                                        .processResult(templateList)
+                                        .moduleFilterInfo(moduleFilterInfo)
+                                        .moduleSaveReqList(moduleSaveList)
+                                        .dataId(approvalProcessReq.getRecordId())
+                                        .autoApproval(Boolean.FALSE)
+                                        .build());
                     } catch (Exception e) {
                         log.error("获取消息模版参数异常,e=", e);
                     }
@@ -1750,13 +1772,35 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         saveBusinessIdReq.setBusinessId(Long.parseLong(String.valueOf(businessId)));
                         approvalApiOpenFeignClient.saveBusinessId(subjectId, saveBusinessIdReq);
                     }
-                } else if (Objects.nonNull(processResultMap.get("versionNo"))) {
-                    // 取消提交且versionNo不为初始版本1
-                    if (buttonType == ApprovalButtonType.CANCEL) {
-                        if (Integer.parseInt(String.valueOf(processResultMap.get("versionNo")))
-                                != 1) {
-                            editMultiModuleData(subjectId, roleId, moduleSaveList);
+                } else {
+                    // 审批链没有走完
+                    if (Objects.nonNull(processResultMap.get("versionNo"))) {
+                        // 取消提交且versionNo不为初始版本1
+                        if (buttonType == ApprovalButtonType.CANCEL) {
+                            if (Integer.parseInt(String.valueOf(processResultMap.get("versionNo")))
+                                    != 1) {
+                                editMultiModuleData(subjectId, roleId, moduleSaveList);
+                            }
                         }
+                    }
+
+                    // 处理下一步是  自动审批
+                    if (Objects.nonNull(processResultMap.get("autoApproval"))
+                            && processResultMap.get("autoApproval").equals(Integer.valueOf(1))) {
+                        String autoApprovalTime =
+                                String.valueOf(processResultMap.get("autoApprovalTime"));
+                        Long autoRoleId =
+                                Long.valueOf(processResultMap.get("autoRoleId").toString());
+                        AutoApprovalTaskDTO taskDTO =
+                                AutoApprovalTaskDTO.builder()
+                                        .autoApprovalTime(autoApprovalTime)
+                                        .roleId(autoRoleId)
+                                        .subjectId(subjectId)
+                                        .menuId(moduleSaveList.get(0).getMenuId())
+                                        .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                                        .recordId(recordId)
+                                        .build();
+                        createAutoApprovalTask(taskDTO);
                     }
                 }
                 // 消息推送
@@ -1765,11 +1809,14 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         List<Map<String, Object>> templateList =
                                 (List<Map<String, Object>>) processResultMap.get("templateList");
                         systemModuleApprovalMsgService.processApprovalMsg(
-                                subjectId,
-                                templateList,
-                                moduleFilterInfo,
-                                moduleSaveList,
-                                approvalProcessReq.getRecordId());
+                                ApprovalMsgDTO.builder()
+                                        .subjectId(subjectId)
+                                        .processResult(templateList)
+                                        .moduleFilterInfo(moduleFilterInfo)
+                                        .moduleSaveReqList(moduleSaveList)
+                                        .dataId(approvalProcessReq.getRecordId())
+                                        .autoApproval(approvalOperation.getAutoApproval())
+                                        .build());
                     } catch (Exception e) {
                         log.error("获取消息模版参数异常,e=", e);
                     }
@@ -1796,6 +1843,50 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         }
 
         return recordId;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public Object autoApproval(Long subjectId, Long roleId, ScheduledTaskCallBackReq req) {
+        // 获取主模块信息
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId,
+                        roleId,
+                        req.getModuleId(),
+                        FormButtonEnum.CREATE.getKey(),
+                        List.of());
+        if (moduleFilterInfo == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        // 获取主表数据
+        BaseMapper primaryMapper =
+                SpringBeanUtil.getBean(
+                        StrUtil.toCamelCase(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                                + MYBATIS_MAPPER_SUFFIX,
+                        BaseMapper.class);
+        Object mainOldData = primaryMapper.selectById((Serializable) req.getRecordId());
+        if (mainOldData == null) {
+            log.error("查不到对应的业务数据recordId=" + req.getRecordId());
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                    ApiResponseCodeEnum.BAD_REQUEST.getMessage());
+        }
+        Map<String, Object> dataMap =
+                getMapFromObject(mainOldData, moduleFilterInfo.getModuleInfo().getPrimaryTable());
+
+        MenuSaveReq menuSaveReq = new MenuSaveReq();
+        menuSaveReq.setMenuId(req.getMenuId());
+        menuSaveReq.setModuleData(Lists.newArrayList(dataMap));
+
+        ApprovalOperationReq operationReq = new ApprovalOperationReq();
+        operationReq.setBtnType(ApprovalButtonType.PASS.getKey());
+        operationReq.setReason("自动审批");
+        operationReq.setAutoApproval(Boolean.TRUE);
+        return editMultiMenuModuleDataWithApproval(
+                subjectId, roleId, Lists.newArrayList(menuSaveReq), operationReq);
     }
 
     private void upsertSnapshot(String tableName, Object mainOldData, Long oldRecordId) {
@@ -1892,6 +1983,47 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             moduleContext.setCallType(CallTypeEnum.EDITE);
             moduleContext.setDataChangeContextList(dataChangeContextList);
             DataUpdateContextHolder.setModuleDataChangeContext(moduleContext);
+        }
+    }
+
+    private void createAutoApprovalTask(AutoApprovalTaskDTO taskDTO) {
+
+        try {
+            CreateScheduledTaskReq req = new CreateScheduledTaskReq();
+            req.setProjectNo(LoginUserUtil.getProjectNoFromHeader());
+            req.setSubjectId(taskDTO.getSubjectId());
+            req.setTaskName("审批链自动审批业务");
+            req.setExecuteTime(
+                    DateUtil.parseLocalDateTime(
+                            taskDTO.getAutoApprovalTime(), DatePattern.NORM_DATETIME_PATTERN));
+            req.setRequestMethod("POST");
+            req.setRequestUrl(appBackendUrl + "/api/student/common/query/approval/auto");
+
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("moduleId", taskDTO.getModuleId());
+            requestBody.put("menuId", taskDTO.getMenuId());
+            requestBody.put("recordId", taskDTO.getRecordId());
+
+            Map<String, Object> requestHeader = new HashMap<>();
+            requestHeader.put("X-Subject-Id", taskDTO.getSubjectId());
+            requestHeader.put("X-Role-Id", taskDTO.getRoleId());
+            requestHeader.put("X-Project-No", LoginUserUtil.getProjectNoFromHeader());
+            requestHeader.put("Content-Type", "application/json");
+            req.setRequestBody(JsonUtil.obj2Json(requestBody));
+            req.setRequestHeaders(JsonUtil.obj2Json(requestHeader));
+
+            ConfigApiResponse<Long> configApiResponse =
+                    configCenterApiClient.createScheduledTask(taskDTO.getSubjectId(), req);
+            if (!ConfigApiResponse.isSuccessResponse(configApiResponse)) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.APPROVAL_CREATE_AUTO_APPROVAL_TASK_ERROR.getCode(),
+                        ApiResponseCodeEnum.APPROVAL_CREATE_AUTO_APPROVAL_TASK_ERROR.getMessage());
+            }
+        } catch (Exception e) {
+            log.error("创建自动审批任务异常,recordId=" + taskDTO.getRecordId() + ",e=", e);
+            throw new BusinessException(
+                    ApiResponseCodeEnum.APPROVAL_CREATE_AUTO_APPROVAL_TASK_ERROR.getCode(),
+                    ApiResponseCodeEnum.APPROVAL_CREATE_AUTO_APPROVAL_TASK_ERROR.getMessage());
         }
     }
 
@@ -3840,5 +3972,23 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             }
         }
         return false;
+    }
+
+    private Map<String, Object> getMapFromObject(Object instance, String tableName) {
+        Field[] fields = instance.getClass().getDeclaredFields();
+        Map<String, Object> dataMap = new HashMap<>();
+        for (Field f : fields) {
+            TableId id = f.getDeclaredAnnotation(TableId.class);
+            TableField tf = f.getDeclaredAnnotation(TableField.class);
+            if (id != null || tf != null) {
+                try {
+                    f.setAccessible(true);
+                    dataMap.put(tableName + "." + f.getName(), f.get(instance));
+                } catch (Exception e) {
+
+                }
+            }
+        }
+        return dataMap;
     }
 }
