@@ -344,8 +344,8 @@ public class JdecMonitorLogService implements MonitorLogApi {
 
         String content =
                 switch (logType) {
-                    case "loginin" -> "登录" + systemName + "系统 [ip：" + ip + "]";
-                    case "loginout" -> "退出" + systemName + "系统 [ip：" + ip + "]";
+                    case "loginin" -> "登录" + systemName + " [ip：" + ip + "]";
+                    case "loginout" -> "退出" + systemName + " [ip：" + ip + "]";
                     case "changerole" -> "切换角色：" + loginRoleName;
                     case "mockuser" ->
                             "切换身份：" + loginUserName + "(" + loginUserNumber + ")  " + loginRoleName;

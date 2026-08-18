@@ -276,6 +276,7 @@ public class JdecMonitorLogController {
         request.setIp(ip);
         request.setBrowser(browser);
         request.setSystemName(systemName);
+        request.setLogSubType("systemLog");
 
         jdecMonitorLogService.recordSystemControlLog(request, projectNo);
         return ApiResponse.success();
@@ -383,6 +384,7 @@ public class JdecMonitorLogController {
         request.setControlName(controlDesc);
         request.setPlatForm(postReq.getPlatForm());
         request.setSystemName(systemName);
+        request.setLogSubType("systemNavLog");
         jdecMonitorLogService.recordSystemNavLog(request, projectNo);
         return ApiResponse.success();
     }

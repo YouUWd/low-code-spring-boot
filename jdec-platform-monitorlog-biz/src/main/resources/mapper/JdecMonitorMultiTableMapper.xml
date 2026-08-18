@@ -44,6 +44,7 @@
         <result column="log_remark" property="logRemark"/>
         <result column="log_date" property="logDate"/>
         <result column="log_type" property="logType"/>
+        <result column="log_sub_type" property="logSubType"/>
     </resultMap>
 
     <!-- 子类型 ResultMap：返回 JdecMonitorControlLog（继承 BaseResultMap 的全部字段映射） -->
@@ -63,7 +64,8 @@
         ip, module_id, module_name, menu_id, menu_param,
         href_name, data_id, orderVersion,
         control_name, operator_result, font_color, browser, plat_form, system_name,
-        log_content, log_remark, log_date
+        log_content, log_remark, log_date,
+        'operationLog' AS log_sub_type
     </sql>
 
     <!-- messagelog 列：无 action，无 browser，无模块/菜单/单据/控件，缺失列一律 CAST(NULL AS ...) 占位 -->
@@ -90,7 +92,8 @@
         CAST(NULL AS CHAR) AS font_color,
         CAST(NULL AS CHAR) AS browser,
         plat_form, system_name,
-        log_content, log_remark, log_date
+        log_content, log_remark, log_date,
+        'messageLog' AS log_sub_type
     </sql>
 
     <!-- systemlog 列：有 browser，无 action，无模块/菜单/单据/控件，缺失列一律 CAST(NULL AS ...) 占位 -->
@@ -116,7 +119,8 @@
         CAST(NULL AS CHAR) AS operator_result,
         CAST(NULL AS CHAR) AS font_color,
         browser, plat_form, system_name,
-        log_content, log_remark, log_date
+        log_content, log_remark, log_date,
+        log_sub_type
     </sql>
 
     <!-- WHERE 条件 - controllog 专用（支持按 module_name、menu_param、href_name、control_name 模糊匹配） -->

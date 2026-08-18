@@ -142,4 +142,7 @@ public class MonitorLogPageListResp {
 
     @Schema(description = "日志类型显示名称（来自系统配置的中文 label，如：系统日志/消息日志/操作日志）")
     private String logTypeLabel;
+
+    @Schema(description = "日志子类型: systemLog/systemNavLog/messageLog/operationLog")
+    private String logSubType;
 }

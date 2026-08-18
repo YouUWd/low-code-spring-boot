@@ -121,4 +121,7 @@ public class MonitorBaseLogReq {
 
     @Schema(description = "日志时间")
     private LocalDateTime logDate = LocalDateTime.now();
+
+    @Schema(description = "日志子类型: systemLog/systemNavLog/messageLog/operationLog")
+    private String logSubType;
 }
