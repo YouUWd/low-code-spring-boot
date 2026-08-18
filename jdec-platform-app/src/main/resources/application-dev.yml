@@ -50,37 +50,6 @@ spring:
           url: jdbc:mysql://${DB_SCHOOL_HOST:192.168.60.101}:${DB_SCHOOL_PORT:3306}/${DB_SCHOOL_NAME:monitorlog_manage}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_SCHOOL_USERNAME:root}
           password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
-    # ===== Druid 监控配置 =====
-    druid:
-      # Web 监控配置
-      web-stat-filter:
-        enabled: true
-        url-pattern: /*
-        exclusions: "*.js,*.gif,*.jpg,*.png,*.css,*.ico,/druid/*"
-      stat-view-servlet:
-        enabled: true
-        url-pattern: /druid/*
-        reset-enable: true
-        login-username: admin
-        login-password: admin123
-      # 配置监控统计拦截的 filters
-      # stat: 监控统计
-      # wall: 防御 SQL 注入
-      # slf4j: 日志
-      filter:
-        stat:
-          enabled: true
-          log-slow-sql: true
-          slow-sql-millis: 2000
-          merge-sql: true
-        wall:
-          enabled: true
-          config:
-            multi-statement-allow: true
-        slf4j:
-          enabled: true
-          statement-log-enabled: true
-          statement-executable-sql-log-enable: true
   # ===== Redis 配置 =====
   data:
     redis:

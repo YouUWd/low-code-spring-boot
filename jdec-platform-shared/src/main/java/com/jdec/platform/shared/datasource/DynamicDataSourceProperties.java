@@ -31,6 +31,9 @@ public class DynamicDataSourceProperties {
     /** 默认数据源名称。 */
     private String primary = DataSourceConstants.PRIMARY;
 
+    /** HikariCP 连接池全局配置。 */
+    private HikariConfig hikari = new HikariConfig();
+
     /** 多数据源配置 Map，key 为数据源名称。 */
     private Map<String, DataSourceProperty> datasources = new LinkedHashMap<>();
 
@@ -40,5 +43,14 @@ public class DynamicDataSourceProperties {
         private String username;
         private String password;
         private String driverClassName = "com.mysql.cj.jdbc.Driver";
+    }
+
+    @Data
+    public static class HikariConfig {
+        private Integer minimumIdle = 5;
+        private Integer maximumPoolSize = 20;
+        private Long connectionTimeout = 30000L;
+        private Long idleTimeout = 600000L;
+        private Long maxLifetime = 1800000L;
     }
 }
