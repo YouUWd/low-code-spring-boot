@@ -26,8 +26,6 @@ import com.jdec.platform.hr.api.bo.UserBO;
 import com.jdec.platform.monitorlog.api.MonitorLogApi;
 import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.datasource.DataSource;
-import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
@@ -49,7 +47,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.STUDENT_MANAGE)
 public class ApprovalEngineImpl implements IApprovalEngine {
 
     private final ApprovalChainMapper approvalChainMapper;
@@ -2418,12 +2415,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 return LocalDateTime.now()
                         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
             case "loginUser":
-                UserDetailResp loginUser =
-                        sysUserApi.getUserDetailByUserId(approvalProcessDTO.getCurrentUserId());
-                if (createByUser != null && createByUser.getUserName() != null) {
+                if (approvalProcessDTO.getApplicantId().equals(9999999L)) {
+                    return "系统自动审批";
+                }
+                try {
+                    UserDetailResp loginUser =
+                            sysUserApi.getUserDetailByUserId(approvalProcessDTO.getApplicantId());
                     return loginUser.getUserName();
-                } else {
-                    return String.valueOf(loginUser);
+                } catch (Exception e) {
+                    return "";
                 }
             case "created_by":
                 if (createByUser != null && createByUser.getUserName() != null) {
