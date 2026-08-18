@@ -347,8 +347,7 @@ public class JdecMonitorLogService implements MonitorLogApi {
                     case "loginin" -> "登录" + systemName + " [ip：" + ip + "]";
                     case "loginout" -> "退出" + systemName + " [ip：" + ip + "]";
                     case "changerole" -> "切换角色：" + loginRoleName;
-                    case "mockuser" ->
-                            "切换身份：" + loginUserName + "(" + loginUserNumber + ")  " + loginRoleName;
+                    case "mockuser" -> "";
                     case "mockchangerole" ->
                             "切换角色："
                                     + loginUserName
