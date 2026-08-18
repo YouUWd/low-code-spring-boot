@@ -10,9 +10,16 @@ import org.apache.ibatis.annotations.Param;
 public interface JdecMonitorMultiTableMapper {
 
     List<JdecMonitorLogBase> queryPageListWithMultiTable(
-            @Param("lastTime") String lastTime,
-            @Param("lastId") Long lastId,
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime,
+            @Param("offset") Long offset,
             @Param("pageSize") Long pageSize,
+            @Param("keyWord") String keyWord,
+            @Param("logType") String logType);
+
+    long countPageListWithMultiTable(
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime,
             @Param("keyWord") String keyWord,
             @Param("logType") String logType);
 

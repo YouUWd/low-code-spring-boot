@@ -219,4 +219,13 @@ public class DynamicQueryController {
                 dynamicDataAccessService.dynamicQuerygetApprovalStep(
                         subjectId, roleId, menuId, id));
     }
+
+    @PostMapping("/approval/auto")
+    @Operation(summary = "带审批链的办理、驳回后提交", description = "带审批链的办理、驳回后提交")
+    public ApiResponse<Object> autoApproval(
+            @Schema(description = "主体ID") @RequestHeader("X-Subject-Id") Long subjectId,
+            @Schema(description = "角色ID") @RequestHeader(name = "X-Role-Id") Long roleId,
+            @RequestBody ScheduledTaskCallBackReq req) {
+        return ApiResponse.success(dynamicDataSaveService.autoApproval(subjectId, roleId, req));
+    }
 }

@@ -190,8 +190,7 @@ public class JdecMonitorLogController {
             @Parameter(description = "登录用户ID", required = true)
                     @RequestHeader(value = "Login-User-Id")
                     Long loginUserId,
-            @Parameter(description = "登录角色ID", required = true)
-                    @RequestHeader(value = "Login-Role-Id")
+            @Parameter(description = "登录角色ID", required = true) @RequestHeader(value = "Role-Id")
                     Long loginRoleId,
             @Parameter(description = "主体ID")
                     @RequestHeader(value = "X-Subject-Id", required = false)
