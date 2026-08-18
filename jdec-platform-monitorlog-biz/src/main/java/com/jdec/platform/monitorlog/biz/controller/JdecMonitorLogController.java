@@ -200,7 +200,7 @@ public class JdecMonitorLogController {
                     Long mockUserId,
             @Parameter(description = "浏览器") @RequestHeader(value = "Browser", required = false)
                     String browser,
-            @Parameter(description = "系统名称") @RequestHeader(value = "System-Name", required = false)
+            @Parameter(description = "系统名称") @RequestHeader(value = "System-Name", required = true)
                     String systemName) {
 
         if (!StringUtils.hasText(logType)) {
@@ -247,7 +247,7 @@ public class JdecMonitorLogController {
             throw new IllegalArgumentException("IP地址长度不能超过20字符，当前IP：" + ip);
         }
         if (!StringUtils.hasText(browser)) {
-            throw new IllegalArgumentException("浏览器(Browser)不能为空");
+            browser = "unknown";
         }
         if (browser.length() > 100) {
             throw new IllegalArgumentException("浏览器(Browser)长度不能超过100字符");
