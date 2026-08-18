@@ -125,7 +125,7 @@ public class RoleApprovalLogService {
         Map<String, Object> moduleAction = new LinkedHashMap<>();
         moduleAction.put("name", SUB_MODULE);
         moduleAction.put("mId", "");
-        moduleAction.put("actions", Collections.singletonList(actionDetail));
+        moduleAction.put("actions", actionDetail);
 
         // 3. 发送审批日志
         sendApprovalLog("修改", roleId, Collections.singletonList(moduleAction));
@@ -202,7 +202,7 @@ public class RoleApprovalLogService {
         Map<String, Object> moduleAction = new LinkedHashMap<>();
         moduleAction.put("name", SUB_MODULE);
         moduleAction.put("mId", "");
-        moduleAction.put("actions", Collections.singletonList(actionDetail));
+        moduleAction.put("actions", actionDetail);
 
         return Collections.singletonList(moduleAction);
     }
