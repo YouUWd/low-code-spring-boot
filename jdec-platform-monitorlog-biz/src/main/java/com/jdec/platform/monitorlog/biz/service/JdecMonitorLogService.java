@@ -159,7 +159,10 @@ public class JdecMonitorLogService implements MonitorLogApi {
      */
     @Override
     public void recordMessageLog(MonitorMessageLogReq req, String projectNo) {
-        populateUserAndRoleInfo(req);
+        boolean isAutoApproval = req.getApprovalType() != null && req.getApprovalType() == 0;
+        if (!isAutoApproval) {
+            populateUserAndRoleInfo(req);
+        }
         populateMessageReceiversDetails(req);
         validateMessageLogReq(req);
         JdecMonitorMessageLog logItem = BeanUtil.toBean(req, JdecMonitorMessageLog.class);
