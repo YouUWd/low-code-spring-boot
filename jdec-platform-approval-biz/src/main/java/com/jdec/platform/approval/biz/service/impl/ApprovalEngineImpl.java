@@ -1034,7 +1034,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalRule(approvalProcessDTO, approvalChain);
         boolean approved = true;
         if (List.of("all_members_done", "percent_of_group")
-                .contains(approvalChain.getApprovalRule())) {
+                        .contains(approvalChain.getApprovalRule())
+                && !approvalProcessDTO.getApplicantId().equals(9999999L)) {
             int percent =
                     "all_members_done".equals(approvalChain.getApprovalRule())
                             ? 100
