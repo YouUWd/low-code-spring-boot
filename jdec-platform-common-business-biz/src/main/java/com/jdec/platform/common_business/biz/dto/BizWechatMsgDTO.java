@@ -50,4 +50,6 @@ public class BizWechatMsgDTO implements Serializable {
     private String moduleName;
 
     private String dataId;
+
+    private Boolean autoApproval;
 }

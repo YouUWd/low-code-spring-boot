@@ -164,6 +164,10 @@ public class WechatMsgBizLog implements BizLog {
                                 .messageReceivers(bizLogDTO.getMessageReceivers())
                                 .build();
                 req.setLogRemark(JsonUtil.obj2Json(contentDTO));
+                req.setApprovalType(
+                        (bizLogDTO.getAutoApproval() != null && bizLogDTO.getAutoApproval())
+                                ? 0
+                                : 1);
                 monitorLogApiOpenFeignClient.addMessageLog(req);
                 return Boolean.TRUE;
             } catch (Exception e) {

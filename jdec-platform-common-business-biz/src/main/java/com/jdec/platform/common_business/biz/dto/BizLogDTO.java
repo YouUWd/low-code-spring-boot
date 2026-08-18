@@ -53,4 +53,6 @@ public class BizLogDTO implements Serializable {
     private String controlName;
 
     private List<Long> messageReceivers;
+
+    private Boolean autoApproval;
 }

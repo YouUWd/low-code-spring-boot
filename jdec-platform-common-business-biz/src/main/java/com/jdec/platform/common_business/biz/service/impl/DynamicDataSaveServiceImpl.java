@@ -30,6 +30,7 @@ import com.jdec.platform.common_business.biz.common.DataSourceConstants;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ApprovalApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.configcenter.client.openfeign.ConfigCenterApiOpenFeignClient;
 import com.jdec.platform.common_business.biz.context.DataUpdateContextHolder;
+import com.jdec.platform.common_business.biz.dto.ApprovalMsgDTO;
 import com.jdec.platform.common_business.biz.dto.configcenter.response.ConfigApiResponse;
 import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.ApprovalButtonType;
@@ -1185,11 +1186,14 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         List<Map<String, Object>> templateList =
                                 (List<Map<String, Object>>) data.get("templateList");
                         systemModuleApprovalMsgService.processApprovalMsg(
-                                subjectId,
-                                templateList,
-                                moduleFilterInfo,
-                                moduleSaveList,
-                                approvalProcessReq.getRecordId());
+                                ApprovalMsgDTO.builder()
+                                        .subjectId(subjectId)
+                                        .processResult(templateList)
+                                        .moduleFilterInfo(moduleFilterInfo)
+                                        .moduleSaveReqList(moduleSaveList)
+                                        .dataId(approvalProcessReq.getRecordId())
+                                        .autoApproval(Boolean.FALSE)
+                                        .build());
                     } catch (Exception e) {
                         log.error("获取消息模版参数异常,e=", e);
                     }
@@ -1805,11 +1809,14 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
                         List<Map<String, Object>> templateList =
                                 (List<Map<String, Object>>) processResultMap.get("templateList");
                         systemModuleApprovalMsgService.processApprovalMsg(
-                                subjectId,
-                                templateList,
-                                moduleFilterInfo,
-                                moduleSaveList,
-                                approvalProcessReq.getRecordId());
+                                ApprovalMsgDTO.builder()
+                                        .subjectId(subjectId)
+                                        .processResult(templateList)
+                                        .moduleFilterInfo(moduleFilterInfo)
+                                        .moduleSaveReqList(moduleSaveList)
+                                        .dataId(approvalProcessReq.getRecordId())
+                                        .autoApproval(approvalOperation.getAutoApproval())
+                                        .build());
                     } catch (Exception e) {
                         log.error("获取消息模版参数异常,e=", e);
                     }
@@ -1877,6 +1884,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
         ApprovalOperationReq operationReq = new ApprovalOperationReq();
         operationReq.setBtnType(ApprovalButtonType.PASS.getKey());
         operationReq.setReason("自动审批");
+        operationReq.setAutoApproval(Boolean.TRUE);
         return editMultiMenuModuleDataWithApproval(
                 subjectId, roleId, Lists.newArrayList(menuSaveReq), operationReq);
     }
