@@ -106,6 +106,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             Map<String, Object> processResp = businessReject(approvalProcessDTO);
             approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
             result.put("templateList", processResp.get("templateList"));
+            result.put("autoApproval", processResp.get("autoApproval"));
+            result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
+            result.put("autoRoleId", approvalBusiness.getApproveRoleId());
         } else if ("cancel".equals(approvalProcessDTO.getButton())) {
             Map<String, Object> processResp = businessRevoke(approvalProcessDTO);
             approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
@@ -1342,6 +1345,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         result.put("templateList", templates);
         result.put("approvalBusiness", approvalBusiness);
+        if (!businessApprovalChain.getCurrentStep().equals(approvalChain.getCurrentStep())
+                && businessApprovalChain.getAutoApproved()) {
+            int time =
+                    Objects.nonNull(businessApprovalChain.getAutoApprovedTime())
+                            ? businessApprovalChain.getAutoApprovedTime()
+                            : 0;
+            result.put("autoApproval", 1);
+            result.put("autoApprovalTime", LocalDateTime.now().plusHours(time));
+        } else {
+            result.put("autoApproval", 0);
+            result.put("autoApprovalTime", LocalDateTime.now());
+        }
         return result;
     }
 
