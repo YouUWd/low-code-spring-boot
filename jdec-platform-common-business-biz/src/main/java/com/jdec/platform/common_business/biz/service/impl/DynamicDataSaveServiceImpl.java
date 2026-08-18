@@ -1143,7 +1143,7 @@ public class DynamicDataSaveServiceImpl implements DynamicDataSaveServiceApi {
             // 有审批链操作时，执行审批链
             ApprovalProcessReq approvalProcessReq = new ApprovalProcessReq();
             approvalProcessReq.setSubjectId(subjectId);
-            approvalProcessReq.setButton("create");
+            approvalProcessReq.setButton(ApprovalButtonType.CREATE.getKey());
             approvalProcessReq.setModuleId(moduleId);
             approvalProcessReq.setRecordId(Long.parseLong(String.valueOf(primaryId)));
             approvalProcessReq.setRoleId(roleId);
