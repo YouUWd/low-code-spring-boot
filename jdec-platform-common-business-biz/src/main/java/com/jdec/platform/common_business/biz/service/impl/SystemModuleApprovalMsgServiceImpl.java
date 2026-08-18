@@ -2,8 +2,7 @@ package com.jdec.platform.common_business.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.StrUtil;
-import com.jdec.platform.common_business.api.dto.common.ModuleFilterInfo;
-import com.jdec.platform.common_business.api.dto.request.ModuleSaveReq;
+import com.jdec.platform.common_business.biz.dto.ApprovalMsgDTO;
 import com.jdec.platform.common_business.biz.dto.BizWechatMsgDTO;
 import com.jdec.platform.common_business.biz.dto.WechatMsgParameterDTO;
 import com.jdec.platform.common_business.biz.dto.WechatTemplateDetailDTO;
@@ -35,33 +34,30 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
     private String appFrontUrl;
 
     @Override
-    public Boolean processApprovalMsg(
-            Long subjectId,
-            List<Map<String, Object>> processResult,
-            ModuleFilterInfo moduleFilterInfo,
-            List<ModuleSaveReq> moduleSaveReqList,
-            Long dataId) {
+    public Boolean processApprovalMsg(ApprovalMsgDTO approvalMsgDTO) {
         try {
             // 模块数据
             Map<String, Object> moduleData =
-                    moduleSaveReqList.stream()
+                    approvalMsgDTO.getModuleSaveReqList().stream()
                             .filter(
                                     x ->
                                             x.getModuleId()
                                                     .equals(
-                                                            moduleFilterInfo
+                                                            approvalMsgDTO
+                                                                    .getModuleFilterInfo()
                                                                     .getModuleInfo()
                                                                     .getModuleId()))
                             .findFirst()
                             .get()
                             .getModuleData()
                             .get(0);
-            List<WechatMsgParameterDTO> parameterDTOList = convert(processResult);
+            List<WechatMsgParameterDTO> parameterDTOList =
+                    convert(approvalMsgDTO.getProcessResult());
             Map<Long, ModuleInfoResp> moduleInfoRespMap = new HashMap<>();
             for (WechatMsgParameterDTO parameterDTO : parameterDTOList) {
                 WechatTemplateDetailDTO wechatTemplateDetailDTO =
                         configCenterApiService.getWechatTemplateDetail(
-                                subjectId, parameterDTO.getTemplateId());
+                                approvalMsgDTO.getSubjectId(), parameterDTO.getTemplateId());
                 if (wechatTemplateDetailDTO == null
                         || wechatTemplateDetailDTO.getWechatTemplateDetailResp() == null
                         || CollectionUtil.isEmpty(
@@ -83,7 +79,7 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
                         if (!moduleInfoRespMap.containsKey(resp.getModuleId())) {
                             ModuleInfoResp moduleInfoResp =
                                     configCenterApiService.getModuleInfoComplete(
-                                            subjectId, resp.getModuleId());
+                                            approvalMsgDTO.getSubjectId(), resp.getModuleId());
                             moduleInfoRespMap.put(resp.getModuleId(), moduleInfoResp);
                         }
                         ModuleInfoResp moduleInfo = moduleInfoRespMap.get(resp.getModuleId());
@@ -165,7 +161,7 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
                 BizWechatMsgDTO bizWechatMsgDTO =
                         BizWechatMsgDTO.builder()
                                 .token(LoginUserUtil.getTokenFromHeader())
-                                .subjectId(subjectId)
+                                .subjectId(approvalMsgDTO.getSubjectId())
                                 .wechatTemplate(wechatTemplateDetailDTO)
                                 .acceptorList(parameterDTO.getAcceptorList())
                                 .param(param)
@@ -178,16 +174,29 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
                                 .loginUserId(LoginUserUtil.getRealLoginUserId())
                                 .mockUserId(LoginUserUtil.getLoginUserId())
                                 .roleId(LoginUserUtil.getRoleId())
-                                .menuId(moduleSaveReqList.get(0).getMenuId())
-                                .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
-                                .moduleName(moduleFilterInfo.getModuleInfo().getModuleName())
-                                .dataId(String.valueOf(dataId))
+                                .menuId(approvalMsgDTO.getModuleSaveReqList().get(0).getMenuId())
+                                .moduleId(
+                                        approvalMsgDTO
+                                                .getModuleFilterInfo()
+                                                .getModuleInfo()
+                                                .getModuleId())
+                                .moduleName(
+                                        approvalMsgDTO
+                                                .getModuleFilterInfo()
+                                                .getModuleInfo()
+                                                .getModuleName())
+                                .dataId(String.valueOf(approvalMsgDTO.getDataId()))
+                                .autoApproval(approvalMsgDTO.getAutoApproval())
                                 .build();
                 ComBizMsgEventPublisher.publishMsgEvent(BizMsgEnum.APPROVAL_CHAIN, bizWechatMsgDTO);
             }
             return Boolean.TRUE;
         } catch (Exception e) {
-            log.error("processApprovalMsg error param=" + processResult.toString() + ",e=", e);
+            log.error(
+                    "processApprovalMsg error param="
+                            + approvalMsgDTO.getProcessResult().toString()
+                            + ",e=",
+                    e);
         }
         return Boolean.FALSE;
     }

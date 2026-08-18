@@ -75,6 +75,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
     private static final String DEFAULT_BUSINESS_STATUS_KEY = "business_status";
 
+    private static final String DEFAULT_CREATE_DATE_KEY = "create_date";
+
     private static final String DEFAULT_SUBJECT_KEY = "subject_id";
 
     private static final String ONE2MULTI_RESULT_KEY_SUFFIX = "List";
@@ -97,6 +99,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
     };
 
     private static final String[] realTimeSaveExclude = {"change", "change-change"};
+
+    private static final int DRAFT_STATUS = -88;
 
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
@@ -356,7 +360,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                                                             .getPrimaryTable()
                                                                     + DB_TABLE_FIELD_SEPARATOR
                                                                     + "businessStatus")))
-                                    == -88) {
+                                    == DRAFT_STATUS) {
 
                         if (moduleFilterInfo.getBtnList().stream()
                                 .anyMatch(
@@ -1382,7 +1386,7 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                             + DB_TABLE_FIELD_SEPARATOR
                                             + "create_by",
                                     LoginUserUtil.getLoginUserId());
-                            qrCast.eq("business_status", -88);
+                            qrCast.eq("business_status", DRAFT_STATUS);
                             if (!CollectionUtils.isEmpty(approvalFilterIds)) {
                                 qrCast.or()
                                         .in(
@@ -1757,7 +1761,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                                         DEFAULT_BUSINESS_STATUS_KEY));
 
                         if (Objects.nonNull(businessStatus)
-                                && Integer.parseInt(String.valueOf(businessStatus)) == -88) {
+                                && Integer.parseInt(String.valueOf(businessStatus))
+                                        == DRAFT_STATUS) {
                             log.debug("该条数据为草稿数据，recordId:{}", primaryId);
 
                             // 填充构造的按钮数据
@@ -1814,6 +1819,12 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                                 currentUser.put("workNumber", user.getWorkNumber());
                                 primaryTablePrefixResultMap.put("*.createUser", currentUser);
                             }
+
+                            // 草稿不显示创建时间
+                            primaryTablePrefixResultMap.remove(
+                                    finalModuleFilterInfo4.getModuleInfo().getPrimaryTable()
+                                            + DB_TABLE_FIELD_SEPARATOR
+                                            + ToolUtils.snakeToCamelCase(DEFAULT_CREATE_DATE_KEY));
                         } else {
                             primaryTablePrefixResultMap.put(
                                     "btnList",

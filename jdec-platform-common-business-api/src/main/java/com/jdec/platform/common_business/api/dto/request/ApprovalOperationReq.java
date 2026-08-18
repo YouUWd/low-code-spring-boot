@@ -14,4 +14,7 @@ public class ApprovalOperationReq {
 
     @Schema(description = "驳回到指定状态步骤")
     private Integer rejectStep;
+
+    @Schema(description = "是否自动审批")
+    private Boolean autoApproval;
 }
