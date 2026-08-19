@@ -59,6 +59,10 @@ public class StudentVersion extends Model<StudentVersion> {
     @TableField("student_status")
     private Integer studentStatus;
 
+    /** 状态名称 */
+    @TableField("student_status_name")
+    private String studentStatusName;
+
     /** 创建时间 */
     @TableField("create_date")
     private LocalDateTime createDate;
