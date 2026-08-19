@@ -47,6 +47,56 @@ public class JdecMonitorLogController {
         return ApiResponse.success(records);
     }
 
+    @GetMapping("/queryByModuleIdAndOrderId")
+    @Operation(
+            summary = "根据模块ID和单据编号查询多条日志",
+            description = "传入moduleId+orderId查询多条日志记录，按时间倒序返回；可选logType指定日志类型")
+    public ApiResponse<List<MonitorLogPageListResp>> queryByModuleIdAndOrderId(
+            @Parameter(description = "模块ID", required = true) @RequestParam Long moduleId,
+            @Parameter(description = "单据编号", required = true) @RequestParam String orderId,
+            @Parameter(description = "日志类型(messagelog/controllog/systemlog，不传则查全表)")
+                    @RequestParam(required = false)
+                    String logType,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
+        List<MonitorLogPageListResp> result =
+                jdecMonitorLogService.queryByModuleIdAndOrderId(
+                        moduleId, orderId, logType, projectNo);
+        return ApiResponse.success(result);
+    }
+
+    @GetMapping("/queryByMenuIdAndDataId")
+    @Operation(
+            summary = "根据菜单ID和单据ID查询单条最新日志",
+            description = "传入menuId+dataId查询单条最新日志记录；可选logType指定日志类型")
+    public ApiResponse<MonitorLogPageListResp> queryByMenuIdAndDataId(
+            @Parameter(description = "菜单ID", required = true) @RequestParam Long menuId,
+            @Parameter(description = "单据ID", required = true) @RequestParam Long dataId,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
+        MonitorLogPageListResp result =
+                jdecMonitorLogService.queryByMenuIdAndDataId(menuId, dataId, projectNo);
+        return ApiResponse.success(result);
+    }
+
+    @GetMapping("/querySystemControlLogByModuleIdAndDataId")
+    @Operation(
+            summary = "根据模块ID和单据ID查询系统操作日志列表",
+            description = "传入moduleId+dataId查询系统操作日志（controllog）列表，按时间倒序排列")
+    public ApiResponse<List<MonitorLogPageListResp>> querySystemControlLogByModuleIdAndDataId(
+            @Parameter(description = "模块ID", required = true) @RequestParam Long moduleId,
+            @Parameter(description = "单据ID（dataId）", required = true) @RequestParam Long dataId,
+            @Parameter(description = "项目编号")
+                    @RequestHeader(value = "X-Project-No", required = false)
+                    String projectNo) {
+        List<MonitorLogPageListResp> result =
+                jdecMonitorLogService.querySystemControlLogByModuleIdAndDataId(
+                        moduleId, dataId, projectNo);
+        return ApiResponse.success(result);
+    }
+
     @PostMapping("/addSystemLog")
     @Operation(
             summary = "添加系统日志",
@@ -112,56 +162,6 @@ public class JdecMonitorLogController {
         populateSubjectNameIfAbsent(request);
         jdecMonitorLogService.recordMessageLog(request, projectNo);
         return ApiResponse.success();
-    }
-
-    @GetMapping("/queryByModuleIdAndOrderId")
-    @Operation(
-            summary = "根据模块ID和单据编号查询多条日志",
-            description = "传入moduleId+orderId查询多条日志记录，按时间倒序返回；可选logType指定日志类型")
-    public ApiResponse<List<MonitorLogPageListResp>> queryByModuleIdAndOrderId(
-            @Parameter(description = "模块ID", required = true) @RequestParam Long moduleId,
-            @Parameter(description = "单据编号", required = true) @RequestParam String orderId,
-            @Parameter(description = "日志类型(messagelog/controllog/systemlog，不传则查全表)")
-                    @RequestParam(required = false)
-                    String logType,
-            @Parameter(description = "项目编号")
-                    @RequestHeader(value = "X-Project-No", required = false)
-                    String projectNo) {
-        List<MonitorLogPageListResp> result =
-                jdecMonitorLogService.queryByModuleIdAndOrderId(
-                        moduleId, orderId, logType, projectNo);
-        return ApiResponse.success(result);
-    }
-
-    @GetMapping("/queryByMenuIdAndDataId")
-    @Operation(
-            summary = "根据菜单ID和单据ID查询单条最新日志",
-            description = "传入menuId+dataId查询单条最新日志记录；可选logType指定日志类型")
-    public ApiResponse<MonitorLogPageListResp> queryByMenuIdAndDataId(
-            @Parameter(description = "菜单ID", required = true) @RequestParam Long menuId,
-            @Parameter(description = "单据ID", required = true) @RequestParam Long dataId,
-            @Parameter(description = "项目编号")
-                    @RequestHeader(value = "X-Project-No", required = false)
-                    String projectNo) {
-        MonitorLogPageListResp result =
-                jdecMonitorLogService.queryByMenuIdAndDataId(menuId, dataId, projectNo);
-        return ApiResponse.success(result);
-    }
-
-    @GetMapping("/querySystemControlLogByModuleIdAndDataId")
-    @Operation(
-            summary = "根据模块ID和单据ID查询系统操作日志列表",
-            description = "传入moduleId+dataId查询系统操作日志（controllog）列表，按时间倒序排列")
-    public ApiResponse<List<MonitorLogPageListResp>> querySystemControlLogByModuleIdAndDataId(
-            @Parameter(description = "模块ID", required = true) @RequestParam Long moduleId,
-            @Parameter(description = "单据ID（dataId）", required = true) @RequestParam Long dataId,
-            @Parameter(description = "项目编号")
-                    @RequestHeader(value = "X-Project-No", required = false)
-                    String projectNo) {
-        List<MonitorLogPageListResp> result =
-                jdecMonitorLogService.querySystemControlLogByModuleIdAndDataId(
-                        moduleId, dataId, projectNo);
-        return ApiResponse.success(result);
     }
 
     private static final Set<String> BASE_LOG_TYPES =
@@ -276,6 +276,7 @@ public class JdecMonitorLogController {
         request.setIp(ip);
         request.setBrowser(browser);
         request.setSystemName(systemName);
+        request.setLogSubType(logType);
 
         jdecMonitorLogService.recordSystemControlLog(request, projectNo);
         return ApiResponse.success();
@@ -383,6 +384,7 @@ public class JdecMonitorLogController {
         request.setControlName(controlDesc);
         request.setPlatForm(postReq.getPlatForm());
         request.setSystemName(systemName);
+        request.setLogSubType("systemNavLog");
         jdecMonitorLogService.recordSystemNavLog(request, projectNo);
         return ApiResponse.success();
     }

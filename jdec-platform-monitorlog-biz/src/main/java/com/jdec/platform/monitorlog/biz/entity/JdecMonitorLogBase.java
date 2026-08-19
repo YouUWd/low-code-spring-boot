@@ -159,4 +159,8 @@ public class JdecMonitorLogBase implements Serializable {
                     "日志类型（来自UNION ALL的常量列，与配置中心 category=monitorLogType 的 value 对齐：operationLog/systemLog/messageLog）")
     @TableField(exist = false)
     private String logType;
+
+    @Schema(description = "日志子类型（：operationLog/systemLog/systemNavLog/messageLog）")
+    @TableField(exist = false)
+    private String logSubType;
 }

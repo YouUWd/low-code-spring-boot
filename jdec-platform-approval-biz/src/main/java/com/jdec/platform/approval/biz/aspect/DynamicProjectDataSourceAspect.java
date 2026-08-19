@@ -20,7 +20,8 @@ public class DynamicProjectDataSourceAspect {
 
     private final ProjectProperties projectProperties;
 
-    @Around("execution(* com.jdec.platform.approval.biz.service..*.*(..))") // 按需调整包路径
+    @Around(
+            "execution(* com.jdec.platform.approval.biz.service.impl.ApprovalEngineImpl.*(..))") // 按需调整包路径
     public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
         String projectNo = AppContext.getProjectNo();
         boolean switched = false;

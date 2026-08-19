@@ -58,4 +58,8 @@ public class JdecMonitorSystemLog extends JdecMonitorLogBase {
     @Schema(description = "系统信息")
     @TableField("system_name")
     private String systemName;
+
+    @Schema(description = "日志子类型")
+    @TableField("log_sub_type")
+    private String logSubType;
 }
