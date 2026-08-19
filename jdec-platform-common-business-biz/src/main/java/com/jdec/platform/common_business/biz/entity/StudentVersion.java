@@ -59,6 +59,10 @@ public class StudentVersion extends Model<StudentVersion> {
     @TableField("student_status")
     private Integer studentStatus;
 
+    /** 状态名称 */
+    @TableField("student_status_name")
+    private String studentStatusName;
+
     /** 创建时间 */
     @TableField("create_date")
     private LocalDateTime createDate;
@@ -102,44 +106,6 @@ public class StudentVersion extends Model<StudentVersion> {
     /** 版本号 */
     @TableField("version_no")
     private Integer versionNo;
-
-    public static final String ID = "id";
-
-    public static final String STUDENT_NO = "student_no";
-
-    public static final String CLASS_ID = "class_id";
-
-    public static final String STUDENT_NAME = "student_name";
-
-    public static final String GENDER = "gender";
-
-    public static final String BIRTH_DATE = "birth_date";
-
-    public static final String ENROLLMENT_DATE = "enrollment_date";
-
-    public static final String STUDENT_STATUS = "student_status";
-
-    public static final String CREATE_DATE = "create_date";
-
-    public static final String UPDATE_DATE = "update_date";
-
-    public static final String SUBJECT_ID = "subject_id";
-
-    public static final String SUBJECT_NAME = "subject_name";
-
-    public static final String CREATE_BY = "create_by";
-
-    public static final String UPDATE_BY = "update_by";
-
-    public static final String BUSINESS_STATUS = "business_status";
-
-    public static final String DELETED = "deleted";
-
-    public static final String MODULE_ID = "module_id";
-
-    public static final String SOURCE_ID = "source_id";
-
-    public static final String VERSION_NO = "version_no";
 
     @Override
     public Serializable pkVal() {
