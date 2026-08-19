@@ -29,6 +29,14 @@ public interface SysRoleApi {
 
     RoleConfigDetailResp getRoleConfigDetail(Long roleId);
 
+    /**
+     * 获取角色配置详情（包含所有非删除状态数据，不过滤时效）
+     *
+     * @param roleId 角色ID
+     * @return 角色配置详情（包括待生效的数据）
+     */
+    RoleConfigDetailResp getRoleConfigDetailAll(Long roleId);
+
     void deleteRole(Long roleId);
 
     List<SubjectOptionResp> listSubjectOptions();

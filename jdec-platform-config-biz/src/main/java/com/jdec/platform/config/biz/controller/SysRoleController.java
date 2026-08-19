@@ -81,6 +81,13 @@ public class SysRoleController {
         return ApiResponse.success(sysRoleApi.getRoleConfigDetail(roleId));
     }
 
+    @GetMapping("/get-role-config-detail-all")
+    @Operation(summary = "获取角色配置详情（包含所有非删除状态）", description = "获取角色及其关联的用户、主体列表，包括待生效的数据，不过滤时效")
+    public ApiResponse<RoleConfigDetailResp> getRoleConfigDetailAll(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
+        return ApiResponse.success(sysRoleApi.getRoleConfigDetailAll(roleId));
+    }
+
     @DeleteMapping("/{roleId}")
     @Operation(summary = "删除角色", description = "删除指定角色及其关联的用户/主体关系")
     public ApiResponse<Void> deleteRole(

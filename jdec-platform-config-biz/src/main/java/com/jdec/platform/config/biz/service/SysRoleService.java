@@ -964,6 +964,96 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
+    @DataSource(DataSourceEnum.CONFIG_CENTER)
+    public RoleConfigDetailResp getRoleConfigDetailAll(Long roleId) {
+        // 先更新已时效的关联状态
+        updateExpiredRelations();
+
+        SysRole role = sysRoleMapper.selectById(roleId);
+        if (role == null) {
+            throw new BusinessException(ApiCodeEnum.WARNING.getCode(), "角色不存在");
+        }
+        RoleConfigDetailResp resp = new RoleConfigDetailResp();
+        resp.setId(role.getId());
+        resp.setRoleName(role.getRoleName());
+        // 查询角色主体关联表（查询所有非删除状态，不过滤时效）
+        List<SysRoleSubject> subjectList =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getRoleId, roleId)
+                                .ne(SysRoleSubject::getStatus, 1));
+        if (CollUtil.isNotEmpty(subjectList)) {
+            List<Long> subjectIds = subjectList.stream().map(SysRoleSubject::getSubjectId).toList();
+            resp.setSubjectIds(subjectIds);
+            List<RoleSubjectReq> subjectReqs = new ArrayList<>();
+            for (SysRoleSubject rs : subjectList) {
+                RoleSubjectReq req = new RoleSubjectReq();
+                req.setSubjectId(rs.getSubjectId());
+                req.setEffectiveType(rs.getEffectiveType());
+                req.setEffectiveStartDate(rs.getEffectiveStartDate());
+                req.setEffectiveEndDate(rs.getEffectiveEndDate());
+                subjectReqs.add(req);
+            }
+            resp.setSubjects(subjectReqs);
+        }
+        // 查询角色用户关联表（查询所有非删除状态，不过滤时效）
+        List<SysRoleUser> userList =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getRoleId, roleId)
+                                .ne(SysRoleUser::getStatus, 1));
+        if (CollUtil.isNotEmpty(userList)) {
+            // 区分内部和外部用户，并携带各自时效
+            List<String> insideIds = new ArrayList<>();
+            List<String> externalIds = new ArrayList<>();
+            List<RoleUserReq> insideUsers = new ArrayList<>();
+            List<RoleUserReq> externalUsers = new ArrayList<>();
+
+            // 批量查询所有用户信息，避免N+1查询
+            List<Long> userIds =
+                    userList.stream().map(SysRoleUser::getUserId).collect(Collectors.toList());
+            List<SysUser> sysUsers =
+                    sysUserMapper.selectList(
+                            Wrappers.<SysUser>lambdaQuery()
+                                    .in(SysUser::getUserId, userIds)
+                                    .eq(SysUser::getDeleted, 0));
+            Map<Long, SysUser> userMap =
+                    sysUsers.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
+
+            for (SysRoleUser roleUser : userList) {
+                SysUser user = userMap.get(roleUser.getUserId());
+                if (user != null) {
+                    String userId = String.valueOf(user.getUserId());
+                    RoleUserReq userReq = new RoleUserReq();
+                    userReq.setUserId(userId);
+                    userReq.setUserName(user.getUserName());
+                    userReq.setUserAvatar(user.getUserAvatar());
+                    userReq.setWorkNumber(user.getWorkNumber());
+                    userReq.setSex(user.getSex());
+                    userReq.setEffectiveType(roleUser.getEffectiveType());
+                    userReq.setEffectiveStartDate(roleUser.getEffectiveStartDate());
+                    userReq.setEffectiveEndDate(roleUser.getEffectiveEndDate());
+                    if (UserTypeEnum.INSIDE.getCode().equals(user.getUserType())) {
+                        insideIds.add(userId);
+                        userReq.setUserType(UserTypeEnum.INSIDE.getCode());
+                        insideUsers.add(userReq);
+                    } else if (UserTypeEnum.EXTERNAL.getCode().equals(user.getUserType())) {
+                        externalIds.add(userId);
+                        userReq.setUserType(UserTypeEnum.EXTERNAL.getCode());
+                        externalUsers.add(userReq);
+                    }
+                }
+            }
+
+            resp.setUserInsideIds(insideIds);
+            resp.setUserExternalIds(externalIds);
+            resp.setInsideUsers(insideUsers);
+            resp.setExternalUsers(externalUsers);
+        }
+        return resp;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteRole(Long roleId) {
         // 检查关联
