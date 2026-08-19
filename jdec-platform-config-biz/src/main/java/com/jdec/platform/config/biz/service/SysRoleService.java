@@ -814,7 +814,7 @@ public class SysRoleService implements SysRoleApi {
                                     sysRoleUserMapper.selectList(
                                             Wrappers.<SysRoleUser>lambdaQuery()
                                                     .eq(SysRoleUser::getUserId, query.getUserId())
-                                                    .eq(SysRoleUser::getStatus, 0)))
+                                                    .ne(SysRoleUser::getStatus, 1)))
                             .stream()
                             .map(SysRoleUser::getRoleId)
                             .distinct()
