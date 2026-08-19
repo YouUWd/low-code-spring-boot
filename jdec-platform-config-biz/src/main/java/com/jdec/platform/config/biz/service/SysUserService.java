@@ -108,6 +108,10 @@ public class SysUserService implements SysUserApi {
                                 query.getPhone())
                         .eq(query.getUserType() != null, SysUser::getUserType, query.getUserType())
                         .eq(
+                                query.getEmployedStatus() != null,
+                                SysUser::getEmployedStatus,
+                                query.getEmployedStatus())
+                        .eq(
                                 query.getStatusFlag() != null,
                                 SysUser::getStatusFlag,
                                 query.getStatusFlag())
@@ -337,7 +341,6 @@ public class SysUserService implements SysUserApi {
                                         userType != null && userType != 0,
                                         SysUser::getUserType,
                                         userType)
-                                .eq(SysUser::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysUser::getDeleted, Boolean.FALSE));
 
         // 3. 将用户按部门分类

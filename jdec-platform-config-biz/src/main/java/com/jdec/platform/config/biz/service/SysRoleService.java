@@ -838,14 +838,14 @@ public class SysRoleService implements SysRoleApi {
                                     resp.setId(role.getId());
                                     resp.setRoleName(role.getRoleName());
 
-                                    // 查询该角色的用户关联（过滤掉待生效的，保留生效和失效的）
+                                    // 查询该角色的用户关联（过滤掉失效的，保留生效和待生效的）
                                     List<SysRoleUser> roleUsers =
                                             sysRoleUserMapper.selectList(
                                                     Wrappers.<SysRoleUser>lambdaQuery()
                                                             .eq(
                                                                     SysRoleUser::getRoleId,
                                                                     role.getId())
-                                                            .ne(SysRoleUser::getStatus, 2));
+                                                            .ne(SysRoleUser::getStatus, 1));
 
                                     // 填充用户列表（每个用户带时效信息）
                                     List<RoleUserResp> userList = buildUserList(roleUsers);
@@ -964,7 +964,6 @@ public class SysRoleService implements SysRoleApi {
     }
 
     @Override
-    @DataSource(DataSourceEnum.CONFIG_CENTER)
     public RoleConfigDetailResp getRoleConfigDetailAll(Long roleId) {
         // 先更新已时效的关联状态
         updateExpiredRelations();
