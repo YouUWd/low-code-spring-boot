@@ -801,63 +801,116 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     }
 
     /**
-     * 根据角色ID更新已时效的关联状态
+     * 根据角色ID更新关联状态：将已失效的置为1（失效），将已到期的待生效置为0（生效）
      *
-     * <p>检查该角色的所有角色-用户和角色-主体关联，如果时效期已过，将状态置为1（失效）
+     * <p>处理两种状态转换：
+     *
+     * <ul>
+     *   <li>已失效：当前时间超出有效期，status 0→1
+     *   <li>待生效→生效：当前时间符合生效条件，status 2→0
+     * </ul>
      *
      * @param roleId 角色ID
      */
     private void updateExpiredRelationsByRoleId(Long roleId) {
         LocalDate today = LocalDate.now();
 
-        // 1. 更新用户关联表中已时效的记录
-        List<SysRoleUser> validRoleUsers =
+        // 1. 处理用户关联表
+        // 1.1 查询生效和待生效的记录
+        List<SysRoleUser> activeAndPendingUsers =
                 sysRoleUserMapper.selectList(
                         Wrappers.<SysRoleUser>lambdaQuery()
                                 .eq(SysRoleUser::getRoleId, roleId)
-                                .eq(SysRoleUser::getStatus, 0));
-        List<Long> expiredUserRelationIds = new ArrayList<>();
-        for (SysRoleUser roleUser : validRoleUsers) {
-            if (!isEffectiveDateValid(
-                    roleUser.getEffectiveType(),
-                    roleUser.getEffectiveStartDate(),
-                    roleUser.getEffectiveEndDate(),
-                    today)) {
-                expiredUserRelationIds.add(roleUser.getId());
+                                .in(SysRoleUser::getStatus, 0, 2));
+
+        List<Long> expiredUserIds = new ArrayList<>();
+        List<Long> activatedUserIds = new ArrayList<>();
+
+        for (SysRoleUser roleUser : activeAndPendingUsers) {
+            Integer currentStatus = roleUser.getStatus();
+            Integer newStatus =
+                    calculateCurrentStatus(
+                            roleUser.getEffectiveType(),
+                            roleUser.getEffectiveStartDate(),
+                            roleUser.getEffectiveEndDate(),
+                            today);
+
+            // 状态 0→1：已失效
+            if (currentStatus == 0 && newStatus == 1) {
+                expiredUserIds.add(roleUser.getId());
+            }
+            // 状态 2→0：待生效→生效
+            else if (currentStatus == 2 && newStatus == 0) {
+                activatedUserIds.add(roleUser.getId());
             }
         }
-        if (!expiredUserRelationIds.isEmpty()) {
+
+        // 批量更新为失效
+        if (!expiredUserIds.isEmpty()) {
             SysRoleUser updateEntity = new SysRoleUser();
             updateEntity.setStatus(1);
             sysRoleUserMapper.update(
                     updateEntity,
-                    Wrappers.<SysRoleUser>lambdaQuery()
-                            .in(SysRoleUser::getId, expiredUserRelationIds));
+                    Wrappers.<SysRoleUser>lambdaQuery().in(SysRoleUser::getId, expiredUserIds));
         }
 
-        // 2. 更新主体关联表中已时效的记录
-        List<SysRoleSubject> validRoleSubjects =
+        // 批量更新为生效
+        if (!activatedUserIds.isEmpty()) {
+            SysRoleUser updateEntity = new SysRoleUser();
+            updateEntity.setStatus(0);
+            sysRoleUserMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleUser>lambdaQuery().in(SysRoleUser::getId, activatedUserIds));
+        }
+
+        // 2. 处理主体关联表
+        // 2.1 查询生效和待生效的记录
+        List<SysRoleSubject> activeAndPendingSubjects =
                 sysRoleSubjectMapper.selectList(
                         Wrappers.<SysRoleSubject>lambdaQuery()
                                 .eq(SysRoleSubject::getRoleId, roleId)
-                                .eq(SysRoleSubject::getStatus, 0));
-        List<Long> expiredSubjectRelationIds = new ArrayList<>();
-        for (SysRoleSubject roleSubject : validRoleSubjects) {
-            if (!isEffectiveDateValid(
-                    roleSubject.getEffectiveType(),
-                    roleSubject.getEffectiveStartDate(),
-                    roleSubject.getEffectiveEndDate(),
-                    today)) {
-                expiredSubjectRelationIds.add(roleSubject.getId());
+                                .in(SysRoleSubject::getStatus, 0, 2));
+
+        List<Long> expiredSubjectIds = new ArrayList<>();
+        List<Long> activatedSubjectIds = new ArrayList<>();
+
+        for (SysRoleSubject roleSubject : activeAndPendingSubjects) {
+            Integer currentStatus = roleSubject.getStatus();
+            Integer newStatus =
+                    calculateCurrentStatus(
+                            roleSubject.getEffectiveType(),
+                            roleSubject.getEffectiveStartDate(),
+                            roleSubject.getEffectiveEndDate(),
+                            today);
+
+            // 状态 0→1：已失效
+            if (currentStatus == 0 && newStatus == 1) {
+                expiredSubjectIds.add(roleSubject.getId());
+            }
+            // 状态 2→0：待生效→生效
+            else if (currentStatus == 2 && newStatus == 0) {
+                activatedSubjectIds.add(roleSubject.getId());
             }
         }
-        if (!expiredSubjectRelationIds.isEmpty()) {
+
+        // 批量更新为失效
+        if (!expiredSubjectIds.isEmpty()) {
             SysRoleSubject updateEntity = new SysRoleSubject();
             updateEntity.setStatus(1);
             sysRoleSubjectMapper.update(
                     updateEntity,
                     Wrappers.<SysRoleSubject>lambdaQuery()
-                            .in(SysRoleSubject::getId, expiredSubjectRelationIds));
+                            .in(SysRoleSubject::getId, expiredSubjectIds));
+        }
+
+        // 批量更新为生效
+        if (!activatedSubjectIds.isEmpty()) {
+            SysRoleSubject updateEntity = new SysRoleSubject();
+            updateEntity.setStatus(0);
+            sysRoleSubjectMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleSubject>lambdaQuery()
+                            .in(SysRoleSubject::getId, activatedSubjectIds));
         }
     }
 
@@ -884,7 +937,54 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     }
 
     /**
-     * 校验时间有效期
+     * 计算当前应该处于的状态
+     *
+     * @param effectiveType 有效期类型：1-永久，2-自定义
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param today 当前日期
+     * @return 0-生效，1-失效，2-待生效
+     */
+    private Integer calculateCurrentStatus(
+            Integer effectiveType, LocalDate startDate, LocalDate endDate, LocalDate today) {
+        // 永久有效，直接生效
+        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
+            return 0;
+        }
+
+        // 自定义时间
+        if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
+            // 开始时间和结束时间都为空，视为永久有效
+            if (startDate == null && endDate == null) {
+                return 0;
+            }
+
+            // 只有开始时间：今天 < 开始时间 → 待生效，否则 → 生效
+            if (startDate != null && endDate == null) {
+                return today.isBefore(startDate) ? 2 : 0;
+            }
+
+            // 只有结束时间：今天 > 结束时间 → 失效，否则 → 生效
+            if (startDate == null && endDate != null) {
+                return today.isAfter(endDate) ? 1 : 0;
+            }
+
+            // 开始时间和结束时间都有
+            if (today.isBefore(startDate)) {
+                return 2; // 待生效
+            } else if (today.isAfter(endDate)) {
+                return 1; // 失效
+            } else {
+                return 0; // 生效
+            }
+        }
+
+        // 其他情况视为失效
+        return 1;
+    }
+
+    /**
+     * 校验时间有效期（仅判断是否在有效期内，不区分待生效）
      *
      * @param effectiveType 有效期类型：1-永久，2-自定义
      * @param startDate 开始日期
@@ -894,34 +994,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
      */
     private boolean isEffectiveDateValid(
             Integer effectiveType, LocalDate startDate, LocalDate endDate, LocalDate today) {
-        // 永久有效
-        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
-            return true;
-        }
-
-        // 自定义时间
-        if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
-            // 开始时间和结束时间都为空，视为永久有效
-            if (startDate == null && endDate == null) {
-                return true;
-            }
-
-            // 只有开始时间，检查是否已开始
-            if (startDate != null && endDate == null) {
-                return !today.isBefore(startDate);
-            }
-
-            // 只有结束时间，检查是否未结束
-            if (startDate == null && endDate != null) {
-                return !today.isAfter(endDate);
-            }
-
-            // 开始时间和结束时间都有，检查是否在范围内
-            return !today.isBefore(startDate) && !today.isAfter(endDate);
-        }
-
-        // 其他情况视为无效
-        return false;
+        Integer status = calculateCurrentStatus(effectiveType, startDate, endDate, today);
+        return status == 0; // 只有生效状态才算有效
     }
 
     @Override
