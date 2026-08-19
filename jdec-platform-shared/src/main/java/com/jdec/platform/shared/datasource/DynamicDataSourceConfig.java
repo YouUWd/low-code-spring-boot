@@ -45,12 +45,12 @@ public class DynamicDataSourceConfig {
             ds.setPassword(prop.getPassword());
             ds.setDriverClassName(prop.getDriverClassName());
 
-            // 连接池配置
-            ds.setMinimumIdle(5);
-            ds.setMaximumPoolSize(20);
-            ds.setConnectionTimeout(60000);
-            ds.setIdleTimeout(600000);
-            ds.setMaxLifetime(1800000);
+            // 连接池配置（从 YAML spring.datasource.dynamic.hikari 读取全局配置）
+            ds.setMinimumIdle(properties.getHikari().getMinimumIdle());
+            ds.setMaximumPoolSize(properties.getHikari().getMaximumPoolSize());
+            ds.setConnectionTimeout(properties.getHikari().getConnectionTimeout());
+            ds.setIdleTimeout(properties.getHikari().getIdleTimeout());
+            ds.setMaxLifetime(properties.getHikari().getMaxLifetime());
             ds.setConnectionTestQuery("SELECT 1");
 
             targetDataSources.put(name, ds);

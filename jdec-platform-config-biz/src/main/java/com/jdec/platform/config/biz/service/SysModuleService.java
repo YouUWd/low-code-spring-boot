@@ -24,6 +24,7 @@ import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.ChangeType;
@@ -447,6 +448,16 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     }
 
     private void validateSaveRequest(SaveModuleReq.SaveSysModuleReq req) {
+        // 模块标识唯一性校验
+        List<SysModule> sysModules =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(SysModule::getModuleCode, req.getModuleCode())
+                                .eq(SysModule::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysModule::getSubjectId, AppContext.getSubjectId()));
+        if (!sysModules.isEmpty()) {
+            throw new BusinessException("模块标识已存在!");
+        }
         // 前置校验：LIST 类型或配置了 sourceSubjects 时，bizDefFlag 必须为 0
         boolean isListOrHasSource =
                 "LIST".equalsIgnoreCase(req.getModuleType())

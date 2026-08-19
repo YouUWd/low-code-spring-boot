@@ -88,58 +88,111 @@ public class SysRoleService implements SysRoleApi {
         return count + count1;
     }
 
-    /** 更新已时效的关联状态 检查所有角色-用户和角色-主体关联，如果时效期已过，将状态置为1（失效） */
+    /**
+     * 更新关联状态：将已失效的置为1（失效），将已到期的待生效置为0（生效）
+     *
+     * <p>处理两种状态转换：
+     *
+     * <ul>
+     *   <li>已失效：当前时间超出有效期，status 0→1
+     *   <li>待生效→生效：当前时间符合生效条件，status 2→0
+     * </ul>
+     */
     private void updateExpiredRelations() {
         java.time.LocalDate today = java.time.LocalDate.now();
 
-        // 1. 更新用户关联表中已时效的记录
-        List<SysRoleUser> validRoleUsers =
+        // 1. 处理用户关联表
+        // 1.1 查询生效和待生效的记录
+        List<SysRoleUser> activeAndPendingUsers =
                 sysRoleUserMapper.selectList(
-                        Wrappers.<SysRoleUser>lambdaQuery().eq(SysRoleUser::getStatus, 0));
+                        Wrappers.<SysRoleUser>lambdaQuery().in(SysRoleUser::getStatus, 0, 2));
 
-        List<Long> expiredUserRelationIds = new ArrayList<>();
-        for (SysRoleUser roleUser : validRoleUsers) {
-            if (!isEffectiveDateValid(
-                    roleUser.getEffectiveType(),
-                    roleUser.getEffectiveStartDate(),
-                    roleUser.getEffectiveEndDate(),
-                    today)) {
-                expiredUserRelationIds.add(roleUser.getId());
+        List<Long> expiredUserIds = new ArrayList<>();
+        List<Long> activatedUserIds = new ArrayList<>();
+
+        for (SysRoleUser roleUser : activeAndPendingUsers) {
+            Integer currentStatus = roleUser.getStatus();
+            Integer newStatus =
+                    calculateCurrentStatus(
+                            roleUser.getEffectiveType(),
+                            roleUser.getEffectiveStartDate(),
+                            roleUser.getEffectiveEndDate(),
+                            today);
+
+            // 状态 0→1：已失效
+            if (currentStatus == 0 && newStatus == 1) {
+                expiredUserIds.add(roleUser.getId());
+            }
+            // 状态 2→0：待生效→生效
+            else if (currentStatus == 2 && newStatus == 0) {
+                activatedUserIds.add(roleUser.getId());
             }
         }
 
-        if (!expiredUserRelationIds.isEmpty()) {
+        // 批量更新为失效
+        if (!expiredUserIds.isEmpty()) {
             SysRoleUser updateEntity = new SysRoleUser();
             updateEntity.setStatus(1);
             sysRoleUserMapper.update(
                     updateEntity,
-                    Wrappers.<SysRoleUser>lambdaQuery()
-                            .in(SysRoleUser::getId, expiredUserRelationIds));
+                    Wrappers.<SysRoleUser>lambdaQuery().in(SysRoleUser::getId, expiredUserIds));
         }
 
-        // 2. 更新主体关联表中已时效的记录
-        List<SysRoleSubject> validRoleSubjects =
-                sysRoleSubjectMapper.selectList(
-                        Wrappers.<SysRoleSubject>lambdaQuery().eq(SysRoleSubject::getStatus, 0));
+        // 批量更新为生效
+        if (!activatedUserIds.isEmpty()) {
+            SysRoleUser updateEntity = new SysRoleUser();
+            updateEntity.setStatus(0);
+            sysRoleUserMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleUser>lambdaQuery().in(SysRoleUser::getId, activatedUserIds));
+        }
 
-        List<Long> expiredSubjectRelationIds = new ArrayList<>();
-        for (SysRoleSubject roleSubject : validRoleSubjects) {
-            if (!isEffectiveDateValid(
-                    roleSubject.getEffectiveType(),
-                    roleSubject.getEffectiveStartDate(),
-                    roleSubject.getEffectiveEndDate(),
-                    today)) {
-                expiredSubjectRelationIds.add(roleSubject.getId());
+        // 2. 处理主体关联表
+        // 2.1 查询生效和待生效的记录
+        List<SysRoleSubject> activeAndPendingSubjects =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery().in(SysRoleSubject::getStatus, 0, 2));
+
+        List<Long> expiredSubjectIds = new ArrayList<>();
+        List<Long> activatedSubjectIds = new ArrayList<>();
+
+        for (SysRoleSubject roleSubject : activeAndPendingSubjects) {
+            Integer currentStatus = roleSubject.getStatus();
+            Integer newStatus =
+                    calculateCurrentStatus(
+                            roleSubject.getEffectiveType(),
+                            roleSubject.getEffectiveStartDate(),
+                            roleSubject.getEffectiveEndDate(),
+                            today);
+
+            // 状态 0→1：已失效
+            if (currentStatus == 0 && newStatus == 1) {
+                expiredSubjectIds.add(roleSubject.getId());
+            }
+            // 状态 2→0：待生效→生效
+            else if (currentStatus == 2 && newStatus == 0) {
+                activatedSubjectIds.add(roleSubject.getId());
             }
         }
 
-        if (!expiredSubjectRelationIds.isEmpty()) {
+        // 批量更新为失效
+        if (!expiredSubjectIds.isEmpty()) {
             SysRoleSubject updateEntity = new SysRoleSubject();
             updateEntity.setStatus(1);
             sysRoleSubjectMapper.update(
                     updateEntity,
                     Wrappers.<SysRoleSubject>lambdaQuery()
-                            .in(SysRoleSubject::getId, expiredSubjectRelationIds));
+                            .in(SysRoleSubject::getId, expiredSubjectIds));
+        }
+
+        // 批量更新为生效
+        if (!activatedSubjectIds.isEmpty()) {
+            SysRoleSubject updateEntity = new SysRoleSubject();
+            updateEntity.setStatus(0);
+            sysRoleSubjectMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleSubject>lambdaQuery()
+                            .in(SysRoleSubject::getId, activatedSubjectIds));
         }
     }
 
@@ -694,7 +747,7 @@ public class SysRoleService implements SysRoleApi {
         // 被移除的主体下，仍在 sys_user 中的用户也要纳入候选
         Set<Long> removedSubjectIds = new HashSet<>(oldSubjectIds);
         if (request.getSubjectIds() != null) {
-            removedSubjectIds.removeAll(request.getSubjectIds());
+            request.getSubjectIds().forEach(removedSubjectIds::remove);
         }
         if (!removedSubjectIds.isEmpty()) {
             List<SysUser> removedSubjectUsers =
@@ -785,35 +838,27 @@ public class SysRoleService implements SysRoleApi {
                                     resp.setId(role.getId());
                                     resp.setRoleName(role.getRoleName());
 
-                                    // 查询该角色的用户关联（只查询有效且在时效内的）
+                                    // 查询该角色的用户关联（过滤掉待生效的，保留生效和失效的）
                                     List<SysRoleUser> roleUsers =
-                                            filterValidRoleUsers(
-                                                    sysRoleUserMapper.selectList(
-                                                            Wrappers.<SysRoleUser>lambdaQuery()
-                                                                    .eq(
-                                                                            SysRoleUser::getRoleId,
-                                                                            role.getId())
-                                                                    .eq(
-                                                                            SysRoleUser::getStatus,
-                                                                            0)));
+                                            sysRoleUserMapper.selectList(
+                                                    Wrappers.<SysRoleUser>lambdaQuery()
+                                                            .eq(
+                                                                    SysRoleUser::getRoleId,
+                                                                    role.getId())
+                                                            .ne(SysRoleUser::getStatus, 2));
 
                                     // 填充用户列表（每个用户带时效信息）
                                     List<RoleUserResp> userList = buildUserList(roleUsers);
                                     resp.setUserList(userList);
 
-                                    // 查询该角色的主体关联（只查询有效且在时效内的）
+                                    // 查询该角色的主体关联（过滤掉待生效的，保留生效和失效的）
                                     List<SysRoleSubject> subjects =
-                                            filterValidRoleSubjects(
-                                                    sysRoleSubjectMapper.selectList(
-                                                            Wrappers.<SysRoleSubject>lambdaQuery()
-                                                                    .eq(
-                                                                            SysRoleSubject
-                                                                                    ::getRoleId,
-                                                                            role.getId())
-                                                                    .eq(
-                                                                            SysRoleSubject
-                                                                                    ::getStatus,
-                                                                            0)));
+                                            sysRoleSubjectMapper.selectList(
+                                                    Wrappers.<SysRoleSubject>lambdaQuery()
+                                                            .eq(
+                                                                    SysRoleSubject::getRoleId,
+                                                                    role.getId())
+                                                            .ne(SysRoleSubject::getStatus, 2));
                                     // 填充主体列表（每个主体带时效信息）
                                     List<RoleSubjectResp> subjectList = buildSubjectList(subjects);
                                     resp.setSubjectList(subjectList);
@@ -1018,25 +1063,23 @@ public class SysRoleService implements SysRoleApi {
         resp.setId(role.getId());
         resp.setRoleName(role.getRoleName());
 
-        // 查询该角色的用户关联（只查询有效且在时效内的）
+        // 查询该角色的用户关联（过滤掉待生效的，保留生效和失效的）
         List<SysRoleUser> roleUsers =
-                filterValidRoleUsers(
-                        sysRoleUserMapper.selectList(
-                                Wrappers.<SysRoleUser>lambdaQuery()
-                                        .eq(SysRoleUser::getRoleId, role.getId())
-                                        .eq(SysRoleUser::getStatus, 0)));
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getRoleId, role.getId())
+                                .ne(SysRoleUser::getStatus, 2));
 
         // 填充用户列表（每个用户带时效信息）
         List<RoleUserResp> userList = buildUserList(roleUsers);
         resp.setUserList(userList);
 
-        // 查询该角色的主体关联（只查询有效且在时效内的）
+        // 查询该角色的主体关联（过滤掉待生效的，保留生效和失效的）
         List<SysRoleSubject> subjects =
-                filterValidRoleSubjects(
-                        sysRoleSubjectMapper.selectList(
-                                Wrappers.<SysRoleSubject>lambdaQuery()
-                                        .eq(SysRoleSubject::getRoleId, role.getId())
-                                        .eq(SysRoleSubject::getStatus, 0)));
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getRoleId, role.getId())
+                                .ne(SysRoleSubject::getStatus, 2));
         // 填充主体列表（每个主体带时效信息）
         List<RoleSubjectResp> subjectList = buildSubjectList(subjects);
         resp.setSubjectList(subjectList);
@@ -1212,7 +1255,57 @@ public class SysRoleService implements SysRoleApi {
     }
 
     /**
-     * 校验时间有效期
+     * 计算当前应该处于的状态
+     *
+     * @param effectiveType 有效期类型：1-永久，2-自定义
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param today 当前日期
+     * @return 0-生效，1-失效，2-待生效
+     */
+    private Integer calculateCurrentStatus(
+            Integer effectiveType,
+            java.time.LocalDate startDate,
+            java.time.LocalDate endDate,
+            java.time.LocalDate today) {
+        // 永久有效，直接生效
+        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
+            return 0;
+        }
+
+        // 自定义时间
+        if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
+            // 开始时间和结束时间都为空，视为永久有效
+            if (startDate == null && endDate == null) {
+                return 0;
+            }
+
+            // 只有开始时间：今天 < 开始时间 → 待生效，否则 → 生效
+            if (startDate != null && endDate == null) {
+                return today.isBefore(startDate) ? 2 : 0;
+            }
+
+            // 只有结束时间：今天 > 结束时间 → 失效，否则 → 生效
+            if (startDate == null && endDate != null) {
+                return today.isAfter(endDate) ? 1 : 0;
+            }
+
+            // 开始时间和结束时间都有
+            if (today.isBefore(startDate)) {
+                return 2; // 待生效
+            } else if (today.isAfter(endDate)) {
+                return 1; // 失效
+            } else {
+                return 0; // 生效
+            }
+        }
+
+        // 其他情况视为失效
+        return 1;
+    }
+
+    /**
+     * 校验时间有效期（仅判断是否在有效期内，不区分待生效）
      *
      * @param effectiveType 有效期类型：1-永久，2-自定义
      * @param startDate 开始日期
@@ -1225,34 +1318,8 @@ public class SysRoleService implements SysRoleApi {
             java.time.LocalDate startDate,
             java.time.LocalDate endDate,
             java.time.LocalDate today) {
-        // 永久有效
-        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
-            return true;
-        }
-
-        // 自定义时间
-        if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
-            // 开始时间和结束时间都为空，视为永久有效
-            if (startDate == null && endDate == null) {
-                return true;
-            }
-
-            // 只有开始时间，检查是否已开始
-            if (startDate != null && endDate == null) {
-                return !today.isBefore(startDate);
-            }
-
-            // 只有结束时间，检查是否未结束
-            if (startDate == null && endDate != null) {
-                return !today.isAfter(endDate);
-            }
-
-            // 开始时间和结束时间都有，检查是否在范围内
-            return !today.isBefore(startDate) && !today.isAfter(endDate);
-        }
-
-        // 其他情况视为无效
-        return false;
+        Integer status = calculateCurrentStatus(effectiveType, startDate, endDate, today);
+        return status == 0; // 只有生效状态才算有效
     }
 
     private List<RoleSubjectResp> buildSubjectList(List<SysRoleSubject> subjects) {
@@ -1460,7 +1527,14 @@ public class SysRoleService implements SysRoleApi {
         ru.setEffectiveStartDate(userReq.getEffectiveStartDate());
         ru.setEffectiveEndDate(userReq.getEffectiveEndDate());
         ru.setEffectiveType(userReq.getEffectiveType());
-        ru.setStatus(0); // 初始状态为有效
+        // 根据时间计算初始状态
+        java.time.LocalDate today = java.time.LocalDate.now();
+        ru.setStatus(
+                calculateCurrentStatus(
+                        userReq.getEffectiveType(),
+                        userReq.getEffectiveStartDate(),
+                        userReq.getEffectiveEndDate(),
+                        today));
         // 为字符串字段设置默认空字符串，避免 diff 时遗漏
         ru.setCreatedName("");
         ru.setUpdatedName("");
@@ -1672,6 +1746,7 @@ public class SysRoleService implements SysRoleApi {
             return;
         }
 
+        java.time.LocalDate today = java.time.LocalDate.now();
         List<SysRoleSubject> subjectsToInsert = new ArrayList<>();
         for (RoleSubjectReq subjectReq : request.getSubjectList()) {
             SysRoleSubject subject = new SysRoleSubject();
@@ -1680,7 +1755,13 @@ public class SysRoleService implements SysRoleApi {
             subject.setEffectiveStartDate(subjectReq.getEffectiveStartDate());
             subject.setEffectiveEndDate(subjectReq.getEffectiveEndDate());
             subject.setEffectiveType(subjectReq.getEffectiveType());
-            subject.setStatus(0); // 初始状态为有效
+            // 根据时间计算初始状态
+            subject.setStatus(
+                    calculateCurrentStatus(
+                            subjectReq.getEffectiveType(),
+                            subjectReq.getEffectiveStartDate(),
+                            subjectReq.getEffectiveEndDate(),
+                            today));
             subjectsToInsert.add(subject);
         }
 
