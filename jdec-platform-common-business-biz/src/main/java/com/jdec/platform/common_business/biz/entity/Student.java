@@ -59,6 +59,10 @@ public class Student extends Model<Student> {
     @TableField("student_status")
     private Integer studentStatus;
 
+    /** 状态名称 */
+    @TableField("student_status_name")
+    private String studentStatusName;
+
     /** 创建时间 */
     @TableField("create_date")
     private LocalDateTime createDate;
@@ -82,6 +86,10 @@ public class Student extends Model<Student> {
     /** 修改人 */
     @TableField("update_by")
     private Long updateBy;
+
+    /** 业务状态 */
+    @TableField("business_status")
+    private Integer businessStatus;
 
     @Override
     public Serializable pkVal() {
