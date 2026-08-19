@@ -34,4 +34,7 @@ public class QuerySysUserPageReq extends PageRequest {
 
     @Schema(description = "主体简称")
     private String subjectName;
+
+    @Schema(description = "员工状态")
+    private Integer employedStatus;
 }
