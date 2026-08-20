@@ -450,13 +450,15 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     }
 
     private void validateSaveRequest(SaveModuleReq.SaveSysModuleReq req) {
+        LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysModule::getProjectNo, AppContext.getProjectNo())
+                .eq(SysModule::getModuleCode, req.getModuleCode())
+                .eq(SysModule::getSubjectId, AppContext.getSubjectId());
+        if (req.getId() != null) {
+            wrapper.ne(SysModule::getId, req.getId());
+        }
         // 模块标识唯一性校验
-        List<SysModule> sysModules =
-                sysModuleMapper.selectList(
-                        Wrappers.<SysModule>lambdaQuery()
-                                .eq(SysModule::getModuleCode, req.getModuleCode())
-                                .eq(SysModule::getProjectNo, AppContext.getProjectNo())
-                                .eq(SysModule::getSubjectId, AppContext.getSubjectId()));
+        List<SysModule> sysModules = sysModuleMapper.selectList(wrapper);
         if (!sysModules.isEmpty()) {
             throw new BusinessException("模块标识已存在!");
         }
