@@ -485,13 +485,6 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 Wrappers.<SysRoleSpecialPermission>lambdaQuery()
                         .eq(SysRoleSpecialPermission::getRoleId, roleId));
 
-        // 记录审计日志（编程式）
-        logSpecialPermissionAudit(
-                roleId,
-                request.getCheckFlag(),
-                request.getPermissionPaths(),
-                request.getPermissionTypeName());
-
         // 批量插入新的角色特殊权限关联
         if (CollUtil.isNotEmpty(specialPermissionIds)) {
             List<SysRoleSpecialPermission> roleSpecialPermissions =
@@ -507,6 +500,13 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                             .toList();
             sysRoleSpecialPermissionMapper.insert(roleSpecialPermissions);
         }
+
+        // 记录审计日志（编程式）
+        logSpecialPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
 
         setAffectedContext(roleId);
     }
@@ -1592,7 +1592,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             String suffix;
             if (suffixFromPath) {
                 // 其它权限从permissionPaths取
-                suffix = permissionPaths.get(0);
+                suffix = permissionPaths.getFirst();
             } else {
                 suffix = permissionTypeName != null ? permissionTypeName : "";
             }
@@ -1632,7 +1632,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             Map<String, Object> moduleAction = new LinkedHashMap<>();
             moduleAction.put("name", roleName);
             moduleAction.put("mId", "");
-            moduleAction.put("actions", Collections.singletonList(actionDetail));
+            moduleAction.put("actions", actionDetail);
 
             // 构建完整的 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
