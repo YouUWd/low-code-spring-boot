@@ -858,7 +858,7 @@ public class SysRoleService implements SysRoleApi {
                                                             .eq(
                                                                     SysRoleSubject::getRoleId,
                                                                     role.getId())
-                                                            .ne(SysRoleSubject::getStatus, 2));
+                                                            .ne(SysRoleSubject::getStatus, 1));
                                     // 填充主体列表（每个主体带时效信息）
                                     List<RoleSubjectResp> subjectList = buildSubjectList(subjects);
                                     resp.setSubjectList(subjectList);
