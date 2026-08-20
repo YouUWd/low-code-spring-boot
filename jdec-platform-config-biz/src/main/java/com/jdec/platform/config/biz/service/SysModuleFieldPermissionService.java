@@ -167,8 +167,9 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
             }
         }
 
-        // 6. 批量加载逻辑字典 sys_field 展示名字
+        // 6. 批量加载逻辑字典 sys_field 展示名字与组合字段标识
         Map<String, Map<String, String>> translationMap = new HashMap<>();
+        Map<String, Map<String, Integer>> sysFieldCombineFlagMap = new HashMap<>();
         if (!allTableNames.isEmpty()) {
             LambdaQueryWrapper<SysField> sysFieldWrapper = new LambdaQueryWrapper<>();
             sysFieldWrapper
@@ -179,12 +180,20 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
             List<SysField> sysFields = sysFieldMapper.selectList(sysFieldWrapper);
 
             for (SysField sf : sysFields) {
-                if (sf.getTableName() != null
-                        && sf.getColumnName() != null
-                        && sf.getDisplayName() != null) {
-                    translationMap
+                if (sf.getTableName() != null && sf.getColumnName() != null) {
+                    if (sf.getDisplayName() != null) {
+                        translationMap
+                                .computeIfAbsent(
+                                        sf.getTableName().toLowerCase(), k -> new HashMap<>())
+                                .put(sf.getColumnName().toLowerCase(), sf.getDisplayName());
+                    }
+                    int combineFlag =
+                            org.springframework.util.StringUtils.hasText(sf.getCombineInfo())
+                                    ? 1
+                                    : 0;
+                    sysFieldCombineFlagMap
                             .computeIfAbsent(sf.getTableName().toLowerCase(), k -> new HashMap<>())
-                            .put(sf.getColumnName().toLowerCase(), sf.getDisplayName());
+                            .put(sf.getColumnName().toLowerCase(), combineFlag);
                 }
             }
         }
@@ -228,6 +237,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                                     tableCommentMap,
                                                     physicalColumnCommentMap,
                                                     translationMap,
+                                                    sysFieldCombineFlagMap,
                                                     moduleTableReadOnlyMap));
 
                                     return dto;
@@ -264,6 +274,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
             Map<String, String> tableCommentMap,
             Map<String, Map<String, String>> physicalColumnCommentMap,
             Map<String, Map<String, String>> translationMap,
+            Map<String, Map<String, Integer>> sysFieldCombineFlagMap,
             Map<Long, Map<String, Integer>> moduleTableReadOnlyMap) {
 
         List<ModuleTableTreeResp> tablesList = new ArrayList<>();
@@ -312,6 +323,12 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                     }
 
                     fieldResp.setFieldName(displayName != null ? displayName : sf.getFieldCode());
+
+                    Integer combineFlag =
+                            sysFieldCombineFlagMap
+                                    .getOrDefault(tableName.toLowerCase(), Collections.emptyMap())
+                                    .getOrDefault(sf.getFieldCode().toLowerCase(), 0);
+                    fieldResp.setCombineFlag(combineFlag);
                     fields.add(fieldResp);
                 }
             }
@@ -336,6 +353,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                 fieldResp.setId(cf.getId());
                 fieldResp.setFieldCode(cf.getFieldCode());
                 fieldResp.setFieldName(cf.getDisplayName());
+                fieldResp.setCombineFlag(1);
                 fields.add(fieldResp);
             }
 

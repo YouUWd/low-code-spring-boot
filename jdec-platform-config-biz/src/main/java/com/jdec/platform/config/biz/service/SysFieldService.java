@@ -112,19 +112,19 @@ public class SysFieldService implements SysFieldApi {
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, projectNo);
 
-            // 查询所有 SysField 自定义 displayName 配置 Map<tableName, Map<columnName, displayName>>
+            // 查询所有 SysField 配置 Map<tableName, Map<columnName, SysField>>
             List<SysField> sysFields =
                     sysFieldMapper.selectList(
                             Wrappers.<SysField>lambdaQuery()
                                     .eq(SysField::getProjectNo, projectNo)
                                     .eq(SysField::getSubjectId, subjectId)
                                     .eq(SysField::getDeleted, 0));
-            Map<String, Map<String, String>> sysFieldConfigMap = new HashMap<>();
+            Map<String, Map<String, SysField>> sysFieldEntityMap = new HashMap<>();
             for (SysField sf : sysFields) {
-                if (StringUtils.hasText(sf.getDisplayName())) {
-                    sysFieldConfigMap
+                if (sf.getTableName() != null && sf.getColumnName() != null) {
+                    sysFieldEntityMap
                             .computeIfAbsent(sf.getTableName(), k -> new HashMap<>())
-                            .put(sf.getColumnName(), sf.getDisplayName());
+                            .put(sf.getColumnName(), sf);
                 }
             }
 
@@ -149,12 +149,19 @@ public class SysFieldService implements SysFieldApi {
                     String colType = (String) row.get("COLUMN_TYPE");
                     String colComment = (String) row.get("COLUMN_COMMENT");
 
-                    Map<String, String> colConfigMap =
-                            sysFieldConfigMap.getOrDefault(tableName, Collections.emptyMap());
-                    String displayName = colConfigMap.get(colName);
+                    Map<String, SysField> colConfigMap =
+                            sysFieldEntityMap.getOrDefault(tableName, Collections.emptyMap());
+                    SysField sf = colConfigMap.get(colName);
+
+                    String displayName =
+                            (sf != null && StringUtils.hasText(sf.getDisplayName()))
+                                    ? sf.getDisplayName()
+                                    : null;
                     if (!StringUtils.hasText(displayName)) {
                         displayName = StringUtils.hasText(colComment) ? colComment : colName;
                     }
+                    Integer combineFlag =
+                            (sf != null && StringUtils.hasText(sf.getCombineInfo())) ? 1 : 0;
 
                     ColumnInfoResp colResp =
                             ColumnInfoResp.builder()
@@ -162,6 +169,7 @@ public class SysFieldService implements SysFieldApi {
                                     .columnType(colType)
                                     .columnComment(colComment)
                                     .displayName(displayName)
+                                    .combineFlag(combineFlag)
                                     .build();
 
                     tableResp.getColumns().add(colResp);
@@ -215,21 +223,20 @@ public class SysFieldService implements SysFieldApi {
             String projectNo, Long subjectId, String tableName, List<ColumnInfoResp> columns) {
         try {
             List<SysField> sysFields = querySysFieldEntities(projectNo, subjectId, tableName);
-            Map<String, String> configMap =
+            Map<String, SysField> configMap =
                     sysFields.stream()
-                            .filter(
-                                    sf ->
-                                            sf.getColumnName() != null
-                                                    && StringUtils.hasText(sf.getDisplayName()))
+                            .filter(sf -> sf.getColumnName() != null)
                             .collect(
                                     Collectors.toMap(
-                                            SysField::getColumnName,
-                                            SysField::getDisplayName,
-                                            (v1, v2) -> v1));
+                                            SysField::getColumnName, sf -> sf, (v1, v2) -> v1));
 
             columns.forEach(
                     column -> {
-                        String displayName = configMap.get(column.getColumnName());
+                        SysField sf = configMap.get(column.getColumnName());
+                        String displayName =
+                                (sf != null && StringUtils.hasText(sf.getDisplayName()))
+                                        ? sf.getDisplayName()
+                                        : null;
                         if (StringUtils.hasText(displayName)) {
                             column.setDisplayName(displayName);
                         } else {
@@ -238,6 +245,9 @@ public class SysFieldService implements SysFieldApi {
                                             ? column.getColumnComment()
                                             : column.getColumnName());
                         }
+                        Integer combineFlag =
+                                (sf != null && StringUtils.hasText(sf.getCombineInfo())) ? 1 : 0;
+                        column.setCombineFlag(combineFlag);
                     });
         } catch (Exception e) {
             log.warn("增强表 {} 的列信息失败: {}", tableName, e.getMessage());
