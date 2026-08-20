@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jdec.platform.config.biz.mapper.SysRightMapper">
+
+    <!-- 分页查询权限节点（联合三张表） -->
+    <select id="selectRightPage" resultType="com.jdec.platform.config.api.dto.response.SysRightResp">
+        SELECT * FROM (
+            -- 数据权限类型表
+            SELECT
+                id,
+                0 AS pid,
+                name AS right_name,
+                code AS right_slug,
+                1 AS node_type,
+                description,
+                sort,
+                '' AS parent_right_name,
+                '' AS parent_right_slug,
+                NULL AS type
+            FROM sys_data_permission
+            WHERE project_no = #{projectNo}
+              AND subject_id = #{subjectId}
+              <if test="rightName != null and rightName != ''">
+                  AND name LIKE CONCAT('%', #{rightName}, '%')
+              </if>
+
+            UNION ALL
+
+            -- 交互权限表
+            SELECT
+                sip.id,
+                sip.module_id AS pid,
+                sip.name AS right_name,
+                sip.code AS right_slug,
+                2 AS node_type,
+                NULL AS description,
+                sip.sort,
+                sm.module_name AS parent_right_name,
+                sm.module_code AS parent_right_slug,
+                sip.type
+            FROM sys_interaction_permission sip
+            LEFT JOIN sys_module sm ON sip.module_id = sm.id
+            WHERE sip.project_no = #{projectNo}
+              AND sip.subject_id = #{subjectId}
+              <if test="rightName != null and rightName != ''">
+                  AND sip.name LIKE CONCAT('%', #{rightName}, '%')
+              </if>
+
+            UNION ALL
+
+            -- 特殊权限表
+            SELECT
+                id,
+                0 AS pid,
+                name AS right_name,
+                code AS right_slug,
+                3 AS node_type,
+                description,
+                sort,
+                '' AS parent_right_name,
+                '' AS parent_right_slug,
+                NULL AS type
+            FROM sys_special_permission
+            WHERE project_no = #{projectNo}
+              AND subject_id = #{subjectId}
+              <if test="rightName != null and rightName != ''">
+                  AND name LIKE CONCAT('%', #{rightName}, '%')
+              </if>
+        ) AS combined_rights
+        ORDER BY node_type ASC, sort ASC, id ASC
+    </select>
+
+</mapper>

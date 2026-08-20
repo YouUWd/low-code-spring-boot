@@ -1,0 +1,9 @@
+# 强制所有文本文件在 Git 仓库和本地都使用 LF 换行
+* text=auto eol=lf
+
+# 针对 Windows 特有的批处理脚本保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Maven Wrapper shell script 必须保持 LF（Linux/macOS 兼容）
+mvnw text eol=lf

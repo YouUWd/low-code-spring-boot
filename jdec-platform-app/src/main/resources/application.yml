@@ -1,0 +1,64 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: jdec-platform
+  profiles:
+    active: dev
+
+  # ===== 禁用静态资源处理 =====
+  web:
+    resources:
+      add-mappings: false
+
+  # ===== 文件上传限制 =====
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  # ===== 禁用 Spring Modulith 自动配置 =====
+  autoconfigure:
+    exclude:
+      - org.springframework.modulith.events.jdbc.JdbcEventPublicationAutoConfiguration
+
+  # ===== Jackson 序列化 =====
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  # ===== Redis 配置 =====
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 8
+      timeout: 2000ms
+      jedis:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+# ===== MyBatis-Plus 全局配置 =====
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
+# ===== JWT 配置 =====
+jwt:
+  secret: ${JWT_SECRET:fslpbyMEFrukCpH6j1uizt_F7cya2NfWXJuiWqEMU9PwT_664CIOnZmpFsQT6nEv}
+  expiration: ${JWT_EXPIRATION:604800000}  # 一周(毫秒)
+  header: Authorization
+  prefix: "Bearer "
+
+# ===== 企业微信配置 - 公共配置 =====
+wechat:
+  work:
+    api-base-url: https://qyapi.weixin.qq.com
+    token-cache-seconds: 7000

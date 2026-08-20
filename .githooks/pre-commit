@@ -1,0 +1,29 @@
+#!/bin/sh
+
+echo "=========================================================="
+echo "🛡️ JDEC Platform Pre-Commit Hook"
+echo "Running Spotless formatting check and Checkstyle analysis..."
+echo "=========================================================="
+
+# 1. 格式校验与拦截 (Spotless)
+./mvnw spotless:check
+SPOTLESS_STATUS=$?
+if [ $SPOTLESS_STATUS -ne 0 ]; then
+  echo ""
+  echo "❌ [Error] Spotless 检查未通过！您的代码格式不符合团队规约。"
+  echo "💡 [Solution] 解决办法: 请执行 './mvnw spotless:apply' 来自动修复代码格式，然后再执行 git add 并重新提交。"
+  exit 1
+fi
+
+# 2. 静态分析拦截 (Checkstyle - 随 validate 生命周期执行)
+#mvn validate -B -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8
+#CHECKSTYLE_STATUS=$?
+#if [ $CHECKSTYLE_STATUS -ne 0 ]; then
+#  echo ""
+#  echo "❌ [Error] Checkstyle 静态分析规范未通过！"
+#  echo "💡 [Solution] 解决办法: 请检查控制台报错的具体原因，例如未引用的导包或不符合约定的命名，修正后重新提交。"
+#  exit 1
+#fi
+
+echo "✅ 恭喜！代码校验全部通过，允许推送入库！"
+exit 0

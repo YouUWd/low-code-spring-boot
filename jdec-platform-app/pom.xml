@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.jdec</groupId>
+        <artifactId>jdec-platform</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>jdec-platform-app</artifactId>
+    
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-shared</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-auth-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-auth-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-config-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-config-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-hr-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-hr-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-monitorlog-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-monitorlog-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-approval-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-approval-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-common-business-biz</artifactId>
+        </dependency>
+
+        <!-- Spring Modulith 核心与事件持久化 -->
+        <dependency>
+            <groupId>org.springframework.modulith</groupId>
+            <artifactId>spring-modulith-starter-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.modulith</groupId>
+            <artifactId>spring-modulith-starter-jdbc</artifactId>
+        </dependency>
+
+        <!-- 基础设施依赖 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+             <groupId>com.baomidou</groupId>
+             <artifactId>mybatis-plus-jsqlparser</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            
+            <!-- Maven Surefire Plugin - 配置 Mockito agent 以避免 JDK 警告 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-XX:+EnableDynamicAgentLoading -Xshare:off</argLine>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
