@@ -2,7 +2,6 @@ package com.jdec.platform.config.biz.audit.util;
 
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.jdec.platform.config.api.dto.common.ModuleCombineFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleStatusDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
@@ -498,18 +497,19 @@ public class SysModuleAuditHelper {
             iList.add(simpleItem);
         }
 
-        // 2. 组合字段新增 (i): 组合字段保留完整组合字段信息
-        if (newReq.getCombineFields() != null && !newReq.getCombineFields().isEmpty()) {
-            for (ModuleCombineFieldDTO combine : newReq.getCombineFields()) {
-                String combineDisplayName =
-                        StringUtils.hasText(combine.getDisplayName())
-                                ? combine.getDisplayName()
-                                : combine.getLogicalField();
-                Map<String, Object> cItem = buildCombineFieldItem(combine, combineDisplayName);
-                cItem.put("name", "组合字段");
-                iList.add(cItem);
-            }
-        }
+        //        // 2. 组合字段新增 (i): 组合字段保留完整组合字段信息
+        //        if (newReq.getCombineFields() != null && !newReq.getCombineFields().isEmpty()) {
+        //            for (ModuleCombineFieldDTO combine : newReq.getCombineFields()) {
+        //                String combineDisplayName =
+        //                        StringUtils.hasText(combine.getDisplayName())
+        //                                ? combine.getDisplayName()
+        //                                : combine.getLogicalField();
+        //                Map<String, Object> cItem = buildCombineFieldItem(combine,
+        // combineDisplayName);
+        //                cItem.put("name", "组合字段");
+        //                iList.add(cItem);
+        //            }
+        //        }
 
         if (!iList.isEmpty()) {
             actions.put("i", iList);
@@ -1009,152 +1009,11 @@ public class SysModuleAuditHelper {
             iList.add(simpleItem);
         }
 
-        // ---------------------------------------------------------------------
-        // 2. 组合字段处理
-        // ---------------------------------------------------------------------
-        List<ModuleCombineFieldDTO> oldCombine =
-                oldReq.getCombineFields() != null
-                        ? oldReq.getCombineFields()
-                        : Collections.emptyList();
-        List<ModuleCombineFieldDTO> newCombine =
-                newReq.getCombineFields() != null
-                        ? newReq.getCombineFields()
-                        : Collections.emptyList();
-
-        Map<String, ModuleCombineFieldDTO> oldCombineMap =
-                oldCombine.stream()
-                        .filter(c -> c.getLogicalField() != null)
-                        .collect(
-                                Collectors.toMap(
-                                        ModuleCombineFieldDTO::getLogicalField,
-                                        Function.identity(),
-                                        (e1, e2) -> e1));
-        Map<String, ModuleCombineFieldDTO> newCombineMap =
-                newCombine.stream()
-                        .filter(c -> c.getLogicalField() != null)
-                        .collect(
-                                Collectors.toMap(
-                                        ModuleCombineFieldDTO::getLogicalField,
-                                        Function.identity(),
-                                        (e1, e2) -> e1));
-
-        List<String> delCombineNames = new ArrayList<>();
-
-        for (Map.Entry<String, ModuleCombineFieldDTO> entry : newCombineMap.entrySet()) {
-            String logicalField = entry.getKey();
-            ModuleCombineFieldDTO newC = entry.getValue();
-            String combineDisplayName =
-                    StringUtils.hasText(newC.getDisplayName())
-                            ? newC.getDisplayName()
-                            : logicalField;
-            boolean newEnabled = Objects.equals(newC.getEnabled(), 1);
-
-            if (oldCombineMap.containsKey(logicalField)) {
-                ModuleCombineFieldDTO oldC = oldCombineMap.get(logicalField);
-                boolean oldEnabled = Objects.equals(oldC.getEnabled(), 1);
-
-                if (!oldEnabled && newEnabled) {
-                    // 从 禁用 -> 启用：新增 (i)，保留完整组合字段信息
-                    Map<String, Object> cItem = buildCombineFieldItem(newC, combineDisplayName);
-                    cItem.put("name", "组合字段");
-                    iList.add(cItem);
-                } else if (oldEnabled && !newEnabled) {
-                    // 从 启用 -> 禁用：删除 (d)
-                    delCombineNames.add(combineDisplayName);
-                } else if (oldEnabled && newEnabled) {
-                    // 保持启用：检查具体属性修改 (u)
-                    List<Map<String, Object>> combineUCols = new ArrayList<>();
-                    if (!Objects.equals(oldC.getDisplayName(), newC.getDisplayName())) {
-                        combineUCols.add(
-                                createColumn(
-                                        logicalField,
-                                        "组合名称",
-                                        oldC.getDisplayName(),
-                                        newC.getDisplayName()));
-                    }
-                    if (!Objects.equals(oldC.getTransformer(), newC.getTransformer())) {
-                        combineUCols.add(
-                                createColumn(
-                                        logicalField,
-                                        "转换表达式",
-                                        oldC.getTransformer(),
-                                        newC.getTransformer()));
-                    }
-                    if (!combineUCols.isEmpty()) {
-                        Map<String, Object> cItem = new HashMap<>();
-                        cItem.put("name", "组合字段");
-                        cItem.put("columns", combineUCols);
-                        uList.add(cItem);
-                    }
-                }
-            } else {
-                if (newEnabled) {
-                    // 新加入且为启用状态：新增 (i)，保留完整组合字段信息
-                    Map<String, Object> cItem = buildCombineFieldItem(newC, combineDisplayName);
-                    cItem.put("name", "组合字段");
-                    iList.add(cItem);
-                }
-            }
-        }
-
-        // 物理删除且原本启用的组合字段 (d)
-        for (Map.Entry<String, ModuleCombineFieldDTO> entry : oldCombineMap.entrySet()) {
-            String logicalField = entry.getKey();
-            ModuleCombineFieldDTO oldC = entry.getValue();
-            boolean oldEnabled = Objects.equals(oldC.getEnabled(), 1);
-            if (!newCombineMap.containsKey(logicalField) && oldEnabled) {
-                String oldDisplayName =
-                        StringUtils.hasText(oldC.getDisplayName())
-                                ? oldC.getDisplayName()
-                                : logicalField;
-                delCombineNames.add(oldDisplayName);
-            }
-        }
-
-        // 组合字段删除 (d): 只留 old 属性
-        if (!delCombineNames.isEmpty()) {
-            Map<String, Object> cItem = new HashMap<>();
-            cItem.put("name", "组合字段");
-            List<Map<String, Object>> cols = new ArrayList<>();
-            Map<String, Object> cMap = new HashMap<>();
-            cMap.put("old", String.join("，", delCombineNames));
-            cols.add(cMap);
-            cItem.put("columns", cols);
-            dList.add(cItem);
-        }
-
-        if (!uList.isEmpty()) actions.put("u", uList);
         if (!iList.isEmpty()) actions.put("i", iList);
         if (!dList.isEmpty()) actions.put("d", dList);
 
         childNode.put("actions", actions);
         return childNode;
-    }
-
-    private Map<String, Object> buildCombineFieldItem(
-            ModuleCombineFieldDTO combine, String combineDisplayName) {
-        Map<String, Object> cItem = new HashMap<>();
-        cItem.put("name", combineDisplayName);
-        List<Map<String, Object>> cols = new ArrayList<>();
-        cols.add(createColumnNullOld(combine.getLogicalField(), "组合标识", combine.getLogicalField()));
-        cols.add(createColumnNullOld(combine.getLogicalField(), "组合名称", combineDisplayName));
-        if (StringUtils.hasText(combine.getTransformer())) {
-            cols.add(
-                    createColumnNullOld(
-                            combine.getLogicalField(), "转换表达式", combine.getTransformer()));
-        }
-        if (combine.getSourceMapping() != null && !combine.getSourceMapping().isEmpty()) {
-            List<String> mapList = new ArrayList<>();
-            for (var m : combine.getSourceMapping()) {
-                String eStr = m.getEntity() != null ? m.getEntity() : "";
-                String fStr = m.getField() != null ? m.getField() : "";
-                mapList.add(eStr + "." + fStr);
-            }
-            String mappingStr = String.join(", ", mapList);
-            cols.add(createColumnNullOld(combine.getLogicalField(), "物理字段映射", mappingStr));
-        }
-        cItem.put("columns", cols);
-        return cItem;
     }
 
     private Map<String, Object> buildColumnConfigChildNodeForUpdate(

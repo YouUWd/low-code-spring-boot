@@ -1,6 +1,8 @@
 package com.jdec.platform.config.biz.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
@@ -49,6 +51,7 @@ public class SysField {
     private Integer encrypted;
 
     /** 组合配置信息（JSON 格式：包含 sourceMapping 与 transformer） */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String combineInfo;
 
     /** 创建人ID */

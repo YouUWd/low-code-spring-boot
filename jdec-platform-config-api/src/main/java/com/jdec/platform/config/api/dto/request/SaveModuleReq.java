@@ -22,10 +22,6 @@ public class SaveModuleReq {
     @Schema(description = "模块简单字段配置列表（单表字段映射）", example = "[]")
     private List<ModuleSimpleFieldDTO> simpleFields;
 
-    /** 模块组合字段配置列表 */
-    @Schema(description = "模块组合字段配置列表（多表字段组合映射）", example = "[]")
-    private List<ModuleCombineFieldDTO> combineFields;
-
     /** 模块状态配置列表（仅DETAIL类型模块需要） */
     @Schema(description = "模块状态配置列表（仅DETAIL类型模块需要）", example = "[]")
     private List<ModuleStatusDTO> moduleStatuses;
