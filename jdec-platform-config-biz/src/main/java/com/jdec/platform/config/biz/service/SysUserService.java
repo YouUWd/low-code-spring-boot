@@ -333,15 +333,89 @@ public class SysUserService implements SysUserApi {
             return Collections.emptyList();
         }
 
-        // 2. 获取用户列表：直接查询当前主体下所有 sys_user（角色保存时已同步主体下用户，无需再查角色关联）
-        List<SysUser> users =
-                sysUserMapper.selectList(
-                        new LambdaQueryWrapper<SysUser>()
-                                .eq(
-                                        userType != null && userType != 0,
-                                        SysUser::getUserType,
-                                        userType)
-                                .eq(SysUser::getDeleted, Boolean.FALSE));
+        // 1. 根据当前主体和项目编码查询对应的角色
+        List<SysRole> roles =
+                sysRoleMapper.selectList(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .eq(SysRole::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysRole::getSubjectId, AppContext.getSubjectId())
+                                .select(SysRole::getId));
+        if (roles.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
+        LocalDate today = LocalDate.now();
+
+        // 2.1 根据角色查询关联的用户ID（状态有效+时效有效）
+        List<Long> userIdsFromRoleUser =
+                sysRoleUserMapper
+                        .selectList(
+                                Wrappers.<SysRoleUser>lambdaQuery()
+                                        .in(SysRoleUser::getRoleId, roleIds)
+                                        .eq(SysRoleUser::getStatus, 0))
+                        .stream()
+                        .filter(
+                                ru ->
+                                        isEffectiveDateValid(
+                                                ru.getEffectiveType(),
+                                                ru.getEffectiveStartDate(),
+                                                ru.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+
+        // 2.2 根据角色查询关联的主体ID（状态有效+时效有效）
+        List<Long> subjectIdsFromRoleSubject =
+                sysRoleSubjectMapper
+                        .selectList(
+                                Wrappers.<SysRoleSubject>lambdaQuery()
+                                        .in(SysRoleSubject::getRoleId, roleIds)
+                                        .eq(SysRoleSubject::getStatus, 0))
+                        .stream()
+                        .filter(
+                                rs ->
+                                        isEffectiveDateValid(
+                                                rs.getEffectiveType(),
+                                                rs.getEffectiveStartDate(),
+                                                rs.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+
+        // 2.3 通过用户ID查询一批用户
+        List<SysUser> usersByUserId = new ArrayList<>();
+        if (!userIdsFromRoleUser.isEmpty()) {
+            LambdaQueryWrapper<SysUser> userIdWrapper =
+                    new LambdaQueryWrapper<SysUser>()
+                            .in(SysUser::getUserId, userIdsFromRoleUser)
+                            .eq(userType != null && userType != 0, SysUser::getUserType, userType)
+                            .eq(SysUser::getDeleted, Boolean.FALSE);
+            usersByUserId = sysUserMapper.selectList(userIdWrapper);
+        }
+
+        // 2.4 通过主体ID查询一批用户
+        List<SysUser> usersBySubjectId = new ArrayList<>();
+        if (!subjectIdsFromRoleSubject.isEmpty()) {
+            LambdaQueryWrapper<SysUser> subjectIdWrapper =
+                    new LambdaQueryWrapper<SysUser>()
+                            .in(SysUser::getSubjectId, subjectIdsFromRoleSubject)
+                            .eq(userType != null && userType != 0, SysUser::getUserType, userType)
+                            .eq(SysUser::getDeleted, Boolean.FALSE);
+            usersBySubjectId = sysUserMapper.selectList(subjectIdWrapper);
+        }
+
+        // 2.5 合并两批用户并按userId去重
+        Map<Long, SysUser> userMap = new LinkedHashMap<>();
+        for (SysUser user : usersByUserId) {
+            userMap.put(user.getUserId(), user);
+        }
+        for (SysUser user : usersBySubjectId) {
+            userMap.putIfAbsent(user.getUserId(), user);
+        }
+        List<SysUser> users = new ArrayList<>(userMap.values());
 
         // 3. 将用户按部门分类
         Map<String, List<UserSearchTreeNodeResp>> deptUsers = new LinkedHashMap<>();
