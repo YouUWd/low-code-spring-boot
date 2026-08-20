@@ -406,25 +406,27 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             SysModule module = saveOrUpdateModuleEntity(projectNo, subjectId, req);
             Long moduleId = module.getId();
 
-            // 3. 保存关联表
-            if (request.getModuleTables() != null) {
-                saveModuleTables(moduleId, request.getModuleTables());
-            }
+            // 3. 保存关联表（支持 null 或空数组全量清空）
+            saveModuleTables(
+                    moduleId,
+                    request.getModuleTables() != null
+                            ? request.getModuleTables()
+                            : Collections.emptyList());
 
-            // 4. 保存简单字段
-            if (request.getSimpleFields() != null) {
-                saveSimpleFields(moduleId, request.getSimpleFields());
-            }
+            // 4. 保存简单字段（支持 null 或空数组全量清空）
+            saveSimpleFields(
+                    moduleId,
+                    request.getSimpleFields() != null
+                            ? request.getSimpleFields()
+                            : Collections.emptyList());
 
-            // 5. 校验并保存组合字段
-            if (request.getCombineFields() != null) {
-                validateAndSaveCombineFields(moduleId, request);
-            }
-
-            // 6. 仅 DETAIL 类型模块保存状态信息
-            if (ModuleTypeEnum.DETAIL == module.getModuleType()
-                    && request.getModuleStatuses() != null) {
-                saveModuleStatuses(moduleId, request.getModuleStatuses());
+            // 5. 仅 DETAIL 类型模块保存状态信息（支持 null 或空数组全量清空）
+            if (ModuleTypeEnum.DETAIL == module.getModuleType()) {
+                saveModuleStatuses(
+                        moduleId,
+                        request.getModuleStatuses() != null
+                                ? request.getModuleStatuses()
+                                : Collections.emptyList());
             }
 
             int changeMask = PERMISSION_CHANGES.get();
@@ -503,42 +505,6 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             }
         }
         return module;
-    }
-
-    private void validateAndSaveCombineFields(Long moduleId, SaveModuleReq request) {
-        // 校验：组合字段中映射的表（entity）必须是主表或关联表
-        Set<String> validTables = new HashSet<>();
-        if (StringUtils.hasText(request.getModule().getPrimaryTable())) {
-            validTables.add(request.getModule().getPrimaryTable().toLowerCase().trim());
-        }
-        if (request.getModuleTables() != null) {
-            for (ModuleTableDTO t : request.getModuleTables()) {
-                if (StringUtils.hasText(t.getTableName())) {
-                    validTables.add(t.getTableName().toLowerCase().trim());
-                }
-            }
-        }
-
-        for (ModuleCombineFieldDTO cf : request.getCombineFields()) {
-            if (cf.getSourceMapping() != null) {
-                for (ModuleSourceMappingDTO mapping : cf.getSourceMapping()) {
-                    if (mapping.getEntity() != null) {
-                        String entityTable = mapping.getEntity().toLowerCase().trim();
-                        if (!validTables.contains(entityTable)) {
-                            throw new BusinessException(
-                                    400,
-                                    "组合字段 ["
-                                            + cf.getLogicalField()
-                                            + "] 中的映射物理表 '"
-                                            + mapping.getEntity()
-                                            + "' 必须是该模块的主表或关联表");
-                        }
-                    }
-                }
-            }
-        }
-
-        saveCombineFields(moduleId, request.getCombineFields());
     }
 
     @Override
@@ -870,6 +836,9 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     }
 
     private void saveModuleTables(Long moduleId, List<ModuleTableDTO> tables) {
+        if (tables == null) {
+            tables = Collections.emptyList();
+        }
         // 1. 查询已有的关联表
         List<SysModuleTable> existTables =
                 sysModuleTableMapper.selectList(
@@ -1009,6 +978,9 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     }
 
     private void saveSimpleFields(Long moduleId, List<ModuleSimpleFieldDTO> fields) {
+        if (fields == null) {
+            fields = Collections.emptyList();
+        }
         // 1. 查询已有的字段配置
         List<SysModuleField> existFields =
                 sysModuleFieldMapper.selectList(
@@ -1063,67 +1035,10 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
         }
     }
 
-    private void saveCombineFields(Long moduleId, List<ModuleCombineFieldDTO> fields) {
-        // 1. 查询已有的字段配置
-        List<SysModuleField> existFields =
-                sysModuleFieldMapper.selectList(
-                        Wrappers.<SysModuleField>lambdaQuery()
-                                .eq(SysModuleField::getModuleId, moduleId)
-                                .eq(SysModuleField::getFieldType, "COMBINE"));
-        Map<Long, SysModuleField> existFieldMap =
-                existFields.stream().collect(Collectors.toMap(SysModuleField::getId, f -> f));
-
-        // 2. 收集请求中提交的有效 ID
-        Set<Long> keepIds =
-                fields.stream()
-                        .map(ModuleCombineFieldDTO::getId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-
-        // 3. 计算需要删除的孤儿 ID 并执行级联删除
-        List<Long> deleteIds =
-                existFields.stream()
-                        .map(SysModuleField::getId)
-                        .filter(id -> !keepIds.contains(id))
-                        .collect(Collectors.toList());
-
-        if (!deleteIds.isEmpty()) {
-            sysModuleFieldMapper.deleteByIds(deleteIds);
-            // 级联清理角色权限表与微信参数表的引用
-            cleanFieldReferences(deleteIds);
-            PERMISSION_CHANGES.set(PERMISSION_CHANGES.get() | PERM_CHANGE_COMBINE_CLEAN);
-        }
-
-        // 4. 组装待批量保存/更新的列表
-        List<SysModuleField> saveOrUpdateList = new ArrayList<>();
-        for (ModuleCombineFieldDTO info : fields) {
-            SysModuleField f;
-            if (info.getId() != null && existFieldMap.containsKey(info.getId())) {
-                f = existFieldMap.get(info.getId());
-            } else {
-                f = new SysModuleField();
-                f.setModuleId(moduleId);
-                f.setFieldType("COMBINE");
-            }
-            f.setFieldCode(info.getLogicalField());
-            f.setTableName("*");
-            f.setDisplayName(info.getDisplayName());
-            try {
-                f.setSourceMapping(objectMapper.writeValueAsString(info.getSourceMapping()));
-            } catch (Exception e) {
-                throw new BusinessException(500, "sourceMapping 序列化失败", e);
-            }
-            f.setTransformer(info.getTransformer());
-            f.setEnabled(info.getEnabled() != null ? info.getEnabled() : 1);
-            saveOrUpdateList.add(f);
-        }
-
-        if (!saveOrUpdateList.isEmpty()) {
-            Db.saveOrUpdateBatch(saveOrUpdateList);
-        }
-    }
-
     private void saveModuleStatuses(Long moduleId, List<ModuleStatusDTO> statuses) {
+        if (statuses == null) {
+            statuses = Collections.emptyList();
+        }
         // 1. 查询已有的状态配置
         List<SysModuleStatus> existStatuses =
                 sysModuleStatusMapper.selectList(

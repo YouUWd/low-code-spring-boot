@@ -599,6 +599,8 @@ public class SysFieldService implements SysFieldApi {
             } catch (Exception e) {
                 log.error("combineInfo 序列化失败", e);
             }
+        } else {
+            combineInfoJson = null;
         }
 
         SysField entity =
