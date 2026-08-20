@@ -45,6 +45,9 @@ public class SysFieldSaveReq {
     @AuditField(name = "是否生成权限节点", type = FieldType.ENUM, enumClass = YesNoEnum.class)
     private Integer dataRightFlag;
 
+    @Schema(description = "组合配置信息")
+    private SysFieldCombineInfoReq combineInfo;
+
     @Schema(description = "表中文名")
     private String tableCnName;
 

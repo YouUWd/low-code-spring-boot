@@ -24,9 +24,9 @@ public class SysModuleCompleteResp {
     @Schema(description = "模块简单字段列表")
     private List<ModuleSimpleFieldDTO> simpleFields;
 
-    /** 模块组合字段列表 */
-    @Schema(description = "模块组合字段列表")
-    private List<ModuleCombineFieldDTO> combineFields;
+//    /** 模块组合字段列表 */
+//    @Schema(description = "模块组合字段列表")
+//    private List<ModuleCombineFieldDTO> combineFields;
 
     /** 模块状态列表（仅DETAIL类型） */
     @Schema(description = "模块状态列表（仅DETAIL类型）")

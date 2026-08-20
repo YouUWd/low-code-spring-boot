@@ -276,23 +276,23 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                         .collect(Collectors.toList());
         resp.setSimpleFields(simpleFieldInfos);
 
-        List<ModuleCombineFieldDTO> combineFieldInfos =
-                allFields.stream()
-                        .filter(f -> "COMBINE".equals(f.getFieldType()))
-                        .sorted(Comparator.comparing(SysModuleField::getId))
-                        .map(
-                                f -> {
-                                    ModuleCombineFieldDTO info = new ModuleCombineFieldDTO();
-                                    info.setId(f.getId());
-                                    info.setLogicalField(f.getFieldCode());
-                                    info.setDisplayName(f.getDisplayName());
-                                    info.setSourceMapping(parseSourceMapping(f.getSourceMapping()));
-                                    info.setTransformer(f.getTransformer());
-                                    info.setEnabled(f.getEnabled());
-                                    return info;
-                                })
-                        .collect(Collectors.toList());
-        resp.setCombineFields(combineFieldInfos);
+//        List<ModuleCombineFieldDTO> combineFieldInfos =
+//                allFields.stream()
+//                        .filter(f -> "COMBINE".equals(f.getFieldType()))
+//                        .sorted(Comparator.comparing(SysModuleField::getId))
+//                        .map(
+//                                f -> {
+//                                    ModuleCombineFieldDTO info = new ModuleCombineFieldDTO();
+//                                    info.setId(f.getId());
+//                                    info.setLogicalField(f.getFieldCode());
+//                                    info.setDisplayName(f.getDisplayName());
+//                                    info.setSourceMapping(parseSourceMapping(f.getSourceMapping()));
+//                                    info.setTransformer(f.getTransformer());
+//                                    info.setEnabled(f.getEnabled());
+//                                    return info;
+//                                })
+//                        .collect(Collectors.toList());
+//        resp.setCombineFields(combineFieldInfos);
 
         // 获取状态（仅对于 DETAIL 类型）
         if (ModuleTypeEnum.DETAIL == module.getModuleType()) {
