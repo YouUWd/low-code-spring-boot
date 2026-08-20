@@ -8,7 +8,9 @@ import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.dto.request.SysFieldSaveReq;
 import com.jdec.platform.config.api.dto.request.SysFieldValueSaveReq;
 import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
+import com.jdec.platform.config.api.dto.response.SysFieldCombineInfoResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
+import com.jdec.platform.config.api.dto.response.SysFieldSourceMappingResp;
 import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import com.jdec.platform.config.biz.audit.service.SysFieldLogService;
@@ -30,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /**
  * 系统字段配置服务
@@ -87,6 +90,92 @@ public class SysFieldService implements SysFieldApi {
     }
 
     @Override
+    public List<TableInfoResp> getAllTablesWithColumns(String projectNo, Long subjectId) {
+        log.debug("查询项目 {} 主体 {} 的所有表及其列信息", projectNo, subjectId);
+
+        String sql =
+                """
+                        SELECT
+                            t.TABLE_NAME,
+                            t.TABLE_COMMENT,
+                            c.COLUMN_NAME,
+                            c.COLUMN_TYPE,
+                            c.COLUMN_COMMENT
+                        FROM INFORMATION_SCHEMA.TABLES t
+                        LEFT JOIN INFORMATION_SCHEMA.COLUMNS c
+                            ON t.TABLE_SCHEMA = c.TABLE_SCHEMA
+                           AND t.TABLE_NAME = c.TABLE_NAME
+                        WHERE t.TABLE_SCHEMA = ?
+                        ORDER BY t.TABLE_NAME, c.ORDINAL_POSITION
+                        """;
+
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, projectNo);
+
+            // 查询所有 SysField 自定义 displayName 配置 Map<tableName, Map<columnName, displayName>>
+            List<SysField> sysFields =
+                    sysFieldMapper.selectList(
+                            Wrappers.<SysField>lambdaQuery()
+                                    .eq(SysField::getProjectNo, projectNo)
+                                    .eq(SysField::getSubjectId, subjectId)
+                                    .eq(SysField::getDeleted, 0));
+            Map<String, Map<String, String>> sysFieldConfigMap = new HashMap<>();
+            for (SysField sf : sysFields) {
+                if (StringUtils.hasText(sf.getDisplayName())) {
+                    sysFieldConfigMap
+                            .computeIfAbsent(sf.getTableName(), k -> new HashMap<>())
+                            .put(sf.getColumnName(), sf.getDisplayName());
+                }
+            }
+
+            Map<String, TableInfoResp> tableMap = new LinkedHashMap<>();
+
+            for (Map<String, Object> row : rows) {
+                String tableName = (String) row.get("TABLE_NAME");
+                String tableComment = (String) row.get("TABLE_COMMENT");
+                String colName = (String) row.get("COLUMN_NAME");
+
+                TableInfoResp tableResp =
+                        tableMap.computeIfAbsent(
+                                tableName,
+                                k ->
+                                        TableInfoResp.builder()
+                                                .tableName(tableName)
+                                                .tableComment(tableComment)
+                                                .columns(new ArrayList<>())
+                                                .build());
+
+                if (colName != null) {
+                    String colType = (String) row.get("COLUMN_TYPE");
+                    String colComment = (String) row.get("COLUMN_COMMENT");
+
+                    Map<String, String> colConfigMap =
+                            sysFieldConfigMap.getOrDefault(tableName, Collections.emptyMap());
+                    String displayName = colConfigMap.get(colName);
+                    if (!StringUtils.hasText(displayName)) {
+                        displayName = StringUtils.hasText(colComment) ? colComment : colName;
+                    }
+
+                    ColumnInfoResp colResp =
+                            ColumnInfoResp.builder()
+                                    .columnName(colName)
+                                    .columnType(colType)
+                                    .columnComment(colComment)
+                                    .displayName(displayName)
+                                    .build();
+
+                    tableResp.getColumns().add(colResp);
+                }
+            }
+
+            return new ArrayList<>(tableMap.values());
+        } catch (Exception e) {
+            log.error("查询项目 {} 的表及列信息失败", projectNo, e);
+            throw new RuntimeException("查询表及列信息失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public List<ColumnInfoResp> getTableColumns(
             String projectNo, Long subjectId, String tableName) {
         log.debug("查询项目 {} 主体 {} 表 {} 的列信息", projectNo, subjectId, tableName);
@@ -128,18 +217,24 @@ public class SysFieldService implements SysFieldApi {
             List<SysField> sysFields = querySysFieldEntities(projectNo, subjectId, tableName);
             Map<String, String> configMap =
                     sysFields.stream()
+                            .filter(
+                                    sf ->
+                                            sf.getColumnName() != null
+                                                    && StringUtils.hasText(sf.getDisplayName()))
                             .collect(
                                     Collectors.toMap(
-                                            SysField::getColumnName, SysField::getDisplayName));
+                                            SysField::getColumnName,
+                                            SysField::getDisplayName,
+                                            (v1, v2) -> v1));
 
             columns.forEach(
                     column -> {
                         String displayName = configMap.get(column.getColumnName());
-                        if (displayName != null) {
+                        if (StringUtils.hasText(displayName)) {
                             column.setDisplayName(displayName);
                         } else {
                             column.setDisplayName(
-                                    column.getColumnComment() != null
+                                    StringUtils.hasText(column.getColumnComment())
                                             ? column.getColumnComment()
                                             : column.getColumnName());
                         }
@@ -368,62 +463,77 @@ public class SysFieldService implements SysFieldApi {
 
         // 3. 以元数据驱动进行合并
         Map<String, List<SysFieldResp.SysFieldModuleResp>> finalColumnModulesMap = columnModulesMap;
-        return columnRows.stream()
-                .filter(
-                        row ->
-                                columnName == null
-                                        || columnName.isBlank()
-                                        || columnName.equals(row.get("COLUMN_NAME")))
-                .map(
-                        row -> {
-                            String colName = (String) row.get("COLUMN_NAME");
-                            String columnComment = (String) row.get("COLUMN_COMMENT");
-                            String columnType = (String) row.get("COLUMN_TYPE");
-                            SysField config = configMap.get(colName);
+        List<SysFieldResp> resultList =
+                columnRows.stream()
+                        .filter(
+                                row ->
+                                        columnName == null
+                                                || columnName.isBlank()
+                                                || columnName.equals(row.get("COLUMN_NAME")))
+                        .map(
+                                row -> {
+                                    String colName = (String) row.get("COLUMN_NAME");
+                                    String columnComment = (String) row.get("COLUMN_COMMENT");
+                                    String columnType = (String) row.get("COLUMN_TYPE");
+                                    SysField config = configMap.get(colName);
 
-                            if (config != null) {
-                                // 已有配置
-                                return SysFieldResp.builder()
-                                        .id(config.getId())
-                                        .projectNo(projectNo)
-                                        .subjectId(subjectId)
-                                        .tableName(tableName)
-                                        .columnName(colName)
-                                        .columnType(columnType)
-                                        .displayName(config.getDisplayName())
-                                        .relationBusinessNo(config.getRelationBusinessNo())
-                                        .relationName(config.getRelationName())
-                                        .encrypted(config.getEncrypted())
-                                        .dataRightFlag(config.getDataRightFlag())
-                                        .fieldValues(
-                                                valueMap.getOrDefault(
-                                                        config.getId(), Collections.emptyList()))
-                                        .modules(
-                                                finalColumnModulesMap.getOrDefault(
-                                                        colName, Collections.emptyList()))
-                                        .build();
-                            } else {
-                                // 尚无配置，返回默认值
-                                return SysFieldResp.builder()
-                                        .projectNo(projectNo)
-                                        .subjectId(subjectId)
-                                        .tableName(tableName)
-                                        .columnName(colName)
-                                        .columnType(columnType)
-                                        .displayName(
-                                                columnComment != null && !columnComment.isEmpty()
-                                                        ? columnComment
-                                                        : colName)
-                                        .encrypted(0)
-                                        .encrypted(0)
-                                        .fieldValues(Collections.emptyList())
-                                        .modules(
-                                                finalColumnModulesMap.getOrDefault(
-                                                        colName, Collections.emptyList()))
-                                        .build();
-                            }
-                        })
-                .toList();
+                                    if (config != null) {
+                                        // 已有配置
+                                        return SysFieldResp.builder()
+                                                .id(config.getId())
+                                                .projectNo(projectNo)
+                                                .subjectId(subjectId)
+                                                .tableName(tableName)
+                                                .columnName(colName)
+                                                .columnType(columnType)
+                                                .displayName(config.getDisplayName())
+                                                .relationBusinessNo(config.getRelationBusinessNo())
+                                                .relationName(config.getRelationName())
+                                                .encrypted(config.getEncrypted())
+                                                .dataRightFlag(config.getDataRightFlag())
+                                                .combineInfo(
+                                                        parseCombineInfoDTO(
+                                                                config.getCombineInfo()))
+                                                .fieldValues(
+                                                        valueMap.getOrDefault(
+                                                                config.getId(),
+                                                                Collections.emptyList()))
+                                                .modules(
+                                                        finalColumnModulesMap.getOrDefault(
+                                                                colName, Collections.emptyList()))
+                                                .build();
+                                    } else {
+                                        // 尚无配置，返回默认值
+                                        return SysFieldResp.builder()
+                                                .projectNo(projectNo)
+                                                .subjectId(subjectId)
+                                                .tableName(tableName)
+                                                .columnName(colName)
+                                                .columnType(columnType)
+                                                .displayName(
+                                                        columnComment != null
+                                                                        && !columnComment.isEmpty()
+                                                                ? columnComment
+                                                                : colName)
+                                                .encrypted(0)
+                                                .encrypted(0)
+                                                .fieldValues(Collections.emptyList())
+                                                .modules(
+                                                        finalColumnModulesMap.getOrDefault(
+                                                                colName, Collections.emptyList()))
+                                                .build();
+                                    }
+                                })
+                        .toList();
+
+        List<SysFieldCombineInfoResp> combineInfos =
+                resultList.stream()
+                        .map(SysFieldResp::getCombineInfo)
+                        .filter(Objects::nonNull)
+                        .toList();
+        enrichCombineInfoDisplayNames(projectNo, subjectId, combineInfos);
+
+        return resultList;
     }
 
     public List<SysField> querySysFieldEntities(
@@ -472,6 +582,15 @@ public class SysFieldService implements SysFieldApi {
         String oldBusinessNo = oldField != null ? oldField.getRelationBusinessNo() : null;
         Integer oldDataRightFlag = oldField != null ? oldField.getDataRightFlag() : null;
 
+        String combineInfoJson = null;
+        if (req.getCombineInfo() != null) {
+            try {
+                combineInfoJson = objectMapper.writeValueAsString(req.getCombineInfo());
+            } catch (Exception e) {
+                log.error("combineInfo 序列化失败", e);
+            }
+        }
+
         SysField entity =
                 SysField.builder()
                         .id(req.getId())
@@ -484,6 +603,7 @@ public class SysFieldService implements SysFieldApi {
                         .relationName(req.getRelationName())
                         .encrypted(req.getEncrypted())
                         .dataRightFlag(req.getDataRightFlag())
+                        .combineInfo(combineInfoJson)
                         .deleted(0)
                         .build();
 
@@ -698,19 +818,150 @@ public class SysFieldService implements SysFieldApi {
                     e);
         }
 
-        return SysFieldResp.builder()
-                .id(field.getId())
-                .projectNo(projectNo)
-                .subjectId(subjectId)
-                .tableName(tableName)
-                .columnName(field.getColumnName())
-                .columnType(columnType)
-                .displayName(field.getDisplayName())
-                .relationBusinessNo(field.getRelationBusinessNo())
-                .relationName(field.getRelationName())
-                .encrypted(field.getEncrypted())
-                .fieldValues(fieldValues)
-                .build();
+        SysFieldResp resp =
+                SysFieldResp.builder()
+                        .id(field.getId())
+                        .projectNo(projectNo)
+                        .subjectId(subjectId)
+                        .tableName(tableName)
+                        .columnName(field.getColumnName())
+                        .columnType(columnType)
+                        .displayName(field.getDisplayName())
+                        .relationBusinessNo(field.getRelationBusinessNo())
+                        .relationName(field.getRelationName())
+                        .encrypted(field.getEncrypted())
+                        .dataRightFlag(field.getDataRightFlag())
+                        .combineInfo(parseCombineInfoDTO(field.getCombineInfo()))
+                        .fieldValues(fieldValues)
+                        .build();
+
+        if (resp.getCombineInfo() != null) {
+            enrichCombineInfoDisplayNames(projectNo, subjectId, List.of(resp.getCombineInfo()));
+        }
+
+        return resp;
+    }
+
+    private void enrichCombineInfoDisplayNames(
+            String projectNo, Long subjectId, List<SysFieldCombineInfoResp> combineInfos) {
+        if (combineInfos == null || combineInfos.isEmpty()) {
+            return;
+        }
+
+        Set<String> tables = new HashSet<>();
+        List<SysFieldSourceMappingResp> allMappings = new ArrayList<>();
+        for (SysFieldCombineInfoResp info : combineInfos) {
+            if (info != null && info.getSourceMapping() != null) {
+                for (SysFieldSourceMappingResp mapping : info.getSourceMapping()) {
+                    if (mapping != null && StringUtils.hasText(mapping.getTable())) {
+                        tables.add(mapping.getTable());
+                        allMappings.add(mapping);
+                    }
+                }
+            }
+        }
+
+        if (allMappings.isEmpty()) {
+            return;
+        }
+
+        // 1. 查询 INFORMATION_SCHEMA.TABLES 获取表注释
+        Map<String, String> tableDisplayNameMap = new HashMap<>();
+        try {
+            String inSql = String.join(",", Collections.nCopies(tables.size(), "?"));
+            String tableSql =
+                    "SELECT TABLE_NAME, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ("
+                            + inSql
+                            + ")";
+            List<Object> params = new ArrayList<>();
+            params.add(projectNo);
+            params.addAll(tables);
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(tableSql, params.toArray());
+            for (Map<String, Object> row : rows) {
+                String tableName = (String) row.get("TABLE_NAME");
+                String comment = (String) row.get("TABLE_COMMENT");
+                if (tableName != null) {
+                    tableDisplayNameMap.put(
+                            tableName, StringUtils.hasText(comment) ? comment : tableName);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询表注释信息失败: projectNo={}", projectNo, e);
+        }
+
+        // 2. 查询 sys_field 获取特定 (tableName, columnName) 的自定义 displayName
+        Map<String, String> sysFieldDisplayNameMap = new HashMap<>();
+        try {
+            List<SysField> sysFields =
+                    sysFieldMapper.selectList(
+                            Wrappers.<SysField>lambdaQuery()
+                                    .eq(SysField::getProjectNo, projectNo)
+                                    .eq(SysField::getSubjectId, subjectId)
+                                    .in(SysField::getTableName, tables)
+                                    .eq(SysField::getDeleted, 0));
+            for (SysField sf : sysFields) {
+                if (StringUtils.hasText(sf.getDisplayName())) {
+                    sysFieldDisplayNameMap.put(
+                            sf.getTableName() + ":" + sf.getColumnName(), sf.getDisplayName());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询 SysField 配置的 displayName 失败: projectNo={}", projectNo, e);
+        }
+
+        // 3. 查询 INFORMATION_SCHEMA.COLUMNS 获取列注释
+        Map<String, String> columnCommentMap = new HashMap<>();
+        try {
+            String inSql = String.join(",", Collections.nCopies(tables.size(), "?"));
+            String colSql =
+                    "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ("
+                            + inSql
+                            + ")";
+            List<Object> params = new ArrayList<>();
+            params.add(projectNo);
+            params.addAll(tables);
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(colSql, params.toArray());
+            for (Map<String, Object> row : rows) {
+                String tableName = (String) row.get("TABLE_NAME");
+                String colName = (String) row.get("COLUMN_NAME");
+                String comment = (String) row.get("COLUMN_COMMENT");
+                if (tableName != null && colName != null) {
+                    columnCommentMap.put(
+                            tableName + ":" + colName,
+                            StringUtils.hasText(comment) ? comment : colName);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询列注释失败: projectNo={}", projectNo, e);
+        }
+
+        // 4. 为每个 mapping 填充 tableDisplayName 与 fieldDisplayName
+        for (SysFieldSourceMappingResp mapping : allMappings) {
+            String table = mapping.getTable();
+            String field = mapping.getField();
+            mapping.setTableDisplayName(tableDisplayNameMap.getOrDefault(table, table));
+
+            if (field != null) {
+                String key = table + ":" + field;
+                String fieldDisp = sysFieldDisplayNameMap.get(key);
+                if (!StringUtils.hasText(fieldDisp)) {
+                    fieldDisp = columnCommentMap.getOrDefault(key, field);
+                }
+                mapping.setFieldDisplayName(fieldDisp);
+            }
+        }
+    }
+
+    private SysFieldCombineInfoResp parseCombineInfoDTO(String combineInfoJson) {
+        if (combineInfoJson == null || combineInfoJson.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(combineInfoJson, SysFieldCombineInfoResp.class);
+        } catch (Exception e) {
+            log.error("combineInfo 反序列化失败: {}", combineInfoJson, e);
+            return null;
+        }
     }
 
     /** 将字段绑定关系同步到 Word 系统 */

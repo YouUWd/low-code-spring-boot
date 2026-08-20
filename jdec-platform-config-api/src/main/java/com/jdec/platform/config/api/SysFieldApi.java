@@ -18,6 +18,15 @@ public interface SysFieldApi {
     List<TableInfoResp> getAllTables(String projectNo);
 
     /**
+     * 获取数据源中所有表及其列信息（包含配置增强）
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @return 表及列信息列表
+     */
+    List<TableInfoResp> getAllTablesWithColumns(String projectNo, Long subjectId);
+
+    /**
      * 获取表的所有列信息（包含配置增强）
      *
      * @param projectNo 项目编码

@@ -39,6 +39,15 @@ public class SysFieldController {
         return ApiResponse.success(sysFieldApi.getAllTables(projectNo));
     }
 
+    @Operation(summary = "获取所有表及其列信息", description = "获取当前项目数据源中所有表及其列详细信息（自动合并已配置的显示名称）")
+    @GetMapping("/tables-with-columns")
+    public ApiResponse<List<TableInfoResp>> getAllTablesWithColumns() {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 主体 {} 的所有表及其列信息", projectNo, subjectId);
+        return ApiResponse.success(sysFieldApi.getAllTablesWithColumns(projectNo, subjectId));
+    }
+
     @Operation(summary = "获取表的列信息", description = "获取指定表的所有列信息，并自动合并已配置的显示名称和关联关系")
     @GetMapping("/tables/{tableName}/columns")
     public ApiResponse<List<ColumnInfoResp>> getTableColumns(

@@ -48,6 +48,9 @@ public class SysField {
     /** 是否加密存储: 0-否, 1-是 */
     private Integer encrypted;
 
+    /** 组合配置信息（JSON 格式：包含 sourceMapping 与 transformer） */
+    private String combineInfo;
+
     /** 创建人ID */
     private String createdBy;
 
