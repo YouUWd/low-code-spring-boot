@@ -31,4 +31,8 @@ public class ColumnInfoResp {
     /** 前端显示名称 */
     @Schema(description = "前端显示名称（由业务人员配置）", example = "主键ID")
     private String displayName;
+
+    /** 是否是组合字段: 0-否, 1-是 */
+    @Schema(description = "是否是组合字段: 0-否, 1-是（判定依据：SysField 中的 combineInfo 是否不为空）", example = "0")
+    private Integer combineFlag;
 }
