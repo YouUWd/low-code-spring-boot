@@ -29,4 +29,7 @@ public class ListQueryReq {
 
     @Schema(description = "排序")
     private List<OrderItemReq> order;
+
+    @Schema(description = "查询类别，1待办2已办 3全部(默认全部)")
+    private Integer type;
 }

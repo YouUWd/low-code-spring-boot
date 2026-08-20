@@ -144,20 +144,6 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 allFields.add(mf);
             }
 
-            for (CombineField combineFieldItem : moduleInfoResp.getCombineFields()) {
-                // 生成form_field_list使用，可以省略sourceMapping等字段
-                allFields.add(
-                        ModuleField.builder()
-                                .fieldCode(combineFieldItem.getLogicalField())
-                                .fieldName(combineFieldItem.getDisplayName())
-                                .moduleId(moduleInfoResp.getModule().getId().longValue())
-                                .permissionCode(0)
-                                .transformer(combineFieldItem.getTransformer())
-                                .filedType(FIELD_TYPE_COMBINE)
-                                .tableName(COMBINE_FIELD_VIRTUAL_TABLE_NAME)
-                                .build());
-            }
-
             moduleFilterInfoBuilder.allFields(allFields);
 
             Long btnListJudgeModuleId = moduleInfoResp.getModule().getDetailModuleId();
@@ -610,17 +596,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 moduleFilterInfoBuilder.simpleModuleFields(simpleFieldInfo);
 
                 // 有权限的组合字段
-                List<CombineField> filteredCombineFields =
-                        moduleInfoResp.getCombineFields().stream()
-                                .filter(
-                                        e ->
-                                                tableNameToAllowedFields.containsKey(
-                                                                COMBINE_FIELD_VIRTUAL_TABLE_NAME)
-                                                        && tableNameToAllowedFields
-                                                                .get(
-                                                                        COMBINE_FIELD_VIRTUAL_TABLE_NAME)
-                                                                .contains(e.getLogicalField()))
-                                .collect(Collectors.toList());
+                List<CombineField> filteredCombineFields = new ArrayList<>();
 
                 List<ModuleField> combineFieldInfo = new ArrayList<>();
 
@@ -748,20 +724,6 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                 .permissionCode(0)
                                 .filedType("SIMPLE")
                                 .tableName(simpleFieldItem.getTableName())
-                                .build());
-            }
-
-            for (CombineField combineFieldItem : moduleInfoResp.getCombineFields()) {
-                // 生成form_field_list使用，可以省略sourceMapping等字段
-                allFields.add(
-                        ModuleField.builder()
-                                .fieldCode(combineFieldItem.getLogicalField())
-                                .fieldName(combineFieldItem.getDisplayName())
-                                .moduleId(moduleInfoResp.getModule().getId().longValue())
-                                .permissionCode(0)
-                                .transformer(combineFieldItem.getTransformer())
-                                .filedType(FIELD_TYPE_COMBINE)
-                                .tableName(COMBINE_FIELD_VIRTUAL_TABLE_NAME)
                                 .build());
             }
 
@@ -1095,17 +1057,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 moduleFilterInfoBuilder.simpleModuleFields(simpleFieldInfo);
 
                 // 有权限的组合字段
-                List<CombineField> filteredCombineFields =
-                        moduleInfoResp.getCombineFields().stream()
-                                .filter(
-                                        e ->
-                                                tableNameToAllowedFields.containsKey(
-                                                                COMBINE_FIELD_VIRTUAL_TABLE_NAME)
-                                                        && tableNameToAllowedFields
-                                                                .get(
-                                                                        COMBINE_FIELD_VIRTUAL_TABLE_NAME)
-                                                                .contains(e.getLogicalField()))
-                                .collect(Collectors.toList());
+                List<CombineField> filteredCombineFields = new ArrayList<>();
 
                 List<ModuleField> combineFieldInfo = new ArrayList<>();
 

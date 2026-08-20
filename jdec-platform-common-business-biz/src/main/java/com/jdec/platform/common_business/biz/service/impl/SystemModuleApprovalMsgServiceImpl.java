@@ -108,14 +108,7 @@ public class SystemModuleApprovalMsgServiceImpl implements SystemModuleApprovalM
                             }
                         }
 
-                        CombineField combineField =
-                                moduleInfo.getCombineFields().stream()
-                                        .filter(
-                                                x ->
-                                                        resp.getFieldId()
-                                                                .equals(x.getId().longValue()))
-                                        .findFirst()
-                                        .orElse(null);
+                        CombineField combineField = null;
                         if (combineField != null
                                 && CollectionUtil.isNotEmpty(combineField.getSourceMapping())) {
                             combineField

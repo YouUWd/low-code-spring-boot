@@ -17,7 +17,5 @@ public class ModuleInfoResp implements Serializable {
 
     private List<SimpleField> simpleFields;
 
-    private List<CombineField> combineFields;
-
     private List<ModuleStatus> moduleStatuses;
 }
