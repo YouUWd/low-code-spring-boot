@@ -44,26 +44,7 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-hr-biz</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-monitorlog-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-monitorlog-biz</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-approval-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-approval-biz</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-common-business-biz</artifactId>
-        </dependency>
+    
 
         <!-- Spring Modulith 核心与事件持久化 -->
         <dependency>
