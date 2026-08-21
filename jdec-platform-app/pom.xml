@@ -12,13 +12,28 @@
     <dependencies>
 
         <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-shared</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
@@ -26,7 +41,17 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-auth-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
@@ -34,7 +59,17 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-config-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
@@ -42,7 +77,17 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-hr-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
@@ -50,7 +95,17 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-monitorlog-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
@@ -58,7 +113,17 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-approval-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
@@ -67,8 +132,18 @@
 
         <!-- Spring Modulith 核心与事件持久化 -->
         <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.modulith</groupId>
             <artifactId>spring-modulith-starter-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.modulith</groupId>
@@ -77,16 +152,36 @@
 
         <!-- 基础设施依赖 -->
         <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-engine-biz</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
              <groupId>com.baomidou</groupId>
