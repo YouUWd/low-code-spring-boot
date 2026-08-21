@@ -58,8 +58,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         }
 
         // 2. 【准备阶段】批量加载并构建上下文 Context（包含表/列元数据、字典及只读信息）
-        List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
-        TreeBuildContext context = buildTreeContext(projectNo, subjectId, moduleIds);
+        TreeBuildContext context = buildTreeContext(projectNo, subjectId, modules);
 
         // 3. 【第二层 & 第三层】层层递进构造：模块 -> 表 -> 列/字段节点列表
         List<SysModuleFieldTreeResp> dtoList =
@@ -204,19 +203,66 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
 
     /** 树形构建上下文：封装批量预加载的数据字典与 Mapping 关系 */
     private TreeBuildContext buildTreeContext(
-            String projectNo, Long subjectId, List<Long> moduleIds) {
+            String projectNo, Long subjectId, List<SysModule> modules) {
         TreeBuildContext context = new TreeBuildContext();
+        List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
 
         // 1. 批量拉取模块关联表: moduleId -> List<SysModuleTable>
         LambdaQueryWrapper<SysModuleTable> moduleTableWrapper = new LambdaQueryWrapper<>();
         moduleTableWrapper
                 .in(SysModuleTable::getModuleId, moduleIds)
                 .orderByAsc(SysModuleTable::getSortOrder);
-        List<SysModuleTable> moduleTables = sysModuleTableMapper.selectList(moduleTableWrapper);
-        context.tablesByModule =
-                moduleTables.stream()
+        List<SysModuleTable> rawModuleTables = sysModuleTableMapper.selectList(moduleTableWrapper);
+
+        Map<Long, List<SysModuleTable>> tablesGroupByModule =
+                rawModuleTables.stream()
                         .filter(t -> t.getTableName() != null)
                         .collect(Collectors.groupingBy(SysModuleTable::getModuleId));
+
+        // 整理每个模块的表列表，确保主表 (primaryTable) 排在首位
+        Map<Long, List<SysModuleTable>> finalTablesByModule = new HashMap<>();
+        Set<String> allTableNames = new HashSet<>();
+
+        for (SysModule m : modules) {
+            List<SysModuleTable> moduleTableList =
+                    new ArrayList<>(
+                            tablesGroupByModule.getOrDefault(m.getId(), Collections.emptyList()));
+            String primaryTable = m.getPrimaryTable();
+            if (StringUtils.hasText(primaryTable)) {
+                String trimmedPrimary = primaryTable.trim();
+                allTableNames.add(trimmedPrimary);
+
+                // 查找已有列表中是否包含主表
+                int existingIdx = -1;
+                for (int i = 0; i < moduleTableList.size(); i++) {
+                    if (trimmedPrimary.equalsIgnoreCase(moduleTableList.get(i).getTableName())) {
+                        existingIdx = i;
+                        break;
+                    }
+                }
+
+                if (existingIdx >= 0) {
+                    // 主表已存在，将其移到首位
+                    SysModuleTable primaryObj = moduleTableList.remove(existingIdx);
+                    moduleTableList.add(0, primaryObj);
+                } else {
+                    // 主表不存在，构建主表 Dummy 对象插入到首位
+                    SysModuleTable primaryObj = new SysModuleTable();
+                    primaryObj.setModuleId(m.getId());
+                    primaryObj.setTableName(trimmedPrimary);
+                    primaryObj.setReadOnly(0);
+                    moduleTableList.add(0, primaryObj);
+                }
+            }
+
+            for (SysModuleTable mt : moduleTableList) {
+                if (StringUtils.hasText(mt.getTableName())) {
+                    allTableNames.add(mt.getTableName().trim());
+                }
+            }
+            finalTablesByModule.put(m.getId(), moduleTableList);
+        }
+        context.tablesByModule = finalTablesByModule;
 
         // 2. 批量拉取模块关联字段，建立双层 Map: moduleId -> (tableName.toLowerCase() -> List<SysModuleField>)
         LambdaQueryWrapper<SysModuleField> fieldWrapper = new LambdaQueryWrapper<>();
@@ -231,14 +277,6 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                         SysModuleField::getModuleId,
                                         Collectors.groupingBy(
                                                 f -> f.getTableName().toLowerCase())));
-
-        Set<String> allTableNames =
-                moduleTables.stream()
-                        .map(SysModuleTable::getTableName)
-                        .filter(Objects::nonNull)
-                        .map(String::trim)
-                        .filter(name -> !name.isEmpty())
-                        .collect(Collectors.toSet());
 
         // 3. 动态路由物理库，批量加载物理表/列的数据库注释
         loadPhysicalComments(
@@ -381,12 +419,36 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
             throw new BusinessException(404, "模块不存在");
         }
 
-        // 2. 查询该模块在 sys_module_table 配置的关联物理表
+        // 2. 查询该模块在 sys_module_table 配置的关联物理表，并确保主表 (primaryTable) 在首位
         List<SysModuleTable> moduleTables =
-                sysModuleTableMapper.selectList(
-                        Wrappers.<SysModuleTable>lambdaQuery()
-                                .eq(SysModuleTable::getModuleId, moduleId)
-                                .orderByAsc(SysModuleTable::getSortOrder));
+                new ArrayList<>(
+                        sysModuleTableMapper.selectList(
+                                Wrappers.<SysModuleTable>lambdaQuery()
+                                        .eq(SysModuleTable::getModuleId, moduleId)
+                                        .orderByAsc(SysModuleTable::getSortOrder)));
+
+        String primaryTable = module.getPrimaryTable();
+        if (StringUtils.hasText(primaryTable)) {
+            String trimmedPrimary = primaryTable.trim();
+            int existingIdx = -1;
+            for (int i = 0; i < moduleTables.size(); i++) {
+                if (trimmedPrimary.equalsIgnoreCase(moduleTables.get(i).getTableName())) {
+                    existingIdx = i;
+                    break;
+                }
+            }
+
+            if (existingIdx >= 0) {
+                SysModuleTable primaryObj = moduleTables.remove(existingIdx);
+                moduleTables.add(0, primaryObj);
+            } else {
+                SysModuleTable primaryObj = new SysModuleTable();
+                primaryObj.setModuleId(moduleId);
+                primaryObj.setTableName(trimmedPrimary);
+                primaryObj.setReadOnly(0);
+                moduleTables.add(0, primaryObj);
+            }
+        }
 
         Set<String> allTableNames =
                 moduleTables.stream()
