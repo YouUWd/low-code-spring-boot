@@ -24,7 +24,7 @@ public class DynamicQueryService {
         // Implementation stub
         DynamicDetailResp resp = new DynamicDetailResp();
         resp.setMainData(Collections.emptyMap());
-        resp.setSubData(Collections.emptyMap());
+        resp.setSubModules(Collections.emptyMap());
         return resp;
     }
 }

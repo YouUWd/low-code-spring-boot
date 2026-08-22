@@ -6,7 +6,7 @@ import java.util.Map;
 public class DynamicSaveReq {
     private Long moduleId;
     private Map<String, Object> mainData;
-    private Map<String, List<Map<String, Object>>> subData;
+    private Map<String, List<DynamicSaveReq>> subModules;
 
     public Long getModuleId() {
         return moduleId;
@@ -24,11 +24,11 @@ public class DynamicSaveReq {
         this.mainData = mainData;
     }
 
-    public Map<String, List<Map<String, Object>>> getSubData() {
-        return subData;
+    public Map<String, List<DynamicSaveReq>> getSubModules() {
+        return subModules;
     }
 
-    public void setSubData(Map<String, List<Map<String, Object>>> subData) {
-        this.subData = subData;
+    public void setSubModules(Map<String, List<DynamicSaveReq>> subModules) {
+        this.subModules = subModules;
     }
 }
