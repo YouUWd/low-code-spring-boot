@@ -23,8 +23,7 @@ public class DynamicQueryService {
     public DynamicDetailResp getDetail(Long moduleId, Long id) {
         // Implementation stub
         DynamicDetailResp resp = new DynamicDetailResp();
-        resp.setData(Collections.emptyMap());
-        resp.setSubModules(Collections.emptyMap());
+        resp.setTables(Collections.emptyMap());
         return resp;
     }
 }

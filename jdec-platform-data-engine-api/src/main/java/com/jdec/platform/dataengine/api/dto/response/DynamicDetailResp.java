@@ -1,12 +1,12 @@
 package com.jdec.platform.dataengine.api.dto.response;
 
-import java.util.List;
 import java.util.Map;
 
 public class DynamicDetailResp {
     private Long moduleId;
-    private Map<String, Object> data;
-    private Map<String, List<DynamicDetailResp>> subModules;
+    private String moduleCode;
+    private String primaryTable;
+    private Map<String, Object> tables;
 
     public Long getModuleId() {
         return moduleId;
@@ -16,19 +16,27 @@ public class DynamicDetailResp {
         this.moduleId = moduleId;
     }
 
-    public Map<String, Object> getData() {
-        return data;
+    public String getModuleCode() {
+        return moduleCode;
     }
 
-    public void setData(Map<String, Object> data) {
-        this.data = data;
+    public void setModuleCode(String moduleCode) {
+        this.moduleCode = moduleCode;
     }
 
-    public Map<String, List<DynamicDetailResp>> getSubModules() {
-        return subModules;
+    public String getPrimaryTable() {
+        return primaryTable;
     }
 
-    public void setSubModules(Map<String, List<DynamicDetailResp>> subModules) {
-        this.subModules = subModules;
+    public void setPrimaryTable(String primaryTable) {
+        this.primaryTable = primaryTable;
+    }
+
+    public Map<String, Object> getTables() {
+        return tables;
+    }
+
+    public void setTables(Map<String, Object> tables) {
+        this.tables = tables;
     }
 }
