@@ -5,7 +5,7 @@ import java.util.Map;
 
 public class DynamicDetailResp {
     private Long moduleId;
-    private Map<String, Object> mainData;
+    private Map<String, Object> data;
     private Map<String, List<DynamicDetailResp>> subModules;
 
     public Long getModuleId() {
@@ -16,12 +16,12 @@ public class DynamicDetailResp {
         this.moduleId = moduleId;
     }
 
-    public Map<String, Object> getMainData() {
-        return mainData;
+    public Map<String, Object> getData() {
+        return data;
     }
 
-    public void setMainData(Map<String, Object> mainData) {
-        this.mainData = mainData;
+    public void setData(Map<String, Object> data) {
+        this.data = data;
     }
 
     public Map<String, List<DynamicDetailResp>> getSubModules() {
