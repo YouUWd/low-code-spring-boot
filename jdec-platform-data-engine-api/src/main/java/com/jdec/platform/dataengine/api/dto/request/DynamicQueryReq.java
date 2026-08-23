@@ -1,60 +1,39 @@
 package com.jdec.platform.dataengine.api.dto.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
 import java.util.Map;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-public class DynamicQueryReq {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Schema(description = "动态列表分页查询请求模型")
+public class DynamicQueryReq implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    @Schema(description = "模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "128")
     private Long moduleId;
-    private int pageIndex;
-    private int pageSize;
+
+    @Schema(description = "页码 (从 1 开始)", example = "1")
+    @Builder.Default
+    private int pageIndex = 1;
+
+    @Schema(description = "每页条数", example = "20")
+    @Builder.Default
+    private int pageSize = 20;
+
+    @Schema(description = "动态查询过滤条件键值对 (支持主表及关联表字段)")
     private Map<String, Object> filters;
+
+    @Schema(description = "排序字段名称", example = "create_date")
     private String orderBy;
+
+    @Schema(description = "排序方向: ASC 或 DESC", example = "DESC")
     private String orderDirection;
-
-    public Long getModuleId() {
-        return moduleId;
-    }
-
-    public void setModuleId(Long moduleId) {
-        this.moduleId = moduleId;
-    }
-
-    public int getPageIndex() {
-        return pageIndex;
-    }
-
-    public void setPageIndex(int pageIndex) {
-        this.pageIndex = pageIndex;
-    }
-
-    public int getPageSize() {
-        return pageSize;
-    }
-
-    public void setPageSize(int pageSize) {
-        this.pageSize = pageSize;
-    }
-
-    public Map<String, Object> getFilters() {
-        return filters;
-    }
-
-    public void setFilters(Map<String, Object> filters) {
-        this.filters = filters;
-    }
-
-    public String getOrderBy() {
-        return orderBy;
-    }
-
-    public void setOrderBy(String orderBy) {
-        this.orderBy = orderBy;
-    }
-
-    public String getOrderDirection() {
-        return orderDirection;
-    }
-
-    public void setOrderDirection(String orderDirection) {
-        this.orderDirection = orderDirection;
-    }
 }

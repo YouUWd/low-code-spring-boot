@@ -1,34 +1,22 @@
 package com.jdec.platform.dataengine.api.dto.request;
 
-import java.util.List;
-import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.jdec.platform.dataengine.api.dto.model.AbstractDynamicData;
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+import lombok.experimental.SuperBuilder;
 
-public class DynamicSaveReq {
-    private Long moduleId;
-    private Map<String, Object> data;
-    private Map<String, List<DynamicSaveReq>> subModules;
+@Data
+@SuperBuilder
+@NoArgsConstructor
+@ToString(callSuper = true)
+@EqualsAndHashCode(callSuper = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
+@Schema(description = "动态主子表保存请求模型 (支持前端原封不动提交详情返回的对象)")
+public class DynamicSaveReq extends AbstractDynamicData<DynamicSaveReq> {
 
-    public Long getModuleId() {
-        return moduleId;
-    }
-
-    public void setModuleId(Long moduleId) {
-        this.moduleId = moduleId;
-    }
-
-    public Map<String, Object> getData() {
-        return data;
-    }
-
-    public void setData(Map<String, Object> data) {
-        this.data = data;
-    }
-
-    public Map<String, List<DynamicSaveReq>> getSubModules() {
-        return subModules;
-    }
-
-    public void setSubModules(Map<String, List<DynamicSaveReq>> subModules) {
-        this.subModules = subModules;
-    }
+    private static final long serialVersionUID = 1L;
 }
