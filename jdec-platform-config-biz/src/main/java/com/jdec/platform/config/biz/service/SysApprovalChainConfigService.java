@@ -33,7 +33,7 @@ import org.springframework.util.CollectionUtils;
 /** 审批链配置 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysApprovalChainConfigService implements SysApprovalChainConfigApi, ReferenceChecker {
 
     private final SysApprovalChainConfigMapper sysApprovalChainConfigMapper;

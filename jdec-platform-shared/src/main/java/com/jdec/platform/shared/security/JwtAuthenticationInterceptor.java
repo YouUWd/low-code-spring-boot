@@ -1,5 +1,6 @@
 package com.jdec.platform.shared.security;
 
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.model.LoginUser;
@@ -46,6 +47,54 @@ public class JwtAuthenticationInterceptor implements HandlerInterceptor {
         }
 
         String token = authHeader.substring(tokenPrefix.length());
+
+        // 1.1 支持本地开发与测试专属 Token (尽量从 HTTP 请求头动态提取)
+        if ("dev-test-token".equals(token) || "test-token".equals(token)) {
+            String roleIdStr = request.getHeader(HEADER_ROLE_ID);
+            Long roleId = StringUtils.hasText(roleIdStr) ? Long.parseLong(roleIdStr) : 1L;
+
+            String projectNo = request.getHeader("X-Project-No");
+            if (!StringUtils.hasText(projectNo)) {
+                projectNo = "school";
+            }
+
+            String subjectIdStr = request.getHeader("X-Subject-Id");
+            Long subjectId = StringUtils.hasText(subjectIdStr) ? Long.parseLong(subjectIdStr) : 1L;
+
+            String userIdStr = request.getHeader("X-User-Id");
+            if (!StringUtils.hasText(userIdStr)) {
+                userIdStr = request.getHeader(HEADER_MOCK_USER_ID);
+            }
+            Long userId = StringUtils.hasText(userIdStr) ? Long.parseLong(userIdStr) : 1L;
+
+            String username = request.getHeader("X-User-Name");
+            if (!StringUtils.hasText(username)) {
+                username = "dev-admin";
+            }
+
+            String phone = request.getHeader("X-User-Phone");
+            if (!StringUtils.hasText(phone)) {
+                phone = "13800000000";
+            }
+
+            LoginUser devUser =
+                    LoginUser.builder()
+                            .userId(userId)
+                            .username(username)
+                            .phone(phone)
+                            .subjectId(subjectId)
+                            .token(token)
+                            .hrefUrl(request.getHeader(HEADER_HREF_URL))
+                            .roleId(roleId)
+                            .isMockLogin(false)
+                            .realUserId(userId)
+                            .build();
+
+            UserContext.setLoginUser(devUser);
+            TokenContext.setToken(token);
+            AppContext.setContext(projectNo, subjectId, userId, subjectId);
+            return true;
+        }
 
         // 2. JWT 解析
         Claims claims = jwtTokenProvider.parseToken(token);

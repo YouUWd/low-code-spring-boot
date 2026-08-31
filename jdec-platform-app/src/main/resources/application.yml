@@ -5,7 +5,7 @@ spring:
   application:
     name: jdec-platform
   profiles:
-    active: dev
+    active: test
 
   # ===== 禁用静态资源处理 =====
   web:

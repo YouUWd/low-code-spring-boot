@@ -21,6 +21,7 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.exception.PopException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -33,7 +34,7 @@ import org.springframework.util.StringUtils;
 /** 交互权限 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysInteractionPermissionService implements SysInteractionPermissionApi {
 
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
@@ -305,7 +306,6 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                         new LambdaQueryWrapper<SysModule>()
                                 .eq(SysModule::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysModule::getSubjectId, AppContext.getSubjectId())
-                                .eq(category != null, SysModule::getCategory, category)
                                 .orderByAsc(SysModule::getSortOrder)
                                 .orderByAsc(SysModule::getId));
 
@@ -345,37 +345,20 @@ public class SysInteractionPermissionService implements SysInteractionPermission
                                         Collectors.groupingBy(
                                                 SysInteractionPermissionResp::getType)));
 
-        // 3. 按 parentId 分组，用于构造树
-        Map<Long, List<SysModule>> modulesByParent =
-                allModules.stream().collect(Collectors.groupingBy(SysModule::getParentId));
-
-        // 4. 从根节点（parentId=0）开始递归构建
-        return buildModuleTree(modulesByParent, permissionMap, 0L);
-    }
-
-    private List<SysModuleInteractionPermissionResp> buildModuleTree(
-            Map<Long, List<SysModule>> modulesByParent,
-            Map<Long, Map<Integer, List<SysInteractionPermissionResp>>> permissionMap,
-            Long parentId) {
-        List<SysModule> children = modulesByParent.get(parentId);
-        if (children == null || children.isEmpty()) {
-            return new ArrayList<>();
-        }
+        // 3. 构建响应列表
         List<SysModuleInteractionPermissionResp> result = new ArrayList<>();
-        for (SysModule module : children) {
+        for (SysModule module : allModules) {
             SysModuleInteractionPermissionResp node = new SysModuleInteractionPermissionResp();
             node.setModuleId(module.getId());
             node.setModuleName(module.getModuleName());
             node.setModuleCode(module.getModuleCode());
 
-            // 按类型分配权限列表
             Map<Integer, List<SysInteractionPermissionResp>> typeMap =
                     permissionMap.getOrDefault(module.getId(), new java.util.HashMap<>());
             node.setApplyPermissions(typeMap.getOrDefault(1, new ArrayList<>()));
             node.setEditPermissions(typeMap.getOrDefault(2, new ArrayList<>()));
             node.setViewPermissions(typeMap.getOrDefault(3, new ArrayList<>()));
-
-            node.setChildren(buildModuleTree(modulesByParent, permissionMap, module.getId()));
+            node.setChildren(Collections.emptyList());
             result.add(node);
         }
         return result;

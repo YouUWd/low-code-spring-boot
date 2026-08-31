@@ -23,16 +23,19 @@ public class ModuleTableDTO {
     @Schema(description = "表描述", example = "课程表")
     private String tableDesc;
 
-    @Schema(description = "左表关联字段", example = "id")
+    @Schema(description = "是否主表（1=是，0=否）", example = "1")
+    private Integer isPrimary;
+
+    @Schema(description = "左表关联字段 (从表外键)", example = "id")
     private String joinLeftField;
 
-    @Schema(description = "右表关联字段", example = "student_id")
+    @Schema(description = "右表关联字段 (主表关联键)", example = "student_id")
     private String joinRightField;
 
     @Schema(
             description = "关联关系类型",
-            example = "1:N",
-            allowableValues = {"1:1", "1:N", "N:1"})
+            example = "PRIMARY",
+            allowableValues = {"PRIMARY", "1:1", "1:N", "N:1"})
     private String relationType;
 
     @Schema(description = "关联表是否只读（0=否，1=是）", example = "0")

@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 /** 项目主体关联 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysProjectSubjectService implements SysProjectSubjectApi {
 
     private final SysProjectSubjectMapper sysProjectSubjectMapper;

@@ -32,7 +32,7 @@ import org.springframework.util.StringUtils;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysModuleFieldPermissionService implements SysModuleFieldPermissionApi {
 
     private final SysModuleMapper sysModuleMapper;
@@ -51,8 +51,8 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                 subjectId,
                 category);
 
-        // 1. 【第一层】一量加载当前项目+主体下的所有模块
-        List<SysModule> modules = queryModules(projectNo, subjectId, category);
+        // 1. 【第一层】批量加载当前项目+主体下的所有模块
+        List<SysModule> modules = queryModules(projectNo, subjectId);
         if (modules.isEmpty()) {
             return new ArrayList<>();
         }
@@ -62,21 +62,15 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         TreeBuildContext context = buildTreeContext(projectNo, subjectId, moduleIds);
 
         // 3. 【第二层 & 第三层】层层递进构造：模块 -> 表 -> 列/字段节点列表
-        List<SysModuleFieldTreeResp> dtoList =
-                modules.stream().map(m -> buildModuleNode(m, context)).toList();
-
-        // 4. 【树级联】双亲委派挂载子模块 children 树形结构
-        return assembleModuleTree(dtoList, modules);
+        return modules.stream().map(m -> buildModuleNode(m, context)).toList();
     }
 
     /** 模块查询（第一层数据源） */
-    private List<SysModule> queryModules(String projectNo, Long subjectId, Integer category) {
+    private List<SysModule> queryModules(String projectNo, Long subjectId) {
         LambdaQueryWrapper<SysModule> moduleWrapper = new LambdaQueryWrapper<>();
         moduleWrapper
                 .eq(SysModule::getProjectNo, projectNo)
                 .eq(SysModule::getSubjectId, subjectId)
-                .eq(category != null, SysModule::getCategory, category)
-                .orderByAsc(SysModule::getParentId)
                 .orderByAsc(SysModule::getSortOrder);
         return sysModuleMapper.selectList(moduleWrapper);
     }
@@ -87,10 +81,6 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         dto.setModuleId(m.getId());
         dto.setModuleName(m.getModuleName());
         dto.setModuleCode(m.getModuleCode());
-        dto.setModuleType(m.getModuleType());
-        dto.setSourceSubjects(m.getSourceSubjects());
-        dto.setBizDefFlag(m.getBizDefFlag());
-        dto.setChildren(new ArrayList<>());
 
         // 层层递进构造下属的表及字段树
         dto.setTables(buildTableNodes(m.getId(), context));
@@ -151,55 +141,28 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         Map<String, String> physicalComments =
                 context.physicalColumnCommentMap.getOrDefault(
                         tableName.toLowerCase(), Collections.emptyMap());
-        Map<String, Integer> combineFlags =
-                context.sysFieldCombineFlagMap.getOrDefault(
-                        tableName.toLowerCase(), Collections.emptyMap());
 
         for (SysModuleField sf : tableFields) {
             ModuleFieldTreeResp fieldResp = new ModuleFieldTreeResp();
             fieldResp.setId(sf.getId());
-            fieldResp.setFieldCode(sf.getFieldCode());
+            fieldResp.setFieldCode(sf.getColumnName());
 
-            String lowerFieldCode = sf.getFieldCode().toLowerCase();
+            String lowerFieldCode =
+                    sf.getColumnName() != null ? sf.getColumnName().toLowerCase() : "";
 
-            // 计算显示名称：sys_field 字典翻译 > 物理注释 > 默认字段编码
-            String displayName = tableNameTranslation.get(lowerFieldCode);
-            if (displayName == null) {
+            // 计算显示名称：sys_module_field.displayName > sys_field 字典翻译 > 物理注释 > 默认列名
+            String displayName = sf.getDisplayName();
+            if (displayName == null || displayName.trim().isEmpty()) {
+                displayName = tableNameTranslation.get(lowerFieldCode);
+            }
+            if (displayName == null || displayName.trim().isEmpty()) {
                 displayName = physicalComments.get(lowerFieldCode);
             }
-            fieldResp.setFieldName(displayName != null ? displayName : sf.getFieldCode());
+            fieldResp.setFieldName(displayName != null ? displayName : sf.getColumnName());
 
-            // 判定是否是组合字段：依据 sys_field 中的 combineInfo
-            fieldResp.setCombineFlag(combineFlags.getOrDefault(lowerFieldCode, 0));
             fields.add(fieldResp);
         }
         return fields;
-    }
-
-    /** 双亲委派组装模块树 */
-    private List<SysModuleFieldTreeResp> assembleModuleTree(
-            List<SysModuleFieldTreeResp> dtoList, List<SysModule> modules) {
-        Map<Long, SysModule> entityMap =
-                modules.stream().collect(Collectors.toMap(SysModule::getId, m -> m));
-        Map<Long, SysModuleFieldTreeResp> dtoMap =
-                dtoList.stream()
-                        .collect(Collectors.toMap(SysModuleFieldTreeResp::getModuleId, r -> r));
-        List<SysModuleFieldTreeResp> rootList = new ArrayList<>();
-
-        for (SysModuleFieldTreeResp dto : dtoList) {
-            SysModule entity = entityMap.get(dto.getModuleId());
-            if (entity.getParentId() == null || entity.getParentId() == 0) {
-                rootList.add(dto);
-            } else {
-                SysModuleFieldTreeResp parentDto = dtoMap.get(entity.getParentId());
-                if (parentDto != null) {
-                    parentDto.getChildren().add(dto);
-                } else {
-                    rootList.add(dto);
-                }
-            }
-        }
-        return rootList;
     }
 
     /** 树形构建上下文：封装批量预加载的数据字典与 Mapping 关系 */
@@ -453,26 +416,29 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                             .toList();
 
             for (SysModuleField f : fieldsInTable) {
-                String translatedName = null;
-                Map<String, String> colMap = translationMap.get(tableName.toLowerCase());
-                if (colMap != null) {
-                    translatedName = colMap.get(f.getFieldCode().toLowerCase());
-                }
-                if (translatedName == null) {
-                    Map<String, String> physMap =
-                            physicalColumnCommentMap.get(tableName.toLowerCase());
-                    if (physMap != null) {
-                        translatedName = physMap.get(f.getFieldCode().toLowerCase());
+                String colName = f.getColumnName();
+                String translatedName = f.getDisplayName();
+                if (translatedName == null || translatedName.trim().isEmpty()) {
+                    Map<String, String> colMap = translationMap.get(tableName.toLowerCase());
+                    if (colMap != null && colName != null) {
+                        translatedName = colMap.get(colName.toLowerCase());
                     }
                 }
                 if (translatedName == null || translatedName.trim().isEmpty()) {
-                    translatedName = f.getDisplayName();
+                    Map<String, String> physMap =
+                            physicalColumnCommentMap.get(tableName.toLowerCase());
+                    if (physMap != null && colName != null) {
+                        translatedName = physMap.get(colName.toLowerCase());
+                    }
+                }
+                if (translatedName == null || translatedName.trim().isEmpty()) {
+                    translatedName = colName;
                 }
 
                 PermissionFieldInfo fieldInfo =
                         PermissionFieldInfo.builder()
                                 .id(f.getId())
-                                .fieldCode(f.getFieldCode())
+                                .fieldCode(colName)
                                 .fieldName(translatedName)
                                 .build();
 

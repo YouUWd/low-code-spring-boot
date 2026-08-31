@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class DictFieldQueryService {
 
     private final DataSourceResolver dataSourceResolver;
@@ -54,7 +54,7 @@ public class DictFieldQueryService {
             String projectNo = AppContext.getProjectNo();
             Long subjectId = AppContext.getSubjectId();
 
-            DSLContext dsl = dataSourceResolver.getDSLContext(DataSourceConstants.CONFIG_CENTER);
+            DSLContext dsl = dataSourceResolver.getDSLContext(DataSourceConstants.CONFIG_ENGINE);
             Field<String> valueField = field(name("value"), String.class);
             Field<String> displayFieldDef = field(name(displayField), String.class);
 

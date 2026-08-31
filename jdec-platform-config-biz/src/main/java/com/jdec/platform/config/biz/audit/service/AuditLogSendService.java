@@ -27,7 +27,6 @@ import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -60,7 +59,7 @@ import org.springframework.web.client.RestTemplate;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class AuditLogSendService {
 
     private final SysRoleMapper sysRoleMapper;
@@ -69,7 +68,7 @@ public class AuditLogSendService {
     private final SubjectApi subjectApi;
     private final RestTemplate restTemplate;
 
-    @Value("${audit.monitor-log-url}")
+    //    @Value("${audit.monitor-log-url}")
     private String monitorLogUrl;
 
     /**

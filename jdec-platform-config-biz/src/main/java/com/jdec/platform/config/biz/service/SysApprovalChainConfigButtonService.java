@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 /** 审批链配置按钮 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysApprovalChainConfigButtonService implements SysApprovalChainConfigButtonApi {
 
     private final SysApprovalChainConfigButtonMapper sysApprovalChainConfigButtonMapper;

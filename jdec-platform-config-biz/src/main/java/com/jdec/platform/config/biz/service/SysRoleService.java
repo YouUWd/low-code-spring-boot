@@ -52,7 +52,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysRoleService implements SysRoleApi {
     private final SysRoleMapper sysRoleMapper;
     private final SysRoleUserMapper sysRoleUserMapper;

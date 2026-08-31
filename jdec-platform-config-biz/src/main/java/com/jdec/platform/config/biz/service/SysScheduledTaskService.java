@@ -52,7 +52,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysScheduledTaskService extends ServiceImpl<SysScheduledTaskMapper, SysScheduledTask>
         implements SysScheduledTaskApi, ApplicationRunner {
 

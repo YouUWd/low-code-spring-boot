@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class RelationFieldQueryService {
 
     private final DataSourceResolver dataSourceResolver;
@@ -44,7 +44,7 @@ public class RelationFieldQueryService {
         }
 
         try {
-            DSLContext dsl = dataSourceResolver.getDSLContext(DataSourceConstants.CONFIG_CENTER);
+            DSLContext dsl = dataSourceResolver.getDSLContext(DataSourceConstants.CONFIG_ENGINE);
 
             Field<Long> idFieldDef = field(name(idField), Long.class);
             Field<String> nameFieldDef = field(name(nameField), String.class);
@@ -105,7 +105,7 @@ public class RelationFieldQueryService {
         }
 
         try {
-            DSLContext dsl = dataSourceResolver.getDSLContext(DataSourceConstants.CONFIG_CENTER);
+            DSLContext dsl = dataSourceResolver.getDSLContext(DataSourceConstants.CONFIG_ENGINE);
             Field<Long> idFieldDef = field(name(idField), Long.class);
 
             var records =

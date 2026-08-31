@@ -14,9 +14,6 @@ public class ModuleFieldTreeResp {
     @Schema(description = "字段编码（简单字段对应 columnName，组合字段对应 logicalField）", example = "student_no")
     private String fieldCode;
 
-    @Schema(description = "字段名称（简单字段映射为物理 displayName，组合字段为显示名称）", example = "学号")
+    @Schema(description = "字段名称", example = "学号")
     private String fieldName;
-
-    @Schema(description = "是否是组合字段：0-否（简单物理字段），1-是（复合组合字段）", example = "0")
-    private Integer combineFlag;
 }

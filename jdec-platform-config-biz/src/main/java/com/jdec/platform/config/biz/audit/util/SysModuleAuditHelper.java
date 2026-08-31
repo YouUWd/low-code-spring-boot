@@ -50,24 +50,12 @@ public class SysModuleAuditHelper {
             moduleReq.setModuleCode(resp.getModule().getModuleCode());
             moduleReq.setModuleName(resp.getModule().getModuleName());
             moduleReq.setModuleDesc(resp.getModule().getModuleDesc());
-            moduleReq.setParentId(resp.getModule().getParentId());
-            moduleReq.setDetailModuleId(resp.getModule().getDetailModuleId());
-            moduleReq.setPrimaryTable(resp.getModule().getPrimaryTable());
-            moduleReq.setModuleType(
-                    resp.getModule().getModuleType() != null
-                            ? resp.getModule().getModuleType().name()
-                            : null);
-            moduleReq.setApprovalRequired(resp.getModule().getApprovalRequired());
-            moduleReq.setBizDefFlag(resp.getModule().getBizDefFlag());
-            moduleReq.setCategory(resp.getModule().getCategory());
             moduleReq.setSortOrder(resp.getModule().getSortOrder());
-            moduleReq.setTableHeader(resp.getModule().getTableHeader());
-            moduleReq.setRelateSearchField(resp.getModule().getRelateSearchField());
             req.setModule(moduleReq);
         }
         req.setModuleTables(resp.getModuleTables());
         req.setSimpleFields(resp.getSimpleFields());
-        //        req.setCombineFields(resp.getCombineFields());
+        req.setModuleHeaders(resp.getModuleHeaders());
         req.setModuleStatuses(resp.getModuleStatuses());
         return req;
     }
@@ -97,11 +85,6 @@ public class SysModuleAuditHelper {
         if (newReq != null) reqs.add(newReq);
 
         for (SaveModuleReq req : reqs) {
-            if (req.getModule() != null) {
-                if (StringUtils.hasText(req.getModule().getPrimaryTable())) {
-                    tableNames.add(req.getModule().getPrimaryTable());
-                }
-            }
             if (req.getModuleTables() != null) {
                 for (ModuleTableDTO t : req.getModuleTables()) {
                     if (StringUtils.hasText(t.getTableName())) {
@@ -242,15 +225,7 @@ public class SysModuleAuditHelper {
 
         AuditLookupContext ctx = initLookupContext(projectNo, subjectId, oldReq, newReq);
 
-        Integer category = null;
-        if (newReq != null
-                && newReq.getModule() != null
-                && newReq.getModule().getCategory() != null) {
-            category = newReq.getModule().getCategory();
-        } else if (oldReq != null && oldReq.getModule() != null) {
-            category = oldReq.getModule().getCategory();
-        }
-        businessModule.put("name", getCategoryName(category));
+        businessModule.put("name", "业务模块");
 
         Map<String, Object> actions = new HashMap<>();
         if (oldReq == null) {
@@ -280,11 +255,7 @@ public class SysModuleAuditHelper {
         List<Map<String, Object>> change = new ArrayList<>();
         Map<String, Object> businessModule = new HashMap<>();
 
-        Integer category =
-                moduleData != null && moduleData.getModule() != null
-                        ? moduleData.getModule().getCategory()
-                        : null;
-        businessModule.put("name", getCategoryName(category));
+        businessModule.put("name", "业务模块");
 
         Map<String, Object> actions = new HashMap<>();
         List<Map<String, Object>> dList = new ArrayList<>();
@@ -358,23 +329,13 @@ public class SysModuleAuditHelper {
             if (StringUtils.hasText(m.getModuleCode())) {
                 columns.add(createColumnNullOld("module_code", "模块编码", m.getModuleCode()));
             }
-            if (StringUtils.hasText(m.getPrimaryTable())) {
-                columns.add(createColumnNullOld("primary_table", "主表名称", m.getPrimaryTable()));
+            if (StringUtils.hasText(m.getModuleDesc())) {
+                columns.add(createColumnNullOld("module_desc", "模块描述", m.getModuleDesc()));
             }
-            if (StringUtils.hasText(m.getModuleType())) {
-                columns.add(createColumnNullOld("module_type", "模块类型", m.getModuleType()));
-            }
-            if (m.getApprovalRequired() != null) {
+            if (m.getSortOrder() != null) {
                 columns.add(
                         createColumnNullOld(
-                                "approval_required",
-                                "是否启用审批",
-                                String.valueOf(m.getApprovalRequired())));
-            }
-            if (StringUtils.hasText(m.getRelateSearchField())) {
-                columns.add(
-                        createColumnNullOld(
-                                "relate_search_field", "外键关联字段", m.getRelateSearchField()));
+                                "sort_order", "排序顺序", String.valueOf(m.getSortOrder())));
             }
         }
 
@@ -383,21 +344,15 @@ public class SysModuleAuditHelper {
                     newReq.getModuleTables().stream()
                             .map(t -> (resolveTableDisplayName(ctx, t)))
                             .collect(Collectors.joining(", "));
-            columns.add(createColumnNullOld("module_tables", "模块子表", subTableNames));
+            columns.add(createColumnNullOld("module_tables", "模块表", subTableNames));
         }
         node.put("columns", columns);
 
         List<Map<String, Object>> children = new ArrayList<>();
         children.add(buildSubTableChildNodeForCreate(ctx, projectNo, subjectId, newReq));
         children.add(buildTableFieldConfigChildNodeForCreate(ctx, projectNo, subjectId, newReq));
-
-        String moduleType = newReq.getModule() != null ? newReq.getModule().getModuleType() : null;
-        if (!"DETAIL".equalsIgnoreCase(moduleType)) {
-            children.add(buildColumnConfigChildNodeForCreate(ctx, newReq));
-        }
-        if ("DETAIL".equalsIgnoreCase(moduleType)) {
-            children.add(buildStatusConfigChildNodeForCreate(ctx, newReq));
-        }
+        children.add(buildColumnConfigChildNodeForCreate(ctx, newReq));
+        children.add(buildStatusConfigChildNodeForCreate(ctx, newReq));
 
         node.put("children", children);
         return node;
@@ -406,48 +361,33 @@ public class SysModuleAuditHelper {
     private Map<String, Object> buildSubTableChildNodeForCreate(
             AuditLookupContext ctx, String projectNo, Long subjectId, SaveModuleReq newReq) {
         Map<String, Object> childNode = new HashMap<>();
-        childNode.put("name", "模块子表关联");
+        childNode.put("name", "模块关联表");
 
         Map<String, Object> actions = new HashMap<>();
         List<Map<String, Object>> iList = new ArrayList<>();
 
         if (newReq.getModuleTables() != null) {
-            String primaryTable =
-                    newReq.getModule() != null ? newReq.getModule().getPrimaryTable() : "";
             for (ModuleTableDTO table : newReq.getModuleTables()) {
-                String tableName = table.getTableName() != null ? table.getTableName() : "";
                 String tDisplayName = resolveTableDisplayName(ctx, table);
 
                 Map<String, Object> tItem = new HashMap<>();
                 tItem.put("name", tDisplayName);
                 List<Map<String, Object>> cols = new ArrayList<>();
-                cols.add(createColumnNullOld("sub_table_name", "模块子表名称", tDisplayName));
-                if (StringUtils.hasText(primaryTable)) {
+                cols.add(createColumnNullOld("table_name", "表名称", tDisplayName));
+                if (table.getIsPrimary() != null) {
                     cols.add(
                             createColumnNullOld(
-                                    "primary_table",
-                                    "模块主表名称",
-                                    resolveTableDisplayName(
-                                            ctx,
-                                            ModuleTableDTO.builder()
-                                                    .tableName(primaryTable)
-                                                    .build())));
+                                    "is_primary", "是否主表", table.getIsPrimary() == 1 ? "是" : "否"));
                 }
                 if (StringUtils.hasText(table.getJoinLeftField())) {
                     cols.add(
                             createColumnNullOld(
-                                    "join_left_field",
-                                    "主表字段",
-                                    resolveTableFieldDisplayName(
-                                            ctx, primaryTable, table.getJoinLeftField())));
+                                    "join_left_field", "主表关联字段", table.getJoinLeftField()));
                 }
                 if (StringUtils.hasText(table.getJoinRightField())) {
                     cols.add(
                             createColumnNullOld(
-                                    "join_right_field",
-                                    "子表字段",
-                                    resolveTableFieldDisplayName(
-                                            ctx, table.getTableName(), table.getJoinRightField())));
+                                    "join_right_field", "子表关联字段", table.getJoinRightField()));
                 }
                 if (StringUtils.hasText(table.getRelationType())) {
                     cols.add(createColumnNullOld("relation_type", "关联关系", table.getRelationType()));
@@ -455,12 +395,12 @@ public class SysModuleAuditHelper {
                 if (table.getReadOnly() != null) {
                     cols.add(
                             createColumnNullOld(
-                                    "read_only", "子表是否只读", table.getReadOnly() == 1 ? "是" : "否"));
+                                    "read_only", "是否只读", table.getReadOnly() == 1 ? "是" : "否"));
                 }
                 if (table.getSortOrder() != null) {
                     cols.add(
                             createColumnNullOld(
-                                    "sort_order", "子表排序", String.valueOf(table.getSortOrder())));
+                                    "sort_order", "排序", String.valueOf(table.getSortOrder())));
                 }
                 tItem.put("columns", cols);
                 iList.add(tItem);
@@ -480,7 +420,6 @@ public class SysModuleAuditHelper {
         Map<String, Object> actions = new HashMap<>();
         List<Map<String, Object>> iList = new ArrayList<>();
 
-        // 1. 基础字段新增 (i): 基础字段只留 new 字段，组合所有新增的基础字段名称
         if (newReq.getSimpleFields() != null && !newReq.getSimpleFields().isEmpty()) {
             List<String> addNames = new ArrayList<>();
             for (ModuleSimpleFieldDTO s : newReq.getSimpleFields()) {
@@ -490,26 +429,12 @@ public class SysModuleAuditHelper {
                 addNames.add(colDisplayName);
             }
             Map<String, Object> simpleItem = new HashMap<>();
-            simpleItem.put("name", "基础字段");
+            simpleItem.put("name", "物理字段");
             List<Map<String, Object>> cols = new ArrayList<>();
             cols.add(createColumnNullOld(null, null, String.join(", ", addNames)));
             simpleItem.put("columns", cols);
             iList.add(simpleItem);
         }
-
-        //        // 2. 组合字段新增 (i): 组合字段保留完整组合字段信息
-        //        if (newReq.getCombineFields() != null && !newReq.getCombineFields().isEmpty()) {
-        //            for (ModuleCombineFieldDTO combine : newReq.getCombineFields()) {
-        //                String combineDisplayName =
-        //                        StringUtils.hasText(combine.getDisplayName())
-        //                                ? combine.getDisplayName()
-        //                                : combine.getLogicalField();
-        //                Map<String, Object> cItem = buildCombineFieldItem(combine,
-        // combineDisplayName);
-        //                cItem.put("name", "组合字段");
-        //                iList.add(cItem);
-        //            }
-        //        }
 
         if (!iList.isEmpty()) {
             actions.put("i", iList);
@@ -521,12 +446,12 @@ public class SysModuleAuditHelper {
     private Map<String, Object> buildColumnConfigChildNodeForCreate(
             AuditLookupContext ctx, SaveModuleReq newReq) {
         Map<String, Object> childNode = new HashMap<>();
-        childNode.put("name", "模块列配置");
+        childNode.put("name", "模块表头配置");
         Map<String, Object> actions = new HashMap<>();
         List<Map<String, Object>> iList = new ArrayList<>();
 
-        if (newReq.getModule() != null && newReq.getModule().getTableHeader() != null) {
-            for (ModuleTableHeaderDTO header : newReq.getModule().getTableHeader()) {
+        if (newReq.getModuleHeaders() != null) {
+            for (ModuleTableHeaderDTO header : newReq.getModuleHeaders()) {
                 iList.add(buildTableHeaderItem(ctx, header));
             }
         }
@@ -614,79 +539,6 @@ public class SysModuleAuditHelper {
                         createColumn(
                                 "module_desc", "模块描述", oldM.getModuleDesc(), newM.getModuleDesc()));
             }
-            if (!Objects.equals(oldM.getParentId(), newM.getParentId())) {
-                columns.add(
-                        createColumn(
-                                "parent_id",
-                                "父模块ID",
-                                oldM.getParentId() != null
-                                        ? String.valueOf(oldM.getParentId())
-                                        : "",
-                                newM.getParentId() != null
-                                        ? String.valueOf(newM.getParentId())
-                                        : ""));
-            }
-            if (!Objects.equals(oldM.getDetailModuleId(), newM.getDetailModuleId())) {
-                columns.add(
-                        createColumn(
-                                "detail_module_id",
-                                "详情模块ID",
-                                oldM.getDetailModuleId() != null
-                                        ? String.valueOf(oldM.getDetailModuleId())
-                                        : "",
-                                newM.getDetailModuleId() != null
-                                        ? String.valueOf(newM.getDetailModuleId())
-                                        : ""));
-            }
-            if (!Objects.equals(oldM.getPrimaryTable(), newM.getPrimaryTable())) {
-                columns.add(
-                        createColumn(
-                                "primary_table",
-                                "主表名称",
-                                oldM.getPrimaryTable(),
-                                newM.getPrimaryTable()));
-            }
-            if (!Objects.equals(oldM.getModuleType(), newM.getModuleType())) {
-                columns.add(
-                        createColumn(
-                                "module_type", "模块类型", oldM.getModuleType(), newM.getModuleType()));
-            }
-            if (!Objects.equals(oldM.getApprovalRequired(), newM.getApprovalRequired())) {
-                columns.add(
-                        createColumn(
-                                "approval_required",
-                                "是否启用审批",
-                                oldM.getApprovalRequired() != null
-                                        ? String.valueOf(oldM.getApprovalRequired())
-                                        : "",
-                                newM.getApprovalRequired() != null
-                                        ? String.valueOf(newM.getApprovalRequired())
-                                        : ""));
-            }
-            if (!Objects.equals(oldM.getBizDefFlag(), newM.getBizDefFlag())) {
-                columns.add(
-                        createColumn(
-                                "biz_def_flag",
-                                "是否模块业务定义",
-                                oldM.getBizDefFlag() != null
-                                        ? String.valueOf(oldM.getBizDefFlag())
-                                        : "",
-                                newM.getBizDefFlag() != null
-                                        ? String.valueOf(newM.getBizDefFlag())
-                                        : ""));
-            }
-            if (!Objects.equals(oldM.getCategory(), newM.getCategory())) {
-                columns.add(
-                        createColumn(
-                                "category",
-                                "模块类别",
-                                oldM.getCategory() != null
-                                        ? getCategoryName(oldM.getCategory())
-                                        : "",
-                                newM.getCategory() != null
-                                        ? getCategoryName(newM.getCategory())
-                                        : ""));
-            }
             if (!Objects.equals(oldM.getSortOrder(), newM.getSortOrder())) {
                 columns.add(
                         createColumn(
@@ -699,26 +551,6 @@ public class SysModuleAuditHelper {
                                         ? String.valueOf(newM.getSortOrder())
                                         : ""));
             }
-            if (!Objects.equals(oldM.getSourceSubjects(), newM.getSourceSubjects())) {
-                columns.add(
-                        createColumn(
-                                "source_subjects",
-                                "数据来源主体",
-                                oldM.getSourceSubjects() != null
-                                        ? oldM.getSourceSubjects().toString()
-                                        : "",
-                                newM.getSourceSubjects() != null
-                                        ? newM.getSourceSubjects().toString()
-                                        : ""));
-            }
-            if (!Objects.equals(oldM.getRelateSearchField(), newM.getRelateSearchField())) {
-                columns.add(
-                        createColumn(
-                                "relate_search_field",
-                                "主表外键关联字段",
-                                oldM.getRelateSearchField(),
-                                newM.getRelateSearchField()));
-            }
         }
         node.put("columns", columns);
 
@@ -726,18 +558,8 @@ public class SysModuleAuditHelper {
         children.add(buildSubTableChildNodeForUpdate(ctx, projectNo, subjectId, oldReq, newReq));
         children.add(
                 buildTableFieldConfigChildNodeForUpdate(ctx, projectNo, subjectId, oldReq, newReq));
-
-        String moduleType = newReq.getModule() != null ? newReq.getModule().getModuleType() : null;
-        if (!StringUtils.hasText(moduleType) && oldReq.getModule() != null) {
-            moduleType = oldReq.getModule().getModuleType();
-        }
-
-        if (!"DETAIL".equalsIgnoreCase(moduleType)) {
-            children.add(buildColumnConfigChildNodeForUpdate(ctx, oldReq, newReq));
-        }
-        if ("DETAIL".equalsIgnoreCase(moduleType)) {
-            children.add(buildStatusConfigChildNodeForUpdate(ctx, oldReq, newReq));
-        }
+        children.add(buildColumnConfigChildNodeForUpdate(ctx, oldReq, newReq));
+        children.add(buildStatusConfigChildNodeForUpdate(ctx, oldReq, newReq));
 
         node.put("children", children);
         return node;
@@ -750,7 +572,7 @@ public class SysModuleAuditHelper {
             SaveModuleReq oldReq,
             SaveModuleReq newReq) {
         Map<String, Object> childNode = new HashMap<>();
-        childNode.put("name", "模块子表关联");
+        childNode.put("name", "模块关联表");
         Map<String, Object> actions = new HashMap<>();
 
         List<ModuleTableDTO> oldTables =
@@ -787,43 +609,26 @@ public class SysModuleAuditHelper {
             String tableName = entry.getKey();
             ModuleTableDTO newT = entry.getValue();
             String tDisplayName = resolveTableDisplayName(ctx, newT);
-            String primaryTable =
-                    newReq.getModule() != null ? newReq.getModule().getPrimaryTable() : "";
-            if (!StringUtils.hasText(primaryTable) && oldReq.getModule() != null) {
-                primaryTable = oldReq.getModule().getPrimaryTable();
-            }
 
             if (!oldMap.containsKey(tableName)) {
                 Map<String, Object> item = new HashMap<>();
                 item.put("name", tDisplayName);
                 List<Map<String, Object>> cols = new ArrayList<>();
-                cols.add(createColumnNullOld("sub_table_name", "模块子表名称", tDisplayName));
-                if (StringUtils.hasText(primaryTable)) {
+                cols.add(createColumnNullOld("table_name", "表名称", tDisplayName));
+                if (newT.getIsPrimary() != null) {
                     cols.add(
                             createColumnNullOld(
-                                    "primary_table",
-                                    "模块主表名称",
-                                    resolveTableDisplayName(
-                                            ctx,
-                                            ModuleTableDTO.builder()
-                                                    .tableName(primaryTable)
-                                                    .build())));
+                                    "is_primary", "是否主表", newT.getIsPrimary() == 1 ? "是" : "否"));
                 }
                 if (StringUtils.hasText(newT.getJoinLeftField())) {
                     cols.add(
                             createColumnNullOld(
-                                    "join_left_field",
-                                    "主表字段",
-                                    resolveTableFieldDisplayName(
-                                            ctx, primaryTable, newT.getJoinLeftField())));
+                                    "join_left_field", "主表关联字段", newT.getJoinLeftField()));
                 }
                 if (StringUtils.hasText(newT.getJoinRightField())) {
                     cols.add(
                             createColumnNullOld(
-                                    "join_right_field",
-                                    "子表字段",
-                                    resolveTableFieldDisplayName(
-                                            ctx, tableName, newT.getJoinRightField())));
+                                    "join_right_field", "子表关联字段", newT.getJoinRightField()));
                 }
                 if (StringUtils.hasText(newT.getRelationType())) {
                     cols.add(createColumnNullOld("relation_type", "关联关系", newT.getRelationType()));
@@ -831,57 +636,71 @@ public class SysModuleAuditHelper {
                 if (newT.getReadOnly() != null) {
                     cols.add(
                             createColumnNullOld(
-                                    "read_only", "子表是否只读", newT.getReadOnly() == 1 ? "是" : "否"));
+                                    "read_only", "是否只读", newT.getReadOnly() == 1 ? "是" : "否"));
                 }
                 if (newT.getSortOrder() != null) {
                     cols.add(
                             createColumnNullOld(
-                                    "sort_order", "子表排序", String.valueOf(newT.getSortOrder())));
+                                    "sort_order", "排序", String.valueOf(newT.getSortOrder())));
                 }
                 item.put("columns", cols);
                 iList.add(item);
             } else {
                 ModuleTableDTO oldT = oldMap.get(tableName);
                 List<Map<String, Object>> cols = new ArrayList<>();
+                if (!Objects.equals(oldT.getIsPrimary(), newT.getIsPrimary())) {
+                    cols.add(
+                            createColumn(
+                                    "is_primary",
+                                    "是否主表",
+                                    oldT.getIsPrimary() != null
+                                            ? (oldT.getIsPrimary() == 1 ? "是" : "否")
+                                            : "",
+                                    newT.getIsPrimary() != null
+                                            ? (newT.getIsPrimary() == 1 ? "是" : "否")
+                                            : ""));
+                }
                 if (!Objects.equals(oldT.getJoinLeftField(), newT.getJoinLeftField())) {
                     cols.add(
                             createColumn(
                                     "join_left_field",
-                                    "主表字段",
-                                    resolveTableFieldDisplayName(
-                                            ctx, primaryTable, oldT.getJoinLeftField()),
-                                    resolveTableFieldDisplayName(
-                                            ctx, primaryTable, newT.getJoinLeftField())));
+                                    "主表关联字段",
+                                    oldT.getJoinLeftField() != null ? oldT.getJoinLeftField() : "",
+                                    newT.getJoinLeftField() != null
+                                            ? newT.getJoinLeftField()
+                                            : ""));
                 }
                 if (!Objects.equals(oldT.getJoinRightField(), newT.getJoinRightField())) {
                     cols.add(
                             createColumn(
                                     "join_right_field",
-                                    "子表字段",
-                                    resolveTableFieldDisplayName(
-                                            ctx, tableName, oldT.getJoinRightField()),
-                                    resolveTableFieldDisplayName(
-                                            ctx, tableName, newT.getJoinRightField())));
+                                    "子表关联字段",
+                                    oldT.getJoinRightField() != null
+                                            ? oldT.getJoinRightField()
+                                            : "",
+                                    newT.getJoinRightField() != null
+                                            ? newT.getJoinRightField()
+                                            : ""));
                 }
                 if (!Objects.equals(oldT.getRelationType(), newT.getRelationType())) {
                     cols.add(
                             createColumn(
                                     "relation_type",
                                     "关联关系",
-                                    oldT.getRelationType(),
-                                    newT.getRelationType()));
+                                    oldT.getRelationType() != null ? oldT.getRelationType() : "",
+                                    newT.getRelationType() != null ? newT.getRelationType() : ""));
                 }
                 if (!Objects.equals(oldT.getReadOnly(), newT.getReadOnly())) {
                     cols.add(
                             createColumn(
                                     "read_only",
-                                    "子表是否只读",
-                                    oldT.getReadOnly() != null && oldT.getReadOnly() == 1
-                                            ? "是"
-                                            : "否",
-                                    newT.getReadOnly() != null && newT.getReadOnly() == 1
-                                            ? "是"
-                                            : "否"));
+                                    "是否只读",
+                                    oldT.getReadOnly() != null
+                                            ? (oldT.getReadOnly() == 1 ? "是" : "否")
+                                            : "",
+                                    newT.getReadOnly() != null
+                                            ? (newT.getReadOnly() == 1 ? "是" : "否")
+                                            : ""));
                 }
                 if (!cols.isEmpty()) {
                     Map<String, Object> item = new HashMap<>();
@@ -1019,16 +838,16 @@ public class SysModuleAuditHelper {
     private Map<String, Object> buildColumnConfigChildNodeForUpdate(
             AuditLookupContext ctx, SaveModuleReq oldReq, SaveModuleReq newReq) {
         Map<String, Object> childNode = new HashMap<>();
-        childNode.put("name", "模块列配置");
+        childNode.put("name", "模块表头配置");
         Map<String, Object> actions = new HashMap<>();
 
         List<ModuleTableHeaderDTO> oldHeaders =
-                (oldReq.getModule() != null && oldReq.getModule().getTableHeader() != null)
-                        ? oldReq.getModule().getTableHeader()
+                oldReq.getModuleHeaders() != null
+                        ? oldReq.getModuleHeaders()
                         : Collections.emptyList();
         List<ModuleTableHeaderDTO> newHeaders =
-                (newReq.getModule() != null && newReq.getModule().getTableHeader() != null)
-                        ? newReq.getModule().getTableHeader()
+                newReq.getModuleHeaders() != null
+                        ? newReq.getModuleHeaders()
                         : Collections.emptyList();
 
         Map<String, ModuleTableHeaderDTO> oldMap =

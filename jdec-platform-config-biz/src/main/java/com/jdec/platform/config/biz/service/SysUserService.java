@@ -44,7 +44,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** 用户 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysUserService implements SysUserApi {
     private final SysUserMapper sysUserMapper;
     private final SysRoleUserMapper sysRoleUserMapper;

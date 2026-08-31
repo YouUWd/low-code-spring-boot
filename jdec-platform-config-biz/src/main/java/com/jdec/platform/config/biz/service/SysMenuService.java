@@ -32,7 +32,7 @@ import org.springframework.util.CollectionUtils;
 /** 系统菜单 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysMenuService implements SysMenuApi {
 
     private final SysMenuMapper sysMenuMapper;

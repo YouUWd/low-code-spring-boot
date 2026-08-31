@@ -26,7 +26,7 @@ import org.springframework.util.CollectionUtils;
 /** 配置项 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysConfigItemService {
 
     private final SysConfigItemMapper itemMapper;

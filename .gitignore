@@ -28,3 +28,9 @@ logs/
 
 # ===== 中间产出文档 =====
 docs
+
+# ===== 前端构建产物 =====
+front/dist
+front/node_modules
+front/.vite
+front/.vite/deps

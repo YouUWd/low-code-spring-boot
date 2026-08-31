@@ -14,6 +14,10 @@ import lombok.NoArgsConstructor;
 @Schema(description = "列表表头列配置信息")
 public class ModuleTableHeaderDTO {
 
+    /** 表头ID（更新时使用） */
+    @Schema(description = "表头ID（更新时使用）", example = "1")
+    private Long id;
+
     /** 列名称 */
     @Schema(description = "列名称", example = "学号")
     private String name;

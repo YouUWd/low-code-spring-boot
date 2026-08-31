@@ -38,7 +38,7 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-data-engine-biz</artifactId>
+            <artifactId>jdec-platform-data-biz</artifactId>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
@@ -47,6 +47,14 @@
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-hr-biz</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-school-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-school-biz</artifactId>
         </dependency>
     
 

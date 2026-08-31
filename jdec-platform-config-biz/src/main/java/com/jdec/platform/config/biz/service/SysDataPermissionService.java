@@ -3,7 +3,6 @@ package com.jdec.platform.config.biz.service;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysDataPermissionApi;
 import com.jdec.platform.config.api.dto.request.DataPermissionQueryItem;
@@ -15,7 +14,6 @@ import com.jdec.platform.config.api.dto.response.SysDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.config.BizSystemConfig;
 import com.jdec.platform.config.biz.entity.SysDataPermission;
-import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
@@ -41,7 +39,7 @@ import org.springframework.web.client.RestTemplate;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysDataPermissionService implements SysDataPermissionApi {
 
     private final SysDataPermissionMapper sysDataPermissionMapper;
@@ -252,53 +250,15 @@ public class SysDataPermissionService implements SysDataPermissionApi {
     /**
      * 根据表名解析数据来源主体ID列表。
      *
-     * <p>在 sys_module 中按主表名 + 当前主体 + 项目编码查询，将查出的 source_subjects（JSON数组，如 [1,
-     * 2]）解析为主体ID列表；未查询到模块记录时，回退使用当前上下文中的主体ID。
+     * <p>直接使用当前上下文中的主体ID。
      */
     private List<Long> resolveSubjectIds(String tableName) {
-        if (!StringUtils.hasText(tableName)) {
-            log.warn("数据权限表名为空，回退使用当前主体 {}", AppContext.getSubjectId());
-            return defaultSubjectIds();
-        }
-
-        // 通过表名primary_table字段 + 主体id + 项目编码查询 sys_module
-        List<SysModule> modules =
-                sysModuleMapper.selectList(
-                        new LambdaQueryWrapper<SysModule>()
-                                .eq(SysModule::getPrimaryTable, tableName)
-                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
-                                .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
-
-        if (CollUtil.isEmpty(modules)) {
-            log.warn("未查询到表 {} 对应的模块配置，回退使用当前主体 {}", tableName, AppContext.getSubjectId());
-            return defaultSubjectIds();
-        }
-
-        // 解析 source_subjects（JSON格式，如 [1, 2]）
-        List<Long> subjectIds = parseSourceSubjects(modules.get(0).getSourceSubjects());
-        if (CollUtil.isEmpty(subjectIds)) {
-            log.warn("模块 {} 未配置数据来源主体，回退使用当前主体 {}", tableName, AppContext.getSubjectId());
-            return defaultSubjectIds();
-        }
-        return subjectIds;
+        return defaultSubjectIds();
     }
 
     /** 回退主体ID：默认使用当前上下文中的主体ID */
     private List<Long> defaultSubjectIds() {
         Long subjectId = AppContext.getSubjectId();
         return subjectId == null ? new ArrayList<>() : Collections.singletonList(subjectId);
-    }
-
-    /** 将 source_subjects JSON 字符串解析为 List */
-    private List<Long> parseSourceSubjects(String sourceSubjectsJson) {
-        if (!StringUtils.hasText(sourceSubjectsJson)) {
-            return new ArrayList<>();
-        }
-        try {
-            return objectMapper.readValue(sourceSubjectsJson, new TypeReference<List<Long>>() {});
-        } catch (Exception e) {
-            log.error("sourceSubjects 解析失败: {}", sourceSubjectsJson, e);
-            return new ArrayList<>();
-        }
     }
 }

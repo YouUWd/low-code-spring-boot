@@ -42,12 +42,13 @@ import org.springframework.util.StringUtils;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysFieldService implements SysFieldApi {
 
     private final SysFieldMapper sysFieldMapper;
     private final SysFieldValueMapper sysFieldValueMapper;
     private final SysModuleMapper sysModuleMapper;
+    private final SysModuleTableMapper sysModuleTableMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
     private final JdbcTemplate jdbcTemplate;
@@ -422,12 +423,11 @@ public class SysFieldService implements SysFieldApi {
         Map<String, SysField> configMap =
                 sysFields.stream().collect(Collectors.toMap(SysField::getColumnName, f -> f));
 
-        // 2.2 先按 tableName 查询涉及的 simple field 关系，再精准匹配模块
+        // 2.2 先按 tableName 查询涉及的 field 关系，再精准匹配模块
         List<SysModuleField> simpleFields =
                 sysModuleFieldMapper.selectList(
                         new LambdaQueryWrapper<SysModuleField>()
-                                .eq(SysModuleField::getTableName, tableName)
-                                .eq(SysModuleField::getFieldType, "SIMPLE"));
+                                .eq(SysModuleField::getTableName, tableName));
 
         Map<String, List<SysFieldResp.SysFieldModuleResp>> columnModulesMap =
                 Collections.emptyMap();
@@ -456,7 +456,7 @@ public class SysFieldService implements SysFieldApi {
                                 .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
                                 .collect(
                                         Collectors.groupingBy(
-                                                SysModuleField::getFieldCode,
+                                                SysModuleField::getColumnName,
                                                 Collectors.mapping(
                                                         sf -> {
                                                             SysModule m =
@@ -984,15 +984,25 @@ public class SysFieldService implements SysFieldApi {
             params.put("old_business_no", oldBusinessNo);
             params.put("business_no", businessNo);
 
-            SysModule sysModule =
-                    sysModuleMapper
-                            .selectList(
-                                    new LambdaQueryWrapper<SysModule>()
-                                            .eq(SysModule::getSubjectId, subjectId)
-                                            .eq(SysModule::getPrimaryTable, tableName))
-                            .stream()
-                            .findFirst()
-                            .orElse(null);
+            SysModule sysModule = null;
+            List<SysModuleTable> primaryTables =
+                    sysModuleTableMapper.selectList(
+                            Wrappers.<SysModuleTable>lambdaQuery()
+                                    .eq(SysModuleTable::getTableName, tableName)
+                                    .eq(SysModuleTable::getIsPrimary, 1));
+            if (!primaryTables.isEmpty()) {
+                List<Long> moduleIds =
+                        primaryTables.stream().map(SysModuleTable::getModuleId).toList();
+                sysModule =
+                        sysModuleMapper
+                                .selectList(
+                                        Wrappers.<SysModule>lambdaQuery()
+                                                .eq(SysModule::getSubjectId, subjectId)
+                                                .in(SysModule::getId, moduleIds))
+                                .stream()
+                                .findFirst()
+                                .orElse(null);
+            }
 
             if (sysModule != null) {
                 params.put("module_slug", sysModule.getModuleCode());

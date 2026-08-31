@@ -22,9 +22,9 @@ spring:
           url: jdbc:mysql://${DB_AUTH_CENTER_HOST:192.168.60.101}:${DB_AUTH_CENTER_PORT:3306}/${DB_AUTH_CENTER_NAME:auth_center}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_AUTH_CENTER_USERNAME:root}
           password: ${DB_AUTH_CENTER_PASSWORD:jdec_platform123}
-        # config_center 数据源
-        config_center:
-          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:192.168.60.101}:${DB_CONFIG_CENTER_PORT:3306}/${DB_CONFIG_CENTER_NAME:config_center}?useUnicode=true&characterEncoding=UTF8
+        # config_engine 数据源
+        config_engine:
+          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:192.168.60.101}:${DB_CONFIG_CENTER_PORT:3306}/${DB_CONFIG_CENTER_NAME:config_engine}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_CONFIG_CENTER_USERNAME:root}
           password: ${DB_CONFIG_CENTER_PASSWORD:jdec_platform123}
         # hr_manage 人力平台数据源
@@ -71,7 +71,7 @@ jdec:
     datasource-mapping:
       primary: mysql
       auth_center: auth_center
-      config_center: config_center
+      config_engine: config_engine
       hr_manage: hr_manage
       third: third
       school: school
@@ -180,3 +180,12 @@ monitor-center:
 # ===== 审计日志配置 =====
 audit:
   monitor-log-url: http://119.36.78.123:5009/api/monitorlog/addControlLog
+
+# ===== 日志配置 =====
+logging:
+  level:
+    com.jdec.platform: DEBUG
+    org.springframework.modulith: DEBUG
+    org.jooq.tools.LoggerListener: DEBUG
+    org.jooq: DEBUG
+

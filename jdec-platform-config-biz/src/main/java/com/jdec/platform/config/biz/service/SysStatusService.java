@@ -37,7 +37,7 @@ import org.springframework.util.CollectionUtils;
 /** 状态 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysStatusService implements SysStatusApi {
 
     private final SysStatusMapper sysStatusMapper;

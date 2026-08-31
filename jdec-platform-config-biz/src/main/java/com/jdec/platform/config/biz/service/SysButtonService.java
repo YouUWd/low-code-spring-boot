@@ -33,7 +33,7 @@ import org.springframework.util.StringUtils;
 /** 按钮配置 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysButtonService implements SysButtonApi {
 
     private final SysButtonMapper sysButtonMapper;

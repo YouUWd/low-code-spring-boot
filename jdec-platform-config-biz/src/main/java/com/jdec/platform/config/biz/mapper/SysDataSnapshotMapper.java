@@ -8,5 +8,5 @@ import org.apache.ibatis.annotations.Mapper;
 
 /** 数据快照 Mapper */
 @Mapper
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public interface SysDataSnapshotMapper extends BaseMapper<SysDataSnapshot> {}

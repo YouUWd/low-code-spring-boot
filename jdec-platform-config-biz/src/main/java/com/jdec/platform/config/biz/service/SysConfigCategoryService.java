@@ -29,7 +29,7 @@ import org.springframework.util.CollectionUtils;
 /** 配置分类 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysConfigCategoryService implements SysConfigCategoryApi {
 
     private final SysConfigCategoryMapper categoryMapper;

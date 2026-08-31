@@ -26,8 +26,10 @@
         <module>jdec-platform-config-biz</module>
         <module>jdec-platform-hr-api</module>
         <module>jdec-platform-hr-biz</module>
-        <module>jdec-platform-data-engine-api</module>
-        <module>jdec-platform-data-engine-biz</module>
+        <module>jdec-platform-data-api</module>
+        <module>jdec-platform-data-biz</module>
+        <module>jdec-platform-school-api</module>
+        <module>jdec-platform-school-biz</module>
         <module>jdec-platform-app</module>
     </modules>
 
@@ -104,12 +106,22 @@
             </dependency>
             <dependency>
                 <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-data-engine-api</artifactId>
+                <artifactId>jdec-platform-data-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-data-engine-biz</artifactId>
+                <artifactId>jdec-platform-data-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-school-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-school-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -257,7 +257,7 @@ public class SysWechatTemplateParamLogService {
             if (field == null) {
                 return fieldId.toString();
             }
-            return field.getDisplayName() != null ? field.getDisplayName() : field.getFieldCode();
+            return field.getDisplayName() != null ? field.getDisplayName() : field.getColumnName();
         } catch (Exception e) {
             log.warn("解析字段名称失败: fieldId={}", fieldId, e);
             return fieldId.toString();

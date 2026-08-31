@@ -31,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** 权限节点 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysRightService implements SysRightApi {
 
     private final SysRightMapper sysRightMapper;

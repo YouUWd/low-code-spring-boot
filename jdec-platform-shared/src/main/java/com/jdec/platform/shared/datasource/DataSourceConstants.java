@@ -16,8 +16,8 @@ public final class DataSourceConstants {
     /** auth_center 数据源 */
     public static final String AUTH_CENTER = "auth_center";
 
-    /** config_center 数据源 */
-    public static final String CONFIG_CENTER = "config_center";
+    /** config_engine 数据源 */
+    public static final String CONFIG_ENGINE = "config_engine";
 
     /** hr_manage 数据源 */
     public static final String HR_MANAGE = "hr_manage";

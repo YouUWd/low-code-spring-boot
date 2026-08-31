@@ -30,7 +30,7 @@ import org.springframework.util.StringUtils;
 /** 审批链类型 Service 实现 */
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysApprovalChainTypeService implements SysApprovalChainTypeApi {
 
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;

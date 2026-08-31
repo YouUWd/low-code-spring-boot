@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_CENTER)
+@DataSource(DataSourceConstants.CONFIG_ENGINE)
 public class SysDataSnapshotService extends ServiceImpl<SysDataSnapshotMapper, SysDataSnapshot>
         implements SysDataSnapshotApi {
 

@@ -26,9 +26,6 @@ public class ModuleSimpleFieldDTO {
     @Schema(description = "字段显示名称", example = "学生编号")
     private String displayName;
 
-    @Schema(description = "转换表达式", example = "UPPER(${student_no})")
-    private String transformer;
-
-    @Schema(description = "业务唯一标识顺序（大于0表示是业务唯一标识及其顺序，null或0表示否）", example = "1")
-    private Integer bizKeyOrder;
+    @Schema(description = "排序顺序", example = "1")
+    private Integer sortOrder;
 }
