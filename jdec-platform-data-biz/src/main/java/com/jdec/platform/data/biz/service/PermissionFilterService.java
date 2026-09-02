@@ -1,7 +1,7 @@
 package com.jdec.platform.data.biz.service;
 
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import java.util.ArrayList;
@@ -53,7 +53,7 @@ public class PermissionFilterService {
     }
 
     /** 根据当前用户角色权限裁剪动态表头列表 */
-    public List<ModuleTableHeaderDTO> filterReadableHeaders(SysModuleCompleteResp completeResp) {
+    public List<ModuleTableHeaderDTO> filterReadableHeaders(SysModuleMetaResp completeResp) {
         if (completeResp == null || completeResp.getModule() == null) {
             return new ArrayList<>();
         }
@@ -67,12 +67,12 @@ public class PermissionFilterService {
     }
 
     /** 根据当前用户角色权限裁剪动态字段字典列表 */
-    public List<com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO> filterReadableFields(
-            SysModuleCompleteResp completeResp) {
-        if (completeResp == null || completeResp.getSimpleFields() == null) {
+    public List<com.jdec.platform.config.api.dto.common.ModuleFieldDTO> filterReadableFields(
+            SysModuleMetaResp completeResp) {
+        if (completeResp == null || completeResp.getFields() == null) {
             return new ArrayList<>();
         }
-        return new ArrayList<>(completeResp.getSimpleFields());
+        return new ArrayList<>(completeResp.getFields());
     }
 
     /** 校验待保存物理表的数据是否有越权写入字段 */

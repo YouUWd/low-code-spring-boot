@@ -41,6 +41,13 @@ export interface DataPage<T> {
   records: T[];
 }
 
+export interface DynamicSaveReq {
+  moduleId: number;
+  record?: Record<string, any>;
+  records?: Array<Record<string, any>>;
+  tables?: Record<string, any>;
+}
+
 async function requestBackend(url: string, options: RequestInit = {}): Promise<any> {
   let currentRoleId = 1;
   try {
@@ -99,8 +106,8 @@ export const engineApi = {
     return remoteData;
   },
 
-  /** 标准同构保存 (入参 tables 与 detail 响应结构 1:1 镜像对应) */
-  async save(saveReq: { moduleId: number; tables: Record<string, any> }): Promise<{ id: number; masterId: number }> {
+  /** 标准同构保存 (入参 record / records 与 query 响应结构 1:1 镜像对应) */
+  async save(saveReq: DynamicSaveReq): Promise<{ id: number; masterId: number }> {
     const endpoint = '/api/data/engine/save';
     const remoteResp = await requestBackend(endpoint, {
       method: 'POST',
@@ -110,6 +117,21 @@ export const engineApi = {
     return {
       id: remoteResp?.id || remoteResp?.masterId || 0,
       masterId: remoteResp?.masterId || remoteResp?.id || 0
+    };
+  },
+
+  /** 多模块原子批量保存 (跨模块单事务强一致性落库，顺序由后端元数据拓扑驱动) */
+  async batchSave(req: {
+    modules: DynamicSaveReq[];
+  }): Promise<{ results: Record<number, any> }> {
+    const endpoint = '/api/data/engine/batch-save';
+    const remoteResp = await requestBackend(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(req)
+    });
+
+    return {
+      results: remoteResp?.results || {}
     };
   },
 
@@ -156,18 +178,40 @@ export const engineApi = {
     };
   },
 
-  /** 按需独立查询学生的选修课程与成绩 (模块 103: MOD-STUDENT-COURSE) */
+  /** 单次请求查询学生的选修课程与成绩 (模块 103: MOD-STUDENT-COURSE) 并由后端 1:N 级联自动携带 score_items */
   async queryStudentCourses(studentId: number): Promise<{ headers: HeaderMeta[]; records: any[] }> {
     const res = await this.query({
       moduleId: 103,
+      viewMode: 'ALL',
       filters: { student_id: studentId },
       pageNo: 1,
       pageSize: 50
     });
     const records = res?.data?.records || [];
+    const courseList = records.map((r: any) => {
+      const sc = r.student_course || {};
+      const course = r.course || {};
+      const base = typeof r === 'object' ? r : {};
+
+      const c = {
+        ...base,
+        ...course,
+        ...sc,
+        course_name: course.course_name || sc.course_name || base.course_name || '',
+        semester: sc.semester || sc.term || base.semester || base.term || '2026-秋',
+        score: sc.score !== undefined ? sc.score : base.score
+      };
+      c._expanded = true; // 默认直接展开
+      // 直接消费后端 fetchOneToManyTables 级联返回的 1:N 孙级数组
+      c.score_items = Array.isArray(r.student_course_score_item)
+        ? r.student_course_score_item
+        : (c.score_items || []);
+      return c;
+    });
+
     return {
       headers: res?.meta?.headers || [],
-      records: records.map((r: any) => r.student_course || r)
+      records: courseList
     };
   },
 

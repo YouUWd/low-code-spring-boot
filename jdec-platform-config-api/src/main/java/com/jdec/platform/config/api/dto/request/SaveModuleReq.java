@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.Data;
 
-/** 保存模块完整信息请求 DTO 包含模块基本信息、关联表、字段配置、表头配置、状态机 */
+/** 保存模块完整信息请求 DTO 包含模块基本信息、字段配置、表头配置、状态机 (主表由 fields 第一项自推导) */
 @Data
 @Schema(description = "保存模块完整信息请求")
 public class SaveModuleReq {
@@ -14,13 +14,9 @@ public class SaveModuleReq {
     @Schema(description = "模块基本信息", requiredMode = Schema.RequiredMode.REQUIRED)
     private SaveSysModuleReq module;
 
-    /** 模块关联表列表 */
-    @Schema(description = "模块关联表列表", example = "[]")
-    private List<ModuleTableDTO> moduleTables;
-
     /** 模块物理字段配置列表 */
     @Schema(description = "模块物理字段配置列表", example = "[]")
-    private List<ModuleSimpleFieldDTO> simpleFields;
+    private List<ModuleFieldDTO> fields;
 
     /** 列表表头配置列表 */
     @Schema(description = "列表表头配置列表", example = "[]")
@@ -53,6 +49,10 @@ public class SaveModuleReq {
         /** 模块描述 */
         @Schema(description = "模块描述", example = "学生信息管理模块")
         private String moduleDesc;
+
+        /** 父模块 ID (0 表示根模块) */
+        @Schema(description = "父模块ID（0表示根模块）", example = "0")
+        private Long parentId;
 
         /** 排序顺序，数字越小越靠前 */
         @Schema(description = "排序顺序（数字越小越靠前）", example = "1")

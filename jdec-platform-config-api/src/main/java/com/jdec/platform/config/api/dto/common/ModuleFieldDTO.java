@@ -6,13 +6,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 模块简单字段配置 */
+/** 模块字段配置 DTO */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "模块简单字段配置")
-public class ModuleSimpleFieldDTO {
+@Schema(description = "模块字段配置")
+public class ModuleFieldDTO {
 
     @Schema(description = "字段ID（更新时使用）", example = "1")
     private Long id;

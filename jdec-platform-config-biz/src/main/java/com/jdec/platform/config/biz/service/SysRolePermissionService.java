@@ -681,40 +681,55 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
 
                 // 收集当前模块下所有涉及的 fieldId
                 Set<Long> fieldIds = new HashSet<>();
-                if (CollUtil.isNotEmpty(item.getReadableFields())) {
-                    fieldIds.addAll(item.getReadableFields());
+                if (CollUtil.isNotEmpty(item.getViewFields())) {
+                    fieldIds.addAll(item.getViewFields());
                 }
-                if (CollUtil.isNotEmpty(item.getWritableFields())) {
-                    fieldIds.addAll(item.getWritableFields());
+                if (CollUtil.isNotEmpty(item.getApplyFields())) {
+                    fieldIds.addAll(item.getApplyFields());
                 }
-                if (CollUtil.isNotEmpty(item.getUpdatableFields())) {
-                    fieldIds.addAll(item.getUpdatableFields());
+                if (CollUtil.isNotEmpty(item.getEditFields())) {
+                    fieldIds.addAll(item.getEditFields());
                 }
 
                 if (fieldIds.isEmpty()) {
                     continue;
                 }
 
+                // 查询字段元数据以获取物理表名和列名
+                List<SysModuleField> fieldsMeta =
+                        sysModuleFieldMapper.selectList(
+                                Wrappers.<SysModuleField>lambdaQuery()
+                                        .in(SysModuleField::getId, fieldIds));
+                Map<Long, SysModuleField> fieldMetaMap =
+                        fieldsMeta.stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                SysModuleField::getId, f -> f, (f1, f2) -> f1));
+
                 // 为每个 fieldId 构建一条权限记录
                 List<SysRoleModuleFieldPermission> entities =
                         fieldIds.stream()
                                 .map(
                                         fieldId -> {
-                                            Integer readable =
-                                                    (item.getReadableFields() != null
-                                                                    && item.getReadableFields()
+                                            SysModuleField f = fieldMetaMap.get(fieldId);
+                                            if (f == null) {
+                                                return null;
+                                            }
+                                            Integer view =
+                                                    (item.getViewFields() != null
+                                                                    && item.getViewFields()
                                                                             .contains(fieldId))
                                                             ? 1
                                                             : 0;
-                                            Integer writable =
-                                                    (item.getWritableFields() != null
-                                                                    && item.getWritableFields()
+                                            Integer apply =
+                                                    (item.getApplyFields() != null
+                                                                    && item.getApplyFields()
                                                                             .contains(fieldId))
                                                             ? 1
                                                             : 0;
-                                            Integer updatable =
-                                                    (item.getUpdatableFields() != null
-                                                                    && item.getUpdatableFields()
+                                            Integer edit =
+                                                    (item.getEditFields() != null
+                                                                    && item.getEditFields()
                                                                             .contains(fieldId))
                                                             ? 1
                                                             : 0;
@@ -722,12 +737,14 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                                             return SysRoleModuleFieldPermission.builder()
                                                     .roleId(roleId)
                                                     .moduleId(moduleId)
-                                                    .fieldId(fieldId)
-                                                    .readable(readable)
-                                                    .writable(writable)
-                                                    .updatable(updatable)
+                                                    .tableName(f.getTableName())
+                                                    .columnName(f.getColumnName())
+                                                    .view(view)
+                                                    .apply(apply)
+                                                    .edit(edit)
                                                     .build();
                                         })
+                                .filter(Objects::nonNull)
                                 .toList();
 
                 allEntities.addAll(entities);
@@ -791,10 +808,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                             resp.setId(p.getId());
                             resp.setRoleId(p.getRoleId());
                             resp.setModuleId(p.getModuleId());
-                            resp.setFieldId(p.getFieldId());
-                            resp.setReadable(p.getReadable());
-                            resp.setWritable(p.getWritable());
-                            resp.setUpdatable(p.getUpdatable());
+                            resp.setTableName(p.getTableName());
+                            resp.setColumnName(p.getColumnName());
+                            resp.setView(p.getView());
+                            resp.setApply(p.getApply());
+                            resp.setEdit(p.getEdit());
                             return resp;
                         })
                 .toList();
@@ -1017,7 +1035,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                         Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
                                 .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
                                 .eq(SysRoleModuleFieldPermission::getModuleId, moduleId)
-                                .eq(SysRoleModuleFieldPermission::getWritable, 1));
+                                .eq(SysRoleModuleFieldPermission::getApply, 1));
 
         return count > 0;
     }
@@ -1342,14 +1360,17 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                         .filter(p -> listModuleIds.contains(p.getModuleId()))
                         .toList();
 
-        // 6. 构造 moduleId -> 角色有权限的 fieldId 集合
-        Map<Long, Set<Long>> modulePermittedFieldIds =
+        // 6. 构造 moduleId -> 角色有权限的 (tableName_columnName) 集合
+        Map<Long, Set<String>> modulePermittedFieldKeys =
                 filteredPermissions.stream()
+                        .filter(p -> p.getTableName() != null && p.getColumnName() != null)
                         .collect(
                                 Collectors.groupingBy(
                                         SysRoleModuleFieldPermission::getModuleId,
                                         Collectors.mapping(
-                                                SysRoleModuleFieldPermission::getFieldId,
+                                                p ->
+                                                        (p.getTableName() + "_" + p.getColumnName())
+                                                                .toLowerCase(),
                                                 Collectors.toSet())));
 
         // 7. 直接用 moduleId 查询字段表（sys_module_field）
@@ -1366,10 +1387,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                                         f ->
                                                 f.getModuleId()
                                                         + "_"
-                                                        + f.getTableName()
+                                                        + f.getTableName().toLowerCase()
                                                         + "_"
-                                                        + f.getColumnName(),
-                                        f -> f));
+                                                        + f.getColumnName().toLowerCase(),
+                                        f -> f,
+                                        (f1, f2) -> f1));
 
         // 9. 批量查询表头配置 sys_module_header
         List<SysModuleHeader> allHeaders =
@@ -1390,10 +1412,10 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             List<SysModuleHeader> tableHeaders =
                     headersByModule.getOrDefault(module.getId(), Collections.emptyList());
 
-            // 获取该模块有权限的 fieldId 集合
-            Set<Long> permittedFieldIds =
-                    modulePermittedFieldIds.getOrDefault(module.getId(), Collections.emptySet());
-            if (permittedFieldIds.isEmpty()) {
+            // 获取该模块有权限的字段 Key 集合
+            Set<String> permittedKeys =
+                    modulePermittedFieldKeys.getOrDefault(module.getId(), Collections.emptySet());
+            if (permittedKeys.isEmpty()) {
                 continue; // 该模块没有字段权限，跳过
             }
 
@@ -1402,12 +1424,28 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
 
             for (SysModuleHeader header : tableHeaders) {
                 // 使用复合 key 快速查找字段
-                String fieldKey =
-                        module.getId() + "_" + header.getTableName() + "_" + header.getColumnName();
-                SysModuleField moduleField = fieldMap.get(fieldKey);
+                String lookupKey =
+                        module.getId()
+                                + "_"
+                                + (header.getTableName() != null
+                                        ? header.getTableName().toLowerCase()
+                                        : "")
+                                + "_"
+                                + (header.getColumnName() != null
+                                        ? header.getColumnName().toLowerCase()
+                                        : "");
+                SysModuleField moduleField = fieldMap.get(lookupKey);
+
+                String permKey =
+                        ((header.getTableName() != null ? header.getTableName() : "")
+                                        + "_"
+                                        + (header.getColumnName() != null
+                                                ? header.getColumnName()
+                                                : ""))
+                                .toLowerCase();
 
                 // 检查该字段是否存在且有权限
-                if (moduleField != null && permittedFieldIds.contains(moduleField.getId())) {
+                if (moduleField != null && permittedKeys.contains(permKey)) {
                     PersonalSettingResp.PersonalSettingColumn column =
                             new PersonalSettingResp.PersonalSettingColumn();
                     column.setId(moduleField.getId());

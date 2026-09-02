@@ -8,12 +8,10 @@ import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
-import com.jdec.platform.config.biz.entity.SysModuleTable;
 import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
-import com.jdec.platform.config.biz.mapper.SysModuleTableMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -26,7 +24,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 /** 模块字段管理业务实现类 负责高性能模块、表与字段纯净物理树的获取 */
 @Slf4j
@@ -36,7 +33,6 @@ import org.springframework.util.StringUtils;
 public class SysModuleFieldPermissionService implements SysModuleFieldPermissionApi {
 
     private final SysModuleMapper sysModuleMapper;
-    private final SysModuleTableMapper sysModuleTableMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysFieldMapper sysFieldMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
@@ -91,21 +87,16 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
     private List<ModuleTableTreeResp> buildTableNodes(Long moduleId, TreeBuildContext context) {
         List<ModuleTableTreeResp> tablesList = new ArrayList<>();
 
-        List<SysModuleTable> moduleTables =
-                context.tablesByModule.getOrDefault(moduleId, Collections.emptyList());
         Map<String, List<SysModuleField>> tableFieldsMap =
                 context.fieldsByModuleTable.getOrDefault(moduleId, Collections.emptyMap());
 
-        // 装配物理表及列信息（基于 sys_module_table 配置）
-        for (SysModuleTable sysModuleTable : moduleTables) {
-            String tableName = sysModuleTable.getTableName();
-            if (tableName == null || tableName.trim().isEmpty()) {
+        // 从字段列表提取所涉及的所有物理表
+        for (Map.Entry<String, List<SysModuleField>> entry : tableFieldsMap.entrySet()) {
+            String tableName = entry.getKey();
+            List<SysModuleField> fieldsInTable = entry.getValue();
+            if (fieldsInTable == null || fieldsInTable.isEmpty()) {
                 continue;
             }
-
-            // 直接 O(1) 获取属于当前模块和当前表的字段列表
-            List<SysModuleField> fieldsInTable =
-                    tableFieldsMap.getOrDefault(tableName.toLowerCase(), Collections.emptyList());
 
             List<ModuleFieldTreeResp> columnNodes =
                     buildColumnNodesForTable(tableName, fieldsInTable, context);
@@ -113,13 +104,9 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                 ModuleTableTreeResp tableResp = new ModuleTableTreeResp();
                 tableResp.setTableName(tableName);
                 tableResp.setTableType(ConfigConstants.TABLE_TYPE_SIMPLE);
-                tableResp.setReadOnly(
-                        sysModuleTable.getReadOnly() != null ? sysModuleTable.getReadOnly() : 0);
+                tableResp.setReadOnly(0);
 
-                String tDesc = sysModuleTable.getTableDesc();
-                if (tDesc == null || tDesc.trim().isEmpty()) {
-                    tDesc = context.tableCommentMap.get(tableName.toLowerCase());
-                }
+                String tDesc = context.tableCommentMap.get(tableName.toLowerCase());
                 tableResp.setTableDesc(
                         tDesc != null && !tDesc.trim().isEmpty() ? tDesc : tableName);
 
@@ -170,53 +157,41 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
             String projectNo, Long subjectId, List<Long> moduleIds) {
         TreeBuildContext context = new TreeBuildContext();
 
-        // 1. 批量拉取模块关联表: moduleId -> List<SysModuleTable>
-        LambdaQueryWrapper<SysModuleTable> moduleTableWrapper = new LambdaQueryWrapper<>();
-        moduleTableWrapper
-                .in(SysModuleTable::getModuleId, moduleIds)
-                .orderByAsc(SysModuleTable::getSortOrder);
-        List<SysModuleTable> moduleTables = sysModuleTableMapper.selectList(moduleTableWrapper);
-        context.tablesByModule =
-                moduleTables.stream()
-                        .filter(t -> t.getTableName() != null)
-                        .collect(Collectors.groupingBy(SysModuleTable::getModuleId));
-
-        // 2. 批量拉取模块关联字段，建立双层 Map: moduleId -> (tableName.toLowerCase() -> List<SysModuleField>)
+        // 1. 批量拉取模块关联字段，建立双层 LinkedHashMap: moduleId -> (tableName -> List<SysModuleField>)
         LambdaQueryWrapper<SysModuleField> fieldWrapper = new LambdaQueryWrapper<>();
-        fieldWrapper.in(SysModuleField::getModuleId, moduleIds);
+        fieldWrapper
+                .in(SysModuleField::getModuleId, moduleIds)
+                .orderByAsc(SysModuleField::getSortOrder);
         List<SysModuleField> allFields = sysModuleFieldMapper.selectList(fieldWrapper);
 
         context.fieldsByModuleTable =
                 allFields.stream()
-                        .filter(f -> f.getTableName() != null)
+                        .filter(f -> f.getTableName() != null && !f.getTableName().trim().isEmpty())
                         .collect(
                                 Collectors.groupingBy(
                                         SysModuleField::getModuleId,
                                         Collectors.groupingBy(
-                                                f -> f.getTableName().toLowerCase())));
+                                                SysModuleField::getTableName,
+                                                LinkedHashMap::new,
+                                                Collectors.toList())));
 
         Set<String> allTableNames =
-                moduleTables.stream()
-                        .map(SysModuleTable::getTableName)
+                allFields.stream()
+                        .map(SysModuleField::getTableName)
                         .filter(Objects::nonNull)
                         .map(String::trim)
                         .filter(name -> !name.isEmpty())
                         .collect(Collectors.toSet());
 
-        // 3. 动态路由物理库，批量加载物理表/列的数据库注释
+        // 2. 动态路由物理库，批量加载物理表/列的数据库注释
         loadPhysicalComments(
                 projectNo,
                 allTableNames,
                 context.tableCommentMap,
                 context.physicalColumnCommentMap);
 
-        // 4. 批量加载逻辑字典 sys_field 展示名字与组合字段标识
-        loadSysFieldTranslations(
-                projectNo,
-                subjectId,
-                allTableNames,
-                context.translationMap,
-                context.sysFieldCombineFlagMap);
+        // 3. 批量加载逻辑字典 sys_field 展示名字
+        loadSysFieldTranslations(projectNo, subjectId, allTableNames, context.translationMap);
 
         return context;
     }
@@ -281,13 +256,12 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         }
     }
 
-    /** 批量加载逻辑字典 sys_field 展示名字与组合字段标识 */
+    /** 批量加载逻辑字典 sys_field 展示名字 */
     private void loadSysFieldTranslations(
             String projectNo,
             Long subjectId,
             Set<String> allTableNames,
-            Map<String, Map<String, String>> translationMap,
-            Map<String, Map<String, Integer>> sysFieldCombineFlagMap) {
+            Map<String, Map<String, String>> translationMap) {
         if (allTableNames.isEmpty()) {
             return;
         }
@@ -306,24 +280,16 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                             .computeIfAbsent(sf.getTableName().toLowerCase(), k -> new HashMap<>())
                             .put(sf.getColumnName().toLowerCase(), sf.getDisplayName());
                 }
-                if (sysFieldCombineFlagMap != null) {
-                    int combineFlag = StringUtils.hasText(sf.getCombineInfo()) ? 1 : 0;
-                    sysFieldCombineFlagMap
-                            .computeIfAbsent(sf.getTableName().toLowerCase(), k -> new HashMap<>())
-                            .put(sf.getColumnName().toLowerCase(), combineFlag);
-                }
             }
         }
     }
 
     /** 树形构建上下文封装对象 */
     private static class TreeBuildContext {
-        Map<Long, List<SysModuleTable>> tablesByModule = new HashMap<>();
         Map<Long, Map<String, List<SysModuleField>>> fieldsByModuleTable = new HashMap<>();
         Map<String, String> tableCommentMap = new HashMap<>();
         Map<String, Map<String, String>> physicalColumnCommentMap = new HashMap<>();
         Map<String, Map<String, String>> translationMap = new HashMap<>();
-        Map<String, Map<String, Integer>> sysFieldCombineFlagMap = new HashMap<>();
     }
 
     @Override
@@ -344,20 +310,20 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
             throw new BusinessException(404, "模块不存在");
         }
 
-        // 2. 查询该模块在 sys_module_table 配置的关联物理表
-        List<SysModuleTable> moduleTables =
-                sysModuleTableMapper.selectList(
-                        Wrappers.<SysModuleTable>lambdaQuery()
-                                .eq(SysModuleTable::getModuleId, moduleId)
-                                .orderByAsc(SysModuleTable::getSortOrder));
+        // 2. 获取该模块下的所有字段
+        List<SysModuleField> allFields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .eq(SysModuleField::getModuleId, moduleId)
+                                .orderByAsc(SysModuleField::getSortOrder));
 
         Set<String> allTableNames =
-                moduleTables.stream()
-                        .map(SysModuleTable::getTableName)
+                allFields.stream()
+                        .map(SysModuleField::getTableName)
                         .filter(Objects::nonNull)
                         .map(String::trim)
                         .filter(name -> !name.isEmpty())
-                        .collect(Collectors.toSet());
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
 
         // 3. 批量加载表/列物理注释与字典翻译
         Map<String, String> tableCommentMap = new HashMap<>();
@@ -365,45 +331,34 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         loadPhysicalComments(projectNo, allTableNames, tableCommentMap, physicalColumnCommentMap);
 
         Map<String, Map<String, String>> translationMap = new HashMap<>();
-        loadSysFieldTranslations(projectNo, subjectId, allTableNames, translationMap, null);
+        loadSysFieldTranslations(projectNo, subjectId, allTableNames, translationMap);
 
-        // 4. 获取该模块下的所有字段
-        List<SysModuleField> allFields =
-                sysModuleFieldMapper.selectList(
-                        Wrappers.<SysModuleField>lambdaQuery()
-                                .eq(SysModuleField::getModuleId, moduleId));
-
-        // 5. 查询该角色模块下的字段权限记录，建立 fieldId -> Entity 映射 Map
+        // 4. 查询该角色模块下的字段权限记录，建立 (tableName.columnName) -> Entity 映射 Map
         List<SysRoleModuleFieldPermission> permissions =
                 sysRoleModuleFieldPermissionMapper.selectList(
                         Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
                                 .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
                                 .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
-        Map<Long, SysRoleModuleFieldPermission> permissionMap =
+        Map<String, SysRoleModuleFieldPermission> permissionMap =
                 permissions.stream()
+                        .filter(p -> p.getTableName() != null && p.getColumnName() != null)
                         .collect(
                                 Collectors.toMap(
-                                        SysRoleModuleFieldPermission::getFieldId,
+                                        p ->
+                                                (p.getTableName() + "." + p.getColumnName())
+                                                        .toLowerCase(),
                                         p -> p,
                                         (p1, p2) -> p1));
 
-        // 6. 按物理表为基准进行字段分组与权限装配
+        // 5. 按物理表为基准进行字段分组与权限装配
         List<PermissionTableGroupResp> tablesList = new ArrayList<>();
 
-        for (SysModuleTable sysModuleTable : moduleTables) {
-            String tableName = sysModuleTable.getTableName();
-            if (tableName == null || tableName.trim().isEmpty()) {
-                continue;
-            }
-
+        for (String tableName : allTableNames) {
             PermissionTableGroupResp tableResp = new PermissionTableGroupResp();
             tableResp.setTableName(tableName);
             tableResp.setTableType(ConfigConstants.TABLE_TYPE_SIMPLE);
 
-            String tDesc = sysModuleTable.getTableDesc();
-            if (tDesc == null || tDesc.trim().isEmpty()) {
-                tDesc = tableCommentMap.get(tableName.toLowerCase());
-            }
+            String tDesc = tableCommentMap.get(tableName.toLowerCase());
             tableResp.setTableDesc((tDesc != null && !tDesc.trim().isEmpty()) ? tDesc : tableName);
 
             List<PermissionFieldInfo> readableFields = new ArrayList<>();
@@ -442,15 +397,16 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                 .fieldName(translatedName)
                                 .build();
 
-                SysRoleModuleFieldPermission perm = permissionMap.get(f.getId());
+                String permKey = (tableName + "." + colName).toLowerCase();
+                SysRoleModuleFieldPermission perm = permissionMap.get(permKey);
                 if (perm != null) {
-                    if (Integer.valueOf(1).equals(perm.getReadable())) {
+                    if (Integer.valueOf(1).equals(perm.getView())) {
                         readableFields.add(fieldInfo);
                     }
-                    if (Integer.valueOf(1).equals(perm.getWritable())) {
+                    if (Integer.valueOf(1).equals(perm.getApply())) {
                         writableFields.add(fieldInfo);
                     }
-                    if (Integer.valueOf(1).equals(perm.getUpdatable())) {
+                    if (Integer.valueOf(1).equals(perm.getEdit())) {
                         updatableFields.add(fieldInfo);
                     }
                 }

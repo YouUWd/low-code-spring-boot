@@ -1,7 +1,7 @@
 package com.jdec.platform.data.biz.dsl;
 
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -19,15 +19,15 @@ public class JooqConditionBuilder {
             Map<String, Object> filters,
             List<ModuleTableHeaderDTO> headers,
             Long subjectId,
-            SysModuleCompleteResp completeResp) {
+            SysModuleMetaResp completeResp) {
 
         List<Condition> conditions = new ArrayList<>();
 
         // 1. 基础主体隔离（仅在主表配置了 subject_id 字段时才添加过滤条件）
         boolean hasSubjectId =
                 completeResp != null
-                        && completeResp.getSimpleFields() != null
-                        && completeResp.getSimpleFields().stream()
+                        && completeResp.getFields() != null
+                        && completeResp.getFields().stream()
                                 .anyMatch(
                                         f ->
                                                 primaryTable.equalsIgnoreCase(f.getTableName())
@@ -73,8 +73,7 @@ public class JooqConditionBuilder {
                 } else if (value instanceof List<?> listVal) {
                     if (listVal.size() == 2
                             && ("dateRange".equalsIgnoreCase(searchType)
-                                    || fieldName.contains("date")
-                                    || fieldName.contains("Date"))) {
+                                    || "between".equalsIgnoreCase(searchType))) {
                         conditions.add(
                                 DSL.field(DSL.name(tableName, fieldName))
                                         .between(listVal.get(0), listVal.get(1)));

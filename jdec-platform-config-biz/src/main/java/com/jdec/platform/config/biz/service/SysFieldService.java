@@ -48,7 +48,6 @@ public class SysFieldService implements SysFieldApi {
     private final SysFieldMapper sysFieldMapper;
     private final SysFieldValueMapper sysFieldValueMapper;
     private final SysModuleMapper sysModuleMapper;
-    private final SysModuleTableMapper sysModuleTableMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
     private final JdbcTemplate jdbcTemplate;
@@ -424,16 +423,16 @@ public class SysFieldService implements SysFieldApi {
                 sysFields.stream().collect(Collectors.toMap(SysField::getColumnName, f -> f));
 
         // 2.2 先按 tableName 查询涉及的 field 关系，再精准匹配模块
-        List<SysModuleField> simpleFields =
+        List<SysModuleField> moduleFields =
                 sysModuleFieldMapper.selectList(
                         new LambdaQueryWrapper<SysModuleField>()
                                 .eq(SysModuleField::getTableName, tableName));
 
         Map<String, List<SysFieldResp.SysFieldModuleResp>> columnModulesMap =
                 Collections.emptyMap();
-        if (!simpleFields.isEmpty()) {
+        if (!moduleFields.isEmpty()) {
             Set<Long> involvedModuleIds =
-                    simpleFields.stream()
+                    moduleFields.stream()
                             .map(SysModuleField::getModuleId)
                             .filter(Objects::nonNull)
                             .collect(Collectors.toSet());
@@ -452,7 +451,7 @@ public class SysFieldService implements SysFieldApi {
                                         Collectors.toMap(SysModule::getId, m -> m, (m1, m2) -> m1));
 
                 columnModulesMap =
-                        simpleFields.stream()
+                        moduleFields.stream()
                                 .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
                                 .collect(
                                         Collectors.groupingBy(
@@ -985,14 +984,14 @@ public class SysFieldService implements SysFieldApi {
             params.put("business_no", businessNo);
 
             SysModule sysModule = null;
-            List<SysModuleTable> primaryTables =
-                    sysModuleTableMapper.selectList(
-                            Wrappers.<SysModuleTable>lambdaQuery()
-                                    .eq(SysModuleTable::getTableName, tableName)
-                                    .eq(SysModuleTable::getIsPrimary, 1));
-            if (!primaryTables.isEmpty()) {
+            List<SysModuleField> firstFields =
+                    sysModuleFieldMapper.selectList(
+                            Wrappers.<SysModuleField>lambdaQuery()
+                                    .eq(SysModuleField::getTableName, tableName)
+                                    .eq(SysModuleField::getSortOrder, 1));
+            if (!firstFields.isEmpty()) {
                 List<Long> moduleIds =
-                        primaryTables.stream().map(SysModuleTable::getModuleId).toList();
+                        firstFields.stream().map(SysModuleField::getModuleId).toList();
                 sysModule =
                         sysModuleMapper
                                 .selectList(

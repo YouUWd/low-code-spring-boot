@@ -1,8 +1,9 @@
 package com.jdec.platform.data.biz.service;
 
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import com.jdec.platform.data.api.dto.model.EngineModuleMeta;
 import com.jdec.platform.data.api.dto.request.BatchDynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.DynamicDetailReq;
@@ -42,12 +43,12 @@ public class DynamicQueryService {
     /** 通用动态数据集查询 (支持 viewMode: LIST / DETAIL / ALL 自适应视图结构与元数据透传) */
     public EngineDataResult<DataPage<Map<String, Object>>> query(DynamicQueryReq req) {
         Long moduleId = req.getModuleId();
-        SysModuleCompleteResp completeResp = metadataCacheService.getModuleComplete(moduleId);
+        SysModuleMetaResp completeResp = metadataCacheService.getModuleComplete(moduleId);
         if (completeResp == null || completeResp.getModule() == null) {
             throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
         }
 
-        String primaryTable = getPrimaryTableName(completeResp);
+        String primaryTable = jooqSqlBuilder.getPrimaryTableName(completeResp);
         List<ModuleTableHeaderDTO> headers =
                 permissionFilterService.filterReadableHeaders(completeResp);
 
@@ -104,35 +105,48 @@ public class DynamicQueryService {
         boolean shouldFetch1N = "DETAIL".equals(viewMode) || "ALL".equals(viewMode);
         Map<String, Map<Long, List<Map<String, Object>>>> multiTableDataMap =
                 shouldFetch1N
-                        ? fetchOneToManyTables(dsl, completeResp, primaryIds)
+                        ? fetchOneToManyTables(dsl, primaryTable, completeResp, primaryIds)
                         : Collections.emptyMap();
 
         // 5. 按照 Table-First 规范组装返回行结构 (将物理 Join 字段精准归集至所属表)
         List<Map<String, Object>> structuredRecords = new ArrayList<>();
+        Set<String> involvedTables = getInvolvedTables(completeResp, primaryTable);
+
+        Set<String> oneToManyTables = new HashSet<>();
+        if (completeResp.getTableRelations() != null) {
+            for (TableRelationDTO rel : completeResp.getTableRelations()) {
+                if ("1:N".equalsIgnoreCase(rel.getRelationType())
+                        && primaryTable.equalsIgnoreCase(rel.getMainTable())
+                        && rel.getJoinTable() != null
+                        && !primaryTable.equalsIgnoreCase(rel.getJoinTable())) {
+                    oneToManyTables.add(rel.getJoinTable().toLowerCase());
+                }
+            }
+        }
+
         for (Map<String, Object> mainRow : mainTableRows) {
             Long primaryId = mainRow.get("id") instanceof Number num ? num.longValue() : null;
             Map<String, Object> rowTables = new LinkedHashMap<>();
 
-            // 建立各表属性子 Map
+            // 建立主表与伴生单行表 (1:1 / N:1) 属性子 Map
             Map<String, Map<String, Object>> tableMaps = new LinkedHashMap<>();
-            if (completeResp.getModuleTables() != null) {
-                for (ModuleTableDTO tDto : completeResp.getModuleTables()) {
-                    if (tDto.getTableName() != null) {
-                        tableMaps.put(tDto.getTableName(), new LinkedHashMap<>());
-                    }
+            for (String tName : involvedTables) {
+                if (!oneToManyTables.contains(tName.toLowerCase())) {
+                    tableMaps.put(tName, new LinkedHashMap<>());
                 }
             }
             tableMaps.putIfAbsent(primaryTable, new LinkedHashMap<>());
 
-            // 根据 simpleFields 将主行字段精准归类到对应的所属表
-            if (completeResp.getSimpleFields() != null
-                    && !completeResp.getSimpleFields().isEmpty()) {
-                for (com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO f :
-                        completeResp.getSimpleFields()) {
+            // 根据 fields 将主行字段精准归类到对应的所属表 (仅归类主表及伴生单行表)
+            if (completeResp.getFields() != null && !completeResp.getFields().isEmpty()) {
+                for (ModuleFieldDTO f : completeResp.getFields()) {
                     String tName =
                             (f.getTableName() != null && !f.getTableName().isBlank())
                                     ? f.getTableName()
                                     : primaryTable;
+                    if (oneToManyTables.contains(tName.toLowerCase())) {
+                        continue;
+                    }
                     String colName = f.getColumnName();
                     if (colName != null && mainRow.containsKey(colName)) {
                         tableMaps
@@ -167,13 +181,16 @@ public class DynamicQueryService {
                 rowTables.put(entry.getKey(), entry.getValue());
             }
 
-            // 放入 1:N 从表多行数组 (仅 DETAIL/ALL 模式或配置从表)
-            if (completeResp.getModuleTables() != null) {
-                for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-                    String tName = tableDto.getTableName();
-                    String rType = tableDto.getRelationType();
-                    if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-                        if (shouldFetch1N) {
+            // 放入相对于当前主表的 1:N 从表多行数组 (仅 DETAIL/ALL 模式)
+            if (completeResp.getTableRelations() != null) {
+                for (TableRelationDTO rel : completeResp.getTableRelations()) {
+                    String rType = rel.getRelationType();
+                    if ("1:N".equalsIgnoreCase(rType)
+                            && primaryTable.equalsIgnoreCase(rel.getMainTable())) {
+                        String tName = rel.getJoinTable();
+                        if (shouldFetch1N
+                                && involvedTables.contains(tName.toLowerCase())
+                                && !primaryTable.equalsIgnoreCase(tName)) {
                             List<Map<String, Object>> subRows =
                                     multiTableDataMap
                                             .getOrDefault(tName, Collections.emptyMap())
@@ -244,9 +261,7 @@ public class DynamicQueryService {
 
     /** 构造自适应引擎元数据视图 (根据 viewMode 按需透传 headers / fields) */
     private EngineModuleMeta buildEngineModuleMeta(
-            SysModuleCompleteResp completeResp,
-            List<ModuleTableHeaderDTO> headers,
-            String viewMode) {
+            SysModuleMetaResp completeResp, List<ModuleTableHeaderDTO> headers, String viewMode) {
         if (completeResp == null || completeResp.getModule() == null) {
             return null;
         }
@@ -257,18 +272,18 @@ public class DynamicQueryService {
                         .moduleCode(completeResp.getModule().getModuleCode())
                         .moduleName(completeResp.getModule().getModuleName())
                         .moduleDesc(completeResp.getModule().getModuleDesc())
-                        .primaryTable(getPrimaryTableName(completeResp))
-                        .tables(completeResp.getModuleTables())
+                        .primaryTable(jooqSqlBuilder.getPrimaryTableName(completeResp))
+                        .tableRelations(completeResp.getTableRelations())
                         .statuses(completeResp.getModuleStatuses());
 
         if ("LIST".equalsIgnoreCase(viewMode)) {
             metaBuilder.headers(headers);
         } else if ("DETAIL".equalsIgnoreCase(viewMode)) {
-            metaBuilder.fields(completeResp.getSimpleFields());
+            metaBuilder.fields(completeResp.getFields());
         } else {
             // ALL 或其他混合模式同时携带
             metaBuilder.headers(headers);
-            metaBuilder.fields(completeResp.getSimpleFields());
+            metaBuilder.fields(completeResp.getFields());
         }
 
         // 装配当前用户角色在当前模块下的真实字段权限规则 (统一在 /engine/query meta 中透传)
@@ -286,24 +301,30 @@ public class DynamicQueryService {
 
     /** 批量抓取主表 ID 集合关联的 1:N 从表记录 */
     private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
-            DSLContext dsl, SysModuleCompleteResp completeResp, List<Long> primaryIds) {
+            DSLContext dsl,
+            String primaryTable,
+            SysModuleMetaResp completeResp,
+            List<Long> primaryIds) {
 
         Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();
-        if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables() == null) {
+        if (primaryIds == null
+                || primaryIds.isEmpty()
+                || completeResp.getTableRelations() == null) {
             return result;
         }
 
-        for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-            String rType = tableDto.getRelationType();
-            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-                String tableName = tableDto.getTableName();
-                // 从表外键字段
-                String fkField =
-                        tableDto.getJoinLeftField() != null
-                                        && !tableDto.getJoinLeftField().isBlank()
-                                ? tableDto.getJoinLeftField()
-                                : tableDto.getJoinRightField();
+        Set<String> involvedTables = getInvolvedTables(completeResp, primaryTable);
 
+        for (TableRelationDTO rel : completeResp.getTableRelations()) {
+            String rType = rel.getRelationType();
+            if ("1:N".equalsIgnoreCase(rType)
+                    && primaryTable.equalsIgnoreCase(rel.getMainTable())) {
+                String tableName = rel.getJoinTable();
+                if (!involvedTables.contains(tableName.toLowerCase())) {
+                    continue;
+                }
+
+                String fkField = rel.getJoinField();
                 if (fkField == null || fkField.isBlank()) {
                     continue;
                 }
@@ -329,17 +350,18 @@ public class DynamicQueryService {
         return result;
     }
 
-    private String getPrimaryTableName(SysModuleCompleteResp completeResp) {
-        if (completeResp == null || completeResp.getModuleTables() == null) {
-            return "";
+    private Set<String> getInvolvedTables(SysModuleMetaResp completeResp, String primaryTable) {
+        Set<String> set = new HashSet<>();
+        if (primaryTable != null && !primaryTable.isBlank()) {
+            set.add(primaryTable.toLowerCase());
         }
-        return completeResp.getModuleTables().stream()
-                .filter(t -> t.getIsPrimary() != null && t.getIsPrimary() == 1)
-                .map(ModuleTableDTO::getTableName)
-                .findFirst()
-                .orElse(
-                        completeResp.getModuleTables().isEmpty()
-                                ? ""
-                                : completeResp.getModuleTables().get(0).getTableName());
+        if (completeResp.getFields() != null) {
+            for (ModuleFieldDTO f : completeResp.getFields()) {
+                if (f.getTableName() != null && !f.getTableName().isBlank()) {
+                    set.add(f.getTableName().toLowerCase());
+                }
+            }
+        }
+        return set;
     }
 }

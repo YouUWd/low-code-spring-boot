@@ -10,44 +10,41 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 模块关联物理表拓扑实体 */
+/** 全局物理表关联关系实体 */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("sys_module_table")
-public class SysModuleTable {
+@TableName("sys_table_relation")
+public class SysTableRelation {
 
     /** 主键 ID */
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 模块 ID */
-    private Long moduleId;
+    /** 项目编号 */
+    private String projectNo;
 
-    /** 表名 */
-    private String tableName;
+    /** 所属主体 ID */
+    private Long subjectId;
 
-    /** 表描述 */
-    private String tableDesc;
+    /** 主表名 (如 student / course) */
+    private String mainTable;
 
-    /** 是否主表: 1-主表, 0-从表 */
-    private Integer isPrimary;
+    /** 主表关联字段 (如 id 或 clazz_id) */
+    private String mainField;
 
-    /** 关联左字段 (从表外键) */
-    private String joinLeftField;
+    /** 被关联表名 (如 student_profile / clazz / student_course) */
+    private String joinTable;
 
-    /** 关联右字段 (主表关联键) */
-    private String joinRightField;
+    /** 被关联表关联字段 (如 student_id 或 id) */
+    private String joinField;
 
-    /** 关系类型: PRIMARY, 1:1, N:1, 1:N */
+    /** 关系类型: 1:1, 1:N, N:1 */
     private String relationType;
 
-    /** 关联表是否只读：0-否, 1-是 */
-    private Integer readOnly;
-
-    /** 排序顺序 */
-    private Integer sortOrder;
+    /** 关联关系中文说明 */
+    private String description;
 
     /** 创建人 ID */
     private Long createdBy;

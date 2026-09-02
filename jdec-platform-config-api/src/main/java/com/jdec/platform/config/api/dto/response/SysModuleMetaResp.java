@@ -6,22 +6,22 @@ import java.time.LocalDateTime;
 import java.util.List;
 import lombok.Data;
 
-/** 模块完整信息响应 DTO 包含模块基本信息、关联表、字段配置、表头配置和状态 */
+/** 模块元数据响应 DTO 包含模块基本信息、关联表拓扑、字段配置、表头配置和状态 */
 @Data
-@Schema(description = "模块完整信息响应")
-public class SysModuleCompleteResp {
+@Schema(description = "模块元数据响应")
+public class SysModuleMetaResp {
 
     /** 模块基本信息 */
     @Schema(description = "模块基本信息")
     private ModuleInfo module;
 
-    /** 模块关联表列表 */
-    @Schema(description = "模块关联表列表")
-    private List<ModuleTableDTO> moduleTables;
+    /** 模块涉及表的全局关联拓扑 (由后端根据字段自动推导并组装透传) */
+    @Schema(description = "模块涉及表的全局关联拓扑")
+    private List<TableRelationDTO> tableRelations;
 
-    /** 模块字段列表 */
+    /** 模块字段列表 (首个字段所属表为主表) */
     @Schema(description = "模块字段列表")
-    private List<ModuleSimpleFieldDTO> simpleFields;
+    private List<ModuleFieldDTO> fields;
 
     /** 模块列表表头配置 */
     @Schema(description = "模块列表表头配置")
@@ -52,6 +52,9 @@ public class SysModuleCompleteResp {
 
         @Schema(description = "模块描述", example = "学生信息管理模块")
         private String moduleDesc;
+
+        @Schema(description = "父模块ID", example = "0")
+        private Long parentId;
 
         @Schema(description = "排序顺序", example = "1")
         private Integer sortOrder;

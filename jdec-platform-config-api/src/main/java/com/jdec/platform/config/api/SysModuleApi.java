@@ -3,8 +3,8 @@ package com.jdec.platform.config.api;
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.MoveModuleResp;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.config.api.dto.response.SysModuleListResp;
+import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import java.util.List;
@@ -23,14 +23,14 @@ public interface SysModuleApi {
     List<SysModuleListResp> listModules(String projectNo, Long subjectId, Integer category);
 
     /**
-     * 根据模块ID获取模块完整信息 包含模块基本信息、关联表、字段配置和状态
+     * 根据模块ID获取模块元数据信息 包含模块基本信息、关联表、字段配置和状态
      *
      * @param projectNo 项目编码
      * @param subjectId 主体ID
      * @param moduleId 模块ID
-     * @return 模块完整信息响应
+     * @return 模块元数据响应
      */
-    SysModuleCompleteResp getModuleCompleteById(String projectNo, Long subjectId, Long moduleId);
+    SysModuleMetaResp getModuleCompleteById(String projectNo, Long subjectId, Long moduleId);
 
     /**
      * 保存或编辑模块完整信息 包含模块基本信息、关联表、字段配置和状态

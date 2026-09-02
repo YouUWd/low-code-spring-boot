@@ -42,6 +42,7 @@
         <knife4j.version>4.4.0</knife4j.version>
         <jackson.version>2.18.2</jackson.version>
         <jooq.version>3.19.15</jooq.version>
+        <lombok.version>1.18.32</lombok.version>
     </properties>
     <!-- 配置云效私服仓库 -->
     <repositories>
@@ -59,6 +60,11 @@
     <!-- ==================== 版本管理 ==================== -->
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
             <!-- Spring Modulith BOM -->
             <dependency>
                 <groupId>org.springframework.modulith</groupId>
@@ -260,7 +266,6 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -308,6 +313,16 @@
                             <version>1.18.32</version>
                         </path>
                     </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!-- Maven Surefire Plugin: 支持多模块跨模块执行单个指定测试 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
                 </configuration>
             </plugin>
 

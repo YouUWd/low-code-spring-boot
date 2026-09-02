@@ -95,3 +95,21 @@ ALTER TABLE `teacher`
   ADD COLUMN IF NOT EXISTS `updated_by` BIGINT NULL COMMENT '更新人',
   ADD COLUMN IF NOT EXISTS `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   ADD COLUMN IF NOT EXISTS `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标志: 0正常 1已删除';
+
+-- 10. 课程考核明细构成表 student_course_score_item
+CREATE TABLE IF NOT EXISTS `student_course_score_item` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
+  `project_no` VARCHAR(64) NOT NULL DEFAULT 'school' COMMENT '项目编号',
+  `subject_id` BIGINT NOT NULL DEFAULT 1 COMMENT '主体ID',
+  `student_course_id` BIGINT NOT NULL COMMENT '关联 student_course.id 外键',
+  `item_name` VARCHAR(100) NOT NULL COMMENT '考核分项名称',
+  `weight` DECIMAL(5,2) NOT NULL DEFAULT 20.00 COMMENT '占比权重百分比',
+  `score` DECIMAL(5,2) NOT NULL DEFAULT 0.00 COMMENT '分项得分',
+  `remark` VARCHAR(255) NULL COMMENT '评语备注',
+  `created_by` BIGINT NULL COMMENT '创建人',
+  `created_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_by` BIGINT NULL COMMENT '更新人',
+  `updated_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` TINYINT NOT NULL DEFAULT 0 COMMENT '删除标志: 0正常 1已删除',
+  KEY `idx_student_course_id` (`student_course_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课程考核构成明细表';

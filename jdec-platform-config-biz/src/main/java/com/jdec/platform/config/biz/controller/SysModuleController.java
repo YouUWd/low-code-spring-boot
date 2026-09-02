@@ -71,21 +71,19 @@ public class SysModuleController {
      * @param moduleId 模块ID
      * @return 模块完整信息
      */
-    @Operation(
-            summary = "根据模块ID查询模块完整信息",
-            description = "根据模块ID获取模块的所有配置信息，包括基本信息、关联表、简单字段、组合字段和状态配置")
+    @Operation(summary = "根据模块ID查询模块元数据信息", description = "根据模块ID获取模块的所有配置信息，包括基本信息、关联表、字段和状态配置")
     @GetMapping("/complete/{moduleId}")
-    public ApiResponse<SysModuleCompleteResp> getModuleCompleteById(
+    public ApiResponse<SysModuleMetaResp> getModuleCompleteById(
             @Parameter(description = "模块ID", required = true, example = "1") @PathVariable
                     Long moduleId) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
         log.info(
-                "根据ID查询模块完整信息: moduleId={}, projectNo={}, subjectId={}",
+                "根据ID查询模块元数据信息: moduleId={}, projectNo={}, subjectId={}",
                 moduleId,
                 projectNo,
                 subjectId);
-        SysModuleCompleteResp result =
+        SysModuleMetaResp result =
                 sysModuleService.getModuleCompleteById(projectNo, subjectId, moduleId);
         return ApiResponse.success(result);
     }

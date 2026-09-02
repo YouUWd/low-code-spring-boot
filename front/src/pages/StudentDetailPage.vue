@@ -21,6 +21,7 @@ import {
   Plus,
   Trash2,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   Settings
 } from 'lucide-vue-next';
@@ -324,7 +325,13 @@ function addCourse() {
   formData.value.student_course.push({
     course_name: '新选课程',
     semester: '2026-秋',
-    score: 80.0
+    score: 85.0,
+    _expanded: true,
+    score_items: [
+      { item_name: '期中考试', weight: 30.0, score: 85.0, remark: '' },
+      { item_name: '平时作业', weight: 30.0, score: 90.0, remark: '' },
+      { item_name: '期末大考', weight: 40.0, score: 85.0, remark: '' }
+    ]
   });
 }
 
@@ -333,6 +340,54 @@ function removeCourseItem(item: any) {
   if (idx !== -1) {
     formData.value.student_course.splice(idx, 1);
   }
+}
+
+function addScoreItem(course: any) {
+  if (!course.score_items) {
+    course.score_items = [];
+  }
+  course.score_items.push({
+    item_name: '新考核分项',
+    weight: 20.0,
+    score: 85.0,
+    remark: ''
+  });
+  course._expanded = true;
+}
+
+const deletedScoreItemIds = ref<number[]>([]);
+
+function removeScoreItem(course: any, itemIdx: number) {
+  if (course.score_items && course.score_items[itemIdx]) {
+    const item = course.score_items[itemIdx];
+    if (item.id) {
+      deletedScoreItemIds.value.push(item.id);
+    }
+    course.score_items.splice(itemIdx, 1);
+  }
+}
+
+/** 计算单门课程的各分项权重合计 */
+function getCourseTotalWeight(c: any): number {
+  if (!c.score_items || c.score_items.length === 0) return 100;
+  return c.score_items.reduce((acc: number, it: any) => acc + (Number(it.weight) || 0), 0);
+}
+
+/** 实时计算课程的加权总评成绩 */
+function calculateCourseScore(c: any): number {
+  if (!c.score_items || c.score_items.length === 0) {
+    return Number(c.score) || 0;
+  }
+  const totalWeight = getCourseTotalWeight(c);
+  if (totalWeight <= 0) {
+    return Number(c.score) || 0;
+  }
+  const weightedSum = c.score_items.reduce((acc: number, it: any) => {
+    return acc + ((Number(it.score) || 0) * (Number(it.weight) || 0));
+  }, 0);
+  const total = Math.round((weightedSum / totalWeight) * 10) / 10;
+  c.score = total;
+  return total;
 }
 
 function addAward() {
@@ -355,22 +410,96 @@ async function handleSave() {
   saveSuccessMessage.value = '';
 
   try {
-    const payload = {
-      moduleId: 101,
-      tables: {
+    // 1. 组装选课列表 (以读写对称的树状结构，每门课程天然内嵌其所属的考核分项)
+    const coursesToSave = (formData.value.student_course || []).map((c: any) => ({
+      id: c.id,
+      student_id: studentId,
+      course_name: c.course_name,
+      semester: c.semester,
+      score: c.score,
+      student_course_score_item: (c.score_items || []).map((it: any) => ({
+        id: it.id,
+        item_name: it.item_name,
+        weight: it.weight,
+        score: it.score,
+        remark: it.remark
+      }))
+    }));
+
+    // 软删除记录
+    const deletedItemsToSave = deletedScoreItemIds.value.map((delId) => ({
+      id: delId,
+      deleted: 1
+    }));
+    deletedScoreItemIds.value = [];
+
+    // 2. 构造干净、职责单一的 3 个独立业务模块保存列表 (与查询端 105/104/103 读写对齐)
+    const modulesToSave: any[] = [];
+
+    // 模块 105: 学生核心基本档案模块 (包含 student 与 1:1 伴生 student_profile)
+    modulesToSave.push({
+      moduleId: 105,
+      record: {
         student: formData.value.student,
-        student_profile: formData.value.student_profile,
-        student_course: formData.value.student_course,
-        student_award: formData.value.student_award
+        student_profile: formData.value.student_profile
       }
-    };
+    });
 
-    await engineApi.save(payload);
+    // 模块 104: 荣誉与奖项管理模块 (包含多条 student_award 记录)
+    const awardsList = (formData.value.student_award || []).map((a: any) => ({
+      student_award: {
+        id: a.id,
+        student_id: a.student_id || studentId,
+        award_name: a.award_name,
+        award_date: a.award_date,
+        level: a.level
+      }
+    }));
+    if (awardsList.length > 0) {
+      modulesToSave.push({
+        moduleId: 104,
+        records: awardsList
+      });
+    }
 
-    saveSuccessMessage.value = '学生全景综合档案已成功持久化保存！';
+    // 模块 103: 选课与考核明细管理模块 (包含多条选课及内嵌 student_course_score_item 分项)
+    if (coursesToSave.length > 0) {
+      modulesToSave.push({
+        moduleId: 103,
+        records: coursesToSave.map((c) => {
+          const sc: any = {
+            id: c.id,
+            student_id: c.student_id || studentId,
+            semester: c.semester,
+            score: c.score
+          };
+          if (c.course_id) {
+            sc.course_id = c.course_id;
+          }
+          return {
+            student_course: sc,
+            student_course_score_item: c.student_course_score_item
+          };
+        }).concat(
+          deletedItemsToSave.length > 0
+            ? [{ student_course: { id: coursesToSave[0]?.id || 1 }, student_course_score_item: deletedItemsToSave }]
+            : []
+        )
+      });
+    }
+
+    // 单次原子 HTTP 请求发起多模块批量保存 (由后端物理 DAG 拓扑调度与单事务强一致性保障)
+    await engineApi.batchSave({
+      modules: modulesToSave
+    });
+
+    saveSuccessMessage.value = '学生全景综合档案及课程考核构成明细已成功原子持久化保存！';
     setTimeout(() => {
       saveSuccessMessage.value = '';
     }, 2500);
+
+    // 重新加载一次当前 Tab 数据以刷新真实物理主键
+    await loadTabData(activeTab.value);
   } catch (err: any) {
     alert('保存失败: ' + err.message);
   } finally {
@@ -432,7 +561,10 @@ async function handleSave() {
                 <h2 class="student-name-title">{{ formData.student?.name }}</h2>
                 <span class="badge badge-indigo">学号: {{ formData.student?.student_no }}</span>
               </div>
-              <span class="student-clazz-text">{{ formData.clazz?.clazz_name }} ({{ formData.clazz?.grade }})</span>
+              <span v-if="formData.clazz?.clazz_name" class="student-clazz-text">
+                {{ formData.clazz.clazz_name }}<span v-if="formData.clazz?.grade" class="text-dim text-xs"> ({{ formData.clazz.grade }})</span>
+              </span>
+              <span v-else class="student-clazz-text text-dim text-xs">未分班级</span>
             </div>
           </div>
 
@@ -536,8 +668,6 @@ async function handleSave() {
               >
                 <BookOpen :size="16" />
                 <span>选课修读与各科成绩</span>
-                <span class="relation-tag tag-1-n">1:N</span>
-                <span class="tab-badge">{{ formData.student_course?.length || 0 }} 门</span>
               </button>
 
               <button
@@ -547,8 +677,6 @@ async function handleSave() {
               >
                 <Award :size="16" />
                 <span>荣誉表彰与获奖记录</span>
-                <span class="relation-tag tag-1-n">1:N</span>
-                <span class="tab-badge">{{ formData.student_award?.length || 0 }} 项</span>
               </button>
             </div>
 
@@ -699,44 +827,163 @@ async function handleSave() {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(c, idx) in filteredCourses" :key="c.id || idx">
-                  <td class="text-center text-dim font-mono text-xs">{{ Number(idx) + 1 }}</td>
-                  <td v-for="col in courseHeaders" :key="col.field">
-                    <input
-                      v-if="col.field === 'course_name'"
-                      v-model="c.course_name"
-                      type="text"
-                      class="sub-input"
-                      :disabled="!roleStore.canEdit('student_course', 'score')"
-                    />
-                    <input
-                      v-else-if="col.field === 'semester'"
-                      v-model="c.semester"
-                      type="text"
-                      class="sub-input"
-                      :disabled="!roleStore.canEdit('student_course', 'score')"
-                    />
-                    <div v-else-if="col.field === 'score'" class="score-input-wrapper justify-center">
+                <template v-for="(c, idx) in filteredCourses" :key="c.id || idx">
+                  <!-- 1. 课程主行 -->
+                  <tr class="master-course-row" :class="{ 'row-expanded': c._expanded !== false }">
+                    <td class="text-center">
+                      <div class="expand-index-cell">
+                        <button
+                          class="btn-toggle-expand"
+                          :title="c._expanded === false ? '展开考核分项' : '收起考核分项'"
+                          @click="c._expanded = !c._expanded"
+                        >
+                          <ChevronDown :size="13" :class="{ 'icon-collapsed': c._expanded === false }" />
+                        </button>
+                        <span class="index-num">{{ Number(idx) + 1 }}</span>
+                      </div>
+                    </td>
+                    <td v-for="col in courseHeaders" :key="col.field">
                       <input
-                        v-model.number="c.score"
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        max="100"
-                        class="sub-input score-input"
-                        :class="{ 'score-high': c.score >= 90, 'score-low': c.score < 60 }"
+                        v-if="col.field === 'course_name'"
+                        v-model="c.course_name"
+                        type="text"
+                        class="sub-input font-medium"
                         :disabled="!roleStore.canEdit('student_course', 'score')"
                       />
-                      <span class="score-unit">分</span>
-                    </div>
-                    <span v-else class="cell-text">{{ c[col.field] }}</span>
-                  </td>
-                  <td v-if="roleStore.canEdit('student_course', 'score')" class="text-center">
-                    <button class="delete-btn" title="删除课程记录" @click="removeCourseItem(c)">
-                      <Trash2 :size="14" />
-                    </button>
-                  </td>
-                </tr>
+                      <input
+                        v-else-if="col.field === 'semester'"
+                        v-model="c.semester"
+                        type="text"
+                        class="sub-input"
+                        :disabled="!roleStore.canEdit('student_course', 'score')"
+                      />
+                      <div v-else-if="col.field === 'score'" class="score-input-wrapper justify-center">
+                        <div class="composite-score-badge" :class="{ 'score-high': calculateCourseScore(c) >= 90, 'score-low': calculateCourseScore(c) < 60 }">
+                          <span class="score-val">{{ calculateCourseScore(c) }}</span>
+                          <span class="score-unit">分</span>
+                          <span v-if="c.score_items && c.score_items.length > 0" class="badge-auto-calc" title="由下方分项权重实时自动折算">加权</span>
+                        </div>
+                      </div>
+                      <span v-else class="cell-text">{{ c[col.field] }}</span>
+                    </td>
+                    <td v-if="roleStore.canEdit('student_course', 'score')" class="text-center">
+                      <button class="delete-btn" title="删除课程记录" @click="removeCourseItem(c)">
+                        <Trash2 :size="14" />
+                      </button>
+                    </td>
+                  </tr>
+
+                  <!-- 2. 嵌套子表格行（直接展开模式） -->
+                  <tr v-if="c._expanded !== false" class="nested-sub-row">
+                    <td :colspan="courseHeaders.length + (roleStore.canEdit('student_course', 'score') ? 2 : 1)" class="nested-sub-container">
+                      <div class="score-items-card">
+                        <div class="score-items-header">
+                          <div class="score-items-title">
+                            <span class="title-arrow">↳</span>
+                            <span class="title-text">成绩考核构成明细</span>
+                            <span class="items-count-pill">{{ c.score_items?.length || 0 }} 项考核</span>
+                          </div>
+
+                          <div class="score-items-actions">
+                            <span class="weight-total-hint" :class="{ 'weight-warn': getCourseTotalWeight(c) !== 100 }">
+                              权重合计: {{ getCourseTotalWeight(c) }}%
+                            </span>
+                            <button
+                              v-if="roleStore.canEdit('student_course', 'score')"
+                              class="btn-add-item"
+                              @click="addScoreItem(c)"
+                            >
+                              <Plus :size="12" />
+                              <span>添加考核分项</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <!-- 嵌套微型子表 -->
+                        <table class="mini-score-table">
+                          <thead>
+                            <tr>
+                              <th style="width: 36px;" class="text-center">#</th>
+                              <th>考核分项</th>
+                              <th style="width: 110px;" class="text-center">权重占比(%)</th>
+                              <th style="width: 120px;" class="text-center">分项得分(分)</th>
+                              <th style="width: 100px;" class="text-center">折合贡献</th>
+                              <th>评语 / 备注说明</th>
+                              <th v-if="roleStore.canEdit('student_course', 'score')" style="width: 50px;" class="text-center">操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(item, iIdx) in (c.score_items || [])" :key="item.id || iIdx">
+                              <td class="text-center font-mono text-dim text-xs">{{ Number(iIdx) + 1 }}</td>
+                              <td>
+                                <input
+                                  v-model="item.item_name"
+                                  type="text"
+                                  class="mini-input"
+                                  placeholder="如: 期中考试、课后作业..."
+                                  :disabled="!roleStore.canEdit('student_course', 'score')"
+                                />
+                              </td>
+                              <td class="text-center">
+                                <div class="mini-weight-box">
+                                  <input
+                                    v-model.number="item.weight"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="5"
+                                    class="mini-input text-center"
+                                    :disabled="!roleStore.canEdit('student_course', 'score')"
+                                  />
+                                  <span class="unit">%</span>
+                                </div>
+                              </td>
+                              <td class="text-center">
+                                <div class="mini-score-box">
+                                  <input
+                                    v-model.number="item.score"
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.5"
+                                    class="mini-input text-center font-bold"
+                                    :class="{ 'score-high': item.score >= 90, 'score-low': item.score < 60 }"
+                                    :disabled="!roleStore.canEdit('student_course', 'score')"
+                                  />
+                                  <span class="unit">分</span>
+                                </div>
+                              </td>
+                              <td class="text-center font-mono text-xs text-dim">
+                                <span class="contribution-tag">
+                                  +{{ ((Number(item.score) || 0) * (Number(item.weight) || 0) / 100).toFixed(1) }}分
+                                </span>
+                              </td>
+                              <td>
+                                <input
+                                  v-model="item.remark"
+                                  type="text"
+                                  class="mini-input"
+                                  placeholder="可选评语说明..."
+                                  :disabled="!roleStore.canEdit('student_course', 'score')"
+                                />
+                              </td>
+                              <td v-if="roleStore.canEdit('student_course', 'score')" class="text-center">
+                                <button class="delete-btn-xs" title="删除该分项" @click="removeScoreItem(c, iIdx)">
+                                  <Trash2 :size="12" />
+                                </button>
+                              </td>
+                            </tr>
+                            <tr v-if="!c.score_items || c.score_items.length === 0">
+                              <td :colspan="roleStore.canEdit('student_course', 'score') ? 7 : 6" class="text-center empty-mini">
+                                暂无考核分项明细，可直接在上方录入成绩或点击“添加考核分项”拆分构成
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
                 <tr v-if="filteredCourses.length === 0">
                   <td :colspan="courseHeaders.length + (roleStore.canEdit('student_course', 'score') ? 2 : 1)" class="text-center empty-sub">
                     暂无选课修读记录
@@ -1444,5 +1691,287 @@ input[type="date"].sub-input {
 
 .btn-confirm:hover {
   background: #1d4ed8;
+}
+
+/* ===== 1:N:N 嵌套考核小项展开行样式 ===== */
+.expand-index-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.btn-toggle-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.btn-toggle-expand:hover {
+  background: #dbeafe;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+
+.icon-collapsed {
+  transform: rotate(-90deg);
+}
+
+.index-num {
+  font-family: monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.master-course-row.row-expanded {
+  background: rgba(241, 245, 249, 0.4);
+}
+
+.master-course-row.row-expanded td {
+  border-bottom-color: #e2e8f0;
+}
+
+.composite-score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+}
+
+.composite-score-badge.score-high {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.composite-score-badge.score-low {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.score-val {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.badge-auto-calc {
+  font-size: 10px;
+  font-weight: 600;
+  background: #eff6ff;
+  color: #2563eb;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid #bfdbfe;
+}
+
+/* 嵌套子表格外壳卡片 */
+.nested-sub-row {
+  background: #fafafa;
+}
+
+.nested-sub-container {
+  padding: 8px 18px 16px 44px !important;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.score-items-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.score-items-header {
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.score-items-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.title-arrow {
+  color: #3b82f6;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.title-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.items-count-pill {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+  background: #e2e8f0;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.score-items-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.weight-total-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: #059669;
+}
+
+.weight-total-hint.weight-warn {
+  color: #d97706;
+}
+
+.btn-add-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-add-item:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+/* 微型考核表格 */
+.mini-score-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mini-score-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 8px 10px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  text-align: left;
+}
+
+.mini-score-table td {
+  padding: 6px 10px !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  vertical-align: middle;
+  font-size: 12px;
+}
+
+.mini-score-table tbody tr:last-child td {
+  border-bottom: none !important;
+}
+
+.mini-score-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.mini-input {
+  width: 100%;
+  height: 28px;
+  padding: 3px 8px;
+  font-size: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: #ffffff;
+  color: #1e293b;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.mini-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.mini-input:disabled {
+  background-color: #f8fafc;
+  color: #64748b;
+  cursor: not-allowed;
+  border-color: #f1f5f9;
+}
+
+.mini-weight-box, .mini-score-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-weight-box .mini-input, .mini-score-box .mini-input {
+  width: 60px;
+}
+
+.mini-weight-box .unit, .mini-score-box .unit {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.contribution-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #f1f5f9;
+  border-radius: 3px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.delete-btn-xs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.delete-btn-xs:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.empty-mini {
+  padding: 16px !important;
+  color: #94a3b8;
+  font-size: 12px;
 }
 </style>

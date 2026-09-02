@@ -37,6 +37,9 @@ public class SysModule {
     /** 模块描述 */
     private String moduleDesc;
 
+    /** 父模块 ID (0 表示根模块) */
+    private Long parentId;
+
     /** 排序顺序 */
     private Integer sortOrder;
 

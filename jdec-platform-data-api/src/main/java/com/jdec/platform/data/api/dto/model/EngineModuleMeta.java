@@ -1,9 +1,9 @@
 package com.jdec.platform.data.api.dto.model;
 
-import com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleStatusDTO;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.Map;
@@ -35,11 +35,11 @@ public class EngineModuleMeta {
     @Schema(description = "主表名称")
     private String primaryTable;
 
-    @Schema(description = "模块关联表列表")
-    private List<ModuleTableDTO> tables;
+    @Schema(description = "全局物理表关联关系列表")
+    private List<TableRelationDTO> tableRelations;
 
     @Schema(description = "物理字段字典列表")
-    private List<ModuleSimpleFieldDTO> fields;
+    private List<ModuleFieldDTO> fields;
 
     @Schema(description = "列表表头与检索配置（已结合当前用户角色权限裁剪）")
     private List<ModuleTableHeaderDTO> headers;

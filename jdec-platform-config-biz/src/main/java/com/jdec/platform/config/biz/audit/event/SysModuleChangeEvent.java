@@ -2,7 +2,7 @@ package com.jdec.platform.config.biz.audit.event;
 
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import lombok.Getter;
 
 /**
@@ -29,7 +29,7 @@ public class SysModuleChangeEvent {
     private final SaveModuleReq newSaveRequest;
 
     // 删除场景属性
-    private final SysModuleCompleteResp deletedCompleteData;
+    private final SysModuleMetaResp deletedCompleteData;
 
     // 移动场景属性
     private final MoveModuleReq moveRequest;
@@ -63,7 +63,7 @@ public class SysModuleChangeEvent {
             String projectNo,
             Long subjectId,
             Long moduleId,
-            SysModuleCompleteResp deletedCompleteData) {
+            SysModuleMetaResp deletedCompleteData) {
         return new SysModuleChangeEvent(
                 EventType.DELETE,
                 moduleId,
@@ -108,7 +108,7 @@ public class SysModuleChangeEvent {
             Long subjectId,
             SaveModuleReq oldSaveRequest,
             SaveModuleReq newSaveRequest,
-            SysModuleCompleteResp deletedCompleteData,
+            SysModuleMetaResp deletedCompleteData,
             MoveModuleReq moveRequest,
             String moduleName,
             String oldParentName,

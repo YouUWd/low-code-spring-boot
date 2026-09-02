@@ -35,13 +35,13 @@ public class SaveRoleModuleFieldPermissionReq implements Serializable {
         @NotNull(message = "模块ID不能为空")
         private Long moduleId;
 
-        @Schema(description = "可读字段ID列表")
-        private List<Long> readableFields;
+        @Schema(description = "可查看(浏览)字段ID列表")
+        private List<Long> viewFields;
 
-        @Schema(description = "可写(新增)字段ID列表")
-        private List<Long> writableFields;
+        @Schema(description = "可申请(填报新增)字段ID列表")
+        private List<Long> applyFields;
 
-        @Schema(description = "可更新字段ID列表")
-        private List<Long> updatableFields;
+        @Schema(description = "可编辑(修改)字段ID列表")
+        private List<Long> editFields;
     }
 }

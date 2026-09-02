@@ -70,9 +70,9 @@ export const useRoleStore = defineStore('roleStore', () => {
         permMap[key] = {
           tableName: item.tableName,
           columnName: item.columnName,
-          apply: Number(item.apply ?? 1),
-          view: Number(item.view ?? 1),
-          edit: Number(item.edit ?? 1)
+          apply: Number(item.writable ?? item.apply ?? 1),
+          view: Number(item.readable ?? item.view ?? 1),
+          edit: Number(item.updatable ?? item.edit ?? 1)
         };
       }
     });
@@ -89,24 +89,40 @@ export const useRoleStore = defineStore('roleStore', () => {
     return true; // 默认可见
   }
 
-  /** 判断当前角色对特定物理列是否可编辑修改 (edit)，100% 以 meta.permissions 为准 */
+  /** 判断当前角色对特定物理列是否可编辑修改 (edit) */
   function canEdit(tableName: string, columnName: string): boolean {
+    // 1. 管理员角色默认全开
+    if (currentRoleId.value === 1 || currentRole.value?.code === 'ADMIN') {
+      return true;
+    }
+    // 2. 若当前模块未配置细粒度权限，默认开放编辑
+    if (Object.keys(dynamicPermissions.value).length === 0) {
+      return true;
+    }
     const key = `${tableName}.${columnName}`;
     const perm = dynamicPermissions.value[key];
     if (perm !== undefined) {
       return perm.edit === 1;
     }
-    return false; // 未授权默认只读不可编辑
+    return false; // 已配置权限但未授权该字段，则只读
   }
 
-  /** 判断当前角色对特定物理列是否可新增申请填报 (apply)，100% 以 meta.permissions 为准 */
+  /** 判断当前角色对特定物理列是否可新增申请填报 (apply) */
   function canApply(tableName: string, columnName: string): boolean {
+    // 1. 管理员角色默认全开
+    if (currentRoleId.value === 1 || currentRole.value?.code === 'ADMIN') {
+      return true;
+    }
+    // 2. 若当前模块未配置细粒度权限，默认开放申请
+    if (Object.keys(dynamicPermissions.value).length === 0) {
+      return true;
+    }
     const key = `${tableName}.${columnName}`;
     const perm = dynamicPermissions.value[key];
     if (perm !== undefined) {
       return perm.apply === 1;
     }
-    return false; // 未授权默认不可申请
+    return false; // 已配置权限但未授权该字段，则不可申请
   }
 
   /** 判断当前上下文或指定表中是否有任意字段具备编辑权限 */

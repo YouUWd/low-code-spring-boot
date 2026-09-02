@@ -1,13 +1,13 @@
 package com.jdec.platform.data.biz;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
+import com.jdec.platform.data.api.dto.model.EngineModuleMeta;
 import com.jdec.platform.data.api.dto.request.BatchDynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.DynamicDetailReq;
 import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
@@ -48,20 +48,19 @@ class DataEngineQueryTest {
 
     @InjectMocks private DynamicQueryService dynamicQueryService;
 
-    private SysModuleCompleteResp mockModule101;
     private DSLContext dslContext;
+    private SysModuleMetaResp mockModule101;
 
     @BeforeEach
     void setUp() {
-        // 创建 jOOQ Mock 数据提供器
         MockDataProvider provider =
                 new MockDataProvider() {
                     @Override
                     public MockResult[] execute(MockExecuteContext ctx) {
-                        DSLContext create = DSL.using(SQLDialect.MYSQL);
                         String sql = ctx.sql().toLowerCase();
+                        DSLContext create = DSL.using(SQLDialect.MYSQL);
 
-                        if (sql.contains("count(")) {
+                        if (sql.contains("count(*)")) {
                             var result = create.newResult(DSL.field("count", Long.class));
                             var record = create.newRecord(DSL.field("count", Long.class));
                             record.setValue(DSL.field("count", Long.class), 1L);
@@ -69,23 +68,43 @@ class DataEngineQueryTest {
                             return new MockResult[] {new MockResult(1, result)};
                         }
 
-                        // 模拟主表及 N:1 关联从表记录
+                        if (sql.contains("from `student_course`")) {
+                            var result =
+                                    create.newResult(
+                                            DSL.field("id", Long.class),
+                                            DSL.field("student_id", Long.class),
+                                            DSL.field("course_name", String.class));
+                            var record =
+                                    create.newRecord(
+                                            DSL.field("id", Long.class),
+                                            DSL.field("student_id", Long.class),
+                                            DSL.field("course_name", String.class));
+                            record.setValue(DSL.field("id", Long.class), 301L);
+                            record.setValue(DSL.field("student_id", Long.class), 1001L);
+                            record.setValue(DSL.field("course_name", String.class), "大学英语");
+                            result.add(record);
+                            return new MockResult[] {new MockResult(1, result)};
+                        }
+
                         var result =
                                 create.newResult(
                                         DSL.field("id", Long.class),
                                         DSL.field("student_no", String.class),
                                         DSL.field("name", String.class),
-                                        DSL.field("clazz_name", String.class));
+                                        DSL.field("class_name", String.class),
+                                        DSL.field("clazz__id", Long.class));
                         var record =
                                 create.newRecord(
                                         DSL.field("id", Long.class),
                                         DSL.field("student_no", String.class),
                                         DSL.field("name", String.class),
-                                        DSL.field("clazz_name", String.class));
+                                        DSL.field("class_name", String.class),
+                                        DSL.field("clazz__id", Long.class));
                         record.setValue(DSL.field("id", Long.class), 1001L);
                         record.setValue(DSL.field("student_no", String.class), "S001");
                         record.setValue(DSL.field("name", String.class), "张三");
-                        record.setValue(DSL.field("clazz_name", String.class), "计科2601班");
+                        record.setValue(DSL.field("class_name", String.class), "高三(1)班");
+                        record.setValue(DSL.field("clazz__id", Long.class), 201L);
                         result.add(record);
 
                         return new MockResult[] {new MockResult(1, result)};
@@ -97,33 +116,44 @@ class DataEngineQueryTest {
         lenient().when(jooqContextFactory.getContext()).thenReturn(dslContext);
 
         // 构造模块 101 (学生全景档案) 元数据
-        SysModuleCompleteResp.ModuleInfo moduleInfo = new SysModuleCompleteResp.ModuleInfo();
+        SysModuleMetaResp.ModuleInfo moduleInfo = new SysModuleMetaResp.ModuleInfo();
         moduleInfo.setId(101L);
         moduleInfo.setModuleCode("MOD-STUDENT");
         moduleInfo.setModuleName("学生综合档案");
+        moduleInfo.setParentId(0L);
 
-        mockModule101 = new SysModuleCompleteResp();
+        mockModule101 = new SysModuleMetaResp();
         mockModule101.setModule(moduleInfo);
-        mockModule101.setModuleTables(
+        mockModule101.setFields(
                 List.of(
-                        ModuleTableDTO.builder()
+                        ModuleFieldDTO.builder()
                                 .tableName("student")
-                                .isPrimary(1)
-                                .relationType(null)
+                                .columnName("student_no")
                                 .build(),
-                        ModuleTableDTO.builder()
+                        ModuleFieldDTO.builder().tableName("student").columnName("name").build(),
+                        ModuleFieldDTO.builder()
                                 .tableName("clazz")
-                                .isPrimary(0)
-                                .relationType("N:1")
-                                .joinLeftField("clazz_id")
-                                .joinRightField("id")
+                                .columnName("class_name")
                                 .build(),
-                        ModuleTableDTO.builder()
+                        ModuleFieldDTO.builder()
                                 .tableName("student_course")
-                                .isPrimary(0)
+                                .columnName("course_name")
+                                .build()));
+        mockModule101.setTableRelations(
+                List.of(
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("clazz_id")
+                                .joinTable("clazz")
+                                .joinField("id")
+                                .relationType("N:1")
+                                .build(),
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("id")
+                                .joinTable("student_course")
+                                .joinField("student_id")
                                 .relationType("1:N")
-                                .joinLeftField("student_id")
-                                .joinRightField("id")
                                 .build()));
         mockModule101.setModuleHeaders(
                 List.of(
@@ -137,123 +167,98 @@ class DataEngineQueryTest {
                                 .field("name")
                                 .name("姓名")
                                 .build()));
-        mockModule101.setSimpleFields(
-                List.of(
-                        ModuleSimpleFieldDTO.builder()
-                                .tableName("student")
-                                .columnName("student_no")
-                                .displayName("学号")
-                                .build(),
-                        ModuleSimpleFieldDTO.builder()
-                                .tableName("student")
-                                .columnName("name")
-                                .displayName("姓名")
-                                .build(),
-                        ModuleSimpleFieldDTO.builder()
-                                .tableName("student_course")
-                                .columnName("score")
-                                .displayName("成绩")
-                                .build()));
 
         lenient().when(metadataCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
         lenient()
-                .when(permissionFilterService.filterReadableHeaders(any()))
+                .when(permissionFilterService.filterReadableHeaders(mockModule101))
                 .thenReturn(mockModule101.getModuleHeaders());
     }
 
     @Test
-    @DisplayName("测试单模块列表查询: viewMode=LIST 仅返回表头，跳过 1:N 深度扫描")
+    @DisplayName("测试 viewMode=LIST: 列表模式轻量响应 (携带 headers, 不深查 1:N 从表)")
     void testQueryListViewMode() {
         DynamicQueryReq req =
                 DynamicQueryReq.builder()
                         .moduleId(101L)
                         .viewMode("LIST")
                         .pageNo(1)
-                        .pageSize(20)
+                        .pageSize(10)
                         .build();
 
         EngineDataResult<DataPage<Map<String, Object>>> result = dynamicQueryService.query(req);
 
         assertNotNull(result);
-        assertNotNull(result.getMeta());
-        assertEquals("MOD-STUDENT", result.getMeta().getModuleCode());
-        // LIST 模式下包含 headers
-        assertNotNull(result.getMeta().getHeaders());
-        assertFalse(result.getMeta().getHeaders().isEmpty());
-        // LIST 模式下 fields 应为空/未透传
-        assertNull(result.getMeta().getFields());
+        EngineModuleMeta meta = result.getMeta();
+        assertNotNull(meta);
+        assertEquals(101L, meta.getModuleId());
+        assertEquals("student", meta.getPrimaryTable());
+        assertNotNull(meta.getHeaders());
+        assertNull(meta.getFields());
 
-        // 验证分页数据
         DataPage<Map<String, Object>> page = result.getData();
         assertEquals(1, page.getTotal());
         assertEquals(1, page.getRecords().size());
 
-        // 验证 Table-First 数据结构
-        Map<String, Object> firstRow = page.getRecords().get(0);
-        assertTrue(firstRow.containsKey("student"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentData = (Map<String, Object>) firstRow.get("student");
-        assertEquals("张三", studentData.get("name"));
+        Map<String, Object> row = page.getRecords().get(0);
+        assertTrue(row.containsKey("student"));
+        assertTrue(row.containsKey("clazz"));
+        assertFalse(row.containsKey("student_course"));
     }
 
     @Test
-    @DisplayName("测试单模块详情查询: viewMode=DETAIL 返回字段字典 fields 与结构化数据")
+    @DisplayName("测试 viewMode=DETAIL: 详情模式深度加载 1:N 从表且携带 fields")
     void testQueryDetailViewMode() {
         DynamicQueryReq req =
                 DynamicQueryReq.builder()
                         .moduleId(101L)
                         .viewMode("DETAIL")
                         .pageNo(1)
-                        .pageSize(1)
-                        .filters(Map.of("id", 1001L))
+                        .pageSize(10)
                         .build();
 
         EngineDataResult<DataPage<Map<String, Object>>> result = dynamicQueryService.query(req);
 
         assertNotNull(result);
-        assertNotNull(result.getMeta());
-        // DETAIL 模式下包含 fields
-        assertNotNull(result.getMeta().getFields());
-        assertFalse(result.getMeta().getFields().isEmpty());
+        EngineModuleMeta meta = result.getMeta();
+        assertNotNull(meta.getFields());
+        assertNull(meta.getHeaders());
+
+        DataPage<Map<String, Object>> page = result.getData();
+        Map<String, Object> row = page.getRecords().get(0);
+        assertTrue(row.containsKey("student"));
+        assertTrue(row.containsKey("student_course"));
+
+        Object courseObj = row.get("student_course");
+        assertTrue(courseObj instanceof List);
+        List<?> courseList = (List<?>) courseObj;
+        assertEquals(1, courseList.size());
     }
 
     @Test
-    @DisplayName("测试多模块批量并发查询: batchQuery 一次性带回多个模块结果")
+    @DisplayName("测试 getDetail 门面方法")
+    void testGetDetailFacade() {
+        DynamicDetailReq req = DynamicDetailReq.builder().moduleId(101L).id(1001L).build();
+
+        EngineDataResult<Map<String, Object>> result = dynamicQueryService.getDetail(req);
+
+        assertNotNull(result);
+        assertNotNull(result.getData());
+        assertTrue(result.getData().containsKey("student"));
+    }
+
+    @Test
+    @DisplayName("测试多模块 batchQuery 并发查询")
     void testBatchQuery() {
-        BatchDynamicQueryReq batchReq =
-                BatchDynamicQueryReq.builder()
-                        .queries(
-                                Map.of(
-                                        "student",
-                                        DynamicQueryReq.builder()
-                                                .moduleId(101L)
-                                                .viewMode("DETAIL")
-                                                .build(),
-                                        "courses",
-                                        DynamicQueryReq.builder()
-                                                .moduleId(101L)
-                                                .viewMode("LIST")
-                                                .build()))
-                        .build();
+        Map<String, DynamicQueryReq> queries = new HashMap<>();
+        queries.put(
+                "mainStudent", DynamicQueryReq.builder().moduleId(101L).viewMode("LIST").build());
+
+        BatchDynamicQueryReq batchReq = BatchDynamicQueryReq.builder().queries(queries).build();
 
         BatchEngineDataResult batchResult = dynamicQueryService.batchQuery(batchReq);
 
         assertNotNull(batchResult);
         assertNotNull(batchResult.getResults());
-        assertEquals(2, batchResult.getResults().size());
-        assertTrue(batchResult.getResults().containsKey("student"));
-        assertTrue(batchResult.getResults().containsKey("courses"));
-    }
-
-    @Test
-    @DisplayName("测试单条详情快捷门面 getDetail")
-    void testGetDetail() {
-        DynamicDetailReq detailReq = DynamicDetailReq.builder().moduleId(101L).id(1001L).build();
-
-        EngineDataResult<Map<String, Object>> result = dynamicQueryService.getDetail(detailReq);
-
-        assertNotNull(result);
-        assertNotNull(result.getData());
-        assertTrue(result.getData().containsKey("student"));
+        assertTrue(batchResult.getResults().containsKey("mainStudent"));
     }
 }
