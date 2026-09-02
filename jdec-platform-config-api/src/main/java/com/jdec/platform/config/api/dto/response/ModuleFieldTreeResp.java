@@ -11,12 +11,15 @@ public class ModuleFieldTreeResp {
     @Schema(description = "字段ID（更新或删除配置时使用，为 simpleFieldId 或 combineFieldId）", example = "1")
     private Long id;
 
-    @Schema(description = "字段编码（简单字段对应 columnName，组合字段对应 logicalField）", example = "student_no")
-    private String fieldCode;
+    @Schema(description = "模块ID", example = "1001")
+    private Long moduleId;
 
-    @Schema(description = "字段名称（简单字段映射为物理 displayName，组合字段为显示名称）", example = "学号")
-    private String fieldName;
+    @Schema(description = "物理表名", example = "student")
+    private String tableName;
 
-    @Schema(description = "是否是组合字段：0-否（简单物理字段），1-是（复合组合字段）", example = "0")
-    private Integer combineFlag;
+    @Schema(description = "物理表列名", example = "student_no")
+    private String columnName;
+
+    @Schema(description = "字段显示名称", example = "学号")
+    private String displayName;
 }

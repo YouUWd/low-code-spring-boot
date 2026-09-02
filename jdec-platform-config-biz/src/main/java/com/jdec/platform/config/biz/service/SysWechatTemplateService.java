@@ -375,7 +375,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
                 resp.setFieldName(
                         field.getDisplayName() != null
                                 ? field.getDisplayName()
-                                : field.getFieldCode());
+                                : field.getColumnName());
             }
         }
 
@@ -555,7 +555,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
                                         f.getId(),
                                         f.getDisplayName() != null
                                                 ? f.getDisplayName()
-                                                : f.getFieldCode()));
+                                                : f.getColumnName()));
             }
         }
 
