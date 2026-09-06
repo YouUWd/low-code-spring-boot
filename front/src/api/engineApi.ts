@@ -10,6 +10,9 @@ export interface HeaderMeta {
   width?: number;
   searchType?: string;
   sortable?: boolean;
+  modulePath?: number[];
+  sortOrder?: number;
+  moduleId?: number; // 可选兼容别名
 }
 
 export interface FieldMeta {
@@ -19,11 +22,22 @@ export interface FieldMeta {
   sortOrder?: number;
 }
 
+export interface ModuleNodeMeta {
+  id: number;
+  parentId: number;
+  moduleCode: string;
+  moduleName: string;
+  primaryTable?: string;
+  sortOrder?: number;
+}
+
 export interface EngineModuleMeta {
   moduleId: number;
   moduleCode: string;
   moduleName: string;
+  moduleDesc?: string;
   primaryTable: string;
+  moduleNodes?: ModuleNodeMeta[];
   headers?: HeaderMeta[];
   fields?: FieldMeta[];
   permissions?: any[];
@@ -81,16 +95,83 @@ async function requestBackend(url: string, options: RequestInit = {}): Promise<a
   throw new Error(json.msg || json.message || '后端请求失败');
 }
 
+export interface DynamicFilterItem {
+  moduleId?: number;
+  modulePath?: number[];
+  tableName?: string;
+  columnName: string;
+  value: any;
+  operator?: string;
+}
+
+export interface DynamicSortItem {
+  moduleId: number;
+  tableName: string;
+  columnName: string;
+  direction?: 'ASC' | 'DESC';
+}
+
+/**
+ * 辅助函数：根据表头列定义与筛选值构建 DynamicFilterItem
+ */
+export function buildFilterItem(col: HeaderMeta, value: any, rootModuleId?: number): DynamicFilterItem | null {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const targetModuleId = col.moduleId || (col.modulePath && col.modulePath[col.modulePath.length - 1]) || rootModuleId;
+  const operator = col.searchType === 'select' || col.searchType === 'singleSelect' ? 'EQ' : 'LIKE';
+  return {
+    moduleId: targetModuleId,
+    modulePath: col.modulePath,
+    tableName: col.table,
+    columnName: col.field,
+    value: String(value).trim(),
+    operator
+  };
+}
+
+/**
+ * 辅助函数：根据表头列定义与排序方向构建 DynamicSortItem
+ */
+export function buildSortItem(col: HeaderMeta, direction: 'asc' | 'desc' | 'ASC' | 'DESC', rootModuleId?: number): DynamicSortItem {
+  const targetModuleId = col.moduleId || (col.modulePath && col.modulePath[0]) || rootModuleId || 101;
+  return {
+    moduleId: targetModuleId,
+    tableName: col.table,
+    columnName: col.field,
+    direction: direction.toUpperCase() as 'ASC' | 'DESC'
+  };
+}
+
+export interface DynamicOptionReq {
+  moduleId: number;
+  tableName: string;
+  columnName: string;
+  keyword?: string;
+}
+
+export interface DynamicOptionItem {
+  label: string;
+  value: any;
+}
+
 export const engineApi = {
-  /** 动态数据集/列表查询 (统一走通用数据引擎) */
+  /** 获取当前模块字段的下拉候选项列表 (支持 label-value 与 keyword 模糊过滤) */
+  async getOptions(req: DynamicOptionReq): Promise<DynamicOptionItem[]> {
+    const endpoint = '/api/data/engine/options';
+    const remoteResp = await requestBackend(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(req)
+    });
+    return Array.isArray(remoteResp) ? remoteResp : [];
+  },
+
+  /** 动态数据集/列表查询 (统一走通用数据引擎，filters 与 sorts 均为结构化对象列表) */
   async query(req: {
     moduleId: number;
-    viewMode?: 'LIST' | 'DETAIL' | 'ALL';
+    viewMode?: 'LIST' | 'DETAIL';
     pageNo?: number;
     pageSize?: number;
-    filters?: Record<string, any>;
-    orderBy?: string;
-    orderDirection?: 'ASC' | 'DESC';
+    filters?: DynamicFilterItem[];
+    sorts?: DynamicSortItem[];
   }): Promise<EngineDataResult<DataPage<any>>> {
     const endpoint = '/api/data/engine/query';
     const remoteData = await requestBackend(endpoint, {
@@ -141,7 +222,7 @@ export const engineApi = {
       method: 'POST',
       body: JSON.stringify({
         moduleId: 105,
-        filters: { id },
+        filters: [{ moduleId: 105, tableName: 'student', columnName: 'id', value: id, operator: 'EQ' }],
         viewMode: 'DETAIL',
         pageNo: 1,
         pageSize: 1
@@ -149,10 +230,12 @@ export const engineApi = {
     });
     const records = res?.data?.records || res?.records || [];
     const record = records[0] || {};
+    // 兼容形态 A: record['105'].student / record['101'].student 或平铺 record.student
+    const modSpace = record['105'] || record['101'] || record;
     return {
-      student: record.student || {},
-      clazz: record.clazz || {},
-      student_profile: record.student_profile || {}
+      student: modSpace.student || record.student || {},
+      clazz: modSpace.clazz || record.clazz || {},
+      student_profile: modSpace.student_profile || record.student_profile || {}
     };
   },
 
@@ -162,7 +245,7 @@ export const engineApi = {
       method: 'POST',
       body: JSON.stringify({
         moduleId: 102,
-        filters: { id },
+        filters: [{ moduleId: 102, tableName: 'course', columnName: 'id', value: id, operator: 'EQ' }],
         viewMode: 'DETAIL',
         pageNo: 1,
         pageSize: 1
@@ -170,11 +253,13 @@ export const engineApi = {
     });
     const records = res?.data?.records || res?.records || [];
     const record = records[0] || {};
+    // 兼容形态 A: record['102'] 或平铺 record
+    const modSpace = record['102'] || record;
     return {
-      course: record.course || {},
-      teacher: record.teacher || {},
-      course_syllabus: record.course_syllabus || {},
-      course_schedule: record.course_schedule || []
+      course: modSpace.course || record.course || {},
+      teacher: modSpace.teacher || record.teacher || {},
+      course_syllabus: modSpace.course_syllabus || record.course_syllabus || {},
+      course_schedule: modSpace.course_schedule || record.course_schedule || []
     };
   },
 
@@ -182,15 +267,17 @@ export const engineApi = {
   async queryStudentCourses(studentId: number): Promise<{ headers: HeaderMeta[]; records: any[] }> {
     const res = await this.query({
       moduleId: 103,
-      viewMode: 'ALL',
-      filters: { student_id: studentId },
+      viewMode: 'DETAIL',
+      filters: [{ moduleId: 103, tableName: 'student_course', columnName: 'student_id', value: studentId, operator: 'EQ' }],
       pageNo: 1,
       pageSize: 50
     });
     const records = res?.data?.records || [];
     const courseList = records.map((r: any) => {
-      const sc = r.student_course || {};
-      const course = r.course || {};
+      // 兼容形态 A: r['103'].student_course 或平铺 r.student_course
+      const modSpace = r['103'] || r;
+      const sc = modSpace.student_course || r.student_course || {};
+      const course = modSpace.course || r.course || {};
       const base = typeof r === 'object' ? r : {};
 
       const c = {
@@ -202,10 +289,15 @@ export const engineApi = {
         score: sc.score !== undefined ? sc.score : base.score
       };
       c._expanded = true; // 默认直接展开
-      // 直接消费后端 fetchOneToManyTables 级联返回的 1:N 孙级数组
-      c.score_items = Array.isArray(r.student_course_score_item)
-        ? r.student_course_score_item
-        : (c.score_items || []);
+      // 直接消费后端返回的 1:N 考核分项数组 (兼容 modSpace / sc / r 等多形态)
+      const rawScoreItems =
+        (Array.isArray(modSpace.student_course_score_item) && modSpace.student_course_score_item) ||
+        (Array.isArray(sc.student_course_score_item) && sc.student_course_score_item) ||
+        (Array.isArray(r.student_course_score_item) && r.student_course_score_item) ||
+        (Array.isArray(c.score_items) && c.score_items) ||
+        [];
+      c.score_items = rawScoreItems;
+      c.student_course_score_item = rawScoreItems;
       return c;
     });
 
@@ -219,14 +311,17 @@ export const engineApi = {
   async queryStudentAwards(studentId: number): Promise<{ headers: HeaderMeta[]; records: any[] }> {
     const res = await this.query({
       moduleId: 104,
-      filters: { student_id: studentId },
+      filters: [{ moduleId: 104, tableName: 'student_reward', columnName: 'student_id', value: studentId, operator: 'EQ' }],
       pageNo: 1,
       pageSize: 50
     });
     const records = res?.data?.records || [];
     return {
       headers: res?.meta?.headers || [],
-      records: records.map((r: any) => r.student_award || r)
+      records: records.map((r: any) => {
+        const modSpace = r['104'] || r;
+        return modSpace.student_award || r.student_award || r;
+      })
     };
   }
 };

@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { useRoleStore } from '../stores/roleStore';
-import { engineApi, type HeaderMeta } from '../api/engineApi';
+import {
+  engineApi,
+  type HeaderMeta,
+  type DynamicFilterItem,
+  type DynamicSortItem
+} from '../api/engineApi';
 import DynamicTable from '../components/DynamicTable.vue';
 import DynamicDetailDrawer from '../components/DynamicDetailDrawer.vue';
 import { GraduationCap, ShieldAlert, Sparkles } from 'lucide-vue-next';
@@ -10,18 +15,25 @@ const roleStore = useRoleStore();
 
 const loading = ref(false);
 const headers = ref<HeaderMeta[]>([]);
+const moduleMeta = ref<any>(null);
 const records = ref<any[]>([]);
 const activeRecord = ref<any>(null);
 const isDrawerVisible = ref(false);
+const currentFilters = ref<DynamicFilterItem[]>([]);
+const currentSorts = ref<DynamicSortItem[]>([]);
 
-async function loadData(keyword = '') {
+async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sorts: DynamicSortItem[] = currentSorts.value) {
   loading.value = true;
+  currentFilters.value = filters;
+  currentSorts.value = sorts;
   try {
     const res = await engineApi.query({
       moduleId: 101,
       viewMode: 'LIST',
-      filters: { keyword }
+      filters: currentFilters.value,
+      sorts: currentSorts.value
     });
+    moduleMeta.value = res.meta;
     if (res.meta.headers) {
       headers.value = res.meta.headers;
     }
@@ -29,6 +41,10 @@ async function loadData(keyword = '') {
   } finally {
     loading.value = false;
   }
+}
+
+function handleQueryChange(payload: { filters: DynamicFilterItem[]; sorts: DynamicSortItem[] }) {
+  loadData(payload.filters, payload.sorts);
 }
 
 // 监听角色切换，即时刷新元数据与数据
@@ -97,10 +113,12 @@ function handleViewDetail(row: any) {
     <DynamicTable
       title="学生名册列表 (viewMode: LIST)"
       :headers="headers"
+      :meta="moduleMeta"
       :records="records"
       :loading="loading"
       @view-detail="handleViewDetail"
-      @search="loadData"
+      @query-change="handleQueryChange"
+      @search="loadData()"
     />
 
     <!-- Detail Drawer -->

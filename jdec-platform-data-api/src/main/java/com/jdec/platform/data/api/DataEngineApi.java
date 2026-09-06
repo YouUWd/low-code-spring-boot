@@ -3,12 +3,15 @@ package com.jdec.platform.data.api;
 import com.jdec.platform.data.api.dto.request.BatchDynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.BatchDynamicSaveReq;
 import com.jdec.platform.data.api.dto.request.DynamicDetailReq;
+import com.jdec.platform.data.api.dto.request.DynamicOptionReq;
 import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.data.api.dto.response.BatchEngineDataResult;
 import com.jdec.platform.data.api.dto.response.BatchSaveResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.dto.response.DynamicOptionItem;
 import com.jdec.platform.data.api.dto.response.EngineDataResult;
+import java.util.List;
 import java.util.Map;
 
 /** 数据引擎核心接口 统一封装元数据获取与数据读写，业务层无需穿透依赖 config 层 */
@@ -18,6 +21,9 @@ public interface DataEngineApi {
 
     /** 通用动态数据集查询 (支持 viewMode: LIST/DETAIL/ALL 自适应决定结构与元数据) */
     EngineDataResult<DataPage<Map<String, Object>>> query(DynamicQueryReq req);
+
+    /** 通用字段搜索下拉候选项查询 (获取当前模块上下文下的去重候选值列表) */
+    List<DynamicOptionItem> getOptions(DynamicOptionReq req);
 
     /** 多模块批量并发查询 (用于多 Tab 详情页、仪表盘等场景一次性加载) */
     BatchEngineDataResult batchQuery(BatchDynamicQueryReq req);

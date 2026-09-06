@@ -37,6 +37,9 @@ public class SysModule {
     /** 模块描述 */
     private String moduleDesc;
 
+    /** 物理主表名 (显式必填配置，定义模块核心主干实体) */
+    private String primaryTable;
+
     /** 父模块 ID (0 表示根模块) */
     private Long parentId;
 

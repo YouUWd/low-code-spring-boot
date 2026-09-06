@@ -31,4 +31,12 @@ public class DataPage<T> {
             Integer pageNo, Integer pageSize, Long total, List<T> records) {
         return new DataPage<>(pageNo, pageSize, total, records);
     }
+
+    public static <T> DataPage<T> empty(Integer pageNo, Integer pageSize) {
+        return new DataPage<>(
+                pageNo != null ? pageNo : 1,
+                pageSize != null ? pageSize : 20,
+                0L,
+                java.util.Collections.emptyList());
+    }
 }

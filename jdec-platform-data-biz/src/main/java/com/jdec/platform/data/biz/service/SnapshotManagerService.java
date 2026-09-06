@@ -2,6 +2,7 @@ package com.jdec.platform.data.biz.service;
 
 import com.alibaba.fastjson2.JSON;
 import com.jdec.platform.data.api.DataSnapshotApi;
+import com.jdec.platform.data.api.dto.request.DynamicDetailReq;
 import com.jdec.platform.data.api.dto.request.DynamicSnapshotTriggerReq;
 import com.jdec.platform.data.api.dto.response.DataSnapshotResp;
 import com.jdec.platform.data.api.dto.response.VersionDiffResp;
@@ -69,10 +70,7 @@ public class SnapshotManagerService implements DataSnapshotApi {
         // 1. 查询当前聚合实体完整数据并序列化为 JSON
         var detailResp =
                 dynamicQueryService.getDetail(
-                        com.jdec.platform.data.api.dto.request.DynamicDetailReq.builder()
-                                .moduleId(moduleId)
-                                .id(dataId)
-                                .build());
+                        DynamicDetailReq.builder().moduleId(moduleId).id(dataId).build());
         String currentSnapshotJson = JSON.toJSONString(detailResp.getData());
 
         // 2. 查询历史最新快照以计算版本号及 Diff

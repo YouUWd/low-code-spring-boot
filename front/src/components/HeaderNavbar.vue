@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useRoleStore } from '../stores/roleStore';
-import { Layers, ShieldCheck, ChevronDown, Check, GraduationCap, Users } from 'lucide-vue-next';
+import { Layers, ShieldCheck, ChevronDown, Check, GraduationCap, Users, Settings, FileCode } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -11,6 +11,7 @@ const isDropdownOpen = ref(false);
 
 const isStudentModule = computed(() => route.path.startsWith('/students') || route.path === '/');
 const isCourseModule = computed(() => route.path.startsWith('/courses'));
+const isDesignerModule = computed(() => route.path.startsWith('/modules/designer') || route.path.startsWith('/modules/run'));
 
 function goToStudents() {
   router.push('/students');
@@ -18,6 +19,10 @@ function goToStudents() {
 
 function goToCourses() {
   router.push('/courses');
+}
+
+function goToDesigner() {
+  router.push('/modules/designer/101');
 }
 
 function handleSelectRole(roleId: number) {
@@ -48,7 +53,7 @@ function handleSelectRole(roleId: number) {
           @click="goToStudents"
         >
           <GraduationCap :size="16" />
-          <span>学生综合档案 (MOD-101)</span>
+          <span>学生综合档案</span>
         </button>
         <button
           class="nav-tab"
@@ -56,7 +61,15 @@ function handleSelectRole(roleId: number) {
           @click="goToCourses"
         >
           <Users :size="16" />
-          <span>课程排课中心 (MOD-102)</span>
+          <span>课程排课中心</span>
+        </button>
+        <button
+          class="nav-tab nav-tab-highlight"
+          :class="{ active: isDesignerModule }"
+          @click="goToDesigner"
+        >
+          <Settings :size="16" />
+          <span>🛠️ 模块配置中心</span>
         </button>
       </nav>
 
@@ -196,6 +209,14 @@ function handleSelectRole(roleId: number) {
   color: #2563eb;
   font-weight: 700;
   box-shadow: 0 2px 10px rgba(37, 99, 235, 0.12), 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.nav-tab-highlight {
+  color: #4f46e5;
+}
+
+.nav-tab-highlight.active {
+  color: #4338ca;
 }
 
 /* Right Role Switcher */

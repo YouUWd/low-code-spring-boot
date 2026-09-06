@@ -3,6 +3,8 @@ import StudentListPage from '../pages/StudentListPage.vue';
 import StudentDetailPage from '../pages/StudentDetailPage.vue';
 import CourseListPage from '../pages/CourseListPage.vue';
 import CourseDetailPage from '../pages/CourseDetailPage.vue';
+import ModuleDesignerPage from '../pages/ModuleDesignerPage.vue';
+import DynamicModuleRunnerPage from '../pages/DynamicModuleRunnerPage.vue';
 
 const routes: Array<RouteRecordRaw> = [
   {
@@ -32,6 +34,16 @@ const routes: Array<RouteRecordRaw> = [
     name: 'CourseDetail',
     component: CourseDetailPage,
     meta: { title: '课程排课全景详情' }
+  },
+  {
+    path: '/modules/designer/:moduleId?',
+    name: 'ModuleDesigner',
+    component: ModuleDesignerPage,
+    meta: { title: '模块配置与设计中心' }
+  },
+  {
+    path: '/modules/run/:moduleId?',
+    redirect: to => `/modules/designer/${to.params.moduleId || 101}`
   }
 ];
 

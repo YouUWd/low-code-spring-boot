@@ -4,15 +4,18 @@ import com.jdec.platform.data.api.DataEngineApi;
 import com.jdec.platform.data.api.dto.request.BatchDynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.BatchDynamicSaveReq;
 import com.jdec.platform.data.api.dto.request.DynamicDetailReq;
+import com.jdec.platform.data.api.dto.request.DynamicOptionReq;
 import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.data.api.dto.response.BatchEngineDataResult;
 import com.jdec.platform.data.api.dto.response.BatchSaveResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.dto.response.DynamicOptionItem;
 import com.jdec.platform.data.api.dto.response.EngineDataResult;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +42,24 @@ public class DataEngineController {
             log.error(
                     "Data engine query failed: moduleId={}, err={}",
                     req.getModuleId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/options")
+    @Operation(summary = "通用字段搜索下拉候选项", description = "获取当前模块内指定表与字段的去重候选值列表，返回 label-value 结构")
+    public ApiResponse<List<DynamicOptionItem>> getOptions(@RequestBody DynamicOptionReq req) {
+        try {
+            List<DynamicOptionItem> result = dataEngineApi.getOptions(req);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Data engine getOptions failed: moduleId={}, table={}, column={}, err={}",
+                    req.getModuleId(),
+                    req.getTableName(),
+                    req.getColumnName(),
                     ex.getMessage(),
                     ex);
             throw ex;

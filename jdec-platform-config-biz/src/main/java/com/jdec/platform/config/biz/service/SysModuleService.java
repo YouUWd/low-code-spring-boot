@@ -93,6 +93,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
         resp.setModuleCode(module.getModuleCode());
         resp.setModuleName(module.getModuleName());
         resp.setModuleDesc(module.getModuleDesc());
+        resp.setPrimaryTable(module.getPrimaryTable());
         resp.setParentId(module.getParentId() != null ? module.getParentId() : 0L);
         resp.setSortOrder(module.getSortOrder());
         resp.setCreatedBy(module.getCreatedBy());
@@ -202,6 +203,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
         moduleInfo.setModuleCode(module.getModuleCode());
         moduleInfo.setModuleName(module.getModuleName());
         moduleInfo.setModuleDesc(module.getModuleDesc());
+        moduleInfo.setPrimaryTable(module.getPrimaryTable());
         moduleInfo.setParentId(module.getParentId() != null ? module.getParentId() : 0L);
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setCreatedBy(module.getCreatedBy());
@@ -234,24 +236,134 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                         .collect(Collectors.toList());
         resp.setFields(fieldInfos);
 
-        // 3. 根据模块字段推导涉及的表，并从全局表关联中提取关联拓扑
-        Set<String> involvedTables =
-                fieldInfos.stream()
-                        .map(ModuleFieldDTO::getTableName)
-                        .filter(t -> t != null && !t.isBlank())
-                        .map(String::toLowerCase)
-                        .collect(Collectors.toSet());
+        // 3. 获取列表表头配置 (sys_module_header)
+        List<SysModuleHeader> allHeaders =
+                sysModuleHeaderMapper.selectList(
+                        Wrappers.<SysModuleHeader>lambdaQuery()
+                                .eq(SysModuleHeader::getModuleId, moduleId)
+                                .orderByAsc(SysModuleHeader::getSortOrder));
+
+        // 预先查询当前项目下的全部业务模块，构建模块树字典（用于 modulePath 闭包推导）
+        List<SysModule> allProjectModules =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(
+                                        module.getProjectNo() != null,
+                                        SysModule::getProjectNo,
+                                        module.getProjectNo()));
+        Map<Long, SysModule> moduleMap =
+                allProjectModules.stream()
+                        .collect(Collectors.toMap(SysModule::getId, m -> m, (k1, k2) -> k1));
+
+        List<ModuleTableHeaderDTO> headerInfos =
+                allHeaders.stream()
+                        .map(
+                                h -> {
+                                    ModuleTableHeaderDTO dto = new ModuleTableHeaderDTO();
+                                    dto.setId(h.getId());
+                                    Long sourceMid =
+                                            h.getSourceModuleId() != null
+                                                    ? h.getSourceModuleId()
+                                                    : h.getModuleId();
+                                    dto.setName(h.getHeaderName());
+                                    dto.setTable(h.getTableName());
+                                    dto.setField(h.getColumnName());
+                                    dto.setWidth(h.getWidth());
+                                    dto.setSortOrder(h.getSortOrder());
+                                    dto.setSearchType(h.getSearchType());
+                                    dto.setFixed(h.getFixed());
+                                    dto.setEllipsis(
+                                            h.getEllipsis() != null && h.getEllipsis() == 1);
+                                    dto.setSortable(
+                                            h.getSortable() != null && h.getSortable() == 1);
+
+                                    // 计算从当前根模块 moduleId 到当前来源模块 sourceMid 的自顶向下完整链路 [rootId, ...,
+                                    // sourceMid]
+                                    List<Long> path = new ArrayList<>();
+                                    Long currId = sourceMid;
+                                    while (currId != null && currId > 0) {
+                                        path.add(0, currId);
+                                        if (currId.equals(moduleId)) {
+                                            break;
+                                        }
+                                        SysModule mNode = moduleMap.get(currId);
+                                        if (mNode == null
+                                                || mNode.getParentId() == null
+                                                || mNode.getParentId() == 0) {
+                                            if (!currId.equals(moduleId)) {
+                                                path.add(0, moduleId);
+                                            }
+                                            break;
+                                        }
+                                        currId = mNode.getParentId();
+                                    }
+                                    if (path.isEmpty()) {
+                                        path.add(moduleId);
+                                    } else if (!path.get(0).equals(moduleId)) {
+                                        path.add(0, moduleId);
+                                    }
+                                    dto.setModulePath(path);
+                                    return dto;
+                                })
+                        .collect(Collectors.toList());
+        resp.setModuleHeaders(headerInfos);
+
+        // 4. 根据模块字段 + 表头配置，结合业务模块树(sys_module)血缘进行路径闭包推导
+        Set<String> involvedTables = new HashSet<>();
+        Set<Long> targetModuleIds = new HashSet<>();
+        targetModuleIds.add(moduleId);
+
+        for (ModuleFieldDTO f : fieldInfos) {
+            if (f.getTableName() != null && !f.getTableName().isBlank()) {
+                involvedTables.add(f.getTableName().toLowerCase());
+            }
+        }
+        for (ModuleTableHeaderDTO h : headerInfos) {
+            if (h.getTable() != null && !h.getTable().isBlank()) {
+                involvedTables.add(h.getTable().toLowerCase());
+            }
+            if (h.getModulePath() != null && !h.getModulePath().isEmpty()) {
+                targetModuleIds.add(h.getModulePath().get(h.getModulePath().size() - 1));
+            }
+        }
 
         if (!involvedTables.isEmpty()) {
-            String primaryTable =
-                    !fieldInfos.isEmpty() && fieldInfos.get(0).getTableName() != null
-                            ? fieldInfos.get(0).getTableName().toLowerCase()
-                            : "";
+            // 【第一性原理：基于业务模块树唯一血缘回溯补全】
+            // 从表头涉及的所有叶子模块出发，沿 parent_id 递归向上回溯到当前根模块，收集完整的链条模块集合
+            Set<Long> fullChainModuleIds = new HashSet<>(targetModuleIds);
+            for (Long targetMid : targetModuleIds) {
+                SysModule cur = moduleMap.get(targetMid);
+                while (cur != null
+                        && cur.getParentId() != null
+                        && cur.getParentId() != 0
+                        && !cur.getId().equals(moduleId)) {
+                    fullChainModuleIds.add(cur.getId());
+                    fullChainModuleIds.add(cur.getParentId());
+                    if (cur.getParentId().equals(moduleId)) {
+                        break;
+                    }
+                    cur = moduleMap.get(cur.getParentId());
+                }
+            }
 
+            // 将整条业务链路上的所有模块主表 (primary_table) 均纳入激活表集合中，自动补齐任何可能被跳过的中间桥梁表
+            for (Long chainMid : fullChainModuleIds) {
+                SysModule chainMod = moduleMap.get(chainMid);
+                if (chainMod != null
+                        && chainMod.getPrimaryTable() != null
+                        && !chainMod.getPrimaryTable().isBlank()) {
+                    involvedTables.add(chainMod.getPrimaryTable().toLowerCase());
+                }
+            }
+
+            // 查询涉及全部激活物理表（包含补齐的中间表）的关联关系
             List<SysTableRelation> relations =
                     sysTableRelationMapper.selectList(
                             Wrappers.<SysTableRelation>lambdaQuery()
-                                    .eq(SysTableRelation::getProjectNo, module.getProjectNo())
+                                    .eq(
+                                            module.getProjectNo() != null,
+                                            SysTableRelation::getProjectNo,
+                                            module.getProjectNo())
                                     .and(
                                             w ->
                                                     w.in(
@@ -262,6 +374,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                                                                     SysTableRelation::getJoinTable,
                                                                     involvedTables)));
 
+            // 过滤规则：只要关联边的两张表均在闭包激活表集合中，即属于合法的业务拓扑
             List<TableRelationDTO> relationDTOs =
                     relations.stream()
                             .filter(
@@ -274,17 +387,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                                                 r.getJoinTable() != null
                                                         ? r.getJoinTable().toLowerCase()
                                                         : "";
-                                        // 1. 两端表都在本模块字段中
-                                        if (involvedTables.contains(mainT)
-                                                && involvedTables.contains(joinT)) {
-                                            return true;
-                                        }
-                                        // 2. 当前模块是从表，维表反向 Join 主表
-                                        if (primaryTable.equals(joinT)) {
-                                            return true;
-                                        }
-                                        // 3. 当前模块是主表，关联本模块声明的从表
-                                        return primaryTable.equals(mainT)
+                                        return involvedTables.contains(mainT)
                                                 && involvedTables.contains(joinT);
                                     })
                             .map(
@@ -304,33 +407,6 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             resp.setTableRelations(Collections.emptyList());
         }
 
-        // 4. 获取列表表头配置 (sys_module_header)
-        List<SysModuleHeader> allHeaders =
-                sysModuleHeaderMapper.selectList(
-                        Wrappers.<SysModuleHeader>lambdaQuery()
-                                .eq(SysModuleHeader::getModuleId, moduleId)
-                                .orderByAsc(SysModuleHeader::getSortOrder));
-        List<ModuleTableHeaderDTO> headerInfos =
-                allHeaders.stream()
-                        .map(
-                                h -> {
-                                    ModuleTableHeaderDTO dto = new ModuleTableHeaderDTO();
-                                    dto.setName(h.getHeaderName());
-                                    dto.setTable(h.getTableName());
-                                    dto.setField(h.getColumnName());
-                                    dto.setWidth(h.getWidth());
-                                    dto.setSortOrder(h.getSortOrder());
-                                    dto.setSearchType(h.getSearchType());
-                                    dto.setFixed(h.getFixed());
-                                    dto.setEllipsis(
-                                            h.getEllipsis() != null && h.getEllipsis() == 1);
-                                    dto.setSortable(
-                                            h.getSortable() != null && h.getSortable() == 1);
-                                    return dto;
-                                })
-                        .collect(Collectors.toList());
-        resp.setModuleHeaders(headerInfos);
-
         // 5. 获取状态列表 (sys_module_status)
         List<SysModuleStatus> statuses =
                 sysModuleStatusMapper.selectList(
@@ -349,6 +425,41 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                                 })
                         .collect(Collectors.toList());
         resp.setModuleStatuses(statusInfos);
+
+        // 6. 提取当前根模块辖下的所有子孙模块元数据节点 (过滤仅包含以当前 moduleId 为祖先的子模块)
+        List<ModuleNodeDTO> childModuleNodes = new ArrayList<>();
+        for (SysModule m : allProjectModules) {
+            if (m.getId() != null && !m.getId().equals(moduleId)) {
+                // 回溯 parentId 判断是否为当前 moduleId 的后代
+                Long curParent = m.getParentId();
+                boolean isDescendant = false;
+                while (curParent != null && curParent > 0) {
+                    if (curParent.equals(moduleId)) {
+                        isDescendant = true;
+                        break;
+                    }
+                    SysModule parentNode = moduleMap.get(curParent);
+                    curParent = (parentNode != null) ? parentNode.getParentId() : null;
+                }
+                if (isDescendant) {
+                    childModuleNodes.add(
+                            ModuleNodeDTO.builder()
+                                    .id(m.getId())
+                                    .parentId(m.getParentId())
+                                    .moduleCode(m.getModuleCode())
+                                    .moduleName(m.getModuleName())
+                                    .primaryTable(m.getPrimaryTable())
+                                    .sortOrder(m.getSortOrder() != null ? m.getSortOrder() : 0)
+                                    .build());
+                }
+            }
+        }
+        // 按父模块关系及 sortOrder 升序排列
+        childModuleNodes.sort(
+                Comparator.comparing(
+                                (ModuleNodeDTO n) -> n.getParentId() != null ? n.getParentId() : 0L)
+                        .thenComparingInt(n -> n.getSortOrder() != null ? n.getSortOrder() : 0));
+        resp.setModuleNodes(childModuleNodes);
 
         return resp;
     }

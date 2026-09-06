@@ -1,6 +1,7 @@
 package com.jdec.platform.config.api.dto.common;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -56,4 +57,8 @@ public class ModuleTableHeaderDTO {
     /** 是否可排序 */
     @Schema(description = "是否可排序", example = "true")
     private Boolean sortable;
+
+    /** 模块血缘寻址路径（自根模块至当前字段所在模块的ID链条，用于多层级嵌套消歧与确定性寻址） */
+    @Schema(description = "模块血缘寻址路径", example = "[101, 104, 106]")
+    private List<Long> modulePath;
 }

@@ -46,12 +46,22 @@ watch(
   () => props.record,
   (newVal) => {
     if (newVal) {
-      formData.value = JSON.parse(JSON.stringify(newVal));
-      if (!formData.value.course) formData.value.course = {};
-      if (!formData.value.teacher) formData.value.teacher = {};
-      if (!formData.value.course_syllabus) formData.value.course_syllabus = {};
-      if (!formData.value.course_schedule) formData.value.course_schedule = [];
-      if (!formData.value.enrolled_students) formData.value.enrolled_students = [];
+      const copy = JSON.parse(JSON.stringify(newVal));
+      // 兼容多模块纯对象嵌套结构（如形态 A: copy['102'].course 等）
+      const course = copy['102']?.course || copy.course || {};
+      const teacher = copy['102']?.teacher || copy.teacher || {};
+      const course_syllabus = copy['102']?.course_syllabus || copy.course_syllabus || {};
+      const course_schedule = copy['102']?.course_schedule || copy.course_schedule || [];
+      const enrolled_students = copy['102']?.enrolled_students || copy.enrolled_students || [];
+
+      formData.value = {
+        ...copy,
+        course,
+        teacher,
+        course_syllabus,
+        course_schedule: Array.isArray(course_schedule) ? course_schedule : [],
+        enrolled_students: Array.isArray(enrolled_students) ? enrolled_students : []
+      };
     }
   },
   { immediate: true, deep: true }

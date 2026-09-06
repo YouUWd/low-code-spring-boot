@@ -32,10 +32,22 @@ watch(
   () => props.record,
   (newVal) => {
     if (newVal) {
-      formData.value = JSON.parse(JSON.stringify(newVal));
-      if (!formData.value.student_profile) formData.value.student_profile = {};
-      if (!formData.value.student_course) formData.value.student_course = [];
-      if (!formData.value.student_award) formData.value.student_award = [];
+      const copy = JSON.parse(JSON.stringify(newVal));
+      // 兼容多模块纯对象嵌套结构（如形态 A: copy['101'].student, copy['103'].student_course 等）
+      const student = copy['101']?.student || copy.student || {};
+      const clazz = copy['101']?.clazz || copy.clazz || {};
+      const student_profile = copy['101']?.student_profile || copy.student_profile || {};
+      const student_course = copy['103']?.student_course || copy.student_course || [];
+      const student_award = copy['104']?.student_award || copy.student_award || [];
+
+      formData.value = {
+        ...copy,
+        student,
+        clazz,
+        student_profile,
+        student_course: Array.isArray(student_course) ? student_course : [],
+        student_award: Array.isArray(student_award) ? student_award : []
+      };
     }
   },
   { immediate: true, deep: true }

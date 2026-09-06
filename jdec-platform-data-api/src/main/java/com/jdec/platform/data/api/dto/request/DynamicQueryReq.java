@@ -2,7 +2,7 @@ package com.jdec.platform.data.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
-import java.util.Map;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,7 +21,7 @@ public class DynamicQueryReq implements Serializable {
     private Long moduleId;
 
     @Schema(
-            description = "视图模式: LIST(列表-带headers), DETAIL(详情-带fields及深度从表), ALL(全量模式)",
+            description = "视图模式: LIST(列表-严格按表头headers组装), DETAIL(详情-严格按模块物理字段fields组装)",
             example = "LIST")
     @Builder.Default
     private String viewMode = "LIST";
@@ -34,12 +34,9 @@ public class DynamicQueryReq implements Serializable {
     @Builder.Default
     private Integer pageSize = 20;
 
-    @Schema(description = "动态查询过滤条件键值对 (支持主表及关联表字段)")
-    private Map<String, Object> filters;
+    @Schema(description = "动态查询结构化过滤条件列表")
+    private List<DynamicFilterItem> filters;
 
-    @Schema(description = "排序字段名称", example = "created_date")
-    private String orderBy;
-
-    @Schema(description = "排序方向: ASC 或 DESC", example = "DESC")
-    private String orderDirection;
+    @Schema(description = "结构化排序规则列表 (按顺序支持多字段复合排序)")
+    private List<DynamicSortItem> sorts;
 }

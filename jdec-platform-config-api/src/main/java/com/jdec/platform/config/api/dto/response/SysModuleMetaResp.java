@@ -31,6 +31,10 @@ public class SysModuleMetaResp {
     @Schema(description = "模块状态列表")
     private List<ModuleStatusDTO> moduleStatuses;
 
+    /** 当前根模块辖下的子孙模块树节点列表 */
+    @Schema(description = "当前根模块辖下的子孙模块树节点列表")
+    private List<ModuleNodeDTO> moduleNodes;
+
     /** 模块基本信息 */
     @Data
     @Schema(description = "模块基本信息")
@@ -52,6 +56,9 @@ public class SysModuleMetaResp {
 
         @Schema(description = "模块描述", example = "学生信息管理模块")
         private String moduleDesc;
+
+        @Schema(description = "物理主表名(必填)", example = "student")
+        private String primaryTable;
 
         @Schema(description = "父模块ID", example = "0")
         private Long parentId;

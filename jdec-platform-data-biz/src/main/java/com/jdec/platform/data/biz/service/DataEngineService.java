@@ -4,12 +4,15 @@ import com.jdec.platform.data.api.DataEngineApi;
 import com.jdec.platform.data.api.dto.request.BatchDynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.BatchDynamicSaveReq;
 import com.jdec.platform.data.api.dto.request.DynamicDetailReq;
+import com.jdec.platform.data.api.dto.request.DynamicOptionReq;
 import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.data.api.dto.response.BatchEngineDataResult;
 import com.jdec.platform.data.api.dto.response.BatchSaveResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.dto.response.DynamicOptionItem;
 import com.jdec.platform.data.api.dto.response.EngineDataResult;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +28,11 @@ public class DataEngineService implements DataEngineApi {
     @Override
     public EngineDataResult<DataPage<Map<String, Object>>> query(DynamicQueryReq req) {
         return dynamicQueryService.query(req);
+    }
+
+    @Override
+    public List<DynamicOptionItem> getOptions(DynamicOptionReq req) {
+        return dynamicQueryService.getOptions(req);
     }
 
     @Override

@@ -2,7 +2,7 @@ package com.jdec.platform.data.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
-import java.util.Map;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,6 +24,6 @@ public class DynamicDetailReq implements Serializable {
     @Schema(description = "主表主键 ID（优先匹配单行精准主子表详情）", example = "1001")
     private Long id;
 
-    @Schema(description = "特殊过滤条件（支持外键或特定业务字段多行查询）")
-    private Map<String, Object> filters;
+    @Schema(description = "特殊过滤条件")
+    private List<DynamicFilterItem> filters;
 }

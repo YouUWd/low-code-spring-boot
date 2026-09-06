@@ -172,7 +172,7 @@ public class DynamicPersistenceService {
         return primaryId;
     }
 
-    /** 提取主表行内部挂载的从表 (严格依据关系配置中的 joinTable 物理表名提取) */
+    /** 提取主表行内部挂载的从表 (严格依据关系配置中的 joinTable 物理表名提取，兼容形态 A 模块容器嵌套) */
     private Map<String, List<Map<String, Object>>> extractNestedSubTables(
             Map<String, Object> singleRow, SysModuleMetaResp completeResp) {
         Map<String, List<Map<String, Object>>> nestedSubTables = new LinkedHashMap<>();
@@ -186,8 +186,26 @@ public class DynamicPersistenceService {
                 continue;
             }
 
-            // 严格依据元数据定义的物理从表名提取
+            // 1. 严格依据元数据定义的物理从表名提取
             Object subData = singleRow.remove(tName);
+
+            // 2. 兼容形态 A：若直接属性未取到，检查行内是否有数字 Key 的子模块容器（如 row['106']）
+            if (subData == null) {
+                for (Map.Entry<String, Object> entry : new ArrayList<>(singleRow.entrySet())) {
+                    String k = entry.getKey();
+                    if (k != null
+                            && k.chars().allMatch(Character::isDigit)
+                            && entry.getValue() instanceof Map<?, ?> subModMap) {
+                        if (subModMap.containsKey(tName)) {
+                            subData = ((Map<String, Object>) subModMap).remove(tName);
+                            if (subModMap.isEmpty()) {
+                                singleRow.remove(k);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
 
             if (subData instanceof List<?> subList) {
                 List<Map<String, Object>> cleanSubList = new ArrayList<>();

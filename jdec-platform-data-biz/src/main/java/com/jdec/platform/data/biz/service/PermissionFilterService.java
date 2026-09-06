@@ -1,5 +1,6 @@
 package com.jdec.platform.data.biz.service;
 
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -67,8 +68,7 @@ public class PermissionFilterService {
     }
 
     /** 根据当前用户角色权限裁剪动态字段字典列表 */
-    public List<com.jdec.platform.config.api.dto.common.ModuleFieldDTO> filterReadableFields(
-            SysModuleMetaResp completeResp) {
+    public List<ModuleFieldDTO> filterReadableFields(SysModuleMetaResp completeResp) {
         if (completeResp == null || completeResp.getFields() == null) {
             return new ArrayList<>();
         }

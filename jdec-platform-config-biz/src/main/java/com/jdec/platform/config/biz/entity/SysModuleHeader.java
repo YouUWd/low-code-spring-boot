@@ -25,6 +25,9 @@ public class SysModuleHeader {
     /** 所属模块 ID */
     private Long moduleId;
 
+    /** 字段来源业务模块 ID (跨模块引用时标识原始业务上下文) */
+    private Long sourceModuleId;
+
     /** 物理表名 */
     private String tableName;
 

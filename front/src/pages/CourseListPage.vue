@@ -2,7 +2,12 @@
 import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useRoleStore } from '../stores/roleStore';
-import { engineApi, type HeaderMeta } from '../api/engineApi';
+import {
+  engineApi,
+  type HeaderMeta,
+  type DynamicFilterItem,
+  type DynamicSortItem
+} from '../api/engineApi';
 import DynamicTable from '../components/DynamicTable.vue';
 import { BookOpen, Sparkles } from 'lucide-vue-next';
 
@@ -12,14 +17,19 @@ const roleStore = useRoleStore();
 const loading = ref(false);
 const headers = ref<HeaderMeta[]>([]);
 const records = ref<any[]>([]);
+const currentFilters = ref<DynamicFilterItem[]>([]);
+const currentSorts = ref<DynamicSortItem[]>([]);
 
-async function loadData(keyword = '') {
+async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sorts: DynamicSortItem[] = currentSorts.value) {
   loading.value = true;
+  currentFilters.value = filters;
+  currentSorts.value = sorts;
   try {
     const res = await engineApi.query({
       moduleId: 102,
       viewMode: 'LIST',
-      filters: { keyword }
+      filters: currentFilters.value,
+      sorts: currentSorts.value
     });
     if (res.meta.headers) {
       headers.value = res.meta.headers;
@@ -28,6 +38,10 @@ async function loadData(keyword = '') {
   } finally {
     loading.value = false;
   }
+}
+
+function handleQueryChange(payload: { filters: DynamicFilterItem[]; sorts: DynamicSortItem[] }) {
+  loadData(payload.filters, payload.sorts);
 }
 
 watch(
@@ -43,7 +57,7 @@ onMounted(() => {
 
 // 点击“全景详情”，平滑路由跳转到独立课程详情页并默认激活 syllabus Tab
 function handleViewDetail(row: any) {
-  const courseId = row.course?.id || 201;
+  const courseId = row['102']?.course?.id || row.course?.id || row.id || 1;
   router.push({
     path: `/courses/${courseId}`,
     query: { tab: 'syllabus' }
@@ -104,7 +118,8 @@ function handleViewDetail(row: any) {
       :records="records"
       :loading="loading"
       @view-detail="handleViewDetail"
-      @search="loadData"
+      @query-change="handleQueryChange"
+      @search="loadData()"
     />
   </div>
 </template>
