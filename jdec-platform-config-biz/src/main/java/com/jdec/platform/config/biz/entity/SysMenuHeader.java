@@ -6,24 +6,24 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 import lombok.Data;
 
-/** 菜单表头节点 */
+/** 列表表头节点 */
 @Data
-@TableName("sys_menu_header_node")
-@Schema(description = "菜单表头节点")
-public class SysMenuHeaderNode implements Serializable {
+@TableName("sys_menu_header")
+@Schema(description = "列表表头节点")
+public class SysMenuHeader implements Serializable {
 
-    @Schema(description = "主键ID")
+    @Schema(description = "主键")
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Schema(description = "列表菜单ID")
-    private Long listMenuId;
+    @Schema(description = "所属列表菜单ID(表头归属)")
+    private Long menuId;
 
-    @Schema(description = "父节点ID")
+    @Schema(description = "父节点ID(NULL/0=顶层)，可为MENU也可为FIELD之下挂子级")
     private Long parentId;
 
-    @Schema(description = "节点类型")
-    private String nodeType;
+    @Schema(description = "节点类型: 0-菜单 / 1-字段")
+    private Integer nodeType;
 
     @Schema(description = "来源菜单ID")
     private Long sourceMenuId;
@@ -31,26 +31,32 @@ public class SysMenuHeaderNode implements Serializable {
     @Schema(description = "来源字段ID")
     private Long sourceFieldId;
 
-    @Schema(description = "标签名称")
+    @Schema(description = "显示名覆盖。FIELD空=取字段显示名，MENU空=取来源菜单名")
     private String label;
 
-    @Schema(description = "颜色")
-    private String color;
+    @Schema(description = "菜单显示颜色")
+    private String colors;
 
-    @Schema(description = "宽度")
+    @Schema(description = "列宽(px)")
     private Integer width;
 
-    @Schema(description = "是否可排序")
-    private Boolean sorted;
+    @Schema(description = "字段")
+    private String field;
 
-    @Schema(description = "搜索类型")
+    @Schema(description = "可排序")
+    private Integer sorted;
+
+    @Schema(description = "搜索控件类型(区间/单选/模糊等)")
     private String searchType;
 
-    @Schema(description = "是否省略")
-    private Boolean omitted;
+    @Schema(description = "文本是否省略")
+    private Integer ellipsis;
 
-    @Schema(description = "是否选中")
-    private Boolean checked;
+    @Schema(description = "是否选中状态")
+    private Integer checked;
+
+    @Schema(description = "排序值")
+    private Integer sortValue;
 
     @Schema(description = "所属主体")
     private Long subjectId;
