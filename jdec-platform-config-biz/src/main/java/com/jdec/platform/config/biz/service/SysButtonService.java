@@ -53,6 +53,7 @@ public class SysButtonService implements SysButtonApi {
                                 StringUtils.hasText(req.getAlias()),
                                 SysButton::getAlias,
                                 req.getAlias())
+                        .eq(StringUtils.hasText(req.getType()), SysButton::getType, req.getType())
                         .eq(req.getEnabled() != null, SysButton::getEnabled, req.getEnabled())
                         .eq(req.getShowed() != null, SysButton::getShowed, req.getShowed())
                         .orderByAsc(SysButton::getSortOrder)
