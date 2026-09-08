@@ -22,6 +22,28 @@ public class SaveModuleReq {
     @Schema(description = "模块状态配置列表", example = "[]")
     private List<ModuleStatusDTO> moduleStatuses;
 
+    /** 调整后的模块树节点拓扑（可选，传入时同步批量更新父子关系与同级排序） */
+    @Schema(description = "调整后的模块树节点关系（可选，传入时同步批量更新父子关系与排序）")
+    private List<ModuleTreeNodeDTO> treeNodes;
+
+    /** 模块树节点位置信息 DTO */
+    @Data
+    @Schema(description = "模块树节点位置信息")
+    public static class ModuleTreeNodeDTO {
+
+        @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
+        private Long id;
+
+        @Schema(
+                description = "父模块ID（0表示根节点）",
+                requiredMode = Schema.RequiredMode.REQUIRED,
+                example = "0")
+        private Long parentId;
+
+        @Schema(description = "同级排序序号", requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+        private Integer sortOrder;
+    }
+
     /** 保存模块基本信息请求 DTO 用于创建或编辑模块的基本信息 */
     @Data
     @Schema(description = "保存模块基本信息请求")
@@ -46,12 +68,16 @@ public class SaveModuleReq {
         @Schema(description = "模块描述", example = "学生信息管理模块")
         private String moduleDesc;
 
-        /** 父模块 ID (0 表示根模块) */
-        @Schema(description = "父模块ID（0表示根模块）", example = "0")
-        private Long parentId;
+        /** 模块类别: 1-业务模块, 2-系统模块 */
+        @Schema(description = "模块类别: 1-业务模块, 2-系统模块", example = "1")
+        private Integer category;
 
-        /** 排序顺序，数字越小越靠前 */
-        @Schema(description = "排序顺序（数字越小越靠前）", example = "1")
-        private Integer sortOrder;
+        /** 主表名称 */
+        @Schema(description = "主表名称", example = "student")
+        private String primaryTable;
+
+        /** 数据来源主体ID集合 */
+        @Schema(description = "数据来源主体ID集合")
+        private List<Long> sourceSubjects;
     }
 }

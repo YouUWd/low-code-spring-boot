@@ -1,15 +1,13 @@
 package com.jdec.platform.config.biz.audit.event;
 
+/*
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import lombok.Getter;
 
-/**
- * 模块配置变更事件
- *
- * <p>用于将 SysModuleService 业务逻辑与审计日志构建及发送解耦。
- */
+// 模块配置变更事件
+// 用于将 SysModuleService 业务逻辑与审计日志构建及发送解耦。
 @Getter
 public class SysModuleChangeEvent {
 
@@ -37,7 +35,7 @@ public class SysModuleChangeEvent {
     private final String oldParentName;
     private final String newParentName;
 
-    /** 保存/更新场景构造函数（前后数据统一为 SaveModuleReq） */
+    // 保存/更新场景构造函数（前后数据统一为 SaveModuleReq）
     public static SysModuleChangeEvent createSaveEvent(
             String projectNo,
             Long subjectId,
@@ -58,7 +56,7 @@ public class SysModuleChangeEvent {
                 null);
     }
 
-    /** 删除场景构造函数 */
+    // 删除场景构造函数
     public static SysModuleChangeEvent createDeleteEvent(
             String projectNo,
             Long subjectId,
@@ -78,7 +76,7 @@ public class SysModuleChangeEvent {
                 null);
     }
 
-    /** 移动场景构造函数 */
+    // 移动场景构造函数
     public static SysModuleChangeEvent createMoveEvent(
             String projectNo,
             Long subjectId,
@@ -126,3 +124,4 @@ public class SysModuleChangeEvent {
         this.newParentName = newParentName;
     }
 }
+*/

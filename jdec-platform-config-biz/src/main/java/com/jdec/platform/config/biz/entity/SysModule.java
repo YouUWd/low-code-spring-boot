@@ -1,9 +1,12 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +17,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("sys_module")
+@TableName(value = "sys_module", autoResultMap = true)
 public class SysModule {
 
     /** 主键 ID */
@@ -36,7 +39,12 @@ public class SysModule {
     /** 模块描述 */
     private String moduleDesc;
 
+    /** 模块类别: 1-业务模块, 2-系统模块 */
     private Integer category;
+
+    /** 数据来源主体ID集合 */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private List<Long> sourceSubjects;
 
     /** 父模块 ID (0 表示根模块) */
     private Long parentId;

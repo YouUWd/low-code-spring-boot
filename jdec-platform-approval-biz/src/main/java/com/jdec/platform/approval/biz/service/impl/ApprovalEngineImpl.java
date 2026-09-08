@@ -1611,7 +1611,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 monitorControlLogReq.setMenuParam(menu.getParam());
             }
             monitorControlLogReq.setModuleId(approvalProcessDTO.getModuleId());
-            SysModuleMetaResp module =
+            SysModuleResp module =
                     sysModuleApi.getModuleCompleteById(
                             AppContext.getProjectNo(),
                             approvalProcessDTO.getSubjectId(),

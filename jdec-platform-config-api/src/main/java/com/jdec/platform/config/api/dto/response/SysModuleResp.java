@@ -6,10 +6,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import lombok.Data;
 
-/** 模块元数据响应 DTO 包含模块基本信息、关联表拓扑、字段配置和状态 */
+/** 模块完整信息响应 DTO 包含模块基本信息、字段配置和状态 */
 @Data
-@Schema(description = "模块元数据响应")
-public class SysModuleMetaResp {
+@Schema(description = "模块完整信息响应")
+public class SysModuleResp {
 
     /** 模块基本信息 */
     @Schema(description = "模块基本信息")
@@ -53,6 +53,10 @@ public class SysModuleMetaResp {
 
         @Schema(description = "父模块ID", example = "0")
         private Long parentId;
+
+        /** 主表名称 */
+        @Schema(description = "主表名称", example = "student")
+        private String primaryTable;
 
         @Schema(description = "排序顺序", example = "1")
         private Integer sortOrder;

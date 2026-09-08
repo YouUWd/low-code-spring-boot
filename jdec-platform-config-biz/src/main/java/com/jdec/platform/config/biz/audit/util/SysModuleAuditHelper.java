@@ -1,7 +1,7 @@
 package com.jdec.platform.config.biz.audit.util;
 
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
-import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SysModuleAuditHelper {
 
-    /** 转换工具：将数据库查询出的 SysModuleMetaResp 转为标准的 SaveModuleReq */
-    public SaveModuleReq convertRespToReq(SysModuleMetaResp resp) {
+    /** 转换工具：将数据库查询出的 SysModuleResp 转为标准的 SaveModuleReq */
+    public SaveModuleReq convertRespToReq(SysModuleResp resp) {
         if (resp == null) {
             return null;
         }
@@ -24,7 +24,6 @@ public class SysModuleAuditHelper {
             moduleReq.setModuleCode(resp.getModule().getModuleCode());
             moduleReq.setModuleName(resp.getModule().getModuleName());
             moduleReq.setModuleDesc(resp.getModule().getModuleDesc());
-            moduleReq.setSortOrder(resp.getModule().getSortOrder());
             req.setModule(moduleReq);
         }
         req.setFields(resp.getFields());
@@ -41,7 +40,7 @@ public class SysModuleAuditHelper {
         return oldReq == null ? "新增模块: " + moduleName : "更新模块: " + moduleName;
     }
 
-    public String buildDeleteModuleRemark(SysModuleMetaResp moduleData) {
+    public String buildDeleteModuleRemark(SysModuleResp moduleData) {
         String moduleName =
                 moduleData != null && moduleData.getModule() != null
                         ? moduleData.getModule().getModuleName()
@@ -49,7 +48,7 @@ public class SysModuleAuditHelper {
         return "删除模块: " + moduleName;
     }
 
-    public String buildMoveModuleRemark(SysModuleMetaResp fromModule, SysModuleMetaResp toModule) {
+    public String buildMoveModuleRemark(SysModuleResp fromModule, SysModuleResp toModule) {
         String fromName =
                 fromModule != null && fromModule.getModule() != null
                         ? fromModule.getModule().getModuleName()

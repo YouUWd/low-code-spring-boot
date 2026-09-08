@@ -1,6 +1,8 @@
 package com.jdec.platform.config.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalDateTime;
+import java.util.List;
 import lombok.Data;
 
 /** 模块列表响应 DTO 返回模块的基本信息，不包含树形结构，前端自行构建树 */
@@ -50,27 +52,21 @@ public class SysModuleListResp {
     @Schema(description = "模块类别 (1=业务模块, 2=系统模块)", example = "1")
     private Integer category;
 
+    @Schema(description = "数据来源主体ID集合")
+    private List<Long> sourceSubjects;
+
     @Schema(description = "排序顺序", example = "1")
     private Integer sortOrder;
 
     @Schema(description = "创建人ID", example = "1")
     private Long createdBy;
 
-    @Schema(description = "创建人名称", example = "admin")
-    private String createdName;
-
-    @Schema(description = "创建时间", example = "2024-01-01T00:00:00")
-    private String createdDate;
+    @Schema(description = "创建时间")
+    private LocalDateTime createdDate;
 
     @Schema(description = "更新人ID", example = "1")
     private Long updatedBy;
 
-    @Schema(description = "更新人名称", example = "admin")
-    private String updatedName;
-
-    @Schema(description = "更新时间", example = "2024-01-01T00:00:00")
-    private String updatedDate;
-
-    @Schema(description = "主表外键关联字段", example = "user_id")
-    private String relateSearchField;
+    @Schema(description = "更新时间")
+    private LocalDateTime updatedDate;
 }
