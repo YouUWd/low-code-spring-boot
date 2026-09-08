@@ -75,6 +75,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysModule::getProjectNo, projectNo);
         wrapper.eq(SysModule::getSubjectId, subjectId);
+        wrapper.eq(SysModule::getCategory, category);
         wrapper.orderByAsc(SysModule::getSortOrder);
         List<SysModule> modules = sysModuleMapper.selectList(wrapper);
 
@@ -489,19 +490,24 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
 
         // 1. 清理角色模块字段权限
         List<SysModuleField> deleteFields = sysModuleFieldMapper.selectBatchIds(deleteIds);
-        for (SysModuleField df : deleteFields) {
-            if (df.getModuleId() != null
-                    && df.getTableName() != null
-                    && df.getColumnName() != null) {
-                sysRoleModuleFieldPermissionMapper.delete(
-                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(SysRoleModuleFieldPermission::getModuleId, df.getModuleId())
-                                .eq(SysRoleModuleFieldPermission::getTableName, df.getTableName())
-                                .eq(
-                                        SysRoleModuleFieldPermission::getColumnName,
-                                        df.getColumnName()));
-            }
-        }
+        sysRoleModuleFieldPermissionMapper.delete(
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .in(SysRoleModuleFieldPermission::getModuleFieldId, deleteIds));
+        //        for (SysModuleField df : deleteFields) {
+        //            if (df.getModuleId() != null
+        //                    && df.getTableName() != null
+        //                    && df.getColumnName() != null) {
+        //                sysRoleModuleFieldPermissionMapper.delete(
+        //                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+        //                                .eq(SysRoleModuleFieldPermission::getModuleId,
+        // df.getModuleId())
+        //                                .eq(SysRoleModuleFieldPermission::getTableName,
+        // df.getTableName())
+        //                                .eq(
+        //                                        SysRoleModuleFieldPermission::getColumnName,
+        //                                        df.getColumnName()));
+        //            }
+        //        }
 
         // 2. 逻辑删除微信模板参数配置记录（实体上包含 @TableLogic 注解）
         sysWechatTemplateParamMapper.delete(

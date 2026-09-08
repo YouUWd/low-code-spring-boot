@@ -30,7 +30,7 @@ public class SysModuleField {
     /** 物理列名 */
     private String columnName;
 
-    /** 前端展示标签 */
+    /** 显示名称 * */
     private String displayName;
 
     /** 显示排序 */

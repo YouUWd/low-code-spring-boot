@@ -734,8 +734,6 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                                             return SysRoleModuleFieldPermission.builder()
                                                     .roleId(roleId)
                                                     .moduleId(moduleId)
-                                                    .tableName(f.getTableName())
-                                                    .columnName(f.getColumnName())
                                                     .view(view)
                                                     .apply(apply)
                                                     .edit(edit)
@@ -805,8 +803,6 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                             resp.setId(p.getId());
                             resp.setRoleId(p.getRoleId());
                             resp.setModuleId(p.getModuleId());
-                            resp.setTableName(p.getTableName());
-                            resp.setColumnName(p.getColumnName());
                             resp.setView(p.getView());
                             resp.setApply(p.getApply());
                             resp.setEdit(p.getEdit());

@@ -21,4 +21,7 @@ public class SysModuleFieldTreeResp implements Serializable {
 
     @Schema(description = "模块下的表和字段列表")
     private List<ModuleTableTreeResp> tables;
+
+    @Schema(description = "子模块列表")
+    private List<SysModuleFieldTreeResp> children;
 }

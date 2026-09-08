@@ -44,6 +44,9 @@ public class SysModule {
     /** 排序顺序 */
     private Integer sortOrder;
 
+    /** 主表名称 */
+    private String primaryTable;
+
     /** 创建人 ID */
     private Long createdBy;
 
