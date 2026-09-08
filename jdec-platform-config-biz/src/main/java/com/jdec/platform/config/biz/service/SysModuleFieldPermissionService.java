@@ -3,7 +3,7 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
-import com.jdec.platform.config.api.constant.ConfigConstants;
+import com.jdec.platform.config.api.SysSchemaApi;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
@@ -31,6 +31,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
+    private final SysSchemaApi sysSchemaApi;
 
     @Override
     public List<SysModuleFieldTreeResp> getModuleTableFieldTree(
@@ -62,6 +63,21 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                 .orderByAsc(SysModuleField::getSortOrder);
         List<SysModuleField> allFields = sysModuleFieldMapper.selectList(fieldWrapper);
 
+        // 收集所有表名（包括 primaryTable 以及所有字段归属表），批量获取真实表注释
+        Set<String> allTableNames = new HashSet<>();
+        for (SysModule m : modules) {
+            if (StringUtils.hasText(m.getPrimaryTable())) {
+                allTableNames.add(m.getPrimaryTable().trim());
+            }
+        }
+        for (SysModuleField f : allFields) {
+            if (StringUtils.hasText(f.getTableName())) {
+                allTableNames.add(f.getTableName().trim());
+            }
+        }
+        Map<String, String> tableCommentMap =
+                sysSchemaApi.getTableComments(projectNo, allTableNames);
+
         // 按 moduleId -> (tableName -> List<SysModuleField>) 建立索引
         Map<Long, Map<String, List<SysModuleField>>> fieldsByModuleTable =
                 allFields.stream()
@@ -82,7 +98,8 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                                         buildModuleNode(
                                                 m,
                                                 fieldsByModuleTable.getOrDefault(
-                                                        m.getId(), Collections.emptyMap())))
+                                                        m.getId(), Collections.emptyMap()),
+                                                tableCommentMap))
                         .toList();
 
         // 4. 双亲委派挂载子模块 children 树形结构
@@ -91,7 +108,9 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
 
     /** 构建单个模块节点（装配下属表及字段列表） */
     private SysModuleFieldTreeResp buildModuleNode(
-            SysModule module, Map<String, List<SysModuleField>> tableFieldsMap) {
+            SysModule module,
+            Map<String, List<SysModuleField>> tableFieldsMap,
+            Map<String, String> tableCommentMap) {
         SysModuleFieldTreeResp dto = new SysModuleFieldTreeResp();
         dto.setModuleId(module.getId());
         dto.setModuleName(module.getModuleName());
@@ -108,7 +127,10 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
             for (String tableName : tableFieldsMap.keySet()) {
                 if (trimmedPrimary.equalsIgnoreCase(tableName)) {
                     processedTables.add(tableName);
-                    tableNodes.add(buildTableNode(tableName, tableFieldsMap.get(tableName)));
+                    String tableDesc =
+                            tableCommentMap.getOrDefault(tableName.toLowerCase(), tableName);
+                    tableNodes.add(
+                            buildTableNode(tableName, tableDesc, tableFieldsMap.get(tableName)));
                     break;
                 }
             }
@@ -118,7 +140,8 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         for (Map.Entry<String, List<SysModuleField>> entry : tableFieldsMap.entrySet()) {
             String tableName = entry.getKey();
             if (!processedTables.contains(tableName)) {
-                tableNodes.add(buildTableNode(tableName, entry.getValue()));
+                String tableDesc = tableCommentMap.getOrDefault(tableName.toLowerCase(), tableName);
+                tableNodes.add(buildTableNode(tableName, tableDesc, entry.getValue()));
             }
         }
 
@@ -127,12 +150,11 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
     }
 
     /** 构建表节点及内部字段列表 */
-    private ModuleTableTreeResp buildTableNode(String tableName, List<SysModuleField> fields) {
+    private ModuleTableTreeResp buildTableNode(
+            String tableName, String tableDesc, List<SysModuleField> fields) {
         ModuleTableTreeResp tableResp = new ModuleTableTreeResp();
         tableResp.setTableName(tableName);
-        tableResp.setTableDesc(tableName);
-        tableResp.setTableType(ConfigConstants.TABLE_TYPE_SIMPLE);
-        tableResp.setReadOnly(0);
+        tableResp.setTableDesc(tableDesc);
 
         List<ModuleFieldTreeResp> fieldNodes = new ArrayList<>();
         if (fields != null) {

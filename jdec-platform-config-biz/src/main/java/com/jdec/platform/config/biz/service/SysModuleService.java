@@ -15,8 +15,6 @@ import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceCheckResult;
-import com.jdec.platform.config.biz.check.ReferenceChecker;
 import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
@@ -55,7 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Slf4j
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysModuleService implements SysModuleApi, ReferenceChecker {
+public class SysModuleService implements SysModuleApi {
 
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
@@ -609,33 +607,5 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             }
         }
         return tree;
-    }
-
-    @Override
-    public List<String> targetType() {
-        return List.of(CheckConstant.SYS_STATUS);
-    }
-
-    @Override
-    public ReferenceCheckResult check(ReferenceContext referenceContext) {
-        if (Objects.equals(referenceContext.getTargetType(), CheckConstant.SYS_STATUS)) {
-            return checkStatus(referenceContext);
-        }
-        return ReferenceCheckResult.empty();
-    }
-
-    private ReferenceCheckResult checkStatus(ReferenceContext referenceContext) {
-        Long count =
-                sysModuleStatusMapper.selectCount(
-                        Wrappers.<SysModuleStatus>lambdaQuery()
-                                .eq(SysModuleStatus::getStatusId, referenceContext.getTargetId()));
-        if (count == 0) {
-            return ReferenceCheckResult.empty();
-        }
-        return ReferenceCheckResult.builder()
-                .referenced(true)
-                .count(count)
-                .message("状态【" + referenceContext.getTargetName() + "】绑定了" + count + "个模块状态")
-                .build();
     }
 }
