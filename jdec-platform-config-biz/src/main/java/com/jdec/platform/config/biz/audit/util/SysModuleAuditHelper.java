@@ -28,7 +28,6 @@ public class SysModuleAuditHelper {
             req.setModule(moduleReq);
         }
         req.setFields(resp.getFields());
-        req.setModuleHeaders(resp.getModuleHeaders());
         req.setModuleStatuses(resp.getModuleStatuses());
         return req;
     }

@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import lombok.Data;
 
-/** 模块元数据响应 DTO 包含模块基本信息、关联表拓扑、字段配置、表头配置和状态 */
+/** 模块元数据响应 DTO 包含模块基本信息、关联表拓扑、字段配置和状态 */
 @Data
 @Schema(description = "模块元数据响应")
 public class SysModuleMetaResp {
@@ -18,10 +18,6 @@ public class SysModuleMetaResp {
     /** 模块字段列表 (首个字段所属表为主表) */
     @Schema(description = "模块字段列表")
     private List<ModuleFieldDTO> fields;
-
-    /** 模块列表表头配置 */
-    @Schema(description = "模块列表表头配置")
-    private List<ModuleTableHeaderDTO> moduleHeaders;
 
     /** 模块状态列表 */
     @Schema(description = "模块状态列表")

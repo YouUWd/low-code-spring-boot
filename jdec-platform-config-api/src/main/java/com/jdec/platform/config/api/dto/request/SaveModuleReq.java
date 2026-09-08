@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.Data;
 
-/** 保存模块完整信息请求 DTO 包含模块基本信息、字段配置、表头配置、状态机 (主表由 fields 第一项自推导) */
+/** 保存模块完整信息请求 DTO 包含模块基本信息、字段配置、状态机 (主表由 fields 第一项自推导) */
 @Data
 @Schema(description = "保存模块完整信息请求")
 public class SaveModuleReq {
@@ -17,10 +17,6 @@ public class SaveModuleReq {
     /** 模块物理字段配置列表 */
     @Schema(description = "模块物理字段配置列表", example = "[]")
     private List<ModuleFieldDTO> fields;
-
-    /** 列表表头配置列表 */
-    @Schema(description = "列表表头配置列表", example = "[]")
-    private List<ModuleTableHeaderDTO> moduleHeaders;
 
     /** 模块状态配置列表 */
     @Schema(description = "模块状态配置列表", example = "[]")

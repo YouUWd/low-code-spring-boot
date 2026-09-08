@@ -65,7 +65,6 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     private final SysWechatTemplateMapper sysWechatTemplateMapper;
     private final SysWechatTemplateParamMapper sysWechatTemplateParamMapper;
     private final SysFieldMapper sysFieldMapper;
-    private final SysModuleHeaderMapper sysModuleHeaderMapper;
     private final DataSourceResolver dataSourceResolver;
     private final ObjectMapper objectMapper;
     private final SubjectApi subjectApi;
@@ -234,34 +233,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                         .collect(Collectors.toList());
         resp.setFields(fieldInfos);
 
-        // 4. 获取列表表头配置 (sys_module_header)
-        List<SysModuleHeader> allHeaders =
-                sysModuleHeaderMapper.selectList(
-                        Wrappers.<SysModuleHeader>lambdaQuery()
-                                .eq(SysModuleHeader::getModuleId, moduleId)
-                                .orderByAsc(SysModuleHeader::getSortOrder));
-        List<ModuleTableHeaderDTO> headerInfos =
-                allHeaders.stream()
-                        .map(
-                                h -> {
-                                    ModuleTableHeaderDTO dto = new ModuleTableHeaderDTO();
-                                    dto.setName(h.getHeaderName());
-                                    dto.setTable(h.getTableName());
-                                    dto.setField(h.getColumnName());
-                                    dto.setWidth(h.getWidth());
-                                    dto.setSortOrder(h.getSortOrder());
-                                    dto.setSearchType(h.getSearchType());
-                                    dto.setFixed(h.getFixed());
-                                    dto.setEllipsis(
-                                            h.getEllipsis() != null && h.getEllipsis() == 1);
-                                    dto.setSortable(
-                                            h.getSortable() != null && h.getSortable() == 1);
-                                    return dto;
-                                })
-                        .collect(Collectors.toList());
-        resp.setModuleHeaders(headerInfos);
-
-        // 5. 获取状态列表 (sys_module_status)
+        // 4. 获取状态列表 (sys_module_status)
         List<SysModuleStatus> statuses =
                 sysModuleStatusMapper.selectList(
                         Wrappers.<SysModuleStatus>lambdaQuery()
@@ -306,14 +278,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                     moduleId,
                     request.getFields() != null ? request.getFields() : Collections.emptyList());
 
-            // 4. 保存列表表头配置（支持 null 或空数组全量清空）
-            saveModuleHeaders(
-                    moduleId,
-                    request.getModuleHeaders() != null
-                            ? request.getModuleHeaders()
-                            : Collections.emptyList());
-
-            // 5. 保存状态机配置（支持 null 或空数组全量清空）
+            // 4. 保存状态机配置（支持 null 或空数组全量清空）
             saveModuleStatuses(
                     moduleId,
                     request.getModuleStatuses() != null
@@ -459,10 +424,6 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
         // 删除模块字段配置
         sysModuleFieldMapper.delete(
                 Wrappers.<SysModuleField>lambdaQuery().eq(SysModuleField::getModuleId, moduleId));
-
-        // 删除模块表头配置
-        sysModuleHeaderMapper.delete(
-                Wrappers.<SysModuleHeader>lambdaQuery().eq(SysModuleHeader::getModuleId, moduleId));
 
         // 删除状态
         sysModuleStatusMapper.delete(
@@ -650,64 +611,6 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             s.setStatusId(info.getStatusId());
             s.setUpdatedDate(LocalDateTime.now());
             saveOrUpdateList.add(s);
-        }
-
-        if (!saveOrUpdateList.isEmpty()) {
-            Db.saveOrUpdateBatch(saveOrUpdateList);
-        }
-    }
-
-    private void saveModuleHeaders(Long moduleId, List<ModuleTableHeaderDTO> headers) {
-        if (headers == null) {
-            headers = Collections.emptyList();
-        }
-        // 1. 查询已有的表头配置
-        List<SysModuleHeader> existHeaders =
-                sysModuleHeaderMapper.selectList(
-                        Wrappers.<SysModuleHeader>lambdaQuery()
-                                .eq(SysModuleHeader::getModuleId, moduleId));
-        Map<Long, SysModuleHeader> existHeaderMap =
-                existHeaders.stream().collect(Collectors.toMap(SysModuleHeader::getId, h -> h));
-
-        // 2. 收集请求中提交的有效 ID
-        Set<Long> keepIds =
-                headers.stream()
-                        .map(ModuleTableHeaderDTO::getId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-
-        // 3. 计算并删除需要删除的表头
-        List<Long> deleteIds =
-                existHeaders.stream()
-                        .map(SysModuleHeader::getId)
-                        .filter(id -> !keepIds.contains(id))
-                        .collect(Collectors.toList());
-
-        if (!deleteIds.isEmpty()) {
-            sysModuleHeaderMapper.deleteByIds(deleteIds);
-        }
-
-        // 4. 组装待保存/更新的表头列表
-        List<SysModuleHeader> saveOrUpdateList = new ArrayList<>();
-        for (int i = 0; i < headers.size(); i++) {
-            ModuleTableHeaderDTO info = headers.get(i);
-            SysModuleHeader h;
-            if (info.getId() != null && existHeaderMap.containsKey(info.getId())) {
-                h = existHeaderMap.get(info.getId());
-            } else {
-                h = new SysModuleHeader();
-                h.setModuleId(moduleId);
-            }
-            h.setTableName(info.getTable());
-            h.setColumnName(info.getField());
-            h.setHeaderName(info.getName());
-            h.setWidth(info.getWidth());
-            h.setSortOrder(info.getSortOrder() != null ? info.getSortOrder() : i);
-            h.setSearchType(info.getSearchType());
-            h.setFixed(info.getFixed());
-            h.setEllipsis(info.getEllipsis() != null && info.getEllipsis() ? 1 : 0);
-            h.setSortable(info.getSortable() != null && info.getSortable() ? 1 : 0);
-            saveOrUpdateList.add(h);
         }
 
         if (!saveOrUpdateList.isEmpty()) {
