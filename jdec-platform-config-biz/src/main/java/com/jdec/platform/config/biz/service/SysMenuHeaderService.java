@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysMenuHeaderApi;
+import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysMenuHeader;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 列表表头节点 Service 实现 */
 @Slf4j
@@ -60,6 +62,83 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
 
         // 2. 无配置（首次查询）：以菜单本身为根，按菜单绑定的模块字段生成默认表头树
         return buildDefault(menuId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveMenuHeader(SysMenuHeaderReq req) {
+        if (req == null) {
+            throw new BusinessException("请求参数不能为空");
+        }
+        if (req.getMenuId() == null) {
+            throw new BusinessException("所属菜单ID不能为空");
+        }
+
+        // 顶层节点（无 parentId 时）设置为 0
+        if (req.getParentId() == null) {
+            req.setParentId(0L);
+        }
+
+        // 递归保存节点及其子节点
+        saveNodeRecursive(req, req.getParentId());
+    }
+
+    /**
+     * 递归保存节点及其子节点
+     *
+     * @param req 节点请求对象
+     * @param parentId 父节点ID（顶层为 0）
+     * @return 保存后的节点ID
+     */
+    private Long saveNodeRecursive(SysMenuHeaderReq req, Long parentId) {
+        SysMenuHeader entity = new SysMenuHeader();
+
+        // 设置基本信息
+        entity.setMenuId(req.getMenuId());
+        entity.setParentId(parentId);
+        entity.setNodeType(req.getNodeType());
+        entity.setSourceMenuId(req.getSourceMenuId());
+        entity.setSourceFieldId(req.getSourceFieldId());
+        entity.setLabel(req.getLabel());
+        entity.setColors(req.getColors());
+        entity.setWidth(req.getWidth());
+        entity.setField(req.getField());
+        entity.setSorted(req.getSorted());
+        entity.setSearchType(req.getSearchType());
+        entity.setEllipsis(req.getEllipsis());
+        entity.setChecked(req.getChecked());
+        entity.setSortValue(req.getSortValue());
+
+        // 设置上下文信息
+        entity.setSubjectId(AppContext.getSubjectId());
+
+        Long savedId;
+        if (req.getId() != null) {
+            // 更新操作
+            entity.setId(req.getId());
+            sysMenuHeaderMapper.updateById(entity);
+            savedId = req.getId();
+            log.debug("更新菜单表头节点，ID: {}", savedId);
+        } else {
+            // 新增操作
+            sysMenuHeaderMapper.insert(entity);
+            savedId = entity.getId();
+            log.debug("新增菜单表头节点，ID: {}", savedId);
+        }
+
+        // 递归保存子节点
+        if (req.getChildren() != null && !req.getChildren().isEmpty()) {
+            for (SysMenuHeaderReq child : req.getChildren()) {
+                // 子节点的 menuId 继承父节点（如果子节点未指定）
+                if (child.getMenuId() == null) {
+                    child.setMenuId(req.getMenuId());
+                }
+                // 递归保存子节点，传入当前节点ID作为父ID
+                saveNodeRecursive(child, savedId);
+            }
+        }
+
+        return savedId;
     }
 
     // ==================== 已保存配置的组装 ====================

@@ -20,6 +20,12 @@ import lombok.NoArgsConstructor;
 @Schema(description = "菜单表头节点响应")
 public class SysMenuHeaderResp {
 
+    @Schema(description = "主键id")
+    private Long id;
+
+    @Schema(description = "父Id")
+    private Long parentId;
+
     @Schema(description = "所属菜单ID", example = "1")
     private Long menuId;
 
@@ -55,6 +61,9 @@ public class SysMenuHeaderResp {
 
     @Schema(description = "是否选中：0-否，1-是", example = "0")
     private Integer checked;
+
+    @Schema(description = "排序值")
+    private Integer sortValue;
 
     @Schema(description = "子节点列表（菜单节点返回，字段节点不返回）")
     private List<SysMenuHeaderResp> children;

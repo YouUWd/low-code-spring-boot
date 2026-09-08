@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api;
 
+import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 
 /** 列表表头节点 API 接口 */
@@ -15,4 +16,13 @@ public interface SysMenuHeaderApi {
      * @return 菜单表头树的根节点
      */
     SysMenuHeaderResp getMenuHeaderTree(Long menuId);
+
+    /**
+     * 保存菜单表头配置（支持树形结构批量新增/更新）
+     *
+     * <p>保存菜单表头节点配置，支持树形结构递归保存。有 id 执行更新，无 id 执行新增。 顶层节点（无父节点）的 parentId 设置为 0，子节点按父子关系维护 parentId。
+     *
+     * @param req 菜单表头节点请求对象（支持嵌套 children）
+     */
+    void saveMenuHeader(SysMenuHeaderReq req);
 }

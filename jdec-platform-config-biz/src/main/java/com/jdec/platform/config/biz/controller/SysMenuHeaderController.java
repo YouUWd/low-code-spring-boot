@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysMenuHeaderApi;
+import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,5 +28,14 @@ public class SysMenuHeaderController {
     public ApiResponse<SysMenuHeaderResp> tree(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderTree(menuId));
+    }
+
+    @PostMapping("/save")
+    @Operation(
+            summary = "保存菜单表头配置",
+            description = "保存菜单表头节点（支持树形结构递归保存），有 id 执行更新，无 id 执行新增；顶层节点 parentId 自动设为 0")
+    public ApiResponse<Void> save(@RequestBody SysMenuHeaderReq req) {
+        sysMenuHeaderApi.saveMenuHeader(req);
+        return ApiResponse.success();
     }
 }
