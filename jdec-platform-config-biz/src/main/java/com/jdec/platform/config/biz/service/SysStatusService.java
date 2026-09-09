@@ -197,8 +197,7 @@ public class SysStatusService implements SysStatusApi {
                     throw new BusinessException("同级状态下名称已存在");
                 }
             }
-            // 处理排序值
-            handleSortOrderForUpdate(entity);
+            // 排序由前端整棵树决定，sortOrder 非空则按原值直接更新，为空则 updateById 不覆盖该列
             sysStatusMapper.updateById(entity);
 
             // 停用时级联停用所有子节点（enabled / approvalShowFlag）
@@ -537,10 +536,10 @@ public class SysStatusService implements SysStatusApi {
         }
     }
 
-    /** 处理新增时的排序值 */
+    /** 处理新增时的排序值：排序由前端决定，已传则直接入库；未传时追加到同级末尾，后端不再搬移其它同级节点 */
     private void handleSortOrderForInsert(SysStatus entity) {
         if (entity.getSortOrder() == null) {
-            // 前端未传排序值，自动分配为同级最大值+1
+            // 前端未传排序值，追加到同级末尾
             Integer maxSort =
                     sysStatusMapper
                             .selectList(
@@ -555,17 +554,6 @@ public class SysStatusService implements SysStatusApi {
                             .map(SysStatus::getSortOrder)
                             .orElse(-1);
             entity.setSortOrder(maxSort + 1);
-        } else {
-            // 前端传了排序值，检查是否冲突
-            adjustSortOrderIfConflict(entity.getPid(), entity.getSortOrder(), null);
-        }
-    }
-
-    /** 处理更新时的排序值 */
-    private void handleSortOrderForUpdate(SysStatus entity) {
-        if (entity.getSortOrder() != null) {
-            // 前端传了排序值，检查是否冲突
-            adjustSortOrderIfConflict(entity.getPid(), entity.getSortOrder(), entity.getId());
         }
     }
 
@@ -591,30 +579,6 @@ public class SysStatusService implements SysStatusApi {
         } else {
             // 前端传了顺序值（从0开始），需要调整同级节点的排序
             adjustSortOrderForDrag(entity, targetIndex);
-        }
-    }
-
-    /** 调整同级节点的排序值，避免冲突 */
-    private void adjustSortOrderIfConflict(Long pid, Integer sortOrder, Long excludeId) {
-        // 查询同级是否存在相同排序值的节点
-        LambdaQueryWrapper<SysStatus> wrapper =
-                Wrappers.<SysStatus>lambdaQuery()
-                        .eq(SysStatus::getPid, pid)
-                        .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
-                        .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
-                        .ge(SysStatus::getSortOrder, sortOrder);
-        if (excludeId != null) {
-            wrapper.ne(SysStatus::getId, excludeId);
-        }
-        List<SysStatus> conflicts =
-                sysStatusMapper.selectList(wrapper.orderByAsc(SysStatus::getSortOrder));
-
-        if (!conflicts.isEmpty()) {
-            // 批量更新冲突节点的排序值（依次+1）
-            for (SysStatus conflict : conflicts) {
-                conflict.setSortOrder(conflict.getSortOrder() + 1);
-            }
-            sysStatusMapper.updateById(conflicts);
         }
     }
 
