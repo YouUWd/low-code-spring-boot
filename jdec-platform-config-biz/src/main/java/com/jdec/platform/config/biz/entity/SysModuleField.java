@@ -33,6 +33,9 @@ public class SysModuleField {
     /** 显示名称 * */
     private String displayName;
 
+    /** 业务唯一标识顺序 * */
+    private Integer bizKeyOrder;
+
     /** 显示排序 */
     private Integer sortOrder;
 

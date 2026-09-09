@@ -153,6 +153,7 @@ public class SysModuleService implements SysModuleApi {
                                     info.setTableName(f.getTableName());
                                     info.setColumnName(f.getColumnName());
                                     info.setDisplayName(f.getDisplayName());
+                                    info.setBizKeyOrder(f.getBizKeyOrder());
                                     info.setSortOrder(f.getSortOrder());
                                     return info;
                                 })

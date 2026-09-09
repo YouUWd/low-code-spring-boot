@@ -26,6 +26,9 @@ public class ModuleFieldDTO {
     @Schema(description = "字段显示名称", example = "学生编号")
     private String displayName;
 
+    @Schema(description = "业务唯一标识顺序", example = "1")
+    private Integer bizKeyOrder;
+
     @Schema(description = "排序顺序", example = "1")
     private Integer sortOrder;
 }
