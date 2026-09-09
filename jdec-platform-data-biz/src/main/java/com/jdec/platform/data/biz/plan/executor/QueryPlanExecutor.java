@@ -52,12 +52,30 @@ public class QueryPlanExecutor {
         }
 
         // ==================== Stage 0: 根节点扫描与分页 ====================
-        // 1. 查询符合条件的主表精确 COUNT
-        long total =
-                dsl.selectCount()
-                        .from(DSL.table(DSL.name(primaryTable)))
-                        .where(rootPlan.getCondition())
-                        .fetchOne(0, Long.class);
+        // 1. 构建主表精确 COUNT 查询 (若有伴生表同样需 LEFT JOIN 保证伴生表条件解析正常)
+        SelectJoinStep<?> countStep = dsl.selectCount().from(DSL.table(DSL.name(primaryTable)));
+        if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
+            for (var joinSpec : rootPlan.getCompanionJoins()) {
+                String tgtTable = joinSpec.getTargetTable();
+                String tgtField = joinSpec.getTargetField();
+                String srcTable = joinSpec.getSourceTable();
+                String srcField = joinSpec.getSourceField();
+                countStep =
+                        (SelectJoinStep<?>)
+                                countStep
+                                        .leftJoin(DSL.table(DSL.name(tgtTable)))
+                                        .on(
+                                                DSL.field(DSL.name(srcTable, srcField))
+                                                        .eq(
+                                                                DSL.field(
+                                                                        DSL.name(
+                                                                                tgtTable,
+                                                                                tgtField))))
+                                        .and(DSL.field(DSL.name(tgtTable, "deleted")).eq((byte) 0));
+            }
+        }
+
+        long total = countStep.where(rootPlan.getCondition()).fetchOne(0, Long.class);
 
         int pageNo =
                 (rootPlan.getPageNo() != null && rootPlan.getPageNo() > 0)
@@ -224,7 +242,7 @@ public class QueryPlanExecutor {
 
             // 1. 构建物理投影字段列表 (包含主键、技术外键及伴生表字段)
             List<Field<?>> selectFields =
-                    buildSelectFields(childTable, childPlan.getProjectedFields());
+                    buildSelectFields(childTable, childPlan.getProjectedFields(), fkField);
 
             SelectJoinStep<Record> queryStep =
                     selectFields.isEmpty()
@@ -343,6 +361,12 @@ public class QueryPlanExecutor {
 
     /** 将物理投影规格转换为 jOOQ Field 列表 (支持伴生表列名别名隔离，且保证必须包含主键 id) */
     private List<Field<?>> buildSelectFields(String primaryTable, List<PhysicalFieldSpec> specs) {
+        return buildSelectFields(primaryTable, specs, null);
+    }
+
+    /** 将物理投影规格转换为 jOOQ Field 列表 (支持伴生表列名别名隔离，且保证必须包含主键 id 与技术外键 fkField) */
+    private List<Field<?>> buildSelectFields(
+            String primaryTable, List<PhysicalFieldSpec> specs, String fkField) {
         List<Field<?>> fields = new ArrayList<>();
         Set<String> added = new HashSet<>();
 
@@ -350,6 +374,11 @@ public class QueryPlanExecutor {
         if (primaryTable != null && !primaryTable.isBlank()) {
             fields.add(DSL.field(DSL.name(primaryTable, "id")).as("id"));
             added.add("id");
+
+            // 若存在技术外键字段（如从表关联父表的外键），确保纳入 SELECT 供装配器匹配
+            if (fkField != null && !fkField.isBlank() && added.add(fkField.toLowerCase())) {
+                fields.add(DSL.field(DSL.name(primaryTable, fkField)).as(fkField));
+            }
         }
 
         if (specs != null && !specs.isEmpty()) {

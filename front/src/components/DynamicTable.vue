@@ -894,44 +894,48 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
 
     const branches: DynamicBranch[] = [];
 
-    // 遍历 record 中的所有键
-    for (const key of Object.keys(record)) {
-      const modVal = record[key];
-      if (modVal && typeof modVal === 'object' && !Array.isArray(modVal)) {
-        for (const tName of Object.keys(modVal)) {
-          const tableVal = modVal[tName];
-          if (Array.isArray(tableVal) && tableVal.length > 0) {
-            const slots: DynamicSlot[] = [];
-            tableVal.forEach(item => {
-              // 检查 item 内部是否嵌套有下一级孙表数组 (1:N:N)
-              let childArr: any[] = [];
-              if (item && typeof item === 'object') {
-                for (const subK of Object.keys(item)) {
-                  if (Array.isArray(item[subK])) {
-                    childArr = item[subK];
-                    break;
-                  }
+    // 递归扫描 record 及其各级模块空间下的全部 1:N 从表分支
+    function scanBranches(currentObj: any, currentModKey: string) {
+      if (!currentObj || typeof currentObj !== 'object' || Array.isArray(currentObj)) return;
+      for (const k of Object.keys(currentObj)) {
+        const val = currentObj[k];
+        if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') {
+          // 捕获到一个 1:N 从表数组分支
+          const slots: DynamicSlot[] = [];
+          val.forEach(item => {
+            // 检查 item 内部是否嵌套有同模块从表数组 (如 student_course_score_item)
+            let childArr: any[] = [];
+            if (item && typeof item === 'object') {
+              for (const subK of Object.keys(item)) {
+                if (Array.isArray(item[subK])) {
+                  childArr = item[subK];
+                  break;
                 }
               }
-              const slotSpan = Math.max(1, childArr.length);
-              slots.push({
-                item,
-                subItems: childArr,
-                slotSpan
-              });
+            }
+            const slotSpan = Math.max(1, childArr.length);
+            slots.push({
+              item,
+              subItems: childArr,
+              slotSpan
             });
+          });
 
-            const totalSpan = slots.reduce((sum, s) => sum + s.slotSpan, 0);
-            branches.push({
-              modKey: key,
-              tableName: tName,
-              slots,
-              totalSpan
-            });
-          }
+          const totalSpan = slots.reduce((sum, s) => sum + s.slotSpan, 0);
+          branches.push({
+            modKey: currentModKey,
+            tableName: k,
+            slots,
+            totalSpan
+          });
+        } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+          // 深入子模块空间 (如 record['101'] -> ['104'] -> ['106'])
+          scanBranches(val, k);
         }
       }
     }
+
+    scanBranches(record, '');
 
     // 主记录占用的总行数 = max(1, 各 1:N 分支展开行数)
     const maxBranchSpan = branches.length > 0 ? Math.max(...branches.map(b => b.totalSpan)) : 1;
@@ -985,7 +989,7 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
           return;
         }
 
-        // 检查当前列是否属于某个 1:N:N 孙表实体
+        // 检查当前列是否属于某个 1:N:N 孙表实体 (支持同模块从表或独立子模块命名空间)
         let matchedChildBranch: { branch: DynamicBranch; childTable: string } | null = null;
         for (const b of branches) {
           if (b.slots.length > 0 && b.slots[0].item) {
@@ -993,6 +997,13 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
               if (k === table && Array.isArray(b.slots[0].item[k])) {
                 matchedChildBranch = { branch: b, childTable: k };
                 break;
+              } else if (b.slots[0].item[k] && typeof b.slots[0].item[k] === 'object' && !Array.isArray(b.slots[0].item[k])) {
+                // 嵌套子模块命名空间 (如 item['106']['student_award_detail'])
+                const subMod = b.slots[0].item[k];
+                if (subMod[table] && Array.isArray(subMod[table])) {
+                  matchedChildBranch = { branch: b, childTable: table };
+                  break;
+                }
               }
             }
           }

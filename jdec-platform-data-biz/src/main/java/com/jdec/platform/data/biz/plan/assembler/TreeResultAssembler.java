@@ -42,15 +42,29 @@ public class TreeResultAssembler {
             List<Map<String, Object>> childRows =
                     rawDataByNode.getOrDefault(childPlan, Collections.emptyList());
 
-            // 1. 递归优先将更深层的孙模块/孙表装配进当前从表行内 (例如 考核分项 装配进 选课记录 行内)
+            // 1. 分离子计划中的【同模块 1:N 从表】与【独立子模块】
+            List<QueryNodePlan> sameModuleSubTablePlans = new ArrayList<>();
+            List<QueryNodePlan> subModulePlans = new ArrayList<>();
             if (childPlan.getChildren() != null && !childPlan.getChildren().isEmpty()) {
-                assembleGrandChildrenIntoRows(childRows, childPlan.getChildren(), rawDataByNode);
+                for (QueryNodePlan cp : childPlan.getChildren()) {
+                    if (cp.getModuleId() != null && cp.getModuleId().equals(childModId)) {
+                        sameModuleSubTablePlans.add(cp);
+                    } else {
+                        subModulePlans.add(cp);
+                    }
+                }
             }
 
-            // 2. 检查用户请求的字段中是否包含外键字段
+            // 2. 将同模块 1:N 从表装配进当前从表行内 (例如 103 的考核分项 装配进 选课记录 行内)
+            if (!sameModuleSubTablePlans.isEmpty()) {
+                assembleSameModuleSubTablesIntoRows(
+                        childRows, sameModuleSubTablePlans, rawDataByNode);
+            }
+
+            // 3. 检查用户请求的字段中是否包含外键字段
             boolean requestIncludesFk = isFieldExplicitlyRequested(childPlan, fkField);
 
-            // 3. 按照外键进行 Hash 分组
+            // 4. 按照外键进行 Hash 分组
             Map<Long, List<Map<String, Object>>> groupedByFk = new HashMap<>();
             for (Map<String, Object> crow : childRows) {
                 Object fkVal = crow.get("_fk_" + fkField);
@@ -71,7 +85,7 @@ public class TreeResultAssembler {
                 }
             }
 
-            // 4. 将分组后的从表对象列表严格挂载在父模块的命名空间内部: record[parentModuleId][childModuleId][childTable] =
+            // 5. 将分组后的从表对象列表严格挂载在父模块的命名空间内部: record[parentModuleId][childModuleId][childTable] =
             // [...]
             for (Map<String, Object> parentRow : parentRecords) {
                 Object pkVal = extractRowPrimaryId(parentRow);
@@ -89,6 +103,17 @@ public class TreeResultAssembler {
                     Map<String, Object> childModSpace =
                             getOrCreateModuleSpace(parentModSpace, childModId);
                     childModSpace.put(childTable, matchedChildren);
+
+                    // 6. 🌟 递归装配独立子模块到当前 childModSpace 命名空间下 (例如 106 模块挂在 104 模块空间下，绝不嵌套在
+                    // student_award 实体内部)
+                    if (!subModulePlans.isEmpty() && !matchedChildren.isEmpty()) {
+                        assembleSubModulesIntoModuleSpace(
+                                childModSpace,
+                                childModId,
+                                matchedChildren,
+                                subModulePlans,
+                                rawDataByNode);
+                    }
                 }
             }
         }
@@ -126,38 +151,124 @@ public class TreeResultAssembler {
         return null;
     }
 
-    /** 将孙模块/孙表数据直接挂载在父从表对象内部 (形如 student_course.student_course_score_item = [...]) */
-    private void assembleGrandChildrenIntoRows(
-            List<Map<String, Object>> parentChildRows,
-            List<QueryNodePlan> grandChildPlans,
+    /**
+     * 将独立子模块装配到父模块命名空间下 (例如 将 106 挂在 record[101][104][106][student_award_detail] 下，绝不嵌套在
+     * student_award 实体内部)
+     */
+    private void assembleSubModulesIntoModuleSpace(
+            Map<String, Object> parentModSpace,
+            Long parentModuleId,
+            List<Map<String, Object>> parentEntities,
+            List<QueryNodePlan> subModulePlans,
             Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
 
-        if (parentChildRows == null || parentChildRows.isEmpty() || grandChildPlans == null) {
+        if (parentModSpace == null
+                || parentEntities == null
+                || parentEntities.isEmpty()
+                || subModulePlans == null) {
             return;
         }
 
-        for (QueryNodePlan grandChildPlan : grandChildPlans) {
-            String grandTable = grandChildPlan.getPrimaryTable();
-            String fkField = grandChildPlan.getParentForeignKey();
-            List<Map<String, Object>> grandChildRows =
-                    rawDataByNode.getOrDefault(grandChildPlan, Collections.emptyList());
+        // 收集属于当前父模块实体的全部主键 ID (例如 当前学生的所有 student_award 的 id)
+        Set<Long> parentEntityIds = new HashSet<>();
+        for (Map<String, Object> entity : parentEntities) {
+            Object idVal = entity.get("_row_id");
+            if (idVal == null) {
+                idVal = entity.get("id");
+            }
+            if (idVal instanceof Number num) {
+                parentEntityIds.add(num.longValue());
+            }
+        }
 
-            // 如果还有更深层（曾孙），继续递归
-            if (grandChildPlan.getChildren() != null && !grandChildPlan.getChildren().isEmpty()) {
-                assembleGrandChildrenIntoRows(
-                        grandChildRows, grandChildPlan.getChildren(), rawDataByNode);
+        if (parentEntityIds.isEmpty()) {
+            return;
+        }
+
+        for (QueryNodePlan subPlan : subModulePlans) {
+            Long subModId = subPlan.getModuleId();
+            String subTable = subPlan.getPrimaryTable();
+            String fkField = subPlan.getParentForeignKey();
+            List<Map<String, Object>> rawRows =
+                    rawDataByNode.getOrDefault(subPlan, Collections.emptyList());
+
+            boolean requestIncludesFk = isFieldExplicitlyRequested(subPlan, fkField);
+
+            // 筛选出属于当前父实体的子模块数据
+            List<Map<String, Object>> matchedSubRows = new ArrayList<>();
+            for (Map<String, Object> srow : rawRows) {
+                Object fkVal = srow.get("_fk_" + fkField);
+                if (fkVal == null) {
+                    fkVal = srow.get(fkField);
+                }
+                if (fkVal instanceof Number num && parentEntityIds.contains(num.longValue())) {
+                    Map<String, Object> cleanRow = new LinkedHashMap<>(srow);
+                    cleanRow.remove("_row_id");
+                    cleanRow.remove("_fk_" + fkField);
+                    if (!requestIncludesFk && fkField != null) {
+                        cleanRow.remove(fkField);
+                    }
+                    matchedSubRows.add(cleanRow);
+                }
             }
 
-            boolean requestIncludesFk = isFieldExplicitlyRequested(grandChildPlan, fkField);
+            // 挂载到父模块空间下的独立子模块空间: parentModSpace[subModId][subTable] = matchedSubRows
+            Map<String, Object> subModSpace = getOrCreateModuleSpace(parentModSpace, subModId);
+            subModSpace.put(subTable, matchedSubRows);
+
+            // 若该子模块自身还有更深层子节点，递归向下处理
+            if (subPlan.getChildren() != null
+                    && !subPlan.getChildren().isEmpty()
+                    && !matchedSubRows.isEmpty()) {
+                List<QueryNodePlan> nextSubModules = new ArrayList<>();
+                List<QueryNodePlan> nextSameModules = new ArrayList<>();
+                for (QueryNodePlan cp : subPlan.getChildren()) {
+                    if (cp.getModuleId() != null && cp.getModuleId().equals(subModId)) {
+                        nextSameModules.add(cp);
+                    } else {
+                        nextSubModules.add(cp);
+                    }
+                }
+                if (!nextSameModules.isEmpty()) {
+                    assembleSameModuleSubTablesIntoRows(
+                            matchedSubRows, nextSameModules, rawDataByNode);
+                }
+                if (!nextSubModules.isEmpty()) {
+                    assembleSubModulesIntoModuleSpace(
+                            subModSpace, subModId, matchedSubRows, nextSubModules, rawDataByNode);
+                }
+            }
+        }
+    }
+
+    /** 将同一模块内未独立成模块的 1:N 从表直接挂载在父从表对象内部 (例如 student_course.student_course_score_item = [...]) */
+    private void assembleSameModuleSubTablesIntoRows(
+            List<Map<String, Object>> parentChildRows,
+            List<QueryNodePlan> sameModuleSubTablePlans,
+            Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
+
+        if (parentChildRows == null
+                || parentChildRows.isEmpty()
+                || sameModuleSubTablePlans == null) {
+            return;
+        }
+
+        for (QueryNodePlan subPlan : sameModuleSubTablePlans) {
+            String subTable = subPlan.getPrimaryTable();
+            String fkField = subPlan.getParentForeignKey();
+            List<Map<String, Object>> subRows =
+                    rawDataByNode.getOrDefault(subPlan, Collections.emptyList());
+
+            boolean requestIncludesFk = isFieldExplicitlyRequested(subPlan, fkField);
 
             Map<Long, List<Map<String, Object>>> groupedByFk = new HashMap<>();
-            for (Map<String, Object> grow : grandChildRows) {
-                Object fkVal = grow.get("_fk_" + fkField);
+            for (Map<String, Object> srow : subRows) {
+                Object fkVal = srow.get("_fk_" + fkField);
                 if (fkVal == null) {
-                    fkVal = grow.get(fkField);
+                    fkVal = srow.get(fkField);
                 }
                 if (fkVal instanceof Number num) {
-                    Map<String, Object> cleanRow = new LinkedHashMap<>(grow);
+                    Map<String, Object> cleanRow = new LinkedHashMap<>(srow);
                     cleanRow.remove("_row_id");
                     cleanRow.remove("_fk_" + fkField);
                     if (!requestIncludesFk && fkField != null) {
@@ -177,7 +288,7 @@ public class TreeResultAssembler {
                 if (pkVal instanceof Number pkNum) {
                     List<Map<String, Object>> matchedList =
                             groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
-                    parentRow.put(grandTable, matchedList);
+                    parentRow.put(subTable, matchedList);
                 }
             }
         }

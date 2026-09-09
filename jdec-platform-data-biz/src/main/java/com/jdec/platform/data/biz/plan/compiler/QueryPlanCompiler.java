@@ -301,7 +301,9 @@ public class QueryPlanCompiler {
         }
 
         String primaryTable = resolvePrimaryTable(meta);
-        String parentFk = resolveParentForeignKey(primaryTable, meta, parentMeta);
+        ParentRelationInfo parentRel = resolveParentRelation(primaryTable, meta, parentMeta);
+        String parentFk = parentRel.childForeignKey();
+        String parentKey = parentRel.parentKey();
 
         // 1. 编译字段投影规格 (基于权限 + fields 显式白名单)
         List<PhysicalFieldSpec> allProjectedFields =
@@ -334,8 +336,8 @@ public class QueryPlanCompiler {
             }
         }
 
-        // 2. 编译过滤条件 (以 fieldId 驱动，构建安全 Condition)
-        Condition condition = compileConditions(meta, primaryTable, node.getFilters());
+        // 2. 编译当前节点自身的用户显式业务过滤条件 (以 fieldId 驱动，无业务条件则返回 null)
+        Condition userFilterCondition = compileUserFilters(meta, primaryTable, node.getFilters());
 
         // 3. 编译排序规则 (以 fieldId 驱动)
         List<OrderField<?>> orderFields = compileSorts(meta, primaryTable, node.getSorts());
@@ -368,12 +370,17 @@ public class QueryPlanCompiler {
                                     "模块 [%s] 的 1:N 从表 [%s] 未配置外键列 join_field",
                                     moduleId, rel.getJoinTable()));
                 }
+                String pKey =
+                        (rel.getMainField() != null && !rel.getMainField().isBlank())
+                                ? rel.getMainField().trim()
+                                : "id";
 
                 QueryNodePlan subPlan =
                         QueryNodePlan.builder()
                                 .moduleId(moduleId)
                                 .moduleMeta(meta)
                                 .primaryTable(rel.getJoinTable())
+                                .parentKey(pKey)
                                 .parentForeignKey(fk)
                                 .projectedFields(entry.getValue())
                                 .condition(
@@ -393,15 +400,71 @@ public class QueryPlanCompiler {
         List<JoinTableSpec> companionJoins =
                 resolveCompanionJoins(primaryTable, primaryProjectedFields, meta);
 
+        // 7. 第一性原理：自底向上汇聚子孙模块过滤约束 (Semi-Join / EXISTS 链式上卷)
+        List<Condition> rollupConditions = new ArrayList<>();
+        for (QueryNodePlan childPlan : childPlans) {
+            if (childPlan.getEffectiveFilterCondition() != null) {
+                String childTable = childPlan.getPrimaryTable();
+                if (childTable != null && childTable.equalsIgnoreCase(primaryTable)) {
+                    // 同物理表 (垂直拆分模块，如 101 与 105)：直接 AND 合并
+                    rollupConditions.add(childPlan.getEffectiveFilterCondition());
+                } else if (childTable != null && childPlan.getParentForeignKey() != null) {
+                    // 1:N 从表：以 Semi-Join (EXISTS) 链式上卷
+                    String pK = childPlan.getParentKey() != null ? childPlan.getParentKey() : "id";
+                    String cFk = childPlan.getParentForeignKey();
+                    Condition existsCondition =
+                            DSL.exists(
+                                    DSL.selectOne()
+                                            .from(DSL.table(DSL.name(childTable)))
+                                            .where(
+                                                    DSL.field(DSL.name(childTable, cFk))
+                                                            .eq(
+                                                                    DSL.field(
+                                                                            DSL.name(
+                                                                                    primaryTable,
+                                                                                    pK)))
+                                                            .and(
+                                                                    DSL.field(
+                                                                                    DSL.name(
+                                                                                            childTable,
+                                                                                            "deleted"))
+                                                                            .eq((byte) 0))
+                                                            .and(
+                                                                    childPlan
+                                                                            .getEffectiveFilterCondition())));
+                    rollupConditions.add(existsCondition);
+                }
+            }
+        }
+
+        // 8. 复合当前节点的有效业务筛选条件
+        Condition effectiveFilterCondition = null;
+        if (userFilterCondition != null && !rollupConditions.isEmpty()) {
+            effectiveFilterCondition = userFilterCondition.and(DSL.and(rollupConditions));
+        } else if (userFilterCondition != null) {
+            effectiveFilterCondition = userFilterCondition;
+        } else if (!rollupConditions.isEmpty()) {
+            effectiveFilterCondition = DSL.and(rollupConditions);
+        }
+
+        // 9. 结合软删除与租户隔离等基础底座条件，计算节点执行 SQL 时的完整 Condition
+        Condition baseCondition = compileBaseConditions(meta, primaryTable);
+        Condition nodeCondition =
+                effectiveFilterCondition != null
+                        ? baseCondition.and(effectiveFilterCondition)
+                        : baseCondition;
+
         return QueryNodePlan.builder()
                 .moduleId(moduleId)
                 .moduleMeta(meta)
                 .primaryTable(primaryTable)
+                .parentKey(parentKey)
                 .parentForeignKey(parentFk)
                 .pageNo(node.getPageNo())
                 .pageSize(node.getPageSize())
                 .projectedFields(primaryProjectedFields)
-                .condition(condition)
+                .condition(nodeCondition)
+                .effectiveFilterCondition(effectiveFilterCondition)
                 .orderFields(orderFields)
                 .companionJoins(companionJoins)
                 .children(childPlans)
@@ -529,16 +592,18 @@ public class QueryPlanCompiler {
         return "";
     }
 
+    public record ParentRelationInfo(String parentKey, String childForeignKey) {}
+
     /**
-     * 从单向定义的 tableRelations 中严格推导外键关联字段名
+     * 从单向定义的 tableRelations 中严格推导外键关联字段名与父表主键关联名
      *
      * <p>第一性原理：TableRelations 仅单向定义 (main_table 为父表，join_table 为从表，join_field 为从表外键物理列)。
      * 结合模块树拓扑，父模块主表必须作为 main_table，子模块主表必须作为 join_table。 严禁任何猜列名、约定俗成、弱匹配回退，不匹配即抛出明确元数据异常。
      */
-    private String resolveParentForeignKey(
+    private ParentRelationInfo resolveParentRelation(
             String childPrimaryTable, SysModuleMetaResp childMeta, SysModuleMetaResp parentMeta) {
         if (childPrimaryTable == null || childPrimaryTable.isBlank() || parentMeta == null) {
-            return null;
+            return new ParentRelationInfo("id", null);
         }
         String parentPrimary = resolvePrimaryTable(parentMeta);
         if (parentPrimary == null || parentPrimary.isBlank()) {
@@ -550,7 +615,7 @@ public class QueryPlanCompiler {
         // 0. 第一性原理特殊情况：当子模块物理主表与父模块物理主表为同一物理表时 (例如 101 学生档案 与 105 核心档案 均为 student 表)
         // 这是同一实体在不同业务模块视图下的垂直拆分，外键关联即为自身物理主键 id
         if (parentPrimary.equalsIgnoreCase(childPrimaryTable)) {
-            return "id";
+            return new ParentRelationInfo("id", "id");
         }
 
         // 1. 汇聚父模块与子模块维护的 tableRelations
@@ -568,7 +633,11 @@ public class QueryPlanCompiler {
                     && parentPrimary.equalsIgnoreCase(rel.getMainTable())
                     && childPrimaryTable.equalsIgnoreCase(rel.getJoinTable())) {
                 if (rel.getJoinField() != null && !rel.getJoinField().isBlank()) {
-                    return rel.getJoinField().trim();
+                    String pKey =
+                            (rel.getMainField() != null && !rel.getMainField().isBlank())
+                                    ? rel.getMainField().trim()
+                                    : "id";
+                    return new ParentRelationInfo(pKey, rel.getJoinField().trim());
                 }
             }
         }
@@ -583,6 +652,11 @@ public class QueryPlanCompiler {
                 String.format(
                         "元数据关联关系未自洽：未在 sys_table_relation 中找到父表 [%s](模块 %s) 到子表 [%s](模块 %s) 的单向关联定义(main_table -> join_table)",
                         parentPrimary, parentModId, childPrimaryTable, childModId));
+    }
+
+    private String resolveParentForeignKey(
+            String childPrimaryTable, SysModuleMetaResp childMeta, SysModuleMetaResp parentMeta) {
+        return resolveParentRelation(childPrimaryTable, childMeta, parentMeta).childForeignKey();
     }
 
     /** 编译字段投影规格 */
@@ -639,15 +713,11 @@ public class QueryPlanCompiler {
                 .build();
     }
 
-    /** 编译过滤条件列表为安全 Condition (以 fieldId 为唯一依据) */
-    private Condition compileConditions(
-            SysModuleMetaResp meta, String primaryTable, List<DynamicFilterItem> filters) {
+    /** 编译软删除与租户隔离等基础底座条件 */
+    private Condition compileBaseConditions(SysModuleMetaResp meta, String primaryTable) {
         List<Condition> conditions = new ArrayList<>();
-
-        // 1. 软删除过滤 (主表 deleted = 0)
         conditions.add(DSL.field(DSL.name(primaryTable, "deleted")).eq((byte) 0));
 
-        // 2. 主体隔离过滤 (若主表包含 subject_id 字段)
         Long subjectId = AppContext.getSubjectId();
         boolean hasSubjectId =
                 meta.getFields() != null
@@ -661,9 +731,14 @@ public class QueryPlanCompiler {
         if (hasSubjectId && subjectId != null && subjectId > 0) {
             conditions.add(DSL.field(DSL.name(primaryTable, "subject_id")).eq(subjectId));
         }
+        return DSL.and(conditions);
+    }
 
+    /** 编译用户显式业务过滤条件为安全 Condition (以 fieldId 为唯一依据，无业务条件返回 null) */
+    private Condition compileUserFilters(
+            SysModuleMetaResp meta, String primaryTable, List<DynamicFilterItem> filters) {
         if (filters == null || filters.isEmpty()) {
-            return DSL.and(conditions);
+            return null;
         }
 
         Map<Long, ModuleFieldDTO> fieldIdMap = new HashMap<>();
@@ -675,6 +750,7 @@ public class QueryPlanCompiler {
             }
         }
 
+        List<Condition> conditions = new ArrayList<>();
         for (DynamicFilterItem item : filters) {
             if (item == null || item.getValue() == null || "".equals(item.getValue())) {
                 continue;
@@ -703,7 +779,15 @@ public class QueryPlanCompiler {
             }
         }
 
-        return DSL.and(conditions);
+        return conditions.isEmpty() ? null : DSL.and(conditions);
+    }
+
+    /** 编译过滤条件列表为安全 Condition (以 fieldId 为唯一依据) */
+    private Condition compileConditions(
+            SysModuleMetaResp meta, String primaryTable, List<DynamicFilterItem> filters) {
+        Condition base = compileBaseConditions(meta, primaryTable);
+        Condition user = compileUserFilters(meta, primaryTable, filters);
+        return user != null ? base.and(user) : base;
     }
 
     /** 根据操作符生成具体的 jOOQ Condition */

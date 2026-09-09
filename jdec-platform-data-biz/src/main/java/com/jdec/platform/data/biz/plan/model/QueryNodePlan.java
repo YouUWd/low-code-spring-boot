@@ -36,6 +36,12 @@ public class QueryNodePlan implements Serializable {
     /** 外键关联父级字段 (仅子节点非空，如 student_id) */
     private String parentForeignKey;
 
+    /** 父表被关联的物理主键/唯一键字段名 (默认为 id) */
+    @Builder.Default private String parentKey = "id";
+
+    /** 当前节点自身的用户业务筛选条件与下级反向上卷约束复合后的 Condition (若无任何业务筛选则为 null) */
+    private Condition effectiveFilterCondition;
+
     /** 分页页码 (若不分页则为 null) */
     private Integer pageNo;
 
