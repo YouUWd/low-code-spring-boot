@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.api.dto.response;
 
+import com.jdec.platform.dataengine.api.dto.model.VersionCompareItemInfo;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

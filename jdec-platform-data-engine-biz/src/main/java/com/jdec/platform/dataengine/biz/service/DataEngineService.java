@@ -1,10 +1,13 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
 import com.jdec.platform.dataengine.api.dto.response.DynamicDetailResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
+import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,5 +31,15 @@ public class DataEngineService implements DataEngineApi {
     @Override
     public Long save(DynamicSaveReq req) {
         return dynamicPersistenceService.save(req);
+    }
+
+    @Override
+    public ApprovalStepInfo getApprovalStepInfo(ApprovalProcessReq approvalProcessReq) {
+        return null;
+    }
+
+    @Override
+    public VersionCompareInfo getVersionCompareInfo(Long primaryKeyId) {
+        return null;
     }
 }

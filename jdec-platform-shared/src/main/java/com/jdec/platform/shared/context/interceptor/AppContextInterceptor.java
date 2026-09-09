@@ -16,6 +16,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class AppContextInterceptor implements HandlerInterceptor {
     private static final String PROJECT_NO_HEADER = "X-Project-No";
     private static final String SUBJECT_ID_HEADER = "X-Subject-Id";
+    private static final String ROLE_ID_HEADER = "X-Role-Id";
     private final ObjectMapper objectMapper;
 
     @Override
@@ -40,7 +41,11 @@ public class AppContextInterceptor implements HandlerInterceptor {
                 (subjectIdStr != null && !subjectIdStr.isEmpty())
                         ? Long.valueOf(subjectIdStr)
                         : null;
-        AppContext.setContext(projectNo, subjectId);
+
+        String roleIdStr = request.getHeader(ROLE_ID_HEADER);
+        Long roleId = (roleIdStr != null && !roleIdStr.isEmpty()) ? Long.valueOf(roleIdStr) : null;
+
+        AppContext.setContext(projectNo, subjectId, roleId);
         return true;
     }
 
