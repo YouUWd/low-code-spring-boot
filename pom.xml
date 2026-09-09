@@ -27,8 +27,10 @@
         <module>jdec-platform-hr-api</module>
         <module>jdec-platform-hr-biz</module>
         <module>jdec-platform-app</module>
-        <module>jdec-platform-common-business-api</module>
-        <module>jdec-platform-common-business-biz</module>
+<!--        <module>jdec-platform-common-business-api</module>-->
+<!--        <module>jdec-platform-common-business-biz</module>-->
+        <module>jdec-platform-data-engine-api</module>
+        <module>jdec-platform-data-engine-biz</module>
         <module>jdec-platform-monitorlog-api</module>
         <module>jdec-platform-monitorlog-biz</module>
         <module>jdec-platform-approval-biz</module>
@@ -107,14 +109,24 @@
                 <artifactId>jdec-platform-hr-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
+<!--            <dependency>-->
+<!--                <groupId>com.jdec</groupId>-->
+<!--                <artifactId>jdec-platform-common-business-api</artifactId>-->
+<!--                <version>${project.version}</version>-->
+<!--            </dependency>-->
+<!--            <dependency>-->
+<!--                <groupId>com.jdec</groupId>-->
+<!--                <artifactId>jdec-platform-common-business-biz</artifactId>-->
+<!--                <version>${project.version}</version>-->
+<!--            </dependency>-->
             <dependency>
                 <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-common-business-api</artifactId>
+                <artifactId>jdec-platform-data-engine-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-common-business-biz</artifactId>
+                <artifactId>jdec-platform-data-engine-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

@@ -60,9 +60,13 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-approval-biz</artifactId>
         </dependency>
+<!--        <dependency>-->
+<!--            <groupId>com.jdec</groupId>-->
+<!--            <artifactId>jdec-platform-common-business-biz</artifactId>-->
+<!--        </dependency>-->
         <dependency>
             <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-common-business-biz</artifactId>
+            <artifactId>jdec-platform-data-engine-biz</artifactId>
         </dependency>
 
         <!-- Spring Modulith 核心与事件持久化 -->
