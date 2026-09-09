@@ -14,7 +14,6 @@ import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
-import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -734,6 +733,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                                             return SysRoleModuleFieldPermission.builder()
                                                     .roleId(roleId)
                                                     .moduleId(moduleId)
+                                                    .moduleFieldId(fieldId)
                                                     .view(view)
                                                     .apply(apply)
                                                     .edit(edit)
@@ -770,22 +770,14 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             return Collections.emptyList();
         }
 
-        // 1. 直接查询该角色已分配的模块字段权限配置列表
+        // 1. 查询该角色已分配的模块字段权限配置列表（若指定了 category，则通过 EXISTS 关联 sys_module 过滤）
         LambdaQueryWrapper<SysRoleModuleFieldPermission> query = Wrappers.lambdaQuery();
         query.eq(SysRoleModuleFieldPermission::getRoleId, roleId);
-
-        String projectNo = AppContext.getProjectNo();
-        Long subjectId = AppContext.getSubjectId();
-        List<SysModule> modules =
-                sysModuleMapper.selectList(
-                        Wrappers.<SysModule>lambdaQuery()
-                                .eq(SysModule::getProjectNo, projectNo)
-                                .eq(SysModule::getSubjectId, subjectId));
-        if (modules.isEmpty()) {
-            return Collections.emptyList();
+        if (category != null) {
+            query.apply(
+                    "EXISTS (SELECT 1 FROM sys_module m WHERE m.id = sys_role_module_field_permission.module_id AND m.category = {0})",
+                    category);
         }
-        List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
-        query.in(SysRoleModuleFieldPermission::getModuleId, moduleIds);
 
         List<SysRoleModuleFieldPermission> allocatedList =
                 sysRoleModuleFieldPermissionMapper.selectList(query);
@@ -794,19 +786,40 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             return Collections.emptyList();
         }
 
-        // 2. 转换为 DTO 扁平列表
-        return allocatedList.stream()
+        // 2. 按 moduleId 分组聚合各维度的字段 ID 列表
+        Map<Long, List<SysRoleModuleFieldPermission>> groupMap =
+                allocatedList.stream()
+                        .filter(p -> p.getModuleFieldId() != null)
+                        .collect(Collectors.groupingBy(SysRoleModuleFieldPermission::getModuleId));
+
+        return groupMap.entrySet().stream()
                 .map(
-                        p -> {
-                            RoleModuleFieldPermissionResp resp =
-                                    new RoleModuleFieldPermissionResp();
-                            resp.setId(p.getId());
-                            resp.setRoleId(p.getRoleId());
-                            resp.setModuleId(p.getModuleId());
-                            resp.setView(p.getView());
-                            resp.setApply(p.getApply());
-                            resp.setEdit(p.getEdit());
-                            return resp;
+                        entry -> {
+                            Long moduleId = entry.getKey();
+                            List<SysRoleModuleFieldPermission> perms = entry.getValue();
+
+                            List<Long> viewFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getView()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+                            List<Long> applyFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getApply()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+                            List<Long> editFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getEdit()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+
+                            return RoleModuleFieldPermissionResp.builder()
+                                    .moduleId(moduleId)
+                                    .viewFields(viewFields)
+                                    .applyFields(applyFields)
+                                    .editFields(editFields)
+                                    .build();
                         })
                 .toList();
     }
