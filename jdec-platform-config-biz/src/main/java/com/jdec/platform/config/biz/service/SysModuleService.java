@@ -227,6 +227,7 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                                 f -> {
                                     ModuleFieldDTO info = new ModuleFieldDTO();
                                     info.setId(f.getId());
+                                    info.setModuleId(f.getModuleId());
                                     info.setTableName(f.getTableName());
                                     info.setColumnName(f.getColumnName());
                                     info.setDisplayName(f.getDisplayName());
@@ -255,6 +256,28 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                 allProjectModules.stream()
                         .collect(Collectors.toMap(SysModule::getId, m -> m, (k1, k2) -> k1));
 
+        // 预先查询当前项目相关的所有模块字段，构建 (sourceModuleId, tableName, columnName) -> fieldId 字典
+        List<Long> allProjectModuleIds =
+                allProjectModules.stream().map(SysModule::getId).collect(Collectors.toList());
+        List<SysModuleField> projectFields =
+                allProjectModuleIds.isEmpty()
+                        ? Collections.emptyList()
+                        : sysModuleFieldMapper.selectList(
+                                Wrappers.<SysModuleField>lambdaQuery()
+                                        .in(SysModuleField::getModuleId, allProjectModuleIds));
+        Map<String, Long> fieldIdLookup = new HashMap<>();
+        for (SysModuleField f : projectFields) {
+            if (f.getModuleId() != null && f.getTableName() != null && f.getColumnName() != null) {
+                String key =
+                        f.getModuleId()
+                                + ":"
+                                + f.getTableName().toLowerCase()
+                                + ":"
+                                + f.getColumnName().toLowerCase();
+                fieldIdLookup.put(key, f.getId());
+            }
+        }
+
         List<ModuleTableHeaderDTO> headerInfos =
                 allHeaders.stream()
                         .map(
@@ -268,6 +291,15 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
                                     dto.setName(h.getHeaderName());
                                     dto.setTable(h.getTableName());
                                     dto.setField(h.getColumnName());
+                                    if (h.getTableName() != null && h.getColumnName() != null) {
+                                        String lookupKey =
+                                                sourceMid
+                                                        + ":"
+                                                        + h.getTableName().toLowerCase()
+                                                        + ":"
+                                                        + h.getColumnName().toLowerCase();
+                                        dto.setFieldId(fieldIdLookup.get(lookupKey));
+                                    }
                                     dto.setWidth(h.getWidth());
                                     dto.setSortOrder(h.getSortOrder());
                                     dto.setSearchType(h.getSearchType());
@@ -1007,6 +1039,28 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
             }
         }
         return tree;
+    }
+
+    @Override
+    public List<ModuleFieldDTO> listFieldsByIds(List<Long> fieldIds) {
+        if (fieldIds == null || fieldIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<SysModuleField> fields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery().in(SysModuleField::getId, fieldIds));
+        return fields.stream()
+                .map(
+                        f ->
+                                ModuleFieldDTO.builder()
+                                        .id(f.getId())
+                                        .moduleId(f.getModuleId())
+                                        .tableName(f.getTableName())
+                                        .columnName(f.getColumnName())
+                                        .displayName(f.getDisplayName())
+                                        .sortOrder(f.getSortOrder())
+                                        .build())
+                .collect(Collectors.toList());
     }
 
     @Override

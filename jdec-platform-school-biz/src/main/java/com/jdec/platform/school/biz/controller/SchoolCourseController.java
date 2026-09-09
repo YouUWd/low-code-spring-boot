@@ -1,7 +1,6 @@
 package com.jdec.platform.school.biz.controller;
 
 import com.jdec.platform.data.api.DataEngineApi;
-import com.jdec.platform.data.api.dto.request.DynamicDetailReq;
 import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.data.api.dto.response.DataPage;
@@ -9,12 +8,13 @@ import com.jdec.platform.data.api.dto.response.EngineDataResult;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.Collections;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-/** 学校业务 - 课程排课中心控制器 基于 Spring Modulith 架构，消费底层 DataEngineApi 低代码数据引擎 */
+/** 学校业务 - 课程排课管理全景档案服务控制器 统一代理底层 DataEngineApi 动态数据引擎进行结构化读写 */
 @Slf4j
 @RestController
 @RequestMapping("/api/school/courses")
@@ -27,17 +27,14 @@ public class SchoolCourseController {
     public static final Long MODULE_ID_COURSE = 102L;
 
     @PostMapping("/query")
-    @Operation(summary = "动态分页查询课程列表", description = "带元数据表头、排序与组合过滤")
-    public ApiResponse<EngineDataResult<DataPage<Map<String, Object>>>> queryCourses(
+    @Operation(summary = "动态分页查询课程列表", description = "带排序与组合过滤")
+    public ApiResponse<DataPage<Map<String, Object>>> queryCourses(
             @RequestBody DynamicQueryReq req) {
-        if (req.getModuleId() == null) {
+        if (req.getModuleId() == null && (req.getFields() == null || req.getFields().isEmpty())) {
             req.setModuleId(MODULE_ID_COURSE);
         }
-        if (req.getViewMode() == null) {
-            req.setViewMode("LIST");
-        }
         try {
-            EngineDataResult<DataPage<Map<String, Object>>> result = dataEngineApi.query(req);
+            DataPage<Map<String, Object>> result = dataEngineApi.query(req);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.warn("Query courses from dataEngineApi failed: {}", ex.getMessage());
@@ -49,13 +46,15 @@ public class SchoolCourseController {
     @Operation(
             summary = "根据课程 ID 查询多场景排课全景档案",
             description = "含主表、1:1 教学大纲、1:N 排课日程、1:N 选课花名册及 N:1 教师团队")
-    public ApiResponse<EngineDataResult<Map<String, Object>>> getCourseDetail(
-            @PathVariable Long id) {
-        DynamicDetailReq detailReq =
-                DynamicDetailReq.builder().moduleId(MODULE_ID_COURSE).id(id).build();
+    public ApiResponse<Map<String, Object>> getCourseDetail(@PathVariable Long id) {
         try {
-            EngineDataResult<Map<String, Object>> result = dataEngineApi.getDetail(detailReq);
-            return ApiResponse.success(result);
+            EngineDataResult<Map<String, Object>> detailResult =
+                    dataEngineApi.getDetail(MODULE_ID_COURSE, id);
+            Map<String, Object> record =
+                    detailResult != null && detailResult.getData() != null
+                            ? detailResult.getData()
+                            : Collections.emptyMap();
+            return ApiResponse.success(record);
         } catch (Exception ex) {
             log.warn("Get course detail from dataEngineApi failed: {}", ex.getMessage());
             throw ex;
@@ -63,7 +62,7 @@ public class SchoolCourseController {
     }
 
     @PostMapping("/save")
-    @Operation(summary = "保存课程排课全景档案与成绩", description = "同构原子保存主表与各从表数据")
+    @Operation(summary = "保存课程全景档案", description = "同构原子保存主表与多排课子表数据")
     public ApiResponse<Map<String, Object>> saveCourse(@RequestBody DynamicSaveReq saveReq) {
         if (saveReq.getModuleId() == null) {
             saveReq.setModuleId(MODULE_ID_COURSE);

@@ -20,6 +20,23 @@ const records = ref<any[]>([]);
 const currentFilters = ref<DynamicFilterItem[]>([]);
 const currentSorts = ref<DynamicSortItem[]>([]);
 
+async function loadHeaders() {
+  try {
+    const res = await engineApi.getHeader({ moduleId: 102 });
+    if (res?.fields) {
+      headers.value = res.fields.map(f => ({
+        fieldId: f.id || f.fieldId,
+        table: f.tableName,
+        field: f.columnName,
+        name: f.displayName,
+        sortOrder: f.sortOrder
+      }));
+    }
+  } catch (err) {
+    console.error('Failed to load headers', err);
+  }
+}
+
 async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sorts: DynamicSortItem[] = currentSorts.value) {
   loading.value = true;
   currentFilters.value = filters;
@@ -27,14 +44,10 @@ async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sor
   try {
     const res = await engineApi.query({
       moduleId: 102,
-      viewMode: 'LIST',
       filters: currentFilters.value,
       sorts: currentSorts.value
     });
-    if (res.meta.headers) {
-      headers.value = res.meta.headers;
-    }
-    records.value = res.data.records;
+    records.value = res?.records || [];
   } finally {
     loading.value = false;
   }
@@ -46,13 +59,15 @@ function handleQueryChange(payload: { filters: DynamicFilterItem[]; sorts: Dynam
 
 watch(
   () => roleStore.currentRoleId,
-  () => {
-    loadData();
+  async () => {
+    await loadHeaders();
+    await loadData();
   }
 );
 
-onMounted(() => {
-  loadData();
+onMounted(async () => {
+  await loadHeaders();
+  await loadData();
 });
 
 // 点击“全景详情”，平滑路由跳转到独立课程详情页并默认激活 syllabus Tab

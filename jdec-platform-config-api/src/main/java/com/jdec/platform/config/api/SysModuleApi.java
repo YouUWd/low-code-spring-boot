@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api;
 
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.MoveModuleResp;
@@ -80,4 +81,12 @@ public interface SysModuleApi {
      */
     List<SysModuleSimpleTreeResp> getAvailableModuleTree(
             Integer category, String projectNo, Long subjectId);
+
+    /**
+     * 根据字段ID列表批量获取字段元数据
+     *
+     * @param fieldIds 字段ID列表
+     * @return 字段元数据列表
+     */
+    List<ModuleFieldDTO> listFieldsByIds(List<Long> fieldIds);
 }

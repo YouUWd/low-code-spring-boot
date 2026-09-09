@@ -512,75 +512,70 @@ function extractFieldValues(data: any, targetTable: string, targetField: string)
 }
 
 /**
- * 基于 modulePath 寻址链条或纯对象模型精准获取字段的多值数组（用于 1:N 明细展开）
+ * 基于 modulePath（模块路径链条）逐级下钻，再结合 table 与 field 渲染数据
  */
 function getCellValuesList(record: any, col: HeaderMeta): any[] {
   if (!record || !col) return [];
-  const { table, field, moduleId, modulePath } = col;
+  const { table, field, moduleId, modulePath, fieldId } = col;
 
-  // 1. 🌟 优先依据 modulePath 链路进行确定性逐层步进提取
-  if (modulePath && Array.isArray(modulePath) && modulePath.length > 0) {
-    let currentLevelObjects: any[] = [record];
+  // 1. 🌟 依据 modulePath 模块下钻路径（如 [101, 103]）定位到目标模块空间，再结合 table/field 提取
+  const targetModulePath = (modulePath && Array.isArray(modulePath) && modulePath.length > 0)
+    ? modulePath
+    : (moduleId ? [moduleId] : []);
 
-    for (let i = 0; i < modulePath.length; i++) {
-      const mid = modulePath[i];
+  if (targetModulePath.length > 0) {
+    let currentObjects: any[] = [record];
+    for (let i = 0; i < targetModulePath.length; i++) {
+      const mid = targetModulePath[i];
       const midStr = String(mid);
-      const nextLevelObjects: any[] = [];
+      const nextObjects: any[] = [];
 
-      for (const obj of currentLevelObjects) {
+      for (const obj of currentObjects) {
         if (!obj || typeof obj !== 'object') continue;
 
-        const moduleSpace = obj[midStr] !== undefined ? obj[midStr] : (obj[mid] !== undefined ? obj[mid] : obj);
-
-        if (Array.isArray(moduleSpace)) {
-          for (const item of moduleSpace) {
-            if (item && typeof item === 'object') nextLevelObjects.push(item);
-          }
-        } else if (moduleSpace && typeof moduleSpace === 'object') {
-          if (i === modulePath.length - 1) {
-            const vals = extractFieldValues(moduleSpace, table, field);
-            if (vals && vals.length > 0) return vals;
-          }
-
-          for (const k of Object.keys(moduleSpace)) {
-            const innerVal = moduleSpace[k];
-            if (Array.isArray(innerVal)) {
-              for (const innerItem of innerVal) {
-                if (innerItem && typeof innerItem === 'object') nextLevelObjects.push(innerItem);
-              }
-            } else if (innerVal && typeof innerVal === 'object') {
-              nextLevelObjects.push(innerVal);
+        // 检查内嵌的 children 自相似树
+        if (obj.children && Array.isArray(obj.children)) {
+          for (const cnode of obj.children) {
+            if (Number(cnode.moduleId) === Number(mid) && Array.isArray(cnode.records)) {
+              nextObjects.push(...cnode.records);
             }
           }
         }
-      }
 
-      currentLevelObjects = nextLevelObjects;
-      if (currentLevelObjects.length === 0) break;
+        // 优先在当前模块对象的 [midStr] 空间中下钻 (严格形态1结构: record["101"]["103"])
+        const modSpace = obj[midStr] !== undefined ? obj[midStr] : (obj[mid] !== undefined ? obj[mid] : null);
+        if (modSpace) {
+          if (Array.isArray(modSpace)) {
+            for (const item of modSpace) {
+              if (item && typeof item === 'object') nextObjects.push(item);
+            }
+          } else if (typeof modSpace === 'object') {
+            nextObjects.push(modSpace);
+          }
+        }
+      }
+      currentObjects = nextObjects;
+      if (currentObjects.length === 0) break;
     }
 
-    if (currentLevelObjects.length > 0) {
+    if (currentObjects.length > 0) {
       const results: any[] = [];
-      for (const leafObj of currentLevelObjects) {
-        const subVals = extractFieldValues(leafObj, table, field);
-        if (subVals.length > 0) results.push(...subVals);
+      for (const modObj of currentObjects) {
+        // 在目标模块对象中提取 table/field
+        const vals = extractFieldValues(modObj, table, field);
+        if (vals && vals.length > 0) {
+          results.push(...vals);
+        }
       }
       if (results.length > 0) return results;
     }
   }
 
-  // 2. 备用提取：优先在对应 moduleId 纯对象空间中提取
-  if (moduleId !== undefined && moduleId !== null && record[moduleId]) {
-    const moduleSpace = record[moduleId];
-    const vals = extractFieldValues(moduleSpace, table, field);
-    if (vals && vals.length > 0) return vals;
-  }
+  // 2. 备用兜底：若无 modulePath 或下钻未命中，直接在 record 全局递归提取 table/field
+  const globalVals = extractFieldValues(record, table, field);
+  if (globalVals && globalVals.length > 0) return globalVals;
 
-  // 3. 备用提取：在整条记录中深度递归匹配物理表和字段
-  const vals = extractFieldValues(record, table, field);
-  if (vals && vals.length > 0) return vals;
-
-  // 4. 备用兜底：从平铺字段取值
+  // 3. 单字段兜底
   if (record[field] !== undefined && record[field] !== null && typeof record[field] !== 'object') {
     return [record[field]];
   }

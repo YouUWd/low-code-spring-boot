@@ -4,6 +4,7 @@
  */
 
 export interface HeaderMeta {
+  fieldId?: number;
   table: string;
   field: string;
   name: string;
@@ -16,10 +17,14 @@ export interface HeaderMeta {
 }
 
 export interface FieldMeta {
+  id?: number;
+  fieldId?: number;
+  moduleId?: number;
   tableName: string;
   columnName: string;
   displayName: string;
   sortOrder?: number;
+  modulePath?: number[];
 }
 
 export interface ModuleNodeMeta {
@@ -41,6 +46,10 @@ export interface EngineModuleMeta {
   headers?: HeaderMeta[];
   fields?: FieldMeta[];
   permissions?: any[];
+}
+
+export interface EngineHeaderResp {
+  fields: FieldMeta[];
 }
 
 export interface EngineDataResult<T> {
@@ -96,18 +105,20 @@ async function requestBackend(url: string, options: RequestInit = {}): Promise<a
 }
 
 export interface DynamicFilterItem {
+  fieldId?: number;
   moduleId?: number;
   modulePath?: number[];
   tableName?: string;
-  columnName: string;
+  columnName?: string;
   value: any;
   operator?: string;
 }
 
 export interface DynamicSortItem {
-  moduleId: number;
-  tableName: string;
-  columnName: string;
+  fieldId?: number;
+  moduleId?: number;
+  tableName?: string;
+  columnName?: string;
   direction?: 'ASC' | 'DESC';
 }
 
@@ -119,6 +130,7 @@ export function buildFilterItem(col: HeaderMeta, value: any, rootModuleId?: numb
   const targetModuleId = col.moduleId || (col.modulePath && col.modulePath[col.modulePath.length - 1]) || rootModuleId;
   const operator = col.searchType === 'select' || col.searchType === 'singleSelect' ? 'EQ' : 'LIKE';
   return {
+    fieldId: col.fieldId,
     moduleId: targetModuleId,
     modulePath: col.modulePath,
     tableName: col.table,
@@ -134,6 +146,7 @@ export function buildFilterItem(col: HeaderMeta, value: any, rootModuleId?: numb
 export function buildSortItem(col: HeaderMeta, direction: 'asc' | 'desc' | 'ASC' | 'DESC', rootModuleId?: number): DynamicSortItem {
   const targetModuleId = col.moduleId || (col.modulePath && col.modulePath[0]) || rootModuleId || 101;
   return {
+    fieldId: col.fieldId,
     moduleId: targetModuleId,
     tableName: col.table,
     columnName: col.field,
@@ -154,6 +167,16 @@ export interface DynamicOptionItem {
 }
 
 export const engineApi = {
+  /** 获取动态列表表头配置 (动静分离) */
+  async getHeader(req: { moduleId?: number; fields?: number[] }): Promise<EngineHeaderResp> {
+    const endpoint = '/api/data/engine/header';
+    const remoteData = await requestBackend(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(req)
+    });
+    return remoteData || { fields: [] };
+  },
+
   /** 获取当前模块字段的下拉候选项列表 (支持 label-value 与 keyword 模糊过滤) */
   async getOptions(req: DynamicOptionReq): Promise<DynamicOptionItem[]> {
     const endpoint = '/api/data/engine/options';
@@ -164,26 +187,21 @@ export const engineApi = {
     return Array.isArray(remoteResp) ? remoteResp : [];
   },
 
-  /** 动态数据集/列表查询 (统一走通用数据引擎，filters 与 sorts 均为结构化对象列表) */
+  /** 动态数据集/列表查询 (纯数据引擎，返回 DataPage) */
   async query(req: {
-    moduleId: number;
-    viewMode?: 'LIST' | 'DETAIL';
+    moduleId?: number;
+    fields?: number[];
     pageNo?: number;
     pageSize?: number;
     filters?: DynamicFilterItem[];
     sorts?: DynamicSortItem[];
-  }): Promise<EngineDataResult<DataPage<any>>> {
+    children?: any[];
+  }): Promise<DataPage<any>> {
     const endpoint = '/api/data/engine/query';
     const remoteData = await requestBackend(endpoint, {
       method: 'POST',
       body: JSON.stringify(req)
     });
-    if (remoteData?.meta?.permissions) {
-      try {
-        const { useRoleStore } = await import('../stores/roleStore');
-        useRoleStore().updateModulePermissions(remoteData.meta.permissions);
-      } catch (_) {}
-    }
     return remoteData;
   },
 
@@ -267,14 +285,12 @@ export const engineApi = {
   async queryStudentCourses(studentId: number): Promise<{ headers: HeaderMeta[]; records: any[] }> {
     const res = await this.query({
       moduleId: 103,
-      viewMode: 'DETAIL',
       filters: [{ moduleId: 103, tableName: 'student_course', columnName: 'student_id', value: studentId, operator: 'EQ' }],
       pageNo: 1,
       pageSize: 50
     });
-    const records = res?.data?.records || [];
+    const records = res?.records || res?.data?.records || [];
     const courseList = records.map((r: any) => {
-      // 兼容形态 A: r['103'].student_course 或平铺 r.student_course
       const modSpace = r['103'] || r;
       const sc = modSpace.student_course || r.student_course || {};
       const course = modSpace.course || r.course || {};
@@ -302,7 +318,7 @@ export const engineApi = {
     });
 
     return {
-      headers: res?.meta?.headers || [],
+      headers: [],
       records: courseList
     };
   },
@@ -315,9 +331,9 @@ export const engineApi = {
       pageNo: 1,
       pageSize: 50
     });
-    const records = res?.data?.records || [];
+    const records = res?.records || res?.data?.records || [];
     return {
-      headers: res?.meta?.headers || [],
+      headers: [],
       records: records.map((r: any) => {
         const modSpace = r['104'] || r;
         return modSpace.student_award || r.student_award || r;

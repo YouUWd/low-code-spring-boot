@@ -5,6 +5,7 @@ import { useRoleStore } from '../stores/roleStore';
 import {
   engineApi,
   type HeaderMeta,
+  type EngineModuleMeta,
   type DynamicFilterItem,
   type DynamicSortItem
 } from '../api/engineApi';
@@ -15,10 +16,44 @@ const router = useRouter();
 const roleStore = useRoleStore();
 
 const loading = ref(false);
+const meta = ref<EngineModuleMeta | undefined>(undefined);
 const headers = ref<HeaderMeta[]>([]);
 const records = ref<any[]>([]);
 const currentFilters = ref<DynamicFilterItem[]>([]);
 const currentSorts = ref<DynamicSortItem[]>([]);
+
+// 全量完整字段集（101 及其所有子孙模块所有字段，共 40 个）
+const STUDENT_PAGE_FIELD_IDS = [
+  // 101 学生综合档案 (student: 5个)
+  1, 2, 3, 4, 5,
+  // 103 选课与成绩管理 (student_course: 6个, student_course_score_item: 6个)
+  28, 29, 30, 31, 32, 33, 57, 58, 59, 60, 61, 62,
+  // 104 荣誉与奖惩管理 (student_award: 5个)
+  37, 38, 39, 40, 56,
+  // 105 学生核心基本档案 (student: 5个, student_profile: 4个, clazz: 3个)
+  43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
+  // 106 荣誉材料与佐证明细 (student_award_detail: 6个)
+  74, 75, 76, 77, 78, 79
+];
+
+async function loadHeaders() {
+  try {
+    const res = await engineApi.getHeader({ moduleId: 101, fields: STUDENT_PAGE_FIELD_IDS });
+    if (res?.fields) {
+      headers.value = res.fields.map(f => ({
+        fieldId: f.id || f.fieldId,
+        table: f.tableName,
+        field: f.columnName,
+        name: f.displayName,
+        sortOrder: f.sortOrder,
+        modulePath: f.modulePath,
+        moduleId: f.moduleId
+      }));
+    }
+  } catch (err) {
+    console.error('Failed to load headers', err);
+  }
+}
 
 async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sorts: DynamicSortItem[] = currentSorts.value) {
   loading.value = true;
@@ -27,14 +62,11 @@ async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sor
   try {
     const res = await engineApi.query({
       moduleId: 101,
-      viewMode: 'LIST',
+      fields: STUDENT_PAGE_FIELD_IDS,
       filters: currentFilters.value,
       sorts: currentSorts.value
     });
-    if (res.meta.headers) {
-      headers.value = res.meta.headers;
-    }
-    records.value = res.data.records;
+    records.value = res?.records || [];
   } finally {
     loading.value = false;
   }
@@ -46,13 +78,15 @@ function handleQueryChange(payload: { filters: DynamicFilterItem[]; sorts: Dynam
 
 watch(
   () => roleStore.currentRoleId,
-  () => {
-    loadData();
+  async () => {
+    await loadHeaders();
+    await loadData();
   }
 );
 
-onMounted(() => {
-  loadData();
+onMounted(async () => {
+  await loadHeaders();
+  await loadData();
 });
 
 // 点击“全景详情”，平滑路由跳转到独立详情页并默认激活 courses Tab
@@ -114,6 +148,7 @@ function handleViewDetail(row: any) {
     <!-- Table -->
     <DynamicTable
       title="学生名册列表 (viewMode: LIST)"
+      :meta="meta"
       :headers="headers"
       :records="records"
       :loading="loading"

@@ -1,8 +1,10 @@
 package com.jdec.platform.data.biz.service;
 
 import com.jdec.platform.config.api.SysModuleApi;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import com.jdec.platform.shared.context.AppContext;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,11 @@ public class MetadataCacheService {
                 subjectId,
                 moduleId);
         return sysModuleApi.getModuleCompleteById(projectNo, subjectId, moduleId);
+    }
+
+    /** 批量获取字段元数据 */
+    public List<ModuleFieldDTO> listFieldsByIds(List<Long> fieldIds) {
+        return sysModuleApi.listFieldsByIds(fieldIds);
     }
 
     /** 清除指定模块的元数据缓存 (占位保留方法签名) */

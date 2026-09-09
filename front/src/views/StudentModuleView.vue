@@ -22,6 +22,23 @@ const isDrawerVisible = ref(false);
 const currentFilters = ref<DynamicFilterItem[]>([]);
 const currentSorts = ref<DynamicSortItem[]>([]);
 
+async function loadHeaders() {
+  try {
+    const res = await engineApi.getHeader({ moduleId: 101 });
+    if (res?.fields) {
+      headers.value = res.fields.map(f => ({
+        fieldId: f.id || f.fieldId,
+        table: f.tableName,
+        field: f.columnName,
+        name: f.displayName,
+        sortOrder: f.sortOrder
+      }));
+    }
+  } catch (err) {
+    console.error('Failed to load headers', err);
+  }
+}
+
 async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sorts: DynamicSortItem[] = currentSorts.value) {
   loading.value = true;
   currentFilters.value = filters;
@@ -29,15 +46,10 @@ async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sor
   try {
     const res = await engineApi.query({
       moduleId: 101,
-      viewMode: 'LIST',
       filters: currentFilters.value,
       sorts: currentSorts.value
     });
-    moduleMeta.value = res.meta;
-    if (res.meta.headers) {
-      headers.value = res.meta.headers;
-    }
-    records.value = res.data.records;
+    records.value = res?.records || [];
   } finally {
     loading.value = false;
   }
@@ -50,13 +62,15 @@ function handleQueryChange(payload: { filters: DynamicFilterItem[]; sorts: Dynam
 // 监听角色切换，即时刷新元数据与数据
 watch(
   () => roleStore.currentRoleId,
-  () => {
-    loadData();
+  async () => {
+    await loadHeaders();
+    await loadData();
   }
 );
 
-onMounted(() => {
-  loadData();
+onMounted(async () => {
+  await loadHeaders();
+  await loadData();
 });
 
 function handleViewDetail(row: any) {

@@ -10,31 +10,19 @@ import lombok.NoArgsConstructor;
 /**
  * 结构化排序规则项
  *
- * <p>基于三元组 (moduleId, tableName, columnName) 精准定位排序目标字段， 并支持指定排序方向 (ASC / DESC)。
+ * <p>核心以 fieldId (sys_module_field.id) 作为权威物理凭据， 支持指定排序方向 (ASC / DESC)。
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "结构化排序规则项")
+@Schema(description = "结构化排序规则项（fieldId 权威驱动）")
 public class DynamicSortItem implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    @Schema(description = "归属模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "101")
-    private Long moduleId;
-
-    @Schema(
-            description = "物理表名 (主表或伴生表)",
-            requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "clazz")
-    private String tableName;
-
-    @Schema(
-            description = "排序列名/属性名",
-            requiredMode = Schema.RequiredMode.REQUIRED,
-            example = "class_name")
-    private String columnName;
+    @Schema(description = "字段权威元数据主键 (sys_module_field.id)，优先使用", example = "1001")
+    private Long fieldId;
 
     @Schema(
             description = "排序方向: ASC 或 DESC",

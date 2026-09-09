@@ -1,19 +1,22 @@
 package com.jdec.platform.data.biz;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.lenient;
 
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
-import com.jdec.platform.data.api.dto.request.BatchDynamicSaveReq;
 import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
-import com.jdec.platform.data.api.dto.response.BatchSaveResp;
 import com.jdec.platform.data.biz.dsl.JooqContextFactory;
+import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
+import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.service.DynamicPersistenceService;
 import com.jdec.platform.data.biz.service.MetadataCacheService;
 import com.jdec.platform.data.biz.service.PermissionFilterService;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -25,7 +28,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -36,7 +38,9 @@ class DataEnginePersistenceTest {
     @Mock private PermissionFilterService permissionFilterService;
     @Mock private JooqContextFactory jooqContextFactory;
 
-    @InjectMocks private DynamicPersistenceService dynamicPersistenceService;
+    private SavePlanCompiler savePlanCompiler;
+    private SavePlanExecutor savePlanExecutor;
+    private DynamicPersistenceService dynamicPersistenceService;
 
     private DSLContext dslContext;
     private SysModuleMetaResp mockStudentModule;
@@ -65,18 +69,25 @@ class DataEnginePersistenceTest {
         SysModuleMetaResp.ModuleInfo studentInfo = new SysModuleMetaResp.ModuleInfo();
         studentInfo.setId(101L);
         studentInfo.setModuleCode("MOD-STUDENT");
+        studentInfo.setPrimaryTable("student");
         studentInfo.setParentId(0L);
 
         mockStudentModule = new SysModuleMetaResp();
         mockStudentModule.setModule(studentInfo);
         mockStudentModule.setFields(
                 List.of(
-                        ModuleFieldDTO.builder().tableName("student").columnName("name").build(),
                         ModuleFieldDTO.builder()
+                                .id(1001L)
+                                .tableName("student")
+                                .columnName("name")
+                                .build(),
+                        ModuleFieldDTO.builder()
+                                .id(1002L)
                                 .tableName("student")
                                 .columnName("student_no")
                                 .build(),
                         ModuleFieldDTO.builder()
+                                .id(1003L)
                                 .tableName("student_profile")
                                 .columnName("emergency_phone")
                                 .build()));
@@ -94,6 +105,7 @@ class DataEnginePersistenceTest {
         SysModuleMetaResp.ModuleInfo courseInfo = new SysModuleMetaResp.ModuleInfo();
         courseInfo.setId(103L);
         courseInfo.setModuleCode("MOD-STUDENT-COURSE");
+        courseInfo.setPrimaryTable("student_course");
         courseInfo.setParentId(101L);
 
         mockCourseModule = new SysModuleMetaResp();
@@ -101,10 +113,12 @@ class DataEnginePersistenceTest {
         mockCourseModule.setFields(
                 List.of(
                         ModuleFieldDTO.builder()
+                                .id(1004L)
                                 .tableName("student_course")
                                 .columnName("course_name")
                                 .build(),
                         ModuleFieldDTO.builder()
+                                .id(1005L)
                                 .tableName("student_course")
                                 .columnName("student_id")
                                 .build()));
@@ -120,16 +134,23 @@ class DataEnginePersistenceTest {
 
         lenient().when(metadataCacheService.getModuleComplete(101L)).thenReturn(mockStudentModule);
         lenient().when(metadataCacheService.getModuleComplete(103L)).thenReturn(mockCourseModule);
+
+        savePlanCompiler = new SavePlanCompiler(metadataCacheService);
+        savePlanExecutor = new SavePlanExecutor(jooqContextFactory);
+        dynamicPersistenceService =
+                new DynamicPersistenceService(savePlanCompiler, savePlanExecutor);
     }
 
     @Test
-    @DisplayName("测试单模块同构保存: 包含主表与 1:1 伴生从表")
+    @DisplayName("测试单模块同构保存: records 单条主记录持久化")
     void testSaveSingleModule() {
-        Map<String, Object> tables = new HashMap<>();
-        tables.put("student", Map.of("name", "李四", "student_no", "S002"));
-        tables.put("student_profile", Map.of("emergency_phone", "13800000002"));
+        Map<String, Object> recordData = new HashMap<>();
+        recordData.put("name", "李四");
+        recordData.put("student_no", "S002");
+        recordData.put("emergency_phone", "13800000002");
 
-        DynamicSaveReq saveReq = DynamicSaveReq.builder().moduleId(101L).tables(tables).build();
+        DynamicSaveReq saveReq =
+                DynamicSaveReq.builder().moduleId(101L).records(List.of(recordData)).build();
 
         Long savedId = dynamicPersistenceService.save(saveReq);
 
@@ -138,60 +159,52 @@ class DataEnginePersistenceTest {
     }
 
     @Test
-    @DisplayName("测试多模块原子批量保存: 基于 DAG 拓扑外键自动注入")
-    void testBatchSaveDAGOrder() {
+    @DisplayName("测试树形模块级 children 级联保存: 父模块 101 关联子模块 103")
+    void testSaveTreeModuleChildren() {
         Map<String, Object> studentData = new HashMap<>();
-        studentData.put("student", Map.of("name", "王五", "student_no", "S003"));
+        studentData.put("name", "王五");
+        studentData.put("student_no", "S003");
 
         Map<String, Object> courseData = new HashMap<>();
-        courseData.put("student_course", List.of(Map.of("course_name", "高等数学")));
+        courseData.put("course_name", "高等数学");
 
-        BatchDynamicSaveReq req =
-                BatchDynamicSaveReq.builder()
-                        .modules(
+        DynamicSaveReq req =
+                DynamicSaveReq.builder()
+                        .moduleId(101L)
+                        .records(List.of(studentData))
+                        .children(
                                 List.of(
                                         DynamicSaveReq.builder()
                                                 .moduleId(103L)
-                                                .tables(courseData)
-                                                .build(),
-                                        DynamicSaveReq.builder()
-                                                .moduleId(101L)
-                                                .tables(studentData)
+                                                .records(List.of(courseData))
                                                 .build()))
                         .build();
 
-        BatchSaveResp resp = dynamicPersistenceService.batchSave(req);
-
-        assertNotNull(resp);
-        assertEquals(2, resp.getResults().size());
-        assertTrue(resp.getResults().containsKey(101L));
-        assertTrue(resp.getResults().containsKey(103L));
+        Long savedId = dynamicPersistenceService.save(req);
+        assertNotNull(savedId);
+        assertEquals(2001L, savedId);
     }
 
     @Test
-    @DisplayName("测试跨模块重复物理表提交异常拦截")
-    void testValidateNoCrossModuleDuplicateTables() {
-        Map<String, Object> data1 = Map.of("student", Map.of("name", "测试1"));
-        Map<String, Object> data2 = Map.of("student", Map.of("name", "测试2"));
+    @DisplayName("测试行内自相似读写同构级联保存: 对齐 query 响应 records[0].children 结构原样提交")
+    void testSaveTreeRowLevelIsomorphic() {
+        Map<String, Object> courseData = new HashMap<>();
+        courseData.put("course_name", "大学英语");
 
-        BatchDynamicSaveReq req =
-                BatchDynamicSaveReq.builder()
-                        .modules(
-                                List.of(
-                                        DynamicSaveReq.builder()
-                                                .moduleId(101L)
-                                                .tables(data1)
-                                                .build(),
-                                        DynamicSaveReq.builder()
-                                                .moduleId(103L)
-                                                .tables(data2)
-                                                .build()))
-                        .build();
+        DynamicSaveReq childNode =
+                DynamicSaveReq.builder().moduleId(103L).records(List.of(courseData)).build();
 
-        IllegalArgumentException ex =
-                assertThrows(
-                        IllegalArgumentException.class,
-                        () -> dynamicPersistenceService.batchSave(req));
-        assertTrue(ex.getMessage().contains("同时在模块"));
+        Map<String, Object> studentRow = new HashMap<>();
+        studentRow.put("name", "赵六");
+        studentRow.put("student_no", "S004");
+        // 行内直接挂载子模块树 (完全对齐 Response)
+        studentRow.put("children", List.of(childNode));
+
+        DynamicSaveReq req =
+                DynamicSaveReq.builder().moduleId(101L).records(List.of(studentRow)).build();
+
+        Long savedId = dynamicPersistenceService.save(req);
+        assertNotNull(savedId);
+        assertEquals(2001L, savedId);
     }
 }
