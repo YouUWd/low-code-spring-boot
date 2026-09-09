@@ -3,6 +3,7 @@ package com.jdec.platform.config.api.dto.request;
 import com.jdec.platform.config.api.enums.EnableEnum;
 import com.jdec.platform.config.api.enums.MenuCategoryEnum;
 import com.jdec.platform.config.api.enums.ShowStatusEnum;
+import com.jdec.platform.config.api.enums.YesNoEnum;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import com.jdec.platform.shared.audit.enums.FieldType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -38,6 +39,14 @@ public class SysMenuSaveReq {
     @AuditField(name = "菜单类型", type = FieldType.DICT, dictCategoryAlias = "menuType")
     @Schema(description = "菜单类型.1:导航 2:页面 3:标签 4:表")
     private Integer menuType;
+
+    @AuditField(name = "结构类型")
+    @Schema(description = "结构类型")
+    private String structuralType;
+
+    @AuditField(name = "是否开启个性化", type = FieldType.ENUM, enumClass = YesNoEnum.class)
+    @Schema(description = "是否开启个性化.0:否 1:是")
+    private Integer personalizeFlag;
 
     @AuditField(
             name = "菜单分类",

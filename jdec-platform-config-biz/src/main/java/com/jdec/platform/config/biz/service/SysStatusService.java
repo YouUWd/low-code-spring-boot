@@ -406,8 +406,8 @@ public class SysStatusService implements SysStatusApi {
         if (own == null) {
             return;
         }
-        if (own.getPid() != null) {
-            node.setPid(own.getPid());
+        if (own.getParentId() != null) {
+            node.setPid(own.getParentId());
         }
         if (node.getId() == null && own.getSortOrder() != null) {
             node.setSortOrder(own.getSortOrder());
@@ -461,9 +461,12 @@ public class SysStatusService implements SysStatusApi {
                     (node.getId() == null || node.getId() == 0L)
                             ? currentSavedStatusId
                             : node.getId();
-            Long npid = (node.getPid() == null || node.getPid() == 0L) ? 0L : node.getPid();
+            Long npid =
+                    (node.getParentId() == null || node.getParentId() == 0L)
+                            ? 0L
+                            : node.getParentId();
             normalized.setId(nid);
-            normalized.setPid(npid);
+            normalized.setParentId(npid);
             normalized.setSortOrder(node.getSortOrder() != null ? node.getSortOrder() : 0);
             normalizedNodes.add(normalized);
         }
@@ -477,10 +480,10 @@ public class SysStatusService implements SysStatusApi {
             if (!currentMap.containsKey(node.getId())) {
                 throw new BusinessException(400, "待调整树结构的状态不存在或无权操作: " + node.getId());
             }
-            if (node.getPid() != 0L && !currentMap.containsKey(node.getPid())) {
-                throw new BusinessException(400, "目标父状态不存在或无权操作: " + node.getPid());
+            if (node.getParentId() != 0L && !currentMap.containsKey(node.getParentId())) {
+                throw new BusinessException(400, "目标父状态不存在或无权操作: " + node.getParentId());
             }
-            nextParentMap.put(node.getId(), node.getPid());
+            nextParentMap.put(node.getId(), node.getParentId());
         }
 
         // 4. 防环校验：沿父级链路向上遍历，防止出现环状依赖
@@ -504,11 +507,11 @@ public class SysStatusService implements SysStatusApi {
             }
             Long currentPid = current.getPid() != null ? current.getPid() : 0L;
             Integer currentSortOrder = current.getSortOrder() != null ? current.getSortOrder() : 0;
-            if (!Objects.equals(currentPid, node.getPid())
+            if (!Objects.equals(currentPid, node.getParentId())
                     || !Objects.equals(currentSortOrder, node.getSortOrder())) {
                 SysStatus toUpdate = new SysStatus();
                 toUpdate.setId(current.getId());
-                toUpdate.setPid(node.getPid());
+                toUpdate.setPid(node.getParentId());
                 toUpdate.setSortOrder(node.getSortOrder());
                 updateList.add(toUpdate);
             }

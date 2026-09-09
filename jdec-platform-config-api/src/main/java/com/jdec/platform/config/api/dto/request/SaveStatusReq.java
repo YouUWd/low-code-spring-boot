@@ -26,7 +26,7 @@ public class SaveStatusReq {
         private Long id;
 
         @Schema(description = "父状态ID（0表示根节点）")
-        private Long pid;
+        private Long parentId;
 
         @Schema(description = "同级排序序号")
         private Integer sortOrder;
