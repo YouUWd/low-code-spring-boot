@@ -14,14 +14,14 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-data-api</artifactId>
         </dependency>
-        <dependency>
+        <!-- <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-config-api</artifactId>
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-auth-api</artifactId>
-        </dependency>
+        </dependency> -->
 
         <!-- Lombok -->
         <dependency>
