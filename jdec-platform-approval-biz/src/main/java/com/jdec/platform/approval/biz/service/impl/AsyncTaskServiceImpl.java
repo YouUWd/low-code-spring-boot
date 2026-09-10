@@ -249,7 +249,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                 monitorControlLogReq.setMenuParam(menu.getParam());
             }
             monitorControlLogReq.setModuleId(approvalProcessDTO.getModuleId());
-            SysModuleCompleteResp module =
+            SysModuleResp module =
                     sysModuleApi.getModuleCompleteById(
                             AppContext.getProjectNo(),
                             approvalProcessDTO.getSubjectId(),
@@ -356,7 +356,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                 monitorMessageLogReq.setMenuParam(menu.getParam());
             }
             monitorMessageLogReq.setModuleId(approvalProcessDTO.getModuleId());
-            SysModuleCompleteResp module =
+            SysModuleResp module =
                     sysModuleApi.getModuleCompleteById(
                             AppContext.getProjectNo(),
                             approvalProcessDTO.getSubjectId(),
