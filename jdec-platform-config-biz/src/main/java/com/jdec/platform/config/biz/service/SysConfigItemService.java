@@ -82,6 +82,12 @@ public class SysConfigItemService {
         return list.stream().map(this::toResp).collect(Collectors.toList());
     }
 
+    /**
+     * 单节点配置项新增/编辑：id 为空则新增，否则编辑。
+     *
+     * <p>供整棵混合树保存接口（{@link SysConfigCategoryService#saveItem}）经代理调用，以保留 {@code @DataAudit} 审计。
+     * 排序完全由前端整棵树决定，后端不再搬移同级节点，仅在前端未传排序值时追加到同级末尾。
+     */
     @DataAudit(
             module = "系统设置",
             subModule = "通用配置-配置项管理",
@@ -89,7 +95,7 @@ public class SysConfigItemService {
             tableName = "sys_config_item",
             dataIdField = "#req.id")
     @Transactional
-    public Long saveItem(SysConfigItemSaveReq req) {
+    public Long saveItemNode(SysConfigItemSaveReq req) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
         Long pid = req.getPid() == null ? ROOT_PID : req.getPid();
@@ -101,7 +107,7 @@ public class SysConfigItemService {
         }
 
         // 确定 categoryAlias：如果有父节点，从父节点继承；否则必须指定
-        String categoryAlias = determineCategoryAlias(req, pid, subjectId);
+        String categoryAlias = determineCategoryAlias(req, pid, subjectId, projectNo);
 
         // 校验分类是否存在
         SysConfigCategory category =
@@ -124,26 +130,12 @@ public class SysConfigItemService {
             entity.setCategoryAlias(categoryAlias);
             entity.setSubjectId(subjectId);
             entity.setProjectNo(projectNo);
-            calculatePathAndDepth(entity, pid);
+            calculatePathAndDepth(entity, pid, subjectId, projectNo);
 
-            // 处理排序值
+            // 排序由前端决定：已传则按原值直接入库，为空则追加到同级末尾（后端不再搬移其它同级节点）
             if (req.getSort() == null) {
-                // 前端未传排序值，自动设置为同级最大值+1
-                Integer maxSort = getMaxSortByPid(categoryAlias, pid, subjectId);
+                Integer maxSort = getMaxSortByPid(categoryAlias, pid, subjectId, projectNo);
                 entity.setSort(maxSort == null ? 0 : maxSort + 1);
-            } else {
-                // 前端传了排序值，检查是否与同级冲突
-                boolean sortExists =
-                        itemMapper.exists(
-                                Wrappers.<SysConfigItem>lambdaQuery()
-                                        .eq(SysConfigItem::getCategoryAlias, categoryAlias)
-                                        .eq(SysConfigItem::getPid, pid)
-                                        .eq(SysConfigItem::getSort, req.getSort())
-                                        .eq(SysConfigItem::getSubjectId, subjectId));
-                if (sortExists) {
-                    // 排序值冲突，将该位置及之后的节点排序值+1
-                    adjustSortOnInsert(categoryAlias, pid, req.getSort(), subjectId);
-                }
             }
 
             itemMapper.insert(entity);
@@ -152,17 +144,20 @@ public class SysConfigItemService {
             return entity.getId();
         } else {
             // 编辑
-            SysConfigItem existing = itemMapper.selectById(req.getId());
-            if (existing == null
-                    || !existing.getSubjectId().equals(subjectId)
-                    || !existing.getProjectNo().equals(projectNo)) {
+            SysConfigItem existing =
+                    itemMapper.selectOne(
+                            Wrappers.<SysConfigItem>lambdaQuery()
+                                    .eq(SysConfigItem::getId, req.getId())
+                                    .eq(SysConfigItem::getProjectNo, projectNo)
+                                    .eq(SysConfigItem::getSubjectId, subjectId));
+            if (existing == null) {
                 throw new BusinessException("配置项不存在");
             }
             if (req.getId().equals(pid)) {
                 throw new BusinessException("不能将自己设为父节点");
             }
             if (!pid.equals(ROOT_PID)) {
-                checkCycle(req.getId(), pid, subjectId);
+                checkCycle(req.getId(), pid, subjectId, projectNo);
             }
 
             // 校验：不能修改 categoryAlias（子级必须跟随父级）
@@ -171,91 +166,62 @@ public class SysConfigItemService {
             }
 
             Long oldPid = existing.getPid();
-            Integer oldSort = existing.getSort();
 
             SysConfigItem entity = new SysConfigItem();
             BeanUtils.copyProperties(req, entity);
             entity.setCategoryAlias(categoryAlias);
-            entity.setProjectNo(projectNo);
-            calculatePathAndDepth(entity, pid);
+            // subject_id / project_no 为归属标识，不允许前端覆盖，更新时以当前上下文为准并作为 WHERE 条件
+            entity.setSubjectId(null);
+            entity.setProjectNo(null);
+            calculatePathAndDepth(entity, pid, subjectId, projectNo);
 
-            // 处理排序值
-            if (req.getSort() == null) {
-                // 前端未传排序值
-                if (!pid.equals(oldPid)) {
-                    // 父节点变化，设置为新父节点下的最大值+1
-                    Integer maxSort = getMaxSortByPid(categoryAlias, pid, subjectId);
-                    entity.setSort(maxSort == null ? 0 : maxSort + 1);
-                }
-                // 父节点未变化，保持原排序值
-            } else {
-                // 前端传了排序值
-                if (pid.equals(oldPid)) {
-                    // 同父节点内，排序值变化
-                    if (!req.getSort().equals(oldSort)) {
-                        boolean sortExists =
-                                itemMapper.exists(
-                                        Wrappers.<SysConfigItem>lambdaQuery()
-                                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
-                                                .eq(SysConfigItem::getPid, pid)
-                                                .eq(SysConfigItem::getSort, req.getSort())
-                                                .eq(SysConfigItem::getSubjectId, subjectId)
-                                                .ne(SysConfigItem::getId, req.getId()));
-                        if (sortExists) {
-                            // 排序值冲突，调整其他节点
-                            adjustSortOnUpdate(
-                                    req.getId(),
-                                    categoryAlias,
-                                    pid,
-                                    req.getSort(),
-                                    oldSort,
-                                    subjectId);
-                        }
-                    }
-                } else {
-                    // 跨父节点，检查新父节点下是否有冲突
-                    boolean sortExists =
-                            itemMapper.exists(
-                                    Wrappers.<SysConfigItem>lambdaQuery()
-                                            .eq(SysConfigItem::getCategoryAlias, categoryAlias)
-                                            .eq(SysConfigItem::getPid, pid)
-                                            .eq(SysConfigItem::getSort, req.getSort())
-                                            .eq(SysConfigItem::getSubjectId, subjectId));
-                    if (sortExists) {
-                        // 新父节点下排序值冲突，调整
-                        adjustSortOnInsert(categoryAlias, pid, req.getSort(), subjectId);
-                    }
-                }
+            // 排序由前端决定：父级变化且未传排序值时追加到新父级末尾；已传则按原值直接入库（后端不再搬移其它同级节点）
+            if (req.getSort() == null && !pid.equals(oldPid)) {
+                Integer maxSort = getMaxSortByPid(categoryAlias, pid, subjectId, projectNo);
+                entity.setSort(maxSort == null ? 0 : maxSort + 1);
             }
 
-            itemMapper.updateById(entity);
+            itemMapper.update(
+                    entity,
+                    Wrappers.<SysConfigItem>lambdaUpdate()
+                            .eq(SysConfigItem::getId, req.getId())
+                            .eq(SysConfigItem::getProjectNo, projectNo)
+                            .eq(SysConfigItem::getSubjectId, subjectId));
 
             // 如果父节点变了，需要更新所有子节点的 path
             if (!existing.getPid().equals(pid)) {
-                updateChildrenPath(req.getId(), subjectId);
+                updateChildrenPath(req.getId(), subjectId, projectNo);
             }
 
             // 停用时级联停用所有子节点
             if (Integer.valueOf(0).equals(req.getStatus())
                     && !Integer.valueOf(0).equals(existing.getStatus())) {
-                Set<Long> childIds = collectChildrenIds(req.getId(), subjectId);
+                Set<Long> childIds = collectChildrenIds(req.getId(), subjectId, projectNo);
                 if (!childIds.isEmpty()) {
                     itemMapper.update(
                             null,
                             Wrappers.<SysConfigItem>lambdaUpdate()
                                     .set(SysConfigItem::getStatus, 0)
-                                    .in(SysConfigItem::getId, childIds));
+                                    .in(SysConfigItem::getId, childIds)
+                                    .eq(SysConfigItem::getProjectNo, projectNo)
+                                    .eq(SysConfigItem::getSubjectId, subjectId));
                 }
             }
             return null;
         }
     }
 
-    private String determineCategoryAlias(SysConfigItemSaveReq req, Long pid, Long subjectId) {
+    private String determineCategoryAlias(
+            SysConfigItemSaveReq req, Long pid, Long subjectId, String projectNo) {
         if (pid != null && !pid.equals(ROOT_PID)) {
-            // 有父节点，从父节点继承 categoryAlias
-            SysConfigItem parent = itemMapper.selectById(pid);
-            if (parent == null || !parent.getSubjectId().equals(subjectId)) {
+            // 有父节点，从父节点继承 categoryAlias（父节点必须属于当前主体与应用）
+            SysConfigItem parent =
+                    itemMapper.selectOne(
+                            Wrappers.<SysConfigItem>lambdaQuery()
+                                    .eq(SysConfigItem::getId, pid)
+                                    .eq(SysConfigItem::getProjectNo, projectNo)
+                                    .eq(SysConfigItem::getSubjectId, subjectId));
+            if (parent == null) {
                 throw new BusinessException("父节点不存在");
             }
             return parent.getCategoryAlias();
@@ -304,24 +270,35 @@ public class SysConfigItemService {
     public void deleteItem(Long id, boolean force) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
-        SysConfigItem item = itemMapper.selectById(id);
-        if (item == null
-                || !item.getSubjectId().equals(subjectId)
-                || !item.getProjectNo().equals(projectNo)) {
+        SysConfigItem item =
+                itemMapper.selectOne(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getId, id)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId));
+        if (item == null) {
             throw new BusinessException("配置项不存在");
         }
-        Set<Long> childIds = collectChildrenIds(id, subjectId);
+        Set<Long> childIds = collectChildrenIds(id, subjectId, projectNo);
         int childCount = childIds.size();
         if (!force && childCount > 0) {
             throw new BusinessException("删除确认：该配置项下有 " + childCount + " 个子项将被同步删除；请确认后重新请求");
         }
         if (!childIds.isEmpty()) {
-            itemMapper.deleteByIds(childIds);
+            itemMapper.delete(
+                    Wrappers.<SysConfigItem>lambdaQuery()
+                            .in(SysConfigItem::getId, childIds)
+                            .eq(SysConfigItem::getProjectNo, projectNo)
+                            .eq(SysConfigItem::getSubjectId, subjectId));
         }
-        itemMapper.deleteById(id);
+        itemMapper.delete(
+                Wrappers.<SysConfigItem>lambdaQuery()
+                        .eq(SysConfigItem::getId, id)
+                        .eq(SysConfigItem::getProjectNo, projectNo)
+                        .eq(SysConfigItem::getSubjectId, subjectId));
 
         // 删除后重排同级节点的排序值
-        reorderSiblingsAfterDelete(item.getCategoryAlias(), item.getPid(), subjectId);
+        reorderSiblingsAfterDelete(item.getCategoryAlias(), item.getPid(), subjectId, projectNo);
     }
 
     private List<SysConfigItem> queryItemsByCategory(Long categoryId, String categoryAlias) {
@@ -388,12 +365,18 @@ public class SysConfigItemService {
         return resp;
     }
 
-    private void calculatePathAndDepth(SysConfigItem entity, Long pid) {
+    private void calculatePathAndDepth(
+            SysConfigItem entity, Long pid, Long subjectId, String projectNo) {
         if (pid == null || pid.equals(ROOT_PID)) {
             entity.setPath("/");
             entity.setDepth(1);
         } else {
-            SysConfigItem parent = itemMapper.selectById(pid);
+            SysConfigItem parent =
+                    itemMapper.selectOne(
+                            Wrappers.<SysConfigItem>lambdaQuery()
+                                    .eq(SysConfigItem::getId, pid)
+                                    .eq(SysConfigItem::getProjectNo, projectNo)
+                                    .eq(SysConfigItem::getSubjectId, subjectId));
             if (parent == null) {
                 throw new BusinessException("父节点不存在");
             }
@@ -402,34 +385,43 @@ public class SysConfigItemService {
         }
     }
 
-    private void updateChildrenPath(Long parentId, Long subjectId) {
+    private void updateChildrenPath(Long parentId, Long subjectId, String projectNo) {
         List<SysConfigItem> children =
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .eq(SysConfigItem::getPid, parentId)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .eq(SysConfigItem::getSubjectId, subjectId));
         for (SysConfigItem child : children) {
-            calculatePathAndDepth(child, parentId);
-            itemMapper.updateById(child);
-            updateChildrenPath(child.getId(), subjectId);
+            calculatePathAndDepth(child, parentId, subjectId, projectNo);
+            itemMapper.update(
+                    null,
+                    Wrappers.<SysConfigItem>lambdaUpdate()
+                            .set(SysConfigItem::getPath, child.getPath())
+                            .set(SysConfigItem::getDepth, child.getDepth())
+                            .eq(SysConfigItem::getId, child.getId())
+                            .eq(SysConfigItem::getProjectNo, projectNo)
+                            .eq(SysConfigItem::getSubjectId, subjectId));
+            updateChildrenPath(child.getId(), subjectId, projectNo);
         }
     }
 
-    private Set<Long> collectChildrenIds(Long parentId, Long subjectId) {
+    private Set<Long> collectChildrenIds(Long parentId, Long subjectId, String projectNo) {
         Set<Long> result = new HashSet<>();
         List<SysConfigItem> children =
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .eq(SysConfigItem::getPid, parentId)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .eq(SysConfigItem::getSubjectId, subjectId));
         for (SysConfigItem child : children) {
             result.add(child.getId());
-            result.addAll(collectChildrenIds(child.getId(), subjectId));
+            result.addAll(collectChildrenIds(child.getId(), subjectId, projectNo));
         }
         return result;
     }
 
-    private void checkCycle(Long id, Long targetPid, Long subjectId) {
+    private void checkCycle(Long id, Long targetPid, Long subjectId, String projectNo) {
         if (id.equals(targetPid)) {
             throw new BusinessException("不能将节点移动到自身或其子节点下");
         }
@@ -437,9 +429,10 @@ public class SysConfigItemService {
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .eq(SysConfigItem::getPid, id)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .eq(SysConfigItem::getSubjectId, subjectId));
         for (SysConfigItem child : children) {
-            checkCycle(child.getId(), targetPid, subjectId);
+            checkCycle(child.getId(), targetPid, subjectId, projectNo);
         }
     }
 
@@ -457,10 +450,13 @@ public class SysConfigItemService {
         Integer targetSort = req.getTargetSort();
 
         // 校验：被拖拽节点必须存在
-        SysConfigItem dragItem = itemMapper.selectById(dragId);
-        if (dragItem == null
-                || !dragItem.getSubjectId().equals(subjectId)
-                || !dragItem.getProjectNo().equals(projectNo)) {
+        SysConfigItem dragItem =
+                itemMapper.selectOne(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getId, dragId)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId));
+        if (dragItem == null) {
             throw new BusinessException("被拖拽的配置项不存在");
         }
 
@@ -471,10 +467,13 @@ public class SysConfigItemService {
 
         // 校验：目标父节点必须是 item（不能是 category）
         if (!targetPid.equals(ROOT_PID)) {
-            SysConfigItem targetParent = itemMapper.selectById(targetPid);
-            if (targetParent == null
-                    || !targetParent.getSubjectId().equals(subjectId)
-                    || !targetParent.getProjectNo().equals(projectNo)) {
+            SysConfigItem targetParent =
+                    itemMapper.selectOne(
+                            Wrappers.<SysConfigItem>lambdaQuery()
+                                    .eq(SysConfigItem::getId, targetPid)
+                                    .eq(SysConfigItem::getProjectNo, projectNo)
+                                    .eq(SysConfigItem::getSubjectId, subjectId));
+            if (targetParent == null) {
                 throw new BusinessException("目标父节点不存在");
             }
 
@@ -484,26 +483,36 @@ public class SysConfigItemService {
             }
 
             // 校验：不能拖到自己的子节点下（避免循环依赖）
-            checkCycle(dragId, targetPid, subjectId);
+            checkCycle(dragId, targetPid, subjectId, projectNo);
         }
 
         // 更新被拖拽节点的父节点
         dragItem.setPid(targetPid);
-        calculatePathAndDepth(dragItem, targetPid);
+        calculatePathAndDepth(dragItem, targetPid, subjectId, projectNo);
 
         // 处理排序值
         if (targetSort == null) {
             // 前端未传顺序值，自动分配为同级最大值+1
-            Integer maxSort = getMaxSortByPid(dragItem.getCategoryAlias(), targetPid, subjectId);
+            Integer maxSort =
+                    getMaxSortByPid(dragItem.getCategoryAlias(), targetPid, subjectId, projectNo);
             dragItem.setSort(maxSort == null ? 0 : maxSort + 1);
-            itemMapper.updateById(dragItem);
+            itemMapper.update(
+                    null,
+                    Wrappers.<SysConfigItem>lambdaUpdate()
+                            .set(SysConfigItem::getPid, dragItem.getPid())
+                            .set(SysConfigItem::getPath, dragItem.getPath())
+                            .set(SysConfigItem::getDepth, dragItem.getDepth())
+                            .set(SysConfigItem::getSort, dragItem.getSort())
+                            .eq(SysConfigItem::getId, dragItem.getId())
+                            .eq(SysConfigItem::getProjectNo, projectNo)
+                            .eq(SysConfigItem::getSubjectId, subjectId));
         } else {
             // 前端传了顺序值（从0开始），重新分配所有同级节点的排序
-            adjustSortForDrag(dragItem, targetSort, subjectId);
+            adjustSortForDrag(dragItem, targetSort, subjectId, projectNo);
         }
 
         // 更新所有子节点的 path 和 depth
-        updateChildrenPath(dragId, subjectId);
+        updateChildrenPath(dragId, subjectId, projectNo);
     }
 
     /**
@@ -513,13 +522,15 @@ public class SysConfigItemService {
      * @param targetIndex 目标位置的顺序值（从0开始）
      * @param subjectId 主体ID
      */
-    private void adjustSortForDrag(SysConfigItem entity, Integer targetIndex, Long subjectId) {
+    private void adjustSortForDrag(
+            SysConfigItem entity, Integer targetIndex, Long subjectId, String projectNo) {
         // 查询同级所有节点（排除当前拖拽节点）
         List<SysConfigItem> siblings =
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .eq(SysConfigItem::getCategoryAlias, entity.getCategoryAlias())
                                 .eq(SysConfigItem::getPid, entity.getPid())
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
                                 .ne(SysConfigItem::getId, entity.getId())
                                 .orderByAsc(SysConfigItem::getSort));
@@ -527,13 +538,16 @@ public class SysConfigItemService {
         // 将拖拽节点插入到目标位置
         siblings.add(targetIndex, entity);
 
-        // 批量更新所有节点的排序值（从0开始）
+        // 重新分配所有节点的排序值（从0开始），逐节点按主体与应用限定更新
         for (int i = 0; i < siblings.size(); i++) {
-            siblings.get(i).setSort(i);
-        }
-        // 使用 MyBatis-Plus 批量更新
-        if (!siblings.isEmpty()) {
-            itemMapper.updateById(siblings);
+            SysConfigItem sibling = siblings.get(i);
+            itemMapper.update(
+                    null,
+                    Wrappers.<SysConfigItem>lambdaUpdate()
+                            .set(SysConfigItem::getSort, i)
+                            .eq(SysConfigItem::getId, sibling.getId())
+                            .eq(SysConfigItem::getProjectNo, projectNo)
+                            .eq(SysConfigItem::getSubjectId, subjectId));
         }
     }
 
@@ -545,97 +559,18 @@ public class SysConfigItemService {
      * @param subjectId 主体ID
      * @return 最大排序值，无数据时返回null
      */
-    private Integer getMaxSortByPid(String categoryAlias, Long pid, Long subjectId) {
+    private Integer getMaxSortByPid(
+            String categoryAlias, Long pid, Long subjectId, String projectNo) {
         List<SysConfigItem> items =
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .eq(SysConfigItem::getCategoryAlias, categoryAlias)
                                 .eq(SysConfigItem::getPid, pid)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
                                 .orderByDesc(SysConfigItem::getSort)
                                 .last("LIMIT 1"));
         return items.isEmpty() ? null : items.get(0).getSort();
-    }
-
-    /**
-     * 新增节点时调整排序值：将指定位置及之后的节点排序值+1
-     *
-     * @param categoryAlias 分类别名
-     * @param pid 父节点ID
-     * @param insertSort 插入位置的排序值
-     * @param subjectId 主体ID
-     */
-    private void adjustSortOnInsert(
-            String categoryAlias, Long pid, Integer insertSort, Long subjectId) {
-        List<SysConfigItem> siblings =
-                itemMapper.selectList(
-                        Wrappers.<SysConfigItem>lambdaQuery()
-                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
-                                .eq(SysConfigItem::getPid, pid)
-                                .eq(SysConfigItem::getSubjectId, subjectId)
-                                .ge(SysConfigItem::getSort, insertSort)
-                                .orderByAsc(SysConfigItem::getSort));
-        for (SysConfigItem sibling : siblings) {
-            sibling.setSort(sibling.getSort() + 1);
-            itemMapper.updateById(sibling);
-        }
-    }
-
-    /**
-     * 更新节点时调整排序值（同父节点内）
-     *
-     * @param itemId 被更新节点ID
-     * @param categoryAlias 分类别名
-     * @param pid 父节点ID
-     * @param newSort 新排序值
-     * @param oldSort 原排序值
-     * @param subjectId 主体ID
-     */
-    private void adjustSortOnUpdate(
-            Long itemId,
-            String categoryAlias,
-            Long pid,
-            Integer newSort,
-            Integer oldSort,
-            Long subjectId) {
-        if (oldSort == null) {
-            // 原来没有排序值，按插入处理
-            adjustSortOnInsert(categoryAlias, pid, newSort, subjectId);
-            return;
-        }
-
-        // 向前移动：原位置之后、新位置之前的节点 sort + 1
-        if (newSort < oldSort) {
-            List<SysConfigItem> siblings =
-                    itemMapper.selectList(
-                            Wrappers.<SysConfigItem>lambdaQuery()
-                                    .eq(SysConfigItem::getCategoryAlias, categoryAlias)
-                                    .eq(SysConfigItem::getPid, pid)
-                                    .eq(SysConfigItem::getSubjectId, subjectId)
-                                    .ne(SysConfigItem::getId, itemId)
-                                    .ge(SysConfigItem::getSort, newSort)
-                                    .lt(SysConfigItem::getSort, oldSort));
-            for (SysConfigItem sibling : siblings) {
-                sibling.setSort(sibling.getSort() + 1);
-                itemMapper.updateById(sibling);
-            }
-        }
-        // 向后移动：原位置之前、新位置之后的节点 sort - 1
-        else if (newSort > oldSort) {
-            List<SysConfigItem> siblings =
-                    itemMapper.selectList(
-                            Wrappers.<SysConfigItem>lambdaQuery()
-                                    .eq(SysConfigItem::getCategoryAlias, categoryAlias)
-                                    .eq(SysConfigItem::getPid, pid)
-                                    .eq(SysConfigItem::getSubjectId, subjectId)
-                                    .ne(SysConfigItem::getId, itemId)
-                                    .gt(SysConfigItem::getSort, oldSort)
-                                    .le(SysConfigItem::getSort, newSort));
-            for (SysConfigItem sibling : siblings) {
-                sibling.setSort(sibling.getSort() - 1);
-                itemMapper.updateById(sibling);
-            }
-        }
     }
 
     /**
@@ -645,13 +580,15 @@ public class SysConfigItemService {
      * @param pid 父节点ID
      * @param subjectId 主体ID
      */
-    private void reorderSiblingsAfterDelete(String categoryAlias, Long pid, Long subjectId) {
+    private void reorderSiblingsAfterDelete(
+            String categoryAlias, Long pid, Long subjectId, String projectNo) {
         // 查询同级所有节点
         List<SysConfigItem> siblings =
                 itemMapper.selectList(
                         Wrappers.<SysConfigItem>lambdaQuery()
                                 .eq(SysConfigItem::getCategoryAlias, categoryAlias)
                                 .eq(SysConfigItem::getPid, pid)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
                                 .eq(SysConfigItem::getSubjectId, subjectId)
                                 .orderByAsc(SysConfigItem::getSort));
 
@@ -659,10 +596,16 @@ public class SysConfigItemService {
             return;
         }
 
-        // 重新分配排序值（从0开始）
+        // 重新分配排序值（从0开始），逐节点按主体与应用限定更新
         for (int i = 0; i < siblings.size(); i++) {
-            siblings.get(i).setSort(i);
+            SysConfigItem sibling = siblings.get(i);
+            itemMapper.update(
+                    null,
+                    Wrappers.<SysConfigItem>lambdaUpdate()
+                            .set(SysConfigItem::getSort, i)
+                            .eq(SysConfigItem::getId, sibling.getId())
+                            .eq(SysConfigItem::getProjectNo, projectNo)
+                            .eq(SysConfigItem::getSubjectId, subjectId));
         }
-        itemMapper.updateById(siblings);
     }
 }
