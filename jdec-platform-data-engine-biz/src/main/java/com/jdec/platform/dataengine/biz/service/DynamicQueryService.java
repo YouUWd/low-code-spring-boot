@@ -1,22 +1,32 @@
 package com.jdec.platform.dataengine.biz.service;
 
-import com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO;
+import com.jdec.platform.config.api.SysMenuApi;
+import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
+import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
+import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
-import com.jdec.platform.dataengine.api.dto.model.DetailMeta;
-import com.jdec.platform.dataengine.api.dto.model.TablePermission;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
-import com.jdec.platform.dataengine.api.dto.response.DynamicDetailResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
+import com.jdec.platform.dataengine.biz.dto.ModuleField;
+import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
+import com.jdec.platform.dataengine.biz.dto.ModuleTable;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
+import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
+import com.jdec.platform.dataengine.biz.enums.FormButtonEnum;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
+import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
@@ -25,6 +35,7 @@ import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 /** 动态查询服务 (基于 jOOQ 两阶段分页与 Table-First 极简组装) */
 @Slf4j
@@ -40,6 +51,11 @@ public class DynamicQueryService {
     private final JooqConditionBuilder jooqConditionBuilder;
 
     private final ListBizQueryService listBizQueryService;
+
+    private final SysMenuApi sysMenuApi;
+    private final SysRolePermissionApi sysRolePermissionApi;
+
+    private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     /** 一体化列表分页查询 */
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -179,102 +195,319 @@ public class DynamicQueryService {
     }
 
     /** 动态主子表详情查询 (顶层包含 moduleId 等标识，元数据包含 fieldNames 与 permissions) */
-    public DynamicDetailResp getDetail(Long moduleId, Long id, String btnType) {
-        SysModuleCompleteResp completeResp = metadataCacheService.getModuleComplete(moduleId);
-        String primaryTable = completeResp.getModule().getPrimaryTable();
-        DSLContext dsl = jooqContextFactory.getContext();
+    public List<Object> getDetail(List<Long> menuIds, Long id, String btnType, boolean recursive) {
+        List<Object> resultList = new ArrayList<>();
 
-        // 1. 查询主表及 1:1 关联从表物理记录
-        Record mainRecord =
-                jooqSqlBuilder
-                        .buildSelectFrom(dsl, completeResp)
-                        .where(DSL.field(DSL.name(primaryTable, "id")).eq(id))
-                        .fetchOne();
+        List<SysMenuTreeResp> menuRespList = sysMenuApi.tree(1);
+        if (CollectionUtils.isEmpty(menuRespList)) {
+            log.debug("菜单树查询结果未空，返回空列表。");
+            return resultList;
+        }
 
-        Map<String, Object> mainRow =
-                mainRecord != null ? new HashMap<>(mainRecord.intoMap()) : new HashMap<>();
-        fieldTransformService.transformRecord(mainRow, completeResp);
-
-        // 2. 查询当前模块 1:N 关联从表
-        Map<String, Map<Long, List<Map<String, Object>>>> multiTableDataMap =
-                fetchOneToManyTables(dsl, completeResp, List.of(id));
-
-        Map<String, Object> tables = new LinkedHashMap<>();
-        tables.put(primaryTable, mainRow);
-
-        if (completeResp.getModuleTables() != null) {
-            for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-                String tName = tableDto.getTableName();
-                String rType = tableDto.getRelationType();
-                if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-                    List<Map<String, Object>> subRows =
-                            multiTableDataMap
-                                    .getOrDefault(tName, Collections.emptyMap())
-                                    .getOrDefault(id, Collections.emptyList());
-                    tables.put(tName, subRows);
-                } else {
-                    tables.put(tName, mainRow);
+        if (recursive) {
+            // ========= 模式1：多个模块独立查询，互不关联 =========
+            for (Long menuId : menuIds) {
+                SysMenuTreeResp node = findSubTreeByValue(menuRespList, menuId);
+                if (node == null) {
+                    continue;
                 }
+                // 组装当前模块查询参数
+                DynamicQueryReq singleQueryDTO =
+                        DynamicQueryReq.builder()
+                                .moduleId(node.getModuleId())
+                                .mainDataId(id)
+                                .build();
+                // 独立查询当前模块，不递归子模块（独立模式默认不递归）
+                Object moduleData = queryModule(singleQueryDTO, node, recursive);
+                resultList.add(moduleData);
+            }
+        } else {
+            // ========= 模式2：树形关联查询，多个模块属于同一棵树 =========
+            // 取根模块（moduleCodeList第一个为根节点，其余是树内子模块）
+            Long topMenuId = menuIds.get(0);
+            SysMenuTreeResp rootNode = findSubTreeByValue(menuRespList, topMenuId);
+            if (rootNode == null) {
+                return resultList;
+            }
+            DynamicQueryReq singleQueryDTO =
+                    DynamicQueryReq.builder()
+                            .moduleId(rootNode.getModuleId())
+                            .mainDataId(id)
+                            .build();
+
+            Object moduleData = queryModule(singleQueryDTO, rootNode, recursive);
+            resultList.add(moduleData);
+        }
+
+        return resultList;
+    }
+
+    private NestedModuleDataDTO queryModule(
+            DynamicQueryReq queryReq, SysMenuTreeResp rootNode, Boolean recursive) {
+        NestedModuleDataDTO.NestedModuleDataDTOBuilder builder = NestedModuleDataDTO.builder();
+
+        // TODO 通过menuId和moduleId查审批链配置获取
+        boolean hasApproval = false;
+
+        QueryType queryType;
+
+        if (hasApproval) {
+            queryType = QueryType.DETAIL_APPROVAL_CURRENT;
+        } else {
+            queryType = QueryType.DETAIL;
+        }
+
+        queryReq.setType(hasApproval ? 3 : 4);
+
+        List<RecordDataDTO> currentModuleData = querySingleModule(rootNode, queryReq, queryType);
+
+        if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
+            return builder.moduleId(rootNode.getModuleId())
+                    .menuId(rootNode.getId())
+                    .record(currentModuleData)
+                    .build();
+        }
+
+        for (SysMenuTreeResp childNode : rootNode.getChildren()) {
+            NestedModuleDataDTO childResultList = queryModule(null, childNode, true);
+            for (RecordDataDTO vo : currentModuleData) {
+                vo.getSubModule().add(childResultList);
             }
         }
 
-        // 3. 构建 DetailMeta (包含 fieldNames 与 permissions 字典)
-        Map<String, Map<String, String>> fieldNames = new LinkedHashMap<>();
-        Map<String, TablePermission> permissions = new LinkedHashMap<>();
-
-        List<String> allTables = new ArrayList<>();
-        allTables.add(primaryTable);
-        if (completeResp.getModuleTables() != null) {
-            for (ModuleTableDTO td : completeResp.getModuleTables()) {
-                if (!allTables.contains(td.getTableName())) {
-                    allTables.add(td.getTableName());
-                }
-            }
-        }
-
-        for (String tName : allTables) {
-            fieldNames.put(tName, new LinkedHashMap<>());
-            permissions.put(
-                    tName,
-                    TablePermission.builder()
-                            .view(new ArrayList<>())
-                            .apply(new ArrayList<>())
-                            .edit(new ArrayList<>())
-                            .build());
-        }
-
-        if (completeResp.getSimpleFields() != null) {
-            for (ModuleSimpleFieldDTO fieldDto : completeResp.getSimpleFields()) {
-                String tName = fieldDto.getTableName();
-                String colName = fieldDto.getColumnName();
-                String dispName =
-                        fieldDto.getDisplayName() != null ? fieldDto.getDisplayName() : colName;
-
-                if (fieldNames.containsKey(tName)) {
-                    fieldNames.get(tName).put(colName, dispName);
-                    TablePermission perm = permissions.get(tName);
-                    perm.getView().add(colName);
-                    perm.getApply().add(colName);
-                    perm.getEdit().add(colName);
-                }
-            }
-        }
-
-        DetailMeta detailMeta =
-                DetailMeta.builder().fieldNames(fieldNames).permissions(permissions).build();
-
-        return DynamicDetailResp.builder()
-                .moduleId(moduleId)
-                .moduleCode(completeResp.getModule().getModuleCode())
-                .moduleName(completeResp.getModule().getModuleName())
-                .moduleType(
-                        completeResp.getModule().getModuleType() != null
-                                ? completeResp.getModule().getModuleType().name()
-                                : "DETAIL")
-                .primaryTable(primaryTable)
-                .meta(detailMeta)
-                .subModules(Collections.emptyList())
+        return builder.moduleId(rootNode.getModuleId())
+                .menuId(rootNode.getId())
+                .record(currentModuleData)
                 .build();
+    }
+
+    private List<RecordDataDTO> querySingleModule(
+            SysMenuTreeResp node, DynamicQueryReq queryDTO, QueryType queryType) {
+        List<RecordDataDTO> resultList = new ArrayList<>();
+        if (node.getMenuType() == 4) {
+            // TODO 查找列表模块数据
+            DynamicQueryResp listData = query(queryDTO);
+            resultList.add(null);
+        } else if (node.getMenuType() == 2) {
+            // 查找详情模块数据
+            resultList.add(getDetailModuleData(node.getModuleId(), queryType, queryDTO));
+        }
+        return resultList;
+    }
+
+    private RecordDataDTO getDetailModuleData(
+            Long moduleId, QueryType queryType, DynamicQueryReq queryReq) {
+
+        Long subjectId = AppContext.getSubjectId();
+        Long roleId = AppContext.getRoleId();
+
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        subjectId, roleId, moduleId, "", List.of());
+
+        // 有节点权限，但是按钮并没有编辑或查看，说明此时使用了创建权限，与当前页面入口不符，抛出无权限异常
+        if (!CollectionUtils.isEmpty(moduleFilterInfo.getBtnList())) {
+            if (!moduleFilterInfo.getBtnList().stream()
+                    .anyMatch(
+                            ele ->
+                                    FormButtonEnum.VIEW.getKey().equals(ele.getButtonKey())
+                                            || FormButtonEnum.EDITE
+                                                    .getKey()
+                                                    .equals(ele.getButtonKey()))) {
+                log.debug("编辑和查看都无权限，权限判断拿的是创建权限，此时手动抛出无权限异常。");
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                        ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
+            }
+        } else {
+            log.debug("带审批链的详情查看，btnList为空。");
+        }
+
+        Map<String, Object> resultMap = new HashMap<>();
+
+        // 合并simple和combine的field
+        List<ModuleField> allRightField = fillIdAndJoinIdField(moduleFilterInfo);
+
+        // 查询数据权限配置
+        List<DataRightConfigResp> dataRightconfigs =
+                sysRolePermissionApi.getRoleDataPermissionDetail(roleId);
+        Map<String, List<DataRightConfigResp>> tableNameToConfigItems =
+                dataRightconfigs.stream()
+                        .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
+
+        return null;
+    }
+
+    /**
+     * 根据模块配置补充主键id和关联id的权限节点配置
+     *
+     * @param moduleFilterInfo
+     * @return
+     */
+    private List<ModuleField> fillIdAndJoinIdField(ModuleFilterInfo moduleFilterInfo) {
+
+        List<ModuleField> allRightField = new ArrayList<>();
+        allRightField.addAll(moduleFilterInfo.getSimpleModuleFields());
+
+        // SELECT之前先补充主键ID和关联表ID，防止权限节点不勾选后台报错
+        ModuleFilterInfo finalModuleFilterInfo = moduleFilterInfo;
+        boolean primaryIdFinded =
+                allRightField.stream()
+                        .anyMatch(
+                                ele ->
+                                        ele.getTableName()
+                                                        .equals(
+                                                                finalModuleFilterInfo
+                                                                        .getModuleInfo()
+                                                                        .getPrimaryTable())
+                                                && ele.getFieldCode().equals("id"));
+
+        if (!primaryIdFinded) {
+            log.debug(
+                    "主表{}的主键ID未勾选权限节点，手动添加到节点集合，设置权限为3",
+                    moduleFilterInfo.getModuleInfo().getPrimaryTable());
+            allRightField.add(
+                    ModuleField.builder()
+                            .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                            .filedType("SIMPLE")
+                            .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                            .fieldCode("id")
+                            .permissionCode(3)
+                            .build());
+        } else {
+            // id字段统一做成3，避免之后查看权限时为1，前端不返回
+            ModuleFilterInfo finalModuleFilterInfo1 = moduleFilterInfo;
+            ModuleField matchedFields =
+                    allRightField.stream()
+                            .filter(
+                                    ele ->
+                                            ele.getTableName()
+                                                            .equals(
+                                                                    finalModuleFilterInfo1
+                                                                            .getModuleInfo()
+                                                                            .getPrimaryTable())
+                                                    && ele.getFieldCode().equals("id"))
+                            .findFirst()
+                            .orElse(null);
+            if (Objects.nonNull(matchedFields)) {
+                log.debug(
+                        "主表{}的主键ID勾选了权限节点，权限节点为{}",
+                        moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                        matchedFields.getFieldCode());
+            }
+        }
+
+        // 遍历关联表，补齐SELECT数据
+        for (ModuleTable moduleTable : moduleFilterInfo.getModuleTableList()) {
+            ModuleFilterInfo finalModuleFilterInfo2 = moduleFilterInfo;
+            boolean primaryJoinIdFinded =
+                    allRightField.stream()
+                            .anyMatch(
+                                    ele ->
+                                            ele.getTableName()
+                                                            .equals(
+                                                                    finalModuleFilterInfo2
+                                                                            .getModuleInfo()
+                                                                            .getPrimaryTable())
+                                                    && ele.getFieldCode()
+                                                            .equals(
+                                                                    moduleTable
+                                                                            .getJoinLeftField()));
+            if (!primaryJoinIdFinded) {
+                log.debug(
+                        "主表{}的关联ID:{}未勾选权限节点，手动添加到节点集合",
+                        moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                        moduleTable.getJoinLeftField());
+                allRightField.add(
+                        ModuleField.builder()
+                                .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                                .filedType("SIMPLE")
+                                .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                                .fieldCode(moduleTable.getJoinLeftField())
+                                .permissionCode(3)
+                                .build());
+            } else {
+                ModuleFilterInfo finalModuleFilterInfo3 = moduleFilterInfo;
+                ModuleField matchedFields =
+                        allRightField.stream()
+                                .filter(
+                                        ele ->
+                                                ele.getTableName()
+                                                                .equals(
+                                                                        finalModuleFilterInfo3
+                                                                                .getModuleInfo()
+                                                                                .getPrimaryTable())
+                                                        && ele.getFieldCode()
+                                                                .equals(
+                                                                        moduleTable
+                                                                                .getJoinLeftField()))
+                                .findFirst()
+                                .orElse(null);
+                if (Objects.nonNull(matchedFields)) {
+                    log.debug(
+                            "主表{}的关联ID:{}勾选了权限节点，权限节点为{}",
+                            moduleFilterInfo.getModuleInfo().getPrimaryTable(),
+                            moduleTable.getJoinLeftField(),
+                            matchedFields.getFieldCode());
+                }
+            }
+
+            boolean joinTableIdFinded =
+                    allRightField.stream()
+                            .anyMatch(
+                                    ele ->
+                                            ele.getTableName().equals(moduleTable.getTableName())
+                                                    && ele.getFieldCode()
+                                                            .equals(
+                                                                    moduleTable
+                                                                            .getJoinRightField()));
+            if (!joinTableIdFinded) {
+                log.debug(
+                        "关联表{}的关联ID:{}未勾选权限节点，手动添加到节点集合",
+                        moduleTable.getTableName(),
+                        moduleTable.getJoinRightField());
+                allRightField.add(
+                        ModuleField.builder()
+                                .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                                .filedType("SIMPLE")
+                                .tableName(moduleTable.getTableName())
+                                .fieldCode(moduleTable.getJoinRightField())
+                                .permissionCode(1)
+                                .build());
+            } else {
+                ModuleField matchedFields =
+                        allRightField.stream()
+                                .filter(
+                                        ele ->
+                                                ele.getTableName()
+                                                                .equals(moduleTable.getTableName())
+                                                        && ele.getFieldCode()
+                                                                .equals(
+                                                                        moduleTable
+                                                                                .getJoinRightField()))
+                                .findFirst()
+                                .orElse(null);
+                if (Objects.nonNull(matchedFields)) {
+                    log.debug(
+                            "关联表{}的关联ID:{}勾选了权限节点，权限节点为{}",
+                            moduleTable.getTableName(),
+                            moduleTable.getJoinRightField(),
+                            matchedFields.getFieldCode());
+                }
+            }
+        }
+
+        // 主表增加业务状态字段
+        allRightField.add(
+                ModuleField.builder()
+                        .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
+                        .filedType("SIMPLE")
+                        .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
+                        .fieldCode("business_status")
+                        .permissionCode(1)
+                        .build());
+
+        return allRightField;
     }
 
     /** 批量抓取当前页主表 ID 集合关联的 1:N 从表记录 */
@@ -311,5 +544,44 @@ public class DynamicQueryService {
             }
         }
         return result;
+    }
+
+    /**
+     * 森林查找：入参多个根节点List，找到第一个匹配节点值的节点，返回其整个子树
+     *
+     * @param roots 森林：多个根节点组成的list
+     * @param targetValue 目标节点值
+     * @return 找到的子树根节点；找不到返回null
+     */
+    private SysMenuTreeResp findSubTreeByValue(List<SysMenuTreeResp> roots, Long targetValue) {
+        if (roots == null || roots.isEmpty()) {
+            return null;
+        }
+        // 遍历森林中每一棵树
+        for (SysMenuTreeResp root : roots) {
+            SysMenuTreeResp matchNode = dfsSearch(root, targetValue);
+            if (matchNode != null) {
+                return matchNode;
+            }
+        }
+        return null;
+    }
+
+    /** 单棵树内部DFS */
+    private SysMenuTreeResp dfsSearch(SysMenuTreeResp currNode, Long targetValue) {
+        if (currNode == null) {
+            return null;
+        }
+        if (targetValue.equals(currNode.getId())) {
+            return currNode;
+        }
+        // 递归遍历子节点
+        for (SysMenuTreeResp child : currNode.getChildren()) {
+            SysMenuTreeResp res = dfsSearch(child, targetValue);
+            if (res != null) {
+                return res;
+            }
+        }
+        return null;
     }
 }

@@ -68,17 +68,30 @@ public class DetailBizHistoryQueryService implements DetailBizReferQueryService 
 
         Map<Object, Object> retrunMap = new HashMap<>();
 
-        for (MenuListResp menuResp : menuListRespList) {
+        Boolean hasApproval =
+                context.getQueryType() == QueryType.DETAIL_APPROVAL_CURRENT
+                        || context.getQueryType() == QueryType.DETAIL_APPROVAL_HISTORY;
 
-            ModuleFilterInfo moduleFilterInfo =
-                    moduleInfoWithPermissionService.filterModuleInfo(
-                            context.getSubjectId(),
-                            context.getRoleId(),
-                            menuResp.getModuleId(),
-                            context.getBtnType(),
-                            context.getQueryType() == QueryType.DETAIL_APPROVAL_CURRENT
-                                    ? Boolean.TRUE
-                                    : Boolean.FALSE);
+        for (MenuListResp menuResp : menuListRespList) {
+            ModuleFilterInfo moduleFilterInfo;
+
+            if (hasApproval) {
+                moduleFilterInfo =
+                        moduleInfoWithPermissionService.filterModuleInfo(
+                                context.getSubjectId(),
+                                context.getRoleId(),
+                                menuResp.getModuleId(),
+                                context.getBtnType(),
+                                List.of());
+            } else {
+                moduleFilterInfo =
+                        moduleInfoWithPermissionService.filterModuleInfoWithApproval(
+                                context.getSubjectId(),
+                                context.getRoleId(),
+                                menuResp.getModuleId(),
+                                context.getBtnType(),
+                                List.of());
+            }
 
             ModuleType moduleType =
                     ModuleType.getModuleType(moduleFilterInfo.getModuleInfo().getModuleType());

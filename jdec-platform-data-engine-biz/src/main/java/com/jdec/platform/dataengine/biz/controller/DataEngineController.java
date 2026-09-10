@@ -3,9 +3,9 @@ package com.jdec.platform.dataengine.biz.controller;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
-import com.jdec.platform.dataengine.api.dto.response.DynamicDetailResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.shared.model.ApiResponse;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,7 +24,7 @@ public class DataEngineController {
     }
 
     @GetMapping("/{moduleId}/detail/{id}")
-    public ApiResponse<DynamicDetailResp> getDetail(
+    public ApiResponse<List<Object>> getDetail(
             @PathVariable Long moduleId, @PathVariable Long id, String btnType) {
         return ApiResponse.success(dataEngineApi.getDetail(moduleId, id, btnType));
     }
