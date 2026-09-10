@@ -15,7 +15,6 @@ import com.jdec.platform.config.api.dto.response.SysDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.config.BizSystemConfig;
 import com.jdec.platform.config.biz.entity.SysDataPermission;
-import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
@@ -256,31 +255,34 @@ public class SysDataPermissionService implements SysDataPermissionApi {
      * 2]）解析为主体ID列表；未查询到模块记录时，回退使用当前上下文中的主体ID。
      */
     private List<Long> resolveSubjectIds(String tableName) {
-        if (!StringUtils.hasText(tableName)) {
-            log.warn("数据权限表名为空，回退使用当前主体 {}", AppContext.getSubjectId());
-            return defaultSubjectIds();
-        }
-
-        // 通过表名primary_table字段 + 主体id + 项目编码查询 sys_module
-        List<SysModule> modules =
-                sysModuleMapper.selectList(
-                        new LambdaQueryWrapper<SysModule>()
-                                .eq(SysModule::getPrimaryTable, tableName)
-                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
-                                .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
-
-        if (CollUtil.isEmpty(modules)) {
-            log.warn("未查询到表 {} 对应的模块配置，回退使用当前主体 {}", tableName, AppContext.getSubjectId());
-            return defaultSubjectIds();
-        }
-
-        // 解析 source_subjects（JSON格式，如 [1, 2]）
-        List<Long> subjectIds = parseSourceSubjects(modules.get(0).getSourceSubjects());
-        if (CollUtil.isEmpty(subjectIds)) {
-            log.warn("模块 {} 未配置数据来源主体，回退使用当前主体 {}", tableName, AppContext.getSubjectId());
-            return defaultSubjectIds();
-        }
-        return subjectIds;
+        //        if (!StringUtils.hasText(tableName)) {
+        //            log.warn("数据权限表名为空，回退使用当前主体 {}", AppContext.getSubjectId());
+        //            return defaultSubjectIds();
+        //        }
+        //
+        //        // 通过表名primary_table字段 + 主体id + 项目编码查询 sys_module
+        //        List<SysModule> modules =
+        //                sysModuleMapper.selectList(
+        //                        new LambdaQueryWrapper<SysModule>()
+        //                                .eq(SysModule::getPrimaryTable, tableName)
+        //                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
+        //                                .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
+        //
+        //        if (CollUtil.isEmpty(modules)) {
+        //            log.warn("未查询到表 {} 对应的模块配置，回退使用当前主体 {}", tableName,
+        // AppContext.getSubjectId());
+        //            return defaultSubjectIds();
+        //        }
+        //
+        //        // 解析 source_subjects（JSON格式，如 [1, 2]）
+        //        List<Long> subjectIds = parseSourceSubjects(modules.get(0).getSourceSubjects());
+        //        if (CollUtil.isEmpty(subjectIds)) {
+        //            log.warn("模块 {} 未配置数据来源主体，回退使用当前主体 {}", tableName, AppContext.getSubjectId());
+        //            return defaultSubjectIds();
+        //        }
+        //        return subjectIds;
+        // tableName可能位于多个模块中，多个模块的主体可能不一致
+        return null;
     }
 
     /** 回退主体ID：默认使用当前上下文中的主体ID */

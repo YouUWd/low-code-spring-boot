@@ -1,8 +1,8 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysMenuApi;
+import com.jdec.platform.config.api.dto.request.SaveMenuReq;
 import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
-import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -59,8 +59,11 @@ public class SysMenuController {
     }
 
     @PostMapping("/save")
-    @Operation(summary = "新增/编辑菜单", description = "id为空则新增，不为空则修改，返回保存后的菜单信息")
-    public ApiResponse<SysMenuResp> save(@RequestBody SysMenuSaveReq request) {
+    @Operation(
+            summary = "新增/编辑菜单",
+            description =
+                    "menu.id 为空则新增，不为空则修改，返回保存后的菜单信息。支持前端将整棵菜单树一并提交，treeNodes 非空时差量同步整棵树的父子关系与同级排序（排序由前端决定），treeNodes 中缺失的节点不做删除")
+    public ApiResponse<SysMenuResp> save(@RequestBody SaveMenuReq request) {
         return ApiResponse.success(sysMenuApi.saveMenu(request));
     }
 

@@ -1,16 +1,18 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysStatusApi;
+import com.jdec.platform.config.api.dto.request.SaveStatusReq;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
-import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
 import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
  *
  * <p>提供状态的树形展示、增删改、拖拽接口。
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/config/status")
 @RequiredArgsConstructor
@@ -33,9 +36,18 @@ public class SysStatusController {
     }
 
     @PostMapping("/save")
-    @Operation(summary = "新增/编辑状态", description = "id为空则新增，不为空则修改；新增时返回新记录ID")
-    public ApiResponse<Long> save(@RequestBody SysStatusSaveReq request) {
-        return ApiResponse.success(sysStatusApi.saveStatus(request));
+    @Operation(
+            summary = "新增/编辑状态",
+            description =
+                    "status.id 为空则新增，不为空则修改；新增时返回新记录ID。支持前端将整棵状态树一并提交，treeNodes 非空时差量同步整棵树的父子关系与同级排序，treeNodes 中缺失的节点不做删除")
+    public ApiResponse<Long> save(@RequestBody SaveStatusReq request) {
+        log.info(
+                "保存项目 {} (主体 {}) 的状态: title={}",
+                AppContext.getProjectNo(),
+                AppContext.getSubjectId(),
+                request.getStatus() != null ? request.getStatus().getTitle() : null);
+        Long statusId = sysStatusApi.saveStatus(request);
+        return ApiResponse.success("保存成功", statusId);
     }
 
     @DeleteMapping("/{id}")

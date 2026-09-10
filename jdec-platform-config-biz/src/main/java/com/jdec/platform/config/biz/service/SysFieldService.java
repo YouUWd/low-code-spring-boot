@@ -422,18 +422,17 @@ public class SysFieldService implements SysFieldApi {
         Map<String, SysField> configMap =
                 sysFields.stream().collect(Collectors.toMap(SysField::getColumnName, f -> f));
 
-        // 2.2 先按 tableName 查询涉及的 simple field 关系，再精准匹配模块
-        List<SysModuleField> simpleFields =
+        // 2.2 先按 tableName 查询涉及的 field 关系，再精准匹配模块
+        List<SysModuleField> moduleFields =
                 sysModuleFieldMapper.selectList(
                         new LambdaQueryWrapper<SysModuleField>()
-                                .eq(SysModuleField::getTableName, tableName)
-                                .eq(SysModuleField::getFieldType, "SIMPLE"));
+                                .eq(SysModuleField::getTableName, tableName));
 
         Map<String, List<SysFieldResp.SysFieldModuleResp>> columnModulesMap =
                 Collections.emptyMap();
-        if (!simpleFields.isEmpty()) {
+        if (!moduleFields.isEmpty()) {
             Set<Long> involvedModuleIds =
-                    simpleFields.stream()
+                    moduleFields.stream()
                             .map(SysModuleField::getModuleId)
                             .filter(Objects::nonNull)
                             .collect(Collectors.toSet());
@@ -452,11 +451,11 @@ public class SysFieldService implements SysFieldApi {
                                         Collectors.toMap(SysModule::getId, m -> m, (m1, m2) -> m1));
 
                 columnModulesMap =
-                        simpleFields.stream()
+                        moduleFields.stream()
                                 .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
                                 .collect(
                                         Collectors.groupingBy(
-                                                SysModuleField::getFieldCode,
+                                                SysModuleField::getColumnName,
                                                 Collectors.mapping(
                                                         sf -> {
                                                             SysModule m =
@@ -599,6 +598,8 @@ public class SysFieldService implements SysFieldApi {
             } catch (Exception e) {
                 log.error("combineInfo 序列化失败", e);
             }
+        } else {
+            combineInfoJson = null;
         }
 
         SysField entity =
@@ -982,15 +983,25 @@ public class SysFieldService implements SysFieldApi {
             params.put("old_business_no", oldBusinessNo);
             params.put("business_no", businessNo);
 
-            SysModule sysModule =
-                    sysModuleMapper
-                            .selectList(
-                                    new LambdaQueryWrapper<SysModule>()
-                                            .eq(SysModule::getSubjectId, subjectId)
-                                            .eq(SysModule::getPrimaryTable, tableName))
-                            .stream()
-                            .findFirst()
-                            .orElse(null);
+            SysModule sysModule = null;
+            List<SysModuleField> firstFields =
+                    sysModuleFieldMapper.selectList(
+                            Wrappers.<SysModuleField>lambdaQuery()
+                                    .eq(SysModuleField::getTableName, tableName)
+                                    .eq(SysModuleField::getSortOrder, 1));
+            if (!firstFields.isEmpty()) {
+                List<Long> moduleIds =
+                        firstFields.stream().map(SysModuleField::getModuleId).toList();
+                sysModule =
+                        sysModuleMapper
+                                .selectList(
+                                        Wrappers.<SysModule>lambdaQuery()
+                                                .eq(SysModule::getSubjectId, subjectId)
+                                                .in(SysModule::getId, moduleIds))
+                                .stream()
+                                .findFirst()
+                                .orElse(null);
+            }
 
             if (sysModule != null) {
                 params.put("module_slug", sysModule.getModuleCode());
