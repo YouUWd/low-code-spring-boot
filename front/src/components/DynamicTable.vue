@@ -1081,7 +1081,12 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
         // 3. 根主表或 1:1 / N:1 伴生表 (如 student, clazz, student_profile)
         // 纵向跨满主记录全部展开行，仅首行渲染 (rowSpan = totalSpan, shouldRender = isFirst)
         let cellVal: any = '-';
-        if (record[table] && typeof record[table] === 'object' && record[table][field] !== undefined) {
+        const rootMidStr = String(props.meta?.moduleId || 101);
+        const rootScope = (record[rootMidStr] && typeof record[rootMidStr] === 'object') ? record[rootMidStr] : record;
+
+        if (rootScope[table] && typeof rootScope[table] === 'object' && rootScope[table][field] !== undefined) {
+          cellVal = rootScope[table][field];
+        } else if (record[table] && typeof record[table] === 'object' && record[table][field] !== undefined) {
           cellVal = record[table][field];
         } else {
           const vals = getCellValuesList(record, col);
@@ -1097,7 +1102,9 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
       });
 
       // 主键 id 安全提取
-      const rowMainId = record.student?.id || record.id || (record['101']?.student?.id) || mainIdx;
+      const rootMidStr = String(props.meta?.moduleId || 101);
+      const rootScope = (record[rootMidStr] && typeof record[rootMidStr] === 'object') ? record[rootMidStr] : record;
+      const rowMainId = rootScope.student?.id || rootScope.id || record.student?.id || record.id || mainIdx;
       result.push({
         rowKey: `${rowMainId}_sub_${subIdx}`,
         mainRecord: record,

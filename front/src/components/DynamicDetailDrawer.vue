@@ -33,12 +33,13 @@ watch(
   (newVal) => {
     if (newVal) {
       const copy = JSON.parse(JSON.stringify(newVal));
-      // 兼容多模块纯对象嵌套结构（如形态 A: copy['101'].student, copy['103'].student_course 等）
-      const student = copy['101']?.student || copy.student || {};
-      const clazz = copy['101']?.clazz || copy.clazz || {};
-      const student_profile = copy['101']?.student_profile || copy.student_profile || {};
-      const student_course = copy['103']?.student_course || copy.student_course || [];
-      const student_award = copy['104']?.student_award || copy.student_award || [];
+      // 兼容多模块纯对象嵌套结构（如根模块包裹: copy['101'] 内嵌 student、103、104）
+      const scope101 = (copy['101'] && typeof copy['101'] === 'object') ? copy['101'] : copy;
+      const student = scope101.student || copy.student || {};
+      const clazz = scope101.clazz || copy.clazz || {};
+      const student_profile = scope101.student_profile || copy.student_profile || {};
+      const student_course = scope101['103']?.student_course || scope101.student_course || copy['103']?.student_course || copy.student_course || [];
+      const student_award = scope101['104']?.student_award || scope101.student_award || copy['104']?.student_award || copy.student_award || [];
 
       formData.value = {
         ...copy,

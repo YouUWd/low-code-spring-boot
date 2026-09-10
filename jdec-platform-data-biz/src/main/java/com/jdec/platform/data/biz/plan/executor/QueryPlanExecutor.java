@@ -196,11 +196,20 @@ public class QueryPlanExecutor {
                     rootRows, rootPlan.getModuleId(), rootPlan.getChildren(), rawDataByNode);
         }
 
+        // ==================== Stage 3: 严格对齐 Header 树从根到叶的模块包裹契约 ====================
+        String rootModKey = String.valueOf(rootPlan.getModuleId());
+        List<Map<String, Object>> wrappedRootRows = new ArrayList<>();
+        for (Map<String, Object> rRow : rootRows) {
+            Map<String, Object> wrapped = new LinkedHashMap<>();
+            wrapped.put(rootModKey, rRow);
+            wrappedRootRows.add(wrapped);
+        }
+
         return DataPage.<Map<String, Object>>builder()
                 .pageNo(pageNo)
                 .pageSize(pageSize)
                 .total(total)
-                .records(rootRows)
+                .records(wrappedRootRows)
                 .build();
     }
 

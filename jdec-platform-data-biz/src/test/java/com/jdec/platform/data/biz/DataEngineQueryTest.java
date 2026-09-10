@@ -593,10 +593,14 @@ class DataEngineQueryTest {
 
         DataPage<Map<String, Object>> response = dynamicQueryService.query(req);
 
-        // 1. 验证响应与根数据页
+        // 1. 验证响应与根数据页 (根记录严格由 101 根模块包裹)
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
-        Map<String, Object> studentRecord = response.getRecords().get(0);
+        Map<String, Object> rootRow = response.getRecords().get(0);
+        assertTrue(rootRow.containsKey("101"), "根记录必须由当前根模块 101 包裹");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> studentRecord = (Map<String, Object>) rootRow.get("101");
+        assertNotNull(studentRecord);
 
         // 2. 验证主表与伴生表字段在根实体下包装展开 (无冗余平铺 id)
         assertNull(studentRecord.get("id"));
@@ -613,7 +617,7 @@ class DataEngineQueryTest {
         assertNotNull(clazz);
         assertEquals("高三(1)班", clazz.get("class_name"));
 
-        // 3. 验证子模块 103 选课从表 (直接挂载在学生实体行内)
+        // 3. 验证子模块 103 选课从表 (直接挂载在 101 实体行内)
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> courseList = (List<Map<String, Object>>) studentRecord.get("103");
         assertNotNull(courseList);
@@ -696,7 +700,11 @@ class DataEngineQueryTest {
 
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
-        Map<String, Object> studentRecord = response.getRecords().get(0);
+        Map<String, Object> rootRow = response.getRecords().get(0);
+        assertTrue(rootRow.containsKey("101"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> studentRecord = (Map<String, Object>) rootRow.get("101");
+        assertNotNull(studentRecord);
 
         // 验证主表字段
         assertNull(studentRecord.get("id"));
@@ -793,7 +801,11 @@ class DataEngineQueryTest {
 
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
-        Map<String, Object> root = response.getRecords().get(0);
+        Map<String, Object> rootRow = response.getRecords().get(0);
+        assertTrue(rootRow.containsKey("101"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> root = (Map<String, Object>) rootRow.get("101");
+        assertNotNull(root);
         assertNull(root.get("id"));
         @SuppressWarnings("unchecked")
         Map<String, Object> student = (Map<String, Object>) root.get("student");
@@ -852,7 +864,11 @@ class DataEngineQueryTest {
         DataPage<Map<String, Object>> response = dynamicQueryService.query(req);
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
-        Map<String, Object> root = response.getRecords().get(0);
+        Map<String, Object> rootRow = response.getRecords().get(0);
+        assertTrue(rootRow.containsKey("101"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> root = (Map<String, Object>) rootRow.get("101");
+        assertNotNull(root);
         assertNull(root.get("id"));
         @SuppressWarnings("unchecked")
         Map<String, Object> student = (Map<String, Object>) root.get("student");
@@ -881,7 +897,11 @@ class DataEngineQueryTest {
         DataPage<Map<String, Object>> result = dynamicQueryService.query(req);
         assertNotNull(result);
         assertEquals(1, result.getRecords().size());
-        Map<String, Object> record = result.getRecords().get(0);
+        Map<String, Object> rootRow = result.getRecords().get(0);
+        assertTrue(rootRow.containsKey("101"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> record = (Map<String, Object>) rootRow.get("101");
+        assertNotNull(record);
         assertNull(record.get("id"));
         @SuppressWarnings("unchecked")
         Map<String, Object> student = (Map<String, Object>) record.get("student");
@@ -897,9 +917,13 @@ class DataEngineQueryTest {
         EngineDataResult<Map<String, Object>> result = dynamicQueryService.getDetail(101L, 1001L);
         assertNotNull(result);
         assertNotNull(result.getData());
-        assertNull(result.getData().get("id"));
+        assertTrue(result.getData().containsKey("101"), "getDetail 单据详情单行也应保持 101 模块包裹");
         @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) result.getData().get("student");
+        Map<String, Object> data101 = (Map<String, Object>) result.getData().get("101");
+        assertNotNull(data101);
+        assertNull(data101.get("id"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> student = (Map<String, Object>) data101.get("student");
         assertNotNull(student);
         assertEquals(1001L, ((Number) student.get("id")).longValue());
         assertEquals("张三", student.get("name"));
@@ -945,7 +969,11 @@ class DataEngineQueryTest {
         DataPage<Map<String, Object>> response = dynamicQueryService.query(req);
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
-        Map<String, Object> record = response.getRecords().get(0);
+        Map<String, Object> rootRow = response.getRecords().get(0);
+        assertTrue(rootRow.containsKey("101"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> record = (Map<String, Object>) rootRow.get("101");
+        assertNotNull(record);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> student = (Map<String, Object>) record.get("student");
@@ -1135,14 +1163,18 @@ class DataEngineQueryTest {
 
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
-        Map<String, Object> studentRecord = response.getRecords().get(0);
+        Map<String, Object> rootRow = response.getRecords().get(0);
+        assertTrue(rootRow.containsKey("101"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> studentRecord = (Map<String, Object>) rootRow.get("101");
+        assertNotNull(studentRecord);
 
         // 1. 验证 101 根模块主表
         @SuppressWarnings("unchecked")
         Map<String, Object> student = (Map<String, Object>) studentRecord.get("student");
         assertNotNull(student);
 
-        // 2. 验证 104 子模块直接挂载在根实体行内
+        // 2. 验证 104 子模块直接挂载在 101 实体行内
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> awardList = (List<Map<String, Object>>) studentRecord.get("104");
         assertNotNull(awardList);
@@ -1539,17 +1571,19 @@ class DataEngineQueryTest {
         assertTrue(rootNode.has("records"), "JSON 根节点必须包含与 'header' 同级的 'records' 数组");
         assertEquals(1, rootNode.get("records").size());
 
-        // 验证三级递归自相似数据链路：records[0] 行内自包含物理表与子模块数组
-        com.fasterxml.jackson.databind.JsonNode studentNode = rootNode.get("records").get(0);
+        // 验证三级递归自相似数据链路：records[0]["101"] 根模块包裹，行内自包含物理表与子模块数组
+        com.fasterxml.jackson.databind.JsonNode rootRecord = rootNode.get("records").get(0);
+        assertTrue(rootRecord.has("101"), "每条记录必须包含根模块 101 包裹对象");
+        com.fasterxml.jackson.databind.JsonNode studentNode = rootRecord.get("101");
         assertEquals("S001", studentNode.get("student").get("student_no").asText());
         assertEquals("张三", studentNode.get("student").get("name").asText());
         assertEquals("高三(1)班", studentNode.get("clazz").get("class_name").asText());
 
-        // 二级模块 103 选课
+        // 二级模块 103 选课 (包含在 101 内部)
         com.fasterxml.jackson.databind.JsonNode courseNode = studentNode.get("103").get(0);
         assertEquals("大学英语", courseNode.get("student_course").get("course_name").asText());
 
-        // 三级模块 104 成绩项
+        // 三级模块 104 成绩项 (包含在 103 选课内部)
         com.fasterxml.jackson.databind.JsonNode scoreNode = courseNode.get("104").get(0);
         assertEquals("期末大作业", scoreNode.get("student_course_score_item").get("item_name").asText());
         assertEquals(95.0, scoreNode.get("student_course_score_item").get("score").asDouble());

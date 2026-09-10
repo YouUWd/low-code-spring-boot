@@ -98,6 +98,17 @@ public class SavePlanCompiler {
             SysModuleMetaResp meta,
             List<SaveNodePlan> childPlans) {
         Map<String, Object> cleanRow = new HashMap<>(rawRow);
+        String modKey = moduleId != null ? String.valueOf(moduleId) : null;
+
+        // 0. 读写同构：若整条记录被当前模块 ID 包裹（如 { "101": { student, clazz, ... } }），直接提取内层
+        if (modKey != null && cleanRow.get(modKey) instanceof Map<?, ?> modMap) {
+            cleanRow = new HashMap<>();
+            for (Map.Entry<?, ?> e : modMap.entrySet()) {
+                if (e.getKey() != null) {
+                    cleanRow.put(String.valueOf(e.getKey()), e.getValue());
+                }
+            }
+        }
 
         // 1. 如果包含主表名子对象，展平合并到当前行
         if (primaryTable != null && cleanRow.get(primaryTable) instanceof Map<?, ?> tableMap) {
