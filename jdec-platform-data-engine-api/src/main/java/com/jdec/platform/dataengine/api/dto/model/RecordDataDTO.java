@@ -15,7 +15,9 @@ import lombok.NoArgsConstructor;
 @Schema(description = "记录数据")
 public class RecordDataDTO implements java.io.Serializable {
 
-    private Map<String, Object> row; // 可以是 TableRowDataDTO 或者 List<TableRowDataDTO>
+    @Schema(description = "主表，关联表，组合的行记录，主表只有一行")
+    private Map<String, Object>
+            combinedRow; // 可以是 SingleTableRowDataDTO 或者 List<SingleTableRowDataDTO>
 
-    private List<RecordDataDTO> subModule;
+    private List<NestedModuleDataDTO> subModule;
 }
