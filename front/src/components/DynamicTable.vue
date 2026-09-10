@@ -516,7 +516,9 @@ function extractFieldValues(data: any, targetTable: string, targetField: string)
  */
 function getCellValuesList(record: any, col: HeaderMeta): any[] {
   if (!record || !col) return [];
-  const { table, field, moduleId, modulePath, fieldId } = col;
+  const table = col.table || (col.dataIndex ? col.dataIndex.split('.')[0] : '');
+  const field = col.field || (col.dataIndex ? col.dataIndex.split('.')[1] : '');
+  const { moduleId, modulePath, fieldId } = col;
 
   // 1. 🌟 依据 modulePath 模块下钻路径（如 [101, 103]）定位到目标模块空间，再结合 table/field 提取
   const targetModulePath = (modulePath && Array.isArray(modulePath) && modulePath.length > 0)
@@ -875,61 +877,114 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
   const headers = visibleHeaders.value;
 
   records.forEach((record, mainIdx) => {
-    // 动态发现此记录下的所有 1:N 子分支（即对应模块空间下的从表数组）
-    // 结构分析：
-    // record -> moduleId (如 '103', '104') -> table (如 'student_course', 'student_award') -> Array<Item>
-    // 每个 Item 下可能还包含下一级数组（如 student_course_score_item, student_award_detail）
+    // 动态发现此记录下的所有 1:N 业务从表分支
+    // 数据模型解构公理：
+    // record -> 子模块数组 (如 record['103'], record['104']) 或直接物理从表数组
+    // 数组项 item 结构：
+    //   主实体数据: item.student_course 或 item.student_award (若无物理表名包裹则直接是 item 本身)
+    //   二级细项列表:
+    //     - 同模块从表: 如 item.student_course_score_item
+    //     - 三级孙模块: 如 item['106'] (其项为 { student_award_detail: {...} } 或平铺明细)
     interface DynamicSlot {
-      item: any;
-      subItems: any[];
-      slotSpan: number;
+      entityObj: any;     // 一级从表物理实体对象 (如 { id: 8, course_name: 'xxx', ... })
+      subTable: string;   // 二级细项物理表名 (如 'student_course_score_item' 或 'student_award_detail')
+      subItems: any[];    // 二级细项列表
+      slotSpan: number;   // 当前一级从表实体占用的展开跨度 = max(1, subItems.length)
     }
 
     interface DynamicBranch {
-      modKey: string;
-      tableName: string;
-      slots: DynamicSlot[];
-      totalSpan: number;
+      modKey: string;      // 模块标识 (如 '103', '104')
+      primaryTable: string;// 一级从表物理表名 (如 'student_course', 'student_award')
+      subTable?: string;   // 二级细项物理表名
+      slots: DynamicSlot[];// 一级从表项槽位列表
+      totalSpan: number;   // 分支总展开跨度 = sum(slotSpan)
     }
 
     const branches: DynamicBranch[] = [];
 
-    // 递归扫描 record 及其各级模块空间下的全部 1:N 从表分支
+    // 递归扫描 record 及其各级空间下的全部 1:N 从表分支
     function scanBranches(currentObj: any, currentModKey: string) {
       if (!currentObj || typeof currentObj !== 'object' || Array.isArray(currentObj)) return;
+
       for (const k of Object.keys(currentObj)) {
         const val = currentObj[k];
         if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') {
-          // 捕获到一个 1:N 从表数组分支
+          // 捕获到一个 1:N 数组分支！
+          // 分析第一项，确定其主实体物理表名与内嵌二级细项
+          let primaryTable = k;
           const slots: DynamicSlot[] = [];
-          val.forEach(item => {
-            // 检查 item 内部是否嵌套有同模块从表数组 (如 student_course_score_item)
-            let childArr: any[] = [];
-            if (item && typeof item === 'object') {
-              for (const subK of Object.keys(item)) {
-                if (Array.isArray(item[subK])) {
-                  childArr = item[subK];
+          let detectedSubTable = '';
+
+          val.forEach((rawItem: any) => {
+            let entityObj: any = rawItem;
+            let subItems: any[] = [];
+            let itemSubTable = '';
+
+            if (rawItem && typeof rawItem === 'object') {
+              // 1. 查找是否存在物理表包装（例如 rawItem.student_course、rawItem.student_award）
+              for (const itemKey of Object.keys(rawItem)) {
+                const inner = rawItem[itemKey];
+                // 物理实体对象（排除数字键子模块和细项数组）
+                if (inner && typeof inner === 'object' && !Array.isArray(inner) && isNaN(Number(itemKey))) {
+                  primaryTable = itemKey;
+                  entityObj = inner;
                   break;
                 }
               }
+
+              // 2. 查找是否存在二级细项数组（同模块从表或数字键三级子模块）
+              for (const itemKey of Object.keys(rawItem)) {
+                const inner = rawItem[itemKey];
+                if (Array.isArray(inner) && inner.length > 0) {
+                  // A. 同模块从表数组 (如 rawItem.student_course_score_item)
+                  if (isNaN(Number(itemKey))) {
+                    itemSubTable = itemKey;
+                    subItems = inner;
+                    break;
+                  }
+                  // B. 数字键三级子模块 (如 rawItem['106'])
+                  if (!isNaN(Number(itemKey))) {
+                    // 解包数字键子模块下的第一项看其物理表名
+                    const firstSub = inner[0];
+                    if (firstSub && typeof firstSub === 'object') {
+                      for (const subK of Object.keys(firstSub)) {
+                        if (isNaN(Number(subK)) && typeof firstSub[subK] === 'object') {
+                          itemSubTable = subK;
+                          break;
+                        }
+                      }
+                      if (!itemSubTable) itemSubTable = itemKey;
+                    }
+                    subItems = inner;
+                    break;
+                  }
+                }
+              }
             }
-            const slotSpan = Math.max(1, childArr.length);
+
+            if (itemSubTable) {
+              detectedSubTable = itemSubTable;
+            }
+
+            const slotSpan = Math.max(1, subItems.length);
             slots.push({
-              item,
-              subItems: childArr,
+              entityObj,
+              subTable: itemSubTable,
+              subItems,
               slotSpan
             });
           });
 
           const totalSpan = slots.reduce((sum, s) => sum + s.slotSpan, 0);
           branches.push({
-            modKey: currentModKey,
-            tableName: k,
+            modKey: currentModKey || k,
+            primaryTable,
+            subTable: detectedSubTable,
             slots,
             totalSpan
           });
         } else if (val && typeof val === 'object' && !Array.isArray(val)) {
-          // 深入子模块空间 (如 record['101'] -> ['104'] -> ['106'])
+          // 深入子模块命名空间
           scanBranches(val, k);
         }
       }
@@ -937,7 +992,7 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
 
     scanBranches(record, '');
 
-    // 主记录占用的总行数 = max(1, 各 1:N 分支展开行数)
+    // 主记录占用的总展开行数 = max(1, 各 1:N 分支总跨度)
     const maxBranchSpan = branches.length > 0 ? Math.max(...branches.map(b => b.totalSpan)) : 1;
     const totalSpan = Math.max(1, maxBranchSpan);
 
@@ -947,19 +1002,18 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
       const isLast = subIdx === totalSpan - 1;
       const cells: ExcelSubRow['cells'] = {};
 
-      // 遍历所有显示的列，根据其所属 modulePath 与 table 计算当前行的取值与跨度
+      // 遍历所有表头字段列
       headers.forEach(col => {
         const colKey = getColumnKey(col);
-        const { table, field, modulePath } = col;
+        const { table, field } = col;
 
-        // 检查当前列是否属于某个 1:N 从表分支
-        const matchedBranch = branches.find(b => b.tableName === table);
-        if (matchedBranch) {
-          // 该列属于 1:N 一级从表实体
+        // 1. 检查当前列是否属于某个 1:N 一级从表 (如 student_course, student_award)
+        const matchedPrimaryBranch = branches.find(b => b.primaryTable === table);
+        if (matchedPrimaryBranch) {
           let activeSlot: DynamicSlot | null = null;
           let offsetInSlot = 0;
           let acc = 0;
-          for (const s of matchedBranch.slots) {
+          for (const s of matchedPrimaryBranch.slots) {
             if (subIdx >= acc && subIdx < acc + s.slotSpan) {
               activeSlot = s;
               offsetInSlot = subIdx - acc;
@@ -969,16 +1023,15 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
           }
 
           if (activeSlot) {
-            const val = activeSlot.item[field] ?? '-';
+            const rawVal = activeSlot.entityObj ? activeSlot.entityObj[field] : undefined;
             cells[colKey] = {
-              val,
+              val: (rawVal !== undefined && rawVal !== null && rawVal !== '') ? rawVal : '-',
               isMulti: true,
               rowSpan: activeSlot.slotSpan,
               shouldRender: offsetInSlot === 0
             };
           } else {
-            // activeSlot=null 说明当前 subIdx 超出了该分支的数据范围
-            // 必须每行都渲染一个空单元格（rowSpan=1），否则该行缺少 <td> 导致边框断裂
+            // 当前 subIdx 超出该分支数据行范围，补空行保证表格边框封闭
             cells[colKey] = {
               val: '-',
               isMulti: false,
@@ -989,33 +1042,13 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
           return;
         }
 
-        // 检查当前列是否属于某个 1:N:N 孙表实体 (支持同模块从表或独立子模块命名空间)
-        let matchedChildBranch: { branch: DynamicBranch; childTable: string } | null = null;
-        for (const b of branches) {
-          if (b.slots.length > 0 && b.slots[0].item) {
-            for (const k of Object.keys(b.slots[0].item)) {
-              if (k === table && Array.isArray(b.slots[0].item[k])) {
-                matchedChildBranch = { branch: b, childTable: k };
-                break;
-              } else if (b.slots[0].item[k] && typeof b.slots[0].item[k] === 'object' && !Array.isArray(b.slots[0].item[k])) {
-                // 嵌套子模块命名空间 (如 item['106']['student_award_detail'])
-                const subMod = b.slots[0].item[k];
-                if (subMod[table] && Array.isArray(subMod[table])) {
-                  matchedChildBranch = { branch: b, childTable: table };
-                  break;
-                }
-              }
-            }
-          }
-          if (matchedChildBranch) break;
-        }
-
-        if (matchedChildBranch) {
-          // 该列属于孙表叶子明细，不合并，逐行渲染
+        // 2. 检查当前列是否属于某个 1:N:N 二级细项表 (如 student_course_score_item, student_award_detail)
+        const matchedSubBranch = branches.find(b => b.subTable === table);
+        if (matchedSubBranch) {
           let activeSlot: DynamicSlot | null = null;
           let offsetInSlot = 0;
           let acc = 0;
-          for (const s of matchedChildBranch.branch.slots) {
+          for (const s of matchedSubBranch.slots) {
             if (subIdx >= acc && subIdx < acc + s.slotSpan) {
               activeSlot = s;
               offsetInSlot = subIdx - acc;
@@ -1024,9 +1057,20 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
             acc += s.slotSpan;
           }
 
-          const childItem = activeSlot && offsetInSlot < activeSlot.subItems.length ? activeSlot.subItems[offsetInSlot] : null;
+          let val: any = '-';
+          if (activeSlot && offsetInSlot < activeSlot.subItems.length) {
+            const subRaw = activeSlot.subItems[offsetInSlot];
+            if (subRaw) {
+              if (subRaw[table] && typeof subRaw[table] === 'object') {
+                val = subRaw[table][field] ?? '-';
+              } else if (subRaw[field] !== undefined) {
+                val = subRaw[field] ?? '-';
+              }
+            }
+          }
+
           cells[colKey] = {
-            val: childItem ? (childItem[field] ?? '-') : '-',
+            val: (val !== undefined && val !== null && val !== '') ? val : '-',
             isMulti: true,
             rowSpan: 1,
             shouldRender: true
@@ -1034,18 +1078,28 @@ const excelExpandedRows = computed<ExcelSubRow[]>(() => {
           return;
         }
 
-        // 默认：主表或 1:1 / N:1 伴生表，单对象跨全展开行合并
-        const vals = getCellValuesList(record, col);
+        // 3. 根主表或 1:1 / N:1 伴生表 (如 student, clazz, student_profile)
+        // 纵向跨满主记录全部展开行，仅首行渲染 (rowSpan = totalSpan, shouldRender = isFirst)
+        let cellVal: any = '-';
+        if (record[table] && typeof record[table] === 'object' && record[table][field] !== undefined) {
+          cellVal = record[table][field];
+        } else {
+          const vals = getCellValuesList(record, col);
+          cellVal = (vals && vals.length > 0) ? vals[0] : '-';
+        }
+
         cells[colKey] = {
-          val: vals.length > 0 ? vals[0] : '-',
+          val: (cellVal !== undefined && cellVal !== null && cellVal !== '') ? cellVal : '-',
           isMulti: false,
           rowSpan: totalSpan,
           shouldRender: isFirst
         };
       });
 
+      // 主键 id 安全提取
+      const rowMainId = record.student?.id || record.id || (record['101']?.student?.id) || mainIdx;
       result.push({
-        rowKey: `${record.id || (record['101']?.student?.id) || mainIdx}_sub_${subIdx}`,
+        rowKey: `${rowMainId}_sub_${subIdx}`,
         mainRecord: record,
         mainIndex: mainIdx,
         subRowIndex: subIdx,

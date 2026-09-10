@@ -130,7 +130,7 @@ public class QueryPlanExecutor {
         List<Long> primaryIds = new ArrayList<>();
         List<Map<String, Object>> rootRows = new ArrayList<>();
         for (Record r : records) {
-            Map<String, Object> row = new LinkedHashMap<>();
+            Map<String, Object> rootRow = new LinkedHashMap<>();
             // 1. 提取物理主键 id (作为内部临时技术锚点，供 Stage 1 批抓取与 Stage 2 装配)
             Object idVal = null;
             try {
@@ -140,17 +140,13 @@ public class QueryPlanExecutor {
                 }
             } catch (Exception ignored) {
             }
-            if (idVal != null) {
-                row.put("_row_id", idVal);
-            }
 
-            // 2. 根模块命名空间包装: 主表实体始终保留主键id作为唯一身份标识
-            Map<String, Object> rootModSpace = new LinkedHashMap<>();
+            // 2. 主表物理表容器
             Map<String, Object> primaryTableSpace = new LinkedHashMap<>();
             if (idVal != null) {
                 primaryTableSpace.put("id", idVal);
             }
-            rootModSpace.put(primaryTable, primaryTableSpace);
+            rootRow.put(primaryTable, primaryTableSpace);
 
             if (rootPlan.getProjectedFields() != null && !rootPlan.getProjectedFields().isEmpty()) {
                 for (PhysicalFieldSpec spec : rootPlan.getProjectedFields()) {
@@ -160,8 +156,7 @@ public class QueryPlanExecutor {
                         @SuppressWarnings("unchecked")
                         Map<String, Object> tableMap =
                                 (Map<String, Object>)
-                                        rootModSpace.computeIfAbsent(
-                                                tbl, k -> new LinkedHashMap<>());
+                                        rootRow.computeIfAbsent(tbl, k -> new LinkedHashMap<>());
                         try {
                             String alias =
                                     tbl.equalsIgnoreCase(primaryTable)
@@ -179,8 +174,7 @@ public class QueryPlanExecutor {
                     }
                 }
             }
-            row.put(String.valueOf(rootPlan.getModuleId()), rootModSpace);
-            rootRows.add(row);
+            rootRows.add(rootRow);
             if (idVal instanceof Number num) {
                 primaryIds.add(num.longValue());
             }
@@ -200,11 +194,6 @@ public class QueryPlanExecutor {
                 && !rootPlan.getChildren().isEmpty()) {
             treeResultAssembler.assembleChildrenRecursively(
                     rootRows, rootPlan.getModuleId(), rootPlan.getChildren(), rawDataByNode);
-        }
-
-        // 彻底移除顶层临时暴露的内部技术键 _row_id
-        for (Map<String, Object> row : rootRows) {
-            row.remove("_row_id");
         }
 
         return DataPage.<Map<String, Object>>builder()
@@ -295,12 +284,15 @@ public class QueryPlanExecutor {
                     pkVal = r.get("id");
                 } catch (Exception ignored) {
                 }
-                if (pkVal != null) {
-                    crow.put("id", pkVal);
-                    crow.put("_row_id", pkVal);
-                }
 
-                // 临时注入内部技术外键（供 Stage 2 树装配器按外键分组）
+                // 主从表物理表空间
+                Map<String, Object> primaryTableSpace = new LinkedHashMap<>();
+                if (pkVal != null) {
+                    primaryTableSpace.put("id", pkVal);
+                }
+                crow.put(childTable, primaryTableSpace);
+
+                // 临时注入内部技术外键（供 Stage 2 树装配器按外键分组，装配完成后自动剥离）
                 try {
                     Object fkVal = r.get(fkField);
                     if (fkVal != null) {
@@ -309,7 +301,7 @@ public class QueryPlanExecutor {
                 } catch (Exception ignored) {
                 }
 
-                // 投影字段严格按照 PhysicalFieldSpec 声明注入，支持多表结构分发
+                // 投影字段严格按照 PhysicalFieldSpec 声明注入物理表空间
                 if (childPlan.getProjectedFields() != null) {
                     for (PhysicalFieldSpec spec : childPlan.getProjectedFields()) {
                         if (spec.getColumnName() != null) {
@@ -328,16 +320,11 @@ public class QueryPlanExecutor {
                                 } catch (Exception ignored) {
                                 }
                             }
-                            // 如果是伴生表字段，既放在 crow[col] 中（若无冲突），也按照表名分拆放入 crow[table][col]
-                            crow.put(spec.getColumnName(), val);
-                            if (!tbl.equalsIgnoreCase(childTable)) {
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> compTableMap =
-                                        (Map<String, Object>)
-                                                crow.computeIfAbsent(
-                                                        tbl, k -> new LinkedHashMap<>());
-                                compTableMap.put(spec.getColumnName(), val);
-                            }
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> targetTableMap =
+                                    (Map<String, Object>)
+                                            crow.computeIfAbsent(tbl, k -> new LinkedHashMap<>());
+                            targetTableMap.put(spec.getColumnName(), val);
                         }
                     }
                 }

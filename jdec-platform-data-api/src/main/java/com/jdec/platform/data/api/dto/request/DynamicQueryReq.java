@@ -3,6 +3,7 @@ package com.jdec.platform.data.api.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
@@ -39,4 +40,8 @@ public class DynamicQueryReq extends DynamicTreeNode<DynamicQueryReq> {
 
     @Schema(description = "专属于当前模块节点的排序规则列表")
     private List<DynamicSortItem> sorts;
+
+    @Builder.Default
+    @Schema(description = "是否在响应中返回树形表头契约 (默认为 true)", example = "true")
+    private Boolean withHeader = true;
 }

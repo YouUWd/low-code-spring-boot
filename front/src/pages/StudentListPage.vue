@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useRoleStore } from '../stores/roleStore';
 import {
   engineApi,
+  flattenHeaderTree,
   type HeaderMeta,
   type EngineModuleMeta,
   type DynamicFilterItem,
@@ -36,25 +37,6 @@ const STUDENT_PAGE_FIELD_IDS = [
   74, 75, 76, 77, 78, 79
 ];
 
-async function loadHeaders() {
-  try {
-    const res = await engineApi.getHeader({ moduleId: 101, fields: STUDENT_PAGE_FIELD_IDS });
-    if (res?.fields) {
-      headers.value = res.fields.map(f => ({
-        fieldId: f.id || f.fieldId,
-        table: f.tableName,
-        field: f.columnName,
-        name: f.displayName,
-        sortOrder: f.sortOrder,
-        modulePath: f.modulePath,
-        moduleId: f.moduleId
-      }));
-    }
-  } catch (err) {
-    console.error('Failed to load headers', err);
-  }
-}
-
 async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sorts: DynamicSortItem[] = currentSorts.value) {
   loading.value = true;
   currentFilters.value = filters;
@@ -63,10 +45,16 @@ async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sor
     const res = await engineApi.query({
       moduleId: 101,
       fields: STUDENT_PAGE_FIELD_IDS,
+      withHeader: true,
       filters: currentFilters.value,
       sorts: currentSorts.value
     });
+    if (res?.header) {
+      headers.value = flattenHeaderTree(res.header);
+    }
     records.value = res?.records || [];
+  } catch (err) {
+    console.error('Failed to load student data', err);
   } finally {
     loading.value = false;
   }
@@ -79,13 +67,11 @@ function handleQueryChange(payload: { filters: DynamicFilterItem[]; sorts: Dynam
 watch(
   () => roleStore.currentRoleId,
   async () => {
-    await loadHeaders();
     await loadData();
   }
 );
 
 onMounted(async () => {
-  await loadHeaders();
   await loadData();
 });
 

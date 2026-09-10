@@ -1064,6 +1064,57 @@ public class SysModuleService implements SysModuleApi, ReferenceChecker {
     }
 
     @Override
+    public ModuleHeaderNodeDTO getModuleHeaderTree(
+            String projectNo, Long subjectId, Long moduleId) {
+        SysModule module = sysModuleMapper.selectById(moduleId);
+        if (module == null) {
+            throw new BusinessException("模块不存在: " + moduleId);
+        }
+        return buildModuleHeaderNode(module);
+    }
+
+    private ModuleHeaderNodeDTO buildModuleHeaderNode(SysModule module) {
+        List<SysModuleField> fields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .eq(SysModuleField::getModuleId, module.getId())
+                                .orderByAsc(SysModuleField::getSortOrder));
+
+        List<ModuleHeaderNodeDTO> children = new ArrayList<>();
+        if (fields != null) {
+            for (SysModuleField f : fields) {
+                String dataIndex =
+                        (f.getTableName() != null ? f.getTableName() : "")
+                                + "."
+                                + (f.getColumnName() != null ? f.getColumnName() : "");
+                children.add(
+                        ModuleHeaderNodeDTO.builder()
+                                .fieldId(f.getId())
+                                .label(f.getDisplayName())
+                                .dataIndex(dataIndex)
+                                .build());
+            }
+        }
+
+        List<SysModule> subModules =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(SysModule::getParentId, module.getId())
+                                .orderByAsc(SysModule::getSortOrder));
+        if (subModules != null) {
+            for (SysModule sub : subModules) {
+                children.add(buildModuleHeaderNode(sub));
+            }
+        }
+
+        return ModuleHeaderNodeDTO.builder()
+                .moduleId(module.getId())
+                .label(module.getModuleName())
+                .children(children)
+                .build();
+    }
+
+    @Override
     public List<String> targetType() {
         return List.of(CheckConstant.SYS_STATUS);
     }

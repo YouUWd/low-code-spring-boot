@@ -9,6 +9,8 @@ import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
 import com.jdec.platform.data.biz.service.MetadataCacheService;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -72,17 +74,9 @@ public class SavePlanCompiler {
                 if (rawRow == null) {
                     continue;
                 }
-                // 检查行内是否嵌套挂载了 children 子模块树 (例如 record.children)
-                Object rowChildrenObj = rawRow.get("children");
-                if (rowChildrenObj != null) {
-                    List<DynamicSaveReq> rowChildren = parseRowChildren(rowChildrenObj);
-                    for (DynamicSaveReq rowChildNode : rowChildren) {
-                        if (rowChildNode != null && rowChildNode.getModuleId() != null) {
-                            childPlans.add(compileNode(rowChildNode, moduleId, meta));
-                        }
-                    }
-                }
-                cleanRecords.add(rawRow);
+                Map<String, Object> cleanRow =
+                        normalizeRow(rawRow, primaryTable, moduleId, meta, childPlans);
+                cleanRecords.add(cleanRow);
             }
         }
 
@@ -94,6 +88,77 @@ public class SavePlanCompiler {
                 .records(cleanRecords)
                 .children(childPlans)
                 .build();
+    }
+
+    /** 规范化行记录，支持解包物理表对象与提取行内数字键挂载的子模块 */
+    private Map<String, Object> normalizeRow(
+            Map<String, Object> rawRow,
+            String primaryTable,
+            Long moduleId,
+            SysModuleMetaResp meta,
+            List<SaveNodePlan> childPlans) {
+        Map<String, Object> cleanRow = new HashMap<>(rawRow);
+
+        // 1. 如果包含主表名子对象，展平合并到当前行
+        if (primaryTable != null && cleanRow.get(primaryTable) instanceof Map<?, ?> tableMap) {
+            for (Map.Entry<?, ?> entry : tableMap.entrySet()) {
+                if (entry.getKey() != null) {
+                    cleanRow.putIfAbsent(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+        }
+
+        // 2. 检查数字键子模块 (例如 "103", "104", "106")
+        for (Map.Entry<String, Object> entry : rawRow.entrySet()) {
+            String key = entry.getKey();
+            Object val = entry.getValue();
+            if (key != null && key.matches("\\d+") && val != null) {
+                Long childModuleId = Long.parseLong(key);
+                List<Map<String, Object>> childRecords = extractRecordsFromObject(val);
+                if (!childRecords.isEmpty()) {
+                    DynamicSaveReq childReq =
+                            DynamicSaveReq.builder()
+                                    .moduleId(childModuleId)
+                                    .records(childRecords)
+                                    .build();
+                    try {
+                        childPlans.add(compileNode(childReq, moduleId, meta));
+                    } catch (Exception e) {
+                        log.warn("编译行内子模块 [{}] 失败: {}", childModuleId, e.getMessage());
+                    }
+                }
+            }
+        }
+
+        // 3. 检查兼容的 children 字段
+        Object rowChildrenObj = rawRow.get("children");
+        if (rowChildrenObj != null) {
+            List<DynamicSaveReq> rowChildren = parseRowChildren(rowChildrenObj);
+            for (DynamicSaveReq rowChildNode : rowChildren) {
+                if (rowChildNode != null && rowChildNode.getModuleId() != null) {
+                    childPlans.add(compileNode(rowChildNode, moduleId, meta));
+                }
+            }
+        }
+
+        return cleanRow;
+    }
+
+    /** 从 Object 中安全提取 List<Map<String, Object>> 记录列表 */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractRecordsFromObject(Object obj) {
+        if (obj instanceof List<?> list) {
+            List<Map<String, Object>> records = new ArrayList<>();
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> m) {
+                    records.add((Map<String, Object>) m);
+                }
+            }
+            return records;
+        } else if (obj instanceof Map<?, ?> m) {
+            return List.of((Map<String, Object>) m);
+        }
+        return Collections.emptyList();
     }
 
     /** 解析行记录内部挂载的自相似子模块节点 */

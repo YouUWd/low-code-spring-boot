@@ -171,4 +171,22 @@ public class SysModuleController {
         MoveModuleResp result = sysModuleService.moveModule(request);
         return ApiResponse.success("移动成功", result);
     }
+
+    /**
+     * 获取指定模块的统一树形表头契约
+     *
+     * @param moduleId 模块ID
+     * @return 树形表头契约
+     */
+    @Operation(summary = "获取模块树形表头契约", description = "返回去冗余、100%递归同构的树形表头契约")
+    @GetMapping("/{moduleId}/header-tree")
+    public ApiResponse<ModuleHeaderNodeDTO> getModuleHeaderTree(
+            @Parameter(description = "模块ID", required = true, example = "101") @PathVariable
+                    Long moduleId) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        ModuleHeaderNodeDTO result =
+                sysModuleService.getModuleHeaderTree(projectNo, subjectId, moduleId);
+        return ApiResponse.success(result);
+    }
 }

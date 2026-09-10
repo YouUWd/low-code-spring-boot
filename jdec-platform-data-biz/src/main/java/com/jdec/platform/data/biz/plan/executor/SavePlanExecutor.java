@@ -111,6 +111,9 @@ public class SavePlanExecutor {
         Map<Field<Object>, Object> fieldValues = new LinkedHashMap<>();
 
         Object idObj = row.get("id");
+        if (idObj == null && table != null && row.get(table) instanceof Map<?, ?> tm) {
+            idObj = tm.get("id");
+        }
         Long id = null;
         if (idObj instanceof Number num && num.longValue() > 0) {
             id = num.longValue();
@@ -118,8 +121,8 @@ public class SavePlanExecutor {
 
         for (Map.Entry<String, Object> entry : row.entrySet()) {
             String col = entry.getKey();
-            if ("children".equals(col)) {
-                continue; // 忽略嵌套子节点数据
+            if ("children".equals(col) || (col != null && col.matches("\\d+"))) {
+                continue; // 忽略嵌套子节点数据与子模块数字键
             }
             if (!validColumns.contains(col.toLowerCase())) {
                 continue; // 过滤非当前表物理列

@@ -207,4 +207,19 @@ class DataEnginePersistenceTest {
         assertNotNull(savedId);
         assertEquals(2001L, savedId);
     }
+
+    @Test
+    @DisplayName("测试读写同构：直接使用实体表名与数字键子模块保存 (例如 student + \"103\")")
+    void testSaveIsomorphicWithChildModuleId() {
+        Map<String, Object> studentRow = new HashMap<>();
+        studentRow.put("student", Map.of("name", "钱七", "student_no", "S007"));
+        studentRow.put("103", List.of(Map.of("student_course", Map.of("course_name", "数据结构与算法"))));
+
+        DynamicSaveReq req =
+                DynamicSaveReq.builder().moduleId(101L).records(List.of(studentRow)).build();
+
+        Long savedId = dynamicPersistenceService.save(req);
+        assertNotNull(savedId);
+        assertEquals(2001L, savedId);
+    }
 }

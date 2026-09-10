@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue';
 import { useRoleStore } from '../stores/roleStore';
 import {
   engineApi,
+  flattenHeaderTree,
   type HeaderMeta,
   type DynamicFilterItem,
   type DynamicSortItem
@@ -25,7 +26,7 @@ const currentSorts = ref<DynamicSortItem[]>([]);
 async function loadHeaders() {
   try {
     const res = await engineApi.getHeader({ moduleId: 101 });
-    if (res?.fields) {
+    if (res?.fields && (!headers.value || headers.value.length === 0)) {
       headers.value = res.fields.map(f => ({
         fieldId: f.id || f.fieldId,
         table: f.tableName,
@@ -49,6 +50,15 @@ async function loadData(filters: DynamicFilterItem[] = currentFilters.value, sor
       filters: currentFilters.value,
       sorts: currentSorts.value
     });
+    // 🌟 第一性原理：优先使用 /query 统一原子返回的同构 header 树
+    if (res?.header) {
+      headers.value = flattenHeaderTree(res.header);
+      moduleMeta.value = {
+        moduleId: res.header.moduleId || 101,
+        moduleCode: 'MOD-SCHOOL-STUDENT',
+        moduleName: res.header.label || '学生综合档案'
+      };
+    }
     records.value = res?.records || [];
   } finally {
     loading.value = false;

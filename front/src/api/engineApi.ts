@@ -3,17 +3,72 @@
  * 对接 DataEngineApi 的 query, batchQuery, save, batchSave
  */
 
+export interface ModuleHeaderNodeDTO {
+  moduleId?: number;
+  label: string;
+  fieldId?: number;
+  dataIndex?: string;
+  children?: ModuleHeaderNodeDTO[];
+}
+
 export interface HeaderMeta {
   fieldId?: number;
-  table: string;
-  field: string;
+  table?: string;
+  field?: string;
   name: string;
+  dataIndex?: string;
   width?: number;
   searchType?: string;
   sortable?: boolean;
   modulePath?: number[];
   sortOrder?: number;
   moduleId?: number; // 可选兼容别名
+}
+
+/**
+ * 第一性原理辅助：将 100% 同构的树形 Header 递归展开为表格列定义
+ */
+export function flattenHeaderTree(
+  node: ModuleHeaderNodeDTO,
+  currentPath: number[] = []
+): HeaderMeta[] {
+  if (!node) return [];
+  const nextPath = node.moduleId ? [...currentPath, node.moduleId] : currentPath;
+  const result: HeaderMeta[] = [];
+
+  if (node.children && node.children.length > 0) {
+    for (const child of node.children) {
+      if (child.dataIndex) {
+        // 叶子字段节点
+        const parts = child.dataIndex.split('.');
+        result.push({
+          fieldId: child.fieldId,
+          table: parts[0] || '',
+          field: parts[1] || child.dataIndex,
+          name: child.label,
+          dataIndex: child.dataIndex,
+          moduleId: nextPath[nextPath.length - 1],
+          modulePath: nextPath
+        });
+      } else {
+        // 子模块节点
+        result.push(...flattenHeaderTree(child, nextPath));
+      }
+    }
+  } else if (node.dataIndex) {
+    const parts = node.dataIndex.split('.');
+    result.push({
+      fieldId: node.fieldId,
+      table: parts[0] || '',
+      field: parts[1] || node.dataIndex,
+      name: node.label,
+      dataIndex: node.dataIndex,
+      moduleId: nextPath[nextPath.length - 1],
+      modulePath: nextPath
+    });
+  }
+
+  return result;
 }
 
 export interface FieldMeta {
@@ -61,7 +116,9 @@ export interface DataPage<T> {
   pageNo: number;
   pageSize: number;
   total: number;
+  header?: ModuleHeaderNodeDTO;
   records: T[];
+  [key: string]: any;
 }
 
 export interface DynamicSaveReq {
@@ -187,12 +244,13 @@ export const engineApi = {
     return Array.isArray(remoteResp) ? remoteResp : [];
   },
 
-  /** 动态数据集/列表查询 (纯数据引擎，返回 DataPage) */
+  /** 动态数据集/列表查询 (纯数据引擎，返回 DataPage，支持原子下发 header 树与同构数据) */
   async query(req: {
     moduleId?: number;
     fields?: number[];
     pageNo?: number;
     pageSize?: number;
+    withHeader?: boolean;
     filters?: DynamicFilterItem[];
     sorts?: DynamicSortItem[];
     children?: any[];
@@ -202,6 +260,12 @@ export const engineApi = {
       method: 'POST',
       body: JSON.stringify(req)
     });
+    if (remoteData) {
+      const rootKey = req.moduleId ? String(req.moduleId) : '101';
+      if (!remoteData.records && Array.isArray(remoteData[rootKey])) {
+        remoteData.records = remoteData[rootKey];
+      }
+    }
     return remoteData;
   },
 

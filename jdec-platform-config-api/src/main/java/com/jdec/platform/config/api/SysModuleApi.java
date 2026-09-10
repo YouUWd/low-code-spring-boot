@@ -89,4 +89,15 @@ public interface SysModuleApi {
      * @return 字段元数据列表
      */
     List<ModuleFieldDTO> listFieldsByIds(List<Long> fieldIds);
+
+    /**
+     * 获取指定模块的统一树形表头契约 (遵循第一性原理)
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @param moduleId 模块ID
+     * @return 统一树形表头结构
+     */
+    com.jdec.platform.config.api.dto.response.ModuleHeaderNodeDTO getModuleHeaderTree(
+            String projectNo, Long subjectId, Long moduleId);
 }

@@ -34,3 +34,6 @@ front/dist
 front/node_modules
 front/.vite
 front/.vite/deps
+
+jdec-platform-app/src/main/resources/application-test.yml
+*.json

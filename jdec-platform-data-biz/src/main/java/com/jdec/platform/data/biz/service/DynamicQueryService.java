@@ -1,6 +1,7 @@
 package com.jdec.platform.data.biz.service;
 
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.response.ModuleHeaderNodeDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleMetaResp;
 import com.jdec.platform.data.api.dto.model.EngineModuleMeta;
 import com.jdec.platform.data.api.dto.request.DynamicFilterItem;
@@ -14,6 +15,8 @@ import com.jdec.platform.data.api.dto.response.EngineHeaderResp;
 import com.jdec.platform.data.biz.dsl.JooqContextFactory;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
+import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
+import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import com.jdec.platform.data.biz.plan.model.QueryPlan;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -116,10 +119,105 @@ public class DynamicQueryService {
         return result;
     }
 
-    /** 核心通用动态模块树查询 (纯数据引擎) */
+    /** 核心通用动态模块树查询 (纯数据引擎，支持原子统一返回 Header 与 Data) */
     public DataPage<Map<String, Object>> query(DynamicQueryReq req) {
         QueryPlan plan = queryPlanCompiler.compile(req);
-        return queryPlanExecutor.execute(plan);
+        DataPage<Map<String, Object>> page = queryPlanExecutor.execute(plan);
+        if (req == null || req.getWithHeader() == null || req.getWithHeader()) {
+            page.setHeader(buildHeaderTreeFromPlan(plan));
+        }
+        return page;
+    }
+
+    /** 从编译后的 QueryPlan 动态构建 100% 镜像对齐的树形表头契约 (ModuleHeaderNodeDTO) */
+    public ModuleHeaderNodeDTO buildHeaderTreeFromPlan(QueryPlan plan) {
+        if (plan == null || plan.getRootNodePlan() == null) {
+            return null;
+        }
+        return buildNodeHeader(plan.getRootNodePlan());
+    }
+
+    private ModuleHeaderNodeDTO buildNodeHeader(QueryNodePlan nodePlan) {
+        if (nodePlan == null) {
+            return null;
+        }
+        String label = "模块 " + nodePlan.getModuleId();
+        if (nodePlan.getModuleMeta() != null && nodePlan.getModuleMeta().getModule() != null) {
+            String mName = nodePlan.getModuleMeta().getModule().getModuleName();
+            if (mName != null && !mName.isBlank()) {
+                label = mName;
+            }
+        }
+
+        List<ModuleHeaderNodeDTO> children = new ArrayList<>();
+
+        // 1. 直属字段叶子节点
+        if (nodePlan.getProjectedFields() != null) {
+            for (PhysicalFieldSpec spec : nodePlan.getProjectedFields()) {
+                if (spec.getColumnName() == null) {
+                    continue;
+                }
+                String dataIndex =
+                        (spec.getTableName() != null
+                                        ? spec.getTableName()
+                                        : nodePlan.getPrimaryTable())
+                                + "."
+                                + spec.getColumnName();
+                String fieldLabel =
+                        spec.getDisplayName() != null
+                                ? spec.getDisplayName()
+                                : spec.getColumnName();
+                children.add(
+                        ModuleHeaderNodeDTO.builder()
+                                .fieldId(spec.getFieldId())
+                                .label(fieldLabel)
+                                .dataIndex(dataIndex)
+                                .build());
+            }
+        }
+
+        // 2. 递归构建独立子模块容器节点与同模块从表叶子字段
+        if (nodePlan.getChildren() != null) {
+            for (QueryNodePlan childPlan : nodePlan.getChildren()) {
+                if (childPlan.getModuleId() != null
+                        && !childPlan.getModuleId().equals(nodePlan.getModuleId())) {
+                    // 独立子模块 (如 104、105、106)
+                    ModuleHeaderNodeDTO childNode = buildNodeHeader(childPlan);
+                    if (childNode != null) {
+                        children.add(childNode);
+                    }
+                } else if (childPlan.getProjectedFields() != null) {
+                    // 同模块从表 (如 103 下的 student_course_score_item)，字段平铺挂载在当前模块叶子节点下
+                    for (PhysicalFieldSpec spec : childPlan.getProjectedFields()) {
+                        if (spec.getColumnName() == null) {
+                            continue;
+                        }
+                        String dataIndex =
+                                (spec.getTableName() != null
+                                                ? spec.getTableName()
+                                                : childPlan.getPrimaryTable())
+                                        + "."
+                                        + spec.getColumnName();
+                        String fieldLabel =
+                                spec.getDisplayName() != null
+                                        ? spec.getDisplayName()
+                                        : spec.getColumnName();
+                        children.add(
+                                ModuleHeaderNodeDTO.builder()
+                                        .fieldId(spec.getFieldId())
+                                        .label(fieldLabel)
+                                        .dataIndex(dataIndex)
+                                        .build());
+                    }
+                }
+            }
+        }
+
+        return ModuleHeaderNodeDTO.builder()
+                .moduleId(nodePlan.getModuleId())
+                .label(label)
+                .children(children.isEmpty() ? null : children)
+                .build();
     }
 
     /** 动态单据详情精准查询快捷方法 (无下级展开) */

@@ -598,73 +598,65 @@ class DataEngineQueryTest {
         assertEquals(1, response.getRecords().size());
         Map<String, Object> studentRecord = response.getRecords().get(0);
 
-        // 2. 验证主表与伴生表字段在 101 模块命名空间下包装展开 (顶层纯粹命名空间，无冗余平铺 id)
+        // 2. 验证主表与伴生表字段在根实体下包装展开 (无冗余平铺 id)
         assertNull(studentRecord.get("id"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) studentRecord.get("101");
-        assertNotNull(mod101);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) mod101.get("student");
+        Map<String, Object> student = (Map<String, Object>) studentRecord.get("student");
         assertNotNull(student);
         assertEquals(1001L, ((Number) student.get("id")).longValue());
         assertEquals("S001", student.get("student_no"));
         assertEquals("张三", student.get("name"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> clazz = (Map<String, Object>) mod101.get("clazz");
+        Map<String, Object> clazz = (Map<String, Object>) studentRecord.get("clazz");
         assertNotNull(clazz);
         assertEquals("高三(1)班", clazz.get("class_name"));
 
-        // 3. 验证子模块 103 选课从表 (挂载在 101 模块树下)
+        // 3. 验证子模块 103 选课从表 (直接挂载在学生实体行内)
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod103 = (Map<String, Object>) mod101.get("103");
-        assertNotNull(mod103);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courseList =
-                (List<Map<String, Object>>) mod103.get("student_course");
+        List<Map<String, Object>> courseList = (List<Map<String, Object>>) studentRecord.get("103");
         assertNotNull(courseList);
         assertEquals(1, courseList.size());
         Map<String, Object> course0 = courseList.get(0);
-        assertEquals(301L, ((Number) course0.get("id")).longValue());
-        assertEquals("大学英语", course0.get("course_name"));
-        assertEquals("李老师", course0.get("teacher_name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> courseTable = (Map<String, Object>) course0.get("student_course");
+        assertNotNull(courseTable);
+        assertEquals(301L, ((Number) courseTable.get("id")).longValue());
+        assertEquals("大学英语", courseTable.get("course_name"));
+        assertEquals("李老师", courseTable.get("teacher_name"));
         // 确认外键 student_id 未被显式请求已干净剥离
-        assertNull(course0.get("student_id"));
+        assertNull(courseTable.get("student_id"));
 
-        // 4. 验证孙模块 104 作为独立子模块挂载在 103 模块命名空间下，绝不嵌套在选课记录 course0 内部
-        assertNull(course0.get("104"));
-        assertNull(course0.get("student_course_score_item"));
-
+        // 4. 验证孙模块 104 直接挂载在选课实体 course0 行内
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod104 = (Map<String, Object>) mod103.get("104");
-        assertNotNull(mod104);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> scoreItemList =
-                (List<Map<String, Object>>) mod104.get("student_course_score_item");
+        List<Map<String, Object>> scoreItemList = (List<Map<String, Object>>) course0.get("104");
         assertNotNull(scoreItemList);
         assertEquals(1, scoreItemList.size());
         Map<String, Object> item0 = scoreItemList.get(0);
-        assertEquals(801L, ((Number) item0.get("id")).longValue());
-        assertEquals("期末大作业", item0.get("item_name"));
-        assertEquals(95.0, item0.get("score"));
-        assertNull(item0.get("course_id"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> itemTable =
+                (Map<String, Object>) item0.get("student_course_score_item");
+        assertNotNull(itemTable);
+        assertEquals(801L, ((Number) itemTable.get("id")).longValue());
+        assertEquals("期末大作业", itemTable.get("item_name"));
+        assertEquals(95.0, itemTable.get("score"));
+        assertNull(itemTable.get("course_id"));
 
-        // 5. 验证子模块 105 奖惩荣誉从表 (挂载在 101 模块树下)
+        // 5. 验证子模块 105 奖惩荣誉从表 (直接挂载在学生实体行内)
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod105 = (Map<String, Object>) mod101.get("105");
-        assertNotNull(mod105);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rewardList =
-                (List<Map<String, Object>>) mod105.get("student_reward");
+        List<Map<String, Object>> rewardList = (List<Map<String, Object>>) studentRecord.get("105");
         assertNotNull(rewardList);
         assertEquals(1, rewardList.size());
         Map<String, Object> reward0 = rewardList.get(0);
-        assertEquals(501L, ((Number) reward0.get("id")).longValue());
-        assertEquals("国家一等奖学金", reward0.get("reward_name"));
-        assertEquals("国家级", reward0.get("reward_level"));
-        assertEquals("2026-06-15", reward0.get("reward_date"));
-        assertNull(reward0.get("student_id"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> rewardTable = (Map<String, Object>) reward0.get("student_reward");
+        assertNotNull(rewardTable);
+        assertEquals(501L, ((Number) rewardTable.get("id")).longValue());
+        assertEquals("国家一等奖学金", rewardTable.get("reward_name"));
+        assertEquals("国家级", rewardTable.get("reward_level"));
+        assertEquals("2026-06-15", rewardTable.get("reward_date"));
+        assertNull(rewardTable.get("student_id"));
     }
 
     @Test
@@ -709,46 +701,41 @@ class DataEngineQueryTest {
         // 验证主表字段
         assertNull(studentRecord.get("id"));
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) studentRecord.get("101");
-        assertNotNull(mod101);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) mod101.get("student");
+        Map<String, Object> student = (Map<String, Object>) studentRecord.get("student");
         assertNotNull(student);
         assertEquals(1001L, ((Number) student.get("id")).longValue());
         assertEquals("S001", student.get("student_no"));
         assertEquals("张三", student.get("name"));
 
-        // 验证自动推导并层级挂载的子孙模块 (挂载在 101 模块树下)
+        // 验证自动推导并层级挂载的子孙模块 (直接挂载在 studentRecord 行内)
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod103 = (Map<String, Object>) mod101.get("103");
-        assertNotNull(mod103);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courses =
-                (List<Map<String, Object>>) mod103.get("student_course");
+        List<Map<String, Object>> courses = (List<Map<String, Object>>) studentRecord.get("103");
         assertNotNull(courses);
-        assertEquals("大学英语", courses.get(0).get("course_name"));
-
-        assertNull(courses.get(0).get("104"));
-        assertNull(courses.get(0).get("student_course_score_item"));
+        Map<String, Object> course0 = courses.get(0);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> courseTable = (Map<String, Object>) course0.get("student_course");
+        assertNotNull(courseTable);
+        assertEquals("大学英语", courseTable.get("course_name"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod104 = (Map<String, Object>) mod103.get("104");
-        assertNotNull(mod104);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> scoreItems =
-                (List<Map<String, Object>>) mod104.get("student_course_score_item");
+        List<Map<String, Object>> scoreItems = (List<Map<String, Object>>) course0.get("104");
         assertNotNull(scoreItems);
-        assertEquals("期末大作业", scoreItems.get(0).get("item_name"));
-        assertEquals(95.0, scoreItems.get(0).get("score"));
+        Map<String, Object> item0 = scoreItems.get(0);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> itemTable =
+                (Map<String, Object>) item0.get("student_course_score_item");
+        assertNotNull(itemTable);
+        assertEquals("期末大作业", itemTable.get("item_name"));
+        assertEquals(95.0, itemTable.get("score"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod105 = (Map<String, Object>) mod101.get("105");
-        assertNotNull(mod105);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rewards =
-                (List<Map<String, Object>>) mod105.get("student_reward");
+        List<Map<String, Object>> rewards = (List<Map<String, Object>>) studentRecord.get("105");
         assertNotNull(rewards);
-        assertEquals("国家一等奖学金", rewards.get(0).get("reward_name"));
+        Map<String, Object> reward0 = rewards.get(0);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> rewardTable = (Map<String, Object>) reward0.get("student_reward");
+        assertNotNull(rewardTable);
+        assertEquals("国家一等奖学金", rewardTable.get("reward_name"));
     }
 
     @Test
@@ -809,10 +796,8 @@ class DataEngineQueryTest {
         Map<String, Object> root = response.getRecords().get(0);
         assertNull(root.get("id"));
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) root.get("101");
-        assertNotNull(mod101);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) mod101.get("student");
+        Map<String, Object> student = (Map<String, Object>) root.get("student");
+        assertNotNull(student);
         assertEquals(1001L, ((Number) student.get("id")).longValue());
         assertEquals("张三", student.get("name"));
     }
@@ -870,9 +855,8 @@ class DataEngineQueryTest {
         Map<String, Object> root = response.getRecords().get(0);
         assertNull(root.get("id"));
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) root.get("101");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) mod101.get("student");
+        Map<String, Object> student = (Map<String, Object>) root.get("student");
+        assertNotNull(student);
         assertEquals(1001L, ((Number) student.get("id")).longValue());
         assertEquals("S001", student.get("student_no"));
     }
@@ -900,9 +884,8 @@ class DataEngineQueryTest {
         Map<String, Object> record = result.getRecords().get(0);
         assertNull(record.get("id"));
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) record.get("101");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) mod101.get("student");
+        Map<String, Object> student = (Map<String, Object>) record.get("student");
+        assertNotNull(student);
         assertEquals(1001L, ((Number) student.get("id")).longValue());
         assertEquals("S001", student.get("student_no"));
         assertEquals("张三", student.get("name"));
@@ -916,9 +899,8 @@ class DataEngineQueryTest {
         assertNotNull(result.getData());
         assertNull(result.getData().get("id"));
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) result.getData().get("101");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) mod101.get("student");
+        Map<String, Object> student = (Map<String, Object>) result.getData().get("student");
+        assertNotNull(student);
         assertEquals(1001L, ((Number) student.get("id")).longValue());
         assertEquals("张三", student.get("name"));
         assertEquals("S001", student.get("student_no"));
@@ -966,11 +948,7 @@ class DataEngineQueryTest {
         Map<String, Object> record = response.getRecords().get(0);
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) record.get("101");
-        assertNotNull(mod101);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) mod101.get("student");
+        Map<String, Object> student = (Map<String, Object>) record.get("student");
         assertNotNull(student);
         // 主表仅作为实体标识保留主键 id，绝不推测全选未请求的业务字段 (student_no, name, clazz_id 等)
         assertEquals(1001L, ((Number) student.get("id")).longValue());
@@ -978,21 +956,20 @@ class DataEngineQueryTest {
         assertNull(student.get("name"));
         assertNull(student.get("clazz_id"));
 
-        // 验证子模块 103
+        // 验证子模块 103 直接挂载在 record 行内
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod103 = (Map<String, Object>) mod101.get("103");
-        assertNotNull(mod103);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courses =
-                (List<Map<String, Object>>) mod103.get("student_course");
+        List<Map<String, Object>> courses = (List<Map<String, Object>>) record.get("103");
         assertNotNull(courses);
         assertEquals(1, courses.size());
         Map<String, Object> c0 = courses.get(0);
-        assertEquals(301L, ((Number) c0.get("id")).longValue());
-        assertEquals("大学英语", c0.get("course_name"));
-        assertEquals("李老师", c0.get("teacher_name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> courseTable = (Map<String, Object>) c0.get("student_course");
+        assertNotNull(courseTable);
+        assertEquals(301L, ((Number) courseTable.get("id")).longValue());
+        assertEquals("大学英语", courseTable.get("course_name"));
+        assertEquals("李老师", courseTable.get("teacher_name"));
         // 未请求的外键字段 student_id 干净剥离
-        assertNull(c0.get("student_id"));
+        assertNull(courseTable.get("student_id"));
     }
 
     @Test
@@ -1160,42 +1137,36 @@ class DataEngineQueryTest {
         assertEquals(1, response.getRecords().size());
         Map<String, Object> studentRecord = response.getRecords().get(0);
 
-        // 1. 验证 101 根模块命名空间
+        // 1. 验证 101 根模块主表
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod101 = (Map<String, Object>) studentRecord.get("101");
-        assertNotNull(mod101);
+        Map<String, Object> student = (Map<String, Object>) studentRecord.get("student");
+        assertNotNull(student);
 
-        // 2. 验证 104 子模块命名空间与主表
+        // 2. 验证 104 子模块直接挂载在根实体行内
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod104 = (Map<String, Object>) mod101.get("104");
-        assertNotNull(mod104);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> awardList =
-                (List<Map<String, Object>>) mod104.get("student_award");
+        List<Map<String, Object>> awardList = (List<Map<String, Object>>) studentRecord.get("104");
         assertNotNull(awardList);
         assertEquals(1, awardList.size());
         Map<String, Object> award0 = awardList.get(0);
-
-        // 3. 🌟 核心验证：106 模块挂在 104 模块命名空间下，绝不嵌套在 student_award 实体内部
-        assertNull(
-                award0.get("student_award_detail"),
-                "student_award 实体内部绝不能直接嵌套 student_award_detail 从表");
-        assertNull(award0.get("106"), "student_award 实体内部绝不能嵌套 106 模块命名空间");
-
         @SuppressWarnings("unchecked")
-        Map<String, Object> mod106 = (Map<String, Object>) mod104.get("106");
-        assertNotNull(mod106, "104 模块命名空间下必须包含 106 子模块命名空间");
+        Map<String, Object> awardTable = (Map<String, Object>) award0.get("student_award");
+        assertNotNull(awardTable);
+        assertEquals(501L, ((Number) awardTable.get("id")).longValue());
+        assertEquals("国家一等奖学金", awardTable.get("award_name"));
 
+        // 3. 🌟 核心验证：106 孙模块直接自包含挂载在 104 荣誉实体行内 (award0["106"])
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> detailList =
-                (List<Map<String, Object>>) mod106.get("student_award_detail");
-        assertNotNull(detailList);
+        List<Map<String, Object>> detailList = (List<Map<String, Object>>) award0.get("106");
+        assertNotNull(detailList, "104 荣誉行内必须自包含 106 佐证材料子模块列表");
         assertEquals(1, detailList.size());
         Map<String, Object> detail0 = detailList.get(0);
-        assertEquals(7401L, ((Number) detail0.get("id")).longValue());
-        assertEquals("国家级证书扫描件", detail0.get("evidence_name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> detailTable = (Map<String, Object>) detail0.get("student_award_detail");
+        assertNotNull(detailTable);
+        assertEquals(7401L, ((Number) detailTable.get("id")).longValue());
+        assertEquals("国家级证书扫描件", detailTable.get("evidence_name"));
         // 验证未显式请求的外键 award_id 已干净剔除
-        assertNull(detail0.get("award_id"));
+        assertNull(detailTable.get("award_id"));
     }
 
     @Test
@@ -1502,5 +1473,155 @@ class DataEngineQueryTest {
         DataPage<Map<String, Object>> result = queryPlanExecutor.execute(queryPlan);
         assertNotNull(result);
         assertEquals(1, result.getRecords().size());
+    }
+
+    @Test
+    @DisplayName("测试 DataPage 序列化输出严格符合顶层挂在根 moduleId 下的契约")
+    void testDataPageJsonSerializationMatchesRootModuleIdContract() throws Exception {
+        lenient().when(metadataCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
+        lenient().when(metadataCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
+        lenient().when(metadataCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
+        lenient()
+                .when(permissionFilterService.filterReadableFields(mockModule101))
+                .thenReturn(mockModule101.getFields());
+        lenient()
+                .when(permissionFilterService.filterReadableFields(mockModule103))
+                .thenReturn(mockModule103.getFields());
+        lenient()
+                .when(permissionFilterService.filterReadableFields(mockModule104))
+                .thenReturn(mockModule104.getFields());
+
+        DynamicQueryReq req =
+                DynamicQueryReq.builder()
+                        .moduleId(101L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(List.of(1011L, 1012L, 1013L, 1014L))
+                        .children(
+                                List.of(
+                                        DynamicQueryReq.builder()
+                                                .moduleId(103L)
+                                                .fields(List.of(1031L, 1032L))
+                                                .children(
+                                                        List.of(
+                                                                DynamicQueryReq.builder()
+                                                                        .moduleId(104L)
+                                                                        .fields(
+                                                                                List.of(
+                                                                                        1041L,
+                                                                                        1042L))
+                                                                        .build()))
+                                                .build()))
+                        .build();
+
+        DataPage<Map<String, Object>> response = dynamicQueryService.query(req);
+        assertNotNull(response);
+
+        // 验证 header 树形契约原子下发
+        assertNotNull(response.getHeader(), "DataPage 响应中必须原子携带本次查询对齐的树形 header");
+        assertEquals(101L, response.getHeader().getModuleId());
+        assertEquals("学生综合档案", response.getHeader().getLabel());
+        assertNotNull(response.getHeader().getChildren());
+        assertTrue(
+                response.getHeader().getChildren().stream()
+                        .anyMatch(c -> "student.name".equals(c.getDataIndex())));
+        assertTrue(
+                response.getHeader().getChildren().stream()
+                        .anyMatch(c -> Long.valueOf(103L).equals(c.getModuleId())));
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+        String json = mapper.writeValueAsString(response);
+
+        // 验证 records 和 header 顶层同级
+        com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(json);
+        assertTrue(rootNode.has("header"), "JSON 根节点必须包含原子 'header' 树形契约");
+        assertTrue(rootNode.has("records"), "JSON 根节点必须包含与 'header' 同级的 'records' 数组");
+        assertEquals(1, rootNode.get("records").size());
+
+        // 验证三级递归自相似数据链路：records[0] 行内自包含物理表与子模块数组
+        com.fasterxml.jackson.databind.JsonNode studentNode = rootNode.get("records").get(0);
+        assertEquals("S001", studentNode.get("student").get("student_no").asText());
+        assertEquals("张三", studentNode.get("student").get("name").asText());
+        assertEquals("高三(1)班", studentNode.get("clazz").get("class_name").asText());
+
+        // 二级模块 103 选课
+        com.fasterxml.jackson.databind.JsonNode courseNode = studentNode.get("103").get(0);
+        assertEquals("大学英语", courseNode.get("student_course").get("course_name").asText());
+
+        // 三级模块 104 成绩项
+        com.fasterxml.jackson.databind.JsonNode scoreNode = courseNode.get("104").get(0);
+        assertEquals("期末大作业", scoreNode.get("student_course_score_item").get("item_name").asText());
+        assertEquals(95.0, scoreNode.get("student_course_score_item").get("score").asDouble());
+    }
+
+    @Test
+    @DisplayName("测试同模块 1:N 物理从表装配时自动解包消除双层同名嵌套")
+    void testAssembleSameModuleSubTableUnwrapped() {
+        TreeResultAssembler assembler = new TreeResultAssembler();
+
+        // 根层记录（学生记录）
+        Map<String, Object> studentRow = new LinkedHashMap<>();
+        studentRow.put("student", Map.of("id", 5L, "name", "张三"));
+
+        // 选课子记录（未装配前，包含物理表和外键）
+        Map<String, Object> courseRow = new LinkedHashMap<>();
+        courseRow.put("student_course", Map.of("id", 8L, "student_id", 5L, "course_name", "高等数学"));
+        courseRow.put("_fk_student_id", 5L);
+
+        // 同模块子计划（成绩分项，属于同一模块 103）
+        com.jdec.platform.data.biz.plan.model.QueryNodePlan scoreSubPlan =
+                com.jdec.platform.data.biz.plan.model.QueryNodePlan.builder()
+                        .moduleId(103L)
+                        .primaryTable("student_course_score_item")
+                        .parentForeignKey("student_course_id")
+                        .build();
+
+        // 选课子计划（属于模块 103，挂载成绩分项计划）
+        com.jdec.platform.data.biz.plan.model.QueryNodePlan coursePlan =
+                com.jdec.platform.data.biz.plan.model.QueryNodePlan.builder()
+                        .moduleId(103L)
+                        .primaryTable("student_course")
+                        .parentForeignKey("student_id")
+                        .children(List.of(scoreSubPlan))
+                        .build();
+
+        // 模拟执行器拉取的原始从表记录（已被包裹在物理表空间内）
+        Map<String, Object> rawScoreRow = new LinkedHashMap<>();
+        rawScoreRow.put(
+                "student_course_score_item",
+                Map.of("id", 28L, "student_course_id", 8L, "item_name", "期中测验", "score", 85.0));
+        rawScoreRow.put("_fk_student_course_id", 8L);
+
+        Map<com.jdec.platform.data.biz.plan.model.QueryNodePlan, List<Map<String, Object>>>
+                rawData = new IdentityHashMap<>();
+        rawData.put(coursePlan, List.of(courseRow));
+        rawData.put(scoreSubPlan, List.of(rawScoreRow));
+
+        // 从根层学生开始递归装配子模块 103 及其同模块从表
+        assembler.assembleChildrenRecursively(
+                List.of(studentRow), 101L, List.of(coursePlan), rawData);
+
+        // 验证：studentRow 下挂载子模块 103 数组
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> courseList = (List<Map<String, Object>>) studentRow.get("103");
+        assertNotNull(courseList, "必须成功装配 103 模块");
+        assertEquals(1, courseList.size());
+
+        Map<String, Object> c0 = courseList.get(0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> scoreItems =
+                (List<Map<String, Object>>) c0.get("student_course_score_item");
+        assertNotNull(scoreItems, "必须成功装配同模块从表数组");
+        assertEquals(1, scoreItems.size());
+
+        // 核心断言：消除双层嵌套，项内部直接包含物理字段，绝无同名外层包裹
+        Map<String, Object> scoreItem = scoreItems.get(0);
+        assertFalse(
+                scoreItem.containsKey("student_course_score_item"),
+                "严禁在从表项内部再次嵌套同名物理表 student_course_score_item");
+        assertEquals(28L, ((Number) scoreItem.get("id")).longValue());
+        assertEquals("期中测验", scoreItem.get("item_name"));
+        assertEquals(85.0, ((Number) scoreItem.get("score")).doubleValue());
     }
 }
