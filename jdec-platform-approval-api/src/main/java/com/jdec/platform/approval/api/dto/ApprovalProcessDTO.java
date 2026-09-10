@@ -1,5 +1,6 @@
 package com.jdec.platform.approval.api.dto;
 
+import java.time.LocalDateTime;
 import lombok.Data;
 
 @Data
@@ -60,4 +61,7 @@ public class ApprovalProcessDTO {
 
     // 驳回到指定状态步骤
     private Integer rejectStep;
+
+    // 操作时间
+    private LocalDateTime createdDate;
 }

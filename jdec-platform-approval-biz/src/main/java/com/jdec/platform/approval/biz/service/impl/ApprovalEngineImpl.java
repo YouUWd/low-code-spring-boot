@@ -749,6 +749,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -912,6 +913,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
 
@@ -1086,6 +1088,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -1204,6 +1207,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
