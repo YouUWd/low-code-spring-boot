@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysStatusApi;
+import com.jdec.platform.config.api.dto.request.SaveStatusReq;
 import com.jdec.platform.config.api.dto.request.SysStatusDragReq;
 import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
 import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
@@ -28,13 +29,16 @@ import com.jdec.platform.shared.exception.PopException;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 /** 状态 Service 实现 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
@@ -44,6 +48,13 @@ public class SysStatusService implements SysStatusApi {
     private final ReferenceCheckManager referenceCheckManager;
     private final SysDataSnapshotMapper sysDataSnapshotMapper;
     private final SysModuleStatusMapper sysModuleStatusMapper;
+
+    /**
+     * 延迟获取自身代理，避免构造循环依赖。
+     *
+     * <p>整棵树保存时经代理调用 {@link #saveStatusNode(SysStatusSaveReq)}，确保 {@code @DataAudit} 等切面在节点级保存上生效。
+     */
+    private final ObjectProvider<SysStatusService> selfProvider;
 
     @Override
     public List<SysStatusTreeResp> tree() {
@@ -86,6 +97,32 @@ public class SysStatusService implements SysStatusApi {
         return tree;
     }
 
+    @Transactional
+    @Override
+    public Long saveStatus(SaveStatusReq request) {
+        if (request == null || request.getStatus() == null) {
+            throw new BusinessException("状态信息不能为空");
+        }
+        SysStatusSaveReq node = request.getStatus();
+        boolean hasTree = !CollectionUtils.isEmpty(request.getTreeNodes());
+        if (hasTree) {
+            // 携带整棵树时，当前节点位置以 treeNodes 为准，保证同级重名/父级等单节点校验分组正确
+            fillOwnPositionFromTree(node, request.getTreeNodes());
+        }
+        // 经自身代理调用单节点保存，确保 @DataAudit 审计生效
+        Long statusId = selfProvider.getObject().saveStatusNode(node);
+        if (hasTree) {
+            // 整棵树父子关系与同级排序同步（参考模块 saveModule 的树节点拓扑同步逻辑）
+            updateStatusTreeNodes(statusId, request.getTreeNodes());
+        }
+        return statusId;
+    }
+
+    /**
+     * 单节点状态新增/编辑：id 为空则新增，否则编辑。
+     *
+     * <p>供整棵树保存接口经自身代理调用，以保留 {@code @DataAudit} 审计。
+     */
     @DataAudit(
             module = "系统设置",
             subModule = "状态配置",
@@ -93,8 +130,7 @@ public class SysStatusService implements SysStatusApi {
             tableName = "sys_status",
             dataIdField = "#req.id")
     @Transactional
-    @Override
-    public Long saveStatus(SysStatusSaveReq req) {
+    public Long saveStatusNode(SysStatusSaveReq req) {
         if (req.getId() == null) {
             // 新增
             SysStatus entity = new SysStatus();
@@ -161,8 +197,7 @@ public class SysStatusService implements SysStatusApi {
                     throw new BusinessException("同级状态下名称已存在");
                 }
             }
-            // 处理排序值
-            handleSortOrderForUpdate(entity);
+            // 排序由前端整棵树决定，sortOrder 非空则按原值直接更新，为空则 updateById 不覆盖该列
             sysStatusMapper.updateById(entity);
 
             // 停用时级联停用所有子节点（enabled / approvalShowFlag）
@@ -364,6 +399,130 @@ public class SysStatusService implements SysStatusApi {
         return node;
     }
 
+    /** 整棵树保存时，将当前节点在 treeNodes 中的位置回填到节点请求，保证单节点校验分组正确 */
+    private void fillOwnPositionFromTree(
+            SysStatusSaveReq node, List<SaveStatusReq.StatusTreeNode> treeNodes) {
+        SaveStatusReq.StatusTreeNode own = findStatusTreeNode(treeNodes, node.getId());
+        if (own == null) {
+            return;
+        }
+        if (own.getParentId() != null) {
+            node.setPid(own.getParentId());
+        }
+        if (node.getId() == null && own.getSortOrder() != null) {
+            node.setSortOrder(own.getSortOrder());
+        }
+    }
+
+    /** 在整棵树的扁平节点中查找与指定状态ID匹配的节点（新增状态按空或0匹配） */
+    private SaveStatusReq.StatusTreeNode findStatusTreeNode(
+            List<SaveStatusReq.StatusTreeNode> treeNodes, Long statusId) {
+        for (SaveStatusReq.StatusTreeNode node : treeNodes) {
+            boolean matched;
+            if (statusId == null) {
+                matched = node.getId() == null || node.getId() == 0L;
+            } else {
+                matched = statusId.equals(node.getId());
+            }
+            if (matched) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 同步整棵状态树的父子关系与同级排序（参考模块 saveModule 的树节点拓扑同步）。
+     *
+     * <p>节点 id 为空或 0 视为本次新增的当前状态，替换为保存后生成的真实ID；仅对实际发生变化的节点执行更新， 请求树中缺失的节点保持原样不做删除处理。
+     */
+    private void updateStatusTreeNodes(
+            Long currentSavedStatusId, List<SaveStatusReq.StatusTreeNode> treeNodes) {
+        if (CollectionUtils.isEmpty(treeNodes)) {
+            return;
+        }
+        Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
+
+        // 1. 查询当前主体与应用下全部状态
+        List<SysStatus> allStatuses =
+                sysStatusMapper.selectList(
+                        Wrappers.<SysStatus>lambdaQuery()
+                                .eq(SysStatus::getProjectNo, projectNo)
+                                .eq(SysStatus::getSubjectId, subjectId));
+        Map<Long, SysStatus> currentMap =
+                allStatuses.stream().collect(Collectors.toMap(SysStatus::getId, s -> s));
+
+        // 2. 规整节点：id 为空或 0 表示本次新增的当前状态，替换为真实生成的 ID
+        List<SaveStatusReq.StatusTreeNode> normalizedNodes = new ArrayList<>();
+        for (SaveStatusReq.StatusTreeNode node : treeNodes) {
+            SaveStatusReq.StatusTreeNode normalized = new SaveStatusReq.StatusTreeNode();
+            Long nid =
+                    (node.getId() == null || node.getId() == 0L)
+                            ? currentSavedStatusId
+                            : node.getId();
+            Long npid =
+                    (node.getParentId() == null || node.getParentId() == 0L)
+                            ? 0L
+                            : node.getParentId();
+            normalized.setId(nid);
+            normalized.setParentId(npid);
+            normalized.setSortOrder(node.getSortOrder() != null ? node.getSortOrder() : 0);
+            normalizedNodes.add(normalized);
+        }
+
+        // 3. 校验节点均属于当前主体与应用，并组装最终的父级映射
+        Map<Long, Long> nextParentMap = new HashMap<>();
+        for (SysStatus status : allStatuses) {
+            nextParentMap.put(status.getId(), status.getPid() != null ? status.getPid() : 0L);
+        }
+        for (SaveStatusReq.StatusTreeNode node : normalizedNodes) {
+            if (!currentMap.containsKey(node.getId())) {
+                throw new BusinessException(400, "待调整树结构的状态不存在或无权操作: " + node.getId());
+            }
+            if (node.getParentId() != 0L && !currentMap.containsKey(node.getParentId())) {
+                throw new BusinessException(400, "目标父状态不存在或无权操作: " + node.getParentId());
+            }
+            nextParentMap.put(node.getId(), node.getParentId());
+        }
+
+        // 4. 防环校验：沿父级链路向上遍历，防止出现环状依赖
+        for (Long startId : nextParentMap.keySet()) {
+            Set<Long> visited = new HashSet<>();
+            Long cur = startId;
+            while (cur != null && cur != 0L) {
+                if (!visited.add(cur)) {
+                    throw new BusinessException(400, "状态树结构存在循环引用，调整失败");
+                }
+                cur = nextParentMap.get(cur);
+            }
+        }
+
+        // 5. 差异比对：仅对实际发生父级或同级排序变化的节点执行更新
+        List<SysStatus> updateList = new ArrayList<>();
+        for (SaveStatusReq.StatusTreeNode node : normalizedNodes) {
+            SysStatus current = currentMap.get(node.getId());
+            if (current == null) {
+                continue;
+            }
+            Long currentPid = current.getPid() != null ? current.getPid() : 0L;
+            Integer currentSortOrder = current.getSortOrder() != null ? current.getSortOrder() : 0;
+            if (!Objects.equals(currentPid, node.getParentId())
+                    || !Objects.equals(currentSortOrder, node.getSortOrder())) {
+                SysStatus toUpdate = new SysStatus();
+                toUpdate.setId(current.getId());
+                toUpdate.setPid(node.getParentId());
+                toUpdate.setSortOrder(node.getSortOrder());
+                updateList.add(toUpdate);
+            }
+        }
+
+        if (!updateList.isEmpty()) {
+            updateList.forEach(sysStatusMapper::updateById);
+            log.info("同步更新了 {} 个状态树节点的位置与排序", updateList.size());
+        }
+    }
+
     /** 检查是否形成环：targetPid 不能是 id 的子节点（包括自身） */
     private void checkCycle(Long id, Long targetPid, Long subjectId) {
         if (id.equals(targetPid)) {
@@ -380,10 +539,10 @@ public class SysStatusService implements SysStatusApi {
         }
     }
 
-    /** 处理新增时的排序值 */
+    /** 处理新增时的排序值：排序由前端决定，已传则直接入库；未传时追加到同级末尾，后端不再搬移其它同级节点 */
     private void handleSortOrderForInsert(SysStatus entity) {
         if (entity.getSortOrder() == null) {
-            // 前端未传排序值，自动分配为同级最大值+1
+            // 前端未传排序值，追加到同级末尾
             Integer maxSort =
                     sysStatusMapper
                             .selectList(
@@ -398,17 +557,6 @@ public class SysStatusService implements SysStatusApi {
                             .map(SysStatus::getSortOrder)
                             .orElse(-1);
             entity.setSortOrder(maxSort + 1);
-        } else {
-            // 前端传了排序值，检查是否冲突
-            adjustSortOrderIfConflict(entity.getPid(), entity.getSortOrder(), null);
-        }
-    }
-
-    /** 处理更新时的排序值 */
-    private void handleSortOrderForUpdate(SysStatus entity) {
-        if (entity.getSortOrder() != null) {
-            // 前端传了排序值，检查是否冲突
-            adjustSortOrderIfConflict(entity.getPid(), entity.getSortOrder(), entity.getId());
         }
     }
 
@@ -434,30 +582,6 @@ public class SysStatusService implements SysStatusApi {
         } else {
             // 前端传了顺序值（从0开始），需要调整同级节点的排序
             adjustSortOrderForDrag(entity, targetIndex);
-        }
-    }
-
-    /** 调整同级节点的排序值，避免冲突 */
-    private void adjustSortOrderIfConflict(Long pid, Integer sortOrder, Long excludeId) {
-        // 查询同级是否存在相同排序值的节点
-        LambdaQueryWrapper<SysStatus> wrapper =
-                Wrappers.<SysStatus>lambdaQuery()
-                        .eq(SysStatus::getPid, pid)
-                        .eq(SysStatus::getSubjectId, AppContext.getSubjectId())
-                        .eq(SysStatus::getProjectNo, AppContext.getProjectNo())
-                        .ge(SysStatus::getSortOrder, sortOrder);
-        if (excludeId != null) {
-            wrapper.ne(SysStatus::getId, excludeId);
-        }
-        List<SysStatus> conflicts =
-                sysStatusMapper.selectList(wrapper.orderByAsc(SysStatus::getSortOrder));
-
-        if (!conflicts.isEmpty()) {
-            // 批量更新冲突节点的排序值（依次+1）
-            for (SysStatus conflict : conflicts) {
-                conflict.setSortOrder(conflict.getSortOrder() + 1);
-            }
-            sysStatusMapper.updateById(conflicts);
         }
     }
 

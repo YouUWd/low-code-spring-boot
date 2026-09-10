@@ -87,9 +87,6 @@ public class SysModuleCompleteResp {
         @Schema(description = "排序顺序", example = "1")
         private Integer sortOrder;
 
-        @Schema(description = "列表表头配置")
-        private List<ModuleTableHeaderDTO> tableHeader;
-
         @Schema(description = "数据来源主体")
         private List<SubjectInfo> sourceSubjects;
 

@@ -8,4 +8,5 @@ public class CheckConstant {
     public static final String SYS_DATA_PERMISSION = "sys_data_permission";
     public static final String SYS_MENU = "sys_menu";
     public static final String SYS_BUTTON = "sys_button";
+    public static final String SYS_MODULE = "sys_module";
 }
