@@ -3,8 +3,8 @@ package com.jdec.platform.dataengine.biz.third.api.persistence;
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
-import com.jdec.platform.dataengine.biz.common.ResultSetConstantKey;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dto.TableRelationDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
@@ -19,6 +19,7 @@ import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSa
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.post.ModuleDataSavePostFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
+import com.jdec.platform.dataengine.biz.util.TableRelationUtils;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -47,11 +48,13 @@ public class ModuleDataPersistenceService {
         moduleDataSaveCheckFactoryService.check(ModuleDataCheckContext.builder().build());
 
         Queue<DynamicSaveReqContext> saveReqQueue = new LinkedList<>();
+        // 根模块数据 没有父模块和父模块主表ID
         saveReqQueue.add(
                 DynamicSaveReqContext.builder()
-                        .req(req)
+                        .nestedModuleData(req.getNestedModuleData())
                         .parentModuleId(null)
                         .parentModulePrimaryTableId(null)
+                        .tabTreeNode(req.getRoot())
                         .build());
         boolean first = true;
 
@@ -60,45 +63,57 @@ public class ModuleDataPersistenceService {
         while (!saveReqQueue.isEmpty()) {
             DynamicSaveReqContext currentReq = saveReqQueue.poll();
 
-            // 保存当前模块数据
-            Long resultId = save(currentReq);
-
-            // 捕获根模块的 主表记录ID
-            if (first) {
-                rootModulePrimaryId = resultId;
+            // 模块数据为空
+            if (currentReq == null
+                    || currentReq.getNestedModuleData() == null
+                    || CollectionUtil.isEmpty(currentReq.getNestedModuleData().getRecord())) {
+                continue;
             }
 
-            // 构造保存子模的数据的上下文
-            if (CollectionUtil.isNotEmpty(currentReq.getReq().getSubModules())) {
-                for (DynamicSaveReq subModule : currentReq.getReq().getSubModules()) {
-                    saveReqQueue.add(
-                            DynamicSaveReqContext.builder()
-                                    .req(subModule)
-                                    .parentModuleId(currentReq.getReq().getModuleId())
-                                    .parentModulePrimaryTableId(resultId)
-                                    .build());
+            // 保存当前 模块数据
+            for (RecordDataDTO recordDataDTO : currentReq.getNestedModuleData().getRecord()) {
+
+                // 保存 当前模块一行数据 主表数据只有一行
+                Long resultId = saveModuleData(recordDataDTO, currentReq);
+
+                // 捕获根模块的 主表记录ID
+                if (first) {
+                    rootModulePrimaryId = resultId;
                 }
+
+                // 如果当前模块有子模块的数据
+                if (CollectionUtil.isEmpty(recordDataDTO.getSubModule())) {
+                    recordDataDTO.getSubModule().stream()
+                            .forEach(
+                                    subModule -> {
+                                        // 构造保存子模的数据的上下文
+                                        saveReqQueue.add(
+                                                DynamicSaveReqContext.builder()
+                                                        .nestedModuleData(subModule)
+                                                        .parentModuleId(
+                                                                currentReq
+                                                                        .getNestedModuleData()
+                                                                        .getModuleId())
+                                                        .parentModulePrimaryTableId(resultId)
+                                                        .tabTreeNode(req.getRoot())
+                                                        .build());
+                                    });
+                }
+                first = false;
             }
-            first = false;
         }
         moduleDataSavePostFactoryService.postProcess(ModuleDataPostContext.builder().build());
         return rootModulePrimaryId;
     }
 
-    private Long save(DynamicSaveReqContext currentReq) {
+    private Long saveModuleData(RecordDataDTO recordDataDTO, DynamicSaveReqContext currentReq) {
         // 获取模块元数据
         SysModuleCompleteResp sysModuleCompleteResp =
-                metadataCacheService.getModuleComplete(currentReq.getReq().getModuleId());
+                metadataCacheService.getModuleComplete(
+                        currentReq.getNestedModuleData().getModuleId());
 
         // 模块数据
-        Map<String, Object> moduleData = currentReq.getReq().getModuleData();
-
-        // 模块记录数据,多行
-        List<Map<String, Object>> moduleRecordData =
-                (List<Map<String, Object>>)
-                        moduleData.get(ResultSetConstantKey.RESULT_SET_KEY_RECORDS);
-
-        if (CollectionUtil.isEmpty(moduleRecordData)) {
+        if (CollectionUtil.isEmpty(recordDataDTO.getCombinedRow())) {
             log.error(
                     "模块id={},name={}记录数据为空",
                     sysModuleCompleteResp.getModule().getId(),
@@ -107,42 +122,16 @@ public class ModuleDataPersistenceService {
                     ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
         }
+        // 首先 写入当前 模块 主表的数据,主表数据 只有一行
+        Long primaryTableId =
+                saveModulePrimaryTableData(
+                        recordDataDTO.getCombinedRow(), sysModuleCompleteResp, currentReq);
 
-        Long resultId = null;
-        boolean first = true;
+        // 在写入当前模块 关联的表数据
+        saveModuleRelatedTableData(
+                recordDataDTO.getCombinedRow(), sysModuleCompleteResp, primaryTableId, currentReq);
 
-        //
-        for (Map<String, Object> recordData : moduleRecordData) {
-            // 一行数据
-            Map<String, Object> dataMap =
-                    (Map<String, Object>) recordData.get(ResultSetConstantKey.RESULT_SET_KEY_DATA);
-
-            if (CollectionUtil.isEmpty(dataMap)) {
-                log.error(
-                        "模块id={},name={}记录数据为空",
-                        sysModuleCompleteResp.getModule().getId(),
-                        sysModuleCompleteResp.getModule().getModuleName());
-                throw new BusinessException(
-                        ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
-                        ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
-            }
-            // 首先 写入当前 模块 主表的数据
-            Long primaryTableId =
-                    saveModulePrimaryTableData(
-                            dataMap,
-                            sysModuleCompleteResp,
-                            currentReq.getParentModuleId(),
-                            currentReq.getParentModulePrimaryTableId());
-            if (first) {
-                resultId = primaryTableId;
-            }
-
-            // 当写入当前模块 关联的表数据
-            saveModuleRelatedTableData(dataMap, sysModuleCompleteResp, primaryTableId);
-
-            first = false;
-        }
-        return resultId;
+        return primaryTableId;
     }
 
     /**
@@ -157,28 +146,24 @@ public class ModuleDataPersistenceService {
     private Long saveModulePrimaryTableData(
             Map<String, Object> dataMap,
             SysModuleCompleteResp sysModuleCompleteResp,
-            Long parentModuleId,
-            Long parentModulePrimaryTableId) {
+            DynamicSaveReqContext currentReq) {
 
         Map<String, Object> parentLevelTableAssociationMap = new HashMap<>();
-        SysModuleCompleteResp parentModuleCompleteResp = null;
-
         // 首先获取父模块主表 与当前模块的主表 之间的关联关系，一般来说 父模块主表的主键字段 关联子模块的主表主表字段
-        if (parentModuleId == null) {
+        if (currentReq.getParentModuleId() == null) {
             // 没有父模块，说明是根模块
         } else {
-            parentModuleCompleteResp = metadataCacheService.getModuleComplete(parentModuleId);
             TableRelationDTO relationDTO =
-                    tableRelationService.getTableRelation(
-                            parentModuleCompleteResp.getModule().getPrimaryTable(),
+                    TableRelationUtils.getTableRelationBySubTable(
+                            currentReq.getTabTreeNode(),
                             sysModuleCompleteResp.getModule().getPrimaryTable());
             parentLevelTableAssociationMap.put(
-                    relationDTO.getJoinField(), parentModulePrimaryTableId);
+                    relationDTO.getJoinField(), currentReq.getParentModulePrimaryTableId());
         }
 
         // 主表数据
         Map<String, Object> primaryTableRecordMap =
-                DataPersistenceUtil.getTableRecordMap(
+                DataPersistenceUtil.getTableRecordFromCombinedMap(
                         dataMap, sysModuleCompleteResp.getModule().getPrimaryTable());
 
         Long primaryTableId = DataPersistenceUtil.getRecordId(primaryTableRecordMap);
@@ -187,14 +172,11 @@ public class ModuleDataPersistenceService {
                 RecordSaveContext.builder()
                         .dsl(jooqContextFactory.getContext())
                         .tableName(sysModuleCompleteResp.getModule().getPrimaryTable())
-                        .parentLevelTable(
-                                parentModuleCompleteResp != null
-                                        ? parentModuleCompleteResp.getModule().getPrimaryTable()
-                                        : null)
+                        .parentLevelTable(null)
                         .record(primaryTableRecordMap)
                         .bizDataMap(null)
                         .parentLevelTableAssociationDataMap(parentLevelTableAssociationMap)
-                        .parentLevelTableId(parentModulePrimaryTableId)
+                        .parentLevelTableId(currentReq.getParentModulePrimaryTableId())
                         .defaultUserContextDataMap(null)
                         .isInsert(primaryTableId == null || primaryTableId <= 0)
                         .build();
@@ -226,14 +208,14 @@ public class ModuleDataPersistenceService {
     private Long saveModuleRelatedTableData(
             Map<String, Object> dataMap,
             SysModuleCompleteResp sysModuleCompleteResp,
-            Long modulePrimaryTableId) {
+            Long modulePrimaryTableId,
+            DynamicSaveReqContext currentReq) {
         List<ModuleTableDTO> moduleTables = sysModuleCompleteResp.getModuleTables();
         for (ModuleTableDTO moduleTable : moduleTables) {
             // 主表与当前表的关联关系
             TableRelationDTO relationDTO =
-                    tableRelationService.getTableRelation(
-                            sysModuleCompleteResp.getModule().getPrimaryTable(),
-                            moduleTable.getTableName());
+                    TableRelationUtils.getTableRelationBySubTable(
+                            currentReq.getTabTreeNode(), moduleTable.getTableName());
 
             RelationType relationType = RelationType.getRelationType(relationDTO.getRelationType());
             switch (relationType) {
@@ -241,7 +223,7 @@ public class ModuleDataPersistenceService {
                     // 1:1
                     // 子表数据 是一行
                     Map<String, Object> subTableRecordMap =
-                            DataPersistenceUtil.getTableRecordMap(
+                            DataPersistenceUtil.getTableRecordFromCombinedMap(
                                     dataMap, moduleTable.getTableName());
                     //// 首先 写入子表数据
                     saveModuleRelatedTableRecordData(
@@ -254,7 +236,7 @@ public class ModuleDataPersistenceService {
                     // 1:N
                     // 子表数据 是一个 list
                     List<Map<String, Object>> subTableRecordListMap =
-                            DataPersistenceUtil.getTableRecordListMap(
+                            DataPersistenceUtil.getTableRecordListFromCombinedMap(
                                     dataMap, moduleTable.getTableName());
 
                     for (Map<String, Object> recordMap : subTableRecordListMap) {

@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,5 +29,25 @@ public class DataPersistenceUtil {
     public static List<Map<String, Object>> getTableRecordListMap(
             Map<String, Object> recordMap, String tableName) {
         return (List<Map<String, Object>>) recordMap.get(tableName);
+    }
+
+    public static Map<String, Object> getTableRecordFromCombinedMap(
+            Map<String, Object> combinedMap, String tableName) {
+        Map<String, Object> dataMap = (Map<String, Object>) combinedMap.get(tableName);
+        Map<String, Object> tableRecord = (Map<String, Object>) dataMap.get("data");
+        return tableRecord;
+    }
+
+    public static List<Map<String, Object>> getTableRecordListFromCombinedMap(
+            Map<String, Object> combinedMap, String tableName) {
+        List<Map<String, Object>> dataMapList =
+                (List<Map<String, Object>>) combinedMap.get(tableName);
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> dataMap : dataMapList) {
+            Map<String, Object> tableRecord = (Map<String, Object>) dataMap.get("data");
+            result.add(tableRecord);
+        }
+        return result;
     }
 }

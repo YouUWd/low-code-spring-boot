@@ -8,6 +8,7 @@ import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
 import com.jdec.platform.dataengine.api.dto.response.DynamicDetailResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
+import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -16,7 +17,7 @@ import org.springframework.stereotype.Service;
 public class DataEngineService implements DataEngineApi {
 
     private final DynamicQueryService dynamicQueryService;
-    private final DynamicPersistenceService dynamicPersistenceService;
+    private final ModuleDataPersistenceService moduleDataPersistenceService;
 
     @Override
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -30,7 +31,7 @@ public class DataEngineService implements DataEngineApi {
 
     @Override
     public Long save(DynamicSaveReq req) {
-        return dynamicPersistenceService.save(req);
+        return moduleDataPersistenceService.save(req);
     }
 
     @Override

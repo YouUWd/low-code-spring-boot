@@ -19,5 +19,5 @@ public class TabTreeNodeDTO implements Serializable {
     private TabNodeDTO node;
 
     @Schema(description = "子节点列表")
-    private List<TabNodeDTO> children;
+    private List<TabTreeNodeDTO> children;
 }

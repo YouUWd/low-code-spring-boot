@@ -31,7 +31,6 @@ public class DataEngineController {
 
     @PostMapping("/{moduleId}/save")
     public ApiResponse<Long> save(@PathVariable Long moduleId, @RequestBody DynamicSaveReq req) {
-        req.setModuleId(moduleId);
         return ApiResponse.success(dataEngineApi.save(req));
     }
 }

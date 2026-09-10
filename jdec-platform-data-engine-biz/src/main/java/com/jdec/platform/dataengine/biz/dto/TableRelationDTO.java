@@ -1,9 +1,11 @@
 package com.jdec.platform.dataengine.biz.dto;
 
 import java.io.Serializable;
+import lombok.Builder;
 import lombok.Data;
 
 @Data
+@Builder
 public class TableRelationDTO implements Serializable {
 
     private String mainTable;
