@@ -6,6 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -884,6 +885,55 @@ public class ToolUtils {
     //            flatNodeAndChildren(child, result);
     //        }
     //    }
+    /**
+     * 场景2：递归深度遍历（已经组装好带children嵌套的树形结构）
+     *
+     * @param treeList 顶层树形集合
+     * @param targetId 要查找的节点ID
+     * @return 匹配节点，找不到返回null
+     */
+    public static SysModuleSimpleTreeResp findNodeByTreeRecursion(
+            List<SysModuleSimpleTreeResp> treeList, Long targetId) {
+        for (SysModuleSimpleTreeResp node : treeList) {
+            // 当前节点匹配直接返回
+            if (targetId.equals(node.getId())) {
+                return node;
+            }
+            // 当前节点存在子节点，递归往下查找
+            if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                SysModuleSimpleTreeResp childResult =
+                        findNodeByTreeRecursion(node.getChildren(), targetId);
+                if (childResult != null) {
+                    return childResult;
+                }
+            }
+        }
+        // 整棵树未找到
+        return null;
+    }
+
+    /**
+     * 将目标节点自身 + 所有层级子节点 平铺存入一维List
+     *
+     * @param targetNode 起始节点
+     * @param result 输出平铺集合
+     */
+    public static void flatNodeAndChildren(
+            SysModuleSimpleTreeResp targetNode, List<SysModuleSimpleTreeResp> result) {
+        if (targetNode == null) {
+            return;
+        }
+        // 先加入自己
+        result.add(targetNode);
+        List<SysModuleSimpleTreeResp> children = targetNode.getChildren();
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+        // 递归遍历所有子节点
+        for (SysModuleSimpleTreeResp child : children) {
+            flatNodeAndChildren(child, result);
+        }
+    }
 
     /** 第一步：递归在树形列表中根据ID找到目标节点 */
     public static <T> List<T> findTargetNode(List<T> treeList, Long targetId, String idKey) {

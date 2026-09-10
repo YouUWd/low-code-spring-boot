@@ -4,14 +4,14 @@ import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
-import com.jdec.platform.dataengine.api.dto.response.DynamicDetailResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
+import java.util.List;
 
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
 
-    DynamicDetailResp getDetail(Long moduleId, Long id, String btnType);
+    List<Object> getDetail(Long menuId, Long id, String btnType);
 
     Long save(DynamicSaveReq req);
 

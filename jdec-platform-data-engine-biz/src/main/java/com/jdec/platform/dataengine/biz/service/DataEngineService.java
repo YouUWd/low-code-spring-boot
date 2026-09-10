@@ -5,9 +5,10 @@ import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
-import com.jdec.platform.dataengine.api.dto.response.DynamicDetailResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
+import java.util.Arrays;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -24,8 +25,8 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public DynamicDetailResp getDetail(Long moduleId, Long id, String btnType) {
-        return dynamicQueryService.getDetail(moduleId, id, btnType);
+    public List<Object> getDetail(Long menuId, Long id, String btnType) {
+        return dynamicQueryService.getDetail(Arrays.asList(menuId), id, btnType, false);
     }
 
     @Override
