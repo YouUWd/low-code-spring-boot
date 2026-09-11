@@ -14,6 +14,9 @@ public class DetailQueryContext extends BasicModel {
     @Schema(description = "菜单 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "55")
     private Long menuId;
 
+    @Schema(description = "模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "55")
+    private Long moduleId;
+
     @Schema(description = "数据 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "55")
     private Long id;
 

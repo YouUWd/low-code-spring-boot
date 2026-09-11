@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.jooq.*;
@@ -25,32 +26,50 @@ public class JooqSqlBuilder {
     /**
      * 入口方法：根据树形元数据构建带JOIN的查询对象
      *
-     * @param rootNode 关联树根节点
      * @return SelectFromStep
      */
-    private SelectJoinStep<Record> buildJoinSql(TableJoinNode rootNode, DSLContext dslContext) {
+    private SelectJoinStep<Record> buildJoinSql(SelectSelectStep<Record> selectSelectStep) {
+        // score_detail 节点（score的子表）
+        TableJoinNode companyNode = new TableJoinNode();
+        companyNode.setTableCode("score_detail");
+        companyNode.setTableAlias("sd");
+        companyNode.setJoinType("LEFT");
+        companyNode.setSelfJoinColumn("score_detail.student_score_id");
+        companyNode.setParentJoinColumn("score.id");
+
+        // score 节点（student子表）
+        TableJoinNode deptNode = new TableJoinNode();
+        deptNode.setTableCode("score");
+        deptNode.setTableAlias("sc");
+        deptNode.setJoinType("LEFT");
+        deptNode.setSelfJoinColumn("score.student_id");
+        deptNode.setParentJoinColumn("student.id");
+        deptNode.getChildren().add(companyNode);
+
+        // class 节点（student子表）
+        TableJoinNode classNode = new TableJoinNode();
+        classNode.setTableCode("class");
+        classNode.setTableAlias("cls");
+        classNode.setJoinType("LEFT");
+        classNode.setSelfJoinColumn("class.id");
+        classNode.setParentJoinColumn("student.class_id");
+
+        // 根节点：student主表
+        TableJoinNode root = new TableJoinNode();
+        root.setTableCode("student");
+        root.setTableAlias("stu");
+        // 主表无joinType
+        root.getChildren().add(deptNode);
+        root.getChildren().add(classNode);
 
         // 1.初始化主表
-        Table<?> mainTable = DSL.table(rootNode.getTableCode());
-        aliasTableMap.put(rootNode.getTableAlias(), mainTable);
+        Table<?> mainTable = DSL.table(root.getTableCode());
+        aliasTableMap.put(root.getTableAlias(), mainTable);
 
-        List<Field<?>> fields = new ArrayList<>();
-        fields.add(DSL.field("student.id").as(DSL.name("student.id")));
-        fields.add(DSL.field("student.student_name").as(DSL.name("student.student_name")));
-
-        fields.add(DSL.field("class.class_name").as(DSL.name("class.class_name")));
-
-        fields.add(DSL.field("score.course_id").as(DSL.name("score.course_id")));
-        fields.add(DSL.field("score.semester").as(DSL.name("score.semester")));
-
-        fields.add(DSL.field("score.semester").as(DSL.name("score.semester")));
-        fields.add(DSL.field("score_detail.item_name").as(DSL.name("score_detail.item_name")));
-
-        SelectJoinStep<Record> selectStep =
-                dslContext.select(fields).from(DSL.table(rootNode.getTableCode()));
+        SelectJoinStep<Record> selectStep = selectSelectStep.from(DSL.table(root.getTableCode()));
 
         // 2.递归遍历子节点拼接JOIN
-        for (TableJoinNode child : rootNode.getChildren()) {
+        for (TableJoinNode child : root.getChildren()) {
             selectStep = recursiveJoin(selectStep, child);
         }
         return selectStep;
@@ -92,45 +111,34 @@ public class JooqSqlBuilder {
 
     /** 构建包含主表与 1:1/N:1 关联从表的 SelectJoinStep */
     public SelectJoinStep<Record> buildSelectFrom(
-            DSLContext dsl, SysModuleCompleteResp completeResp) {
+            DSLContext dsl, SysModuleCompleteResp completeResp, String tableName) {
+        List<Field<?>> fields =
+                completeResp.getSimpleFields().stream()
+                        .filter(ele -> tableName.equals(ele.getTableName()))
+                        .map(
+                                item ->
+                                        DSL.field(
+                                                /*item.getTableName() + "." + */ item
+                                                        .getColumnName()))
+                        .collect(Collectors.toList());
 
-        // score_detail 节点（score的子表）
-        TableJoinNode companyNode = new TableJoinNode();
-        companyNode.setTableCode("score_detail");
-        companyNode.setTableAlias("sd");
-        companyNode.setJoinType("LEFT");
-        companyNode.setSelfJoinColumn("score_detail.student_score_id");
-        companyNode.setParentJoinColumn("score.id");
+        SelectJoinStep<Record> query = dsl.select(fields).from(tableName);
 
-        // score 节点（student子表）
-        TableJoinNode deptNode = new TableJoinNode();
-        deptNode.setTableCode("score");
-        deptNode.setTableAlias("sc");
-        deptNode.setJoinType("LEFT");
-        deptNode.setSelfJoinColumn("score.student_id");
-        deptNode.setParentJoinColumn("student.id");
-        deptNode.getChildren().add(companyNode);
-
-        // class 节点（student子表）
-        TableJoinNode classNode = new TableJoinNode();
-        classNode.setTableCode("class");
-        classNode.setTableAlias("cls");
-        classNode.setJoinType("LEFT");
-        classNode.setSelfJoinColumn("class.id");
-        classNode.setParentJoinColumn("student.class_id");
-
-        // 根节点：student主表
-        TableJoinNode root = new TableJoinNode();
-        root.setTableCode("student");
-        root.setTableAlias("stu");
-        // 主表无joinType
-        root.getChildren().add(deptNode);
-        root.getChildren().add(classNode);
-
-        String primaryTable = completeResp.getModule().getPrimaryTable();
-        Table<?> fromTable = DSL.table(DSL.name(primaryTable));
-
-        SelectJoinStep<Record> query = buildJoinSql(root, dsl);
+        //        List<Field<?>> fields = new ArrayList<>();
+        //        fields.add(DSL.field("student.id").as(DSL.name("student.id")));
+        //
+        // fields.add(DSL.field("student.student_name").as(DSL.name("student.student_name")));
+        //
+        //        fields.add(DSL.field("class.class_name").as(DSL.name("class.class_name")));
+        //
+        //        fields.add(DSL.field("score.course_id").as(DSL.name("score.course_id")));
+        //        fields.add(DSL.field("score.semester").as(DSL.name("score.semester")));
+        //
+        //        fields.add(DSL.field("score.semester").as(DSL.name("score.semester")));
+        //
+        // fields.add(DSL.field("score_detail.item_name").as(DSL.name("score_detail.item_name")));
+        //
+        //        SelectSelectStep<Record> query = dsl.select(fields);
 
         return query;
     }

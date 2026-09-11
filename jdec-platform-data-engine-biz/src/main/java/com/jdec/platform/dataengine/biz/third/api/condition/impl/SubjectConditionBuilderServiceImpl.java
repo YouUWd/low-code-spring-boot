@@ -29,16 +29,15 @@ public class SubjectConditionBuilderServiceImpl implements SingleBizConditionBui
         List<SysModuleCompleteResp.SubjectInfo> sourceSubject =
                 context.getSysModuleCompleteResp().getModule().getSourceSubjects();
 
-        String primaryTableName = context.getSysModuleCompleteResp().getModule().getPrimaryTable();
-
         if (CollectionUtils.isEmpty(sourceSubject)) {
-            return DSL.field(DSL.name(primaryTableName, "subject_id")).eq(context.getModuleId());
+            return DSL.field(DSL.name(context.getTableName(), "subject_id"))
+                    .eq(context.getSubjectId());
         } else {
             Set<Long> subjectIds =
                     sourceSubject.stream()
                             .map(SysModuleCompleteResp.SubjectInfo::getId)
                             .collect(Collectors.toSet());
-            return DSL.field(DSL.name(primaryTableName, "subject_id")).in(subjectIds);
+            return DSL.field(DSL.name(context.getTableName(), "subject_id")).in(subjectIds);
         }
     }
 }

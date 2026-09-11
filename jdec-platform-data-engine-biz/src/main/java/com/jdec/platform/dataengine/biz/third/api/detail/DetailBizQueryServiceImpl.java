@@ -15,7 +15,7 @@ public class DetailBizQueryServiceImpl implements DetailBizQueryService {
     private final List<DetailBizReferQueryService> detailBizReferQueryServiceList;
 
     @Override
-    public Map<Object, Object> queryDetailBiz(DetailQueryContext context) {
+    public Map<String, Object> queryDetailBiz(DetailQueryContext context) {
         if (!CollectionUtil.isEmpty(detailBizReferQueryServiceList)) {
             DetailBizReferQueryService service =
                     detailBizReferQueryServiceList.stream()

@@ -1,10 +1,10 @@
 package com.jdec.platform.dataengine.biz.service;
 
+import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
-import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
@@ -17,16 +17,14 @@ import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
 import com.jdec.platform.dataengine.biz.dto.ModuleField;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleTable;
+import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
-import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
-import com.jdec.platform.dataengine.biz.enums.FormButtonEnum;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
+import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
@@ -51,6 +49,7 @@ public class DynamicQueryService {
     private final JooqConditionBuilder jooqConditionBuilder;
 
     private final ListBizQueryService listBizQueryService;
+    private final DetailBizQueryService detailBizQueryService;
 
     private final SysMenuApi sysMenuApi;
     private final SysRolePermissionApi sysRolePermissionApi;
@@ -109,14 +108,18 @@ public class DynamicQueryService {
 
         // 1. 第一阶段: 查询主表精确总数 COUNT
         int total =
-                dsl.fetchCount(jooqSqlBuilder.buildSelectFrom(dsl, completeResp).where(condition));
+                dsl.fetchCount(
+                        jooqSqlBuilder
+                                .buildSelectFrom(dsl, completeResp, primaryTable)
+                                .where(condition));
 
         // 2. 分页数据查询
         int pageIndex = req.getPageIndex() > 0 ? req.getPageIndex() : 1;
         int pageSize = req.getPageSize() > 0 ? req.getPageSize() : 20;
         int offset = (pageIndex - 1) * pageSize;
 
-        var selectStep = jooqSqlBuilder.buildSelectFrom(dsl, completeResp).where(condition);
+        var selectStep =
+                jooqSqlBuilder.buildSelectFrom(dsl, completeResp, primaryTable).where(condition);
         if (req.getOrderBy() != null && !req.getOrderBy().isBlank()) {
             if ("ASC".equalsIgnoreCase(req.getOrderDirection())) {
                 selectStep.orderBy(DSL.field(DSL.name(req.getOrderBy())).asc());
@@ -204,7 +207,7 @@ public class DynamicQueryService {
             return resultList;
         }
 
-        if (recursive) {
+        if (!recursive) {
             // ========= 模式1：多个模块独立查询，互不关联 =========
             for (Long menuId : menuIds) {
                 SysMenuTreeResp node = findSubTreeByValue(menuRespList, menuId);
@@ -215,7 +218,9 @@ public class DynamicQueryService {
                 DynamicQueryReq singleQueryDTO =
                         DynamicQueryReq.builder()
                                 .moduleId(node.getModuleId())
+                                .menuId(node.getId())
                                 .mainDataId(id)
+                                .btnType(btnType)
                                 .build();
                 // 独立查询当前模块，不递归子模块（独立模式默认不递归）
                 Object moduleData = queryModule(singleQueryDTO, node, recursive);
@@ -232,7 +237,9 @@ public class DynamicQueryService {
             DynamicQueryReq singleQueryDTO =
                     DynamicQueryReq.builder()
                             .moduleId(rootNode.getModuleId())
+                            .menuId(rootNode.getId())
                             .mainDataId(id)
+                            .btnType(btnType)
                             .build();
 
             Object moduleData = queryModule(singleQueryDTO, rootNode, recursive);
@@ -247,7 +254,7 @@ public class DynamicQueryService {
         NestedModuleDataDTO.NestedModuleDataDTOBuilder builder = NestedModuleDataDTO.builder();
 
         // TODO 通过menuId和moduleId查审批链配置获取
-        boolean hasApproval = false;
+        boolean hasApproval = true;
 
         QueryType queryType;
 
@@ -269,7 +276,14 @@ public class DynamicQueryService {
         }
 
         for (SysMenuTreeResp childNode : rootNode.getChildren()) {
-            NestedModuleDataDTO childResultList = queryModule(null, childNode, true);
+            // 组装当前模块查询参数
+            DynamicQueryReq singleQueryDTO =
+                    DynamicQueryReq.builder()
+                            .moduleId(childNode.getModuleId())
+                            .mainDataId(queryReq.getMainDataId())
+                            .btnType(queryReq.getBtnType())
+                            .build();
+            NestedModuleDataDTO childResultList = queryModule(singleQueryDTO, childNode, true);
             for (RecordDataDTO vo : currentModuleData) {
                 vo.getSubModule().add(childResultList);
             }
@@ -287,8 +301,11 @@ public class DynamicQueryService {
         if (node.getMenuType() == 4) {
             // TODO 查找列表模块数据
             DynamicQueryResp listData = query(queryDTO);
+            Map<String, Object> targetMap = new HashMap<>();
+            BeanUtil.beanToMap(listData, targetMap, false, true);
+            RecordDataDTO.builder().combinedRow(targetMap);
             resultList.add(null);
-        } else if (node.getMenuType() == 2) {
+        } else if (node.getMenuType() == 2 || node.getMenuType() == 3) {
             // 查找详情模块数据
             resultList.add(getDetailModuleData(node.getModuleId(), queryType, queryDTO));
         }
@@ -301,41 +318,20 @@ public class DynamicQueryService {
         Long subjectId = AppContext.getSubjectId();
         Long roleId = AppContext.getRoleId();
 
-        ModuleFilterInfo moduleFilterInfo =
-                moduleInfoWithPermissionService.filterModuleInfo(
-                        subjectId, roleId, moduleId, "", List.of());
+        DetailQueryContext detailQueryContext =
+                DetailQueryContext.builder()
+                        .btnType(queryReq.getBtnType())
+                        .id(queryReq.getMainDataId())
+                        .menuId(queryReq.getMenuId())
+                        .moduleId(moduleId)
+                        .roleId(roleId)
+                        .subjectId(subjectId)
+                        .queryType(queryType)
+                        .build();
 
-        // 有节点权限，但是按钮并没有编辑或查看，说明此时使用了创建权限，与当前页面入口不符，抛出无权限异常
-        if (!CollectionUtils.isEmpty(moduleFilterInfo.getBtnList())) {
-            if (!moduleFilterInfo.getBtnList().stream()
-                    .anyMatch(
-                            ele ->
-                                    FormButtonEnum.VIEW.getKey().equals(ele.getButtonKey())
-                                            || FormButtonEnum.EDITE
-                                                    .getKey()
-                                                    .equals(ele.getButtonKey()))) {
-                log.debug("编辑和查看都无权限，权限判断拿的是创建权限，此时手动抛出无权限异常。");
-                throw new BusinessException(
-                        ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
-                        ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
-            }
-        } else {
-            log.debug("带审批链的详情查看，btnList为空。");
-        }
+        Map<String, Object> moduleData = detailBizQueryService.queryDetailBiz(detailQueryContext);
 
-        Map<String, Object> resultMap = new HashMap<>();
-
-        // 合并simple和combine的field
-        List<ModuleField> allRightField = fillIdAndJoinIdField(moduleFilterInfo);
-
-        // 查询数据权限配置
-        List<DataRightConfigResp> dataRightconfigs =
-                sysRolePermissionApi.getRoleDataPermissionDetail(roleId);
-        Map<String, List<DataRightConfigResp>> tableNameToConfigItems =
-                dataRightconfigs.stream()
-                        .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
-
-        return null;
+        return RecordDataDTO.builder().combinedRow(moduleData).subModule(new ArrayList<>()).build();
     }
 
     /**
