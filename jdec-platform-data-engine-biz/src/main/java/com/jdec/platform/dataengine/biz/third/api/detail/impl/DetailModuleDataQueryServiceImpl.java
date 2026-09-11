@@ -2,9 +2,9 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
-import com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
 import com.jdec.platform.dataengine.biz.dto.context.DetailModuleQueryContext;
@@ -39,28 +39,23 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
     public Map<Object, Object> queryDetailModuleData(DetailModuleQueryContext context) {
         DSLContext dsl = jooqContextFactory.getContext();
 
-        SysModuleCompleteResp sysModuleCompleteResp = new SysModuleCompleteResp();
+        SysModuleResp sysModuleCompleteResp = new SysModuleResp();
 
-        List<ModuleSimpleFieldDTO> simpleFieldDTOS = new ArrayList<>();
+        List<ModuleFieldDTO> simpleFieldDTOS = new ArrayList<>();
+        simpleFieldDTOS.add(ModuleFieldDTO.builder().tableName("student").columnName("id").build());
         simpleFieldDTOS.add(
-                ModuleSimpleFieldDTO.builder().tableName("student").columnName("id").build());
+                ModuleFieldDTO.builder().tableName("student").columnName("student_no").build());
+        simpleFieldDTOS.add(ModuleFieldDTO.builder().tableName("score").columnName("id").build());
         simpleFieldDTOS.add(
-                ModuleSimpleFieldDTO.builder()
-                        .tableName("student")
-                        .columnName("student_no")
-                        .build());
+                ModuleFieldDTO.builder().tableName("score").columnName("student_id").build());
         simpleFieldDTOS.add(
-                ModuleSimpleFieldDTO.builder().tableName("score").columnName("id").build());
+                ModuleFieldDTO.builder().tableName("score").columnName("score").build());
         simpleFieldDTOS.add(
-                ModuleSimpleFieldDTO.builder().tableName("score").columnName("student_id").build());
-        simpleFieldDTOS.add(
-                ModuleSimpleFieldDTO.builder().tableName("score").columnName("score").build());
-        simpleFieldDTOS.add(
-                ModuleSimpleFieldDTO.builder().tableName("score").columnName("semester").build());
+                ModuleFieldDTO.builder().tableName("score").columnName("semester").build());
 
-        sysModuleCompleteResp.setSimpleFields(simpleFieldDTOS);
+        sysModuleCompleteResp.setFields(simpleFieldDTOS);
 
-        SysModuleCompleteResp.ModuleInfo moduleInfo = new SysModuleCompleteResp.ModuleInfo();
+        SysModuleResp.ModuleInfo moduleInfo = new SysModuleResp.ModuleInfo();
         // TODO 主表数据要从模块配置获取
         moduleInfo.setPrimaryTable("student");
         String primaryTable = moduleInfo.getPrimaryTable();
@@ -154,7 +149,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
     private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
             DetailModuleQueryContext context,
             DSLContext dsl,
-            SysModuleCompleteResp completeResp,
+            SysModuleResp completeResp,
             List<Long> primaryIds) {
 
         Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();

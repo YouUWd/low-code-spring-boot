@@ -5,7 +5,7 @@ import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.dto.common.ModuleSimpleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.dataengine.biz.dto.*;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
@@ -56,7 +56,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             Long subjectId, Long roleId, Long moduleId, String btnType, List<Long> moduleSkip) {
 
         // 模块相关信息
-        SysModuleCompleteResp moduleInfoResp =
+        SysModuleResp moduleInfoResp =
                 sysModuleApi.getModuleCompleteById(AppContext.getProjectNo(), subjectId, moduleId);
 
         if (Objects.nonNull(moduleInfoResp)) {
@@ -99,7 +99,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             }
             SysFieldResp defaultSysFieldResp = new SysFieldResp();
 
-            for (ModuleSimpleFieldDTO simpleFieldItem : moduleInfoResp.getSimpleFields()) {
+            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getFields()) {
 
                 SysFieldResp sysFieldResp =
                         sysFieldRespMap.getOrDefault(
@@ -150,7 +150,10 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
             moduleFilterInfoBuilder.allFields(allFields);
 
-            Long btnListJudgeModuleId = moduleInfoResp.getModule().getDetailModuleId();
+            Long btnListJudgeModuleId = null;
+
+            //            Long btnListJudgeModuleId =
+            // moduleInfoResp.getModule().getDetailModuleId();
 
             boolean created = StringUtils.hasText(btnType) ? true : false;
 
@@ -222,9 +225,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                                                         item
                                                                                                 .getId(),
                                                                                         item
-                                                                                                .getFieldCode(),
+                                                                                                .getColumnName(),
                                                                                         item
-                                                                                                .getFieldName()))
+                                                                                                .getDisplayName()))
                                                                 .collect(Collectors.toList())));
 
                         moduleColumnPermission.stream()
@@ -238,9 +241,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                                                         item
                                                                                                 .getId(),
                                                                                         item
-                                                                                                .getFieldCode(),
+                                                                                                .getColumnName(),
                                                                                         item
-                                                                                                .getFieldName()))
+                                                                                                .getDisplayName()))
                                                                 .collect(Collectors.toList())));
 
                         moduleColumnPermission.stream()
@@ -317,21 +320,21 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     threeRightSetMap.put(
                             "READ",
                             ele.getReadableFields().stream()
-                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .map(e -> new RightNode(e.getColumnName(), e.getDisplayName()))
                                     .collect(Collectors.toSet()));
 
                     // 放入有编辑权限的字段
                     threeRightSetMap.put(
                             "EDIT",
                             ele.getUpdatableFields().stream()
-                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .map(e -> new RightNode(e.getColumnName(), e.getDisplayName()))
                                     .collect(Collectors.toSet()));
 
                     // 放入有创建权限的字段
                     threeRightSetMap.put(
                             "CREATE",
                             ele.getWritableFields().stream()
-                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .map(e -> new RightNode(e.getColumnName(), e.getDisplayName()))
                                     .collect(Collectors.toSet()));
 
                     tableNameToThreeRightSetMap.put(ele.getTableName(), threeRightSetMap);
@@ -364,8 +367,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 }
 
                 // 过滤SimpleField，只查询有权限的字段
-                List<ModuleSimpleFieldDTO> filteredSimpleFields =
-                        moduleInfoResp.getSimpleFields().stream()
+                List<ModuleFieldDTO> filteredSimpleFields =
+                        moduleInfoResp.getFields().stream()
                                 .filter(
                                         e ->
                                                 tableNameToAllowedFields.containsKey(
@@ -479,7 +482,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 List<ModuleField> simpleFieldInfo = new ArrayList<>();
 
                 // 填充permissionCode和fieldName
-                for (ModuleSimpleFieldDTO simpleField : filteredSimpleFields) {
+                for (ModuleFieldDTO simpleField : filteredSimpleFields) {
                     SysFieldResp sysFieldResp =
                             sysFieldRespMap.getOrDefault(
                                     simpleField.getTableName() + "." + simpleField.getColumnName(),
@@ -657,7 +660,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
     public ModuleFilterInfo filterModuleInfoWithApproval(
             Long subjectId, Long roleId, Long moduleId, String btnType, List<Long> moduleSkip) {
         // 模块相关信息
-        SysModuleCompleteResp moduleInfoResp =
+        SysModuleResp moduleInfoResp =
                 sysModuleApi.getModuleCompleteById(AppContext.getProjectNo(), subjectId, moduleId);
 
         if (Objects.nonNull(moduleInfoResp)) {
@@ -678,7 +681,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
             List<ModuleField> allFields = new ArrayList<>();
 
-            for (ModuleSimpleFieldDTO simpleFieldItem : moduleInfoResp.getSimpleFields()) {
+            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getSimpleFields()) {
                 allFields.add(
                         ModuleField.builder()
                                 .fieldCode(simpleFieldItem.getColumnName())
@@ -692,7 +695,10 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
             moduleFilterInfoBuilder.allFields(allFields);
 
-            Long btnListJudgeModuleId = moduleInfoResp.getModule().getDetailModuleId();
+            Long btnListJudgeModuleId = null;
+
+            //            Long btnListJudgeModuleId =
+            // moduleInfoResp.getModule().getDetailModuleId();
 
             List<ModuleColumnResp> detailCreateFields = new ArrayList<>();
 
@@ -729,21 +735,21 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     threeRightSetMap.put(
                             "READ",
                             ele.getReadableFields().stream()
-                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .map(e -> new RightNode(e.getColumnName(), e.getDisplayName()))
                                     .collect(Collectors.toSet()));
 
                     // 放入有编辑权限的字段
                     threeRightSetMap.put(
                             "EDIT",
                             ele.getUpdatableFields().stream()
-                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .map(e -> new RightNode(e.getColumnName(), e.getDisplayName()))
                                     .collect(Collectors.toSet()));
 
                     // 放入有创建权限的字段
                     threeRightSetMap.put(
                             "CREATE",
                             ele.getWritableFields().stream()
-                                    .map(e -> new RightNode(e.getFieldCode(), e.getFieldName()))
+                                    .map(e -> new RightNode(e.getColumnName(), e.getDisplayName()))
                                     .collect(Collectors.toSet()));
 
                     tableNameToThreeRightSetMap.put(ele.getTableName(), threeRightSetMap);
@@ -776,8 +782,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 }
 
                 // 过滤SimpleField，只查询有权限的字段
-                List<ModuleSimpleFieldDTO> filteredSimpleFields =
-                        moduleInfoResp.getSimpleFields().stream()
+                List<ModuleFieldDTO> filteredSimpleFields =
+                        moduleInfoResp.getFields().stream()
                                 .filter(
                                         e ->
                                                 tableNameToAllowedFields.containsKey(
@@ -893,7 +899,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 List<ModuleField> simpleFieldInfo = new ArrayList<>();
 
                 // 填充permissionCode和fieldName
-                for (ModuleSimpleFieldDTO simpleField : filteredSimpleFields) {
+                for (ModuleFieldDTO simpleField : filteredSimpleFields) {
                     ModuleField.ModuleFieldBuilder moduleFieldBuilder =
                             ModuleField.builder()
                                     .moduleId(moduleInfoResp.getModule().getId().longValue())
@@ -1081,8 +1087,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                             item ->
                                                                     new ModuleColumnResp(
                                                                             item.getId(),
-                                                                            item.getFieldCode(),
-                                                                            item.getFieldName()))
+                                                                            item.getColumnName(),
+                                                                            item.getDisplayName()))
                                                     .collect(Collectors.toList())));
 
             moduleColumnPermission.stream()
@@ -1094,8 +1100,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                             item ->
                                                                     new ModuleColumnResp(
                                                                             item.getId(),
-                                                                            item.getFieldCode(),
-                                                                            item.getFieldName()))
+                                                                            item.getColumnName(),
+                                                                            item.getDisplayName()))
                                                     .collect(Collectors.toList())));
 
             moduleColumnPermission.stream()
@@ -1107,8 +1113,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                             item ->
                                                                     new ModuleColumnResp(
                                                                             item.getId(),
-                                                                            item.getFieldCode(),
-                                                                            item.getFieldName()))
+                                                                            item.getColumnName(),
+                                                                            item.getDisplayName()))
                                                     .collect(Collectors.toList())));
 
             if (!createFinded) {

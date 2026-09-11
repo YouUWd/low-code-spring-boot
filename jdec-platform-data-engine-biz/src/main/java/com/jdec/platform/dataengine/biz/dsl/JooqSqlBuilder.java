@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.dsl;
 
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -111,9 +111,9 @@ public class JooqSqlBuilder {
 
     /** 构建包含主表与 1:1/N:1 关联从表的 SelectJoinStep */
     public SelectJoinStep<Record> buildSelectFrom(
-            DSLContext dsl, SysModuleCompleteResp completeResp, String tableName) {
+            DSLContext dsl, SysModuleResp completeResp, String tableName) {
         List<Field<?>> fields =
-                completeResp.getSimpleFields().stream()
+                completeResp.getFields().stream()
                         .filter(ele -> tableName.equals(ele.getTableName()))
                         .map(
                                 item ->

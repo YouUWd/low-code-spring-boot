@@ -4,9 +4,8 @@ import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
-import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
@@ -17,6 +16,7 @@ import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
 import com.jdec.platform.dataengine.biz.dto.ModuleField;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleTable;
+import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
@@ -96,7 +96,7 @@ public class DynamicQueryService {
                 listBizQueryService.queryListBiz(listContextBuilder.build());
 
         Long moduleId = req.getModuleId();
-        SysModuleCompleteResp completeResp = metadataCacheService.getModuleComplete(moduleId);
+        SysModuleResp completeResp = metadataCacheService.getModuleComplete(moduleId);
         String primaryTable = completeResp.getModule().getPrimaryTable();
         List<ModuleTableHeaderDTO> headers =
                 permissionFilterService.filterReadableHeaders(completeResp);
@@ -508,7 +508,7 @@ public class DynamicQueryService {
 
     /** 批量抓取当前页主表 ID 集合关联的 1:N 从表记录 */
     private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
-            DSLContext dsl, SysModuleCompleteResp completeResp, List<Long> primaryIds) {
+            DSLContext dsl, SysModuleResp completeResp, List<Long> primaryIds) {
 
         Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();
         if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables() == null) {

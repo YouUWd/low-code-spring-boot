@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -20,7 +20,7 @@ import org.jooq.DSLContext;
 @Data
 public class StatementContext extends ListQueryContext implements Serializable {
 
-    private SysModuleCompleteResp sysModuleCompleteResp;
+    private SysModuleResp sysModuleCompleteResp;
 
     @Schema(description = "主模块主表的数据ID，查询子模块的列表")
     private Long mainDataId;
