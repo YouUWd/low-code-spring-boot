@@ -71,18 +71,18 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     .moduleSlug(moduleInfoResp.getModule().getModuleCode())
                     .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
                     .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
-                    .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
-                    .moduleType(moduleInfoResp.getModule().getModuleType().getValue())
+                    // .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
+                    // .moduleType(moduleInfoResp.getModule().getModuleType().getValue())
                     .moduleName(moduleInfoResp.getModule().getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
 
             // 获取模块 表的列配置
             Map<String, SysFieldResp> sysFieldRespMap = new HashMap<>();
-            Set<String> tableNames =
-                    moduleInfoResp.getModuleTables().stream()
-                            .map(x -> x.getTableName())
-                            .collect(Collectors.toSet());
+            Set<String> tableNames = new HashSet<>();
+            //                    moduleInfoResp.getModuleTables().stream()
+            //                            .map(x -> x.getTableName())
+            //                            .collect(Collectors.toSet());
             tableNames.add(moduleInfoResp.getModule().getPrimaryTable());
 
             for (String tableName : tableNames) {
@@ -204,7 +204,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                             && CollectionUtils.isEmpty(detailReadFields)) {
                         log.debug("详情模块无任何权限导致btnList为空，此时不需要判断本模块的权限");
                     } else if (Objects.isNull(btnListJudgeModuleId)
-                            && "LIST".equals(moduleInfoResp.getModule().getModuleType())) {
+                    // && "LIST".equals(moduleInfoResp.getModule().getModuleType())
+                    ) {
                         log.debug("模块为列表类型且未配置详情模块，此时不需要判断本模块的权限，直接返回无权限。");
                         btnType = "view";
                     } else {
@@ -257,9 +258,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                                                                         item
                                                                                                 .getId(),
                                                                                         item
-                                                                                                .getFieldCode(),
+                                                                                                .getColumnName(),
                                                                                         item
-                                                                                                .getFieldName()))
+                                                                                                .getDisplayName()))
                                                                 .collect(Collectors.toList())));
 
                         if (!CollectionUtils.isEmpty(createFields)) {
@@ -379,9 +380,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                 .collect(Collectors.toList());
 
                 // 如果是列表类型，只判断查看权限，手动赋值btnType为view
-                if ("LIST".equals(moduleInfoResp.getModule().getModuleType())) {
-                    btnType = "view";
-                }
+                //                if ("LIST".equals(moduleInfoResp.getModule().getModuleType())) {
+                //                    btnType = "view";
+                //                }
 
                 FormButtonEnum buttonEnum = FormButtonEnum.getFormButtonEnumByKey(btnType);
 
@@ -631,24 +632,27 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            moduleFilterInfoBuilder.moduleTableList(
-                    moduleInfoResp.getModuleTables().stream()
-                            .map(
-                                    ele ->
-                                            ModuleTable.builder()
-                                                    .moduleId(
-                                                            moduleInfoResp
-                                                                    .getModule()
-                                                                    .getId()
-                                                                    .longValue())
-                                                    .tableName(ele.getTableName())
-                                                    .joinLeftField(ele.getJoinLeftField())
-                                                    .joinRightField(ele.getJoinRightField())
-                                                    .relationType(ele.getRelationType())
-                                                    .tableDesc(ele.getTableDesc())
-                                                    .readOnly(ele.getReadOnly())
-                                                    .build())
-                            .collect(Collectors.toList()));
+            //            moduleFilterInfoBuilder.moduleTableList(
+            //                    moduleInfoResp.getModuleTables().stream()
+            //                            .map(
+            //                                    ele ->
+            //                                            ModuleTable.builder()
+            //                                                    .moduleId(
+            //                                                            moduleInfoResp
+            //                                                                    .getModule()
+            //                                                                    .getId()
+            //                                                                    .longValue())
+            //                                                    .tableName(ele.getTableName())
+            //
+            // .joinLeftField(ele.getJoinLeftField())
+            //
+            // .joinRightField(ele.getJoinRightField())
+            //
+            // .relationType(ele.getRelationType())
+            //                                                    .tableDesc(ele.getTableDesc())
+            //                                                    .readOnly(ele.getReadOnly())
+            //                                                    .build())
+            //                            .collect(Collectors.toList()));
 
             return moduleFilterInfoBuilder.build();
         }
@@ -675,13 +679,13 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     .moduleSlug(moduleInfoResp.getModule().getModuleCode())
                     .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
                     .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
-                    .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
-                    .moduleType(moduleInfoResp.getModule().getModuleType().getValue())
+                    // .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
+                    // .moduleType(moduleInfoResp.getModule().getModuleType().getValue())
                     .moduleName(moduleInfoResp.getModule().getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
 
-            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getSimpleFields()) {
+            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getFields()) {
                 allFields.add(
                         ModuleField.builder()
                                 .fieldCode(simpleFieldItem.getColumnName())
@@ -794,11 +798,11 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                 .collect(Collectors.toList());
 
                 // 如果是列表类型，只判断查看权限，手动赋值btnType为view
-                if ("LIST".equals(moduleInfoResp.getModule().getModuleType())) {
-                    btnType = "view";
-                } else if (!StringUtils.hasText(btnType)) {
-                    btnType = "view";
-                }
+                //                if ("LIST".equals(moduleInfoResp.getModule().getModuleType())) {
+                //                    btnType = "view";
+                //                } else if (!StringUtils.hasText(btnType)) {
+                //                    btnType = "view";
+                //                }
 
                 FormButtonEnum buttonEnum = FormButtonEnum.getFormButtonEnumByKey(btnType);
 
@@ -1015,24 +1019,27 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            moduleFilterInfoBuilder.moduleTableList(
-                    moduleInfoResp.getModuleTables().stream()
-                            .map(
-                                    ele ->
-                                            ModuleTable.builder()
-                                                    .moduleId(
-                                                            moduleInfoResp
-                                                                    .getModule()
-                                                                    .getId()
-                                                                    .longValue())
-                                                    .tableName(ele.getTableName())
-                                                    .joinLeftField(ele.getJoinLeftField())
-                                                    .joinRightField(ele.getJoinRightField())
-                                                    .relationType(ele.getRelationType())
-                                                    .tableDesc(ele.getTableDesc())
-                                                    .readOnly(ele.getReadOnly())
-                                                    .build())
-                            .collect(Collectors.toList()));
+            //            moduleFilterInfoBuilder.moduleTableList(
+            //                    moduleInfoResp.getModuleTables().stream()
+            //                            .map(
+            //                                    ele ->
+            //                                            ModuleTable.builder()
+            //                                                    .moduleId(
+            //                                                            moduleInfoResp
+            //                                                                    .getModule()
+            //                                                                    .getId()
+            //                                                                    .longValue())
+            //                                                    .tableName(ele.getTableName())
+            //
+            // .joinLeftField(ele.getJoinLeftField())
+            //
+            // .joinRightField(ele.getJoinRightField())
+            //
+            // .relationType(ele.getRelationType())
+            //                                                    .tableDesc(ele.getTableDesc())
+            //                                                    .readOnly(ele.getReadOnly())
+            //                                                    .build())
+            //                            .collect(Collectors.toList()));
 
             return moduleFilterInfoBuilder.build();
         }
