@@ -11,7 +11,7 @@ import java.util.List;
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
 
-    List<Object> getDetail(Long menuId, Long id, String btnType);
+    List<Object> getDetail(List<Long> menuId, Long id, String btnType);
 
     Long save(DynamicSaveReq req);
 

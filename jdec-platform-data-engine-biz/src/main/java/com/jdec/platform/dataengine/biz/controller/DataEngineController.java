@@ -30,11 +30,11 @@ public class DataEngineController {
         return ApiResponse.success(dataEngineApi.query(req));
     }
 
-    @GetMapping("/{moduleId}/detail/{id}")
+    @GetMapping("/menu/detail/{id}")
     @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<List<Object>> getDetail(
-            @PathVariable Long moduleId, @PathVariable Long id, String btnType) {
-        return ApiResponse.success(dataEngineApi.getDetail(moduleId, id, btnType));
+            @PathVariable Long id, @RequestParam List<Long> menuIds, String btnType) {
+        return ApiResponse.success(dataEngineApi.getDetail(menuIds, id, btnType));
     }
 
     @PostMapping("/{moduleId}/save")

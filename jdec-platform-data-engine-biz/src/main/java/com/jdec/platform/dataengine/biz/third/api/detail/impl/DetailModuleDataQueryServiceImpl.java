@@ -2,17 +2,19 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
+import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
+import com.jdec.platform.dataengine.biz.dto.ModuleTable;
 import com.jdec.platform.dataengine.biz.dto.context.DetailModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
+import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
 import com.jdec.platform.dataengine.biz.third.api.condition.ConditionBuilderFactory;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailModuleDataQueryService;
+import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.dataengine.biz.third.api.select.SelectBuilderFactory;
+import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.jooq.*;
@@ -34,43 +36,21 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
     private final MetadataCacheService metadataCacheService;
 
+    private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
+
     @Override
     public Map<Object, Object> queryDetailModuleData(DetailModuleQueryContext context) {
         DSLContext dsl = jooqContextFactory.getContext();
 
-        SysModuleResp sysModuleCompleteResp = new SysModuleResp();
+        ModuleFilterInfo moduleFilterInfo =
+                moduleInfoWithPermissionService.filterModuleInfo(
+                        AppContext.getSubjectId(),
+                        AppContext.getRoleId(),
+                        context.getModuleId(),
+                        context.getBtnType(),
+                        List.of());
 
-        List<ModuleFieldDTO> simpleFieldDTOS = new ArrayList<>();
-        simpleFieldDTOS.add(ModuleFieldDTO.builder().tableName("student").columnName("id").build());
-        simpleFieldDTOS.add(
-                ModuleFieldDTO.builder().tableName("student").columnName("student_no").build());
-        simpleFieldDTOS.add(ModuleFieldDTO.builder().tableName("score").columnName("id").build());
-        simpleFieldDTOS.add(
-                ModuleFieldDTO.builder().tableName("score").columnName("student_id").build());
-        simpleFieldDTOS.add(
-                ModuleFieldDTO.builder().tableName("score").columnName("score").build());
-        simpleFieldDTOS.add(
-                ModuleFieldDTO.builder().tableName("score").columnName("semester").build());
-
-        sysModuleCompleteResp.setFields(simpleFieldDTOS);
-
-        SysModuleResp.ModuleInfo moduleInfo = new SysModuleResp.ModuleInfo();
-        // TODO 主表数据要从模块配置获取
-        moduleInfo.setPrimaryTable("student");
-        String primaryTable = moduleInfo.getPrimaryTable();
-
-        sysModuleCompleteResp.setModule(moduleInfo);
-
-        List<ModuleTableDTO> moduleTables = new ArrayList<>();
-        moduleTables.add(
-                ModuleTableDTO.builder()
-                        .tableName("score")
-                        .joinLeftField("student_id")
-                        .joinRightField("id")
-                        .relationType("1:N")
-                        .build());
-
-        // sysModuleCompleteResp.setModuleTables(moduleTables);
+        String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
 
         StatementContext statementContext = StatementContext.builder().build();
 
@@ -82,8 +62,8 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         DSLContext dslContext = jooqContextFactory.getContext();
         statementContext.setDsl(dslContext);
         statementContext.setQueryType(context.getQueryType());
-        // statementContext.setSysModuleCompleteResp(sysModuleCompleteResp);
-        statementContext.setTableName(sysModuleCompleteResp.getModule().getPrimaryTable());
+        statementContext.setModuleFilterInfo(moduleFilterInfo);
+        statementContext.setTableName(primaryTable);
 
         // 构建SQL select 语句
         SelectJoinStep<Record> selectStep =
@@ -125,21 +105,20 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         tableData.put(primaryTable, mainRow);
 
         Map<String, Map<Long, List<Map<String, Object>>>> multiTableDataMap =
-                fetchOneToManyTables(context, dsl, null, relateIds);
+                fetchOneToManyTables(context, dsl, relateIds, moduleFilterInfo);
 
-        //        if (statementContext.getSysModuleCompleteResp().getModuleTables() != null) {
-        //            for (ModuleTableDTO tableDto :
-        //                    statementContext.getSysModuleCompleteResp().getModuleTables()) {
-        //                String tName = tableDto.getTableName();
-        //                String rType = tableDto.getRelationType();
-        //                List<Map<String, Object>> subRows =
-        //                        multiTableDataMap
-        //                                .getOrDefault(tName, Collections.emptyMap())
-        //                                .getOrDefault(statementContext.getId(),
-        // Collections.emptyList());
-        //                tableData.put(tName, subRows);
-        //            }
-        //        }
+        if (statementContext.getModuleFilterInfo().getModuleTableList() != null) {
+            for (ModuleTable tableDto :
+                    statementContext.getModuleFilterInfo().getModuleTableList()) {
+                String tName = tableDto.getTableName();
+                String rType = tableDto.getRelationType();
+                List<Map<String, Object>> subRows =
+                        multiTableDataMap
+                                .getOrDefault(tName, Collections.emptyMap())
+                                .getOrDefault(statementContext.getId(), Collections.emptyList());
+                tableData.put(tName, subRows);
+            }
+        }
 
         return tableData;
     }
@@ -148,59 +127,60 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
     private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
             DetailModuleQueryContext context,
             DSLContext dsl,
-            SysModuleResp completeResp,
-            List<Long> primaryIds) {
+            List<Long> primaryIds,
+            ModuleFilterInfo moduleFilterInfo) {
 
         Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();
-        //        if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables()
-        // == null) {
-        //            return result;
-        //        }
+        if (primaryIds == null
+                || primaryIds.isEmpty()
+                || moduleFilterInfo.getModuleTableList() == null) {
+            return result;
+        }
 
-        //        for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-        //            String rType = tableDto.getRelationType();
-        //            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-        //                String tableName = tableDto.getTableName();
-        //                String leftJoinField = tableDto.getJoinLeftField(); // 外键字段, 如 student_id
-        //
-        //                StatementContext statementContext = StatementContext.builder().build();
-        //
-        //                // 构建 SQL拼装 上下文对象
-        //                BeanUtil.copyProperties(
-        //                        context,
-        //                        statementContext,
-        //                        CopyOptions.create().ignoreError().ignoreNullValue());
-        //                statementContext.setMenuId(context.getMenuId());
-        //                statementContext.setId(context.getId());
-        //                DSLContext dslContext = jooqContextFactory.getContext();
-        //                statementContext.setDsl(dslContext);
-        //                statementContext.setQueryType(QueryType.DETAIL_SUBTABLE_QUERY);
-        //                statementContext.setSysModuleCompleteResp(completeResp);
-        //                statementContext.setTableName(tableName);
-        //                statementContext.setRelateIds(primaryIds);
-        //
-        //                // 构建SQL select 语句
-        //                SelectJoinStep<Record> selectStep =
-        //                        selectBuilderFactory.buildSelectStatement(statementContext);
-        //                // 构造SQL 查询条件
-        //                List<Condition> conditions =
-        //                        conditionBuilderFactory.buildConditions(statementContext);
-        //                selectStep.where(conditions);
-        //
-        //                Result<Record> subRecords = selectStep.fetch();
-        //
-        //                Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
-        //                for (Record r : subRecords) {
-        //                    Map<String, Object> rMap = r.intoMap();
-        //                    Object fkVal = rMap.get(leftJoinField);
-        //                    if (fkVal instanceof Number fkNum) {
-        //                        grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
-        //                                .add(rMap);
-        //                    }
-        //                }
-        //                result.put(tableName, grouped);
-        //            }
-        //        }
+        for (ModuleTable tableDto : moduleFilterInfo.getModuleTableList()) {
+            String rType = tableDto.getRelationType();
+            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
+                String tableName = tableDto.getTableName();
+                String leftJoinField = tableDto.getJoinLeftField(); // 外键字段, 如 student_id
+
+                StatementContext statementContext = StatementContext.builder().build();
+
+                // 构建 SQL拼装 上下文对象
+                BeanUtil.copyProperties(
+                        context,
+                        statementContext,
+                        CopyOptions.create().ignoreError().ignoreNullValue());
+                statementContext.setMenuId(context.getMenuId());
+                statementContext.setId(context.getId());
+                DSLContext dslContext = jooqContextFactory.getContext();
+                statementContext.setDsl(dslContext);
+                statementContext.setQueryType(QueryType.DETAIL_SUBTABLE_QUERY);
+                statementContext.setModuleFilterInfo(moduleFilterInfo);
+                statementContext.setTableName(tableName);
+                statementContext.setRelateIds(primaryIds);
+
+                // 构建SQL select 语句
+                SelectJoinStep<Record> selectStep =
+                        selectBuilderFactory.buildSelectStatement(statementContext);
+                // 构造SQL 查询条件
+                List<Condition> conditions =
+                        conditionBuilderFactory.buildConditions(statementContext);
+                selectStep.where(conditions);
+
+                Result<Record> subRecords = selectStep.fetch();
+
+                Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
+                for (Record r : subRecords) {
+                    Map<String, Object> rMap = r.intoMap();
+                    Object fkVal = rMap.get(leftJoinField);
+                    if (fkVal instanceof Number fkNum) {
+                        grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
+                                .add(rMap);
+                    }
+                }
+                result.put(tableName, grouped);
+            }
+        }
         return result;
     }
 }

@@ -72,4 +72,41 @@ public class TabTreeNodeDTO implements Serializable {
 
         return root;
     }
+
+    /**
+     * 森林查找：入参多个根节点List，找到第一个匹配节点值的节点，返回其整个子树
+     *
+     * @param root 森林：多个根节点组成的list
+     * @param targetValue 目标节点值
+     * @return 找到的子树根节点；找不到返回null
+     */
+    public static TabTreeNodeDTO findSubTreeByValue(TabTreeNodeDTO root, String targetValue) {
+        if (root == null) {
+            return null;
+        }
+        // 遍历森林中每一棵树
+        TabTreeNodeDTO matchNode = dfsSearch(root, targetValue);
+        if (matchNode != null) {
+            return matchNode;
+        }
+        return null;
+    }
+
+    /** 单棵树内部DFS */
+    private static TabTreeNodeDTO dfsSearch(TabTreeNodeDTO currNode, String targetValue) {
+        if (currNode == null) {
+            return null;
+        }
+        if (targetValue.equals(currNode.getNode().getTableName())) {
+            return currNode;
+        }
+        // 递归遍历子节点
+        for (TabTreeNodeDTO child : currNode.getChildren()) {
+            TabTreeNodeDTO res = dfsSearch(child, targetValue);
+            if (res != null) {
+                return res;
+            }
+        }
+        return null;
+    }
 }

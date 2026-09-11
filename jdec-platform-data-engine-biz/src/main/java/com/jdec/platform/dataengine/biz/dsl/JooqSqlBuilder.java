@@ -123,23 +123,6 @@ public class JooqSqlBuilder {
                         .collect(Collectors.toList());
 
         SelectJoinStep<Record> query = dsl.select(fields).from(tableName);
-
-        //        List<Field<?>> fields = new ArrayList<>();
-        //        fields.add(DSL.field("student.id").as(DSL.name("student.id")));
-        //
-        // fields.add(DSL.field("student.student_name").as(DSL.name("student.student_name")));
-        //
-        //        fields.add(DSL.field("class.class_name").as(DSL.name("class.class_name")));
-        //
-        //        fields.add(DSL.field("score.course_id").as(DSL.name("score.course_id")));
-        //        fields.add(DSL.field("score.semester").as(DSL.name("score.semester")));
-        //
-        //        fields.add(DSL.field("score.semester").as(DSL.name("score.semester")));
-        //
-        // fields.add(DSL.field("score_detail.item_name").as(DSL.name("score_detail.item_name")));
-        //
-        //        SelectSelectStep<Record> query = dsl.select(fields);
-
         return query;
     }
 

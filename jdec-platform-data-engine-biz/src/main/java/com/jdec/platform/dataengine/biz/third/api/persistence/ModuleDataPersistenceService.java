@@ -144,8 +144,6 @@ public class ModuleDataPersistenceService {
      *
      * @param dataMap 行记录
      * @param sysModuleCompleteResp 模块定义
-     * @param parentModuleId 父模块的ID
-     * @param parentModulePrimaryTableId 父模块 主表的记录ID
      * @return
      */
     private Long saveModulePrimaryTableData(

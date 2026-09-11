@@ -31,6 +31,7 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.impl.DSL;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -209,44 +210,41 @@ public class DynamicQueryService {
 
         if (!recursive) {
             // ========= 模式1：多个模块独立查询，互不关联 =========
-            for (Long menuId : menuIds) {
-                SysMenuTreeResp node = findSubTreeByValue(menuRespList, menuId);
-                if (node == null) {
-                    continue;
-                }
-                // 组装当前模块查询参数
-                DynamicQueryReq singleQueryDTO =
-                        DynamicQueryReq.builder()
-                                .moduleId(node.getModuleId())
-                                .menuId(node.getId())
-                                .mainDataId(id)
-                                .btnType(btnType)
-                                .build();
-                // 独立查询当前模块，不递归子模块（独立模式默认不递归）
-                Object moduleData = queryModule(singleQueryDTO, node, recursive);
-                resultList.add(moduleData);
+
+            List<SysMenuTreeResp> pruneMenus = pruneForest(menuRespList, menuIds);
+
+            for (SysMenuTreeResp menu : pruneMenus) {
+                recursiveQuery(menuRespList, resultList, menu.getId(), id, btnType);
             }
         } else {
-            // ========= 模式2：树形关联查询，多个模块属于同一棵树 =========
-            // 取根模块（moduleCodeList第一个为根节点，其余是树内子模块）
-            Long topMenuId = menuIds.get(0);
-            SysMenuTreeResp rootNode = findSubTreeByValue(menuRespList, topMenuId);
-            if (rootNode == null) {
-                return resultList;
-            }
-            DynamicQueryReq singleQueryDTO =
-                    DynamicQueryReq.builder()
-                            .moduleId(rootNode.getModuleId())
-                            .menuId(rootNode.getId())
-                            .mainDataId(id)
-                            .btnType(btnType)
-                            .build();
-
-            Object moduleData = queryModule(singleQueryDTO, rootNode, recursive);
-            resultList.add(moduleData);
+            recursiveQuery(menuRespList, resultList, menuIds.get(0), id, btnType);
         }
 
         return resultList;
+    }
+
+    private void recursiveQuery(
+            List<SysMenuTreeResp> menuTree,
+            List<Object> resultList,
+            Long topMenuId,
+            Long id,
+            String btnType) {
+        // ========= 模式2：树形关联查询，多个模块属于同一棵树 =========
+        // 取根模块（moduleCodeList第一个为根节点，其余是树内子模块）
+        SysMenuTreeResp rootNode = findSubTreeByValue(menuTree, topMenuId);
+        if (rootNode == null) {
+            return;
+        }
+        DynamicQueryReq singleQueryDTO =
+                DynamicQueryReq.builder()
+                        .moduleId(rootNode.getModuleId())
+                        .menuId(rootNode.getId())
+                        .mainDataId(id)
+                        .btnType(btnType)
+                        .build();
+
+        Object moduleData = queryModule(singleQueryDTO, rootNode, true);
+        resultList.add(moduleData);
     }
 
     private NestedModuleDataDTO queryModule(
@@ -266,7 +264,11 @@ public class DynamicQueryService {
 
         queryReq.setType(hasApproval ? 3 : 4);
 
-        List<RecordDataDTO> currentModuleData = querySingleModule(rootNode, queryReq, queryType);
+        List<RecordDataDTO> currentModuleData = new ArrayList<>();
+
+        //        if(rootNode.getMenuType() != 1) {
+        currentModuleData = querySingleModule(rootNode, queryReq, queryType);
+        //        }
 
         if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
             return builder.moduleId(rootNode.getModuleId())
@@ -305,7 +307,7 @@ public class DynamicQueryService {
             BeanUtil.beanToMap(listData, targetMap, false, true);
             RecordDataDTO.builder().combinedRow(targetMap);
             resultList.add(null);
-        } else if (node.getMenuType() == 2 || node.getMenuType() == 3) {
+        } else {
             // 查找详情模块数据
             resultList.add(getDetailModuleData(node.getModuleId(), queryType, queryDTO));
         }
@@ -581,5 +583,61 @@ public class DynamicQueryService {
             }
         }
         return null;
+    }
+
+    /**
+     * 入口方法：森林裁剪（多个根节点）
+     *
+     * @param rootList 原始森林，多个根节点
+     * @param keepIds 需要保留的目标节点ID集合
+     * @return 裁剪之后的森林列表；无保留节点返回空集合
+     */
+    public static List<SysMenuTreeResp> pruneForest(
+            List<SysMenuTreeResp> rootList, Collection<Long> keepIds) {
+        if (rootList == null || rootList.isEmpty() || keepIds == null || keepIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<SysMenuTreeResp> resultForest = new ArrayList<>();
+        for (SysMenuTreeResp root : rootList) {
+            SysMenuTreeResp newRoot = recursiveCloneAndPrune(root, keepIds);
+            if (newRoot != null) {
+                resultForest.add(newRoot);
+            }
+        }
+        return resultForest;
+    }
+
+    /**
+     * 递归：克隆节点，裁剪子节点
+     *
+     * @return 如果当前子树存在需要保留的节点，返回克隆后的节点；否则返回null
+     */
+    private static SysMenuTreeResp recursiveCloneAndPrune(
+            SysMenuTreeResp originNode, Collection<Long> keepIds) {
+        // 1. 先克隆当前节点（新树不修改原树）
+        SysMenuTreeResp newNode = new SysMenuTreeResp();
+        BeanUtils.copyProperties(originNode, newNode);
+        newNode.setChildren(new ArrayList<>());
+
+        boolean currentNodeNeedKeep = keepIds.contains(originNode.getId());
+
+        // 2. 遍历所有子节点，递归裁剪
+        List<SysMenuTreeResp> keptChildren = new ArrayList<>();
+        for (SysMenuTreeResp originChild : originNode.getChildren()) {
+            SysMenuTreeResp prunedChild = recursiveCloneAndPrune(originChild, keepIds);
+            if (prunedChild != null) {
+                keptChildren.add(prunedChild);
+            }
+        }
+        newNode.getChildren().addAll(keptChildren);
+
+        // 3. 判断：当前节点需要保留 或者 有需要保留的子节点 → 保留该节点
+        if (currentNodeNeedKeep || !keptChildren.isEmpty()) {
+            return newNode;
+        } else {
+            // 当前节点不是目标节点，且没有任何子节点需要保留 → 裁掉
+            return null;
+        }
     }
 }

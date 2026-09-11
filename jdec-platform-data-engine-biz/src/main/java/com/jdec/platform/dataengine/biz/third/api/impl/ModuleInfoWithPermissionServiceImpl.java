@@ -7,6 +7,7 @@ import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.biz.dto.*;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.FormButtonEnum;
@@ -71,8 +72,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     .moduleSlug(moduleInfoResp.getModule().getModuleCode())
                     .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
                     .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
+                    //
                     // .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
-                    // .moduleType(moduleInfoResp.getModule().getModuleType().getValue())
+                    .moduleType("LIST")
                     .moduleName(moduleInfoResp.getModule().getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
@@ -80,10 +82,11 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // 获取模块 表的列配置
             Map<String, SysFieldResp> sysFieldRespMap = new HashMap<>();
             Set<String> tableNames = new HashSet<>();
-            //                    moduleInfoResp.getModuleTables().stream()
-            //                            .map(x -> x.getTableName())
-            //                            .collect(Collectors.toSet());
-            tableNames.add(moduleInfoResp.getModule().getPrimaryTable());
+
+            tableNames.addAll(
+                    moduleInfoResp.getFields().stream()
+                            .map(x -> x.getTableName())
+                            .collect(Collectors.toSet()));
 
             for (String tableName : tableNames) {
                 List<SysFieldResp> fieldResps =
@@ -632,27 +635,56 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            //            moduleFilterInfoBuilder.moduleTableList(
-            //                    moduleInfoResp.getModuleTables().stream()
-            //                            .map(
-            //                                    ele ->
-            //                                            ModuleTable.builder()
-            //                                                    .moduleId(
-            //                                                            moduleInfoResp
-            //                                                                    .getModule()
-            //                                                                    .getId()
-            //                                                                    .longValue())
-            //                                                    .tableName(ele.getTableName())
-            //
-            // .joinLeftField(ele.getJoinLeftField())
-            //
-            // .joinRightField(ele.getJoinRightField())
-            //
-            // .relationType(ele.getRelationType())
-            //                                                    .tableDesc(ele.getTableDesc())
-            //                                                    .readOnly(ele.getReadOnly())
-            //                                                    .build())
-            //                            .collect(Collectors.toList()));
+            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildRoot();
+
+            TabTreeNodeDTO targetNode =
+                    TabTreeNodeDTO.findSubTreeByValue(
+                            tableTree, moduleInfoResp.getModule().getPrimaryTable());
+
+            Set<String> subTableNames =
+                    moduleInfoResp.getFields().stream()
+                            .filter(
+                                    ele ->
+                                            !moduleInfoResp
+                                                    .getModule()
+                                                    .getPrimaryTable()
+                                                    .equals(ele.getTableName()))
+                            .map(ModuleFieldDTO::getTableName)
+                            .collect(Collectors.toSet());
+
+            moduleFilterInfoBuilder.moduleTableList(
+                    subTableNames.stream()
+                            .map(
+                                    ele -> {
+                                        TabTreeNodeDTO matchedNode =
+                                                targetNode.getChildren().stream()
+                                                        .filter(
+                                                                item ->
+                                                                        ele.equals(
+                                                                                item.getNode()
+                                                                                        .getTableName()))
+                                                        .findFirst()
+                                                        .orElse(null);
+                                        if (Objects.nonNull(matchedNode)) {
+                                            return ModuleTable.builder()
+                                                    .moduleId(moduleId)
+                                                    .tableName(ele)
+                                                    .joinLeftField(
+                                                            matchedNode
+                                                                    .getNode()
+                                                                    .getSubTableField())
+                                                    .joinRightField(
+                                                            matchedNode
+                                                                    .getNode()
+                                                                    .getParentTableField())
+                                                    .relationType(
+                                                            matchedNode.getNode().getJoinType())
+                                                    .build();
+                                        } else {
+                                            return null;
+                                        }
+                                    })
+                            .collect(Collectors.toList()));
 
             return moduleFilterInfoBuilder.build();
         }
@@ -679,8 +711,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     .moduleSlug(moduleInfoResp.getModule().getModuleCode())
                     .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
                     .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
+                    //
                     // .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
-                    // .moduleType(moduleInfoResp.getModule().getModuleType().getValue())
+                    .moduleType("LIST")
                     .moduleName(moduleInfoResp.getModule().getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
@@ -1019,27 +1052,56 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            //            moduleFilterInfoBuilder.moduleTableList(
-            //                    moduleInfoResp.getModuleTables().stream()
-            //                            .map(
-            //                                    ele ->
-            //                                            ModuleTable.builder()
-            //                                                    .moduleId(
-            //                                                            moduleInfoResp
-            //                                                                    .getModule()
-            //                                                                    .getId()
-            //                                                                    .longValue())
-            //                                                    .tableName(ele.getTableName())
-            //
-            // .joinLeftField(ele.getJoinLeftField())
-            //
-            // .joinRightField(ele.getJoinRightField())
-            //
-            // .relationType(ele.getRelationType())
-            //                                                    .tableDesc(ele.getTableDesc())
-            //                                                    .readOnly(ele.getReadOnly())
-            //                                                    .build())
-            //                            .collect(Collectors.toList()));
+            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildRoot();
+
+            TabTreeNodeDTO targetNode =
+                    TabTreeNodeDTO.findSubTreeByValue(
+                            tableTree, moduleInfoResp.getModule().getPrimaryTable());
+
+            Set<String> subTableNames =
+                    moduleInfoResp.getFields().stream()
+                            .filter(
+                                    ele ->
+                                            !moduleInfoResp
+                                                    .getModule()
+                                                    .getPrimaryTable()
+                                                    .equals(ele.getTableName()))
+                            .map(ModuleFieldDTO::getTableName)
+                            .collect(Collectors.toSet());
+
+            moduleFilterInfoBuilder.moduleTableList(
+                    subTableNames.stream()
+                            .map(
+                                    ele -> {
+                                        TabTreeNodeDTO matchedNode =
+                                                targetNode.getChildren().stream()
+                                                        .filter(
+                                                                item ->
+                                                                        ele.equals(
+                                                                                item.getNode()
+                                                                                        .getTableName()))
+                                                        .findFirst()
+                                                        .orElse(null);
+                                        if (Objects.nonNull(matchedNode)) {
+                                            return ModuleTable.builder()
+                                                    .moduleId(moduleId)
+                                                    .tableName(ele)
+                                                    .joinLeftField(
+                                                            matchedNode
+                                                                    .getNode()
+                                                                    .getSubTableField())
+                                                    .joinRightField(
+                                                            matchedNode
+                                                                    .getNode()
+                                                                    .getParentTableField())
+                                                    .relationType(
+                                                            matchedNode.getNode().getJoinType())
+                                                    .build();
+                                        } else {
+                                            return null;
+                                        }
+                                    })
+                            .collect(Collectors.toList()));
 
             return moduleFilterInfoBuilder.build();
         }

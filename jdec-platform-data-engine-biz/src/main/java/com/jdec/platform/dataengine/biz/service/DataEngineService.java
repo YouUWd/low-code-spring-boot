@@ -8,7 +8,6 @@ import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
-import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,8 +25,8 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public List<Object> getDetail(Long menuId, Long id, String btnType) {
-        return dynamicQueryService.getDetail(Arrays.asList(menuId), id, btnType, true);
+    public List<Object> getDetail(List<Long> menuIds, Long id, String btnType) {
+        return dynamicQueryService.getDetail(menuIds, id, btnType, false);
     }
 
     @Override
