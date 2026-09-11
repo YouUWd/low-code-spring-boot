@@ -1,9 +1,9 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysConfigCategoryApi;
-import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
+import com.jdec.platform.config.api.dto.request.SaveConfigCategoryReq;
+import com.jdec.platform.config.api.dto.request.SaveConfigItemReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
-import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
 import com.jdec.platform.config.api.dto.response.AllConfigResp;
 import com.jdec.platform.config.api.dto.response.SysConfigCategoryResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemTreeResp;
@@ -58,8 +58,11 @@ public class SysConfigCategoryController {
     }
 
     @PostMapping("/save")
-    @Operation(summary = "新增/编辑配置分类", description = "id为空则新增，不为空则修改；新增时返回新记录ID")
-    public ApiResponse<Long> save(@RequestBody SysConfigCategorySaveReq request) {
+    @Operation(
+            summary = "新增/编辑配置分类",
+            description =
+                    "config.id 为空则新增，不为空则修改；新增时返回新记录ID。支持前端将整棵混合树一并提交，treeNodes 非空时差量同步整棵树的父子关系与同级排序，treeNodes 中缺失的节点不做删除")
+    public ApiResponse<Long> save(@RequestBody SaveConfigCategoryReq request) {
         return ApiResponse.success(sysConfigCategoryApi.saveCategory(request));
     }
 
@@ -94,8 +97,11 @@ public class SysConfigCategoryController {
     }
 
     @PostMapping("/item/save")
-    @Operation(summary = "新增/编辑配置项", description = "id为空则新增，不为空则修改；新增时返回新记录ID")
-    public ApiResponse<Long> saveItem(@RequestBody SysConfigItemSaveReq request) {
+    @Operation(
+            summary = "新增/编辑配置项",
+            description =
+                    "config.id 为空则新增，不为空则修改；新增时返回新记录ID。支持前端将整棵混合树一并提交，treeNodes 非空时差量同步整棵树的父子关系与同级排序，treeNodes 中缺失的节点不做删除")
+    public ApiResponse<Long> saveItem(@RequestBody SaveConfigItemReq request) {
         return ApiResponse.success(sysConfigCategoryApi.saveItem(request));
     }
 

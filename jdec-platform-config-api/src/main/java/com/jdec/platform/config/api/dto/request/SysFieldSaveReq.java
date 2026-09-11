@@ -40,6 +40,10 @@ public class SysFieldSaveReq {
     @AuditField(name = "字段存储是否加密", type = FieldType.ENUM, enumClass = YesNoEnum.class)
     private Integer encrypted;
 
+    @Schema(description = "是否引用: 0-否, 1-是")
+    @AuditField(name = "是否引用", type = FieldType.ENUM, enumClass = YesNoEnum.class)
+    private Integer refer;
+
     /** 是否生成权限节点.0--否,1--是 */
     @Schema(description = "是否生成权限节点: 0-否, 1-是", example = "0")
     @AuditField(name = "是否生成权限节点", type = FieldType.ENUM, enumClass = YesNoEnum.class)

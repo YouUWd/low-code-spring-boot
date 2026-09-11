@@ -24,7 +24,9 @@ public class SysMenuHeaderController {
     private final SysMenuHeaderApi sysMenuHeaderApi;
 
     @GetMapping("/tree")
-    @Operation(summary = "查询菜单表头树", description = "根据菜单ID查询该菜单及其子菜单/字段构成的表头节点树，无配置时按菜单绑定模块的字段生成默认树")
+    @Operation(
+            summary = "查询菜单表头树",
+            description = "根据菜单ID查询该菜单及其子菜单/字段构成的表头节点树，无配置时按菜单绑定模块的字段生成默认树并落库后返回")
     public ApiResponse<SysMenuHeaderResp> tree(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderTree(menuId));

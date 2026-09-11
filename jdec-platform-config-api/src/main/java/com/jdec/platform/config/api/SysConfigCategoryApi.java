@@ -1,8 +1,8 @@
 package com.jdec.platform.config.api;
 
-import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
+import com.jdec.platform.config.api.dto.request.SaveConfigCategoryReq;
+import com.jdec.platform.config.api.dto.request.SaveConfigItemReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemDragReq;
-import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
 import com.jdec.platform.config.api.dto.response.*;
 import java.util.List;
 
@@ -24,8 +24,12 @@ public interface SysConfigCategoryApi {
      */
     SysConfigCategoryResp getByCategoryAlias(String categoryAlias);
 
-    /** 新增/编辑配置分类，新增时返回新记录ID */
-    Long saveCategory(SysConfigCategorySaveReq req);
+    /**
+     * 新增/编辑配置分类，新增时返回新记录ID。
+     *
+     * <p>支持前端将整棵混合树一并提交，treeNodes 非空时差量同步整棵树的父子关系与同级排序， treeNodes 中缺失的节点不做删除。
+     */
+    Long saveCategory(SaveConfigCategoryReq req);
 
     /**
      * 删除配置分类
@@ -55,8 +59,12 @@ public interface SysConfigCategoryApi {
      */
     List<SysConfigItemTreeResp> getItemsByCategoryAlias(String categoryAlias);
 
-    /** 新增/编辑配置项，新增时返回新记录ID */
-    Long saveItem(SysConfigItemSaveReq req);
+    /**
+     * 新增/编辑配置项，新增时返回新记录ID。
+     *
+     * <p>支持前端将整棵混合树一并提交，treeNodes 非空时差量同步整棵树的父子关系与同级排序， treeNodes 中缺失的节点不做删除。
+     */
+    Long saveItem(SaveConfigItemReq req);
 
     /**
      * 删除配置项

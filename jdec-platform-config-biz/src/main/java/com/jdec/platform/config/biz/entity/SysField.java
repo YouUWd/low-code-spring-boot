@@ -50,6 +50,9 @@ public class SysField {
     /** 是否加密存储: 0-否, 1-是 */
     private Integer encrypted;
 
+    /** 是否引用: 0-否, 1-是 */
+    private Integer refer;
+
     /** 组合配置信息（JSON 格式：包含 sourceMapping 与 transformer） */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String combineInfo;
