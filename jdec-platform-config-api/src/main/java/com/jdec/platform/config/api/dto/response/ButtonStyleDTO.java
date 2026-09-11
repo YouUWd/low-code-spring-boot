@@ -22,15 +22,24 @@ public class ButtonStyleDTO {
     @Schema(description = "默认字体颜色")
     private String defaultFontColor;
 
+    @Schema(description = "默认边框色")
+    private String defaultBorder;
+
     @Schema(description = "选中背景颜色")
     private String selectedBgColor;
 
     @Schema(description = "选中字体颜色")
     private String selectedFontColor;
 
+    @Schema(description = "选中边框色")
+    private String selectedBorderColor;
+
     @Schema(description = "悬浮背景颜色")
     private String levitateBgColor;
 
     @Schema(description = "悬浮字体颜色")
     private String levitateFontColor;
+
+    @Schema(description = "悬浮边框色")
+    private String levitateBorderColor;
 }
