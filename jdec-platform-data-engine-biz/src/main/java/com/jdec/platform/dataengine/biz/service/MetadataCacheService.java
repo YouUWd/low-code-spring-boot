@@ -1,13 +1,19 @@
 package com.jdec.platform.dataengine.biz.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jdec.platform.config.api.SysModuleApi;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
+import com.jdec.platform.config.biz.entity.SysModuleField;
+import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.shared.context.AppContext;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 
 /** 模块元数据缓存服务 跨库调用 config-api 获取 SysModuleResp 并提供内存高速缓存 */
@@ -18,52 +24,10 @@ public class MetadataCacheService {
 
     private final SysModuleApi sysModuleApi;
 
+    private final SysModuleFieldMapper sysModuleFieldMapper;
+
     // 本地缓存: key 为 "projectNo:subjectId:moduleId"
     private final Map<String, SysModuleResp> moduleCache = new ConcurrentHashMap<>();
-    private static final Map<Long, SysModuleResp> moduleCacheById = new ConcurrentHashMap<>();
-
-    static {
-        {
-            SysModuleResp sysModuleCompleteResp = new SysModuleResp();
-            SysModuleResp.ModuleInfo moduleInfo = new SysModuleResp.ModuleInfo();
-            moduleInfo.setId(101L);
-            moduleInfo.setPrimaryTable("student");
-
-            ModuleTableDTO moduleTableDTO = new ModuleTableDTO();
-            moduleTableDTO.setTableName("course");
-            sysModuleCompleteResp.setModule(moduleInfo);
-            // sysModuleCompleteResp.setModuleTables(List.of((moduleTableDTO)));
-
-            moduleCacheById.put(101L, sysModuleCompleteResp);
-        }
-        {
-            SysModuleResp sysModuleCompleteResp = new SysModuleResp();
-            SysModuleResp.ModuleInfo moduleInfo = new SysModuleResp.ModuleInfo();
-            moduleInfo.setId(102L);
-            moduleInfo.setPrimaryTable("score");
-
-            ModuleTableDTO moduleTableDTO = new ModuleTableDTO();
-            moduleTableDTO.setTableName("course");
-            sysModuleCompleteResp.setModule(moduleInfo);
-            // sysModuleCompleteResp.setModuleTables(null);
-
-            moduleCacheById.put(102L, sysModuleCompleteResp);
-        }
-
-        {
-            SysModuleResp sysModuleCompleteResp = new SysModuleResp();
-            SysModuleResp.ModuleInfo moduleInfo = new SysModuleResp.ModuleInfo();
-            moduleInfo.setId(103L);
-            moduleInfo.setPrimaryTable("score_detail");
-
-            ModuleTableDTO moduleTableDTO = new ModuleTableDTO();
-            moduleTableDTO.setTableName("course");
-            sysModuleCompleteResp.setModule(moduleInfo);
-            // sysModuleCompleteResp.setModuleTables(null);
-
-            moduleCacheById.put(103L, sysModuleCompleteResp);
-        }
-    }
 
     /** 获取指定模块的完整元数据配置 */
     public SysModuleResp getModuleComplete(Long moduleId) {
@@ -81,6 +45,16 @@ public class MetadataCacheService {
                             moduleId);
                     return sysModuleApi.getModuleCompleteById(projectNo, subjectId, moduleId);
                 });
+    }
+
+    public Set<String> getModuleTables(Long moduleId) {
+        LambdaQueryWrapper<SysModuleField> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(SysModuleField::getModuleId, moduleId);
+        List<SysModuleField> ss = sysModuleFieldMapper.selectList(queryWrapper);
+        if (CollectionUtils.isEmpty(ss)) {
+            return null;
+        }
+        return ss.stream().map(x -> x.getTableName()).collect(Collectors.toSet());
     }
 
     /** 清除指定模块的元数据缓存 */
