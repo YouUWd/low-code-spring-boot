@@ -70,7 +70,7 @@ public class SnapshotManagerService implements DataSnapshotApi {
 
         // 1. 查询当前聚合实体完整数据并序列化为 JSON
         List<Object> detailData =
-                dynamicQueryService.getDetail(Arrays.asList(moduleId), dataId, "view", false);
+                dynamicQueryService.getDetail(Arrays.asList(moduleId), dataId, "view", true);
         DynamicDetailResp detailResp = null;
         String currentSnapshotJson = JSON.toJSONString(detailResp);
 

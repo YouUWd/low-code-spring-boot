@@ -36,4 +36,9 @@ public class StatementContext extends ListQueryContext implements Serializable {
 
     @Schema(description = "列表数据对应的审批链信息")
     private List<Map<String, Object>> approvalList;
+
+    private String tableName;
+
+    @Schema(description = "关联外键id集合")
+    private List<Long> relateIds;
 }

@@ -6,5 +6,5 @@ import java.util.Map;
 
 public interface DetailBizReferQueryService extends ReferService {
 
-    Map<Object, Object> queryDetailBizRefer(DetailQueryContext context);
+    Map<String, Object> queryDetailBizRefer(DetailQueryContext context);
 }

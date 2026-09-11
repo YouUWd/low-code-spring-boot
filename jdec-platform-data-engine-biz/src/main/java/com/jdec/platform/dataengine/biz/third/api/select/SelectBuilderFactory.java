@@ -14,6 +14,7 @@ public class SelectBuilderFactory {
     private final JooqSqlBuilder jooqSqlBuilder;
 
     public SelectJoinStep<Record> buildSelectStatement(StatementContext context) {
-        return jooqSqlBuilder.buildSelectFrom(context.getDsl(), context.getSysModuleCompleteResp());
+        return jooqSqlBuilder.buildSelectFrom(
+                context.getDsl(), context.getSysModuleCompleteResp(), context.getTableName());
     }
 }

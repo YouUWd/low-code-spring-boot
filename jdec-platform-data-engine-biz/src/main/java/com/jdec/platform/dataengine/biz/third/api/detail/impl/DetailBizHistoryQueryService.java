@@ -49,7 +49,7 @@ public class DetailBizHistoryQueryService implements DetailBizReferQueryService 
     }
 
     @Override
-    public Map<Object, Object> queryDetailBizRefer(DetailQueryContext context) {
+    public Map<String, Object> queryDetailBizRefer(DetailQueryContext context) {
 
         LambdaQueryWrapper<DataEngineSnapshot> lambdaQueryWrapper = new LambdaQueryWrapper<>();
         lambdaQueryWrapper.eq(DataEngineSnapshot::getDataId, context.getId());

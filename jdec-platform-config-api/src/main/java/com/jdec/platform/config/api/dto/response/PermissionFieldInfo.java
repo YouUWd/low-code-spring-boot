@@ -18,9 +18,15 @@ public class PermissionFieldInfo implements Serializable {
     @Schema(description = "字段配置ID (sys_module_field.id)")
     private Long id;
 
-    @Schema(description = "字段编码")
-    private String fieldCode;
+    @Schema(description = "模块ID")
+    private Long moduleId;
 
-    @Schema(description = "字段名称")
-    private String fieldName;
+    @Schema(description = "物理表名")
+    private String tableName;
+
+    @Schema(description = "列名")
+    private String columnName;
+
+    @Schema(description = "显示名称")
+    private String displayName;
 }

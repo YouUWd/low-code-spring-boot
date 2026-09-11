@@ -7,7 +7,6 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.config.api.enums.ModuleTypeEnum;
 import com.jdec.platform.config.biz.check.CheckConstant;
 import com.jdec.platform.config.biz.check.ReferenceCheckResult;
 import com.jdec.platform.config.biz.check.ReferenceChecker;
@@ -15,14 +14,12 @@ import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
-import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.enums.EffectiveTypeEnum;
-import java.sql.Connection;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -49,6 +46,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
+
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final DataSourceResolver dataSourceResolver;
     private final com.jdec.platform.config.biz.util.AuditLogHelper auditLogHelper;
@@ -679,40 +677,55 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
 
                 // 收集当前模块下所有涉及的 fieldId
                 Set<Long> fieldIds = new HashSet<>();
-                if (CollUtil.isNotEmpty(item.getReadableFields())) {
-                    fieldIds.addAll(item.getReadableFields());
+                if (CollUtil.isNotEmpty(item.getViewFields())) {
+                    fieldIds.addAll(item.getViewFields());
                 }
-                if (CollUtil.isNotEmpty(item.getWritableFields())) {
-                    fieldIds.addAll(item.getWritableFields());
+                if (CollUtil.isNotEmpty(item.getApplyFields())) {
+                    fieldIds.addAll(item.getApplyFields());
                 }
-                if (CollUtil.isNotEmpty(item.getUpdatableFields())) {
-                    fieldIds.addAll(item.getUpdatableFields());
+                if (CollUtil.isNotEmpty(item.getEditFields())) {
+                    fieldIds.addAll(item.getEditFields());
                 }
 
                 if (fieldIds.isEmpty()) {
                     continue;
                 }
 
+                // 查询字段元数据以获取物理表名和列名
+                List<SysModuleField> fieldsMeta =
+                        sysModuleFieldMapper.selectList(
+                                Wrappers.<SysModuleField>lambdaQuery()
+                                        .in(SysModuleField::getId, fieldIds));
+                Map<Long, SysModuleField> fieldMetaMap =
+                        fieldsMeta.stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                SysModuleField::getId, f -> f, (f1, f2) -> f1));
+
                 // 为每个 fieldId 构建一条权限记录
                 List<SysRoleModuleFieldPermission> entities =
                         fieldIds.stream()
                                 .map(
                                         fieldId -> {
-                                            Integer readable =
-                                                    (item.getReadableFields() != null
-                                                                    && item.getReadableFields()
+                                            SysModuleField f = fieldMetaMap.get(fieldId);
+                                            if (f == null) {
+                                                return null;
+                                            }
+                                            Integer view =
+                                                    (item.getViewFields() != null
+                                                                    && item.getViewFields()
                                                                             .contains(fieldId))
                                                             ? 1
                                                             : 0;
-                                            Integer writable =
-                                                    (item.getWritableFields() != null
-                                                                    && item.getWritableFields()
+                                            Integer apply =
+                                                    (item.getApplyFields() != null
+                                                                    && item.getApplyFields()
                                                                             .contains(fieldId))
                                                             ? 1
                                                             : 0;
-                                            Integer updatable =
-                                                    (item.getUpdatableFields() != null
-                                                                    && item.getUpdatableFields()
+                                            Integer edit =
+                                                    (item.getEditFields() != null
+                                                                    && item.getEditFields()
                                                                             .contains(fieldId))
                                                             ? 1
                                                             : 0;
@@ -720,12 +733,13 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                                             return SysRoleModuleFieldPermission.builder()
                                                     .roleId(roleId)
                                                     .moduleId(moduleId)
-                                                    .fieldId(fieldId)
-                                                    .readable(readable)
-                                                    .writable(writable)
-                                                    .updatable(updatable)
+                                                    .moduleFieldId(fieldId)
+                                                    .view(view)
+                                                    .apply(apply)
+                                                    .edit(edit)
                                                     .build();
                                         })
+                                .filter(Objects::nonNull)
                                 .toList();
 
                 allEntities.addAll(entities);
@@ -756,24 +770,13 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             return Collections.emptyList();
         }
 
-        // 1. 直接查询该角色已分配的模块字段权限配置列表
+        // 1. 查询该角色已分配的模块字段权限配置列表（若指定了 category，则通过 EXISTS 关联 sys_module 过滤）
         LambdaQueryWrapper<SysRoleModuleFieldPermission> query = Wrappers.lambdaQuery();
         query.eq(SysRoleModuleFieldPermission::getRoleId, roleId);
-
         if (category != null) {
-            String projectNo = AppContext.getProjectNo();
-            Long subjectId = AppContext.getSubjectId();
-            List<SysModule> modules =
-                    sysModuleMapper.selectList(
-                            Wrappers.<SysModule>lambdaQuery()
-                                    .eq(SysModule::getProjectNo, projectNo)
-                                    .eq(SysModule::getSubjectId, subjectId)
-                                    .eq(SysModule::getCategory, category));
-            if (modules.isEmpty()) {
-                return Collections.emptyList();
-            }
-            List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
-            query.in(SysRoleModuleFieldPermission::getModuleId, moduleIds);
+            query.apply(
+                    "EXISTS (SELECT 1 FROM sys_module m WHERE m.id = sys_role_module_field_permission.module_id AND m.category = {0})",
+                    category);
         }
 
         List<SysRoleModuleFieldPermission> allocatedList =
@@ -783,20 +786,40 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             return Collections.emptyList();
         }
 
-        // 2. 转换为 DTO 扁平列表
-        return allocatedList.stream()
+        // 2. 按 moduleId 分组聚合各维度的字段 ID 列表
+        Map<Long, List<SysRoleModuleFieldPermission>> groupMap =
+                allocatedList.stream()
+                        .filter(p -> p.getModuleFieldId() != null)
+                        .collect(Collectors.groupingBy(SysRoleModuleFieldPermission::getModuleId));
+
+        return groupMap.entrySet().stream()
                 .map(
-                        p -> {
-                            RoleModuleFieldPermissionResp resp =
-                                    new RoleModuleFieldPermissionResp();
-                            resp.setId(p.getId());
-                            resp.setRoleId(p.getRoleId());
-                            resp.setModuleId(p.getModuleId());
-                            resp.setFieldId(p.getFieldId());
-                            resp.setReadable(p.getReadable());
-                            resp.setWritable(p.getWritable());
-                            resp.setUpdatable(p.getUpdatable());
-                            return resp;
+                        entry -> {
+                            Long moduleId = entry.getKey();
+                            List<SysRoleModuleFieldPermission> perms = entry.getValue();
+
+                            List<Long> viewFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getView()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+                            List<Long> applyFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getApply()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+                            List<Long> editFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getEdit()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+
+                            return RoleModuleFieldPermissionResp.builder()
+                                    .moduleId(moduleId)
+                                    .viewFields(viewFields)
+                                    .applyFields(applyFields)
+                                    .editFields(editFields)
+                                    .build();
                         })
                 .toList();
     }
@@ -1018,7 +1041,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                         Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
                                 .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
                                 .eq(SysRoleModuleFieldPermission::getModuleId, moduleId)
-                                .eq(SysRoleModuleFieldPermission::getWritable, 1));
+                                .eq(SysRoleModuleFieldPermission::getApply, 1));
 
         return count > 0;
     }
@@ -1288,266 +1311,280 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
 
     @Override
     public List<PersonalSettingResp> getPersonalSettingByRole(Long roleId, Long moduleId) {
-        // 1. 根据 roleId 查询 sys_role_module_field_permission
-        List<SysRoleModuleFieldPermission> roleFieldPermissions =
-                sysRoleModuleFieldPermissionMapper.selectList(
-                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
-                                .eq(
-                                        moduleId != null,
-                                        SysRoleModuleFieldPermission::getModuleId,
-                                        moduleId));
-
-        if (CollUtil.isEmpty(roleFieldPermissions)) {
-            return Collections.emptyList();
-        }
-
-        // 2. 获取模块ID列表
-        List<Long> moduleIds =
-                roleFieldPermissions.stream()
-                        .map(SysRoleModuleFieldPermission::getModuleId)
-                        .distinct()
-                        .toList();
-
-        // 3. 查询模块表，筛选出 moduleType 为 LIST 的模块
-        List<SysModule> listModules =
-                sysModuleMapper.selectList(
-                        Wrappers.<SysModule>lambdaQuery()
-                                .in(SysModule::getId, moduleIds)
-                                .eq(SysModule::getModuleType, ModuleTypeEnum.LIST)
-                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
-                                .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
-
-        if (CollUtil.isEmpty(listModules)) {
-            return Collections.emptyList();
-        }
-
-        // 4. 获取 LIST 类型的模块ID集合
-        Set<Long> listModuleIds =
-                listModules.stream().map(SysModule::getId).collect(Collectors.toSet());
-
-        // 5. 过滤出属于 LIST 类型模块的字段权限
-        List<SysRoleModuleFieldPermission> filteredPermissions =
-                roleFieldPermissions.stream()
-                        .filter(p -> listModuleIds.contains(p.getModuleId()))
-                        .toList();
-
-        // 6. 构造 moduleId -> 角色有权限的 fieldId 集合
-        Map<Long, Set<Long>> modulePermittedFieldIds =
-                filteredPermissions.stream()
-                        .collect(
-                                Collectors.groupingBy(
-                                        SysRoleModuleFieldPermission::getModuleId,
-                                        Collectors.mapping(
-                                                SysRoleModuleFieldPermission::getFieldId,
-                                                Collectors.toSet())));
-
-        // 7. 直接用 moduleId 查询字段表（sys_module_field）
-        List<SysModuleField> moduleFields =
-                sysModuleFieldMapper.selectList(
-                        Wrappers.<SysModuleField>lambdaQuery()
-                                .in(SysModuleField::getModuleId, listModuleIds));
-
-        // 8. 构造 (moduleId + table + field) -> SysModuleField 的映射，便于快速查找
-        Map<String, SysModuleField> fieldMap =
-                moduleFields.stream()
-                        .collect(
-                                Collectors.toMap(
-                                        f ->
-                                                f.getModuleId()
-                                                        + "_"
-                                                        + f.getTableName()
-                                                        + "_"
-                                                        + f.getFieldCode(),
-                                        f -> f));
-
-        // 9. 批量查询表注释
-        Map<String, String> tableCommentMap = batchQueryTableComments(listModules);
-
-        // 11. 构造响应体
-        List<PersonalSettingResp> result = new ArrayList<>();
-
-        for (SysModule module : listModules) {
-            // 解析 tableHeader
-            String tableHeaderJson = module.getTableHeader();
-            List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> tableHeaders =
-                    parseTableHeader(tableHeaderJson);
-
-            // 获取该模块有权限的 fieldId 集合
-            Set<Long> permittedFieldIds =
-                    modulePermittedFieldIds.getOrDefault(module.getId(), Collections.emptySet());
-            if (permittedFieldIds.isEmpty()) {
-                continue; // 该模块没有字段权限，跳过
-            }
-
-            // 构造 personalSettingColumns
-            List<PersonalSettingResp.PersonalSettingColumn> columns = new ArrayList<>();
-
-            for (com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO header :
-                    tableHeaders) {
-                // 使用复合 key 快速查找字段
-                String fieldKey =
-                        module.getId() + "_" + header.getTable() + "_" + header.getField();
-                SysModuleField moduleField = fieldMap.get(fieldKey);
-
-                // 检查该字段是否存在且有权限
-                if (moduleField != null && permittedFieldIds.contains(moduleField.getId())) {
-                    PersonalSettingResp.PersonalSettingColumn column =
-                            new PersonalSettingResp.PersonalSettingColumn();
-                    column.setId(moduleField.getId());
-                    column.setName(header.getName());
-                    column.setTable(header.getTable());
-                    // 设置表中文名：优先从 tableCommentMap 获取，否则使用英文表名
-                    String tableName =
-                            tableCommentMap.getOrDefault(
-                                    header.getTable().toLowerCase(), header.getTable());
-                    column.setTableName(tableName);
-                    column.setField(header.getField());
-                    column.setWidth(header.getWidth());
-                    column.setFixed(header.getFixed());
-                    column.setSearchType(header.getSearchType());
-                    column.setEllipsis(
-                            header.getEllipsis() != null && header.getEllipsis() ? 1 : 0);
-                    column.setSortable(
-                            header.getSortable() != null && header.getSortable() ? 1 : 0);
-                    column.setSortOrder(header.getSortOrder());
-
-                    columns.add(column);
-                }
-            }
-
-            // 只有有字段权限的模块才加入结果集
-            if (!columns.isEmpty()) {
-                PersonalSettingResp resp = new PersonalSettingResp();
-                resp.setId(module.getId());
-                resp.setModuleName(module.getModuleName());
-                resp.setPersonalSettingColumns(columns);
-                result.add(resp);
-            }
-        }
-
-        return result;
+        //        // 1. 根据 roleId 查询 sys_role_module_field_permission
+        //        LambdaQueryWrapper<SysRoleModuleFieldPermission> query =
+        //                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+        //                        .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+        //                        .eq(moduleId != null, SysRoleModuleFieldPermission::getModuleId,
+        // moduleId);
+        //
+        //        String projectNo = AppContext.getProjectNo();
+        //        Long subjectId = AppContext.getSubjectId();
+        //        List<SysModule> modules =
+        //                sysModuleMapper.selectList(
+        //                        Wrappers.<SysModule>lambdaQuery()
+        //                                .eq(SysModule::getProjectNo, projectNo)
+        //                                .eq(SysModule::getSubjectId, subjectId));
+        //        if (modules.isEmpty()) {
+        //            return Collections.emptyList();
+        //        }
+        //        List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
+        //        query.in(SysRoleModuleFieldPermission::getModuleId, moduleIds);
+        //
+        //        List<SysRoleModuleFieldPermission> roleFieldPermissions =
+        //                sysRoleModuleFieldPermissionMapper.selectList(query);
+        //
+        //        if (CollUtil.isEmpty(roleFieldPermissions)) {
+        //            return Collections.emptyList();
+        //        }
+        //
+        //        // 2. 获取模块ID列表
+        //        List<Long> activeModuleIds =
+        //                roleFieldPermissions.stream()
+        //                        .map(SysRoleModuleFieldPermission::getModuleId)
+        //                        .distinct()
+        //                        .toList();
+        //
+        //        // 3. 查询模块表
+        //        List<SysModule> listModules =
+        //                sysModuleMapper.selectList(
+        //                        Wrappers.<SysModule>lambdaQuery()
+        //                                .in(SysModule::getId, activeModuleIds)
+        //                                .eq(SysModule::getSubjectId, AppContext.getSubjectId())
+        //                                .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
+        //
+        //        if (CollUtil.isEmpty(listModules)) {
+        //            return Collections.emptyList();
+        //        }
+        //
+        //        // 4. 获取模块ID集合
+        //        Set<Long> listModuleIds =
+        //                listModules.stream().map(SysModule::getId).collect(Collectors.toSet());
+        //
+        //        // 5. 过滤出字段权限
+        //        List<SysRoleModuleFieldPermission> filteredPermissions =
+        //                roleFieldPermissions.stream()
+        //                        .filter(p -> listModuleIds.contains(p.getModuleId()))
+        //                        .toList();
+        //
+        //        // 6. 构造 moduleId -> 角色有权限的 (tableName_columnName) 集合
+        //        Map<Long, Set<String>> modulePermittedFieldKeys =
+        //                filteredPermissions.stream()
+        //                        .filter(p -> p.getTableName() != null && p.getColumnName() !=
+        // null)
+        //                        .collect(
+        //                                Collectors.groupingBy(
+        //                                        SysRoleModuleFieldPermission::getModuleId,
+        //                                        Collectors.mapping(
+        //                                                p ->
+        //                                                        (p.getTableName() + "_" +
+        // p.getColumnName())
+        //                                                                .toLowerCase(),
+        //                                                Collectors.toSet())));
+        //
+        //        // 7. 直接用 moduleId 查询字段表（sys_module_field）
+        //        List<SysModuleField> moduleFields =
+        //                sysModuleFieldMapper.selectList(
+        //                        Wrappers.<SysModuleField>lambdaQuery()
+        //                                .in(SysModuleField::getModuleId, listModuleIds));
+        //
+        //        // 8. 构造 (moduleId + table + column) -> SysModuleField 的映射，便于快速查找
+        //        Map<String, SysModuleField> fieldMap =
+        //                moduleFields.stream()
+        //                        .collect(
+        //                                Collectors.toMap(
+        //                                        f ->
+        //                                                f.getModuleId()
+        //                                                        + "_"
+        //                                                        + f.getTableName().toLowerCase()
+        //                                                        + "_"
+        //                                                        + f.getColumnName().toLowerCase(),
+        //                                        f -> f,
+        //                                        (f1, f2) -> f1));
+        //
+        //        // 9. 批量查询表头配置 sys_module_header
+        //        List<SysModuleHeader> allHeaders =
+        //                sysModuleHeaderMapper.selectList(
+        //                        Wrappers.<SysModuleHeader>lambdaQuery()
+        //                                .in(SysModuleHeader::getModuleId, listModuleIds)
+        //                                .orderByAsc(SysModuleHeader::getSortOrder));
+        //        Map<Long, List<SysModuleHeader>> headersByModule =
+        //
+        // allHeaders.stream().collect(Collectors.groupingBy(SysModuleHeader::getModuleId));
+        //
+        //        // 10. 批量查询表注释
+        //        Map<String, String> tableCommentMap = batchQueryTableComments(allHeaders);
+        //
+        //        // 11. 构造响应体
+        //        List<PersonalSettingResp> result = new ArrayList<>();
+        //
+        //        for (SysModule module : listModules) {
+        //            List<SysModuleHeader> tableHeaders =
+        //                    headersByModule.getOrDefault(module.getId(), Collections.emptyList());
+        //
+        //            // 获取该模块有权限的字段 Key 集合
+        //            Set<String> permittedKeys =
+        //                    modulePermittedFieldKeys.getOrDefault(module.getId(),
+        // Collections.emptySet());
+        //            if (permittedKeys.isEmpty()) {
+        //                continue; // 该模块没有字段权限，跳过
+        //            }
+        //
+        //            // 构造 personalSettingColumns
+        //            List<PersonalSettingResp.PersonalSettingColumn> columns = new ArrayList<>();
+        //
+        //            for (SysModuleHeader header : tableHeaders) {
+        //                // 使用复合 key 快速查找字段
+        //                String lookupKey =
+        //                        module.getId()
+        //                                + "_"
+        //                                + (header.getTableName() != null
+        //                                        ? header.getTableName().toLowerCase()
+        //                                        : "")
+        //                                + "_"
+        //                                + (header.getColumnName() != null
+        //                                        ? header.getColumnName().toLowerCase()
+        //                                        : "");
+        //                SysModuleField moduleField = fieldMap.get(lookupKey);
+        //
+        //                String permKey =
+        //                        ((header.getTableName() != null ? header.getTableName() : "")
+        //                                        + "_"
+        //                                        + (header.getColumnName() != null
+        //                                                ? header.getColumnName()
+        //                                                : ""))
+        //                                .toLowerCase();
+        //
+        //                // 检查该字段是否存在且有权限
+        //                if (moduleField != null && permittedKeys.contains(permKey)) {
+        //                    PersonalSettingResp.PersonalSettingColumn column =
+        //                            new PersonalSettingResp.PersonalSettingColumn();
+        //                    column.setId(moduleField.getId());
+        //                    column.setName(header.getHeaderName());
+        //                    column.setTable(header.getTableName());
+        //                    // 设置表中文名：优先从 tableCommentMap 获取，否则使用英文表名
+        //                    String tableName =
+        //                            tableCommentMap.getOrDefault(
+        //                                    header.getTableName().toLowerCase(),
+        // header.getTableName());
+        //                    column.setTableName(tableName);
+        //                    column.setField(header.getColumnName());
+        //                    column.setWidth(header.getWidth());
+        //                    column.setFixed(header.getFixed());
+        //                    column.setSearchType(header.getSearchType());
+        //                    column.setEllipsis(header.getEllipsis());
+        //                    column.setSortable(header.getSortable());
+        //                    column.setSortOrder(header.getSortOrder());
+        //
+        //                    columns.add(column);
+        //                }
+        //            }
+        //
+        //            // 只有当有权限的字段不为空时，才添加到结果列表
+        //            if (!columns.isEmpty()) {
+        //                PersonalSettingResp resp = new PersonalSettingResp();
+        //                resp.setId(module.getId());
+        //                resp.setModuleName(module.getModuleName());
+        //                resp.setPersonalSettingColumns(columns);
+        //                result.add(resp);
+        //            }
+        //        }
+        //
+        //        return result;
+        return null;
     }
 
-    /** 解析表头 JSON 字符串 */
-    private List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> parseTableHeader(
-            String tableHeaderJson) {
-        if (tableHeaderJson == null || tableHeaderJson.trim().isEmpty()) {
-            return new ArrayList<>();
-        }
-        try {
-            com.fasterxml.jackson.databind.ObjectMapper objectMapper =
-                    new com.fasterxml.jackson.databind.ObjectMapper();
-            return objectMapper.readValue(
-                    tableHeaderJson,
-                    new com.fasterxml.jackson.core.type.TypeReference<
-                            List<
-                                    com.jdec.platform.config.api.dto.common
-                                            .ModuleTableHeaderDTO>>() {});
-        } catch (Exception e) {
-            return new ArrayList<>();
-        }
-    }
-
-    /**
-     * 批量查询表注释
-     *
-     * <p>根据项目编码从配置中获取对应的数据源，然后查询 information_schema 获取表注释
-     *
-     * @param listModules 模块列表
-     * @return 表名 -> 表注释的映射（表名统一转小写）
-     */
-    private Map<String, String> batchQueryTableComments(List<SysModule> listModules) {
-        Map<String, String> tableCommentMap = new HashMap<>();
-
-        if (listModules == null || listModules.isEmpty()) {
-            return tableCommentMap;
-        }
-
-        // 1. 收集所有表名
-        Set<String> allTableNames = new HashSet<>();
-        for (SysModule module : listModules) {
-            String tableHeaderJson = module.getTableHeader();
-            List<com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO> tableHeaders =
-                    parseTableHeader(tableHeaderJson);
-            for (com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO header :
-                    tableHeaders) {
-                if (header.getTable() != null && !header.getTable().trim().isEmpty()) {
-                    allTableNames.add(header.getTable());
-                }
-            }
-        }
-
-        // 移除通配符
-        allTableNames.remove("*");
-        if (allTableNames.isEmpty()) {
-            return tableCommentMap;
-        }
-
-        try {
-            // 1. 获取项目编码
-            String projectNo = AppContext.getProjectNo();
-            if (projectNo == null || projectNo.trim().isEmpty()) {
-                log.warn("项目编码为空，无法查询表注释");
-                return tableCommentMap;
-            }
-
-            // 2. 根据项目编码解析对应的数据源
-            javax.sql.DataSource targetDataSource = dataSourceResolver.resolve(projectNo);
-
-            // 3. 使用目标数据源创建 JdbcTemplate
-            org.springframework.jdbc.core.JdbcTemplate targetJdbcTemplate =
-                    new org.springframework.jdbc.core.JdbcTemplate(targetDataSource);
-
-            // 4. 获取数据库 schema 名称（优先从连接获取，降级使用 projectNo）
-            String tableSchema =
-                    targetJdbcTemplate.execute(
-                            (Connection conn) -> {
-                                String catalog = conn.getCatalog();
-                                return (catalog != null && !catalog.trim().isEmpty())
-                                        ? catalog
-                                        : projectNo;
-                            });
-
-            // 5. 构造 SQL 查询表注释
-            String tableInSql =
-                    allTableNames.stream().map(t -> "?").collect(Collectors.joining(","));
-            String tableCommentSql =
-                    String.format(
-                            "SELECT TABLE_NAME, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (%s)",
-                            tableInSql);
-
-            // 6. 准备参数
-            List<Object> tableParams = new ArrayList<>();
-            tableParams.add(tableSchema);
-            tableParams.addAll(allTableNames);
-
-            // 7. 执行查询
-            List<Map<String, Object>> tableRows =
-                    targetJdbcTemplate.queryForList(tableCommentSql, tableParams.toArray());
-
-            // 8. 构造返回结果（表名统一转小写）
-            for (Map<String, Object> row : tableRows) {
-                String tName = (String) row.get("TABLE_NAME");
-                String tComment = (String) row.get("TABLE_COMMENT");
-                if (tName != null) {
-                    tableCommentMap.put(tName.toLowerCase(), tComment);
-                }
-            }
-
-            log.debug(
-                    "批量查询表注释成功: projectNo={}, schema={}, 查询{}个表，返回{}条结果",
-                    projectNo,
-                    tableSchema,
-                    allTableNames.size(),
-                    tableCommentMap.size());
-
-        } catch (Exception e) {
-            log.warn("批量获取表注释失败，将使用表英文名", e);
-        }
-
-        return tableCommentMap;
-    }
+    //    /**
+    //     * 批量查询表注释
+    //     *
+    //     * <p>根据项目编码从配置中获取对应的数据源，然后查询 information_schema 获取表注释
+    //     *
+    //     * @param allHeaders 表头列表
+    //     * @return 表名 -> 表注释的映射（表名统一转小写）
+    //     */
+    //    private Map<String, String> batchQueryTableComments(List<SysModuleHeader> allHeaders) {
+    //        Map<String, String> tableCommentMap = new HashMap<>();
+    //
+    //        if (allHeaders == null || allHeaders.isEmpty()) {
+    //            return tableCommentMap;
+    //        }
+    //
+    //        // 1. 收集所有表名
+    //        Set<String> allTableNames =
+    //                allHeaders.stream()
+    //                        .map(SysModuleHeader::getTableName)
+    //                        .filter(t -> t != null && !t.trim().isEmpty() && !"*".equals(t))
+    //                        .collect(Collectors.toSet());
+    //
+    //        if (allTableNames.isEmpty()) {
+    //            return tableCommentMap;
+    //        }
+    //
+    //        try {
+    //            // 1. 获取项目编码
+    //            String projectNo = AppContext.getProjectNo();
+    //            if (projectNo == null || projectNo.trim().isEmpty()) {
+    //                log.warn("项目编码为空，无法查询表注释");
+    //                return tableCommentMap;
+    //            }
+    //
+    //            // 2. 根据项目编码解析对应的数据源
+    //            javax.sql.DataSource targetDataSource = dataSourceResolver.resolve(projectNo);
+    //
+    //            // 3. 使用目标数据源创建 JdbcTemplate
+    //            org.springframework.jdbc.core.JdbcTemplate targetJdbcTemplate =
+    //                    new org.springframework.jdbc.core.JdbcTemplate(targetDataSource);
+    //
+    //            // 4. 获取数据库 schema 名称（优先从连接获取，降级使用 projectNo）
+    //            String tableSchema =
+    //                    targetJdbcTemplate.execute(
+    //                            (Connection conn) -> {
+    //                                String catalog = conn.getCatalog();
+    //                                return (catalog != null && !catalog.trim().isEmpty())
+    //                                        ? catalog
+    //                                        : projectNo;
+    //                            });
+    //
+    //            // 5. 构造 SQL 查询表注释
+    //            String tableInSql =
+    //                    allTableNames.stream().map(t -> "?").collect(Collectors.joining(","));
+    //            String tableCommentSql =
+    //                    String.format(
+    //                            "SELECT TABLE_NAME, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES
+    // WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (%s)",
+    //                            tableInSql);
+    //
+    //            // 6. 准备参数
+    //            List<Object> tableParams = new ArrayList<>();
+    //            tableParams.add(tableSchema);
+    //            tableParams.addAll(allTableNames);
+    //
+    //            // 7. 执行查询
+    //            List<Map<String, Object>> tableRows =
+    //                    targetJdbcTemplate.queryForList(tableCommentSql, tableParams.toArray());
+    //
+    //            // 8. 构造返回结果（表名统一转小写）
+    //            for (Map<String, Object> row : tableRows) {
+    //                String tName = (String) row.get("TABLE_NAME");
+    //                String tComment = (String) row.get("TABLE_COMMENT");
+    //                if (tName != null) {
+    //                    tableCommentMap.put(tName.toLowerCase(), tComment);
+    //                }
+    //            }
+    //
+    //            log.debug(
+    //                    "批量查询表注释成功: projectNo={}, schema={}, 查询{}个表，返回{}条结果",
+    //                    projectNo,
+    //                    tableSchema,
+    //                    allTableNames.size(),
+    //                    tableCommentMap.size());
+    //
+    //        } catch (Exception e) {
+    //            log.warn("批量获取表注释失败，将使用表英文名", e);
+    //        }
+    //
+    //        return tableCommentMap;
+    //    }
 
     /**
      * 通用权限审计日志记录

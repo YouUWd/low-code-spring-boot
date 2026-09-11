@@ -55,4 +55,7 @@ public class DynamicQueryReq implements Serializable {
     @Deprecated
     @Schema(description = "排序方向: ASC 或 DESC", example = "DESC")
     private String orderDirection;
+
+    @Schema(description = "详情查看按钮类型")
+    private String btnType;
 }

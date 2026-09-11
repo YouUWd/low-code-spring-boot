@@ -27,7 +27,7 @@ public class DataEngineService implements DataEngineApi {
 
     @Override
     public List<Object> getDetail(Long menuId, Long id, String btnType) {
-        return dynamicQueryService.getDetail(Arrays.asList(menuId), id, btnType, false);
+        return dynamicQueryService.getDetail(Arrays.asList(menuId), id, btnType, true);
     }
 
     @Override

@@ -1,7 +1,7 @@
 package com.jdec.platform.config.api;
 
+import com.jdec.platform.config.api.dto.request.SaveMenuReq;
 import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
-import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import java.util.List;
@@ -37,11 +37,12 @@ public interface SysMenuApi {
     SysMenuResp getMenuByParam(String param);
 
     /**
-     * 新增/编辑菜单
+     * 新增/编辑菜单，返回保存后的菜单信息。
      *
-     * @return 保存后的菜单信息
+     * <p>支持前端将整棵菜单树一并提交：当 request.treeNodes 非空时，保存当前菜单节点后按 treeNodes 差量同步整棵树的父子关系与同级排序； treeNodes
+     * 中缺失的节点不做删除。排序由前端整棵树决定，后端不再搬移其它同级节点。
      */
-    SysMenuResp saveMenu(SysMenuSaveReq req);
+    SysMenuResp saveMenu(SaveMenuReq request);
 
     /**
      * 删除菜单（级联删除子节点及角色关联）

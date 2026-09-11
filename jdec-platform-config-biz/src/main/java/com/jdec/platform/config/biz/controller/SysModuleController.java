@@ -1,7 +1,6 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysModuleApi;
-import com.jdec.platform.config.api.dto.request.MoveModuleReq;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.context.AppContext;
@@ -71,11 +70,9 @@ public class SysModuleController {
      * @param moduleId 模块ID
      * @return 模块完整信息
      */
-    @Operation(
-            summary = "根据模块ID查询模块完整信息",
-            description = "根据模块ID获取模块的所有配置信息，包括基本信息、关联表、简单字段、组合字段和状态配置")
+    @Operation(summary = "根据模块ID查询模块完整信息", description = "根据模块ID获取模块的所有配置信息，包括基本信息、字段和状态配置")
     @GetMapping("/complete/{moduleId}")
-    public ApiResponse<SysModuleCompleteResp> getModuleCompleteById(
+    public ApiResponse<SysModuleResp> getModuleCompleteById(
             @Parameter(description = "模块ID", required = true, example = "1") @PathVariable
                     Long moduleId) {
         String projectNo = AppContext.getProjectNo();
@@ -85,7 +82,7 @@ public class SysModuleController {
                 moduleId,
                 projectNo,
                 subjectId);
-        SysModuleCompleteResp result =
+        SysModuleResp result =
                 sysModuleService.getModuleCompleteById(projectNo, subjectId, moduleId);
         return ApiResponse.success(result);
     }
@@ -151,26 +148,5 @@ public class SysModuleController {
         log.info("删除项目 {} 的模块: moduleId={}", AppContext.getProjectNo(), moduleId);
         sysModuleService.deleteModuleComplete(moduleId);
         return ApiResponse.success("删除成功", null);
-    }
-
-    /**
-     * 移动模块 更新模块的父模块和排序顺序，用于处理拖拽移动场景
-     *
-     * <p>项目上下文通过 X-Project-No 请求头指定。
-     *
-     * @param request 移动模块请求（包含模块ID、目标父模块ID和排序顺序）
-     * @return 移动后的模块变动信息
-     */
-    @Operation(summary = "移动模块", description = "移动模块到新的父模块下，并更新排序顺序。支持拖拽移动场景")
-    @PostMapping("/move")
-    public ApiResponse<MoveModuleResp> moveModule(@RequestBody MoveModuleReq request) {
-        log.info(
-                "移动项目 {} 的模块: moduleId={}, targetParentId={}, targetSortOrder={}",
-                AppContext.getProjectNo(),
-                request.getModuleId(),
-                request.getTargetParentId(),
-                request.getTargetSortOrder());
-        MoveModuleResp result = sysModuleService.moveModule(request);
-        return ApiResponse.success("移动成功", result);
     }
 }
