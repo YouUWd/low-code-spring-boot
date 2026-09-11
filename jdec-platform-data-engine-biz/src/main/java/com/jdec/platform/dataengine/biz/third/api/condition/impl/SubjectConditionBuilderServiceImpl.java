@@ -3,14 +3,9 @@ package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.jooq.Condition;
-import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 /** 构建主题 查询条件 */
 @Service
@@ -25,18 +20,20 @@ public class SubjectConditionBuilderServiceImpl implements SingleBizConditionBui
     public Condition buildCondition(StatementContext context) {
 
         // 数据来源于其他主体
-        List<SysModuleResp.SubjectInfo> sourceSubject =
-                context.getSysModuleCompleteResp().getModule().getSourceSubjects();
-
-        if (CollectionUtils.isEmpty(sourceSubject)) {
-            return DSL.field(DSL.name(context.getTableName(), "subject_id"))
-                    .eq(context.getSubjectId());
-        } else {
-            Set<Long> subjectIds =
-                    sourceSubject.stream()
-                            .map(SysModuleResp.SubjectInfo::getId)
-                            .collect(Collectors.toSet());
-            return DSL.field(DSL.name(context.getTableName(), "subject_id")).in(subjectIds);
-        }
+        //        List<SysModuleResp.SubjectInfo> sourceSubject =
+        //                context.getSysModuleCompleteResp().getModule().getSourceSubjects();
+        //
+        //        if (CollectionUtils.isEmpty(sourceSubject)) {
+        //            return DSL.field(DSL.name(context.getTableName(), "subject_id"))
+        //                    .eq(context.getSubjectId());
+        //        } else {
+        //            Set<Long> subjectIds =
+        //                    sourceSubject.stream()
+        //                            .map(SysModuleResp.SubjectInfo::getId)
+        //                            .collect(Collectors.toSet());
+        //            return DSL.field(DSL.name(context.getTableName(),
+        // "subject_id")).in(subjectIds);
+        //        }
+        return null;
     }
 }

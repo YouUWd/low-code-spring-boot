@@ -19,11 +19,11 @@ public class RelateIdConditionBuilderServiceImpl implements SingleBizConditionBu
 
     @Override
     public Condition buildCondition(StatementContext context) {
-        ModuleTableDTO targetModuleTable =
-                context.getSysModuleCompleteResp().getModuleTables().stream()
-                        .filter(ele -> context.getTableName().equals(ele.getTableName()))
-                        .findFirst()
-                        .orElse(null);
+        ModuleTableDTO targetModuleTable = null;
+        //                context.getSysModuleCompleteResp().getModuleTables().stream()
+        //                        .filter(ele -> context.getTableName().equals(ele.getTableName()))
+        //                        .findFirst()
+        //                        .orElse(null);
         if (Objects.isNull(targetModuleTable)) {
             return DSL.trueCondition();
         } else {

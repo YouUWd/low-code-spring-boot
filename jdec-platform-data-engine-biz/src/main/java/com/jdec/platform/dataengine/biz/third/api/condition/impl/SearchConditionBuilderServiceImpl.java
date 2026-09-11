@@ -1,6 +1,5 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.dataengine.api.dto.request.SearchItemReq;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
@@ -50,19 +49,20 @@ public class SearchConditionBuilderServiceImpl implements SingleBizConditionBuil
         List<Condition> seachConditions = new ArrayList<>();
 
         // 主表筛选条件构造
-        List<SearchItemReq> primaryTablesearchItems =
-                tableNameToSearchItem.get(
-                        context.getSysModuleCompleteResp().getModule().getPrimaryTable());
+        List<SearchItemReq> primaryTablesearchItems = null;
+        //                tableNameToSearchItem.get(
+        //                        context.getSysModuleCompleteResp().getModule().getPrimaryTable());
         applySearchFilters(seachConditions, primaryTablesearchItems);
 
         // 子表筛选条件构造
-        for (ModuleTableDTO moduleTableDTO : context.getSysModuleCompleteResp().getModuleTables()) {
-            if (tableNameToSearchItem.containsKey(moduleTableDTO.getTableName())) {
-                List<SearchItemReq> searchItems =
-                        tableNameToSearchItem.get(moduleTableDTO.getTableName());
-                applySearchFilters(seachConditions, searchItems);
-            }
-        }
+        //        for (ModuleTableDTO moduleTableDTO :
+        // context.getSysModuleCompleteResp().getModuleTables()) {
+        //            if (tableNameToSearchItem.containsKey(moduleTableDTO.getTableName())) {
+        //                List<SearchItemReq> searchItems =
+        //                        tableNameToSearchItem.get(moduleTableDTO.getTableName());
+        //                applySearchFilters(seachConditions, searchItems);
+        //            }
+        //        }
 
         return DSL.and(seachConditions);
     }

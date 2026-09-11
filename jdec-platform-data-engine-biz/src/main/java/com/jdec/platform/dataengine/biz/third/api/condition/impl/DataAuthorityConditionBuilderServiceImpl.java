@@ -1,7 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
 import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
@@ -53,15 +52,17 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
                         .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
 
         // 主表数据权限筛选条件构造
-        applyDataRightFilter(
-                context.getSysModuleCompleteResp().getModule().getPrimaryTable(),
-                tableNameToConfigItems,
-                conditions);
+        //        applyDataRightFilter(
+        //                context.getSysModuleCompleteResp().getModule().getPrimaryTable(),
+        //                tableNameToConfigItems,
+        //                conditions);
 
         // 遍历关联表，构造关联表查询条件
-        for (ModuleTableDTO moduleTable : context.getSysModuleCompleteResp().getModuleTables()) {
-            applyDataRightFilter(moduleTable.getTableName(), tableNameToConfigItems, conditions);
-        }
+        //        for (ModuleTableDTO moduleTable :
+        // context.getSysModuleCompleteResp().getModuleTables()) {
+        //            applyDataRightFilter(moduleTable.getTableName(), tableNameToConfigItems,
+        // conditions);
+        //        }
 
         return DSL.and(conditions);
     }

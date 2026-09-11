@@ -25,7 +25,8 @@ public class IdConditionBuilderServiceImpl implements SingleBizConditionBuilderS
     @Override
     public Condition buildCondition(StatementContext context) {
 
-        String primaryTableName = context.getSysModuleCompleteResp().getModule().getPrimaryTable();
+        String primaryTableName =
+                null; // context.getSysModuleCompleteResp().getModule().getPrimaryTable();
 
         return DSL.field(DSL.name(primaryTableName, "id")).eq(context.getId());
     }

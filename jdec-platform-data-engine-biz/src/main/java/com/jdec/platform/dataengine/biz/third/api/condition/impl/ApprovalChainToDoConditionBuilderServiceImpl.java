@@ -7,7 +7,6 @@ import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.jooq.Condition;
 import org.jooq.impl.DSL;
@@ -32,7 +31,8 @@ public class ApprovalChainToDoConditionBuilderServiceImpl
     @Override
     public Condition buildCondition(StatementContext context) {
 
-        String primaryTableName = context.getSysModuleCompleteResp().getModule().getPrimaryTable();
+        String primaryTableName =
+                null; // context.getSysModuleCompleteResp().getModule().getPrimaryTable();
 
         Condition condition = DSL.field(DSL.name(primaryTableName, "deleted")).eq(0);
 
@@ -68,17 +68,18 @@ public class ApprovalChainToDoConditionBuilderServiceImpl
         approvalListReq.setCurrentUserId(AppContext.getUserId());
         approvalListReq.setApplicantId(AppContext.getUserId());
 
-        approvalListReq.setSubjectIdList(
-                CollectionUtils.isEmpty(
-                                context.getSysModuleCompleteResp().getModule().getSourceSubjects())
-                        ? Arrays.asList(AppContext.getSubjectId())
-                        : context
-                                .getSysModuleCompleteResp()
-                                .getModule()
-                                .getSourceSubjects()
-                                .stream()
-                                .map(SysModuleResp.SubjectInfo::getId)
-                                .collect(Collectors.toList()));
+        //        approvalListReq.setSubjectIdList(
+        //                CollectionUtils.isEmpty(
+        //
+        // context.getSysModuleCompleteResp().getModule().getSourceSubjects())
+        //                        ? Arrays.asList(AppContext.getSubjectId())
+        //                        : context
+        //                                .getSysModuleCompleteResp()
+        //                                .getModule()
+        //                                .getSourceSubjects()
+        //                                .stream()
+        //                                .map(SysModuleResp.SubjectInfo::getId)
+        //                                .collect(Collectors.toList()));
 
         List<Map<String, Object>> approvalListResult =
                 approvalEngine.getBusinessList(approvalListReq);

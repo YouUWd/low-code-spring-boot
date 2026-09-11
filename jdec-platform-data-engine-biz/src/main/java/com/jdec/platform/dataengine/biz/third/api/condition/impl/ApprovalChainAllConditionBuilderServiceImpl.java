@@ -3,7 +3,6 @@ package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
@@ -39,7 +38,8 @@ public class ApprovalChainAllConditionBuilderServiceImpl
     @Override
     public Condition buildCondition(StatementContext context) {
 
-        String primaryTableName = context.getSysModuleCompleteResp().getModule().getPrimaryTable();
+        String primaryTableName =
+                null; // context.getSysModuleCompleteResp().getModule().getPrimaryTable();
 
         Condition condition = DSL.field(DSL.name(primaryTableName, "deleted")).eq(0);
 
@@ -79,17 +79,18 @@ public class ApprovalChainAllConditionBuilderServiceImpl
         approvalListReq.setCurrentUserId(AppContext.getUserId());
         approvalListReq.setApplicantId(AppContext.getUserId());
 
-        approvalListReq.setSubjectIdList(
-                CollectionUtils.isEmpty(
-                                context.getSysModuleCompleteResp().getModule().getSourceSubjects())
-                        ? Arrays.asList(AppContext.getSubjectId())
-                        : context
-                                .getSysModuleCompleteResp()
-                                .getModule()
-                                .getSourceSubjects()
-                                .stream()
-                                .map(SysModuleResp.SubjectInfo::getId)
-                                .collect(Collectors.toList()));
+        //        approvalListReq.setSubjectIdList(
+        //                CollectionUtils.isEmpty(
+        //
+        // context.getSysModuleCompleteResp().getModule().getSourceSubjects())
+        //                        ? Arrays.asList(AppContext.getSubjectId())
+        //                        : context
+        //                                .getSysModuleCompleteResp()
+        //                                .getModule()
+        //                                .getSourceSubjects()
+        //                                .stream()
+        //                                .map(SysModuleResp.SubjectInfo::getId)
+        //                                .collect(Collectors.toList()));
 
         List<Map<String, Object>> approvalListResult =
                 approvalEngine.getBusinessList(approvalListReq);
@@ -126,15 +127,17 @@ public class ApprovalChainAllConditionBuilderServiceImpl
                         .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
 
         // 主表数据权限筛选条件构造
-        applyDataRightFilter(
-                context.getSysModuleCompleteResp().getModule().getPrimaryTable(),
-                tableNameToConfigItems,
-                conditions);
+        //        applyDataRightFilter(
+        //                context.getSysModuleCompleteResp().getModule().getPrimaryTable(),
+        //                tableNameToConfigItems,
+        //                conditions);
 
         // 遍历关联表，构造关联表查询条件
-        for (ModuleTableDTO moduleTable : context.getSysModuleCompleteResp().getModuleTables()) {
-            applyDataRightFilter(moduleTable.getTableName(), tableNameToConfigItems, conditions);
-        }
+        //        for (ModuleTableDTO moduleTable :
+        // context.getSysModuleCompleteResp().getModuleTables()) {
+        //            applyDataRightFilter(moduleTable.getTableName(), tableNameToConfigItems,
+        // conditions);
+        //        }
 
         return DSL.and(conditions);
     }

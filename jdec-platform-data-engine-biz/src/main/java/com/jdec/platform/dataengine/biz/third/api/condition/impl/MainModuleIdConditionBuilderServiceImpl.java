@@ -26,10 +26,10 @@ public class MainModuleIdConditionBuilderServiceImpl implements SingleBizConditi
     public Condition buildCondition(StatementContext context) {
         // 详情中的列表查看
         if (Objects.nonNull(context.getRelateSearchId())) {
-            String primaryTableName =
-                    context.getSysModuleCompleteResp().getModule().getPrimaryTable();
-            String fieldName =
-                    context.getSysModuleCompleteResp().getModule().getRelateSearchField();
+            String primaryTableName = null;
+            // context.getSysModuleCompleteResp().getModule().getPrimaryTable();
+            String fieldName = null;
+            // context.getSysModuleCompleteResp().getModule().getRelateSearchField();
             return DSL.field(DSL.name(primaryTableName, fieldName)).eq(context.getRelateSearchId());
         } else {
             return DSL.trueCondition();
