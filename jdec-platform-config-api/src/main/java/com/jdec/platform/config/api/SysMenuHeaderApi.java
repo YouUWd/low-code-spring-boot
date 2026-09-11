@@ -1,7 +1,9 @@
 package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
+import com.jdec.platform.config.api.dto.request.UpdateSysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
+import java.util.List;
 
 /** 列表表头节点 API 接口 */
 public interface SysMenuHeaderApi {
@@ -23,11 +25,23 @@ public interface SysMenuHeaderApi {
     SysMenuHeaderResp getMenuHeaderTree(Long menuId);
 
     /**
-     * 保存菜单表头配置（支持树形结构批量新增/更新）
+     * 保存菜单表头配置（批量更新父节点引用与排序）
      *
-     * <p>保存菜单表头节点配置，支持树形结构递归保存。有 id 执行更新，无 id 执行新增。 顶层节点（无父节点）的 parentId 设置为 0，子节点按父子关系维护 parentId。
+     * <p>按 {@code menu_id + vir_id} 定位记录，更新 {@code parent_id}（parentId）、{@code sort_value}
+     * （sortOrder）、{@code fixed}、{@code checked} 字段。请求项中 {@code id} 为节点虚拟id（对应 {@code vir_id}），顶层节点
+     * parentId 传 0。
      *
-     * @param req 菜单表头节点请求对象（支持嵌套 children）
+     * @param items 待更新的表头节点列表
      */
-    void saveMenuHeader(SysMenuHeaderReq req);
+    void saveMenuHeader(List<SysMenuHeaderReq> items);
+
+    /**
+     * 更新菜单表头节点展示配置
+     *
+     * <p>按主键 {@code id} 定位记录，仅更新传入的非空字段：{@code colors}、{@code width}、{@code sorted}、 {@code
+     * searchType}、{@code ellipsis}，未传字段保持原值。所有字段均非必填，不做校验。
+     *
+     * @param req 更新请求
+     */
+    void updateMenuHeader(UpdateSysMenuHeaderReq req);
 }

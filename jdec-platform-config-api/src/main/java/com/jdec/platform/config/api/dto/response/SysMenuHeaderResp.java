@@ -59,8 +59,8 @@ public class SysMenuHeaderResp {
     @Schema(description = "文本是否省略：0-否，1-是", example = "0")
     private Integer ellipsis;
 
-    @Schema(description = "固定：0-左固定，1-右固定")
-    private Integer fixed;
+    @Schema(description = "固定：left-左固定，right-右固定，空-不固定")
+    private String fixed;
 
     @Schema(description = "是否选中：0-否，1-是", example = "0")
     private Integer checked;

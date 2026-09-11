@@ -2,11 +2,13 @@ package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysMenuHeaderApi;
 import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
+import com.jdec.platform.config.api.dto.request.UpdateSysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,9 +37,19 @@ public class SysMenuHeaderController {
     @PostMapping("/save")
     @Operation(
             summary = "保存菜单表头配置",
-            description = "保存菜单表头节点（支持树形结构递归保存），有 id 执行更新，无 id 执行新增；顶层节点 parentId 自动设为 0")
-    public ApiResponse<Void> save(@RequestBody SysMenuHeaderReq req) {
-        sysMenuHeaderApi.saveMenuHeader(req);
+            description =
+                    "批量更新表头节点，按 menuId + 虚拟id(id) 定位记录，更新 parentId、sortOrder、fixed、checked；顶层节点 parentId 传 0")
+    public ApiResponse<Void> save(@RequestBody List<SysMenuHeaderReq> items) {
+        sysMenuHeaderApi.saveMenuHeader(items);
+        return ApiResponse.success();
+    }
+
+    @PutMapping("/edit")
+    @Operation(
+            summary = "编辑菜单表头节点展示配置",
+            description = "按主键 id 更新表头节点的 colors/width/sorted/searchType/ellipsis，字段均非必填，未传字段保持原值")
+    public ApiResponse<Void> edit(@RequestBody UpdateSysMenuHeaderReq req) {
+        sysMenuHeaderApi.updateMenuHeader(req);
         return ApiResponse.success();
     }
 }

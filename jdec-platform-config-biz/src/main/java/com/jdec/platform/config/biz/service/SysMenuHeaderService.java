@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysMenuHeaderApi;
 import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
+import com.jdec.platform.config.api.dto.request.UpdateSysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysMenuHeader;
@@ -90,98 +91,67 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void saveMenuHeader(SysMenuHeaderReq req) {
-        if (req == null) {
+    public void saveMenuHeader(List<SysMenuHeaderReq> items) {
+        if (items == null || items.isEmpty()) {
             throw new BusinessException("请求参数不能为空");
         }
-        if (req.getMenuId() == null) {
-            throw new BusinessException("所属菜单ID不能为空");
-        }
+        Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
+        for (SysMenuHeaderReq item : items) {
+            if (item.getMenuId() == null) {
+                throw new BusinessException("所属菜单ID不能为空");
+            }
+            if (item.getId() == null || item.getId().trim().isEmpty()) {
+                throw new BusinessException("节点虚拟id不能为空");
+            }
 
-        // 顶层节点（无 parentId 时）设置为 0
-        if (req.getParentId() == null) {
-            req.setParentId(ROOT_PARENT_ID);
-        }
+            // 更新父节点引用、排序值与固定/选中状态，按 菜单ID + 虚拟id 定位记录
+            SysMenuHeader entity = new SysMenuHeader();
+            entity.setParentId(item.getParentId() != null ? item.getParentId() : ROOT_PARENT_ID);
+            entity.setSortValue(item.getSortOrder());
+            entity.setFixed(item.getFixed());
+            entity.setChecked(item.getChecked());
 
-        // 递归保存节点及其子节点
-        saveNodeRecursive(req, req.getParentId());
+            int updated =
+                    sysMenuHeaderMapper.update(
+                            entity,
+                            Wrappers.<SysMenuHeader>lambdaUpdate()
+                                    .eq(SysMenuHeader::getMenuId, item.getMenuId())
+                                    .eq(SysMenuHeader::getVirId, item.getId())
+                                    .eq(SysMenuHeader::getSubjectId, subjectId)
+                                    .eq(SysMenuHeader::getProjectNo, projectNo));
+            log.debug(
+                    "更新菜单表头节点：menuId={}, virId={}, rows={}",
+                    item.getMenuId(),
+                    item.getId(),
+                    updated);
+        }
     }
 
-    /**
-     * 递归保存节点及其子节点
-     *
-     * @param req 节点请求对象
-     * @param parentVirId 父节点虚拟id（顶层为 0）
-     * @return 保存后的节点ID
-     */
-    private Long saveNodeRecursive(SysMenuHeaderReq req, String parentVirId) {
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateMenuHeader(UpdateSysMenuHeaderReq req) {
+        // 无主键定位则不做任何更新，避免误更新全表
+        if (req == null || req.getId() == null) {
+            return;
+        }
+
+        // 仅更新传入的非空展示字段，未传字段保持原值（MyBatis-Plus 默认忽略 null）
         SysMenuHeader entity = new SysMenuHeader();
-
-        // 当前节点虚拟id（优先取请求值，否则按来源推导）
-        String virId = resolveVirId(req);
-
-        // 设置基本信息
-        entity.setMenuId(req.getMenuId());
-        entity.setParentId(parentVirId);
-        entity.setVirId(virId);
-        entity.setNodeType(req.getNodeType());
-        entity.setSourceMenuId(req.getSourceMenuId());
-        entity.setSourceFieldId(req.getSourceFieldId());
-        entity.setLabel(req.getLabel());
         entity.setColors(req.getColors());
         entity.setWidth(req.getWidth());
-        entity.setField(req.getField());
         entity.setSorted(req.getSorted());
         entity.setSearchType(req.getSearchType());
         entity.setEllipsis(req.getEllipsis());
-        entity.setFixed(req.getFixed());
-        entity.setChecked(req.getChecked());
-        entity.setSortValue(req.getSortValue());
 
-        // 设置上下文信息
-        entity.setSubjectId(AppContext.getSubjectId());
-
-        Long savedId;
-        if (req.getId() != null) {
-            // 更新操作
-            entity.setId(req.getId());
-            sysMenuHeaderMapper.updateById(entity);
-            savedId = req.getId();
-            log.debug("更新菜单表头节点，ID: {}", savedId);
-        } else {
-            // 新增操作
-            sysMenuHeaderMapper.insert(entity);
-            savedId = entity.getId();
-            log.debug("新增菜单表头节点，ID: {}", savedId);
-        }
-
-        // 递归保存子节点
-        if (req.getChildren() != null && !req.getChildren().isEmpty()) {
-            for (SysMenuHeaderReq child : req.getChildren()) {
-                // 子节点的 menuId 继承父节点（如果子节点未指定）
-                if (child.getMenuId() == null) {
-                    child.setMenuId(req.getMenuId());
-                }
-                // 递归保存子节点，传入当前节点虚拟id作为父引用
-                saveNodeRecursive(child, virId);
-            }
-        }
-
-        return savedId;
-    }
-
-    /** 解析节点虚拟id：优先取请求值，其次按 nodeType + 来源主键推导 */
-    private String resolveVirId(SysMenuHeaderReq req) {
-        if (req.getVirId() != null && !req.getVirId().trim().isEmpty()) {
-            return req.getVirId();
-        }
-        if (Objects.equals(req.getNodeType(), NODE_TYPE_MENU) && req.getSourceMenuId() != null) {
-            return menuVirId(req.getSourceMenuId());
-        }
-        if (Objects.equals(req.getNodeType(), NODE_TYPE_FIELD) && req.getSourceFieldId() != null) {
-            return fieldVirId(req.getSourceFieldId());
-        }
-        return null;
+        int updated =
+                sysMenuHeaderMapper.update(
+                        entity,
+                        Wrappers.<SysMenuHeader>lambdaUpdate()
+                                .eq(SysMenuHeader::getId, req.getId())
+                                .eq(SysMenuHeader::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenuHeader::getProjectNo, AppContext.getProjectNo()));
+        log.debug("更新菜单表头节点展示配置：id={}, rows={}", req.getId(), updated);
     }
 
     // ==================== 已保存配置的组装 ====================
