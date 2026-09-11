@@ -16,11 +16,14 @@ public class SysMenuHeader implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @Schema(description = "虚拟id(类型-id)，如 MENU_47 / Field_10")
+    private String virId;
+
     @Schema(description = "所属列表菜单ID(表头归属)")
     private Long menuId;
 
-    @Schema(description = "父节点ID(NULL/0=顶层)，可为MENU也可为FIELD之下挂子级")
-    private Long parentId;
+    @Schema(description = "父节点虚拟id(NULL/0=顶层)，如 MENU_47 / Field_10")
+    private String parentId;
 
     @Schema(description = "节点类型: 0-菜单 / 1-字段")
     private Integer nodeType;
@@ -51,6 +54,9 @@ public class SysMenuHeader implements Serializable {
 
     @Schema(description = "文本是否省略")
     private Integer ellipsis;
+
+    @Schema(description = "固定(0-左固定，1-右固定)")
+    private Integer fixed;
 
     @Schema(description = "是否选中状态")
     private Integer checked;

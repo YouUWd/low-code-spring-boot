@@ -1,8 +1,6 @@
 package com.jdec.platform.config.api.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -16,17 +14,19 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @Schema(description = "菜单表头节点响应")
 public class SysMenuHeaderResp {
 
     @Schema(description = "主键id")
     private Long id;
 
-    @Schema(description = "父Id")
-    private Long parentId;
+    @Schema(description = "虚拟id(类型-id)，如 MENU_47 / Field_10")
+    private String virId;
 
-    @Schema(description = "所属菜单ID", example = "1")
+    @Schema(description = "父节点虚拟id(顶层为 0)")
+    private String parentId;
+
+    @Schema(description = "所属菜单ID（首次生成时统一为最顶层菜单ID）", example = "1")
     private Long menuId;
 
     @Schema(description = "显示名（覆盖值或默认取菜单名/字段显示名）", example = "外部对象列表")
@@ -59,12 +59,15 @@ public class SysMenuHeaderResp {
     @Schema(description = "文本是否省略：0-否，1-是", example = "0")
     private Integer ellipsis;
 
+    @Schema(description = "固定：0-左固定，1-右固定")
+    private Integer fixed;
+
     @Schema(description = "是否选中：0-否，1-是", example = "0")
     private Integer checked;
 
     @Schema(description = "排序值")
     private Integer sortValue;
 
-    @Schema(description = "子节点列表（菜单节点返回，字段节点不返回）")
+    @Schema(description = "子节点列表")
     private List<SysMenuHeaderResp> children;
 }
