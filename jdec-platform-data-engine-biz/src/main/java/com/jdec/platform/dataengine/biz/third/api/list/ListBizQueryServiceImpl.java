@@ -66,7 +66,7 @@ public class ListBizQueryServiceImpl implements ListBizQueryService {
         List<ModuleTableHeaderDTO> headers =
                 permissionFilterService.filterReadableHeaders(completeResp);
 
-        statementContext.setSysModuleCompleteResp(completeResp);
+        // statementContext.setSysModuleCompleteResp(completeResp);
         statementContext.setQueryType(context.getQueryType());
 
         DSLContext dsl = jooqContextFactory.getContext();
