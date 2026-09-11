@@ -405,6 +405,8 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
         sendWechatMessageReq.setReceivers(userIds);
         sysWechatTemplateApi.sendWechatMessage(
                 AppContext.getProjectNo(), approvalProcessDTO.getSubjectId(), sendWechatMessageReq);
+        saveWeChatMessageLog(
+                approvalProcessDTO, userIds.stream().map(Long::valueOf).toList(), content);
     }
 
     // 发送提交和取消消息-----------------------------------
@@ -428,6 +430,8 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
         sendWechatMessageReq.setReceivers(userIds);
         sysWechatTemplateApi.sendWechatMessage(
                 AppContext.getProjectNo(), approvalProcessDTO.getSubjectId(), sendWechatMessageReq);
+        saveWeChatMessageLog(
+                approvalProcessDTO, userIds.stream().map(Long::valueOf).toList(), content);
     }
 
     // 组装消息
