@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.service;
 
-import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
+import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -15,11 +15,14 @@ import org.springframework.stereotype.Service;
 public class PermissionFilterService {
 
     /** 根据当前用户角色权限裁剪动态表头列表 */
-    public List<ModuleTableHeaderDTO> filterReadableHeaders(SysModuleCompleteResp completeResp) {
+    public List<ModuleTableHeaderDTO> filterReadableHeaders(SysModuleResp completeResp) {
         if (completeResp == null || completeResp.getModule() == null) {
             return new ArrayList<>();
         }
-        List<ModuleTableHeaderDTO> originalHeaders = completeResp.getModule().getTableHeader();
+        //        List<ModuleTableHeaderDTO> originalHeaders =
+        // completeResp.getModule().getTableHeader();
+        // TODO 从菜单配置获取表头配置
+        List<ModuleTableHeaderDTO> originalHeaders = new ArrayList<>();
         if (originalHeaders == null || originalHeaders.isEmpty()) {
             return new ArrayList<>();
         }

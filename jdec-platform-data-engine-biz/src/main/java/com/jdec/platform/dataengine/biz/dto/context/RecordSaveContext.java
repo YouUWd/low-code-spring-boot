@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
 import java.util.Map;
 import java.util.Set;
@@ -21,7 +21,7 @@ public class RecordSaveContext extends BasicSaveModel {
     private Long mainTableDataId;
 
     // 当前模块的完整信息
-    private SysModuleCompleteResp sysModuleCompleteResp;
+    private SysModuleResp sysModuleCompleteResp;
 
     // 表名
     private String tableName;

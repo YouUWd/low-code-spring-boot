@@ -3,10 +3,8 @@ package com.jdec.platform.dataengine.biz.service;
 import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
-import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
@@ -17,6 +15,7 @@ import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
 import com.jdec.platform.dataengine.biz.dto.ModuleField;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleTable;
+import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
@@ -96,7 +95,7 @@ public class DynamicQueryService {
                 listBizQueryService.queryListBiz(listContextBuilder.build());
 
         Long moduleId = req.getModuleId();
-        SysModuleCompleteResp completeResp = metadataCacheService.getModuleComplete(moduleId);
+        SysModuleResp completeResp = metadataCacheService.getModuleComplete(moduleId);
         String primaryTable = completeResp.getModule().getPrimaryTable();
         List<ModuleTableHeaderDTO> headers =
                 permissionFilterService.filterReadableHeaders(completeResp);
@@ -143,8 +142,8 @@ public class DynamicQueryService {
         fieldTransformService.transformRecords(primaryRows, completeResp);
 
         // 4. 第二阶段: 批量下钻查询 1:N 关联从表
-        Map<String, Map<Long, List<Map<String, Object>>>> multiTableDataMap =
-                fetchOneToManyTables(dsl, completeResp, primaryIds);
+        //        Map<String, Map<Long, List<Map<String, Object>>>> multiTableDataMap =
+        //                fetchOneToManyTables(dsl, completeResp, primaryIds);
 
         // 5. 组装行记录列表 (Table-First 纯粹 Map: record[tableName] = record/records)
         List<Map<String, Object>> structuredRecords = new ArrayList<>();
@@ -156,23 +155,24 @@ public class DynamicQueryService {
             rowTables.put(primaryTable, row);
 
             // 关联表数据 (1:1 / N:1 为单对象, 1:N 为对象列表)
-            if (completeResp.getModuleTables() != null) {
-                for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-                    String tName = tableDto.getTableName();
-                    String rType = tableDto.getRelationType();
-                    if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-                        List<Map<String, Object>> subRows =
-                                multiTableDataMap
-                                        .getOrDefault(tName, Collections.emptyMap())
-                                        .getOrDefault(rowId, Collections.emptyList());
-                        rowTables.put(tName, subRows);
-                    } else {
-                        // 1:1 或 N:1
-                        rowTables.put(tName, row);
-                    }
-                }
-            }
-            structuredRecords.add(rowTables);
+            //            if (completeResp.getModuleTables() != null) {
+            //                for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
+            //                    String tName = tableDto.getTableName();
+            //                    String rType = tableDto.getRelationType();
+            //                    if ("1:N".equalsIgnoreCase(rType) ||
+            // "ONE_TO_MANY".equalsIgnoreCase(rType)) {
+            //                        List<Map<String, Object>> subRows =
+            //                                multiTableDataMap
+            //                                        .getOrDefault(tName, Collections.emptyMap())
+            //                                        .getOrDefault(rowId, Collections.emptyList());
+            //                        rowTables.put(tName, subRows);
+            //                    } else {
+            //                        // 1:1 或 N:1
+            //                        rowTables.put(tName, row);
+            //                    }
+            //                }
+            //            }
+            //            structuredRecords.add(rowTables);
         }
 
         // 6. 组装 Meta 与 Pagination
@@ -181,7 +181,7 @@ public class DynamicQueryService {
         meta.put("moduleCode", completeResp.getModule().getModuleCode());
         meta.put("moduleName", completeResp.getModule().getModuleName());
         meta.put("primaryTable", primaryTable);
-        meta.put("detailModuleId", completeResp.getModule().getDetailModuleId());
+        // meta.put("detailModuleId", completeResp.getModule().getDetailModuleId());
         meta.put("tableHeader", headers);
 
         Map<String, Object> pagination = new LinkedHashMap<>();
@@ -507,40 +507,42 @@ public class DynamicQueryService {
     }
 
     /** 批量抓取当前页主表 ID 集合关联的 1:N 从表记录 */
-    private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
-            DSLContext dsl, SysModuleCompleteResp completeResp, List<Long> primaryIds) {
-
-        Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();
-        if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables() == null) {
-            return result;
-        }
-
-        for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-            String rType = tableDto.getRelationType();
-            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-                String tableName = tableDto.getTableName();
-                String rightField = tableDto.getJoinRightField(); // 外键字段, 如 student_id
-
-                Result<Record> subRecords =
-                        dsl.select(DSL.asterisk())
-                                .from(DSL.table(DSL.name(tableName)))
-                                .where(DSL.field(DSL.name(tableName, rightField)).in(primaryIds))
-                                .fetch();
-
-                Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
-                for (Record r : subRecords) {
-                    Map<String, Object> rMap = r.intoMap();
-                    Object fkVal = rMap.get(rightField);
-                    if (fkVal instanceof Number fkNum) {
-                        grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
-                                .add(rMap);
-                    }
-                }
-                result.put(tableName, grouped);
-            }
-        }
-        return result;
-    }
+    //    private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
+    //            DSLContext dsl, SysModuleResp completeResp, List<Long> primaryIds) {
+    //
+    //        Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();
+    //        if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables() ==
+    // null) {
+    //            return result;
+    //        }
+    //
+    //        for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
+    //            String rType = tableDto.getRelationType();
+    //            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
+    //                String tableName = tableDto.getTableName();
+    //                String rightField = tableDto.getJoinRightField(); // 外键字段, 如 student_id
+    //
+    //                Result<Record> subRecords =
+    //                        dsl.select(DSL.asterisk())
+    //                                .from(DSL.table(DSL.name(tableName)))
+    //                                .where(DSL.field(DSL.name(tableName,
+    // rightField)).in(primaryIds))
+    //                                .fetch();
+    //
+    //                Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
+    //                for (Record r : subRecords) {
+    //                    Map<String, Object> rMap = r.intoMap();
+    //                    Object fkVal = rMap.get(rightField);
+    //                    if (fkVal instanceof Number fkNum) {
+    //                        grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
+    //                                .add(rMap);
+    //                    }
+    //                }
+    //                result.put(tableName, grouped);
+    //            }
+    //        }
+    //        return result;
+    //    }
 
     /**
      * 森林查找：入参多个根节点List，找到第一个匹配节点值的节点，返回其整个子树

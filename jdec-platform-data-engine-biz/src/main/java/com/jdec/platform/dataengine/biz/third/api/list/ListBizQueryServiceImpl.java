@@ -1,10 +1,10 @@
 package com.jdec.platform.dataengine.biz.third.api.list;
 
-import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
+import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
@@ -61,7 +61,7 @@ public class ListBizQueryServiceImpl implements ListBizQueryService {
         statementContext.setMainDataId(context.getMenuId());
 
         Long moduleId = context.getModuleId();
-        SysModuleCompleteResp completeResp = metadataCacheService.getModuleComplete(moduleId);
+        SysModuleResp completeResp = metadataCacheService.getModuleComplete(moduleId);
         String primaryTable = completeResp.getModule().getPrimaryTable();
         List<ModuleTableHeaderDTO> headers =
                 permissionFilterService.filterReadableHeaders(completeResp);

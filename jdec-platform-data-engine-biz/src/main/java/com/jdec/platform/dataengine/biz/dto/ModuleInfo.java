@@ -1,6 +1,5 @@
 package com.jdec.platform.dataengine.biz.dto;
 
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import java.util.List;
 import lombok.Builder;
 import lombok.Data;
@@ -19,7 +18,7 @@ public class ModuleInfo {
 
     private List<TableHeaderConf> tableHeader;
 
-    private List<SysModuleCompleteResp.SubjectInfo> sourceSubjects;
+    private List<Long> sourceSubjects;
 
     // 主表外键关联字段 用于详情页的关联表查询
     private String relateSearchField;

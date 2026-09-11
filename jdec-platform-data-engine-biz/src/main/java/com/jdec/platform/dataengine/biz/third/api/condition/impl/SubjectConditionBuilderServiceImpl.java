@@ -1,6 +1,5 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
@@ -26,7 +25,7 @@ public class SubjectConditionBuilderServiceImpl implements SingleBizConditionBui
     public Condition buildCondition(StatementContext context) {
 
         // 数据来源于其他主体
-        List<SysModuleCompleteResp.SubjectInfo> sourceSubject =
+        List<SysModuleResp.SubjectInfo> sourceSubject =
                 context.getSysModuleCompleteResp().getModule().getSourceSubjects();
 
         if (CollectionUtils.isEmpty(sourceSubject)) {
@@ -35,7 +34,7 @@ public class SubjectConditionBuilderServiceImpl implements SingleBizConditionBui
         } else {
             Set<Long> subjectIds =
                     sourceSubject.stream()
-                            .map(SysModuleCompleteResp.SubjectInfo::getId)
+                            .map(SysModuleResp.SubjectInfo::getId)
                             .collect(Collectors.toSet());
             return DSL.field(DSL.name(context.getTableName(), "subject_id")).in(subjectIds);
         }

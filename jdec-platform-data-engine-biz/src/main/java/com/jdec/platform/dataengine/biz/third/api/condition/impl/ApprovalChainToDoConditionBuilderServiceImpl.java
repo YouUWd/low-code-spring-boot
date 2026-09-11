@@ -2,7 +2,6 @@ package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
@@ -78,7 +77,7 @@ public class ApprovalChainToDoConditionBuilderServiceImpl
                                 .getModule()
                                 .getSourceSubjects()
                                 .stream()
-                                .map(SysModuleCompleteResp.SubjectInfo::getId)
+                                .map(SysModuleResp.SubjectInfo::getId)
                                 .collect(Collectors.toList()));
 
         List<Map<String, Object>> approvalListResult =

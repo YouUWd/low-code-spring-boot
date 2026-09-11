@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.dsl;
 
-import com.jdec.platform.config.api.dto.common.ModuleTableHeaderDTO;
+import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

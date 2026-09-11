@@ -2,7 +2,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -113,7 +113,7 @@ public class ModuleDataPersistenceService {
 
     private Long saveModuleData(RecordDataDTO recordDataDTO, DynamicSaveReqContext currentReq) {
         // 获取模块元数据
-        SysModuleCompleteResp sysModuleCompleteResp =
+        SysModuleResp sysModuleCompleteResp =
                 metadataCacheService.getModuleComplete(
                         currentReq.getNestedModuleData().getModuleId());
 
@@ -150,7 +150,7 @@ public class ModuleDataPersistenceService {
      */
     private Long saveModulePrimaryTableData(
             Map<String, Object> dataMap,
-            SysModuleCompleteResp sysModuleCompleteResp,
+            SysModuleResp sysModuleCompleteResp,
             DynamicSaveReqContext currentReq) {
 
         Map<String, Object> parentLevelTableAssociationMap = new HashMap<>();
@@ -215,10 +215,10 @@ public class ModuleDataPersistenceService {
      */
     private Long saveModuleRelatedTableData(
             Map<String, Object> dataMap,
-            SysModuleCompleteResp sysModuleCompleteResp,
+            SysModuleResp sysModuleCompleteResp,
             Long modulePrimaryTableId,
             DynamicSaveReqContext currentReq) {
-        List<ModuleTableDTO> moduleTables = sysModuleCompleteResp.getModuleTables();
+        List<ModuleTableDTO> moduleTables = null; // sysModuleCompleteResp.getModuleTables();
         for (ModuleTableDTO moduleTable : moduleTables) {
             // 主表与当前表的关联关系
             TableRelationDTO relationDTO =
@@ -272,7 +272,7 @@ public class ModuleDataPersistenceService {
      */
     private Long saveModuleRelatedTableRecordData(
             Map<String, Object> recordMap,
-            SysModuleCompleteResp sysModuleCompleteResp,
+            SysModuleResp sysModuleCompleteResp,
             TableRelationDTO relationDTO,
             Long modulePrimaryTableId) {
 

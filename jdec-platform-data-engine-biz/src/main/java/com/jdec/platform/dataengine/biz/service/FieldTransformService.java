@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.service;
 
-import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
+import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -14,8 +14,7 @@ import org.springframework.stereotype.Service;
 public class FieldTransformService {
 
     /** 对行记录执行内存级计算与字典翻译 */
-    public void transformRecord(
-            Map<String, Object> primaryRecord, SysModuleCompleteResp completeResp) {
+    public void transformRecord(Map<String, Object> primaryRecord, SysModuleResp completeResp) {
         if (primaryRecord == null || completeResp == null) {
             return;
         }
@@ -35,7 +34,7 @@ public class FieldTransformService {
 
     /** 批量处理当前页记录 */
     public void transformRecords(
-            List<Map<String, Object>> primaryRecords, SysModuleCompleteResp completeResp) {
+            List<Map<String, Object>> primaryRecords, SysModuleResp completeResp) {
         if (primaryRecords == null || primaryRecords.isEmpty()) {
             return;
         }
