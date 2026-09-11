@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dto.TableRelationDTO;
@@ -43,6 +44,8 @@ public class ModuleDataPersistenceService {
 
     public Long save(DynamicSaveReq req) {
         moduleDataSaveCheckFactoryService.check(ModuleDataCheckContext.builder().build());
+
+        req.setRoot(TabTreeNodeDTO.buildRoot());
 
         Queue<DynamicSaveReqContext> saveReqQueue = new LinkedList<>();
 

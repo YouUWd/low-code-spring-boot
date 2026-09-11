@@ -74,4 +74,13 @@ public class Knife4jConfig {
                         "com.jdec.platform.approval.biz.controller")
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi dataEngineApi() {
+        return GroupedOpenApi.builder()
+                .group("dataEngine")
+                .displayName("数据引擎通用层")
+                .packagesToScan("com.jdec.platform.dataengine.biz.controller")
+                .build();
+    }
 }

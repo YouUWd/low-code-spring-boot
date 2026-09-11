@@ -5,6 +5,8 @@ import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.shared.model.ApiResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -12,11 +14,16 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/data-engine/v1/modules")
 @RequiredArgsConstructor
+@Tag(
+        name = "数据引擎", // 分组名称（文档中显示的分组标签）
+        description = "动态数据查询和保存" // 分组描述
+        )
 public class DataEngineController {
 
     private final DataEngineApi dataEngineApi;
 
     @PostMapping("/{moduleId}/query")
+    @Operation(summary = "获取列表数据", description = "获取列表数据")
     public ApiResponse<DynamicQueryResp> query(
             @PathVariable Long moduleId, @RequestBody DynamicQueryReq req) {
         req.setModuleId(moduleId);
@@ -24,12 +31,14 @@ public class DataEngineController {
     }
 
     @GetMapping("/{moduleId}/detail/{id}")
+    @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<List<Object>> getDetail(
             @PathVariable Long moduleId, @PathVariable Long id, String btnType) {
         return ApiResponse.success(dataEngineApi.getDetail(moduleId, id, btnType));
     }
 
     @PostMapping("/{moduleId}/save")
+    @Operation(summary = "保存模块数据", description = "保存模块数据")
     public ApiResponse<Long> save(@PathVariable Long moduleId, @RequestBody DynamicSaveReq req) {
         return ApiResponse.success(dataEngineApi.save(req));
     }
