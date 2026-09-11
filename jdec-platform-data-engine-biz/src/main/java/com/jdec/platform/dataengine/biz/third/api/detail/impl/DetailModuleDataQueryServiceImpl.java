@@ -9,7 +9,6 @@ import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
 import com.jdec.platform.dataengine.biz.dto.context.DetailModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
 import com.jdec.platform.dataengine.biz.third.api.condition.ConditionBuilderFactory;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailModuleDataQueryService;
@@ -71,7 +70,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                         .relationType("1:N")
                         .build());
 
-        sysModuleCompleteResp.setModuleTables(moduleTables);
+        // sysModuleCompleteResp.setModuleTables(moduleTables);
 
         StatementContext statementContext = StatementContext.builder().build();
 
@@ -83,7 +82,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         DSLContext dslContext = jooqContextFactory.getContext();
         statementContext.setDsl(dslContext);
         statementContext.setQueryType(context.getQueryType());
-        statementContext.setSysModuleCompleteResp(sysModuleCompleteResp);
+        // statementContext.setSysModuleCompleteResp(sysModuleCompleteResp);
         statementContext.setTableName(sysModuleCompleteResp.getModule().getPrimaryTable());
 
         // 构建SQL select 语句
@@ -126,21 +125,21 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         tableData.put(primaryTable, mainRow);
 
         Map<String, Map<Long, List<Map<String, Object>>>> multiTableDataMap =
-                fetchOneToManyTables(
-                        context, dsl, statementContext.getSysModuleCompleteResp(), relateIds);
+                fetchOneToManyTables(context, dsl, null, relateIds);
 
-        if (statementContext.getSysModuleCompleteResp().getModuleTables() != null) {
-            for (ModuleTableDTO tableDto :
-                    statementContext.getSysModuleCompleteResp().getModuleTables()) {
-                String tName = tableDto.getTableName();
-                String rType = tableDto.getRelationType();
-                List<Map<String, Object>> subRows =
-                        multiTableDataMap
-                                .getOrDefault(tName, Collections.emptyMap())
-                                .getOrDefault(statementContext.getId(), Collections.emptyList());
-                tableData.put(tName, subRows);
-            }
-        }
+        //        if (statementContext.getSysModuleCompleteResp().getModuleTables() != null) {
+        //            for (ModuleTableDTO tableDto :
+        //                    statementContext.getSysModuleCompleteResp().getModuleTables()) {
+        //                String tName = tableDto.getTableName();
+        //                String rType = tableDto.getRelationType();
+        //                List<Map<String, Object>> subRows =
+        //                        multiTableDataMap
+        //                                .getOrDefault(tName, Collections.emptyMap())
+        //                                .getOrDefault(statementContext.getId(),
+        // Collections.emptyList());
+        //                tableData.put(tName, subRows);
+        //            }
+        //        }
 
         return tableData;
     }
@@ -153,54 +152,55 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
             List<Long> primaryIds) {
 
         Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();
-        if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables() == null) {
-            return result;
-        }
+        //        if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables()
+        // == null) {
+        //            return result;
+        //        }
 
-        for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-            String rType = tableDto.getRelationType();
-            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-                String tableName = tableDto.getTableName();
-                String leftJoinField = tableDto.getJoinLeftField(); // 外键字段, 如 student_id
-
-                StatementContext statementContext = StatementContext.builder().build();
-
-                // 构建 SQL拼装 上下文对象
-                BeanUtil.copyProperties(
-                        context,
-                        statementContext,
-                        CopyOptions.create().ignoreError().ignoreNullValue());
-                statementContext.setMenuId(context.getMenuId());
-                statementContext.setId(context.getId());
-                DSLContext dslContext = jooqContextFactory.getContext();
-                statementContext.setDsl(dslContext);
-                statementContext.setQueryType(QueryType.DETAIL_SUBTABLE_QUERY);
-                statementContext.setSysModuleCompleteResp(completeResp);
-                statementContext.setTableName(tableName);
-                statementContext.setRelateIds(primaryIds);
-
-                // 构建SQL select 语句
-                SelectJoinStep<Record> selectStep =
-                        selectBuilderFactory.buildSelectStatement(statementContext);
-                // 构造SQL 查询条件
-                List<Condition> conditions =
-                        conditionBuilderFactory.buildConditions(statementContext);
-                selectStep.where(conditions);
-
-                Result<Record> subRecords = selectStep.fetch();
-
-                Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
-                for (Record r : subRecords) {
-                    Map<String, Object> rMap = r.intoMap();
-                    Object fkVal = rMap.get(leftJoinField);
-                    if (fkVal instanceof Number fkNum) {
-                        grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
-                                .add(rMap);
-                    }
-                }
-                result.put(tableName, grouped);
-            }
-        }
+        //        for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
+        //            String rType = tableDto.getRelationType();
+        //            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
+        //                String tableName = tableDto.getTableName();
+        //                String leftJoinField = tableDto.getJoinLeftField(); // 外键字段, 如 student_id
+        //
+        //                StatementContext statementContext = StatementContext.builder().build();
+        //
+        //                // 构建 SQL拼装 上下文对象
+        //                BeanUtil.copyProperties(
+        //                        context,
+        //                        statementContext,
+        //                        CopyOptions.create().ignoreError().ignoreNullValue());
+        //                statementContext.setMenuId(context.getMenuId());
+        //                statementContext.setId(context.getId());
+        //                DSLContext dslContext = jooqContextFactory.getContext();
+        //                statementContext.setDsl(dslContext);
+        //                statementContext.setQueryType(QueryType.DETAIL_SUBTABLE_QUERY);
+        //                statementContext.setSysModuleCompleteResp(completeResp);
+        //                statementContext.setTableName(tableName);
+        //                statementContext.setRelateIds(primaryIds);
+        //
+        //                // 构建SQL select 语句
+        //                SelectJoinStep<Record> selectStep =
+        //                        selectBuilderFactory.buildSelectStatement(statementContext);
+        //                // 构造SQL 查询条件
+        //                List<Condition> conditions =
+        //                        conditionBuilderFactory.buildConditions(statementContext);
+        //                selectStep.where(conditions);
+        //
+        //                Result<Record> subRecords = selectStep.fetch();
+        //
+        //                Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
+        //                for (Record r : subRecords) {
+        //                    Map<String, Object> rMap = r.intoMap();
+        //                    Object fkVal = rMap.get(leftJoinField);
+        //                    if (fkVal instanceof Number fkNum) {
+        //                        grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
+        //                                .add(rMap);
+        //                    }
+        //                }
+        //                result.put(tableName, grouped);
+        //            }
+        //        }
         return result;
     }
 }
