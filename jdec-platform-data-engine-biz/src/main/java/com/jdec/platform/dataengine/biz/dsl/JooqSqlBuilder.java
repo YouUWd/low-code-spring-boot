@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.dsl;
 
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
+import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -120,6 +121,23 @@ public class JooqSqlBuilder {
                                         DSL.field(
                                                 /*item.getTableName() + "." + */ item
                                                         .getColumnName()))
+                        .collect(Collectors.toList());
+
+        SelectJoinStep<Record> query = dsl.select(fields).from(tableName);
+        return query;
+    }
+
+    /** 构建包含主表与 1:1/N:1 关联从表的 SelectJoinStep */
+    public SelectJoinStep<Record> buildSelectFrom(
+            DSLContext dsl, ModuleFilterInfo moduleFilterInfo, String tableName) {
+        List<Field<?>> fields =
+                moduleFilterInfo.getSimpleModuleFields().stream()
+                        .filter(ele -> tableName.equals(ele.getTableName()))
+                        .map(
+                                item ->
+                                        DSL.field(
+                                                /*item.getTableName() + "." + */ item
+                                                        .getFieldName()))
                         .collect(Collectors.toList());
 
         SelectJoinStep<Record> query = dsl.select(fields).from(tableName);
