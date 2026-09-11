@@ -1,10 +1,9 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.fill.impl;
 
-import cn.hutool.core.util.IdUtil;
-import cn.hutool.core.util.StrUtil;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.BaseDataSaveNecessaryFieldFillService;
+import com.jdec.platform.dataengine.biz.util.ToolUtils;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -19,10 +18,7 @@ public class BizDataFieldFillServiceImpl implements BaseDataSaveNecessaryFieldFi
     public Map<String, Object> fillData(RecordSaveContext recordSaveContext) {
         Map<String, Object> fMap = new HashMap<>();
         if (recordSaveContext.getIsInsert()) {
-            fMap.put(
-                    "business_no",
-                    StrUtil.toUpperCase(recordSaveContext.getTableName())
-                            + IdUtil.getSnowflakeNextIdStr());
+            fMap.put("business_no", ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
             fMap.put("business_status", 0);
             recordSaveContext.setBizDataMap(fMap);
         }

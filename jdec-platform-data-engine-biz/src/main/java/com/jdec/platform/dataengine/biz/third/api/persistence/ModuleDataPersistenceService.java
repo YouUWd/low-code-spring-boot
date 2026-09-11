@@ -14,7 +14,6 @@ import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.RelationType;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
-import com.jdec.platform.dataengine.biz.service.TableRelationService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSaveCheckFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.post.ModuleDataSavePostFactoryService;
@@ -33,8 +32,6 @@ public class ModuleDataPersistenceService {
     private final MetadataCacheService metadataCacheService;
     private final JooqContextFactory jooqContextFactory;
 
-    private final TableRelationService tableRelationService;
-
     private final ModuleDataSaveCheckFactoryService moduleDataSaveCheckFactoryService;
 
     private final ModuleDataSavePostFactoryService moduleDataSavePostFactoryService;
@@ -48,12 +45,17 @@ public class ModuleDataPersistenceService {
         moduleDataSaveCheckFactoryService.check(ModuleDataCheckContext.builder().build());
 
         Queue<DynamicSaveReqContext> saveReqQueue = new LinkedList<>();
+
+        Long rootModuleId = req.getNestedModuleData().getModuleId();
+
         // 根模块数据 没有父模块和父模块主表ID
         saveReqQueue.add(
                 DynamicSaveReqContext.builder()
                         .nestedModuleData(req.getNestedModuleData())
                         .parentModuleId(null)
                         .parentModulePrimaryTableId(null)
+                        .rootModuleId(rootModuleId) // 第一层的 根模块就是自己的模块ID
+                        .mainTableDataId(null)
                         .tabTreeNode(req.getRoot())
                         .build());
         boolean first = true;
@@ -70,7 +72,7 @@ public class ModuleDataPersistenceService {
                 continue;
             }
 
-            // 保存当前 模块数据
+            // 保存当前 模块数据 第一次进来  NestedModuleDataDTO.record 只有一条数据
             for (RecordDataDTO recordDataDTO : currentReq.getNestedModuleData().getRecord()) {
 
                 // 保存 当前模块一行数据 主表数据只有一行
@@ -179,6 +181,9 @@ public class ModuleDataPersistenceService {
                         .parentLevelTableId(currentReq.getParentModulePrimaryTableId())
                         .defaultUserContextDataMap(null)
                         .isInsert(primaryTableId == null || primaryTableId <= 0)
+                        .rootModuleId(currentReq.getRootModuleId())
+                        .mainTableDataId(currentReq.getMainTableDataId())
+                        .sysModuleCompleteResp(sysModuleCompleteResp)
                         .build();
         moduleDataSaveNecessaryFieldFillFactoryService.fillData(recordSaveContext);
         // 首先 写入当前 模块 主表的数据

@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
+import com.jdec.platform.config.api.dto.response.SysModuleCompleteResp;
 import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
 import java.util.Map;
 import java.util.Set;
@@ -12,6 +13,15 @@ import org.jooq.DSLContext;
 public class RecordSaveContext extends BasicSaveModel {
 
     private DSLContext dsl;
+
+    // 根模块的ID
+    private Long rootModuleId;
+
+    // 根模块对应的主表数据ID
+    private Long mainTableDataId;
+
+    // 当前模块的完整信息
+    private SysModuleCompleteResp sysModuleCompleteResp;
 
     // 表名
     private String tableName;
@@ -38,6 +48,4 @@ public class RecordSaveContext extends BasicSaveModel {
     private Set<String> defaultExcludeFields;
 
     private Boolean isInsert;
-
-    private Object others;
 }
