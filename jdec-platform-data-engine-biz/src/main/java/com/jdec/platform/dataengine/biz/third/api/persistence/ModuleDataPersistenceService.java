@@ -1,7 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.jdec.platform.config.api.dto.common.ModuleTableDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
@@ -144,8 +143,6 @@ public class ModuleDataPersistenceService {
      *
      * @param dataMap 行记录
      * @param sysModuleCompleteResp 模块定义
-     * @param parentModuleId 父模块的ID
-     * @param parentModulePrimaryTableId 父模块 主表的记录ID
      * @return
      */
     private Long saveModulePrimaryTableData(
@@ -218,12 +215,15 @@ public class ModuleDataPersistenceService {
             SysModuleResp sysModuleCompleteResp,
             Long modulePrimaryTableId,
             DynamicSaveReqContext currentReq) {
-        List<ModuleTableDTO> moduleTables = null; // sysModuleCompleteResp.getModuleTables();
-        for (ModuleTableDTO moduleTable : moduleTables) {
+        Set<String> tables =
+                metadataCacheService.getModuleTables(sysModuleCompleteResp.getModule().getId());
+        // List<ModuleTableDTO> moduleTables = tables.stream().map(x->)
+
+        for (String moduleTable : tables) {
             // 主表与当前表的关联关系
             TableRelationDTO relationDTO =
                     TableRelationUtils.getTableRelationBySubTable(
-                            currentReq.getTabTreeNode(), moduleTable.getTableName());
+                            currentReq.getTabTreeNode(), moduleTable);
 
             RelationType relationType = RelationType.getRelationType(relationDTO.getRelationType());
             switch (relationType) {
@@ -231,8 +231,7 @@ public class ModuleDataPersistenceService {
                     // 1:1
                     // 子表数据 是一行
                     Map<String, Object> subTableRecordMap =
-                            DataPersistenceUtil.getTableRecordFromCombinedMap(
-                                    dataMap, moduleTable.getTableName());
+                            DataPersistenceUtil.getTableRecordFromCombinedMap(dataMap, moduleTable);
                     //// 首先 写入子表数据
                     saveModuleRelatedTableRecordData(
                             subTableRecordMap,
@@ -245,7 +244,7 @@ public class ModuleDataPersistenceService {
                     // 子表数据 是一个 list
                     List<Map<String, Object>> subTableRecordListMap =
                             DataPersistenceUtil.getTableRecordListFromCombinedMap(
-                                    dataMap, moduleTable.getTableName());
+                                    dataMap, moduleTable);
 
                     for (Map<String, Object> recordMap : subTableRecordListMap) {
                         // 首先 写入子表数据
