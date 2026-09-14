@@ -1,0 +1,107 @@
+[
+  {
+    "id": 1,
+    "moduleCode": "MOD-SETTING",
+    "moduleName": "系统设置",
+    "moduleDesc": "系统设置根模块",
+    "category": 2,
+    "sortOrder": 0,
+    "children": [
+      {
+        "id": 2,
+        "moduleCode": "MOD-SETTING-MODULE",
+        "moduleName": "模块配置",
+        "moduleDesc": "模块配置子模块",
+        "category": 2,
+        "sortOrder": 0
+      },
+      {
+        "id": 3,
+        "moduleCode": "MOD-SETTING-STATE",
+        "moduleName": "状态配置",
+        "moduleDesc": "状态配置子模块",
+        "category": 2,
+        "sortOrder": 1
+      },
+      {
+        "id": 4,
+        "moduleCode": "MOD-SETTING-FIELD",
+        "moduleName": "字段配置",
+        "moduleDesc": "字段配置子模块",
+        "category": 2,
+        "sortOrder": 2
+      },
+      {
+        "id": 5,
+        "moduleCode": "MOD-SETTING-RIGHT-NODE",
+        "moduleName": "权限节点配置",
+        "moduleDesc": "权限节点配置子模块",
+        "category": 2,
+        "sortOrder": 3
+      },
+      {
+        "id": 6,
+        "moduleCode": "MOD-SETTING-MENU",
+        "moduleName": "菜单管理",
+        "moduleDesc": "菜单管理子模块",
+        "category": 2,
+        "sortOrder": 4
+      },
+      {
+        "id": 7,
+        "moduleCode": "MOD-SETTING-ROLE",
+        "moduleName": "角色配置",
+        "moduleDesc": "角色配置子模块",
+        "category": 2,
+        "sortOrder": 5
+      },
+      {
+        "id": 8,
+        "moduleCode": "MOD-SETTING-ROLE-RIGHT",
+        "moduleName": "角色权限分配",
+        "moduleDesc": "角色权限分配子模块",
+        "category": 2,
+        "sortOrder": 6
+      },
+      {
+        "id": 9,
+        "moduleCode": "MOD-SETTING-WEIXIN",
+        "moduleName": "消息配置",
+        "moduleDesc": "消息配置子模块",
+        "category": 2,
+        "sortOrder": 7
+      },
+      {
+        "id": 10,
+        "moduleCode": "MOD-SETTING-BUTTON",
+        "moduleName": "按钮配置",
+        "moduleDesc": "按钮配置子模块",
+        "category": 2,
+        "sortOrder": 8
+      },
+      {
+        "id": 11,
+        "moduleCode": "MOD-SETTING-APPROVAL",
+        "moduleName": "审批链配置",
+        "moduleDesc": "审批链配置子模块",
+        "category": 2,
+        "sortOrder": 9
+      },
+      {
+        "id": 12,
+        "moduleCode": "MOD-SETTING-CONFIG",
+        "moduleName": "通用配置",
+        "moduleDesc": "通用配置子模块",
+        "category": 2,
+        "sortOrder": 10
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "moduleCode": "MOD_MONITOR",
+    "moduleName": "系统监控",
+    "category": 2,
+    "sortOrder": 6
+  }
+]

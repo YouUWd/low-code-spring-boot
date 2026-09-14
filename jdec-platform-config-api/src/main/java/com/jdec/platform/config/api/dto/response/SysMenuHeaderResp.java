@@ -35,14 +35,11 @@ public class SysMenuHeaderResp {
     @Schema(description = "节点类型：0-菜单，1-字段", example = "0")
     private Integer nodeType;
 
-    @Schema(description = "来源菜单ID（nodeType=0 时返回）", example = "1")
-    private Long sourceMenuId;
+    @Schema(description = "来源ID（nodeType=0 时=来源菜单ID，nodeType=1 时=来源字段ID）", example = "1")
+    private Long sourceId;
 
-    @Schema(description = "来源字段ID（nodeType=1 时返回）", example = "11")
-    private Long sourceFieldId;
-
-    @Schema(description = "字段（列表数据字段名）", example = "name")
-    private String field;
+    @Schema(description = "字段索引（模块id.表名.字段名）", example = "1001.info.company_name")
+    private String dataIndex;
 
     @Schema(description = "菜单显示颜色")
     private String colors;
@@ -59,8 +56,8 @@ public class SysMenuHeaderResp {
     @Schema(description = "文本是否省略：0-否，1-是", example = "0")
     private Integer ellipsis;
 
-    @Schema(description = "固定：0-左固定，1-右固定")
-    private Integer fixed;
+    @Schema(description = "固定：left-左固定，right-右固定，空-不固定")
+    private String fixed;
 
     @Schema(description = "是否选中：0-否，1-是", example = "0")
     private Integer checked;
