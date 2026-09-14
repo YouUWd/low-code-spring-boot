@@ -5,6 +5,7 @@ import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import java.io.Serializable;
 import lombok.Builder;
 import lombok.Data;
+import org.jooq.DSLContext;
 
 @Data
 @Builder
@@ -26,4 +27,6 @@ public class DynamicSaveReqContext implements Serializable {
     private Long mainTableDataId;
 
     private TabTreeNodeDTO tabTreeNode;
+
+    private DSLContext txDsl;
 }

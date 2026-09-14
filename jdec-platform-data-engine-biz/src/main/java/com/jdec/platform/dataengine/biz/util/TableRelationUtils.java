@@ -22,11 +22,11 @@ public class TableRelationUtils {
             TabTreeNodeDTO current = qp.poll();
             if (StringUtils.equals(current.getNode().getTableName(), subTable)) {
                 return TableRelationDTO.builder()
-                        .mainTable(root.getNode().getParentTableName())
-                        .mainField(root.getNode().getParentTableField())
-                        .joinTable(root.getNode().getTableName())
-                        .joinField(root.getNode().getParentTableField())
-                        .relationType(root.getNode().getJoinType())
+                        .mainTable(current.getNode().getParentTableName())
+                        .mainField(current.getNode().getParentTableField())
+                        .joinTable(current.getNode().getTableName())
+                        .joinField(current.getNode().getSubTableField())
+                        .relationType(current.getNode().getJoinType())
                         .build();
             }
             if (CollectionUtil.isNotEmpty(current.getChildren())) {
