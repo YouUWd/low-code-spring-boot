@@ -14,42 +14,29 @@ spring:
       datasources:
         # 主数据源 — mysql 无业务使用
         primary:
-          url: jdbc:mysql://${DB_PRIMARY_HOST:192.168.60.101}:${DB_PRIMARY_PORT:3306}/${DB_PRIMARY_NAME:mysql}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_PRIMARY_USERNAME:root}
-          password: ${DB_PRIMARY_PASSWORD:jdec_platform123}
-        # auth_center 数据源
-        auth_center:
-          url: jdbc:mysql://${DB_AUTH_CENTER_HOST:192.168.60.101}:${DB_AUTH_CENTER_PORT:3306}/${DB_AUTH_CENTER_NAME:auth_center}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_AUTH_CENTER_USERNAME:root}
-          password: ${DB_AUTH_CENTER_PASSWORD:jdec_platform123}
+          url: jdbc:mysql://192.168.60.101:3306/mysql?useUnicode=true&characterEncoding=UTF8
+          username: root
+          password: jdec_platform123
         # config_center 数据源
         config_center:
-          url: jdbc:mysql://${DB_CONFIG_CENTER_HOST:192.168.60.101}:${DB_CONFIG_CENTER_PORT:3306}/${DB_CONFIG_CENTER_NAME:config_center}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_CONFIG_CENTER_USERNAME:root}
-          password: ${DB_CONFIG_CENTER_PASSWORD:jdec_platform123}
-        # hr_manage 人力平台数据源
+          url: jdbc:mysql://192.168.60.101:3306/config_center?useUnicode=true&characterEncoding=UTF8
+          username: root
+          password: jdec_platform123
+
+        # hr_manage 数据源
         hr_manage:
-          url: jdbc:mysql://${DB_HR_MANAGE_HOST:192.168.60.250}:${DB_HR_MANAGE_PORT:9053}/${DB_HR_MANAGE_NAME:hr_manage}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_HR_MANAGE_USERNAME:hr_manage}
-          password: ${DB_HR_MANAGE_PASSWORD:6Zc48cR8HJGb3MsB}
-        # third 数据源
-        third:
-          url: jdbc:mysql://${DB_THIRD_HOST:192.168.60.101}:${DB_THIRD_PORT:3306}/${DB_THIRD_NAME:third}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_THIRD_USERNAME:root}
-          password: ${DB_THIRD_PASSWORD:jdec_platform123}
+          url: jdbc:mysql://192.168.60.101:3306/hr_manage?useUnicode=true&characterEncoding=UTF8
+          username: root
+          password: jdec_platform123
         # school 数据源
         school:
-          url: jdbc:mysql://${DB_SCHOOL_HOST:192.168.60.101}:${DB_SCHOOL_PORT:3306}/${DB_SCHOOL_NAME:school}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_SCHOOL_USERNAME:root}
-          password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
-        student_manage:
-          url: jdbc:mysql://${DB_SCHOOL_HOST:192.168.60.101}:${DB_SCHOOL_PORT:3306}/${DB_SCHOOL_NAME:student_manage}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_SCHOOL_USERNAME:root}
-          password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
-        monitorlog_manage:
-          url: jdbc:mysql://${DB_SCHOOL_HOST:192.168.60.101}:${DB_SCHOOL_PORT:3306}/${DB_SCHOOL_NAME:monitorlog_manage}?useUnicode=true&characterEncoding=UTF8
-          username: ${DB_SCHOOL_USERNAME:root}
-          password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
+          url: jdbc:mysql://192.168.60.101:3306/school?useUnicode=true&characterEncoding=UTF8
+          username: root
+          password: jdec_platform123
+        company:
+          url: jdbc:mysql://192.168.60.101:3306/company?useUnicode=true&characterEncoding=UTF8
+          username: root
+          password: jdec_platform123
   # ===== Redis 配置 =====
   data:
     redis:
@@ -70,12 +57,9 @@ jdec:
   project:
     datasource-mapping:
       primary: mysql
-      auth_center: auth_center
       config_center: config_center
-      hr_manage: hr_manage
-      third: third
       school: school
-      student_manage: student_manage
+      company: company
 # ===== MyBatis-Plus 开发模式 =====
 mybatis-plus:
   configuration:
