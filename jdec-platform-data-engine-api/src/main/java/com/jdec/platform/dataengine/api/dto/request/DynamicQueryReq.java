@@ -44,6 +44,9 @@ public class DynamicQueryReq implements Serializable {
     @Schema(description = "主模块主表的数据ID，查询子模块的列表")
     private Long mainDataId;
 
+    @Schema(description = "关联id集合")
+    private List<Long> relateIds;
+
     @Deprecated
     @Schema(description = "动态查询过滤条件键值对 (支持主表及关联表字段)")
     private Map<String, Object> filters;

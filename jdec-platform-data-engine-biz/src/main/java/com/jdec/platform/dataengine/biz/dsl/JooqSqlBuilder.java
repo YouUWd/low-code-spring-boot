@@ -137,10 +137,11 @@ public class JooqSqlBuilder {
                                 item ->
                                         DSL.field(
                                                 /*item.getTableName() + "." + */ item
-                                                        .getFieldName()))
+                                                        .getFieldCode()))
                         .collect(Collectors.toList());
 
-        SelectJoinStep<Record> query = dsl.select(fields).from(tableName);
+        //        SelectJoinStep<Record> query = dsl.select(fields).from(tableName);
+        SelectJoinStep<Record> query = dsl.select(DSL.asterisk()).from(tableName);
         return query;
     }
 

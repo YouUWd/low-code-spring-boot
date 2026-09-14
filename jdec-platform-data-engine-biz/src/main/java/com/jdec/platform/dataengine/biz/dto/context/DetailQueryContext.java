@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.dto.context;
 
 import com.jdec.platform.dataengine.biz.dto.BasicModel;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -19,6 +20,8 @@ public class DetailQueryContext extends BasicModel {
 
     @Schema(description = "数据 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "55")
     private Long id;
+
+    private List<Long> relateIds;
 
     @Schema(description = "版本 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "V2")
     private Integer version;

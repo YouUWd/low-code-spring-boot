@@ -12,9 +12,6 @@ public class ModuleField {
     @Schema(description = "模块ID")
     private Long moduleId;
 
-    @Schema(description = "字段类型,SIMPLE或者COMBINE")
-    private String filedType;
-
     @Schema(description = "字段名称")
     private String fieldCode;
 
@@ -23,9 +20,6 @@ public class ModuleField {
 
     @Schema(description = "字段表名")
     private String tableName;
-
-    @Schema(description = "组合字段关系映射")
-    private List<SourceMapping> sourceMappings;
 
     @Schema(description = "转换方法")
     private String transformer;

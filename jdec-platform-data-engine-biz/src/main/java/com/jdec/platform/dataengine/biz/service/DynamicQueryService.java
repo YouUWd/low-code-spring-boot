@@ -2,13 +2,16 @@ package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.SysMenuApi;
+import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
+import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
+import com.jdec.platform.dataengine.biz.config.dto.SysModuleInfo;
+import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
@@ -24,6 +27,7 @@ import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
@@ -53,6 +57,8 @@ public class DynamicQueryService {
 
     private final SysMenuApi sysMenuApi;
     private final SysRolePermissionApi sysRolePermissionApi;
+    private final SysModuleApi sysModuleApi;
+    private final DataModuleConfigService dataModuleConfigService;
 
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
@@ -199,11 +205,16 @@ public class DynamicQueryService {
     }
 
     /** 动态主子表详情查询 (顶层包含 moduleId 等标识，元数据包含 fieldNames 与 permissions) */
-    public List<Object> getDetail(List<Long> menuIds, Long id, String btnType, boolean recursive) {
-        List<Object> resultList = new ArrayList<>();
+    public List<NestedModuleDataDTO> getDetail(
+            List<Long> moduleIds, Long id, String btnType, boolean recursive) {
+        List<NestedModuleDataDTO> resultList = new ArrayList<>();
 
-        List<SysMenuTreeResp> menuRespList = sysMenuApi.tree(1);
-        if (CollectionUtils.isEmpty(menuRespList)) {
+        //        List<SysMenuTreeResp> menuRespList = sysMenuApi.tree(1);
+
+        List<SysModuleSimpleTreeResp> moduleNodeResps =
+                sysModuleApi.getAvailableModuleTree(
+                        null, AppContext.getProjectNo(), AppContext.getSubjectId());
+        if (CollectionUtils.isEmpty(moduleNodeResps)) {
             log.debug("菜单树查询结果未空，返回空列表。");
             return resultList;
         }
@@ -211,45 +222,55 @@ public class DynamicQueryService {
         if (!recursive) {
             // ========= 模式1：多个模块独立查询，互不关联 =========
 
-            List<SysMenuTreeResp> pruneMenus = pruneForest(menuRespList, menuIds);
+            List<SysModuleSimpleTreeResp> pruneMenus = pruneForest(moduleNodeResps, moduleIds);
 
-            for (SysMenuTreeResp menu : pruneMenus) {
-                recursiveQuery(menuRespList, resultList, menu.getId(), id, btnType);
+            for (SysModuleSimpleTreeResp menu : pruneMenus) {
+                recursiveQuery(pruneMenus, resultList, menu.getId(), id, btnType, true);
             }
         } else {
-            recursiveQuery(menuRespList, resultList, menuIds.get(0), id, btnType);
+            recursiveQuery(moduleNodeResps, resultList, moduleIds.get(0), id, btnType, true);
         }
 
         return resultList;
     }
 
     private void recursiveQuery(
-            List<SysMenuTreeResp> menuTree,
-            List<Object> resultList,
+            List<SysModuleSimpleTreeResp> moduleTree,
+            List<NestedModuleDataDTO> resultList,
             Long topMenuId,
             Long id,
-            String btnType) {
+            String btnType,
+            Boolean topQuery) {
         // ========= 模式2：树形关联查询，多个模块属于同一棵树 =========
         // 取根模块（moduleCodeList第一个为根节点，其余是树内子模块）
-        SysMenuTreeResp rootNode = findSubTreeByValue(menuTree, topMenuId);
+        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleTree, topMenuId);
         if (rootNode == null) {
             return;
         }
         DynamicQueryReq singleQueryDTO =
                 DynamicQueryReq.builder()
-                        .moduleId(rootNode.getModuleId())
+                        .moduleId(rootNode.getId())
                         .menuId(rootNode.getId())
                         .mainDataId(id)
                         .btnType(btnType)
                         .build();
 
-        Object moduleData = queryModule(singleQueryDTO, rootNode, true);
+        NestedModuleDataDTO moduleData = queryModule(singleQueryDTO, rootNode, true, topQuery);
         resultList.add(moduleData);
     }
 
     private NestedModuleDataDTO queryModule(
-            DynamicQueryReq queryReq, SysMenuTreeResp rootNode, Boolean recursive) {
+            DynamicQueryReq queryReq,
+            SysModuleSimpleTreeResp rootNode,
+            Boolean recursive,
+            Boolean topQUery) {
         NestedModuleDataDTO.NestedModuleDataDTOBuilder builder = NestedModuleDataDTO.builder();
+
+        // 非顶层模块查询，需要设置关联键作为查询条件
+        if (!topQUery) {
+            queryReq.setMainDataId(null);
+            queryReq.setRelateIds(queryReq.getRelateIds());
+        }
 
         // TODO 通过menuId和moduleId查审批链配置获取
         boolean hasApproval = true;
@@ -271,36 +292,67 @@ public class DynamicQueryService {
         //        }
 
         if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
-            return builder.moduleId(rootNode.getModuleId())
+            return builder.moduleId(rootNode.getId())
                     .menuId(rootNode.getId())
                     .record(currentModuleData)
                     .build();
         }
 
-        for (SysMenuTreeResp childNode : rootNode.getChildren()) {
+        List<Long> primaryIds = getPrimaryIdSet(currentModuleData, rootNode.getId());
+
+        for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
             // 组装当前模块查询参数
             DynamicQueryReq singleQueryDTO =
                     DynamicQueryReq.builder()
-                            .moduleId(childNode.getModuleId())
+                            .moduleId(childNode.getId())
                             .mainDataId(queryReq.getMainDataId())
+                            .relateIds(primaryIds)
                             .btnType(queryReq.getBtnType())
                             .build();
-            NestedModuleDataDTO childResultList = queryModule(singleQueryDTO, childNode, true);
+            NestedModuleDataDTO childResultList =
+                    queryModule(singleQueryDTO, childNode, true, false);
             for (RecordDataDTO vo : currentModuleData) {
                 vo.getSubModule().add(childResultList);
             }
         }
 
-        return builder.moduleId(rootNode.getModuleId())
+        return builder.moduleId(rootNode.getId())
                 .menuId(rootNode.getId())
                 .record(currentModuleData)
                 .build();
     }
 
+    private List<Long> getPrimaryIdSet(List<RecordDataDTO> currentModuleData, Long moduleId) {
+        List<Long> primaryIds = new ArrayList<>();
+        SysModuleInfo sysModuleInfo = null;
+        if (!CollectionUtils.isEmpty(currentModuleData)) {
+            sysModuleInfo =
+                    dataModuleConfigService.getModuleCompleteById(
+                            AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+        }
+
+        for (RecordDataDTO recordDataDTO : currentModuleData) {
+            if (!recordDataDTO.getCombinedRow().isEmpty()) {
+                Map<String, Object> moduleData =
+                        (Map<String, Object>) recordDataDTO.getCombinedRow().get("data");
+                List<Map<String, Object>> moduleTableData =
+                        (List<Map<String, Object>>) moduleData.get(sysModuleInfo.getPrimaryTable());
+                if (Objects.nonNull(moduleTableData) && !CollectionUtils.isEmpty(moduleTableData)) {
+                    primaryIds.addAll(
+                            moduleTableData.stream()
+                                    .filter(ele -> ele.containsKey("id"))
+                                    .map(item -> Long.parseLong(String.valueOf(item.get("id"))))
+                                    .collect(Collectors.toList()));
+                }
+            }
+        }
+        return primaryIds;
+    }
+
     private List<RecordDataDTO> querySingleModule(
-            SysMenuTreeResp node, DynamicQueryReq queryDTO, QueryType queryType) {
+            SysModuleSimpleTreeResp node, DynamicQueryReq queryDTO, QueryType queryType) {
         List<RecordDataDTO> resultList = new ArrayList<>();
-        if (node.getMenuType() == 4) {
+        if (node.getModuleCode().contains("LIST")) {
             // TODO 查找列表模块数据
             DynamicQueryResp listData = query(queryDTO);
             Map<String, Object> targetMap = new HashMap<>();
@@ -309,7 +361,7 @@ public class DynamicQueryService {
             resultList.add(null);
         } else {
             // 查找详情模块数据
-            resultList.add(getDetailModuleData(node.getModuleId(), queryType, queryDTO));
+            resultList.add(getDetailModuleData(node.getId(), queryType, queryDTO));
         }
         return resultList;
     }
@@ -324,6 +376,7 @@ public class DynamicQueryService {
                 DetailQueryContext.builder()
                         .btnType(queryReq.getBtnType())
                         .id(queryReq.getMainDataId())
+                        .relateIds(queryReq.getRelateIds())
                         .menuId(queryReq.getMenuId())
                         .moduleId(moduleId)
                         .roleId(roleId)
@@ -367,7 +420,6 @@ public class DynamicQueryService {
             allRightField.add(
                     ModuleField.builder()
                             .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
-                            .filedType("SIMPLE")
                             .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
                             .fieldCode("id")
                             .permissionCode(3)
@@ -419,7 +471,6 @@ public class DynamicQueryService {
                 allRightField.add(
                         ModuleField.builder()
                                 .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
-                                .filedType("SIMPLE")
                                 .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
                                 .fieldCode(moduleTable.getJoinLeftField())
                                 .permissionCode(3)
@@ -467,7 +518,6 @@ public class DynamicQueryService {
                 allRightField.add(
                         ModuleField.builder()
                                 .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
-                                .filedType("SIMPLE")
                                 .tableName(moduleTable.getTableName())
                                 .fieldCode(moduleTable.getJoinRightField())
                                 .permissionCode(1)
@@ -499,7 +549,6 @@ public class DynamicQueryService {
         allRightField.add(
                 ModuleField.builder()
                         .moduleId(moduleFilterInfo.getModuleInfo().getModuleId())
-                        .filedType("SIMPLE")
                         .tableName(moduleFilterInfo.getModuleInfo().getPrimaryTable())
                         .fieldCode("business_status")
                         .permissionCode(1)
@@ -553,13 +602,14 @@ public class DynamicQueryService {
      * @param targetValue 目标节点值
      * @return 找到的子树根节点；找不到返回null
      */
-    private SysMenuTreeResp findSubTreeByValue(List<SysMenuTreeResp> roots, Long targetValue) {
+    private SysModuleSimpleTreeResp findSubTreeByValue(
+            List<SysModuleSimpleTreeResp> roots, Long targetValue) {
         if (roots == null || roots.isEmpty()) {
             return null;
         }
         // 遍历森林中每一棵树
-        for (SysMenuTreeResp root : roots) {
-            SysMenuTreeResp matchNode = dfsSearch(root, targetValue);
+        for (SysModuleSimpleTreeResp root : roots) {
+            SysModuleSimpleTreeResp matchNode = dfsSearch(root, targetValue);
             if (matchNode != null) {
                 return matchNode;
             }
@@ -568,7 +618,7 @@ public class DynamicQueryService {
     }
 
     /** 单棵树内部DFS */
-    private SysMenuTreeResp dfsSearch(SysMenuTreeResp currNode, Long targetValue) {
+    private SysModuleSimpleTreeResp dfsSearch(SysModuleSimpleTreeResp currNode, Long targetValue) {
         if (currNode == null) {
             return null;
         }
@@ -576,8 +626,8 @@ public class DynamicQueryService {
             return currNode;
         }
         // 递归遍历子节点
-        for (SysMenuTreeResp child : currNode.getChildren()) {
-            SysMenuTreeResp res = dfsSearch(child, targetValue);
+        for (SysModuleSimpleTreeResp child : currNode.getChildren()) {
+            SysModuleSimpleTreeResp res = dfsSearch(child, targetValue);
             if (res != null) {
                 return res;
             }
@@ -592,15 +642,15 @@ public class DynamicQueryService {
      * @param keepIds 需要保留的目标节点ID集合
      * @return 裁剪之后的森林列表；无保留节点返回空集合
      */
-    public static List<SysMenuTreeResp> pruneForest(
-            List<SysMenuTreeResp> rootList, Collection<Long> keepIds) {
+    public static List<SysModuleSimpleTreeResp> pruneForest(
+            List<SysModuleSimpleTreeResp> rootList, Collection<Long> keepIds) {
         if (rootList == null || rootList.isEmpty() || keepIds == null || keepIds.isEmpty()) {
             return Collections.emptyList();
         }
 
-        List<SysMenuTreeResp> resultForest = new ArrayList<>();
-        for (SysMenuTreeResp root : rootList) {
-            SysMenuTreeResp newRoot = recursiveCloneAndPrune(root, keepIds);
+        List<SysModuleSimpleTreeResp> resultForest = new ArrayList<>();
+        for (SysModuleSimpleTreeResp root : rootList) {
+            SysModuleSimpleTreeResp newRoot = recursiveCloneAndPrune(root, keepIds);
             if (newRoot != null) {
                 resultForest.add(newRoot);
             }
@@ -613,19 +663,19 @@ public class DynamicQueryService {
      *
      * @return 如果当前子树存在需要保留的节点，返回克隆后的节点；否则返回null
      */
-    private static SysMenuTreeResp recursiveCloneAndPrune(
-            SysMenuTreeResp originNode, Collection<Long> keepIds) {
+    private static SysModuleSimpleTreeResp recursiveCloneAndPrune(
+            SysModuleSimpleTreeResp originNode, Collection<Long> keepIds) {
         // 1. 先克隆当前节点（新树不修改原树）
-        SysMenuTreeResp newNode = new SysMenuTreeResp();
+        SysModuleSimpleTreeResp newNode = new SysModuleSimpleTreeResp();
         BeanUtils.copyProperties(originNode, newNode);
         newNode.setChildren(new ArrayList<>());
 
         boolean currentNodeNeedKeep = keepIds.contains(originNode.getId());
 
         // 2. 遍历所有子节点，递归裁剪
-        List<SysMenuTreeResp> keptChildren = new ArrayList<>();
-        for (SysMenuTreeResp originChild : originNode.getChildren()) {
-            SysMenuTreeResp prunedChild = recursiveCloneAndPrune(originChild, keepIds);
+        List<SysModuleSimpleTreeResp> keptChildren = new ArrayList<>();
+        for (SysModuleSimpleTreeResp originChild : originNode.getChildren()) {
+            SysModuleSimpleTreeResp prunedChild = recursiveCloneAndPrune(originChild, keepIds);
             if (prunedChild != null) {
                 keptChildren.add(prunedChild);
             }

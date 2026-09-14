@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.api;
 
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -11,7 +12,7 @@ import java.util.List;
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
 
-    List<Object> getDetail(List<Long> menuId, Long id, String btnType);
+    List<NestedModuleDataDTO> getDetail(List<Long> moduleIds, Long id, String btnType);
 
     Long save(DynamicSaveReq req);
 

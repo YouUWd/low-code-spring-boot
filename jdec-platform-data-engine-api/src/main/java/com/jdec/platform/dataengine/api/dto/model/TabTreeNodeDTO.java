@@ -73,6 +73,117 @@ public class TabTreeNodeDTO implements Serializable {
         return root;
     }
 
+    public static TabTreeNodeDTO buildCompanyRoot() {
+
+        TabNodeDTO nodeInfo = TabNodeDTO.builder().tableName("info").build();
+
+        TabTreeNodeDTO root =
+                TabTreeNodeDTO.builder().node(nodeInfo).children(new ArrayList<>()).build();
+
+        TabNodeDTO basicInfoNode =
+                TabNodeDTO.builder()
+                        .tableName("basic_info")
+                        .parentTableName("info")
+                        .joinType("1:1")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO basicInfoNodeRoot =
+                TabTreeNodeDTO.builder().node(basicInfoNode).children(new ArrayList<>()).build();
+        root.getChildren().add(basicInfoNodeRoot);
+
+        TabNodeDTO memberNode =
+                TabNodeDTO.builder()
+                        .tableName("member")
+                        .parentTableName("info")
+                        .joinType("1:N")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO memberNodeRoot =
+                TabTreeNodeDTO.builder().node(memberNode).children(new ArrayList<>()).build();
+        root.getChildren().add(memberNodeRoot);
+
+        TabNodeDTO addressNode =
+                TabNodeDTO.builder()
+                        .tableName("address")
+                        .parentTableName("info")
+                        .joinType("1:1")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO addressRoot =
+                TabTreeNodeDTO.builder().node(addressNode).children(new ArrayList<>()).build();
+        root.getChildren().add(addressRoot);
+
+        TabNodeDTO memberContactNode =
+                TabNodeDTO.builder()
+                        .tableName("member_contact")
+                        .parentTableName("info")
+                        .joinType("1:N")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO memberContactRoot =
+                TabTreeNodeDTO.builder()
+                        .node(memberContactNode)
+                        .children(new ArrayList<>())
+                        .build();
+        root.getChildren().add(memberContactRoot);
+
+        TabNodeDTO financialAccountNode =
+                TabNodeDTO.builder()
+                        .tableName("financial_account")
+                        .parentTableName("info")
+                        .joinType("1:N")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO financialAccountRoot =
+                TabTreeNodeDTO.builder()
+                        .node(financialAccountNode)
+                        .children(new ArrayList<>())
+                        .build();
+        root.getChildren().add(financialAccountRoot);
+
+        TabNodeDTO creditRatingNode =
+                TabNodeDTO.builder()
+                        .tableName("credit_rating")
+                        .parentTableName("info")
+                        .joinType("1:1")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO creditRatingRoot =
+                TabTreeNodeDTO.builder().node(creditRatingNode).children(new ArrayList<>()).build();
+        root.getChildren().add(creditRatingRoot);
+
+        TabNodeDTO memberContactNode3 =
+                TabNodeDTO.builder()
+                        .tableName("member_contact")
+                        .parentTableName("member")
+                        .joinType("1:N")
+                        .parentTableField("id")
+                        .subTableField("member_id")
+                        .build();
+
+        TabTreeNodeDTO memberContactRoot3 =
+                TabTreeNodeDTO.builder()
+                        .node(memberContactNode3)
+                        .children(new ArrayList<>())
+                        .build();
+
+        memberNodeRoot.getChildren().add(memberContactRoot3);
+
+        return root;
+    }
+
     /**
      * 森林查找：入参多个根节点List，找到第一个匹配节点值的节点，返回其整个子树
      *

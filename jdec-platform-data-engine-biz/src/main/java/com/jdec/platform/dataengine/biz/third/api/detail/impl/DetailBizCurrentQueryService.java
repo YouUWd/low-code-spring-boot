@@ -101,6 +101,7 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
                                 detailModuleQueryContext);
 
                 retrunMap.put("data", detailMap);
+
                 // DataIntegrationContext 构建要区分是带否审批链 目前只有  context.getMenuId() 是带审批链的
                 //                detailDataProcessFactory.processData(
                 //                        (Map) retrunMap.get(context.getMenuId()),

@@ -95,18 +95,20 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                             .map(x -> x.getTableName())
                             .collect(Collectors.toSet()));
 
-            for (String tableName : tableNames) {
-                List<SysFieldResp> fieldResps =
-                        sysFieldApi.querySimpleSysFields(
-                                AppContext.getProjectNo(), subjectId, tableName, null);
-                if (CollectionUtil.isNotEmpty(fieldResps)) {
-                    for (SysFieldResp fieldResp : fieldResps) {
-                        sysFieldRespMap.put(
-                                fieldResp.getTableName() + "." + fieldResp.getColumnName(),
-                                fieldResp);
-                    }
-                }
-            }
+            //            for (String tableName : tableNames) {
+            //                List<SysFieldResp> fieldResps =
+            //                        sysFieldApi.querySimpleSysFields(
+            //                                AppContext.getProjectNo(), subjectId, tableName,
+            // null);
+            //                if (CollectionUtil.isNotEmpty(fieldResps)) {
+            //                    for (SysFieldResp fieldResp : fieldResps) {
+            //                        sysFieldRespMap.put(
+            //                                fieldResp.getTableName() + "." +
+            // fieldResp.getColumnName(),
+            //                                fieldResp);
+            //                    }
+            //                }
+            //            }
             SysFieldResp defaultSysFieldResp = new SysFieldResp();
 
             for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getFields()) {
@@ -145,7 +147,6 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                 .fieldName(simpleFieldItem.getDisplayName())
                                 .moduleId(moduleInfoResp.getModuleId())
                                 .permissionCode(0)
-                                .filedType("SIMPLE")
                                 .tableName(simpleFieldItem.getTableName())
                                 .bizKeyOrder(simpleFieldItem.getBizKeyOrder())
                                 .relationBusinessNo(sysFieldResp.getRelationBusinessNo())
@@ -199,9 +200,12 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             }
 
             // 模块表权限节点
-            List<PermissionTableGroupResp> moduleColumnPermission =
-                    sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
-                            AppContext.getProjectNo(), subjectId, roleId, moduleId);
+            //            List<PermissionTableGroupResp> moduleColumnPermission =
+            //                    sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
+            //                            AppContext.getProjectNo(), subjectId, roleId, moduleId);
+
+            // TODO 权限接口有问题，先赋空值
+            List<PermissionTableGroupResp> moduleColumnPermission = null;
 
             if (!CollectionUtils.isEmpty(moduleColumnPermission)) {
 
@@ -525,7 +529,6 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     ModuleField.ModuleFieldBuilder moduleFieldBuilder =
                             ModuleField.builder()
                                     .moduleId(moduleInfoResp.getModuleId())
-                                    .filedType("SIMPLE")
                                     .fieldCode(simpleField.getColumnName())
                                     .tableName(simpleField.getTableName())
                                     .relationBusinessNo(sysFieldResp.getRelationBusinessNo())
@@ -637,12 +640,25 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
                 // 填充simpleModuleFields属性
                 moduleFilterInfoBuilder.simpleModuleFields(simpleFieldInfo);
+            } else {
+                moduleFilterInfoBuilder.simpleModuleFields(
+                        moduleInfoResp.getFields().stream()
+                                .map(
+                                        ele ->
+                                                ModuleField.builder()
+                                                        .moduleId(moduleId)
+                                                        .fieldCode(ele.getColumnName())
+                                                        .fieldName(ele.getDisplayName())
+                                                        .tableName(ele.getTableName())
+                                                        .permissionCode(1)
+                                                        .build())
+                                .collect(Collectors.toList()));
             }
 
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildRoot();
+            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildCompanyRoot();
 
             TabTreeNodeDTO targetNode =
                     TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());
@@ -731,7 +747,6 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                                 .fieldName(simpleFieldItem.getDisplayName())
                                 .moduleId(moduleInfoResp.getModuleId())
                                 .permissionCode(0)
-                                .filedType("SIMPLE")
                                 .tableName(simpleFieldItem.getTableName())
                                 .build());
             }
@@ -946,7 +961,6 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     ModuleField.ModuleFieldBuilder moduleFieldBuilder =
                             ModuleField.builder()
                                     .moduleId(moduleInfoResp.getModuleId())
-                                    .filedType("SIMPLE")
                                     .fieldCode(simpleField.getColumnName())
                                     .tableName(simpleField.getTableName());
 
@@ -1058,7 +1072,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildRoot();
+            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildCompanyRoot();
 
             TabTreeNodeDTO targetNode =
                     TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());

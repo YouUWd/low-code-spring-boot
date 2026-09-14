@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -25,8 +26,8 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public List<Object> getDetail(List<Long> menuIds, Long id, String btnType) {
-        return dynamicQueryService.getDetail(menuIds, id, btnType, false);
+    public List<NestedModuleDataDTO> getDetail(List<Long> moduleIds, Long id, String btnType) {
+        return dynamicQueryService.getDetail(moduleIds, id, btnType, false);
     }
 
     @Override

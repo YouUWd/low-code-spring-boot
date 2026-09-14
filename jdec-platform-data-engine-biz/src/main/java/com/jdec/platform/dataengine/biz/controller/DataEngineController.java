@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.controller;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
@@ -32,9 +33,9 @@ public class DataEngineController {
 
     @GetMapping("/menu/detail/{id}")
     @Operation(summary = "获取详情数据", description = "获取详情数据")
-    public ApiResponse<List<Object>> getDetail(
-            @PathVariable Long id, @RequestParam List<Long> menuIds, String btnType) {
-        return ApiResponse.success(dataEngineApi.getDetail(menuIds, id, btnType));
+    public ApiResponse<List<NestedModuleDataDTO>> getDetail(
+            @PathVariable Long id, @RequestParam List<Long> moduleIds, String btnType) {
+        return ApiResponse.success(dataEngineApi.getDetail(moduleIds, id, btnType));
     }
 
     @PostMapping("/{moduleId}/save")

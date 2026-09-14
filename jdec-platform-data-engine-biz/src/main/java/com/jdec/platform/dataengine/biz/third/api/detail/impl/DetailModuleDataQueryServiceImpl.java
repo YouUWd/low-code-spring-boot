@@ -17,11 +17,14 @@ import com.jdec.platform.dataengine.biz.third.api.select.SelectBuilderFactory;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jooq.*;
 import org.jooq.Record;
 import org.springframework.stereotype.Service;
 
 /** 查询 db 模块的业务数据 详情数据 包含 非审批链 和 审批链的 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQueryService {
@@ -52,16 +55,29 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
         String primaryTable = moduleFilterInfo.getModuleInfo().getPrimaryTable();
 
+        if (StringUtils.isBlank(primaryTable)) {
+            log.debug(
+                    "主表名称为空，模块{},id:{}为虚模块或配置数据错误。",
+                    moduleFilterInfo.getModuleInfo().getModuleName(),
+                    moduleFilterInfo.getModuleInfo().getModuleId());
+            return Collections.emptyMap();
+        }
+
         StatementContext statementContext = StatementContext.builder().build();
 
         // 构建 SQL拼装 上下文对象
         BeanUtil.copyProperties(
                 context, statementContext, CopyOptions.create().ignoreError().ignoreNullValue());
         statementContext.setMenuId(context.getMenuId());
-        statementContext.setId(context.getId());
+
+        if (Objects.isNull(context.getId())) {
+            statementContext.setQueryType(QueryType.DETAIL_SUBMODULE_QUERY);
+            statementContext.setRelateIds(context.getRelateIds());
+        } else {
+            statementContext.setId(context.getId());
+        }
         DSLContext dslContext = jooqContextFactory.getContext();
         statementContext.setDsl(dslContext);
-        statementContext.setQueryType(context.getQueryType());
         statementContext.setModuleFilterInfo(moduleFilterInfo);
         statementContext.setTableName(primaryTable);
 

@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.service;
 
 import com.alibaba.fastjson2.JSON;
 import com.jdec.platform.dataengine.api.DataSnapshotApi;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSnapshotTriggerReq;
 import com.jdec.platform.dataengine.api.dto.response.DataSnapshotResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicDetailResp;
@@ -69,7 +70,7 @@ public class SnapshotManagerService implements DataSnapshotApi {
         ensureSnapshotTable(dsl);
 
         // 1. 查询当前聚合实体完整数据并序列化为 JSON
-        List<Object> detailData =
+        List<NestedModuleDataDTO> detailData =
                 dynamicQueryService.getDetail(Arrays.asList(moduleId), dataId, "view", true);
         DynamicDetailResp detailResp = null;
         String currentSnapshotJson = JSON.toJSONString(detailResp);
