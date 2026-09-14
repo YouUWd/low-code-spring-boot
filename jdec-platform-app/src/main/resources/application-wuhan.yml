@@ -50,6 +50,14 @@ spring:
           url: jdbc:mysql://${DB_SCHOOL_HOST:119.36.78.123}:${DB_SCHOOL_PORT:5016}/${DB_SCHOOL_NAME:monitorlog_manage}?useUnicode=true&characterEncoding=UTF8
           username: ${DB_SCHOOL_USERNAME:root}
           password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
+        config_engine:
+          url: jdbc:mysql://${DB_SCHOOL_HOST:119.36.78.123}:${DB_SCHOOL_PORT:5016}/${DB_SCHOOL_NAME:config_engine}?useUnicode=true&characterEncoding=UTF8
+          username: ${DB_SCHOOL_USERNAME:root}
+          password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
+        company:
+          url: jdbc:mysql://${DB_SCHOOL_HOST:119.36.78.123}:${DB_SCHOOL_PORT:5016}/${DB_SCHOOL_NAME:company}?useUnicode=true&characterEncoding=UTF8&useGeneratedKeys=true
+          username: ${DB_SCHOOL_USERNAME:root}
+          password: ${DB_SCHOOL_PASSWORD:jdec_platform123}
     # ===== Druid 监控配置 =====
     druid:
       # Web 监控配置
@@ -108,6 +116,8 @@ jdec:
       school: school
       student_manage: student_manage
       monitorlog_manage: monitorlog_manage
+      config_engine: config_engine
+      company: company
 # ===== MyBatis-Plus 开发模式 =====
 mybatis-plus:
   configuration:

@@ -13,9 +13,12 @@ import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jooq.DataType;
 import org.jooq.Field;
 import org.jooq.Record;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
+import org.jooq.impl.SQLDataType;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -28,14 +31,29 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     @Override
     public Long insertRecord(RecordSaveContext context) {
         Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
+
+        String tableName = context.getTableName();
+        // 手动定义表和主键字段，标记IDENTITY
+        // 1. 构造【带自增标记】的数据类型
+        DataType<Long> autoIncLong = SQLDataType.BIGINT.identity(true);
+
+        // 2. 用这个DataType创建field，等价旧版 .identity(true)
+        Field<Long> pkField =
+                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD), autoIncLong);
+
+        Table<?> dynamicTable = DSL.table(DSL.name(tableName));
         // Insert 并获取自增主键
         Record inserted =
                 context.getDsl()
-                        .insertInto(DSL.table(DSL.name(context.getTableName())))
+                        .insertInto(dynamicTable)
                         .set(fieldValues)
-                        .returning(
-                                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD)))
+                        .returning(pkField)
                         .fetchOne();
+
+        Long pkk =
+                context.getDsl()
+                        .select(DSL.field("last_insert_id()", Long.class))
+                        .fetchOneInto(Long.class);
 
         if (inserted != null) {
             Object newId = inserted.getValue(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
@@ -112,7 +130,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
             if (CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD.equalsIgnoreCase(entry.getKey())) {
                 continue;
             }
-            if (context.getDefaultExcludeFields().contains(entry.getKey())) {
+            if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                    && context.getDefaultExcludeFields().contains(entry.getKey())) {
                 continue;
             }
             fieldValues.put(
@@ -121,7 +140,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         // 表单数据 共有的 一些业务字段数据
         if (CollectionUtil.isNotEmpty(context.getBizDataMap())) {
             for (Map.Entry<String, Object> entry : context.getBizDataMap().entrySet()) {
-                if (context.getDefaultExcludeFields().contains(entry.getKey())) {
+                if (CollectionUtil.isEmpty(context.getDefaultExcludeFields())
+                        || context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;
                 }
                 fieldValues.put(
@@ -133,7 +153,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isNotEmpty(context.getParentLevelTableAssociationDataMap())) {
             for (Map.Entry<String, Object> entry :
                     context.getParentLevelTableAssociationDataMap().entrySet()) {
-                if (context.getDefaultExcludeFields().contains(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;
                 }
                 fieldValues.put(
@@ -145,7 +166,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isNotEmpty(context.getDefaultUserContextDataMap())) {
             for (Map.Entry<String, Object> entry :
                     context.getDefaultUserContextDataMap().entrySet()) {
-                if (context.getDefaultExcludeFields().contains(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;
                 }
                 fieldValues.put(
