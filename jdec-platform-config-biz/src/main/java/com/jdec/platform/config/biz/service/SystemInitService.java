@@ -17,6 +17,7 @@ import com.jdec.platform.config.api.dto.request.SysConfigCategorySaveReq;
 import com.jdec.platform.config.api.dto.request.SysConfigItemSaveReq;
 import com.jdec.platform.config.api.dto.response.RoleConfigPageResp;
 import com.jdec.platform.config.api.dto.response.SystemInitResp;
+import com.jdec.platform.config.biz.entity.SysButton;
 import com.jdec.platform.config.biz.entity.SysConfigCategory;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysModule;
@@ -24,12 +25,14 @@ import com.jdec.platform.config.biz.entity.SysProjectSubject;
 import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.entity.SysSpecialPermission;
+import com.jdec.platform.config.biz.init.ButtonInitNode;
 import com.jdec.platform.config.biz.init.ConfigCategoryInitNode;
 import com.jdec.platform.config.biz.init.ConfigItemInitNode;
 import com.jdec.platform.config.biz.init.MenuInitNode;
 import com.jdec.platform.config.biz.init.ModuleInitNode;
 import com.jdec.platform.config.biz.init.ProjectSubjectInitNode;
 import com.jdec.platform.config.biz.init.SpecialPermissionInitNode;
+import com.jdec.platform.config.biz.mapper.SysButtonMapper;
 import com.jdec.platform.config.biz.mapper.SysConfigCategoryMapper;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
@@ -62,15 +65,15 @@ import org.springframework.util.CollectionUtils;
 /**
  * 系统初始化服务。
  *
- * <p>以 {@code init/project_subject.json} 中的项目主体清单为驱动，逐个主体初始化模块、菜单、通用配置、特殊权限，
+ * <p>以 {@code init/project_subject.json} 中的项目主体清单为驱动，逐个主体初始化模块、菜单、按钮、通用配置、特殊权限，
  * 并为每个主体创建超级管理员角色、绑定全部菜单、模块字段权限与特殊权限。
  *
- * <p><strong>主键ID</strong>：项目主体 / 模块 / 菜单 / 特殊权限的主键均取自初始化 JSON（依次递增、跨环境固定）， 落库走各 Mapper 的 {@code
- * insertWithId}；通用配置分类与配置项的主键仍由数据库自增。
+ * <p><strong>主键ID</strong>：项目主体 / 模块 / 菜单 / 按钮 / 特殊权限的主键均取自初始化 JSON（依次递增、跨环境固定）， 落库走各 Mapper 的
+ * {@code insertWithId}；通用配置分类与配置项的主键仍由数据库自增。
  *
  * <p><strong>并发控制</strong>：{@link #initSystem()} 用 JVM 互斥锁保证同一实例内不会并发执行，重复调用直接报错。
  *
- * <p><strong>事务边界</strong>：按项目主体划分。单个主体的「项目主体 / 模块 / 菜单 / 通用配置 / 特殊权限」在同一个事务内完成，
+ * <p><strong>事务边界</strong>：按项目主体划分。单个主体的「项目主体 / 模块 / 菜单 / 按钮 / 通用配置 / 特殊权限」在同一个事务内完成，
  * 任一环节失败整体回滚该主体；超级管理员角色的创建与授权<strong>不在事务内</strong>，因为 {@code SysRoleService.saveRoleUser} 内部会跨库读取
  * HR 数据，包在事务里会导致数据源无法切换。
  */
@@ -100,6 +103,7 @@ public class SystemInitService implements SystemInitApi {
     private final SysProjectSubjectMapper projectSubjectMapper;
     private final SysModuleMapper moduleMapper;
     private final SysMenuMapper menuMapper;
+    private final SysButtonMapper buttonMapper;
     private final SysConfigCategoryMapper configCategoryMapper;
     private final SysSpecialPermissionMapper specialPermissionMapper;
     private final SysRoleMapper roleMapper;
@@ -133,6 +137,8 @@ public class SystemInitService implements SystemInitApi {
         List<ModuleInitNode> moduleTemplates =
                 readInitJson("module.json", new TypeReference<>() {});
         List<MenuInitNode> menuTemplates = readInitJson("menu.json", new TypeReference<>() {});
+        List<ButtonInitNode> buttonTemplates =
+                readInitJson("button.json", new TypeReference<>() {});
         List<ConfigCategoryInitNode> configTemplates =
                 readInitJson("config.json", new TypeReference<>() {});
         List<SpecialPermissionInitNode> permissionTemplates =
@@ -152,6 +158,7 @@ public class SystemInitService implements SystemInitApi {
                         project,
                         moduleTemplates,
                         menuTemplates,
+                        buttonTemplates,
                         configTemplates,
                         permissionTemplates,
                         steps);
@@ -184,6 +191,7 @@ public class SystemInitService implements SystemInitApi {
             ProjectSubjectInitNode project,
             List<ModuleInitNode> moduleTemplates,
             List<MenuInitNode> menuTemplates,
+            List<ButtonInitNode> buttonTemplates,
             List<ConfigCategoryInitNode> configTemplates,
             List<SpecialPermissionInitNode> permissionTemplates,
             List<String> steps) {
@@ -193,7 +201,7 @@ public class SystemInitService implements SystemInitApi {
         // 切换上下文，后续所有 Service 调用均以当前项目主体作为归属标识
         AppContext.setContext(projectNo, subjectId);
 
-        // 主体数据（项目主体/模块/菜单/通用配置/特殊权限）同库同事务，任一环节失败整体回滚。
+        // 主体数据（项目主体/模块/菜单/按钮/通用配置/特殊权限）同库同事务，任一环节失败整体回滚。
         // 步骤信息暂存到临时列表，事务提交成功后才并入结果，避免回滚后残留“已新增”等误导性描述。
         List<String> txSteps = new ArrayList<>();
         ProjectInitData data =
@@ -203,6 +211,7 @@ public class SystemInitService implements SystemInitApi {
                                         project,
                                         moduleTemplates,
                                         menuTemplates,
+                                        buttonTemplates,
                                         configTemplates,
                                         permissionTemplates,
                                         txSteps));
@@ -218,11 +227,12 @@ public class SystemInitService implements SystemInitApi {
                 steps);
     }
 
-    /** 在单个事务内初始化该主体的项目主体、模块、菜单、通用配置、特殊权限，返回角色授权所需的ID集合 */
+    /** 在单个事务内初始化该主体的项目主体、模块、菜单、按钮、通用配置、特殊权限，返回角色授权所需的ID集合 */
     private ProjectInitData initProjectData(
             ProjectSubjectInitNode project,
             List<ModuleInitNode> moduleTemplates,
             List<MenuInitNode> menuTemplates,
+            List<ButtonInitNode> buttonTemplates,
             List<ConfigCategoryInitNode> configTemplates,
             List<SpecialPermissionInitNode> permissionTemplates,
             List<String> steps) {
@@ -236,6 +246,8 @@ public class SystemInitService implements SystemInitApi {
                 initModules(projectNo, subjectId, moduleTemplates, steps);
 
         List<Long> menuIds = initMenus(menuTemplates, moduleCodeIdMap, steps);
+
+        initButtons(projectNo, subjectId, buttonTemplates, steps);
 
         initConfigs(configTemplates, steps);
 
@@ -419,6 +431,49 @@ public class SystemInitService implements SystemInitApi {
                 saveMenuTree(child, menuId, moduleCodeIdMap, menuIds);
             }
         }
+    }
+
+    /** 初始化按钮数据（sys_button），已存在时跳过（幂等按 项目主体 粒度） */
+    private void initButtons(
+            String projectNo, Long subjectId, List<ButtonInitNode> templates, List<String> steps) {
+        Long existingCount =
+                buttonMapper.selectCount(
+                        Wrappers.<SysButton>lambdaQuery()
+                                .eq(SysButton::getProjectNo, projectNo)
+                                .eq(SysButton::getSubjectId, subjectId));
+        if (existingCount != null && existingCount > 0) {
+            steps.add("按钮: 已存在跳过(" + existingCount + "个)");
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        for (ButtonInitNode node : templates) {
+            SysButton entity = new SysButton();
+            entity.setId(requireId(node.getId(), "按钮", node.getTitle()));
+            entity.setTitle(node.getTitle());
+            entity.setAlias(node.getAlias());
+            entity.setType(node.getType());
+            entity.setDescription(node.getDescription());
+            entity.setDefaultBgColor(node.getDefaultBgColor());
+            entity.setDefaultFontColor(node.getDefaultFontColor());
+            entity.setDefaultBorder(node.getDefaultBorder());
+            entity.setLevitateBgColor(node.getLevitateBgColor());
+            entity.setLevitateFontColor(node.getLevitateFontColor());
+            entity.setLevitateBorderColor(node.getLevitateBorderColor());
+            entity.setSelectedBgColor(node.getSelectedBgColor());
+            entity.setSelectedFontColor(node.getSelectedFontColor());
+            entity.setSelectedBorderColor(node.getSelectedBorderColor());
+            entity.setIcon(node.getIcon());
+            entity.setLogName(node.getLogName());
+            entity.setSortOrder(node.getSortOrder() == null ? 0 : node.getSortOrder());
+            entity.setShowed(node.getShowed() == null ? 1 : node.getShowed());
+            entity.setEnabled(node.getEnabled() == null ? 1 : node.getEnabled());
+            entity.setSubjectId(subjectId);
+            entity.setProjectNo(projectNo);
+            entity.setCreatedDate(now);
+            entity.setUpdatedDate(now);
+            buttonMapper.insertWithId(entity);
+        }
+        steps.add("按钮: 新增 " + templates.size() + " 个");
     }
 
     /** 初始化通用配置（分类 + 配置项） */
