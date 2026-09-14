@@ -5,9 +5,11 @@ import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
+import com.jdec.platform.dataengine.biz.config.dto.ModuleFieldDTO;
+import com.jdec.platform.dataengine.biz.config.dto.SysModuleInfo;
+import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dto.*;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.FormButtonEnum;
@@ -29,6 +31,8 @@ import org.springframework.util.StringUtils;
 public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermissionService {
 
     private final SysModuleApi sysModuleApi;
+
+    private final DataModuleConfigService dataModuleConfigService;
 
     private final SysFieldApi sysFieldApi;
 
@@ -57,8 +61,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             Long subjectId, Long roleId, Long moduleId, String btnType, List<Long> moduleSkip) {
 
         // 模块相关信息
-        SysModuleResp moduleInfoResp =
-                sysModuleApi.getModuleCompleteById(AppContext.getProjectNo(), subjectId, moduleId);
+        SysModuleInfo moduleInfoResp =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), subjectId, moduleId);
 
         if (Objects.nonNull(moduleInfoResp)) {
 
@@ -68,14 +73,16 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // 组装ModuleInfo
             ModuleInfo.ModuleInfoBuilder moduleInfoBuilder = ModuleInfo.builder();
             moduleInfoBuilder
-                    .moduleId(moduleInfoResp.getModule().getId().longValue())
-                    .moduleSlug(moduleInfoResp.getModule().getModuleCode())
-                    .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
-                    .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
+                    .moduleId(moduleInfoResp.getModuleId())
+                    .moduleSlug(moduleInfoResp.getModuleCode())
+                    .primaryTable(moduleInfoResp.getPrimaryTable())
+                    .sourceSubjects(Arrays.asList(subjectId))
+                    //                    .sourceSubjects(moduleInfoResp.getSourceSubjects())
+                    //
                     //
                     // .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
                     .moduleType("LIST")
-                    .moduleName(moduleInfoResp.getModule().getModuleName());
+                    .moduleName(moduleInfoResp.getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
 
@@ -136,7 +143,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                         ModuleField.builder()
                                 .fieldCode(simpleFieldItem.getColumnName())
                                 .fieldName(simpleFieldItem.getDisplayName())
-                                .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                .moduleId(moduleInfoResp.getModuleId())
                                 .permissionCode(0)
                                 .filedType("SIMPLE")
                                 .tableName(simpleFieldItem.getTableName())
@@ -517,7 +524,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     }
                     ModuleField.ModuleFieldBuilder moduleFieldBuilder =
                             ModuleField.builder()
-                                    .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                    .moduleId(moduleInfoResp.getModuleId())
                                     .filedType("SIMPLE")
                                     .fieldCode(simpleField.getColumnName())
                                     .tableName(simpleField.getTableName())
@@ -638,15 +645,13 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildRoot();
 
             TabTreeNodeDTO targetNode =
-                    TabTreeNodeDTO.findSubTreeByValue(
-                            tableTree, moduleInfoResp.getModule().getPrimaryTable());
+                    TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());
 
             Set<String> subTableNames =
                     moduleInfoResp.getFields().stream()
                             .filter(
                                     ele ->
                                             !moduleInfoResp
-                                                    .getModule()
                                                     .getPrimaryTable()
                                                     .equals(ele.getTableName()))
                             .map(ModuleFieldDTO::getTableName)
@@ -696,8 +701,9 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
     public ModuleFilterInfo filterModuleInfoWithApproval(
             Long subjectId, Long roleId, Long moduleId, String btnType, List<Long> moduleSkip) {
         // 模块相关信息
-        SysModuleResp moduleInfoResp =
-                sysModuleApi.getModuleCompleteById(AppContext.getProjectNo(), subjectId, moduleId);
+        SysModuleInfo moduleInfoResp =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), subjectId, moduleId);
 
         if (Objects.nonNull(moduleInfoResp)) {
 
@@ -707,14 +713,14 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // 组装ModuleInfo
             ModuleInfo.ModuleInfoBuilder moduleInfoBuilder = ModuleInfo.builder();
             moduleInfoBuilder
-                    .moduleId(moduleInfoResp.getModule().getId().longValue())
-                    .moduleSlug(moduleInfoResp.getModule().getModuleCode())
-                    .primaryTable(moduleInfoResp.getModule().getPrimaryTable())
-                    .sourceSubjects(moduleInfoResp.getModule().getSourceSubjects())
+                    .moduleId(moduleInfoResp.getModuleId().longValue())
+                    .moduleSlug(moduleInfoResp.getModuleCode())
+                    .primaryTable(moduleInfoResp.getPrimaryTable())
+                    .sourceSubjects(Arrays.asList(subjectId))
                     //
                     // .relateSearchField(moduleInfoResp.getModule().getRelateSearchField())
                     .moduleType("LIST")
-                    .moduleName(moduleInfoResp.getModule().getModuleName());
+                    .moduleName(moduleInfoResp.getModuleName());
 
             List<ModuleField> allFields = new ArrayList<>();
 
@@ -723,7 +729,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                         ModuleField.builder()
                                 .fieldCode(simpleFieldItem.getColumnName())
                                 .fieldName(simpleFieldItem.getDisplayName())
-                                .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                .moduleId(moduleInfoResp.getModuleId())
                                 .permissionCode(0)
                                 .filedType("SIMPLE")
                                 .tableName(simpleFieldItem.getTableName())
@@ -939,7 +945,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 for (ModuleFieldDTO simpleField : filteredSimpleFields) {
                     ModuleField.ModuleFieldBuilder moduleFieldBuilder =
                             ModuleField.builder()
-                                    .moduleId(moduleInfoResp.getModule().getId().longValue())
+                                    .moduleId(moduleInfoResp.getModuleId())
                                     .filedType("SIMPLE")
                                     .fieldCode(simpleField.getColumnName())
                                     .tableName(simpleField.getTableName());
@@ -1055,15 +1061,13 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildRoot();
 
             TabTreeNodeDTO targetNode =
-                    TabTreeNodeDTO.findSubTreeByValue(
-                            tableTree, moduleInfoResp.getModule().getPrimaryTable());
+                    TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());
 
             Set<String> subTableNames =
                     moduleInfoResp.getFields().stream()
                             .filter(
                                     ele ->
                                             !moduleInfoResp
-                                                    .getModule()
                                                     .getPrimaryTable()
                                                     .equals(ele.getTableName()))
                             .map(ModuleFieldDTO::getTableName)
