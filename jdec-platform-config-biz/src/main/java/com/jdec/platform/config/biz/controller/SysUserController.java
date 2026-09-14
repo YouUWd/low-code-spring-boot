@@ -1,14 +1,14 @@
 package com.jdec.platform.config.biz.controller;
 
+import com.jdec.platform.config.api.SysProjectSubjectApi;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.request.QuerySysUserPageReq;
 import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysUserReq;
 import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
+import com.jdec.platform.config.api.dto.response.SysProjectSubjectResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
 import com.jdec.platform.config.api.dto.response.UserDetailResp;
-import com.jdec.platform.hr.api.SubjectApi;
-import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.*;
 public class SysUserController {
 
     private final SysUserApi sysUserApi;
-    private final SubjectApi subjectApi;
+    private final SysProjectSubjectApi projectSubjectApi;
 
     @GetMapping("/page")
     @Operation(summary = "分页查询用户列表", description = "支持按用户名、工号、手机号、状态等条件分页查询")
@@ -75,8 +75,10 @@ public class SysUserController {
     }
 
     @GetMapping("/subjects/{userId}")
-    @Operation(summary = "根据用户ID查询关联主体列表", description = "根据用户ID反查角色，再反查角色关联的主体ID，最后查询HR模块的主体信息返回")
-    public ApiResponse<List<SubjectBO>> getSubjectsByUserId(
+    @Operation(
+            summary = "根据用户ID查询关联主体列表",
+            description = "根据用户ID反查角色，再反查角色关联的主体ID，最后查询当前项目下的项目主体信息返回")
+    public ApiResponse<List<SysProjectSubjectResp>> getSubjectsByUserId(
             @Parameter(description = "用户ID", required = true, example = "1") @PathVariable
                     Long userId) {
         List<Long> subjectIds = sysUserApi.getSubjectIdsByUserId(userId);
@@ -84,9 +86,9 @@ public class SysUserController {
             return ApiResponse.success(List.of());
         }
         Set<Long> subjectIdSet = new HashSet<>(subjectIds);
-        List<SubjectBO> subjects =
-                subjectApi.getSubjectList().stream()
-                        .filter(s -> subjectIdSet.contains(s.getId()))
+        List<SysProjectSubjectResp> subjects =
+                projectSubjectApi.list().stream()
+                        .filter(s -> subjectIdSet.contains(s.getSubjectId()))
                         .toList();
         return ApiResponse.success(subjects);
     }

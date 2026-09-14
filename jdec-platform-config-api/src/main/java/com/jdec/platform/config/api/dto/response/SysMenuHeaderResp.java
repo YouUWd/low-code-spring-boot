@@ -38,6 +38,9 @@ public class SysMenuHeaderResp {
     @Schema(description = "来源ID（nodeType=0 时=来源菜单ID，nodeType=1 时=来源字段ID）", example = "1")
     private Long sourceId;
 
+    @Schema(description = "模块id（nodeType=0 时=菜单绑定模块id，nodeType=1 时=字段所属模块id）", example = "1001")
+    private Long moduleId;
+
     @Schema(description = "字段索引（模块id.表名.字段名）", example = "1001.info.company_name")
     private String dataIndex;
 

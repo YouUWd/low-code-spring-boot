@@ -225,6 +225,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
             SysMenuHeader node, Map<String, List<SysMenuHeader>> childrenByParent) {
         MenuHeaderColumnResp resp = new MenuHeaderColumnResp();
         resp.setLabel(node.getLabel());
+        resp.setModuleId(node.getModuleId());
         if (isMenuNode(node)) {
             resp.setSourceId(node.getSourceId());
             resp.setColors(parseColors(node.getColors()));
@@ -306,6 +307,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         root.setVirId(menuVirId(menuId));
         root.setParentId(ROOT_PARENT_ID);
         root.setSourceId(menuId);
+        root.setModuleId(menu != null ? menu.getModuleId() : null);
         root.setLabel(menu != null ? menu.getTitle() : null);
         root.setChecked(CHECKED_NO);
         root.setChildren(new ArrayList<>());
@@ -325,6 +327,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         // parent_id 直接存父节点虚拟id，顶层统一为 0
         resp.setParentId(node.getParentId() != null ? node.getParentId() : ROOT_PARENT_ID);
         resp.setSourceId(node.getSourceId());
+        resp.setModuleId(node.getModuleId());
         // label 直接取数据库存储值，不做反查映射
         resp.setLabel(node.getLabel());
         // 表头展示相关配置原样透传
@@ -402,6 +405,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         resp.setVirId(currentVirId);
         resp.setParentId(parentVirId != null ? parentVirId : ROOT_PARENT_ID);
         resp.setSourceId(menu.getId());
+        resp.setModuleId(menu.getModuleId());
         resp.setLabel(menu.getTitle());
         resp.setSorted(SORTED_YES);
         resp.setEllipsis(ELLIPSIS_NO);
@@ -418,6 +422,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
             fieldResp.setVirId(fieldVirId(field.getId()));
             fieldResp.setParentId(currentVirId);
             fieldResp.setSourceId(field.getId());
+            fieldResp.setModuleId(field.getModuleId());
             fieldResp.setDataIndex(buildDataIndex(field));
             fieldResp.setLabel(firstNotBlank(field.getDisplayName(), field.getColumnName()));
             fieldResp.setSorted(SORTED_YES);
@@ -452,6 +457,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         entity.setNodeType(node.getNodeType());
         entity.setVirId(node.getVirId());
         entity.setSourceId(node.getSourceId());
+        entity.setModuleId(node.getModuleId());
         entity.setLabel(node.getLabel());
         entity.setColors(node.getColors());
         entity.setWidth(node.getWidth());

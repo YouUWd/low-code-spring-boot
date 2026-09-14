@@ -11,8 +11,9 @@ import lombok.NoArgsConstructor;
 /**
  * 多级列头展示节点
  *
- * <p>菜单节点（nodeType=0）输出 sourceId/label/colors/children；字段节点（nodeType=1）输出
- * label/fieldId/dataIndex/width/sorted/searchType/ellipsis/fixed/sortValue。未涉及的字段为 null 时不输出。
+ * <p>菜单节点（nodeType=0）输出 sourceId/moduleId/label/colors/children；字段节点（nodeType=1）输出
+ * label/fieldId/moduleId/dataIndex/width/sorted/searchType/ellipsis/fixed/sortValue。未涉及的字段为 null
+ * 时不输出。
  */
 @Data
 @Builder
@@ -33,6 +34,9 @@ public class MenuHeaderColumnResp {
 
     @Schema(description = "字段节点来源ID（nodeType=1 时为来源字段ID）", example = "10001")
     private Long fieldId;
+
+    @Schema(description = "模块id（nodeType=0 时=菜单绑定模块id，nodeType=1 时=字段所属模块id）", example = "1001")
+    private Long moduleId;
 
     @Schema(description = "字段索引（模块id.表名.字段名）", example = "1001.info.company_name")
     private String dataIndex;

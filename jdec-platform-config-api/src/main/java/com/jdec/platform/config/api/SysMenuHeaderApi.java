@@ -50,9 +50,9 @@ public interface SysMenuHeaderApi {
      * 查询菜单多级列头展示结构
      *
      * <p>纯读取 {@code sys_menu_header} 中该菜单（按 {@code subject_id} + {@code project_no} 隔离）已保存的节点，
-     * 按多级列头展示格式组装返回：菜单节点输出 {@code sourceId/label/colors/children}，字段节点输出 {@code
-     * label/fieldId/dataIndex/width/sorted/searchType/ellipsis/fixed/sortValue}。{@code colors} 与
-     * {@code searchType} 在库中均为 JSON 串，此处解析后输出为数组/对象。
+     * 按多级列头展示格式组装返回：菜单节点输出 {@code sourceId/moduleId/label/colors/children}，字段节点输出 {@code
+     * label/fieldId/moduleId/dataIndex/width/sorted/searchType/ellipsis/fixed/sortValue}。{@code
+     * colors} 与 {@code searchType} 在库中均为 JSON 串，此处解析后输出为数组/对象。
      *
      * <p>该接口不做默认树生成与落库，无配置记录时返回空（header 为 null）。
      *

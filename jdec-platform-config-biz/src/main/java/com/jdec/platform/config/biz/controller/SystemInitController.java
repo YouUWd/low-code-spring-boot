@@ -24,7 +24,7 @@ public class SystemInitController {
             summary = "执行系统初始化",
             description =
                     "以 init/project_subject.json 的项目主体清单为驱动，逐个主体初始化模块、菜单、通用配置、特殊权限，"
-                            + "并创建超级管理员角色、绑定全部菜单与特殊权限。已存在的数据按步骤跳过，可重复调用。")
+                            + "并创建超级管理员角色、绑定全部菜单、模块字段权限与特殊权限。已存在的数据按步骤跳过，可重复调用。")
     public ApiResponse<SystemInitResp> initSystem() {
         return ApiResponse.success(systemInitApi.initSystem());
     }

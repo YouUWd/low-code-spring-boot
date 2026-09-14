@@ -27,6 +27,20 @@ public class SysDataPermissionResp {
     @Schema(description = "状态 1:启用 0:禁用")
     private Integer status;
 
-    @Schema(description = "关联的数据权限列表")
-    private List<String> bizNames;
+    @Schema(description = "主体列表")
+    private List<SubjectInfo> subjectInfos;
+
+    @Data
+    @Schema(description = "数据权限主体信息")
+    public static class SubjectInfo {
+
+        @Schema(description = "主体id")
+        private Long subjectId;
+
+        @Schema(description = "主体名称")
+        private String subjectName;
+
+        @Schema(description = "主体所拥有的业务数据")
+        private List<String> bizNames;
+    }
 }

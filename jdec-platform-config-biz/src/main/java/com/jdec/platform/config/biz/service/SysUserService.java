@@ -558,15 +558,22 @@ public class SysUserService implements SysUserApi {
             resultSubjectIds.addAll(subjectIdsFromRoles);
         }
 
-        // 路径2: 请求头 subjectId -> sys_role_subject -> roleIds -> sys_role -> 收集 subjectIds
-        Long headerSubjectId = AppContext.getSubjectId();
-        if (headerSubjectId != null) {
+        // 路径2: userId -> sys_user -> subjectId -> sys_role_subject -> roleIds -> sys_role ->
+        // 收集 subjectIds
+        SysUser user =
+                sysUserMapper.selectOne(
+                        Wrappers.<SysUser>lambdaQuery()
+                                .eq(SysUser::getUserId, userId)
+                                .eq(SysUser::getDeleted, Boolean.FALSE)
+                                .select(SysUser::getUserId, SysUser::getSubjectId));
+        Long userSubjectId = user == null ? null : user.getSubjectId();
+        if (userSubjectId != null) {
             // 查询该主体绑定的角色ID（且状态有效、时效范围内）
             List<Long> subjectRoleIds =
                     sysRoleSubjectMapper
                             .selectList(
                                     Wrappers.<SysRoleSubject>lambdaQuery()
-                                            .eq(SysRoleSubject::getSubjectId, headerSubjectId)
+                                            .eq(SysRoleSubject::getSubjectId, userSubjectId)
                                             .eq(SysRoleSubject::getStatus, 0))
                             .stream()
                             .filter(

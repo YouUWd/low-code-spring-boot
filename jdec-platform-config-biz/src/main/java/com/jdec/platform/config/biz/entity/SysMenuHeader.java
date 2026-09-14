@@ -31,6 +31,9 @@ public class SysMenuHeader implements Serializable {
     @Schema(description = "来源ID(节点类型为菜单时=来源菜单ID，为字段时=来源字段ID)")
     private Long sourceId;
 
+    @Schema(description = "模块id(菜单节点=菜单绑定模块id，字段节点=字段所属模块id)")
+    private Long moduleId;
+
     @Schema(description = "显示名覆盖。FIELD空=取字段显示名，MENU空=取来源菜单名")
     private String label;
 

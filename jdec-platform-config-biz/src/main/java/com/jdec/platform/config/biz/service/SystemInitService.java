@@ -22,6 +22,7 @@ import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysProjectSubject;
 import com.jdec.platform.config.biz.entity.SysRole;
+import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.entity.SysSpecialPermission;
 import com.jdec.platform.config.biz.init.ConfigCategoryInitNode;
 import com.jdec.platform.config.biz.init.ConfigItemInitNode;
@@ -34,6 +35,7 @@ import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysProjectSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -61,7 +63,7 @@ import org.springframework.util.CollectionUtils;
  * 系统初始化服务。
  *
  * <p>以 {@code init/project_subject.json} 中的项目主体清单为驱动，逐个主体初始化模块、菜单、通用配置、特殊权限，
- * 并为每个主体创建超级管理员角色、绑定全部菜单与特殊权限。
+ * 并为每个主体创建超级管理员角色、绑定全部菜单、模块字段权限与特殊权限。
  *
  * <p><strong>主键ID</strong>：项目主体 / 模块 / 菜单 / 特殊权限的主键均取自初始化 JSON（依次递增、跨环境固定）， 落库走各 Mapper 的 {@code
  * insertWithId}；通用配置分类与配置项的主键仍由数据库自增。
@@ -101,6 +103,7 @@ public class SystemInitService implements SystemInitApi {
     private final SysConfigCategoryMapper configCategoryMapper;
     private final SysSpecialPermissionMapper specialPermissionMapper;
     private final SysRoleMapper roleMapper;
+    private final SysRoleModuleFieldPermissionMapper roleModuleFieldPermissionMapper;
     private final SysConfigCategoryApi configCategoryApi;
     private final SysRoleApi roleApi;
     private final SysRolePermissionApi rolePermissionApi;
@@ -206,7 +209,13 @@ public class SystemInitService implements SystemInitApi {
         steps.addAll(txSteps);
 
         // 超级管理员角色必须放在事务外：saveRoleUser 内部跨库读 HR，事务内会导致数据源无法切换
-        initSuperAdminRole(projectNo, subjectId, data.menuIds(), data.permissionIds(), steps);
+        initSuperAdminRole(
+                projectNo,
+                subjectId,
+                data.menuIds(),
+                data.moduleIds(),
+                data.permissionIds(),
+                steps);
     }
 
     /** 在单个事务内初始化该主体的项目主体、模块、菜单、通用配置、特殊权限，返回角色授权所需的ID集合 */
@@ -233,11 +242,13 @@ public class SystemInitService implements SystemInitApi {
         List<Long> permissionIds =
                 initSpecialPermissions(projectNo, subjectId, permissionTemplates, steps);
 
-        return new ProjectInitData(menuIds, permissionIds);
+        return new ProjectInitData(
+                menuIds, new ArrayList<>(moduleCodeIdMap.values()), permissionIds);
     }
 
     /** 单个主体事务内初始化产出的、供角色授权使用的ID集合 */
-    private record ProjectInitData(List<Long> menuIds, List<Long> permissionIds) {}
+    private record ProjectInitData(
+            List<Long> menuIds, List<Long> moduleIds, List<Long> permissionIds) {}
 
     /** 初始化项目主体记录 */
     private void initProjectSubject(ProjectSubjectInitNode project, List<String> steps) {
@@ -512,7 +523,7 @@ public class SystemInitService implements SystemInitApi {
     }
 
     /**
-     * 创建（或复用）超级管理员角色，并绑定全部菜单与特殊权限。
+     * 创建（或复用）超级管理员角色，并绑定全部菜单、模块字段权限与特殊权限。
      *
      * <p>角色授权对象固定为 {@link #SUPER_ADMIN_USER_ID} 指定的用户，不再绑定主体。
      */
@@ -520,6 +531,7 @@ public class SystemInitService implements SystemInitApi {
             String projectNo,
             Long subjectId,
             List<Long> menuIds,
+            List<Long> moduleIds,
             List<Long> permissionIds,
             List<String> steps) {
         SysRole role =
@@ -571,6 +583,29 @@ public class SystemInitService implements SystemInitApi {
             rolePermissionApi.saveRoleSpecialPermission(permissionReq);
             steps.add("角色特殊权限绑定: " + permissionIds.size() + " 个");
         }
+
+        initRoleModulePermissions(roleId, moduleIds, steps);
+    }
+
+    /**
+     * 生成角色的模块级字段权限数据：为该主体下全部模块各写一条 {@code sys_role_module_field_permission} 记录。
+     *
+     * <p>不走 {@code SysRolePermissionApi.saveRoleModuleFieldPermission}：该接口以「模块下的字段」为粒度落库，
+     * 而初始化模块尚未配置 {@code sys_module_field} 字段，且其写入依赖的实体缺少 {@code table_name}/{@code column_name}
+     * 列映射。此处直接按模块粒度落库，重复执行时先清理该角色在本批模块下的旧记录再插入。
+     */
+    private void initRoleModulePermissions(Long roleId, List<Long> moduleIds, List<String> steps) {
+        if (CollectionUtils.isEmpty(moduleIds)) {
+            return;
+        }
+        roleModuleFieldPermissionMapper.delete(
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                        .in(SysRoleModuleFieldPermission::getModuleId, moduleIds));
+        for (Long moduleId : moduleIds) {
+            roleModuleFieldPermissionMapper.insertModulePermission(roleId, moduleId);
+        }
+        steps.add("角色模块权限绑定: " + moduleIds.size() + " 个");
     }
 
     /** 读取初始化 JSON 中指定的主键ID，缺失时直接中断，避免以空主键落库 */
