@@ -1,8 +1,8 @@
 package com.jdec.platform.approval.biz.controller;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.*;
-import com.jdec.platform.approval.api.resp.ActionLogResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 @Tag(name = "审批流程控制", description = "审批流程控制，单据审批数据查询")
 public class ApprovalController {
     private final IApprovalEngine approvalService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @PostMapping("/BusinessNum")
     @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
@@ -45,25 +47,6 @@ public class ApprovalController {
         return ApiResponse.success(approvalService.getApprovalDetail(req));
     }
 
-    @PostMapping("/Log")
-    @Operation(summary = "查询单据操作日志", description = "查询单据操作日志")
-    public ApiResponse<List<ActionLogResp>> getApprovalLog(@RequestBody ApprovalDataReq req) {
-        return ApiResponse.success(approvalService.getActionLog(req));
-    }
-
-    @PostMapping("/VersionId")
-    @Operation(summary = "查询单据对比版本数据", description = "查询单据对比版本数据ID,版本号")
-    public ApiResponse<Map<String, Object>> getApprovalVersionId(@RequestBody ApprovalDataReq req) {
-        return ApiResponse.success(approvalService.getApprovalChangeData(req));
-    }
-
-    @PostMapping("/Receiver")
-    @Operation(summary = "查询消息接收人", description = "查询消息ID,消息接收人列表")
-    public ApiResponse<List<Map<String, Object>>> getApprovalVersionId(
-            @RequestBody MessageReceiverReq req) {
-        return ApiResponse.success(approvalService.getMessageReceiver(req));
-    }
-
     @PostMapping("/ApprovalStep")
     @Operation(summary = "查询已经审批的步骤状态", description = "查询已经审批的步骤状态")
     public ApiResponse<List<Map<String, Object>>> getApprovalStep(
@@ -71,15 +54,10 @@ public class ApprovalController {
         return ApiResponse.success(approvalService.getApprovalStep(req));
     }
 
-    @PostMapping("/save")
-    @Operation(summary = "保存单据", description = "保存单据")
-    public ApiResponse<Map<String, Object>> saveApproval(@RequestBody ApprovalProcessReq req) {
-        return ApiResponse.success(approvalService.process(req));
-    }
-
-    @PostMapping("/businessId")
-    @Operation(summary = "保存真实业务ID", description = "保存单据真实业务ID")
-    public ApiResponse<Map<String, Object>> saveBusinessId(@RequestBody SaveBusinessIdReq req) {
-        return ApiResponse.success(approvalService.saveBusinessId(req));
+    @PostMapping("/ApprovalEvent")
+    @Operation(summary = "测试审批事件", description = "测试审批事件")
+    public ApiResponse<Long> approvalProcess(@RequestBody ApprovalEvent approvalEvent) {
+        eventPublisher.publishEvent(approvalEvent);
+        return ApiResponse.success();
     }
 }
