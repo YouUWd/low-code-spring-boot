@@ -8,31 +8,22 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.approval.api.AsyncTaskService;
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.dto.ApprovalProcessDTO;
+import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.*;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
-import com.jdec.platform.approval.biz.dto.ApprovalProcessDTO;
 import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
-import com.jdec.platform.approval.biz.util.ToolUtils;
 import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.hr.api.SubjectApi;
-import com.jdec.platform.hr.api.UserApi;
-import com.jdec.platform.hr.api.bo.SubjectBO;
-import com.jdec.platform.hr.api.bo.UserBO;
-import com.jdec.platform.monitorlog.api.MonitorLogApi;
-import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
-import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -43,6 +34,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 @Slf4j
 @Service
@@ -56,90 +49,30 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final ApprovalVersionRecordMapper approvalVersionRecordMapper;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final SysUserApi sysUserApi;
-    private final UserApi userApi;
-    private final SysRoleApi sysRoleApi;
-    private final SubjectApi subjectApi;
     private final SysStatusApi sysStatusApi;
     private final SysConfigCategoryApi sysConfigCategoryApi;
     private final SysButtonApi sysButtonApi;
-    private final ApprovalActionLogMapper approvalActionLogMapper;
     private final SysRolePermissionApi sysRolePermissionApi;
-    private final SysWechatTemplateApi sysWechatTemplateApi;
     private final ConfigChangeMessagePublisher messagePublisher;
-    private final ObjectMapper objectMapper;
-    private final SysMenuApi sysMenuApi;
-    private final SysModuleApi sysModuleApi;
-    private final MonitorLogApi monitorLogApi;
+    private final AsyncTaskService asyncTaskService; // 注入异步 Service
 
-    @Override
-    @Transactional
-    public Map<String, Object> process(ApprovalProcessReq approvalProcessReq) {
-        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
-        ApprovalBusiness approvalBusiness = new ApprovalBusiness();
-        Map<String, Object> result = new HashMap<>();
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void handleApprovalEvent(ApprovalEvent event) {
+        log.info("收到模块配置变更事件: eventType={}, moduleId={}", event.getButton(), event.getModuleId());
+        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(event);
         if (List.of("submit", "edit", "change").contains(approvalProcessDTO.getButton())) {
-            Map<String, Object> processResp = businessSubmit(approvalProcessDTO);
-            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
-            result.put("templateList", processResp.get("templateList"));
+            businessSubmit(approvalProcessDTO);
         } else if ("create".equals(approvalProcessDTO.getButton())) {
-            Map<String, Object> processResp = businessCreate(approvalProcessDTO);
-            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
-            result.put("templateList", processResp.get("templateList"));
+            businessCreate(approvalProcessDTO);
         } else if ("pass".equals(approvalProcessDTO.getButton())) {
-            Map<String, Object> processResp = businessApprove(approvalProcessDTO);
-            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
-            result.put("templateList", processResp.get("templateList"));
-            result.put("autoApproval", processResp.get("autoApproval"));
-            result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
-            result.put("autoRoleId", approvalBusiness.getApproveRoleId());
-            if (approvalBusiness.getStatusValue().equals(99)) {
-                result.put("ok", 1);
-                result.put("end", 1);
-                result.put("businessId", approvalBusiness.getBusinessId());
-                result.put("statusTitle", approvalBusiness.getStatusTitle());
-                return result;
-            }
+            businessApprove(approvalProcessDTO);
         } else if ("reject".equals(approvalProcessDTO.getButton())) {
-            Map<String, Object> processResp = businessReject(approvalProcessDTO);
-            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
-            result.put("templateList", processResp.get("templateList"));
-            result.put("autoApproval", processResp.get("autoApproval"));
-            result.put("autoApprovalTime", processResp.get("autoApprovalTime"));
-            result.put("autoRoleId", approvalBusiness.getApproveRoleId());
+            businessReject(approvalProcessDTO);
         } else if ("cancel".equals(approvalProcessDTO.getButton())) {
-            Map<String, Object> processResp = businessRevoke(approvalProcessDTO);
-            approvalBusiness = (ApprovalBusiness) processResp.get("approvalBusiness");
-            result.put("templateList", processResp.get("templateList"));
-            result.put("ok", 1);
-            result.put("end", 0);
-            result.put("versionNo", approvalBusiness.getVersionNo());
-            result.put("statusTitle", approvalBusiness.getStatusTitle());
-            return result;
+            businessRevoke(approvalProcessDTO);
         } else {
             throw new BusinessException(603, "审批操作异常");
         }
-
-        result.put("ok", 1);
-        result.put("end", 0);
-        result.put("statusTitle", approvalBusiness.getStatusTitle());
-        return result;
-    }
-
-    @Override
-    @Transactional
-    public Map<String, Object> saveBusinessId(SaveBusinessIdReq req) {
-        LambdaUpdateWrapper<ApprovalBusiness> businessWrapper = new LambdaUpdateWrapper<>();
-        businessWrapper.eq(ApprovalBusiness::getModuleId, req.getModuleId());
-        businessWrapper.eq(ApprovalBusiness::getRecordId, req.getRecordId());
-        businessWrapper.set(ApprovalBusiness::getBusinessId, req.getBusinessId());
-        int businessResult = approvalBusinessMapper.update(businessWrapper);
-
-        LambdaUpdateWrapper<ApprovalVersionRecord> recordWrapper = new LambdaUpdateWrapper<>();
-        recordWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
-        recordWrapper.eq(ApprovalVersionRecord::getRecordId, req.getRecordId());
-        recordWrapper.set(ApprovalVersionRecord::getBusinessId, req.getBusinessId());
-        int recordResult = approvalVersionRecordMapper.update(recordWrapper);
-        return Map.of("businessResult", businessResult, "recordResult", recordResult);
     }
 
     // 查询单据审批详细数据--------------------------------------------------------------------
@@ -531,153 +464,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return !todoList.isEmpty() ? todoList.getFirst().getRecordId() : 0;
     }
 
-    // 查询单据审批操作日志---------------------------------------------------------------------
-    @Override
-    public List<ActionLogResp> getActionLog(ApprovalDataReq req) {
-        Long subjectId = req.getSubjectId();
-        Long recordId = req.getRecordId();
-        Long moduleId = req.getModuleId();
-        List<ActionLogResp> respList = new ArrayList<>();
-        if (Objects.isNull(recordId) || Objects.isNull(moduleId) || Objects.isNull(subjectId)) {
-            throw new BusinessException(601, "subjectId、recordId和moduleId不能为空");
-        }
-        // 1. 查询业务主记录获取number
-        ApprovalVersionRecord approvalVersionRecord =
-                approvalVersionRecordMapper.selectOne(
-                        new LambdaQueryWrapper<ApprovalVersionRecord>()
-                                .eq(ApprovalVersionRecord::getRecordId, recordId)
-                                .eq(ApprovalVersionRecord::getSubjectId, subjectId)
-                                .eq(ApprovalVersionRecord::getModuleId, moduleId)
-                                .orderByDesc(ApprovalVersionRecord::getId)
-                                .last("LIMIT 1"));
-        if (Objects.isNull(approvalVersionRecord)) {
-            return respList;
-        }
-        // 2. 构查询条件
-        LambdaQueryWrapper<ApprovalActionLog> wrapper =
-                new LambdaQueryWrapper<ApprovalActionLog>()
-                        .eq(
-                                ApprovalActionLog::getSerialNumber,
-                                approvalVersionRecord.getSerialNumber())
-                        .orderByAsc(ApprovalActionLog::getId);
-
-        List<ApprovalActionLog> actionLogList = approvalActionLogMapper.selectList(wrapper);
-        if (actionLogList.isEmpty()) {
-            return respList;
-        }
-        // 3. 收集需要批量查询的ID
-        for (ApprovalActionLog log : actionLogList) {
-            ActionLogResp actionLogResp = new ActionLogResp();
-            BeanUtils.copyProperties(log, actionLogResp);
-            SysConfigItemResp modelConfig =
-                    sysConfigCategoryApi.getConfigItemsByValue("logStateIcon", log.getActionIcon());
-            actionLogResp.setActionTypeTitle(modelConfig.getLabel());
-            actionLogResp.setActionPath(modelConfig.getExtra());
-            if (!log.getCreatedBy().equals(9999999L)) {
-                actionLogResp.setCreatedUser(convertUserResp(log.getCreatedBy()));
-                actionLogResp.setRealUser(convertUserResp(log.getRealUserId()));
-            }
-            if (Objects.nonNull(log.getDescription())) {
-                try {
-                    actionLogResp.setDescription(
-                            objectMapper.readValue(log.getDescription(), Object.class));
-                } catch (Exception e) {
-                    actionLogResp.setDescription(log.getDescription());
-                }
-            }
-            respList.add(actionLogResp);
-        }
-        return respList;
-    }
-
-    // 查询单据对应版本号和数据ID-----------------------------------------------------------------
-    @Override
-    public Map<String, Object> getApprovalChangeData(ApprovalDataReq req) {
-        Long subjectId = req.getSubjectId();
-        Long recordId = req.getRecordId();
-        Long moduleId = req.getModuleId();
-        if (Objects.isNull(recordId) || Objects.isNull(moduleId) || Objects.isNull(subjectId)) {
-            throw new BusinessException(601, "subjectId、recordId和moduleId不能为空");
-        }
-        // 1. 查询业务主记录获取number
-        ApprovalVersionRecord approvalVersionRecord =
-                approvalVersionRecordMapper.selectOne(
-                        new LambdaQueryWrapper<ApprovalVersionRecord>()
-                                .eq(ApprovalVersionRecord::getRecordId, recordId)
-                                .eq(ApprovalVersionRecord::getSubjectId, subjectId)
-                                .eq(ApprovalVersionRecord::getModuleId, moduleId)
-                                .orderByDesc(ApprovalVersionRecord::getId)
-                                .last("LIMIT 1"));
-        if ((Objects.isNull(approvalVersionRecord))) {
-            return Map.of();
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("currentVersion", approvalVersionRecord.getVersionNo());
-        ApprovalVersionRecord oldApprovalVersionRecord =
-                approvalVersionRecordMapper.selectById(approvalVersionRecord.getSourceId());
-        if (Objects.nonNull(oldApprovalVersionRecord)) {
-            result.put("sourceVersion", oldApprovalVersionRecord.getVersionNo());
-            result.put("sourceRecordId", oldApprovalVersionRecord.getRecordId());
-        }
-        if (approvalVersionRecord.getSerialNo() > 1) {
-            ApprovalVersionRecord preApprovalVersionRecord =
-                    approvalVersionRecordMapper.selectOne(
-                            new LambdaQueryWrapper<ApprovalVersionRecord>()
-                                    .eq(
-                                            ApprovalVersionRecord::getSerialNumber,
-                                            approvalVersionRecord.getSerialNumber())
-                                    .eq(
-                                            ApprovalVersionRecord::getSerialNo,
-                                            approvalVersionRecord.getSerialNo() - 1)
-                                    .last("LIMIT 1"));
-            result.put("preRecordId", preApprovalVersionRecord.getRecordId());
-        }
-        return result;
-    }
-
-    @Override
-    public List<Map<String, Object>> getMessageReceiver(MessageReceiverReq req) {
-        // 查询业务记录
-        LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
-        approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, req.getModuleId());
-        approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, req.getRecordId())
-                .last("LIMIT 1");
-        ApprovalBusiness approvalBusiness =
-                approvalBusinessMapper.selectOne(approvalBusinessWrapper);
-        if (Objects.isNull(approvalBusiness)) {
-            throw new BusinessException(601, "审批单据不存在");
-        }
-        // 查询当前审批步骤按钮对应的消息模板
-        LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
-        buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalBusiness.getSerialNumber());
-        buttonWrapper.eq(ApprovalChainButton::getSerialNo, approvalBusiness.getSerialNo());
-        buttonWrapper.eq(ApprovalChainButton::getCurrentStep, approvalBusiness.getCurrentStep());
-        buttonWrapper.eq(ApprovalChainButton::getButtonTypeValue, req.getButton()).last("LIMIT 1");
-        ApprovalChainButton button = approvalChainButtonMapper.selectOne(buttonWrapper);
-        if (Objects.isNull(button) || button.getMsgTemplateIds().isBlank()) {
-            throw new BusinessException(601, "没有配置消息模板");
-        }
-        // 逗号分割转列表
-        List<Object> templateIdList = ToolUtils.formatArrayItem(button.getMsgTemplateIds());
-
-        // 3. 遍历每个模板，获取对应用户列表
-        List<Map<String, Object>> templateList = new ArrayList<>();
-        for (Object templateId : templateIdList) {
-            Set<Long> userList =
-                    getSendUserList(
-                            approvalBusiness,
-                            Long.valueOf((String) templateId),
-                            req.getCurrentUserId());
-
-            Map<String, Object> item = new HashMap<>();
-            item.put("template_id", templateId);
-            item.put("user_list", userList);
-            templateList.add(item);
-        }
-        return templateList;
-    }
-
     @Override
     public List<Map<String, Object>> getApprovalStep(ApprovalDataReq req) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -724,14 +510,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 新建业务发起审批申请------------------------------------------------------------------------
     @Transactional
-    public Map<String, Object> businessCreate(ApprovalProcessDTO approvalProcessDTO) {
-        // 生成唯一编号
-        String prefix = "JD";
-        if (Objects.nonNull(approvalProcessDTO.getPrefix())
-                && !approvalProcessDTO.getPrefix().isBlank()) {
-            prefix = approvalProcessDTO.getPrefix();
-        }
-        String businessNumber = ToolUtils.createNo(prefix, 1, "", 0, null);
+    public void businessCreate(ApprovalProcessDTO approvalProcessDTO) {
+        String businessNumber = approvalProcessDTO.getBusinessNumber();
         String serialNumber = businessNumber + "@1";
         // 初始化审批链
         approvalProcessDTO.setSerialNumber(serialNumber);
@@ -810,9 +590,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
         approvalVersionRecordMapper.insert(approvalVersionRecord);
 
-        // 写入日志
-        saveActionLog(0L, 0L, approvalProcessDTO, approvalBusiness);
-
+        // 发送websocket消息
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
@@ -823,19 +601,19 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 AppContext.getProjectNo(),
                 ChangeType.APPROVAL_UPDATE,
                 payload);
-
-        Map<String, Object> result = new HashMap<>();
-        List<Map<String, Object>> templates = new ArrayList<>();
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
+        approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
+        approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        // 写入日志
+        asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
-        templates.add(sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO));
-        result.put("templateList", templates);
-        result.put("approvalBusiness", approvalBusiness);
-        return result;
+        asyncTaskService.sendWechatMessageAsync(
+                AppContext.getProjectNo(), approvalProcessDTO, 1, "submit", 0L);
     }
 
     // 变更业务发起审批申请------------------------------------------------------------------------
     @Transactional
-    public Map<String, Object> businessSubmit(ApprovalProcessDTO approvalProcessDTO) {
+    public void businessSubmit(ApprovalProcessDTO approvalProcessDTO) {
         // 查询业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -848,7 +626,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             throw new BusinessException(601, "单据记录异常");
         }
         if (!approvalBusiness.getCreatedBy().equals(approvalProcessDTO.getApplicantId())) {
-            throw new BusinessException(601, "申请人与操作人不一致");
+            throw new BusinessException(602, "申请人与操作人不一致");
         }
         LambdaQueryWrapper<ApprovalVersionRecord> approvalVersionWrapper =
                 new LambdaQueryWrapper<>();
@@ -956,9 +734,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
         approvalVersionRecordMapper.insert(approvalVersionRecord);
 
-        // 写入日志
-        saveActionLog(0L, 0L, approvalProcessDTO, approvalBusiness);
-
+        // 发送websocket消息
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
@@ -970,18 +746,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
-        Map<String, Object> result = new HashMap<>();
-        List<Map<String, Object>> templates = new ArrayList<>();
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
+        approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
+        approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 写入日志
+        asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
-        templates.add(sendWechatMessage(approvalBusiness, "submit", approvalProcessDTO));
-        result.put("templateList", templates);
-        result.put("approvalBusiness", approvalBusiness);
-        return result;
+        asyncTaskService.sendWechatMessageAsync(
+                AppContext.getProjectNo(), approvalProcessDTO, 1, "submit", 0L);
     }
 
     // 审批通过---------------------------------------------------------------------
     @Transactional
-    public Map<String, Object> businessApprove(ApprovalProcessDTO approvalProcessDTO) {
+    public void businessApprove(ApprovalProcessDTO approvalProcessDTO) {
         Long recordId =
                 Objects.nonNull(approvalProcessDTO.getOldRecordId())
                         ? approvalProcessDTO.getOldRecordId()
@@ -1120,13 +898,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalVersionRecordMapper.updateById(approvalRecord);
         }
 
-        // 写入日志
-        saveActionLog(
-                approvalChain.getCurrentStatusGroupId(),
-                approvalChain.getCurrentStatusChildId(),
-                approvalProcessDTO,
-                approvalBusiness);
-
+        // 发送websocket消息
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
@@ -1138,8 +910,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
-        Map<String, Object> result = new HashMap<>();
-        List<Map<String, Object>> templates = new ArrayList<>();
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
+        approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
+        approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 写入日志
+        asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
+
         // 发送消息
         if (approved) {
             LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
@@ -1151,32 +928,21 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.nonNull(button) && !StringUtils.isBlank(button.getMsgTemplateIds())) {
                 String[] ids = button.getMsgTemplateIds().split(",");
                 for (String id : ids) {
-                    templates.add(
-                            sendWechatMessageById(
-                                    approvalBusiness, Long.parseLong(id), approvalProcessDTO));
+                    // 发送消息
+                    asyncTaskService.sendWechatMessageAsync(
+                            AppContext.getProjectNo(),
+                            approvalProcessDTO,
+                            2,
+                            "",
+                            Long.parseLong(id));
                 }
             }
         }
-        result.put("templateList", templates);
-        result.put("approvalBusiness", approvalBusiness);
-
-        if (Objects.nonNull(approvalChainNext) && approvalChainNext.getAutoApproved()) {
-            int time =
-                    Objects.nonNull(approvalChainNext.getAutoApprovedTime())
-                            ? approvalChainNext.getAutoApprovedTime()
-                            : 0;
-            result.put("autoApproval", 1);
-            result.put("autoApprovalTime", LocalDateTime.now().plusHours(time));
-        } else {
-            result.put("autoApproval", 0);
-            result.put("autoApprovalTime", LocalDateTime.now());
-        }
-        return result;
     }
 
     // 审批驳回------------------------------------------------------------------
     @Transactional
-    public Map<String, Object> businessReject(ApprovalProcessDTO approvalProcessDTO) {
+    public void businessReject(ApprovalProcessDTO approvalProcessDTO) {
         // 查询业务记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -1306,13 +1072,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 String.join(",", approvalProcessDTO.getApplicantId().toString()));
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
-        // 写入日志
-        saveActionLog(
-                approvalChain.getCurrentStatusGroupId(),
-                approvalChain.getCurrentStatusChildId(),
-                approvalProcessDTO,
-                approvalBusiness);
 
+        // 发送websocket消息
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
@@ -1324,8 +1085,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
-        Map<String, Object> result = new HashMap<>();
-        List<Map<String, Object>> templates = new ArrayList<>();
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
+        approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
+        approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 写入日志
+        asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
         LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
         buttonWrapper.eq(ApprovalChainButton::getSerialNumber, approvalChain.getSerialNumber());
@@ -1336,31 +1101,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.nonNull(button) && !StringUtils.isBlank(button.getMsgTemplateIds())) {
             String[] ids = button.getMsgTemplateIds().split(",");
             for (String id : ids) {
-                templates.add(
-                        sendWechatMessageById(
-                                approvalBusiness, Long.parseLong(id), approvalProcessDTO));
+                asyncTaskService.sendWechatMessageAsync(
+                        AppContext.getProjectNo(), approvalProcessDTO, 2, "", Long.parseLong(id));
             }
         }
-        result.put("templateList", templates);
-        result.put("approvalBusiness", approvalBusiness);
-        if (!businessApprovalChain.getCurrentStep().equals(approvalChain.getCurrentStep())
-                && businessApprovalChain.getAutoApproved()) {
-            int time =
-                    Objects.nonNull(businessApprovalChain.getAutoApprovedTime())
-                            ? businessApprovalChain.getAutoApprovedTime()
-                            : 0;
-            result.put("autoApproval", 1);
-            result.put("autoApprovalTime", LocalDateTime.now().plusHours(time));
-        } else {
-            result.put("autoApproval", 0);
-            result.put("autoApprovalTime", LocalDateTime.now());
-        }
-        return result;
     }
 
     // 撤销申请-------------------------------------------------------------------------
     @Transactional
-    public Map<String, Object> businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
+    public void businessRevoke(ApprovalProcessDTO approvalProcessDTO) {
         // 查询单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
@@ -1443,10 +1192,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalVersionRecord.setStatusFontColor(statusNode.getStatusFontColor());
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
 
-        // 写入日志
-        saveActionLog(
-                statusNode.getPid(), statusNode.getId(), approvalProcessDTO, approvalBusiness);
-
+        // 发送websocket消息
         Map<String, Object> payload = new HashMap<>();
         payload.put("businessNumber", approvalBusiness.getBusinessNumber());
         payload.put("moduleId", approvalBusiness.getModuleId());
@@ -1458,185 +1204,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 ChangeType.APPROVAL_UPDATE,
                 payload);
 
-        Map<String, Object> result = new HashMap<>();
-        List<Map<String, Object>> templates = new ArrayList<>();
+        approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
+        approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
+        approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 写入日志
+        asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
-        templates.add(sendWechatMessage(approvalBusiness, "cancel", approvalProcessDTO));
-        result.put("templateList", templates);
-        result.put("approvalBusiness", approvalBusiness);
-        return result;
-    }
-
-    // 保存操作日志-----------------------------------------------------------------------
-    // 注意：此方法必须在 @Transactional 事务方法内部调用，不单独加 @Transactional
-    // 这样可以确保日志保存失败时，整个事务（包括业务数据和快照）都会回滚
-    private void saveActionLog(
-            Long oldStatusGroupId,
-            Long oldStatusId,
-            ApprovalProcessDTO approvalProcessDTO,
-            ApprovalBusiness approvalBusiness) {
-        try {
-            // 1. 获取对应节点 action 的操作日志描述
-            String actionName = "";
-            Long actionType = 0L;
-            if (List.of("cancel", "submit", "create").contains(approvalProcessDTO.getButton())) {
-                SysConfigItemResp modelConfig =
-                        sysConfigCategoryApi.getConfigItemsByValue(
-                                "logStateIcon", approvalProcessDTO.getButton());
-                if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
-                    actionName = "已" + modelConfig.getLabel();
-                    actionType = modelConfig.getId();
-                }
-            } else {
-                LambdaQueryWrapper<ApprovalChainButton> configWrapper = new LambdaQueryWrapper<>();
-                configWrapper.eq(
-                        ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
-                configWrapper.eq(
-                        ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
-                configWrapper.eq(
-                        ApprovalChainButton::getCurrentStep, approvalProcessDTO.getCurrentStep());
-                configWrapper
-                        .eq(ApprovalChainButton::getButtonTypeValue, approvalProcessDTO.getButton())
-                        .last("LIMIT 1");
-                ApprovalChainButton approvalChainButton =
-                        approvalChainButtonMapper.selectOne(configWrapper);
-                if (Objects.nonNull(approvalChainButton)) {
-                    actionName = approvalChainButton.getLogName();
-                    actionType = approvalChainButton.getButtonTypeId();
-                }
-            }
-
-            // 2. 构建日志实体
-            LocalDateTime time = LocalDateTime.now();
-            ApprovalActionLog logEntity = new ApprovalActionLog();
-            logEntity.setActionType(actionType);
-            logEntity.setActionIcon(approvalProcessDTO.getButton());
-            logEntity.setActionName(actionName);
-            logEntity.setSerialNumber(approvalProcessDTO.getSerialNumber());
-            logEntity.setBusinessId(approvalProcessDTO.getRecordId());
-            logEntity.setModuleId(approvalProcessDTO.getModuleId());
-            logEntity.setStatusGroupId(oldStatusGroupId);
-            logEntity.setStatusId(oldStatusId);
-            logEntity.setDescription(approvalProcessDTO.getReason());
-            logEntity.setRealUserId(approvalProcessDTO.getCurrentUserId());
-            logEntity.setCreatedBy(approvalProcessDTO.getApplicantId());
-            logEntity.setCreatedDate(time);
-
-            // 3. 插入日志记录
-            int insertResult = approvalActionLogMapper.insert(logEntity);
-            MonitorControlLogReq monitorControlLogReq = new MonitorControlLogReq();
-            monitorControlLogReq.setSubjectId(approvalProcessDTO.getSubjectId());
-            List<SubjectBO> subjectList = subjectApi.getSubjectList();
-            String subjectName = "";
-            if (!subjectList.isEmpty()) {
-                subjectName =
-                        subjectList.stream()
-                                .filter(s -> approvalProcessDTO.getSubjectId().equals(s.getId()))
-                                .findFirst()
-                                .map(SubjectBO::getSubjectName)
-                                .orElse("");
-            }
-            monitorControlLogReq.setSubjectName(subjectName);
-            UserBO loginUser = new UserBO();
-            if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
-                monitorControlLogReq.setApprovalType(1);
-                loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
-            } else {
-                loginUser.setId(9999999L);
-                loginUser.setUserName("系统自动审批");
-                monitorControlLogReq.setApprovalType(0);
-            }
-            monitorControlLogReq.setLoginUserId(approvalProcessDTO.getCurrentUserId());
-            if (Objects.nonNull(loginUser)) {
-                monitorControlLogReq.setLoginUserName(loginUser.getUserName());
-                monitorControlLogReq.setLoginAvater(loginUser.getUserAvatar());
-                monitorControlLogReq.setLoginUserNumber(loginUser.getWorkNumber());
-                monitorControlLogReq.setLoginUserDeptId(loginUser.getDepartmentId());
-                monitorControlLogReq.setLoginUserDeptName(loginUser.getDepartmentName());
-                monitorControlLogReq.setLoginUserJobId(loginUser.getJobId());
-                monitorControlLogReq.setLoginUserJobName(loginUser.getJobName());
-            }
-            monitorControlLogReq.setLoginRoleId(approvalProcessDTO.getRoleId());
-            RoleConfigDetailResp roleDetail =
-                    sysRoleApi.getRoleConfigDetail(approvalProcessDTO.getRoleId());
-            if (Objects.nonNull(roleDetail)) {
-                monitorControlLogReq.setLoginRoleName(roleDetail.getRoleName());
-            }
-            boolean mockFlag =
-                    approvalProcessDTO.getCurrentUserId() != null
-                            && approvalProcessDTO.getApplicantId() != null
-                            && !approvalProcessDTO
-                                    .getCurrentUserId()
-                                    .equals(approvalProcessDTO.getApplicantId());
-            monitorControlLogReq.setMockFlag(mockFlag ? 1 : 0);
-            if (mockFlag) {
-                UserBO mockUser = new UserBO();
-                if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
-                    mockUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
-                } else {
-                    mockUser.setId(9999999L);
-                    mockUser.setUserName("系统自动审批");
-                }
-                monitorControlLogReq.setMockUserId(approvalProcessDTO.getApplicantId());
-                monitorControlLogReq.setMockUserName(mockUser.getUserName());
-                monitorControlLogReq.setMockUserAvater(mockUser.getUserAvatar());
-                monitorControlLogReq.setMockUserNumber(mockUser.getWorkNumber());
-            }
-            monitorControlLogReq.setIp(RequestContextUtils.getClientIp());
-            monitorControlLogReq.setBrowser(RequestContextUtils.getBrowser());
-            monitorControlLogReq.setPlatForm(RequestContextUtils.getPlatform());
-            monitorControlLogReq.setLogContent(null);
-            monitorControlLogReq.setDataId(approvalProcessDTO.getRecordId());
-            if (Objects.nonNull(approvalProcessDTO.getReason())) {
-                monitorControlLogReq.setLogRemark(approvalProcessDTO.getReason());
-            }
-            SysConfigItemResp modelConfig =
-                    sysConfigCategoryApi.getConfigItemsByValue(
-                            "logStateIcon", approvalProcessDTO.getButton());
-            monitorControlLogReq.setActionName(actionName);
-            monitorControlLogReq.setActionType(approvalProcessDTO.getButton());
-            monitorControlLogReq.setActionTypeTitle(modelConfig.getLabel());
-            monitorControlLogReq.setActionPath(modelConfig.getExtra());
-            monitorControlLogReq.setHrefName(approvalBusiness.getBusinessNumber());
-            monitorControlLogReq.setOrderVersion(
-                    Objects.isNull(approvalBusiness.getVersionNo())
-                            ? 1
-                            : approvalBusiness.getVersionNo());
-            monitorControlLogReq.setControlName(modelConfig.getLabel());
-            monitorControlLogReq.setOperatorResult("成功");
-            monitorControlLogReq.setFontColor("");
-            if (Objects.nonNull(approvalProcessDTO.getMenuId())) {
-                monitorControlLogReq.setMenuId(approvalProcessDTO.getMenuId());
-                SysMenuResp menu = sysMenuApi.getMenuById(approvalProcessDTO.getMenuId());
-                monitorControlLogReq.setMenuParam(menu.getParam());
-            }
-            monitorControlLogReq.setModuleId(approvalProcessDTO.getModuleId());
-            SysModuleResp module =
-                    sysModuleApi.getModuleCompleteById(
-                            AppContext.getProjectNo(),
-                            approvalProcessDTO.getSubjectId(),
-                            approvalProcessDTO.getModuleId());
-            monitorControlLogReq.setModuleName(module.getModule().getModuleName());
-            monitorLogApi.recordOrderRunLog(monitorControlLogReq, AppContext.getProjectNo());
-            // 4. 确保插入成功，否则抛出异常触发事务回滚
-            if (insertResult <= 0) {
-                throw new BusinessException("审批操作日志保存失败，事务回滚");
-            }
-
-            log.info(
-                    "审批操作日志保存成功: serialNumber={}, businessId={}, action={}",
-                    approvalProcessDTO.getSerialNumber(),
-                    approvalProcessDTO.getRecordId(),
-                    approvalProcessDTO.getButton());
-
-        } catch (BusinessException e) {
-            // 业务异常直接抛出
-            throw e;
-        } catch (Exception e) {
-            // 其他异常包装后抛出，确保事务回滚
-            log.error("审批操作日志保存异常，触发事务回滚", e);
-            throw new BusinessException("审批操作日志保存失败：" + e.getMessage(), e);
-        }
+        asyncTaskService.sendWechatMessageAsync(
+                AppContext.getProjectNo(), approvalProcessDTO, 1, "cancel", 0L);
     }
 
     // =========================辅助方法===============================================
@@ -2185,305 +1761,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return approvalProcessDTO;
     }
 
-    // 获取消息接收人列表------------------------------------------------------------------
-    private Set<Long> getSendUserList(
-            ApprovalBusiness business, Long templateId, Long loginUserId) {
-        // 1. 查询微信模板
-        WechatTemplateDetailResp sysWeChatTemplate =
-                sysWechatTemplateApi.getTemplateById(templateId);
-        if (sysWeChatTemplate == null) {
-            return Collections.emptySet();
-        }
-
-        Set<Long> userList = new HashSet<>();
-
-        // 3. 接收人类型列表 [1,4]
-        List<Long> acceptTypeList = sysWeChatTemplate.getTemplateAcceptType();
-
-        // 5. 循环处理每种接收类型
-        for (Long item : acceptTypeList) {
-            SysConfigItemResp aliasConfig = sysConfigCategoryApi.getConfigItemsById(item);
-
-            // ================== 额外接收人 ==================
-            if ("login_user".equals(aliasConfig.getValue())) {
-                userList.add(loginUserId);
-                continue;
-            }
-
-            // ================== 额外接收人 ==================
-            if ("extra_receiver".equals(aliasConfig.getValue())) {
-                userList.addAll(sysWeChatTemplate.getExtraReceiverIds());
-                continue;
-            }
-
-            // ================== 申请人 ==================
-            if ("apply_person".equals(aliasConfig.getValue())) {
-                userList.add(business.getCreatedBy());
-                continue;
-            }
-
-            // ================== 下一步审批人 ==================
-            if ("next_approval_person".equals(aliasConfig.getValue())) {
-                LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
-                approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
-                approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
-                approvalWrapper
-                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep())
-                        .last("LIMIT 1");
-                ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
-                if (approvalChain != null) {
-                    List<Long> approverUserList = getApproverUserList(approvalChain);
-                    userList.addAll(approverUserList);
-                }
-                continue;
-            }
-
-            // ================== 上一步审批人（注释保留） ==================
-            if ("prev_approval_person".equals(aliasConfig.getValue())) {
-                LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
-                approvalWrapper.eq(ApprovalChain::getSerialNumber, business.getSerialNumber());
-                approvalWrapper.eq(ApprovalChain::getSerialNo, business.getSerialNo());
-                approvalWrapper
-                        .eq(ApprovalChain::getCurrentStep, business.getCurrentStep())
-                        .last("LIMIT 1");
-                ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
-                if (approvalChain != null) {
-                    List<Long> approverUserList = getApproverUserList(approvalChain);
-                    userList.addAll(approverUserList);
-                }
-                continue;
-            }
-
-            // ================== 已审批人 ==================
-            if ("approved_person".equals(aliasConfig.getValue())) {
-                List<Object> approvalUids = ToolUtils.formatArrayItem(business.getApprovalUids());
-                List<Long> approverUserList =
-                        approvalUids.stream()
-                                .map(approvalUid -> Long.valueOf((String) approvalUid))
-                                .toList();
-                userList.addAll(approverUserList);
-                continue;
-            }
-
-            // ================== 状态关联人（注释保留） ==================
-            if ("status_change_related".equals(aliasConfig)) {
-                // 注释逻辑保留，不实现
-            }
-        }
-
-        // 6. 二维数组扁平化 + 去重
-        //        List<Object> result = userList.stream().flatMap(List::stream).distinct().toList();
-
-        return userList;
-    }
-
-    // 根据审批规则获取可操作用户ID列表-----------------------------------------------------------------
-    private List<Long> getApproverUserList(ApprovalChain approvalChain) {
-        List<Long> userList = new ArrayList<>();
-        switch (approvalChain.getApprovalRule()) {
-            case "single_approval" -> {
-                // 直接添加审批人ID
-                userList.add(approvalChain.getApproverId());
-            }
-            case "one_of_role_group", "all_members_done", "percent_of_group" -> {
-                // 查询角色下所有用户
-                List<SysUserPageResp> allApprovers =
-                        sysUserApi.getUsersByRoleId(approvalChain.getApproveRoleId());
-
-                // 提取 user_id 列表
-                List<Long> roleUserIds =
-                        allApprovers.stream().map(SysUserPageResp::getUserId).toList();
-                userList.addAll(roleUserIds);
-            }
-            case "child_all" -> {}
-        }
-
-        return userList;
-    }
-
-    // ======================================组装并发送审批消息==========================================
-    // 根据模板ID发送消息-----------------------------------
-    private Map<String, Object> sendWechatMessageById(
-            ApprovalBusiness business, Long templateId, ApprovalProcessDTO approvalProcessDTO) {
-        WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
-        Map<String, String> content = formatWechatMessage(template, business, approvalProcessDTO);
-        List<String> userIds =
-                getSendUserList(business, templateId, approvalProcessDTO.getCurrentUserId())
-                        .stream()
-                        .map(String::valueOf)
-                        .toList();
-        Map<String, Object> result = new HashMap<>();
-        result.put("templateId", templateId);
-        result.put("receivers", userIds);
-        result.put("params", content);
-        return result;
-    }
-
-    // 发送提交和取消消息-----------------------------------
-    private Map<String, Object> sendWechatMessage(
-            ApprovalBusiness business, String triggerType, ApprovalProcessDTO approvalProcessDTO) {
-        String projectNo = AppContext.getProjectNo();
-        WechatTemplateEntryResp template =
-                sysWechatTemplateApi.getTemplateByModuleId(
-                        projectNo, business.getSubjectId(), business.getModuleId(), triggerType);
-        Map<String, String> content = formatWechatMessage(template, business, approvalProcessDTO);
-        List<String> userIds =
-                getSendUserList(business, template.getId(), approvalProcessDTO.getCurrentUserId())
-                        .stream()
-                        .map(String::valueOf)
-                        .toList();
-        Map<String, Object> result = new HashMap<>();
-        result.put("templateId", template.getId());
-        result.put("receivers", userIds);
-        result.put("params", content);
-        return result;
-    }
-
-    // 组装消息
-    private Map<String, String> formatWechatMessage(
-            WechatTemplateEntryResp template,
-            ApprovalBusiness business,
-            ApprovalProcessDTO approvalProcessDTO) {
-        Map<String, String> result = new HashMap<>();
-        try {
-            // 1. 转换对象
-            Map<String, Object> sourceMap = BeanUtil.beanToMap(business, true, true);
-            // 2. 获取参数替换映射
-            Map<String, String> params =
-                    getParametersByTemplate(approvalProcessDTO, template, sourceMap);
-            for (Map.Entry<String, String> entry : params.entrySet()) {
-                String placeholder = entry.getKey();
-                String value = entry.getValue();
-                if (value == null) {
-                    value = "";
-                }
-                result.put(placeholder, value);
-            }
-        } catch (Exception e) {
-            log.error("消息发送失败", e);
-        }
-        return result;
-    }
-
-    /** 根据模板获取参数映射 */
-    private Map<String, String> getParametersByTemplate(
-            ApprovalProcessDTO approvalProcessDTO,
-            WechatTemplateEntryResp template,
-            Object sourceData) {
-        // 解析param_id字段，获取参数ID列表
-        List<Long> paramIds = template.getConfigParamIds();
-        if (paramIds.isEmpty()) {
-            throw new BusinessException("当前模板参数有误");
-        }
-        // 查询所有参数配置
-        List<WechatTemplateParamEntryResp> paramList =
-                sysWechatTemplateApi.listParamsByIds(
-                        template.getProjectNo(), template.getSubjectId(), paramIds);
-        // 转为Map，key为param_slug
-        Map<String, WechatTemplateParamEntryResp> paramMap =
-                paramList.stream()
-                        .collect(
-                                Collectors.toMap(
-                                        WechatTemplateParamEntryResp::getTemplateParamSlug,
-                                        p -> p,
-                                        (v1, v2) -> v1));
-        Map<String, String> result = new HashMap<>();
-        for (Map.Entry<String, WechatTemplateParamEntryResp> entry : paramMap.entrySet()) {
-            // 例如 "p-systemName"
-            String slug = entry.getKey();
-            WechatTemplateParamEntryResp param = entry.getValue();
-            // 去掉前缀得到真实标识
-            String formatSlug = slug.replace("p-", "");
-            String replaceText =
-                    getParamTextWithCommonParam(approvalProcessDTO, formatSlug, sourceData);
-            result.put(slug, replaceText);
-        }
-        return result;
-    }
-
-    /** 处理通用参数（系统名称、当前时间、当前登录用户、前端URL、以及Model中的基础字段） */
-    private String getParamTextWithCommonParam(
-            ApprovalProcessDTO approvalProcessDTO, String slug, Object sourceData) {
-        Long createdBy = (Long) getFieldValueFromSource(sourceData, "created_by");
-        UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(createdBy);
-        // 系统内置参数
-        switch (slug) {
-            case "systemName":
-                return "学生管理系统";
-            case "frontUrl":
-                return "http://192.168.60.6:5008";
-            case "currentTime":
-                return LocalDateTime.now()
-                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            case "loginUser":
-                if (approvalProcessDTO.getApplicantId().equals(9999999L)) {
-                    return "系统自动审批";
-                }
-                try {
-                    UserDetailResp loginUser =
-                            sysUserApi.getUserDetailByUserId(approvalProcessDTO.getApplicantId());
-                    return loginUser.getUserName();
-                } catch (Exception e) {
-                    return "";
-                }
-            case "created_by":
-                if (createByUser != null && createByUser.getUserName() != null) {
-                    return createByUser.getUserName();
-                } else {
-                    return String.valueOf(createdBy);
-                }
-            case "created_date":
-                LocalDateTime createdDate =
-                        (LocalDateTime) getFieldValueFromSource(sourceData, "created_date");
-                return createdDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            case "id":
-                Long recordId = (Long) getFieldValueFromSource(sourceData, "record_id");
-                return String.valueOf(recordId);
-            case "business_no":
-                return (String) getFieldValueFromSource(sourceData, "business_number");
-            case "version_no_label":
-                Integer versionNo = (Integer) getFieldValueFromSource(sourceData, "version_no");
-                return Objects.isNull(versionNo) || versionNo == 1 ? "" : "V" + versionNo;
-            case "subject_name":
-                List<SubjectBO> subjectList = subjectApi.getSubjectList();
-                Long subjectId = (Long) getFieldValueFromSource(sourceData, "subject_id");
-                if (!subjectList.isEmpty()) {
-                    return subjectList.stream()
-                            .filter(s -> subjectId.equals(s.getId()))
-                            .findFirst()
-                            .map(SubjectBO::getSubjectName)
-                            .orElse("");
-                }
-                return "";
-            case "reason":
-                String reason = "";
-                if (Objects.nonNull(approvalProcessDTO.getReason())) {
-                    ObjectMapper mapper = new ObjectMapper();
-                    try {
-                        JsonNode jsonNode = mapper.readTree(approvalProcessDTO.getReason());
-                        reason = jsonNode.path("comment").asText("");
-                    } catch (Exception e) {
-                        reason = "";
-                    }
-                }
-                return reason;
-            default:
-                // 其他字段直接从sourceData中获取
-                Object value = getFieldValueFromSource(sourceData, slug);
-                return value != null ? value.toString() : "";
-        }
-    }
-
-    /** 从sourceData中获取指定字段的值，支持Map或普通Java对象 */
-    private Object getFieldValueFromSource(Object sourceData, String fieldName) {
-        if (sourceData == null) {
-            return null;
-        }
-        if (sourceData instanceof Map) {
-            return ((Map<?, ?>) sourceData).get(fieldName);
-        } else {
-            return null;
-        }
+    private ApprovalProcessDTO convertApprovalDTO(ApprovalEvent event) {
+        ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
+        BeanUtils.copyProperties(event, approvalProcessDTO);
+        return approvalProcessDTO;
     }
 
     // 转换对象--------------------------------------------------------------------------
