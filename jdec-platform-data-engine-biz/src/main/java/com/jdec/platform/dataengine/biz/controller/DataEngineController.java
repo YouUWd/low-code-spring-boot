@@ -37,9 +37,9 @@ public class DataEngineController {
         return ApiResponse.success(dataEngineApi.getDetail(menuIds, id, btnType));
     }
 
-    @PostMapping("/{moduleId}/save")
+    @PostMapping("/save")
     @Operation(summary = "保存模块数据", description = "保存模块数据")
-    public ApiResponse<Long> save(@PathVariable Long moduleId, @RequestBody DynamicSaveReq req) {
+    public ApiResponse<Long> save(@RequestBody DynamicSaveReq req) {
         return ApiResponse.success(dataEngineApi.save(req));
     }
 }
