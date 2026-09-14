@@ -29,7 +29,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@DataSource(DataSourceConstants.CONFIG_ENGINE)
+@DataSource(DataSourceConstants.CONFIG_CENTER)
 public class DataModuleConfigService {
 
     private final DataSysModuleMapper moduleMapper;
