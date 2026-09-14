@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysMenuHeaderApi;
 import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysMenuHeaderReq;
+import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +33,15 @@ public class SysMenuHeaderController {
     public ApiResponse<SysMenuHeaderResp> tree(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderTree(menuId));
+    }
+
+    @GetMapping("/display")
+    @Operation(
+            summary = "查询菜单多级列头展示",
+            description = "根据菜单ID纯读取 sys_menu_header 已保存的配置，按多级列头展示格式返回；无配置时 header 为空")
+    public ApiResponse<MenuHeaderDisplayResp> display(
+            @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
+        return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderDisplay(menuId));
     }
 
     @PostMapping("/save")

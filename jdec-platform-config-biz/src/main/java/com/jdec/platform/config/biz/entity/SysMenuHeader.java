@@ -28,11 +28,8 @@ public class SysMenuHeader implements Serializable {
     @Schema(description = "节点类型: 0-菜单 / 1-字段")
     private Integer nodeType;
 
-    @Schema(description = "来源菜单ID")
-    private Long sourceMenuId;
-
-    @Schema(description = "来源字段ID")
-    private Long sourceFieldId;
+    @Schema(description = "来源ID(节点类型为菜单时=来源菜单ID，为字段时=来源字段ID)")
+    private Long sourceId;
 
     @Schema(description = "显示名覆盖。FIELD空=取字段显示名，MENU空=取来源菜单名")
     private String label;
@@ -43,8 +40,8 @@ public class SysMenuHeader implements Serializable {
     @Schema(description = "列宽(px)")
     private Integer width;
 
-    @Schema(description = "字段")
-    private String field;
+    @Schema(description = "字段索引(模块id.表名.字段名)，如 1001.info.company_name")
+    private String dataIndex;
 
     @Schema(description = "可排序")
     private Integer sorted;

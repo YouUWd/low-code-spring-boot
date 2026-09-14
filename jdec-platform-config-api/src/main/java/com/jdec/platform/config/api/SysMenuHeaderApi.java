@@ -2,6 +2,7 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.request.UpdateSysMenuHeaderReq;
+import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import java.util.List;
 
@@ -44,4 +45,19 @@ public interface SysMenuHeaderApi {
      * @param req 更新请求
      */
     void updateMenuHeader(UpdateSysMenuHeaderReq req);
+
+    /**
+     * 查询菜单多级列头展示结构
+     *
+     * <p>纯读取 {@code sys_menu_header} 中该菜单（按 {@code subject_id} + {@code project_no} 隔离）已保存的节点，
+     * 按多级列头展示格式组装返回：菜单节点输出 {@code sourceId/label/colors/children}，字段节点输出 {@code
+     * label/fieldId/dataIndex/width/sorted/searchType/ellipsis/fixed/sortValue}。{@code colors} 与
+     * {@code searchType} 在库中均为 JSON 串，此处解析后输出为数组/对象。
+     *
+     * <p>该接口不做默认树生成与落库，无配置记录时返回空（header 为 null）。
+     *
+     * @param menuId 菜单ID
+     * @return 多级列头展示结构
+     */
+    MenuHeaderDisplayResp getMenuHeaderDisplay(Long menuId);
 }
