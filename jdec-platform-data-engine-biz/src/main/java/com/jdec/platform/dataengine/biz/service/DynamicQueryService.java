@@ -290,9 +290,7 @@ public class DynamicQueryService {
 
         List<RecordDataDTO> currentModuleData = new ArrayList<>();
 
-        //        if(rootNode.getMenuType() != 1) {
         currentModuleData = querySingleModule(rootNode, queryReq, queryType);
-        //        }
 
         if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
             return builder.moduleId(rootNode.getId())
@@ -301,9 +299,11 @@ public class DynamicQueryService {
                     .build();
         }
 
-        List<Long> primaryIds = getPrimaryIdSet(currentModuleData, rootNode.getId());
+        Set<Long> primaryIds = getPrimaryIdSet(currentModuleData, rootNode.getId());
 
-        List<NestedModuleDataDTO> subModuleDatas = new ArrayList<>();
+        SysModuleInfo sysModuleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), rootNode.getId());
 
         for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
             // 组装当前模块查询参数
@@ -311,14 +311,22 @@ public class DynamicQueryService {
                     DynamicQueryReq.builder()
                             .moduleId(childNode.getId())
                             .mainDataId(queryReq.getMainDataId())
-                            .relateIds(primaryIds)
+                            .relateIds(new ArrayList<>(primaryIds))
                             .btnType(queryReq.getBtnType())
                             .build();
             NestedModuleDataDTO childResultList =
                     queryModule(singleQueryDTO, childNode, true, false);
+
             for (RecordDataDTO vo : currentModuleData) {
-                subModuleDatas.add(childResultList);
-                vo.getSubModule().add(childResultList);
+                Long primaryId =
+                        extractFieldValue(
+                                vo.getCombinedRow(), "id", sysModuleInfo.getPrimaryTable());
+                vo.getSubModule()
+                        .addAll(
+                                filterSubModuleList(
+                                        List.of(childResultList),
+                                        Set.of(primaryId),
+                                        TabTreeNodeDTO.buildCompanyRoot()));
             }
         }
 
@@ -328,6 +336,97 @@ public class DynamicQueryService {
                 .menuId(rootNode.getId())
                 .record(currentModuleData)
                 .build();
+    }
+
+    /**
+     * @param subModuleList 当前子模块列表
+     * @param parentPkSet 上层父主键id集合
+     */
+    public List<NestedModuleDataDTO> filterSubModuleList(
+            List<NestedModuleDataDTO> subModuleList,
+            Set<Long> parentPkSet,
+            TabTreeNodeDTO tableTree) {
+        if (subModuleList == null
+                || subModuleList.isEmpty()
+                || parentPkSet == null
+                || parentPkSet.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<NestedModuleDataDTO> resultList = new ArrayList<>();
+        for (NestedModuleDataDTO subModule : subModuleList) {
+            NestedModuleDataDTO newSubModule = new NestedModuleDataDTO();
+            newSubModule.setModuleId(subModule.getModuleId());
+            newSubModule.setMenuId(subModule.getMenuId());
+
+            SysModuleInfo sysModuleInfo =
+                    dataModuleConfigService.getModuleCompleteById(
+                            AppContext.getProjectNo(),
+                            AppContext.getSubjectId(),
+                            subModule.getModuleId());
+
+            TabTreeNodeDTO targetNode =
+                    TabTreeNodeDTO.findSubTreeByValue(tableTree, sysModuleInfo.getPrimaryTable());
+
+            List<RecordDataDTO> filteredRecords =
+                    subModule.getRecord().stream()
+                            .filter(
+                                    record -> {
+                                        // 读取子表的【外键字段】
+                                        Long fkVal =
+                                                extractFieldValue(
+                                                        record.getCombinedRow(),
+                                                        targetNode.getNode().getSubTableField(),
+                                                        sysModuleInfo.getPrimaryTable());
+                                        if (fkVal == null) {
+                                            return false;
+                                        }
+                                        // 子表外键 在父主键集合内，保留
+                                        return parentPkSet.contains(fkVal);
+                                    })
+                            .map(
+                                    record -> {
+                                        RecordDataDTO newRecord = new RecordDataDTO();
+                                        newRecord.setCombinedRow(record.getCombinedRow());
+                                        // 获取当前这条记录主键，作为下一级子模块的父主键集合
+                                        Long currentPk =
+                                                extractFieldValue(
+                                                        record.getCombinedRow(),
+                                                        "id",
+                                                        sysModuleInfo.getPrimaryTable());
+                                        Set<Long> childPkSet = Collections.singleton(currentPk);
+                                        // 下一层外键固定 member_id
+                                        List<NestedModuleDataDTO> childSub =
+                                                filterSubModuleList(
+                                                        record.getSubModule(),
+                                                        childPkSet,
+                                                        tableTree);
+                                        newRecord.setSubModule(childSub);
+                                        return newRecord;
+                                    })
+                            .collect(Collectors.toList());
+            newSubModule.setRecord(filteredRecords);
+            resultList.add(newSubModule);
+        }
+        return resultList;
+    }
+
+    // 通用提取字段
+    private static Long extractFieldValue(
+            Map<String, Object> combinedRow, String fieldName, String tableName) {
+        if (combinedRow == null || combinedRow.isEmpty()) return null;
+        Map.Entry<String, Object> first =
+                combinedRow.entrySet().stream()
+                        .filter(ele -> ele.getKey().equals(tableName))
+                        .findFirst()
+                        .orElse(null);
+        if (first == null) return null;
+        Map<String, Object> data =
+                (Map<String, Object>) ((Map<String, Object>) first.getValue()).get("data");
+        if (data == null) return null;
+        Object val = data.get(fieldName);
+        if (val == null) return null;
+        return Long.parseLong(val.toString());
     }
 
     private void processResultData(
@@ -498,8 +597,8 @@ public class DynamicQueryService {
         //        }
     }
 
-    private List<Long> getPrimaryIdSet(List<RecordDataDTO> currentModuleData, Long moduleId) {
-        List<Long> primaryIds = new ArrayList<>();
+    private Set<Long> getPrimaryIdSet(List<RecordDataDTO> currentModuleData, Long moduleId) {
+        Set<Long> primaryIds = new HashSet<>();
         SysModuleInfo sysModuleInfo = null;
         if (!CollectionUtils.isEmpty(currentModuleData)) {
             sysModuleInfo =
