@@ -22,6 +22,16 @@ public class SysRoleDataPermission implements Serializable {
     @Schema(description = "数据权限类型ID")
     private Long dataPermissionId;
 
+    @Schema(description = "数据权限全选：1=全选，0=非全选")
+    @TableField("premission_check_all")
+    private Integer permissionCheckAll;
+
+    @Schema(description = "数据权限对应的主体ID")
+    private Long subjectId;
+
+    @Schema(description = "数据权限对应的主体全选：1=全选，0=非全选")
+    private Integer subjectCheckAll;
+
     @Schema(description = "业务名称")
     private String bizName;
 

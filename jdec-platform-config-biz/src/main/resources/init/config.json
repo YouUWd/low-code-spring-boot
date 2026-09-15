@@ -206,5 +206,31 @@
       { "label": "消息模板参数设置", "value": "messageParms", "sort": 4, "status": 1 },
       { "label": "添加消息配置", "value": "addMessage", "sort": 5, "status": 1 }
     ]
+  },
+  {
+    "label": "菜单结构类型",
+    "categoryAlias": "structuralType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "列表", "value": "1", "sort": 0, "status": 1 },
+      { "label": "详情", "value": "2", "sort": 1, "status": 1 },
+      { "label": "树结构", "value": "3", "sort": 2, "status": 1 }
+    ]
+  },
+  {
+    "label": "组合字段转换方法",
+    "categoryAlias": "unionChangeMethod",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "组合", "value": "CONCAT", "description": "组合拼接", "sort": 0, "status": 1 },
+      { "label": "乘法", "value": "MULTIPY", "description": "用乘号组合拼接，列入长X宽", "sort": 1, "status": 1 },
+      { "label": "配置子项", "value": "33", "sort": 2, "status": 1 }
+    ]
   }
 ]
