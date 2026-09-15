@@ -18,7 +18,10 @@ public class RecordSaveContext extends BasicSaveModel {
     private Long rootModuleId;
 
     // 根模块对应的主表数据ID
-    private Long mainTableDataId;
+    private Long rootModuleMainTableDataId;
+
+    // 根模块对应的主表数据版本
+    private Integer rootModuleMainTableDataVersion;
 
     // 当前模块的完整信息
     private SysModuleResp sysModuleCompleteResp;

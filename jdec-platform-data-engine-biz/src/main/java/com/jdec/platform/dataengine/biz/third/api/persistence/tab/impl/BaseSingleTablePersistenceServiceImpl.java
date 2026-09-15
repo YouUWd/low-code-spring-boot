@@ -3,20 +3,22 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.tab.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.StrUtil;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
+import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataChangeContent;
+import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.mapper.ModuleDataChangeContentMapper;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
+import com.jdec.platform.dataengine.biz.util.JsonUtil;
+import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jooq.DataType;
-import org.jooq.Field;
+import org.jooq.*;
 import org.jooq.Record;
-import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 import org.springframework.stereotype.Service;
@@ -49,16 +51,16 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                         .set(fieldValues)
                         .returning(pkField)
                         .fetchOne();
-
-        Long pkk =
-                context.getDsl()
-                        .select(DSL.field("last_insert_id()", Long.class))
-                        .fetchOneInto(Long.class);
+        //
+        //        Long pkk =
+        //                context.getDsl()
+        //                        .select(DSL.field("last_insert_id()", Long.class))
+        //                        .fetchOneInto(Long.class);
 
         if (inserted != null) {
             Object newId = inserted.getValue(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
             if (newId instanceof Number num) {
-                Map<String, Object> insertedMap =
+                Record insertedMap =
                         context.getDsl()
                                 .select(DSL.asterisk())
                                 .from(DSL.table(DSL.name(context.getTableName())))
@@ -68,9 +70,11 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                                                                 CommonConstant
                                                                         .TABLE_DEFAULT_PRIMARY_KEY_FIELD))
                                                 .eq(newId))
-                                .fetchOne()
-                                .intoMap();
-
+                                .fetchOne();
+                if (context.getRootModuleMainTableDataId() == null) {
+                    context.setRootModuleMainTableDataId(num.longValue());
+                }
+                saveModuleDataChangeContent(context, null, insertedMap, num.longValue());
                 return num.longValue();
             }
         }
@@ -82,15 +86,14 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         Long id = DataPersistenceUtil.getRecordId(context.getRecord());
         Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
 
-        Map<String, Object> oldMap =
+        Record oldMap =
                 context.getDsl()
                         .select(DSL.asterisk())
                         .from(DSL.table(DSL.name(context.getTableName())))
                         .where(
                                 DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
                                         .eq(id))
-                        .fetchOne()
-                        .intoMap();
+                        .fetchOne();
         // Update
         context.getDsl()
                 .update(DSL.table(DSL.name(context.getTableName())))
@@ -98,15 +101,18 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 .where(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD)).eq(id))
                 .execute();
 
-        Map<String, Object> newMap =
+        Record newMap =
                 context.getDsl()
                         .select(DSL.asterisk())
                         .from(DSL.table(DSL.name(context.getTableName())))
                         .where(
                                 DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
                                         .eq(id))
-                        .fetchOne()
-                        .intoMap();
+                        .fetchOne();
+        if (context.getRootModuleMainTableDataId() == null) {
+            context.setRootModuleMainTableDataId(id);
+        }
+        saveModuleDataChangeContent(context, oldMap, newMap, id);
         return id;
     }
 
@@ -144,6 +150,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                         || context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;
                 }
+                log.info("fill biz data field {}={}", entry.getKey(), entry.getValue());
                 fieldValues.put(
                         DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
                         entry.getValue());
@@ -157,6 +164,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                         && context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;
                 }
+                log.info("fill parent module field {}={}", entry.getKey(), entry.getValue());
                 fieldValues.put(
                         DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
                         entry.getValue());
@@ -170,6 +178,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                         && context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;
                 }
+                log.info("fill user context field {}={}", entry.getKey(), entry.getValue());
                 fieldValues.put(
                         DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
                         entry.getValue());
@@ -179,26 +188,87 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     }
 
     private void saveModuleDataChangeContent(
-            RecordSaveContext context,
-            Map<String, Object> before,
-            Map<String, Object> after,
-            Long dataId) {
-
-        if (context.getIsInsert()) {
-            ModuleDataChangeContent changeContent = new ModuleDataChangeContent();
-
-            changeContent.setId(null);
-            changeContent.setActionId(null);
-            changeContent.setRootModuleId(context.getRootModuleId());
-            changeContent.setMainTableDataId(context.getMainTableDataId());
-            changeContent.setModuleId(context.getSysModuleCompleteResp().getModule().getId());
-            changeContent.setTableName(context.getTableName());
-            changeContent.setDataId(dataId);
-            changeContent.setParentDataId(null);
-            changeContent.setContent(null);
-            changeContent.setApprovalFlag(null);
-            changeContent.setActionType(context.getIsInsert() ? 1 : 2);
-            changeContent.setCreateDate(LocalDateTime.now());
+            RecordSaveContext context, Record before, Record after, Long dataId) {
+        ModuleDataChangeContent changeContent = new ModuleDataChangeContent();
+        changeContent.setId(null);
+        changeContent.setActionId(ModuleDataSaveContextHolder.getContextActionId());
+        changeContent.setRootModuleId(context.getRootModuleId());
+        changeContent.setMainTableDataId(context.getRootModuleMainTableDataId());
+        changeContent.setMainTableDataVersion(context.getRootModuleMainTableDataVersion());
+        changeContent.setModuleId(context.getSysModuleCompleteResp().getModule().getId());
+        changeContent.setTableName(context.getTableName());
+        changeContent.setDataId(dataId);
+        changeContent.setParentDataId(context.getParentLevelTableId());
+        Map dataMap = new HashMap();
+        dataMap.put("before", DataPersistenceUtil.convertRecordToMap(before));
+        dataMap.put("after", DataPersistenceUtil.convertRecordToMap(after));
+        try {
+            String jsonStr = JsonUtil.obj2Json(dataMap);
+            changeContent.setContent(jsonStr);
+        } catch (Exception e) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                    ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                    e);
         }
+        changeContent.setApprovalFlag(1);
+        changeContent.setActionType(context.getIsInsert() ? 1 : 2);
+        changeContent.setCreateDate(LocalDateTime.now());
+
+        Map<Field<Object>, Object> fieldValues = new HashMap<>();
+
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("action_id"))),
+                changeContent.getActionId());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("root_module_id"))),
+                changeContent.getRootModuleId());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("main_table_data_id"))),
+                changeContent.getMainTableDataId());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("main_table_data_version"))),
+                changeContent.getMainTableDataVersion());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("module_id"))),
+                changeContent.getModuleId());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("table_name"))),
+                changeContent.getTableName());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("data_id"))), changeContent.getDataId());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("parent_data_id"))),
+                changeContent.getParentDataId());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("content"))),
+                changeContent.getContent());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("approval_flag"))),
+                changeContent.getApprovalFlag());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("action_type"))),
+                changeContent.getActionType());
+        fieldValues.put(
+                DSL.field(DSL.name(StrUtil.toUnderlineCase("create_date"))),
+                changeContent.getCreateDate());
+
+        String tableName = context.getTableName();
+        // 手动定义表和主键字段，标记IDENTITY
+        // 1. 构造【带自增标记】的数据类型
+        DataType<Long> autoIncLong = SQLDataType.BIGINT.identity(true);
+
+        // 2. 用这个DataType创建field，等价旧版 .identity(true)
+        Field<Long> pkField =
+                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD), autoIncLong);
+
+        Table<?> dynamicTable = DSL.table(DSL.name("module_data_change_content"));
+        // Insert 并获取自增主键
+        Record inserted =
+                context.getDsl()
+                        .insertInto(dynamicTable)
+                        .set(fieldValues)
+                        .returning(pkField)
+                        .fetchOne();
     }
 }

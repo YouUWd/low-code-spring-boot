@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.jooq.JSON;
+import org.jooq.Record;
 
 public class DataPersistenceUtil {
 
@@ -49,5 +51,20 @@ public class DataPersistenceUtil {
             result.add(tableRecord);
         }
         return result;
+    }
+
+    public static Map<String, Object> convertRecordToMap(Record r) {
+        Map<String, Object> map = new HashMap<>();
+        if (r != null && r.fields() != null) {
+            for (org.jooq.Field field : r.fields()) {
+                Object val = r.get(field);
+                if (val instanceof JSON v) {
+                    map.put(field.getName(), v.data());
+                } else {
+                    map.put(field.getName(), val);
+                }
+            }
+        }
+        return map;
     }
 }
