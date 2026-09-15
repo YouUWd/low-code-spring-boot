@@ -43,6 +43,10 @@ public class ModuleDataChangeContent extends Model<ModuleDataChangeContent> {
     @TableField("main_table_data_id")
     private Long mainTableDataId;
 
+    /** 主表的数据 版本 */
+    @TableField("main_table_data_version")
+    private Integer mainTableDataVersion;
+
     /** 根模块ID */
     @TableField("module_id")
     private Long moduleId;

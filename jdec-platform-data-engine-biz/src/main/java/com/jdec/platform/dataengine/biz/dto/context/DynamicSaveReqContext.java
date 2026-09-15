@@ -24,7 +24,7 @@ public class DynamicSaveReqContext implements Serializable {
     private Long rootModuleId;
 
     // 根模块对应的主表数据ID
-    private Long mainTableDataId;
+    private Long rootModuleMainTableDataId;
 
     private TabTreeNodeDTO tabTreeNode;
 
