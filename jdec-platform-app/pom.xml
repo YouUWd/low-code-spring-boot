@@ -16,33 +16,25 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-shared</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-auth-api</artifactId>
-        </dependency>
+
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-auth-biz</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-config-api</artifactId>
-        </dependency>
+
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-config-biz</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-hr-api</artifactId>
-        </dependency>
+
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-hr-biz</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-data-biz</artifactId>
         </dependency>
 
 

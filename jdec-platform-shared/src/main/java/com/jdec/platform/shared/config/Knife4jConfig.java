@@ -32,17 +32,6 @@ public class Knife4jConfig {
                                                         "https://www.apache.org/licenses/LICENSE-2.0.html")));
     }
 
-    /** 接口分组（按 controller 包路径扫描） */
-    //    @Bean
-    //    public GroupedOpenApi defaultApi() {
-    //        return GroupedOpenApi.builder()
-    //                .group("default")
-    //                .displayName("全部接口")
-    //                .packagesToScan("com.jdec.platform") // ← 替换成你的包路径
-    //                .build();
-    //    }
-
-    // 分组2：配置管理
     @Bean
     public GroupedOpenApi configApi() {
         return GroupedOpenApi.builder()
@@ -52,26 +41,12 @@ public class Knife4jConfig {
                 .build();
     }
 
-    // 分组3：监控日志管理
     @Bean
-    public GroupedOpenApi monitorLogApi() {
+    public GroupedOpenApi dataApi() {
         return GroupedOpenApi.builder()
-                .group("MONITOR_LOG_API")
-                .displayName("监控日志管理")
-                .packagesToScan("com.jdec.platform.monitorlog.biz.controller")
-                .build();
-    }
-
-    // 分组4：通用业务管理
-    @Bean
-    public GroupedOpenApi comBizApi() {
-        return GroupedOpenApi.builder()
-                .group("comBiz")
-                .displayName("通用业务管理")
-                .packagesToScan(
-                        "com.jdec.platform.common_business.biz.controller",
-                        "com.jdec.platform.common_business.biz.auth.controller",
-                        "com.jdec.platform.approval.biz.controller")
+                .group("DATA")
+                .displayName("数据引擎")
+                .packagesToScan("com.jdec.platform.data.biz.controller")
                 .build();
     }
 }
