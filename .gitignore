@@ -27,4 +27,5 @@ logs/
 .mvn/wrapper/maven-wrapper.jar
 
 # ===== 中间产出文档 =====
+doc
 docs

@@ -19,9 +19,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "动态列表/全景分页查询请求模型")
-public class DynamicQueryReq implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class QueryReq implements Serializable {
 
     @NotNull(message = "查询主模块 ID 不能为空")
     @Schema(description = "根主模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "101")
@@ -39,12 +37,8 @@ public class DynamicQueryReq implements Serializable {
     private List<Long> fields;
 
     @Schema(description = "平铺过滤条件列表 (fieldId 必须属于当前模块或其子模块)")
-    private List<DynamicFilterItem> filters;
+    private List<FilterItem> filters;
 
     @Schema(description = "平铺排序规则列表 (fieldId 必须属于当前模块或其子模块)")
-    private List<DynamicSortItem> sorts;
-
-    @Builder.Default
-    @Schema(description = "是否在响应中返回树形表头契约 (默认为 true)", example = "true")
-    private Boolean withHeader = true;
+    private List<SortItem> sorts;
 }

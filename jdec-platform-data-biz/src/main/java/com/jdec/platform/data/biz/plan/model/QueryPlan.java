@@ -1,6 +1,5 @@
 package com.jdec.platform.data.biz.plan.model;
 
-import java.io.Serializable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,9 +14,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class QueryPlan implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class QueryPlan {
 
     /** 根模块查询节点计划 */
     private QueryNodePlan rootNodePlan;

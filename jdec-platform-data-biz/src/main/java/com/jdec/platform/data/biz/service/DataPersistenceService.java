@@ -1,6 +1,6 @@
 package com.jdec.platform.data.biz.service;
 
-import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.data.api.dto.request.SaveReq;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
@@ -22,14 +22,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class DynamicDataPersistenceService {
+public class DataPersistenceService {
 
     private final SavePlanCompiler savePlanCompiler;
     private final SavePlanExecutor savePlanExecutor;
 
     /** 自相似主子表同构原子保存/更新 */
     @Transactional(rollbackFor = Exception.class)
-    public Long save(DynamicSaveReq req) {
+    public Long save(SaveReq req) {
         SavePlan plan = savePlanCompiler.compile(req);
         return savePlanExecutor.execute(plan);
     }

@@ -1,14 +1,12 @@
 package com.jdec.platform.data.biz.service;
 
 import com.jdec.platform.data.api.DataApi;
-import com.jdec.platform.data.api.dto.request.DynamicOptionReq;
-import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
-import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
-import com.jdec.platform.data.api.dto.request.EngineHeaderReq;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SaveReq;
+import com.jdec.platform.data.api.dto.response.DataDetail;
+import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
-import com.jdec.platform.data.api.dto.response.DynamicOptionItem;
-import com.jdec.platform.data.api.dto.response.EngineDataResult;
-import com.jdec.platform.data.api.dto.response.EngineHeaderResp;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -19,32 +17,26 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class DataService implements DataApi {
 
-    private final DynamicDataQueryService dynamicDataQueryService;
-    private final DynamicDataPersistenceService dynamicDataPersistenceService;
+    private final DataQueryService dataQueryService;
+    private final DataPersistenceService dataPersistenceService;
 
     @Override
-    public EngineHeaderResp getHeader(EngineHeaderReq req) {
-        return dynamicDataQueryService.getHeader(req);
+    public DataPage<Map<String, Object>> query(QueryReq req) {
+        return dataQueryService.query(req);
     }
 
     @Override
-    public DataPage<Map<String, Object>> query(DynamicQueryReq req) {
-        return dynamicDataQueryService.query(req);
+    public List<DataOption> getOptions(OptionReq req) {
+        return dataQueryService.getOptions(req);
     }
 
     @Override
-    public List<DynamicOptionItem> getOptions(DynamicOptionReq req) {
-        return dynamicDataQueryService.getOptions(req);
+    public DataDetail<Map<String, Object>> getDetail(Long moduleId, Long id, List<Long> fields) {
+        return dataQueryService.getDetail(moduleId, id, fields);
     }
 
     @Override
-    public EngineDataResult<Map<String, Object>> getDetail(
-            Long moduleId, Long id, List<Long> fields) {
-        return dynamicDataQueryService.getDetail(moduleId, id, fields);
-    }
-
-    @Override
-    public Long save(DynamicSaveReq req) {
-        return dynamicDataPersistenceService.save(req);
+    public Long save(SaveReq req) {
+        return dataPersistenceService.save(req);
     }
 }

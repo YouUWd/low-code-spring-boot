@@ -1,7 +1,6 @@
 package com.jdec.platform.data.biz.plan.model;
 
-import com.jdec.platform.data.api.dto.model.SysModuleInfo;
-import java.io.Serializable;
+import com.jdec.platform.data.api.dto.model.ModuleInfo;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -20,15 +19,13 @@ import org.jooq.OrderField;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class QueryNodePlan implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class QueryNodePlan {
 
     /** 模块 ID */
     private Long moduleId;
 
     /** 完整模块配置元数据 */
-    private SysModuleInfo moduleMeta;
+    private ModuleInfo moduleMeta;
 
     /** 物理主表名 */
     private String primaryTable;

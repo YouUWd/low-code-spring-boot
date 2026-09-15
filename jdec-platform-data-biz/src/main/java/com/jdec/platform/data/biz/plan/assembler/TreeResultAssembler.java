@@ -2,6 +2,7 @@ package com.jdec.platform.data.biz.plan.assembler;
 
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import java.util.*;
+import java.util.function.Function;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,11 +40,7 @@ public class TreeResultAssembler {
                 assembleVirtualPlan(parentRecords, childPlan, rawDataByNode);
                 continue;
             }
-            assemblePhysicalChild(
-                    parentRecords,
-                    java.util.function.Function.identity(),
-                    childPlan,
-                    rawDataByNode);
+            assemblePhysicalChild(parentRecords, Function.identity(), childPlan, rawDataByNode);
         }
     }
 
@@ -93,7 +90,7 @@ public class TreeResultAssembler {
     /** 装配物理从表/子模块 */
     private void assemblePhysicalChild(
             List<Map<String, Object>> parentRecords,
-            java.util.function.Function<Map<String, Object>, Map<String, Object>> containerResolver,
+            Function<Map<String, Object>, Map<String, Object>> containerResolver,
             QueryNodePlan childPlan,
             Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
 

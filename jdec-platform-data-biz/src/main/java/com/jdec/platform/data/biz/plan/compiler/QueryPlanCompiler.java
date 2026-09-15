@@ -2,17 +2,16 @@ package com.jdec.platform.data.biz.plan.compiler;
 
 import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.SysModuleInfo;
-import com.jdec.platform.data.api.dto.request.DynamicFilterItem;
-import com.jdec.platform.data.api.dto.request.DynamicOptionReq;
-import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
-import com.jdec.platform.data.api.dto.request.DynamicSortItem;
+import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.biz.plan.model.JoinTableSpec;
 import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import com.jdec.platform.data.biz.plan.model.QueryPlan;
 import com.jdec.platform.data.biz.service.MetaCacheService;
-import com.jdec.platform.data.biz.service.PermissionFilterService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +40,6 @@ import org.springframework.stereotype.Component;
 public class QueryPlanCompiler {
 
     private final MetaCacheService metaCacheService;
-    private final PermissionFilterService permissionFilterService;
 
     /** 内部编译树节点载体 (隔离外部 DTO 与编译期自相似树结构) */
     @lombok.Data
@@ -51,15 +49,15 @@ public class QueryPlanCompiler {
     private static class InternalQueryNode {
         private Long moduleId;
         private List<Long> fields;
-        private List<DynamicFilterItem> filters;
-        private List<DynamicSortItem> sorts;
+        private List<FilterItem> filters;
+        private List<SortItem> sorts;
         private Integer pageNo;
         private Integer pageSize;
         private List<InternalQueryNode> children;
     }
 
     /** 编译候选项查询请求为单字段投影与全量过滤上下文的 QueryPlan */
-    public QueryPlan compile(DynamicOptionReq req) {
+    public QueryPlan compile(OptionReq req) {
         if (req == null) {
             throw new IllegalArgumentException("候选项请求不能为空");
         }
@@ -67,8 +65,8 @@ public class QueryPlanCompiler {
             throw new IllegalArgumentException("候选项请求的模块 ID 与字段 ID 均不能为空");
         }
 
-        DynamicQueryReq queryReq =
-                DynamicQueryReq.builder()
+        QueryReq queryReq =
+                QueryReq.builder()
                         .moduleId(req.getModuleId())
                         .fields(List.of(req.getFieldId()))
                         .filters(req.getFilters())
@@ -77,7 +75,7 @@ public class QueryPlanCompiler {
     }
 
     /** 编译顶层查询请求为完整的 QueryPlan (以根 moduleId 与 fields 驱动，自动校验子树范围并推导执行树) */
-    public QueryPlan compile(DynamicQueryReq req) {
+    public QueryPlan compile(QueryReq req) {
         if (req == null) {
             throw new IllegalArgumentException("查询请求不能为空");
         }
@@ -86,7 +84,7 @@ public class QueryPlanCompiler {
             throw new IllegalArgumentException("查询主模块 ID 不能为空");
         }
 
-        SysModuleInfo rootMeta = metaCacheService.getModuleComplete(rootModuleId);
+        ModuleInfo rootMeta = metaCacheService.getModuleComplete(rootModuleId);
         if (rootMeta == null) {
             throw new IllegalArgumentException("模块 ID [" + rootModuleId + "] 不存在或未配置元数据");
         }
@@ -180,7 +178,7 @@ public class QueryPlanCompiler {
                 allowedModuleIds.add(targetModuleId);
                 return true;
             }
-            SysModuleInfo m = metaCacheService.getModuleComplete(cur);
+            ModuleInfo m = metaCacheService.getModuleComplete(cur);
             cur = (m != null) ? m.getParentId() : null;
         }
         return false;
@@ -188,8 +186,8 @@ public class QueryPlanCompiler {
 
     /** 根据平铺的 fields/filters/sorts 与 config-engine 拓扑，自动推导并组装内部结构化查询请求树 */
     private InternalQueryNode buildInternalQueryTree(
-            DynamicQueryReq req,
-            SysModuleInfo rootMeta,
+            QueryReq req,
+            ModuleInfo rootMeta,
             Set<Long> allFieldIds,
             List<ModuleFieldDTO> fieldDTOs) {
 
@@ -228,10 +226,10 @@ public class QueryPlanCompiler {
                     .build();
         }
 
-        Map<Long, SysModuleInfo> metaMap = new HashMap<>();
+        Map<Long, ModuleInfo> metaMap = new HashMap<>();
         metaMap.put(rootModuleId, rootMeta);
         for (Long mid : involvedModuleIds) {
-            SysModuleInfo m = metaCacheService.getModuleComplete(mid);
+            ModuleInfo m = metaCacheService.getModuleComplete(mid);
             if (m != null) {
                 metaMap.put(mid, m);
             }
@@ -243,7 +241,7 @@ public class QueryPlanCompiler {
             Long current = mid;
             Set<Long> visited = new HashSet<>();
             while (current != null && visited.add(current)) {
-                SysModuleInfo m =
+                ModuleInfo m =
                         metaMap.computeIfAbsent(current, metaCacheService::getModuleComplete);
                 if (m != null && m.getParentId() != null) {
                     Long pid = m.getParentId();
@@ -272,7 +270,7 @@ public class QueryPlanCompiler {
             }
         }
 
-        Map<Long, List<DynamicFilterItem>> filtersByModule = new HashMap<>();
+        Map<Long, List<FilterItem>> filtersByModule = new HashMap<>();
         if (req.getFilters() != null) {
             for (var filter : req.getFilters()) {
                 Long mid =
@@ -283,7 +281,7 @@ public class QueryPlanCompiler {
             }
         }
 
-        Map<Long, List<DynamicSortItem>> sortsByModule = new HashMap<>();
+        Map<Long, List<SortItem>> sortsByModule = new HashMap<>();
         if (req.getSorts() != null) {
             for (var sort : req.getSorts()) {
                 Long mid =
@@ -298,7 +296,7 @@ public class QueryPlanCompiler {
         Map<Long, List<Long>> parentToChildren = new HashMap<>();
         for (Long mid : involvedModuleIds) {
             if (!mid.equals(rootModuleId)) {
-                SysModuleInfo m = metaMap.computeIfAbsent(mid, metaCacheService::getModuleComplete);
+                ModuleInfo m = metaMap.computeIfAbsent(mid, metaCacheService::getModuleComplete);
                 Long pid =
                         (m != null && m.getParentId() != null && m.getParentId() != 0L)
                                 ? m.getParentId()
@@ -320,10 +318,10 @@ public class QueryPlanCompiler {
     private InternalQueryNode buildInternalNode(
             Long currentModuleId,
             Long rootModuleId,
-            DynamicQueryReq originalReq,
+            QueryReq originalReq,
             Map<Long, List<Long>> fieldsByModule,
-            Map<Long, List<DynamicFilterItem>> filtersByModule,
-            Map<Long, List<DynamicSortItem>> sortsByModule,
+            Map<Long, List<FilterItem>> filtersByModule,
+            Map<Long, List<SortItem>> sortsByModule,
             Map<Long, List<Long>> parentToChildren) {
 
         List<Long> childIds = parentToChildren.get(currentModuleId);
@@ -360,11 +358,11 @@ public class QueryPlanCompiler {
     private QueryNodePlan compileNode(
             InternalQueryNode node,
             Long parentModuleId,
-            SysModuleInfo parentMeta,
+            ModuleInfo parentMeta,
             boolean isGlobalWhitelistMode) {
 
         Long moduleId = node.getModuleId();
-        SysModuleInfo meta = metaCacheService.getModuleComplete(moduleId);
+        ModuleInfo meta = metaCacheService.getModuleComplete(moduleId);
         if (meta == null) {
             throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
         }
@@ -567,7 +565,7 @@ public class QueryPlanCompiler {
 
     /** 基于 sys_table_relation 单向定义推导伴生表物理 JOIN 规格 */
     private List<JoinTableSpec> resolveCompanionJoins(
-            String primaryTable, List<PhysicalFieldSpec> projectedFields, SysModuleInfo meta) {
+            String primaryTable, List<PhysicalFieldSpec> projectedFields, ModuleInfo meta) {
         if (primaryTable == null
                 || primaryTable.isBlank()
                 || meta == null
@@ -664,7 +662,7 @@ public class QueryPlanCompiler {
     }
 
     /** 解析模块物理主表名 */
-    public String resolvePrimaryTable(SysModuleInfo meta) {
+    public String resolvePrimaryTable(ModuleInfo meta) {
         if (meta == null) {
             return "";
         }
@@ -685,15 +683,15 @@ public class QueryPlanCompiler {
             String parentKey, String childForeignKey, String parentPrimaryTable) {}
 
     /** 沿着模块树向上回溯查找最近的一个配置了有效物理主表的父/祖先模块，同时收集沿途的中间虚拟模块 */
-    private SysModuleInfo findNearestPhysicalParentMeta(
-            SysModuleInfo currentMeta, List<SysModuleInfo> intermediateCollector) {
+    private ModuleInfo findNearestPhysicalParentMeta(
+            ModuleInfo currentMeta, List<ModuleInfo> intermediateCollector) {
         if (currentMeta == null) {
             return null;
         }
         Long curParentId = currentMeta.getParentId();
         Set<Long> visited = new HashSet<>();
         while (curParentId != null && curParentId > 0 && visited.add(curParentId)) {
-            SysModuleInfo pMeta = metaCacheService.getModuleComplete(curParentId);
+            ModuleInfo pMeta = metaCacheService.getModuleComplete(curParentId);
             if (pMeta == null) {
                 break;
             }
@@ -732,15 +730,15 @@ public class QueryPlanCompiler {
      * 若直接父模块为虚拟模块 (无主表)，则自动递归向上查找最近的有物理主表的祖先模块进行关联。
      */
     private ParentRelationInfo resolveParentRelation(
-            String childPrimaryTable, SysModuleInfo childMeta, SysModuleInfo parentMeta) {
+            String childPrimaryTable, ModuleInfo childMeta, ModuleInfo parentMeta) {
         if (childPrimaryTable == null || childPrimaryTable.isBlank() || parentMeta == null) {
             return new ParentRelationInfo("id", null, null);
         }
 
         // 查找物理父模块 (若直接父模块为虚拟模块，则递归向上回溯至最近具有物理主表的祖先模块)
-        SysModuleInfo physicalParentMeta = parentMeta;
+        ModuleInfo physicalParentMeta = parentMeta;
         String parentPrimary = resolvePrimaryTable(physicalParentMeta);
-        List<SysModuleInfo> intermediateMetas = new ArrayList<>();
+        List<ModuleInfo> intermediateMetas = new ArrayList<>();
 
         if (parentPrimary == null || parentPrimary.isBlank()) {
             intermediateMetas.add(parentMeta);
@@ -768,7 +766,7 @@ public class QueryPlanCompiler {
         if (physicalParentMeta.getTableRelations() != null) {
             allRelations.addAll(physicalParentMeta.getTableRelations());
         }
-        for (SysModuleInfo interMeta : intermediateMetas) {
+        for (ModuleInfo interMeta : intermediateMetas) {
             if (interMeta != null && interMeta.getTableRelations() != null) {
                 allRelations.addAll(interMeta.getTableRelations());
             }
@@ -799,13 +797,13 @@ public class QueryPlanCompiler {
     }
 
     private String resolveParentForeignKey(
-            String childPrimaryTable, SysModuleInfo childMeta, SysModuleInfo parentMeta) {
+            String childPrimaryTable, ModuleInfo childMeta, ModuleInfo parentMeta) {
         return resolveParentRelation(childPrimaryTable, childMeta, parentMeta).childForeignKey();
     }
 
     /** 编译字段投影规格 */
     private List<PhysicalFieldSpec> compileProjection(
-            SysModuleInfo meta,
+            ModuleInfo meta,
             String primaryTable,
             List<Long> fieldIds,
             boolean isGlobalWhitelistMode) {
@@ -815,10 +813,8 @@ public class QueryPlanCompiler {
             return specs;
         }
 
-        // 经权限裁剪后的字段字典
-        List<ModuleFieldDTO> readableFields = permissionFilterService.filterReadableFields(meta);
         Map<Long, ModuleFieldDTO> fieldMap = new HashMap<>();
-        for (ModuleFieldDTO f : readableFields) {
+        for (ModuleFieldDTO f : allFields) {
             if (f.getId() != null) {
                 fieldMap.put(f.getId(), f);
             }
@@ -836,7 +832,7 @@ public class QueryPlanCompiler {
             return Collections.emptyList();
         } else {
             // 默认投影当前模块全部可见字段
-            for (ModuleFieldDTO f : readableFields) {
+            for (ModuleFieldDTO f : allFields) {
                 specs.add(toPhysicalFieldSpec(f, primaryTable));
             }
         }
@@ -858,7 +854,7 @@ public class QueryPlanCompiler {
     }
 
     /** 编译软删除与租户隔离等基础底座条件 */
-    private Condition compileBaseConditions(SysModuleInfo meta, String primaryTable) {
+    private Condition compileBaseConditions(ModuleInfo meta, String primaryTable) {
         List<Condition> conditions = new ArrayList<>();
         conditions.add(DSL.field(DSL.name(primaryTable, "deleted")).eq((byte) 0));
 
@@ -880,7 +876,7 @@ public class QueryPlanCompiler {
 
     /** 编译用户显式业务过滤条件为安全 Condition (以 fieldId 为唯一依据，无业务条件返回 null) */
     private Condition compileUserFilters(
-            SysModuleInfo meta, String primaryTable, List<DynamicFilterItem> filters) {
+            ModuleInfo meta, String primaryTable, List<FilterItem> filters) {
         if (filters == null || filters.isEmpty()) {
             return null;
         }
@@ -895,7 +891,7 @@ public class QueryPlanCompiler {
         }
 
         List<Condition> conditions = new ArrayList<>();
-        for (DynamicFilterItem item : filters) {
+        for (FilterItem item : filters) {
             if (item == null || item.getValue() == null || "".equals(item.getValue())) {
                 continue;
             }
@@ -928,7 +924,7 @@ public class QueryPlanCompiler {
 
     /** 编译过滤条件列表为安全 Condition (以 fieldId 为唯一依据) */
     private Condition compileConditions(
-            SysModuleInfo meta, String primaryTable, List<DynamicFilterItem> filters) {
+            ModuleInfo meta, String primaryTable, List<FilterItem> filters) {
         Condition base = compileBaseConditions(meta, primaryTable);
         Condition user = compileUserFilters(meta, primaryTable, filters);
         return user != null ? base.and(user) : base;
@@ -966,7 +962,7 @@ public class QueryPlanCompiler {
 
     /** 编译排序规则列表 (以 fieldId 为唯一依据) */
     private List<OrderField<?>> compileSorts(
-            SysModuleInfo meta, String primaryTable, List<DynamicSortItem> sorts) {
+            ModuleInfo meta, String primaryTable, List<SortItem> sorts) {
         List<OrderField<?>> orderFields = new ArrayList<>();
         if (sorts == null || sorts.isEmpty()) {
             orderFields.add(DSL.field(DSL.name(primaryTable, "id")).desc());
@@ -982,7 +978,7 @@ public class QueryPlanCompiler {
             }
         }
 
-        for (DynamicSortItem item : sorts) {
+        for (SortItem item : sorts) {
             if (item == null || item.getFieldId() == null) {
                 continue;
             }

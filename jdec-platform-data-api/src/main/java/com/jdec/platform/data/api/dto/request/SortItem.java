@@ -17,9 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "结构化排序规则项（fieldId 权威驱动）")
-public class DynamicSortItem implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class SortItem implements Serializable {
 
     @Schema(description = "字段权威元数据主键 (sys_module_field.id)，优先使用", example = "1001")
     private Long fieldId;

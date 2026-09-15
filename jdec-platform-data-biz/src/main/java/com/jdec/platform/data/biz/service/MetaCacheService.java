@@ -1,7 +1,7 @@
 package com.jdec.platform.data.biz.service;
 
 import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.data.api.dto.model.SysModuleInfo;
+import com.jdec.platform.data.api.dto.model.ModuleInfo;
 import com.jdec.platform.data.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.List;
@@ -18,7 +18,7 @@ public class MetaCacheService {
     private final DataModuleConfigService dataModuleConfigService;
 
     /** 获取指定模块的完整元数据配置 (现阶段直连查询，避免缓存干扰开发联调) */
-    public SysModuleInfo getModuleComplete(Long moduleId) {
+    public ModuleInfo getModuleComplete(Long moduleId) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
 

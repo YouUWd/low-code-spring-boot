@@ -3,24 +3,26 @@ package com.jdec.platform.data.biz;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.data.api.dto.common.ModuleNodeDTO;
 import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.SysModuleInfo;
-import com.jdec.platform.data.api.dto.request.DynamicFilterItem;
-import com.jdec.platform.data.api.dto.request.DynamicOptionReq;
-import com.jdec.platform.data.api.dto.request.DynamicQueryReq;
-import com.jdec.platform.data.api.dto.request.DynamicSortItem;
+import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SortItem;
+import com.jdec.platform.data.api.dto.response.DataDetail;
+import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
-import com.jdec.platform.data.api.dto.response.DynamicOptionItem;
-import com.jdec.platform.data.api.dto.response.EngineDataResult;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
-import com.jdec.platform.data.biz.service.DynamicDataQueryService;
+import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
+import com.jdec.platform.data.biz.service.DataQueryService;
 import com.jdec.platform.data.biz.service.MetaCacheService;
-import com.jdec.platform.data.biz.service.PermissionFilterService;
 import java.util.*;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
@@ -51,20 +53,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DataQueryTest {
 
     @Mock private MetaCacheService metaCacheService;
-    @Mock private PermissionFilterService permissionFilterService;
     @Mock private JooqDataContextFactory jooqDataContextFactory;
 
     private final TreeResultAssembler treeResultAssembler = new TreeResultAssembler();
 
     private QueryPlanCompiler queryPlanCompiler;
     private QueryPlanExecutor queryPlanExecutor;
-    private DynamicDataQueryService dynamicDataQueryService;
+    private DataQueryService dataQueryService;
 
     private DSLContext dslContext;
-    private SysModuleInfo mockModule101;
-    private SysModuleInfo mockModule103;
-    private SysModuleInfo mockModule104;
-    private SysModuleInfo mockModule105;
+    private ModuleInfo mockModule101;
+    private ModuleInfo mockModule103;
+    private ModuleInfo mockModule104;
+    private ModuleInfo mockModule105;
 
     @BeforeEach
     void setUp() {
@@ -246,7 +247,7 @@ class DataQueryTest {
 
         // 模块 101: 学生综合档案 (主表 student，伴生表 clazz)
         mockModule101 =
-                SysModuleInfo.builder()
+                ModuleInfo.builder()
                         .moduleId(101L)
                         .moduleCode("MOD-STUDENT")
                         .moduleName("学生综合档案")
@@ -254,6 +255,14 @@ class DataQueryTest {
                         .parentId(0L)
                         .fields(
                                 List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(1010L)
+                                                .moduleId(101L)
+                                                .tableName("student")
+                                                .columnName("id")
+                                                .displayName("学生ID")
+                                                .sortOrder(0)
+                                                .build(),
                                         ModuleFieldDTO.builder()
                                                 .id(1011L)
                                                 .moduleId(101L)
@@ -339,7 +348,7 @@ class DataQueryTest {
 
         // 模块 103: 选课管理 (主表 student_course)
         mockModule103 =
-                SysModuleInfo.builder()
+                ModuleInfo.builder()
                         .moduleId(103L)
                         .moduleCode("MOD-COURSE")
                         .moduleName("选课管理")
@@ -391,7 +400,7 @@ class DataQueryTest {
 
         // 模块 104: 成绩明细 (主表 student_course_score_item)
         mockModule104 =
-                SysModuleInfo.builder()
+                ModuleInfo.builder()
                         .moduleId(104L)
                         .moduleCode("MOD-SCORE")
                         .moduleName("成绩明细")
@@ -436,7 +445,7 @@ class DataQueryTest {
 
         // 模块 105: 奖惩荣誉 (主表 student_reward)
         mockModule105 =
-                SysModuleInfo.builder()
+                ModuleInfo.builder()
                         .moduleId(105L)
                         .moduleCode("MOD-REWARD")
                         .moduleName("奖惩荣誉")
@@ -508,20 +517,10 @@ class DataQueryTest {
                                     .toList();
                         });
 
-        lenient()
-                .when(permissionFilterService.filterReadableFields(any()))
-                .thenAnswer(
-                        invocation -> {
-                            SysModuleInfo m = invocation.getArgument(0);
-                            return m != null && m.getFields() != null
-                                    ? m.getFields()
-                                    : Collections.emptyList();
-                        });
-
-        queryPlanCompiler = new QueryPlanCompiler(metaCacheService, permissionFilterService);
+        queryPlanCompiler = new QueryPlanCompiler(metaCacheService);
         queryPlanExecutor = new QueryPlanExecutor(jooqDataContextFactory, treeResultAssembler);
-        dynamicDataQueryService =
-                new DynamicDataQueryService(
+        dataQueryService =
+                new DataQueryService(
                         metaCacheService,
                         jooqDataContextFactory,
                         queryPlanCompiler,
@@ -531,8 +530,8 @@ class DataQueryTest {
     @Test
     @DisplayName("测试自相似模块树驱动查询: 101 包含 103(含104) 与 105，行内自相似挂载")
     void testStandardListQueryWithSelfSimilarTree() {
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
@@ -540,15 +539,10 @@ class DataQueryTest {
                                 List.of(
                                         1011L, 1012L, 1013L, 1014L, 1031L, 1032L, 1041L, 1042L,
                                         1051L, 1052L, 1053L))
-                        .sorts(
-                                List.of(
-                                        DynamicSortItem.builder()
-                                                .fieldId(1011L)
-                                                .direction("DESC")
-                                                .build()))
+                        .sorts(List.of(SortItem.builder().fieldId(1011L).direction("DESC").build()))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
 
         // 1. 验证响应与根数据页 (根记录严格由 101 根模块包裹)
         assertNotNull(response);
@@ -624,8 +618,8 @@ class DataQueryTest {
     @DisplayName("测试平铺 fields 数组驱动：仅传递主模块 moduleId 与 fields 数组，全自动推导多级查询树")
     void testPureFieldsQueryWithAutomaticTreeInference() {
         // 请求中平铺请求跨 101, 103, 104, 105 的字段，无需构造任何 children
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
@@ -641,20 +635,15 @@ class DataQueryTest {
                                         ))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1012L)
                                                 .operator("EQ")
                                                 .value("张三")
                                                 .build()))
-                        .sorts(
-                                List.of(
-                                        DynamicSortItem.builder()
-                                                .fieldId(1011L)
-                                                .direction("DESC")
-                                                .build()))
+                        .sorts(List.of(SortItem.builder().fieldId(1011L).direction("DESC").build()))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
 
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
@@ -705,49 +694,29 @@ class DataQueryTest {
     }
 
     @Test
-    @DisplayName("测试动态表头配置接口 getHeader")
-    void testGetHeader() {
-        com.jdec.platform.data.api.dto.request.EngineHeaderReq req =
-                com.jdec.platform.data.api.dto.request.EngineHeaderReq.builder()
-                        .fields(List.of(1011L, 1031L))
-                        .build();
-
-        com.jdec.platform.data.api.dto.response.EngineHeaderResp resp =
-                dynamicDataQueryService.getHeader(req);
-
-        assertNotNull(resp);
-        assertNotNull(resp.getFields());
-        assertEquals(2, resp.getFields().size());
-        assertEquals("student_no", resp.getFields().get(0).getColumnName());
-        assertEquals("学号", resp.getFields().get(0).getDisplayName());
-        assertEquals("course_name", resp.getFields().get(1).getColumnName());
-        assertEquals("课程名称", resp.getFields().get(1).getDisplayName());
-    }
-
-    @Test
     @DisplayName("测试独立节点基于纯 fieldId 过滤: 杜绝表名/列名推导")
     void testNodeFilteringWithFieldId() {
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .fields(List.of(1011L, 1012L, 1031L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1012L)
                                                 .operator("eq")
                                                 .value("张三")
                                                 .build(),
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1031L)
                                                 .operator("like")
                                                 .value("英语")
                                                 .build()))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
 
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
@@ -767,27 +736,18 @@ class DataQueryTest {
     @Test
     @DisplayName("测试多节点独立 sorts 排序配置")
     void testNodeSortingWithFieldId() {
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1011L, 1012L, 1031L))
                         .sorts(
                                 List.of(
-                                        DynamicSortItem.builder()
-                                                .fieldId(1011L)
-                                                .direction("ASC")
-                                                .build(),
-                                        DynamicSortItem.builder()
-                                                .fieldId(1012L)
-                                                .direction("DESC")
-                                                .build(),
-                                        DynamicSortItem.builder()
-                                                .fieldId(1031L)
-                                                .direction("ASC")
-                                                .build()))
+                                        SortItem.builder().fieldId(1011L).direction("ASC").build(),
+                                        SortItem.builder().fieldId(1012L).direction("DESC").build(),
+                                        SortItem.builder().fieldId(1031L).direction("ASC").build()))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
     }
@@ -795,15 +755,15 @@ class DataQueryTest {
     @Test
     @DisplayName("测试单模块查询 (无子节点) 纯净运行")
     void testSingleModuleQuery() {
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(20)
                         .fields(List.of(1011L, 1012L))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
         Map<String, Object> rootRow = response.getRecords().get(0);
@@ -822,21 +782,21 @@ class DataQueryTest {
     @Test
     @DisplayName("测试单据详情查询: 基于 filters 主键过滤与 pageSize=1 统一定位")
     void testQuerySingleRecordByFilter() {
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(1)
                         .fields(List.of(1011L, 1012L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1011L)
                                                 .operator("EQ")
                                                 .value("S001")
                                                 .build()))
                         .build();
-        DataPage<Map<String, Object>> result = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> result = dataQueryService.query(req);
         assertNotNull(result);
         assertEquals(1, result.getRecords().size());
         Map<String, Object> rootRow = result.getRecords().get(0);
@@ -856,8 +816,7 @@ class DataQueryTest {
     @Test
     @DisplayName("测试按 ID 查询单据详情: getDetail 返回单行 Map")
     void testGetDetailById() {
-        EngineDataResult<Map<String, Object>> result =
-                dynamicDataQueryService.getDetail(101L, 1001L);
+        DataDetail<Map<String, Object>> result = dataQueryService.getDetail(101L, 1001L);
         assertNotNull(result);
         assertNotNull(result.getData());
         assertTrue(result.getData().containsKey("101"), "getDetail 单据详情单行也应保持 101 模块包裹");
@@ -877,9 +836,9 @@ class DataQueryTest {
     @DisplayName("测试选项候选值查询 getOptions")
     void testGetOptions() {
         // 字段 1031L 为 mockModule103 下的 course_name 字段
-        DynamicOptionReq req = DynamicOptionReq.builder().moduleId(103L).fieldId(1031L).build();
+        OptionReq req = OptionReq.builder().moduleId(103L).fieldId(1031L).build();
 
-        List<DynamicOptionItem> options = dynamicDataQueryService.getOptions(req);
+        List<DataOption> options = dataQueryService.getOptions(req);
         assertNotNull(options);
         assertEquals(2, options.size());
         assertEquals("大学英语", options.get(0).getLabel());
@@ -889,20 +848,20 @@ class DataQueryTest {
     @DisplayName("测试选项候选值查询携带业务过滤条件 filters")
     void testGetOptionsWithFilters() {
         // 字段 1031L 为 mockModule103 下的 course_name 字段，且携带老师过滤条件 1032L EQ 李老师
-        DynamicOptionReq req =
-                DynamicOptionReq.builder()
+        OptionReq req =
+                OptionReq.builder()
                         .moduleId(103L)
                         .fieldId(1031L)
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1032L)
                                                 .operator("EQ")
                                                 .value("李老师")
                                                 .build()))
                         .build();
 
-        List<DynamicOptionItem> options = dynamicDataQueryService.getOptions(req);
+        List<DataOption> options = dataQueryService.getOptions(req);
         assertNotNull(options);
         assertEquals(2, options.size());
     }
@@ -911,20 +870,20 @@ class DataQueryTest {
     @DisplayName("测试选项候选值查询跨模块过滤联动 (子模块字段候选项受根模块过滤条件约束)")
     void testGetOptionsChildFieldWithRootFilter() {
         // 请求根模块 101，获取子模块 103 的 course_name (1031L) 候选项，同时携带根模块学生姓名 (1012L) 过滤条件
-        DynamicOptionReq req =
-                DynamicOptionReq.builder()
+        OptionReq req =
+                OptionReq.builder()
                         .moduleId(101L)
                         .fieldId(1031L)
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1012L)
                                                 .operator("EQ")
                                                 .value("张三")
                                                 .build()))
                         .build();
 
-        List<DynamicOptionItem> options = dynamicDataQueryService.getOptions(req);
+        List<DataOption> options = dataQueryService.getOptions(req);
         assertNotNull(options);
         assertEquals(2, options.size());
         assertEquals("大学英语", options.get(0).getLabel());
@@ -934,31 +893,31 @@ class DataQueryTest {
     @DisplayName("测试选项候选值查询跨模块校验失败 (fieldId 不属于主模块及其子模块)")
     void testGetOptionsOutOfScopeThrows() {
         // 请求主模块 103，但请求了主模块 101 的学生名字段 1012L
-        DynamicOptionReq req = DynamicOptionReq.builder().moduleId(103L).fieldId(1012L).build();
+        OptionReq req = OptionReq.builder().moduleId(103L).fieldId(1012L).build();
 
-        assertThrows(IllegalArgumentException.class, () -> dynamicDataQueryService.getOptions(req));
+        assertThrows(IllegalArgumentException.class, () -> dataQueryService.getOptions(req));
     }
 
     @Test
     @DisplayName("测试模块元数据为空时抛出合规异常")
     void testNonExistentModuleThrows() {
-        DynamicQueryReq req = DynamicQueryReq.builder().moduleId(9999L).build();
-        assertThrows(IllegalArgumentException.class, () -> dynamicDataQueryService.query(req));
+        QueryReq req = QueryReq.builder().moduleId(9999L).build();
+        assertThrows(IllegalArgumentException.class, () -> dataQueryService.query(req));
     }
 
     @Test
     @DisplayName("测试显式白名单模式严格零推测：请求仅包含子模块字段时根模块业务字段不被推测全选")
     void testWhitelistModeStrictProjectionWithZeroInference() {
         // 请求根模块 101，但 fields 只请求了子模块 103 的字段 1031L (course_name) 与 1032L (teacher_name)
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .fields(List.of(1031L, 1032L))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
         Map<String, Object> rootRow = response.getRecords().get(0);
@@ -996,8 +955,8 @@ class DataQueryTest {
     @DisplayName("测试模块树多层传递闭包与单向TableRelation严格推导：缺少关系定义时必须抛出自洽异常，严禁推测")
     void testModuleTreeTransitiveClosureAndZeroGuessRelation() {
         // 构造一个没有在 tableRelations 中配置关联的伪造子模块
-        SysModuleInfo orphanModule =
-                SysModuleInfo.builder()
+        ModuleInfo orphanModule =
+                ModuleInfo.builder()
                         .moduleId(999L)
                         .moduleCode("MOD-ORPHAN")
                         .primaryTable("orphan_table")
@@ -1018,8 +977,8 @@ class DataQueryTest {
                 .when(metaCacheService.listFieldsByIds(List.of(9991L)))
                 .thenReturn(orphanModule.getFields());
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
@@ -1028,7 +987,7 @@ class DataQueryTest {
 
         // 必须抛出 IllegalStateException，提示未自洽的元数据关联关系，决不允许约定俗成推测
         IllegalStateException ex =
-                assertThrows(IllegalStateException.class, () -> dynamicDataQueryService.query(req));
+                assertThrows(IllegalStateException.class, () -> dataQueryService.query(req));
         assertTrue(ex.getMessage().contains("元数据关联关系未自洽"));
         assertTrue(ex.getMessage().contains("orphan_table"));
     }
@@ -1037,8 +996,8 @@ class DataQueryTest {
     @DisplayName("测试三层模块树 101 -> 104 -> 106：验证 106 模块 ID 完整保留，不丢失且不被错误扁平化嵌套")
     void testThreeLevelModuleHierarchyAwardAndDetail_106RetainsModuleId() {
         // 构造模块 106: 荣誉材料与佐证明细 (挂在 104 下)
-        SysModuleInfo mockModule106 =
-                SysModuleInfo.builder()
+        ModuleInfo mockModule106 =
+                ModuleInfo.builder()
                         .moduleId(106L)
                         .moduleCode("MOD-STUDENT-AWARD-DETAIL")
                         .moduleName("荣誉材料与佐证明细")
@@ -1082,8 +1041,8 @@ class DataQueryTest {
                         .build();
 
         // 将 104 模块的主表修正为 student_award
-        SysModuleInfo mockModule104Real =
-                SysModuleInfo.builder()
+        ModuleInfo mockModule104Real =
+                ModuleInfo.builder()
                         .moduleId(104L)
                         .moduleCode("MOD-STUDENT-AWARD")
                         .moduleName("荣誉与奖惩管理")
@@ -1121,31 +1080,25 @@ class DataQueryTest {
         lenient().when(metaCacheService.getModuleComplete(106L)).thenReturn(mockModule106);
         lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104Real);
         lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule106))
-                .thenReturn(mockModule106.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule104Real))
-                .thenReturn(mockModule104Real.getFields());
-        lenient()
                 .when(metaCacheService.listFieldsByIds(List.of(1011L, 1012L, 37L, 38L, 74L, 76L)))
                 .thenReturn(
                         List.of(
-                                mockModule101.getFields().get(0),
                                 mockModule101.getFields().get(1),
+                                mockModule101.getFields().get(2),
                                 mockModule104Real.getFields().get(0),
                                 mockModule104Real.getFields().get(1),
                                 mockModule106.getFields().get(0),
                                 mockModule106.getFields().get(2)));
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .fields(List.of(1011L, 1012L, 37L, 38L, 74L, 76L))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
 
         assertNotNull(response);
         assertEquals(1, response.getRecords().size());
@@ -1192,21 +1145,15 @@ class DataQueryTest {
     void testChildModuleFilterRollupToRoot_SemiJoinExists() {
         lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
         lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule101))
-                .thenReturn(mockModule101.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule103))
-                .thenReturn(mockModule103.getFields());
 
         // 子模块 103 (选课 student_course) 设置筛选条件: course_name LIKE '英语'
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1011L, 1012L, 1031L, 1032L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1031L)
                                                 .operator("LIKE")
                                                 .value("英语")
@@ -1238,8 +1185,8 @@ class DataQueryTest {
     @Test
     @DisplayName("测试三级子孙模块筛选链式上卷反向约束根模块 (Nested EXISTS)")
     void testThreeLevelModuleFilterRollupToRoot_NestedSemiJoin() {
-        SysModuleInfo mockModule106 =
-                SysModuleInfo.builder()
+        ModuleInfo mockModule106 =
+                ModuleInfo.builder()
                         .moduleId(106L)
                         .primaryTable("student_award_detail")
                         .parentId(104L)
@@ -1280,8 +1227,8 @@ class DataQueryTest {
                                                 .build()))
                         .build();
 
-        SysModuleInfo mockModule104Real =
-                SysModuleInfo.builder()
+        ModuleInfo mockModule104Real =
+                ModuleInfo.builder()
                         .moduleId(104L)
                         .primaryTable("student_award")
                         .parentId(101L)
@@ -1317,15 +1264,6 @@ class DataQueryTest {
         lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
         lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104Real);
         lenient().when(metaCacheService.getModuleComplete(106L)).thenReturn(mockModule106);
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule101))
-                .thenReturn(mockModule101.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule104Real))
-                .thenReturn(mockModule104Real.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule106))
-                .thenReturn(mockModule106.getFields());
 
         List<ModuleFieldDTO> localFields = new ArrayList<>();
         localFields.addAll(mockModule101.getFields());
@@ -1342,13 +1280,13 @@ class DataQueryTest {
                         });
 
         // 仅在三级孙模块 106 上设置筛选条件: evidence_name LIKE '证书'
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1011L, 1012L, 37L, 38L, 74L, 76L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(76L)
                                                 .operator("LIKE")
                                                 .value("证书")
@@ -1385,16 +1323,10 @@ class DataQueryTest {
     void testNoChildFilterMaintainsLeftJoinSemantics_NoExistsRollup() {
         lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
         lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule101))
-                .thenReturn(mockModule101.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule103))
-                .thenReturn(mockModule103.getFields());
 
         // 子模块 103 仅投影，没有任何 filters
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1011L, 1012L, 1031L, 1032L))
                         .build();
@@ -1417,8 +1349,8 @@ class DataQueryTest {
     @DisplayName("测试同物理表垂直拆分模块过滤反向约束 (直接 AND 合并，不生成 EXISTS)")
     void testSameTableModuleFilterRollup_DirectAndMerge() {
         // 模拟 105 模块与 101 模块同为主表 student
-        SysModuleInfo mockModule105SameTable =
-                SysModuleInfo.builder()
+        ModuleInfo mockModule105SameTable =
+                ModuleInfo.builder()
                         .moduleId(105L)
                         .primaryTable("student")
                         .parentId(101L)
@@ -1436,20 +1368,14 @@ class DataQueryTest {
 
         lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
         lenient().when(metaCacheService.getModuleComplete(105L)).thenReturn(mockModule105SameTable);
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule101))
-                .thenReturn(mockModule101.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule105SameTable))
-                .thenReturn(mockModule105SameTable.getFields());
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1011L, 1012L, 1051L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1051L)
                                                 .operator("LIKE")
                                                 .value("篮球")
@@ -1477,63 +1403,40 @@ class DataQueryTest {
         lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
         lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
         lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule101))
-                .thenReturn(mockModule101.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule103))
-                .thenReturn(mockModule103.getFields());
-        lenient()
-                .when(permissionFilterService.filterReadableFields(mockModule104))
-                .thenReturn(mockModule104.getFields());
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .fields(List.of(1011L, 1012L, 1013L, 1014L, 1031L, 1032L, 1041L, 1042L))
                         .build();
 
-        DataPage<Map<String, Object>> response = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> response = dataQueryService.query(req);
         assertNotNull(response);
 
-        // 验证 header 树形契约原子下发
-        assertNotNull(response.getHeader(), "DataPage 响应中必须原子携带本次查询对齐的树形 header");
-        assertEquals(101L, response.getHeader().getModuleId());
-        assertEquals("学生综合档案", response.getHeader().getLabel());
-        assertNotNull(response.getHeader().getChildren());
-        assertTrue(
-                response.getHeader().getChildren().stream()
-                        .anyMatch(c -> "student.name".equals(c.getDataIndex())));
-        assertTrue(
-                response.getHeader().getChildren().stream()
-                        .anyMatch(c -> Long.valueOf(103L).equals(c.getModuleId())));
-
-        com.fasterxml.jackson.databind.ObjectMapper mapper =
-                new com.fasterxml.jackson.databind.ObjectMapper();
+        ObjectMapper mapper = new ObjectMapper();
         String json = mapper.writeValueAsString(response);
 
-        // 验证 records 和 header 顶层同级
-        com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(json);
-        assertTrue(rootNode.has("header"), "JSON 根节点必须包含原子 'header' 树形契约");
-        assertTrue(rootNode.has("records"), "JSON 根节点必须包含与 'header' 同级的 'records' 数组");
+        // 验证 records 顶层节点
+        JsonNode rootNode = mapper.readTree(json);
+        assertTrue(rootNode.has("records"), "JSON 根节点必须包含 'records' 数组");
         assertEquals(1, rootNode.get("records").size());
 
         // 验证三级递归自相似数据链路：records[0]["101"] 根模块包裹，行内自包含物理表与子模块数组
-        com.fasterxml.jackson.databind.JsonNode rootRecord = rootNode.get("records").get(0);
+        JsonNode rootRecord = rootNode.get("records").get(0);
         assertTrue(rootRecord.has("101"), "每条记录必须包含根模块 101 包裹对象");
-        com.fasterxml.jackson.databind.JsonNode studentNode = rootRecord.get("101");
+        JsonNode studentNode = rootRecord.get("101");
         assertEquals("S001", studentNode.get("student").get("student_no").asText());
         assertEquals("张三", studentNode.get("student").get("name").asText());
         assertEquals("高三(1)班", studentNode.get("clazz").get("class_name").asText());
 
         // 二级模块 103 选课 (包含在 101 内部)
-        com.fasterxml.jackson.databind.JsonNode courseNode = studentNode.get("103").get(0);
+        JsonNode courseNode = studentNode.get("103").get(0);
         assertEquals("大学英语", courseNode.get("student_course").get("course_name").asText());
 
         // 三级模块 104 成绩项 (包含在 103 选课内部)
-        com.fasterxml.jackson.databind.JsonNode scoreNode = courseNode.get("104").get(0);
+        JsonNode scoreNode = courseNode.get("104").get(0);
         assertEquals("期末大作业", scoreNode.get("student_course_score_item").get("item_name").asText());
         assertEquals(95.0, scoreNode.get("student_course_score_item").get("score").asDouble());
     }
@@ -1553,16 +1456,16 @@ class DataQueryTest {
         courseRow.put("_fk_student_id", 5L);
 
         // 同模块子计划（成绩分项，属于同一模块 103）
-        com.jdec.platform.data.biz.plan.model.QueryNodePlan scoreSubPlan =
-                com.jdec.platform.data.biz.plan.model.QueryNodePlan.builder()
+        QueryNodePlan scoreSubPlan =
+                QueryNodePlan.builder()
                         .moduleId(103L)
                         .primaryTable("student_course_score_item")
                         .parentForeignKey("student_course_id")
                         .build();
 
         // 选课子计划（属于模块 103，挂载成绩分项计划）
-        com.jdec.platform.data.biz.plan.model.QueryNodePlan coursePlan =
-                com.jdec.platform.data.biz.plan.model.QueryNodePlan.builder()
+        QueryNodePlan coursePlan =
+                QueryNodePlan.builder()
                         .moduleId(103L)
                         .primaryTable("student_course")
                         .parentForeignKey("student_id")
@@ -1576,8 +1479,7 @@ class DataQueryTest {
                 Map.of("id", 28L, "student_course_id", 8L, "item_name", "期中测验", "score", 85.0));
         rawScoreRow.put("_fk_student_course_id", 8L);
 
-        Map<com.jdec.platform.data.biz.plan.model.QueryNodePlan, List<Map<String, Object>>>
-                rawData = new IdentityHashMap<>();
+        Map<QueryNodePlan, List<Map<String, Object>>> rawData = new IdentityHashMap<>();
         rawData.put(coursePlan, List.of(courseRow));
         rawData.put(scoreSubPlan, List.of(rawScoreRow));
 
@@ -1619,8 +1521,8 @@ class DataQueryTest {
                         .columnName("operation")
                         .displayName("系统日志")
                         .build();
-        SysModuleInfo mockModule999 =
-                SysModuleInfo.builder()
+        ModuleInfo mockModule999 =
+                ModuleInfo.builder()
                         .moduleId(999L)
                         .moduleCode("MOD-LOG")
                         .moduleName("系统日志")
@@ -1633,10 +1535,9 @@ class DataQueryTest {
                 .when(
                         metaCacheService.listFieldsByIds(
                                 argThat(list -> list != null && list.contains(9991L))))
-                .thenReturn(List.of(mockModule101.getFields().get(0), outOfScopeField));
+                .thenReturn(List.of(mockModule101.getFields().get(1), outOfScopeField));
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder().moduleId(101L).fields(List.of(1011L, 9991L)).build();
+        QueryReq req = QueryReq.builder().moduleId(101L).fields(List.of(1011L, 9991L)).build();
 
         IllegalArgumentException ex =
                 assertThrows(IllegalArgumentException.class, () -> queryPlanCompiler.compile(req));
@@ -1655,8 +1556,8 @@ class DataQueryTest {
                         .columnName("operation")
                         .displayName("系统日志")
                         .build();
-        SysModuleInfo mockModule999 =
-                SysModuleInfo.builder()
+        ModuleInfo mockModule999 =
+                ModuleInfo.builder()
                         .moduleId(999L)
                         .moduleCode("MOD-LOG")
                         .moduleName("系统日志")
@@ -1669,15 +1570,15 @@ class DataQueryTest {
                 .when(
                         metaCacheService.listFieldsByIds(
                                 argThat(list -> list != null && list.contains(9991L))))
-                .thenReturn(List.of(mockModule101.getFields().get(0), outOfScopeField));
+                .thenReturn(List.of(mockModule101.getFields().get(1), outOfScopeField));
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1011L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(9991L)
                                                 .operator("EQ")
                                                 .value("TEST")
@@ -1692,26 +1593,26 @@ class DataQueryTest {
     @Test
     @DisplayName("虚拟模块测试：101(学生) -> 201(虚拟模块-教务信息) -> 103(选课管理) 穿透关联与 Semi-Join 上卷")
     void testVirtualModuleCompilationAndExistsRollup() {
-        SysModuleInfo mockVirtual201 =
-                SysModuleInfo.builder()
+        ModuleInfo mockVirtual201 =
+                ModuleInfo.builder()
                         .moduleId(201L)
                         .moduleCode("MOD-ACADEMIC")
                         .moduleName("教务信息")
                         .primaryTable(null)
                         .parentId(101L)
                         .build();
-        SysModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
+        ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
 
         lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
         lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103Under201);
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1012L, 1031L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1031L)
                                                 .operator("EQ")
                                                 .value("高等数学")
@@ -1752,26 +1653,23 @@ class DataQueryTest {
     @Test
     @DisplayName("虚拟模块测试：101(学生) -> 201(虚拟模块) -> 103(选课管理) 树形结果装配与 Map 容器隔离")
     void testVirtualModuleExecutionAndTreeAssembly() {
-        SysModuleInfo mockVirtual201 =
-                SysModuleInfo.builder()
+        ModuleInfo mockVirtual201 =
+                ModuleInfo.builder()
                         .moduleId(201L)
                         .moduleCode("MOD-ACADEMIC")
                         .moduleName("教务信息")
                         .primaryTable("")
                         .parentId(101L)
                         .build();
-        SysModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
+        ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
 
         lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
         lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103Under201);
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1011L, 1012L, 1031L))
-                        .build();
+        QueryReq req =
+                QueryReq.builder().moduleId(101L).fields(List.of(1011L, 1012L, 1031L)).build();
 
-        DataPage<Map<String, Object>> page = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
         assertNotNull(page);
         assertNotNull(page.getRecords());
         assertEquals(1, page.getRecords().size());
@@ -1811,35 +1709,35 @@ class DataQueryTest {
     @Test
     @DisplayName("多级嵌套虚拟模块测试：101(学生) -> 201(虚拟A) -> 202(虚拟B) -> 103(选课) 跨多级穿透关联与嵌套装配")
     void testMultiLevelNestedVirtualModules() {
-        SysModuleInfo mockVirtual201 =
-                SysModuleInfo.builder()
+        ModuleInfo mockVirtual201 =
+                ModuleInfo.builder()
                         .moduleId(201L)
                         .moduleCode("MOD-VM-A")
                         .moduleName("业务综合A")
                         .primaryTable(null)
                         .parentId(101L)
                         .build();
-        SysModuleInfo mockVirtual202 =
-                SysModuleInfo.builder()
+        ModuleInfo mockVirtual202 =
+                ModuleInfo.builder()
                         .moduleId(202L)
                         .moduleCode("MOD-VM-B")
                         .moduleName("业务综合B")
                         .primaryTable("")
                         .parentId(201L)
                         .build();
-        SysModuleInfo mockModule103Under202 = mockModule103.toBuilder().parentId(202L).build();
+        ModuleInfo mockModule103Under202 = mockModule103.toBuilder().parentId(202L).build();
 
         lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
         lenient().when(metaCacheService.getModuleComplete(202L)).thenReturn(mockVirtual202);
         lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103Under202);
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(101L)
                         .fields(List.of(1012L, 1031L))
                         .filters(
                                 List.of(
-                                        DynamicFilterItem.builder()
+                                        FilterItem.builder()
                                                 .fieldId(1031L)
                                                 .operator("EQ")
                                                 .value("大学英语")
@@ -1860,7 +1758,7 @@ class DataQueryTest {
         assertEquals("student_id", plan103.getParentForeignKey());
 
         // 验证执行与多层装配
-        DataPage<Map<String, Object>> page = dynamicDataQueryService.query(req);
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
         Map<String, Object> wrapped = page.getRecords().get(0);
         @SuppressWarnings("unchecked")
         Map<String, Object> studentRow = (Map<String, Object>) wrapped.get("101");
@@ -1894,8 +1792,8 @@ class DataQueryTest {
                         .relationType("1:N")
                         .build();
 
-        SysModuleInfo mockVirtual201 =
-                SysModuleInfo.builder()
+        ModuleInfo mockVirtual201 =
+                ModuleInfo.builder()
                         .moduleId(201L)
                         .moduleCode("MOD-ACADEMIC")
                         .moduleName("教务信息")
@@ -1904,7 +1802,7 @@ class DataQueryTest {
                         .tableRelations(List.of(vmRelation))
                         .build();
 
-        SysModuleInfo mockCourseWithoutRel =
+        ModuleInfo mockCourseWithoutRel =
                 mockModule103.toBuilder()
                         .parentId(201L)
                         .tableRelations(Collections.emptyList())
@@ -1913,12 +1811,97 @@ class DataQueryTest {
         lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
         lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockCourseWithoutRel);
 
-        DynamicQueryReq req =
-                DynamicQueryReq.builder().moduleId(101L).fields(List.of(1012L, 1031L)).build();
+        QueryReq req = QueryReq.builder().moduleId(101L).fields(List.of(1012L, 1031L)).build();
 
         var plan = queryPlanCompiler.compile(req);
         assertNotNull(plan);
         var plan103 = plan.getRootNodePlan().getChildren().get(0).getChildren().get(0);
         assertEquals("student_id", plan103.getParentForeignKey());
+    }
+
+    @Test
+    @DisplayName("测试 getDetail 在显式指定 fields 时，返回的 meta.fields 同步精准过滤")
+    void testGetDetailWithFieldsFilter() {
+        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
+        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
+        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
+        lenient().when(metaCacheService.getModuleComplete(105L)).thenReturn(mockModule105);
+
+        // 仅请求 1011(学号) 与 1012(姓名)
+        DataDetail<Map<String, Object>> detail =
+                dataQueryService.getDetail(101L, 1001L, List.of(1011L, 1012L));
+
+        assertNotNull(detail);
+        assertNotNull(detail.getMeta());
+        assertNotNull(detail.getMeta().getFields());
+        // 验证 meta.fields 严格过滤为 2 个请求字段
+        assertTrue(
+                detail.getMeta().getFields().stream()
+                        .anyMatch(f -> Long.valueOf(1011L).equals(f.getId())));
+        assertTrue(
+                detail.getMeta().getFields().stream()
+                        .anyMatch(f -> Long.valueOf(1012L).equals(f.getId())));
+        // 验证未包含子模块字段时，meta.children 为空
+        assertTrue(
+                detail.getMeta().getChildren() == null || detail.getMeta().getChildren().isEmpty());
+    }
+
+    @Test
+    @DisplayName("测试 getDetail 返回完整的自相似 meta.children 树，且子模块正确携带 fields")
+    void testGetDetailMetaChildrenTree() {
+        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
+        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
+        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
+        lenient().when(metaCacheService.getModuleComplete(105L)).thenReturn(mockModule105);
+
+        // 1. 无 fields 白名单：返回完整的根模块与子孙模块元数据树
+        DataDetail<Map<String, Object>> fullDetail = dataQueryService.getDetail(101L, 1001L, null);
+
+        assertNotNull(fullDetail);
+        ModuleInfo rootMeta = fullDetail.getMeta();
+        assertNotNull(rootMeta);
+        assertNotNull(rootMeta.getChildren());
+        assertFalse(rootMeta.getChildren().isEmpty());
+
+        // 验证 101 的直接子模块包含 103(选课管理) 与 105(奖惩荣誉)
+        var child103 =
+                rootMeta.getChildren().stream()
+                        .filter(c -> Long.valueOf(103L).equals(c.getModuleId()))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(child103);
+        assertEquals("选课管理", child103.getModuleName());
+        assertNotNull(child103.getFields());
+        assertFalse(child103.getFields().isEmpty());
+
+        // 验证 103 的下级孙模块包含 104(成绩明细)
+        assertNotNull(child103.getChildren());
+        var grandChild104 =
+                child103.getChildren().stream()
+                        .filter(c -> Long.valueOf(104L).equals(c.getModuleId()))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(grandChild104);
+        assertEquals("成绩明细", grandChild104.getModuleName());
+
+        // 2. 携带跨模块 fields 白名单：请求根模块字段 1012 与子模块字段 1031
+        DataDetail<Map<String, Object>> filterDetail =
+                dataQueryService.getDetail(101L, 1001L, List.of(1012L, 1031L));
+
+        assertNotNull(filterDetail);
+        ModuleInfo filterRootMeta = filterDetail.getMeta();
+        assertEquals(1, filterRootMeta.getFields().size());
+        assertEquals(Long.valueOf(1012L), filterRootMeta.getFields().get(0).getId());
+
+        // 验证命中的子模块 103 存在，且 fields 仅包含 1031
+        assertNotNull(filterRootMeta.getChildren());
+        assertEquals(1, filterRootMeta.getChildren().size());
+        ModuleInfo filterChild103 = filterRootMeta.getChildren().get(0);
+        assertEquals(Long.valueOf(103L), filterChild103.getModuleId());
+        assertEquals(1, filterChild103.getFields().size());
+        assertEquals(Long.valueOf(1031L), filterChild103.getFields().get(0).getId());
+
+        // 验证未命中的孙模块 104 与同级子模块 105 被自动修剪
+        assertTrue(filterChild103.getChildren() == null || filterChild103.getChildren().isEmpty());
     }
 }

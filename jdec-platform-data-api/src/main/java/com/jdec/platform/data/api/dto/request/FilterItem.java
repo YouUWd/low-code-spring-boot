@@ -17,9 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "结构化检索条件项（fieldId 权威驱动）")
-public class DynamicFilterItem implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class FilterItem implements Serializable {
 
     @Schema(description = "字段权威元数据主键 (sys_module_field.id)，优先使用", example = "1001")
     private Long fieldId;

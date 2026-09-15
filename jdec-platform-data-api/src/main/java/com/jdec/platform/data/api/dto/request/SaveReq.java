@@ -2,14 +2,13 @@ package com.jdec.platform.data.api.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.ToString;
-import lombok.experimental.SuperBuilder;
 
 /**
  * 动态主子表同构原子保存请求模型 (自相似模块保存树)
@@ -24,28 +23,24 @@ import lombok.experimental.SuperBuilder;
  * </ul>
  */
 @Data
-@SuperBuilder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
-@EqualsAndHashCode(callSuper = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(description = "动态主子表同构原子保存请求模型 (自相似模块保存树)")
-public class DynamicSaveReq extends DynamicTreeNode<DynamicSaveReq> {
+public class SaveReq implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+    @Schema(
+            description = "模块 ID (可选，若不传则根据 fields 自动路由推导)",
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+            example = "101")
+    private Long moduleId;
 
     @Schema(
             description = "待持久化的业务记录列表 (单条主记录传包含 1 个元素的列表，多条明细传多条。每条记录内可通过 children 挂载行内自相似子模块)",
             requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Map<String, Object>> records;
 
-    /** 便捷构建单条记录语法糖 */
-    public void setRecord(Map<String, Object> record) {
-        if (record != null) {
-            this.records = List.of(record);
-        } else {
-            this.records = null;
-        }
-    }
+    @Schema(description = "下级子模块树 (自相似递归嵌套，可选)")
+    private List<SaveReq> children;
 }

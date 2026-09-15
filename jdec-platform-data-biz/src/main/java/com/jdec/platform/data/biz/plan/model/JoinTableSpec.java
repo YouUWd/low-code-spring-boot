@@ -1,7 +1,6 @@
 package com.jdec.platform.data.biz.plan.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.io.Serializable;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,9 +16,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "伴生表物理 JOIN 规格说明")
-public class JoinTableSpec implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class JoinTableSpec {
 
     /** 待关联的目标表名 (如 clazz 或 student_profile) */
     private String targetTable;

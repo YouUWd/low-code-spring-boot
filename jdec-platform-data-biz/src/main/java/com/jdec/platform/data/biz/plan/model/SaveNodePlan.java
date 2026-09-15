@@ -1,7 +1,6 @@
 package com.jdec.platform.data.biz.plan.model;
 
-import com.jdec.platform.data.api.dto.model.SysModuleInfo;
-import java.io.Serializable;
+import com.jdec.platform.data.api.dto.model.ModuleInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -15,15 +14,13 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class SaveNodePlan implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class SaveNodePlan {
 
     /** 模块 ID */
     private Long moduleId;
 
     /** 完整模块配置元数据 */
-    private SysModuleInfo moduleMeta;
+    private ModuleInfo moduleMeta;
 
     /** 物理主表名 */
     private String primaryTable;

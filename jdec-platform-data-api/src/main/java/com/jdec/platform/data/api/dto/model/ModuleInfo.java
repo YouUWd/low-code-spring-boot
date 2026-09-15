@@ -1,10 +1,10 @@
 package com.jdec.platform.data.api.dto.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.data.api.dto.common.ModuleNodeDTO;
 import com.jdec.platform.data.api.dto.common.TableRelationDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.io.Serializable;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,10 +20,9 @@ import lombok.NoArgsConstructor;
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(description = "系统模块信息")
-public class SysModuleInfo implements Serializable {
-
-    private static final long serialVersionUID = 1L;
+public class ModuleInfo {
 
     @Schema(description = "模块ID", example = "101")
     private Long moduleId;
@@ -51,4 +50,7 @@ public class SysModuleInfo implements Serializable {
 
     @Schema(description = "当前根模块辖下的子孙模块树节点列表")
     private List<ModuleNodeDTO> moduleNodes;
+
+    @Schema(description = "递归子模块信息树 (自相似嵌套，包含下级模块及其 fields 元数据)")
+    private List<ModuleInfo> children;
 }

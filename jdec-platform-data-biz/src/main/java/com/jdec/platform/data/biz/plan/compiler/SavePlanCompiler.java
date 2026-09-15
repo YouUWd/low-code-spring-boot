@@ -2,16 +2,18 @@ package com.jdec.platform.data.biz.plan.compiler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.SysModuleInfo;
-import com.jdec.platform.data.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.data.api.dto.request.SaveReq;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
 import com.jdec.platform.data.biz.service.MetaCacheService;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,9 +32,19 @@ public class SavePlanCompiler {
     private final MetaCacheService metaCacheService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 编译顶层保存请求为 SavePlan */
-    public SavePlan compile(DynamicSaveReq req) {
-        if (req == null || req.getModuleId() == null) {
+    /** 编译顶层保存请求为 SavePlan (支持标准 SaveReq 或直接将 detail.data 作为单条记录回传) */
+    public SavePlan compile(SaveReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("保存请求不能为空");
+        }
+
+        // 自适应支持方案 A：如果未显式指定 moduleId，且 records 为空但自身为单对象（或前端直接回传了 data 载荷）
+        // 尝试从单条 record 或自身直接推导根模块 ID
+        if (req.getModuleId() == null) {
+            req = normalizeTopLevelSaveReq(req);
+        }
+
+        if (req.getModuleId() == null) {
             throw new IllegalArgumentException("保存请求或模块 ID 不能为空");
         }
 
@@ -40,12 +52,27 @@ public class SavePlanCompiler {
         return SavePlan.builder().rootNodePlan(rootPlan).build();
     }
 
+    /** 自适应推导并规范化顶层 SaveReq (如将 {"1001": {...}} 自动识别为 moduleId=1001) */
+    private SaveReq normalizeTopLevelSaveReq(SaveReq req) {
+        if (req.getRecords() != null && !req.getRecords().isEmpty()) {
+            Map<String, Object> firstRow = req.getRecords().get(0);
+            if (firstRow != null) {
+                for (Map.Entry<String, Object> entry : firstRow.entrySet()) {
+                    if (entry.getKey() != null && entry.getKey().matches("\\d+")) {
+                        Long inferredModId = Long.parseLong(entry.getKey());
+                        return req.toBuilder().moduleId(inferredModId).build();
+                    }
+                }
+            }
+        }
+        return req;
+    }
+
     /** 递归编译单节点保存计划 */
-    public SaveNodePlan compileNode(
-            DynamicSaveReq node, Long parentModuleId, SysModuleInfo parentMeta) {
+    public SaveNodePlan compileNode(SaveReq node, Long parentModuleId, ModuleInfo parentMeta) {
 
         Long moduleId = node.getModuleId();
-        SysModuleInfo meta = metaCacheService.getModuleComplete(moduleId);
+        ModuleInfo meta = metaCacheService.getModuleComplete(moduleId);
         if (meta == null) {
             throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
         }
@@ -57,7 +84,7 @@ public class SavePlanCompiler {
 
         // 1. 处理模块级 children
         if (node.getChildren() != null && !node.getChildren().isEmpty()) {
-            for (DynamicSaveReq childNode : node.getChildren()) {
+            for (SaveReq childNode : node.getChildren()) {
                 if (childNode != null && childNode.getModuleId() != null) {
                     childPlans.add(compileNode(childNode, moduleId, meta));
                 }
@@ -94,7 +121,7 @@ public class SavePlanCompiler {
             Map<String, Object> rawRow,
             String primaryTable,
             Long moduleId,
-            SysModuleInfo meta,
+            ModuleInfo meta,
             List<SaveNodePlan> childPlans) {
         Map<String, Object> cleanRow = new HashMap<>(rawRow);
         String modKey = moduleId != null ? String.valueOf(moduleId) : null;
@@ -119,18 +146,15 @@ public class SavePlanCompiler {
         }
 
         // 2. 检查数字键子模块 (例如 "103", "104", "106")
-        for (Map.Entry<String, Object> entry : rawRow.entrySet()) {
+        for (Map.Entry<String, Object> entry : cleanRow.entrySet()) {
             String key = entry.getKey();
             Object val = entry.getValue();
             if (key != null && key.matches("\\d+") && val != null) {
                 Long childModuleId = Long.parseLong(key);
                 List<Map<String, Object>> childRecords = extractRecordsFromObject(val);
                 if (!childRecords.isEmpty()) {
-                    DynamicSaveReq childReq =
-                            DynamicSaveReq.builder()
-                                    .moduleId(childModuleId)
-                                    .records(childRecords)
-                                    .build();
+                    SaveReq childReq =
+                            SaveReq.builder().moduleId(childModuleId).records(childRecords).build();
                     try {
                         childPlans.add(compileNode(childReq, moduleId, meta));
                     } catch (Exception e) {
@@ -143,8 +167,8 @@ public class SavePlanCompiler {
         // 3. 检查兼容的 children 字段
         Object rowChildrenObj = rawRow.get("children");
         if (rowChildrenObj != null) {
-            List<DynamicSaveReq> rowChildren = parseRowChildren(rowChildrenObj);
-            for (DynamicSaveReq rowChildNode : rowChildren) {
+            List<SaveReq> rowChildren = parseRowChildren(rowChildrenObj);
+            for (SaveReq rowChildNode : rowChildren) {
                 if (rowChildNode != null && rowChildNode.getModuleId() != null) {
                     childPlans.add(compileNode(rowChildNode, moduleId, meta));
                 }
@@ -172,16 +196,15 @@ public class SavePlanCompiler {
     }
 
     /** 解析行记录内部挂载的自相似子模块节点 */
-    private List<DynamicSaveReq> parseRowChildren(Object rowChildrenObj) {
+    private List<SaveReq> parseRowChildren(Object rowChildrenObj) {
         if (rowChildrenObj instanceof List<?> list) {
-            List<DynamicSaveReq> nodes = new ArrayList<>();
+            List<SaveReq> nodes = new ArrayList<>();
             for (Object item : list) {
-                if (item instanceof DynamicSaveReq saveNode) {
+                if (item instanceof SaveReq saveNode) {
                     nodes.add(saveNode);
                 } else if (item instanceof Map) {
                     try {
-                        DynamicSaveReq converted =
-                                objectMapper.convertValue(item, DynamicSaveReq.class);
+                        SaveReq converted = objectMapper.convertValue(item, SaveReq.class);
                         nodes.add(converted);
                     } catch (Exception e) {
                         log.warn("解析行内嵌套子模块失败: {}", item, e);
@@ -193,7 +216,7 @@ public class SavePlanCompiler {
         return List.of();
     }
 
-    private String resolvePrimaryTable(SysModuleInfo meta) {
+    private String resolvePrimaryTable(ModuleInfo meta) {
         if (meta == null) {
             return "";
         }
@@ -204,13 +227,13 @@ public class SavePlanCompiler {
     }
 
     private String resolveParentForeignKey(
-            String childPrimaryTable, SysModuleInfo childMeta, SysModuleInfo parentMeta) {
+            String childPrimaryTable, ModuleInfo childMeta, ModuleInfo parentMeta) {
         if (childPrimaryTable == null || childPrimaryTable.isBlank() || parentMeta == null) {
             return null;
         }
 
-        List<SysModuleInfo> intermediateVms = new ArrayList<>();
-        SysModuleInfo physicalParentMeta = parentMeta;
+        List<ModuleInfo> intermediateVms = new ArrayList<>();
+        ModuleInfo physicalParentMeta = parentMeta;
         String parentPrimary = resolvePrimaryTable(physicalParentMeta);
 
         if (parentPrimary == null || parentPrimary.isBlank()) {
@@ -234,7 +257,7 @@ public class SavePlanCompiler {
         if (childMeta != null && childMeta.getTableRelations() != null) {
             allRelations.addAll(childMeta.getTableRelations());
         }
-        for (SysModuleInfo vm : intermediateVms) {
+        for (ModuleInfo vm : intermediateVms) {
             if (vm != null && vm.getTableRelations() != null) {
                 allRelations.addAll(vm.getTableRelations());
             }
@@ -260,15 +283,15 @@ public class SavePlanCompiler {
                         parentPrimary, parentModId, childPrimaryTable, childModId));
     }
 
-    private SysModuleInfo findNearestPhysicalParentMeta(
-            SysModuleInfo currentMeta, List<SysModuleInfo> intermediateCollector) {
+    private ModuleInfo findNearestPhysicalParentMeta(
+            ModuleInfo currentMeta, List<ModuleInfo> intermediateCollector) {
         if (currentMeta == null) {
             return null;
         }
         Long curParentId = currentMeta.getParentId();
-        java.util.Set<Long> visited = new java.util.HashSet<>();
+        Set<Long> visited = new HashSet<>();
         while (curParentId != null && curParentId > 0 && visited.add(curParentId)) {
-            SysModuleInfo pMeta = metaCacheService.getModuleComplete(curParentId);
+            ModuleInfo pMeta = metaCacheService.getModuleComplete(curParentId);
             if (pMeta == null) {
                 break;
             }

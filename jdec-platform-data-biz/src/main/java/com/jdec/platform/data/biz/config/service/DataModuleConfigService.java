@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.data.api.dto.common.ModuleNodeDTO;
 import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.SysModuleInfo;
+import com.jdec.platform.data.api.dto.model.ModuleInfo;
 import com.jdec.platform.data.biz.config.entity.DataSysModule;
 import com.jdec.platform.data.biz.config.entity.DataSysModuleField;
 import com.jdec.platform.data.biz.config.entity.DataSysTableRelation;
@@ -37,7 +37,7 @@ public class DataModuleConfigService {
     private final DataSysTableRelationMapper tableRelationMapper;
 
     /** 根据模块ID获取模块元数据 (纯数据引擎视角，仅提取必要配置) */
-    public SysModuleInfo getModuleCompleteById(String projectNo, Long subjectId, Long moduleId) {
+    public ModuleInfo getModuleCompleteById(String projectNo, Long subjectId, Long moduleId) {
         if (moduleId == null) {
             return null;
         }
@@ -179,7 +179,7 @@ public class DataModuleConfigService {
                             .collect(Collectors.toList());
         }
 
-        return SysModuleInfo.builder()
+        return ModuleInfo.builder()
                 .moduleId(module.getId())
                 .parentId(module.getParentId() != null ? module.getParentId() : 0L)
                 .moduleCode(module.getModuleCode())

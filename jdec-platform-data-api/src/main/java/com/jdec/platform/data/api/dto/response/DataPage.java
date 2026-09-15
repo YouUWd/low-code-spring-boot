@@ -19,8 +19,6 @@ import lombok.NoArgsConstructor;
 @Schema(description = "分页数据响应")
 public class DataPage<T> implements Serializable {
 
-    private static final long serialVersionUID = 1L;
-
     @Schema(description = "当前页码", example = "1")
     private Integer pageNo;
 
@@ -29,9 +27,6 @@ public class DataPage<T> implements Serializable {
 
     @Schema(description = "总记录数", example = "100")
     private Long total;
-
-    @Schema(description = "本次查询精准对齐的树形表头契约")
-    private ModuleHeaderNodeDTO header;
 
     @Schema(description = "数据记录列表")
     private List<T> records;
