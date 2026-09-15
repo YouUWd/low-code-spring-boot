@@ -28,6 +28,8 @@
         <module>jdec-platform-hr-biz</module>
         <module>jdec-platform-data-api</module>
         <module>jdec-platform-data-biz</module>
+        <module>jdec-platform-approval-api</module>
+        <module>jdec-platform-approval-biz</module>
         <module>jdec-platform-app</module>
     </modules>
 
@@ -115,6 +117,16 @@
                 <version>${project.version}</version>
             </dependency>
 
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-approval-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-approval-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <!-- 核心框架及第三方依赖 -->
             <dependency>
