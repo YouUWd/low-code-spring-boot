@@ -318,7 +318,7 @@ public class JdecMonitorLogController {
                     Long mockUserId,
             @Valid @RequestBody MonitorSystemNavPostReq postReq) {
 
-        if (!StringUtils.hasText(projectNo)) {
+        /*if (!StringUtils.hasText(projectNo)) {
             throw new IllegalArgumentException("项目编号(X-Project-No)不能为空");
         }
         if (loginUserId == null || loginUserId <= 0) {
@@ -385,7 +385,7 @@ public class JdecMonitorLogController {
         request.setPlatForm(postReq.getPlatForm());
         request.setSystemName(systemName);
         request.setLogSubType("systemNavLog");
-        jdecMonitorLogService.recordSystemNavLog(request, projectNo);
+        jdecMonitorLogService.recordSystemNavLog(request, projectNo);*/
         return ApiResponse.success();
     }
 

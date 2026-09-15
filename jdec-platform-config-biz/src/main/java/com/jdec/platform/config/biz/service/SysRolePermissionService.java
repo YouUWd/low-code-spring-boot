@@ -751,12 +751,12 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         }
 
         // 4. 审计日志记录（编程式）
-        logModuleFieldPermissionAudit(
-                roleId,
-                request.getCheckFlag(),
-                request.getPermissionPaths(),
-                request.getPermissionTypeName());
-
+        /* logModuleFieldPermissionAudit(
+                        roleId,
+                        request.getCheckFlag(),
+                        request.getPermissionPaths(),
+                        request.getPermissionTypeName());
+        */
         // 5. 设置受影响的上下文（用户、主体、模块）
         setAffectedContext(request.getRoleId(), affectedModuleIds);
     }

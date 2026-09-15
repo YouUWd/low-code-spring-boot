@@ -99,8 +99,4 @@ public class SysButton implements Serializable {
     @Schema(description = "更改时间")
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedDate;
-
-    @Schema(description = "1删除0正常")
-    @TableLogic
-    private Integer deleted;
 }

@@ -190,5 +190,21 @@
         "status": 1
       }
     ]
+  },
+  {
+    "label": "按钮类型",
+    "categoryAlias": "buttonType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "保存", "value": "save", "sort": 0, "status": 1 },
+      { "label": "新增", "value": "add", "sort": 1, "status": 1 },
+      { "label": "取消", "value": "cancel", "sort": 2, "status": 1 },
+      { "label": "关闭窗口", "value": "close", "sort": 3, "status": 1 },
+      { "label": "消息模板参数设置", "value": "messageParms", "sort": 4, "status": 1 },
+      { "label": "添加消息配置", "value": "addMessage", "sort": 5, "status": 1 }
+    ]
   }
 ]

@@ -25,9 +25,9 @@ spring:
 
         # hr_manage 数据源
         hr_manage:
-          url: jdbc:mysql://192.168.60.101:3306/hr_manage?useUnicode=true&characterEncoding=UTF8
-          username: root
-          password: jdec_platform123
+          url: jdbc:mysql://192.168.60.250:9053/hr_manage?useUnicode=true&characterEncoding=UTF8
+          username: hr_manage
+          password: 6Zc48cR8HJGb3MsB
         # school 数据源
         school:
           url: jdbc:mysql://192.168.60.101:3306/school?useUnicode=true&characterEncoding=UTF8
