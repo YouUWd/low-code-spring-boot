@@ -8,8 +8,10 @@ import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
+import com.jdec.platform.dataengine.biz.config.dto.ModuleFieldDTO;
 import com.jdec.platform.dataengine.biz.config.dto.SysModuleInfo;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
@@ -301,6 +303,8 @@ public class DynamicQueryService {
 
         List<Long> primaryIds = getPrimaryIdSet(currentModuleData, rootNode.getId());
 
+        List<NestedModuleDataDTO> subModuleDatas = new ArrayList<>();
+
         for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
             // 组装当前模块查询参数
             DynamicQueryReq singleQueryDTO =
@@ -313,14 +317,185 @@ public class DynamicQueryService {
             NestedModuleDataDTO childResultList =
                     queryModule(singleQueryDTO, childNode, true, false);
             for (RecordDataDTO vo : currentModuleData) {
+                subModuleDatas.add(childResultList);
                 vo.getSubModule().add(childResultList);
             }
         }
+
+        //        processResultData(rootNode.getId() , currentModuleData , subModuleDatas);
 
         return builder.moduleId(rootNode.getId())
                 .menuId(rootNode.getId())
                 .record(currentModuleData)
                 .build();
+    }
+
+    private void processResultData(
+            Long parentModuleId,
+            List<RecordDataDTO> currentModuleData,
+            List<NestedModuleDataDTO> subModuleDatas) {
+        Set<Long> allModuleIds = new HashSet<>();
+        allModuleIds.addAll(
+                subModuleDatas.stream()
+                        .map(NestedModuleDataDTO::getModuleId)
+                        .collect(Collectors.toSet()));
+        allModuleIds.add(parentModuleId);
+
+        Map<Long, SysModuleInfo> moduleId2ModuleInfo = new HashMap<>();
+        for (Long moduleId : allModuleIds) {
+            SysModuleInfo sysModuleInfo =
+                    dataModuleConfigService.getModuleCompleteById(
+                            AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+            moduleId2ModuleInfo.put(moduleId, sysModuleInfo);
+        }
+
+        TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildCompanyRoot();
+
+        for (RecordDataDTO recordDataDTO : currentModuleData) {
+            Map<String, Object> combineMixedData = recordDataDTO.getCombinedRow();
+            Map<String, Object> moduleData =
+                    (Map<String, Object>)
+                            recordDataDTO
+                                    .getCombinedRow()
+                                    .get(moduleId2ModuleInfo.get(parentModuleId).getPrimaryTable());
+            Object tableData = moduleData.get("data");
+            if (Objects.nonNull(tableData)) {
+                if (tableData instanceof List) {
+                    List<Map<String, Object>> moduleTableData =
+                            (List<Map<String, Object>>) tableData;
+
+                    if (Objects.nonNull(moduleTableData)
+                            && !CollectionUtils.isEmpty(moduleTableData)) {
+                        //                        primaryIds.addAll(
+                        //                                moduleTableData.stream()
+                        //                                        .filter(ele ->
+                        // ele.containsKey("id"))
+                        //                                        .map(
+                        //                                                item ->
+                        //                                                        Long.parseLong(
+                        //
+                        // String.valueOf(item.get("id"))))
+                        //                                        .collect(Collectors.toList()));
+                    }
+                } else {
+                    Map<String, Object> moduleTableData = (Map<String, Object>) tableData;
+                    Long parentPrimaryIds =
+                            Long.parseLong(String.valueOf(moduleTableData.get("id")));
+
+                    for (NestedModuleDataDTO subModuleData : subModuleDatas) {
+                        NestedModuleDataDTO.NestedModuleDataDTOBuilder builder =
+                                NestedModuleDataDTO.builder();
+                        SysModuleInfo moduleInfo =
+                                moduleId2ModuleInfo.get(subModuleData.getModuleId());
+                        TabTreeNodeDTO targetNode =
+                                TabTreeNodeDTO.findSubTreeByValue(
+                                        tableTree, moduleInfo.getPrimaryTable());
+
+                        List<Map<String, Object>> mainTableData = new ArrayList<>();
+
+                        List<Long> primaryIds = new ArrayList<>();
+
+                        List<RecordDataDTO> subModuleDataList = new ArrayList<>();
+
+                        for (RecordDataDTO subData : subModuleData.getRecord()) {
+                            RecordDataDTO.RecordDataDTOBuilder recordDataDTOBuilder =
+                                    RecordDataDTO.builder();
+
+                            Map<String, Object> newCombineRow = new HashMap<>();
+
+                            Map<String, Object> subCombineData =
+                                    (Map<String, Object>)
+                                            subData.getCombinedRow()
+                                                    .get(moduleInfo.getPrimaryTable());
+                            Map<String, Object> subMainTableData =
+                                    (Map<String, Object>) subCombineData.get("data");
+
+                            List<Long> subMainTableIds = new ArrayList<>();
+
+                            if (Objects.equals(
+                                    parentPrimaryIds,
+                                    Long.parseLong(
+                                            String.valueOf(
+                                                    subMainTableData.get(
+                                                            targetNode
+                                                                    .getNode()
+                                                                    .getSubTableField()))))) {
+                                log.debug(
+                                        "数据隶属于id:{}外键{}:{}",
+                                        parentPrimaryIds,
+                                        targetNode.getNode().getSubTableField(),
+                                        Long.parseLong(
+                                                String.valueOf(
+                                                        subMainTableData.get(
+                                                                targetNode
+                                                                        .getNode()
+                                                                        .getSubTableField()))));
+                                Map<String, Object> tableRowData = new HashMap<>();
+                                tableRowData.put("data", subMainTableData);
+                                newCombineRow.put(moduleInfo.getPrimaryTable(), tableRowData);
+                                subMainTableIds.add(
+                                        Long.parseLong(String.valueOf(subMainTableData.get("id"))));
+                            }
+
+                            Set<String> tableNames =
+                                    moduleInfo.getFields().stream()
+                                            .map(ModuleFieldDTO::getTableName)
+                                            .collect(Collectors.toSet());
+                            tableNames.remove(moduleInfo.getPrimaryTable());
+                            for (String subTable : tableNames) {
+                                Map<String, Object> subTableCombineData =
+                                        (Map<String, Object>)
+                                                subData.getCombinedRow().get(subTable);
+                                Map<String, Object> subTableMainTableData =
+                                        (Map<String, Object>) subTableCombineData.get("data");
+
+                                TabTreeNodeDTO subTabletargetNode =
+                                        TabTreeNodeDTO.findSubTreeByValue(tableTree, subTable);
+
+                                if (subMainTableIds.contains(
+                                        Long.parseLong(
+                                                String.valueOf(
+                                                        subMainTableData.get(
+                                                                subTabletargetNode
+                                                                        .getNode()
+                                                                        .getSubTableField()))))) {
+                                    log.debug(
+                                            "数据隶属于id:{}外键{}:{}",
+                                            parentPrimaryIds,
+                                            targetNode.getNode().getSubTableField(),
+                                            Long.parseLong(
+                                                    String.valueOf(
+                                                            subMainTableData.get(
+                                                                    targetNode
+                                                                            .getNode()
+                                                                            .getSubTableField()))));
+                                    Map<String, Object> tableRowData = new HashMap<>();
+                                    tableRowData.put("data", subMainTableData);
+                                    newCombineRow.put(subTable, tableRowData);
+                                }
+                            }
+                            recordDataDTOBuilder
+                                    .combinedRow(newCombineRow)
+                                    .subModule(new ArrayList<>());
+                            subModuleDataList.add(recordDataDTOBuilder.build());
+                        }
+
+                        builder.moduleId(subModuleData.getModuleId())
+                                .menuId(subModuleData.getMenuId())
+                                .record(subModuleDataList);
+                        recordDataDTO.getSubModule().add(builder.build());
+                    }
+                }
+            }
+        }
+        //        for(NestedModuleDataDTO nestedModuleDataDTO :subModuleDatas) {
+        //            List<NestedModuleDataDTO> recordDataDTOList = new ArrayList<>();
+        //            nestedModuleDataDTO.getRecord().stream().forEach(ele ->
+        // recordDataDTOList.addAll(ele.getSubModule()));
+        //
+        //            processResultData(nestedModuleDataDTO.getModuleId() ,
+        // nestedModuleDataDTO.getRecord() , recordDataDTOList);
+        //        }
     }
 
     private List<Long> getPrimaryIdSet(List<RecordDataDTO> currentModuleData, Long moduleId) {
@@ -379,12 +554,12 @@ public class DynamicQueryService {
             resultList.add(null);
         } else {
             // 查找详情模块数据
-            resultList.add(getDetailModuleData(node.getId(), queryType, queryDTO));
+            resultList.addAll(getDetailModuleData(node.getId(), queryType, queryDTO));
         }
         return resultList;
     }
 
-    private RecordDataDTO getDetailModuleData(
+    private List<RecordDataDTO> getDetailModuleData(
             Long moduleId, QueryType queryType, DynamicQueryReq queryReq) {
 
         Long subjectId = AppContext.getSubjectId();
@@ -402,9 +577,10 @@ public class DynamicQueryService {
                         .queryType(queryType)
                         .build();
 
-        Map<String, Object> moduleData = detailBizQueryService.queryDetailBiz(detailQueryContext);
+        List<RecordDataDTO> recordDataDTOList =
+                detailBizQueryService.queryDetailBiz(detailQueryContext);
 
-        return RecordDataDTO.builder().combinedRow(moduleData).subModule(new ArrayList<>()).build();
+        return recordDataDTOList;
     }
 
     /**

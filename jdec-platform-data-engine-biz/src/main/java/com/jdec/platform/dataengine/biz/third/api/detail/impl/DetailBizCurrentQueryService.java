@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleInfo;
 import com.jdec.platform.dataengine.biz.dto.context.DetailModuleQueryContext;
@@ -15,9 +16,7 @@ import com.jdec.platform.dataengine.biz.third.api.detail.DetailModuleDataQuerySe
 import com.jdec.platform.dataengine.biz.third.api.module.MenuModuleMappingService;
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.exception.BusinessException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -45,8 +44,9 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
     }
 
     @Override
-    public Map<String, Object> queryDetailBizRefer(DetailQueryContext context) {
-        Map<String, Object> retrunMap = new HashMap<>();
+    public List<RecordDataDTO> queryDetailBizRefer(DetailQueryContext context) {
+
+        List<RecordDataDTO> recordDataDTOList = new ArrayList<>();
 
         Boolean hasApproval =
                 context.getQueryType() == QueryType.DETAIL_APPROVAL_CURRENT
@@ -88,7 +88,8 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
             case LIST -> {
                 Map<Object, Object> listMap =
                         listBizQueryService.queryListBiz(ListQueryContext.builder().build());
-                retrunMap.put(String.valueOf(context.getMenuId()), listMap);
+                return recordDataDTOList;
+                //                retrunMap.put(String.valueOf(context.getMenuId()), listMap);
             }
             case DETAIL -> {
                 DetailModuleQueryContext detailModuleQueryContext =
@@ -96,11 +97,11 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
                 BeanUtils.copyProperties(context, detailModuleQueryContext);
                 detailModuleQueryContext.setModuleId(context.getModuleId());
 
-                Map<String, Object> detailMap =
+                recordDataDTOList =
                         detailModuleDataQueryService.queryDetailModuleData(
                                 detailModuleQueryContext);
 
-                retrunMap.putAll(detailMap);
+                //                retrunMap.putAll(detailMap);
 
                 //                 DataIntegrationContext 构建要区分是带否审批链 目前只有  context.getMenuId()
                 // 是带审批链的
@@ -118,6 +119,6 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
             }
         }
 
-        return retrunMap;
+        return recordDataDTOList;
     }
 }

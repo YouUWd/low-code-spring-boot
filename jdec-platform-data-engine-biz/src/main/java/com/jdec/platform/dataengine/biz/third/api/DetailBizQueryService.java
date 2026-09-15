@@ -1,8 +1,9 @@
 package com.jdec.platform.dataengine.biz.third.api;
 
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
-import java.util.Map;
+import java.util.List;
 
 public interface DetailBizQueryService {
-    Map<String, Object> queryDetailBiz(DetailQueryContext context);
+    List<RecordDataDTO> queryDetailBiz(DetailQueryContext context);
 }

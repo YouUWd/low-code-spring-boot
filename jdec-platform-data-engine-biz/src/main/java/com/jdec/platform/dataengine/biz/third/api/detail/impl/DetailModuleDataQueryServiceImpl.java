@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
@@ -22,6 +23,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.jooq.*;
 import org.jooq.Record;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 /** 查询 db 模块的业务数据 详情数据 包含 非审批链 和 审批链的 */
 @Slf4j
@@ -42,7 +44,10 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     @Override
-    public Map<String, Object> queryDetailModuleData(DetailModuleQueryContext context) {
+    public List<RecordDataDTO> queryDetailModuleData(DetailModuleQueryContext context) {
+
+        List<RecordDataDTO> recordDataDTOList = new ArrayList<>();
+
         DSLContext dsl = jooqContextFactory.getContext();
 
         ModuleFilterInfo moduleFilterInfo =
@@ -60,7 +65,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                     "主表名称为空，模块{},id:{}为虚模块或配置数据错误。",
                     moduleFilterInfo.getModuleInfo().getModuleName(),
                     moduleFilterInfo.getModuleInfo().getModuleId());
-            return Collections.emptyMap();
+            return Collections.emptyList();
         }
 
         StatementContext statementContext = StatementContext.builder().build();
@@ -68,7 +73,6 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         // 构建 SQL拼装 上下文对象
         BeanUtil.copyProperties(
                 context, statementContext, CopyOptions.create().ignoreError().ignoreNullValue());
-        statementContext.setMenuId(context.getMenuId());
 
         Boolean mainModuleMainTableQuery = false;
 
@@ -92,9 +96,12 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         List<Condition> conditions = conditionBuilderFactory.buildConditions(statementContext);
         selectStep.where(conditions);
 
-        Map<String, Object> tableData = new HashMap<>();
+        //        Map<String, Object> tableData = new HashMap<>();
 
         List<Long> relateIds = new ArrayList<>();
+
+        Map<Long, Map<String, Object>> mainTableIdMap = new HashMap<>();
+        //        Map<Long , List<Map<String , Object>>> subTableIdMap = new HashMap<>();
 
         if (mainModuleMainTableQuery) {
             // 获取查询结果
@@ -102,12 +109,13 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
             Map<String, Object> mainRow = new HashMap<>();
             mainRow.putAll(recordsResult.intoMap());
+            mainTableIdMap.put(statementContext.getId(), mainRow);
 
             Map<String, Object> mainDataMap = new HashMap<>();
             mainDataMap.put("data", mainRow);
 
             // 放入主表数据
-            tableData.put(primaryTable, mainDataMap);
+            //            tableData.put(primaryTable, mainDataMap);
 
             relateIds.add(statementContext.getId());
         } else {
@@ -134,14 +142,17 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                         break;
                     }
                 }
-                mainRow.add(r.intoMap());
+                Map<String, Object> rowData = r.intoMap();
+                mainTableIdMap.put(Long.parseLong(String.valueOf(rowData.get("id"))), rowData);
+
+                mainRow.add(rowData);
             }
 
             Map<String, Object> mainDataMap = new HashMap<>();
             mainDataMap.put("data", mainRow);
 
             // 放入主表数据
-            tableData.put(primaryTable, mainDataMap);
+            //            tableData.put(primaryTable, mainDataMap);
         }
 
         // 构造子表数据
@@ -160,11 +171,35 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
                 Map<String, Object> subDataMap = new HashMap<>();
                 subDataMap.put("data", subRows);
-                tableData.put(tName, subDataMap);
+                //                tableData.put(tName, subDataMap);
             }
         }
 
-        return tableData;
+        for (Map.Entry<Long, Map<String, Object>> mainTableItem : mainTableIdMap.entrySet()) {
+            Map<String, Object> combineRow = new HashMap<>();
+
+            Map<String, Object> mainRowData = new HashMap<>();
+            mainRowData.put("data", mainTableItem.getValue());
+            combineRow.put(primaryTable, mainRowData);
+            for (ModuleTable tableDto :
+                    statementContext.getModuleFilterInfo().getModuleTableList()) {
+                List<Map<String, Object>> subTableROwDatas =
+                        multiTableDataMap.get(tableDto.getTableName()).get(mainTableItem.getKey());
+                if (!CollectionUtils.isEmpty(subTableROwDatas)) {
+                    Map<String, Object> subRowData = new HashMap<>();
+                    subRowData.put("data", subTableROwDatas);
+                    combineRow.put(tableDto.getTableName(), subRowData);
+                }
+            }
+
+            recordDataDTOList.add(
+                    RecordDataDTO.builder()
+                            .combinedRow(combineRow)
+                            .subModule(new ArrayList<>())
+                            .build());
+        }
+
+        return recordDataDTOList;
     }
 
     /** 批量抓取当前页主表 ID 集合关联的 1:N 从表记录 (从表同样应用主体作用域与行级数据权限) */

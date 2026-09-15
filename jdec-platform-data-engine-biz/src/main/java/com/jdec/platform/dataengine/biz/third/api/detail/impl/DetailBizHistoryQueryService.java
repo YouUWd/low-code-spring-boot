@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.MenuListResp;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
@@ -49,7 +50,7 @@ public class DetailBizHistoryQueryService implements DetailBizReferQueryService 
     }
 
     @Override
-    public Map<String, Object> queryDetailBizRefer(DetailQueryContext context) {
+    public List<RecordDataDTO> queryDetailBizRefer(DetailQueryContext context) {
 
         LambdaQueryWrapper<DataEngineSnapshot> lambdaQueryWrapper = new LambdaQueryWrapper<>();
         lambdaQueryWrapper.eq(DataEngineSnapshot::getDataId, context.getId());
@@ -119,6 +120,6 @@ public class DetailBizHistoryQueryService implements DetailBizReferQueryService 
             }
         }
 
-        return Map.of();
+        return List.of();
     }
 }
