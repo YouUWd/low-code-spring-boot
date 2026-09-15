@@ -211,6 +211,7 @@ public class DynamicQueryService {
 
         //        List<SysMenuTreeResp> menuRespList = sysMenuApi.tree(1);
 
+        // 获取模块树
         List<SysModuleSimpleTreeResp> moduleNodeResps =
                 sysModuleApi.getAvailableModuleTree(
                         null, AppContext.getProjectNo(), AppContext.getSubjectId());
@@ -334,15 +335,32 @@ public class DynamicQueryService {
         for (RecordDataDTO recordDataDTO : currentModuleData) {
             if (!recordDataDTO.getCombinedRow().isEmpty()) {
                 Map<String, Object> moduleData =
-                        (Map<String, Object>) recordDataDTO.getCombinedRow().get("data");
-                List<Map<String, Object>> moduleTableData =
-                        (List<Map<String, Object>>) moduleData.get(sysModuleInfo.getPrimaryTable());
-                if (Objects.nonNull(moduleTableData) && !CollectionUtils.isEmpty(moduleTableData)) {
-                    primaryIds.addAll(
-                            moduleTableData.stream()
-                                    .filter(ele -> ele.containsKey("id"))
-                                    .map(item -> Long.parseLong(String.valueOf(item.get("id"))))
-                                    .collect(Collectors.toList()));
+                        (Map<String, Object>)
+                                recordDataDTO.getCombinedRow().get(sysModuleInfo.getPrimaryTable());
+                Object tableData = moduleData.get("data");
+                if (Objects.nonNull(tableData)) {
+                    if (tableData instanceof List) {
+                        List<Map<String, Object>> moduleTableData =
+                                (List<Map<String, Object>>) tableData;
+
+                        if (Objects.nonNull(moduleTableData)
+                                && !CollectionUtils.isEmpty(moduleTableData)) {
+                            primaryIds.addAll(
+                                    moduleTableData.stream()
+                                            .filter(ele -> ele.containsKey("id"))
+                                            .map(
+                                                    item ->
+                                                            Long.parseLong(
+                                                                    String.valueOf(item.get("id"))))
+                                            .collect(Collectors.toList()));
+                        }
+                    } else {
+                        Map<String, Object> moduleTableData = (Map<String, Object>) tableData;
+                        if (moduleTableData.containsKey("id")) {
+                            primaryIds.add(
+                                    Long.parseLong(String.valueOf(moduleTableData.get("id"))));
+                        }
+                    }
                 }
             }
         }

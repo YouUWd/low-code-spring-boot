@@ -42,7 +42,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     @Override
-    public Map<Object, Object> queryDetailModuleData(DetailModuleQueryContext context) {
+    public Map<String, Object> queryDetailModuleData(DetailModuleQueryContext context) {
         DSLContext dsl = jooqContextFactory.getContext();
 
         ModuleFilterInfo moduleFilterInfo =
@@ -70,10 +70,14 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                 context, statementContext, CopyOptions.create().ignoreError().ignoreNullValue());
         statementContext.setMenuId(context.getMenuId());
 
+        Boolean mainModuleMainTableQuery = false;
+
         if (Objects.isNull(context.getId())) {
+            mainModuleMainTableQuery = false;
             statementContext.setQueryType(QueryType.DETAIL_SUBMODULE_QUERY);
             statementContext.setRelateIds(context.getRelateIds());
         } else {
+            mainModuleMainTableQuery = true;
             statementContext.setId(context.getId());
         }
         DSLContext dslContext = jooqContextFactory.getContext();
@@ -88,38 +92,59 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         List<Condition> conditions = conditionBuilderFactory.buildConditions(statementContext);
         selectStep.where(conditions);
 
-        // 获取查询结果
-        Result<org.jooq.Record> recordsResult = selectStep.fetch();
+        Map<String, Object> tableData = new HashMap<>();
 
-        Map<Object, Object> tableData = new HashMap<>();
-
-        // 3. 提取主表记录 ID 集合 (用于 1:N 从表批量查询)
         List<Long> relateIds = new ArrayList<>();
-        List<Map<String, Object>> mainRow = new ArrayList<>();
-        for (Record r : recordsResult) {
-            for (org.jooq.Field<?> field : r.fields()) {
-                String tName = primaryTable;
-                org.jooq.Name qualifiedName = field.getQualifiedName();
-                org.jooq.Name[] parts = qualifiedName.parts();
-                if (parts.length > 1) {
-                    tName = parts[parts.length - 2].first();
-                }
-                String colName = field.getName();
-                Object val = r.get(field);
 
-                if (primaryTable.equalsIgnoreCase(tName) && "id".equalsIgnoreCase(colName)) {
-                    if (val instanceof Number num) {
-                        relateIds.add(num.longValue());
+        if (mainModuleMainTableQuery) {
+            // 获取查询结果
+            Record recordsResult = selectStep.fetchOne();
+
+            Map<String, Object> mainRow = new HashMap<>();
+            mainRow.putAll(recordsResult.intoMap());
+
+            Map<String, Object> mainDataMap = new HashMap<>();
+            mainDataMap.put("data", mainRow);
+
+            // 放入主表数据
+            tableData.put(primaryTable, mainDataMap);
+
+            relateIds.add(statementContext.getId());
+        } else {
+            // 获取查询结果
+            Result<org.jooq.Record> recordsResult = selectStep.fetch();
+
+            // 3. 提取主表记录 ID 集合 (用于 1:N 从表批量查询)
+            List<Map<String, Object>> mainRow = new ArrayList<>();
+            for (Record r : recordsResult) {
+                for (org.jooq.Field<?> field : r.fields()) {
+                    String tName = primaryTable;
+                    org.jooq.Name qualifiedName = field.getQualifiedName();
+                    org.jooq.Name[] parts = qualifiedName.parts();
+                    if (parts.length > 1) {
+                        tName = parts[parts.length - 2].first();
                     }
-                    break;
+                    String colName = field.getName();
+                    Object val = r.get(field);
+
+                    if (primaryTable.equalsIgnoreCase(tName) && "id".equalsIgnoreCase(colName)) {
+                        if (val instanceof Number num) {
+                            relateIds.add(num.longValue());
+                        }
+                        break;
+                    }
                 }
+                mainRow.add(r.intoMap());
             }
-            mainRow.add(r.intoMap());
+
+            Map<String, Object> mainDataMap = new HashMap<>();
+            mainDataMap.put("data", mainRow);
+
+            // 放入主表数据
+            tableData.put(primaryTable, mainDataMap);
         }
 
-        // 放入主表数据
-        tableData.put(primaryTable, mainRow);
-
+        // 构造子表数据
         Map<String, Map<Long, List<Map<String, Object>>>> multiTableDataMap =
                 fetchOneToManyTables(context, dsl, relateIds, moduleFilterInfo);
 
@@ -132,7 +157,10 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                         multiTableDataMap
                                 .getOrDefault(tName, Collections.emptyMap())
                                 .getOrDefault(statementContext.getId(), Collections.emptyList());
-                tableData.put(tName, subRows);
+
+                Map<String, Object> subDataMap = new HashMap<>();
+                subDataMap.put("data", subRows);
+                tableData.put(tName, subDataMap);
             }
         }
 

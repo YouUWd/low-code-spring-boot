@@ -6,5 +6,5 @@ import java.util.Map;
 /** 查询 拼装SQL 查询详细 数据 */
 public interface DetailModuleDataQueryService {
 
-    Map<Object, Object> queryDetailModuleData(DetailModuleQueryContext context);
+    Map<String, Object> queryDetailModuleData(DetailModuleQueryContext context);
 }

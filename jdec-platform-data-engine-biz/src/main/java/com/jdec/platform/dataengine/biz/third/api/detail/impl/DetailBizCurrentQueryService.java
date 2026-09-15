@@ -96,23 +96,25 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
                 BeanUtils.copyProperties(context, detailModuleQueryContext);
                 detailModuleQueryContext.setModuleId(context.getModuleId());
 
-                Map<Object, Object> detailMap =
+                Map<String, Object> detailMap =
                         detailModuleDataQueryService.queryDetailModuleData(
                                 detailModuleQueryContext);
 
-                retrunMap.put("data", detailMap);
+                retrunMap.putAll(detailMap);
 
-                // DataIntegrationContext 构建要区分是带否审批链 目前只有  context.getMenuId() 是带审批链的
-                //                detailDataProcessFactory.processData(
-                //                        (Map) retrunMap.get(context.getMenuId()),
-                //                        retrunMap,
-                //                        DataIntegrationContext.builder()
-                //                                .subjectId(context.getSubjectId())
-                //                                .roleId(context.getRoleId())
-                //                                .queryType(context.getQueryType())
-                //                                .id(context.getId())
-                //                                .moduleFilterInfo(moduleFilterInfo)
-                //                                .build());
+                //                 DataIntegrationContext 构建要区分是带否审批链 目前只有  context.getMenuId()
+                // 是带审批链的
+                //                                detailDataProcessFactory.processData(
+                //                                        (Map) retrunMap.get(context.getMenuId()),
+                //                                        retrunMap,
+                //                                        DataIntegrationContext.builder()
+                //                                                .subjectId(context.getSubjectId())
+                //                                                .roleId(context.getRoleId())
+                //                                                .queryType(context.getQueryType())
+                //                                                .id(context.getId())
+                //
+                // .moduleFilterInfo(moduleFilterInfo)
+                //                                                .build());
             }
         }
 
