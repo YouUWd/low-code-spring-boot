@@ -12,7 +12,17 @@ import java.util.List;
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
 
-    List<NestedModuleDataDTO> getDetail(List<Long> moduleIds, Long id, String btnType);
+    /**
+     * 模块详情数据查询
+     *
+     * @param moduleIds 待查询模块id列表
+     * @param id 详情id
+     * @param btnType 查看入口按钮类别
+     * @param topQuery 是否顶层查询，顶层查询会查询模块及其树上的所有子模块。非顶层查询会查询顶层模块到模块id列表指定的路径上的模块数据
+     * @return
+     */
+    List<NestedModuleDataDTO> getDetail(
+            List<Long> moduleIds, Long id, String btnType, Boolean topQuery);
 
     Long save(DynamicSaveReq req);
 

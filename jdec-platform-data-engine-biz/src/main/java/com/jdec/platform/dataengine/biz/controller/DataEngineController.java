@@ -34,8 +34,11 @@ public class DataEngineController {
     @GetMapping("/menu/detail/{id}")
     @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<List<NestedModuleDataDTO>> getDetail(
-            @PathVariable Long id, @RequestParam List<Long> moduleIds, String btnType) {
-        return ApiResponse.success(dataEngineApi.getDetail(moduleIds, id, btnType));
+            @PathVariable Long id,
+            @RequestParam List<Long> moduleIds,
+            String btnType,
+            Boolean topQuery) {
+        return ApiResponse.success(dataEngineApi.getDetail(moduleIds, id, btnType, topQuery));
     }
 
     @PostMapping("/save")

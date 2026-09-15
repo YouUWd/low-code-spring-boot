@@ -26,8 +26,9 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public List<NestedModuleDataDTO> getDetail(List<Long> moduleIds, Long id, String btnType) {
-        return dynamicQueryService.getDetail(moduleIds, id, btnType, false);
+    public List<NestedModuleDataDTO> getDetail(
+            List<Long> moduleIds, Long id, String btnType, Boolean topQuery) {
+        return dynamicQueryService.getDetail(moduleIds, id, btnType, topQuery);
     }
 
     @Override
