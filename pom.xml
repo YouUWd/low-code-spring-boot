@@ -27,12 +27,6 @@
         <module>jdec-platform-hr-api</module>
         <module>jdec-platform-hr-biz</module>
         <module>jdec-platform-app</module>
-        <module>jdec-platform-common-business-api</module>
-        <module>jdec-platform-common-business-biz</module>
-        <module>jdec-platform-monitorlog-api</module>
-        <module>jdec-platform-monitorlog-biz</module>
-        <module>jdec-platform-approval-biz</module>
-        <module>jdec-platform-approval-api</module>
     </modules>
 
     <properties>
@@ -107,36 +101,7 @@
                 <artifactId>jdec-platform-hr-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-common-business-api</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-common-business-biz</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-monitorlog-api</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-monitorlog-biz</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-approval-api</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-approval-biz</artifactId>
-                <version>${project.version}</version>
-            </dependency>
+
 
             <!-- 核心框架及第三方依赖 -->
             <dependency>
@@ -164,11 +129,6 @@
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
             </dependency>
-            <!--<dependency>
-                <groupId>org.springdoc</groupId>
-                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                <version>${springdoc-openapi.version}</version>
-            </dependency>-->
             <!-- Knife4j -->
             <dependency>
                 <groupId>com.github.xiaoymin</groupId>
