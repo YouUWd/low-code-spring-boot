@@ -1,10 +1,10 @@
 package com.jdec.platform.dataengine.biz.third.api.detail;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,7 +15,7 @@ public class DetailBizQueryServiceImpl implements DetailBizQueryService {
     private final List<DetailBizReferQueryService> detailBizReferQueryServiceList;
 
     @Override
-    public Map<String, Object> queryDetailBiz(DetailQueryContext context) {
+    public List<RecordDataDTO> queryDetailBiz(DetailQueryContext context) {
         if (!CollectionUtil.isEmpty(detailBizReferQueryServiceList)) {
             DetailBizReferQueryService service =
                     detailBizReferQueryServiceList.stream()
@@ -26,6 +26,6 @@ public class DetailBizQueryServiceImpl implements DetailBizQueryService {
                 return service.queryDetailBizRefer(context);
             }
         }
-        return Map.of();
+        return List.of();
     }
 }
