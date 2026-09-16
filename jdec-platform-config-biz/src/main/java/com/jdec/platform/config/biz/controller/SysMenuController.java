@@ -63,7 +63,7 @@ public class SysMenuController {
             summary = "新增/编辑菜单",
             description =
                     "menu.id 为空则新增，不为空则修改，返回保存后的菜单信息。支持前端将整棵菜单树一并提交，treeNodes 非空时差量同步整棵树的父子关系与同级排序（排序由前端决定），treeNodes 中缺失的节点不做删除。"
-                            + "同时支持多级表头配置随菜单一并保存，变更标记由后端按菜单ID 比对库中记录的关联模块自行判定：模块已切换时删除该菜单已保存的表头配置；模块未变化时按 header 节点树批量更新/新增表头记录")
+                            + "同时支持多级表头配置随菜单一并保存，表头记录按「详情菜单ID」归属（菜单未关联详情菜单时不允许保存表头）：变更标记由后端比对库中记录的详情菜单ID 自行判定，详情菜单已变动时先删除变更前归属菜单下的表头配置再按 header 落库，未变动时按 header 节点树批量更新/新增表头记录")
     public ApiResponse<SysMenuResp> save(@RequestBody SaveMenuReq request) {
         return ApiResponse.success(sysMenuApi.saveMenu(request));
     }

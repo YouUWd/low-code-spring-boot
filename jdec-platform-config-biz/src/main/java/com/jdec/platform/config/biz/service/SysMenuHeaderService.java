@@ -46,6 +46,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
     /** 不省略 */
     private static final Integer ELLIPSIS_NO = 0;
 
+    /** 已勾选 */
+    private static final Integer CHECKED_YES = 1;
+
     /** 可排序 */
     private static final Integer SORTED_YES = 1;
 
@@ -64,8 +67,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
     /** 字段索引分隔符 */
     private static final String DATA_INDEX_SEPARATOR = ".";
 
-    /** 变更标记：菜单关联模块已切换（表头配置尚未更新入库），0 表示未变化 */
-    private static final Integer CHANGE_MODULE_SWITCHED = 1;
+    /** 变更标记：菜单关联的详情菜单已切换（表头配置尚未更新入库），0 表示未变化 */
+    private static final Integer CHANGE_DETAIL_SWITCHED = 1;
 
     private final SysMenuHeaderMapper sysMenuHeaderMapper;
     private final SysMenuMapper sysMenuMapper;
@@ -81,12 +84,12 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         // 生成侧：以该菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段
         List<SysMenuHeaderResp> generatedNodes = buildGeneratedNodes(menuId);
 
-        // 菜单关联模块已切换（表头配置尚未更新入库）：只用生成侧，不读表
-        if (CHANGE_MODULE_SWITCHED.equals(change)) {
+        // 菜单关联的详情菜单已切换（表头配置尚未更新入库）：只用生成侧，不读表
+        if (CHANGE_DETAIL_SWITCHED.equals(change)) {
             return assembleTree(menuId, generatedNodes);
         }
 
-        // 菜单关联模块未变化：与 sys_menu_header 已保存配置按虚拟id 合并
+        // 详情菜单未变化：与 sys_menu_header 已保存配置按虚拟id 合并
         Set<String> generatedVirIds =
                 generatedNodes.stream()
                         .map(SysMenuHeaderResp::getVirId)
@@ -109,39 +112,45 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
     /**
      * 随菜单一并保存多级表头配置（由 {@code SysMenuService#saveMenu} 内部调用）
      *
-     * <p>按 {@code change} 决定落库方式：
+     * <p>表头记录按「归属菜单ID」存放，归属菜单即菜单关联的详情菜单；未关联详情菜单的菜单不允许保存表头配置。
      *
      * <ul>
-     *   <li>{@code change=1}（菜单关联模块已切换）：删除该菜单在 {@code sys_menu_header} 中的全部关联记录。
-     *   <li>{@code change=0}（菜单关联模块未变化）：将 {@code header} 树压平后与已保存节点按 {@code virId}
-     *       比对，已存在的节点按主键批量更新，未存在的节点批量新增；{@code header} 为空时不做任何处理。
+     *   <li>{@code change=1}（详情菜单已切换）：先删除变更前归属菜单（{@code previousMenuId}）在 {@code sys_menu_header}
+     *       中的全部记录（一条 SQL），再按本次提交的节点树以 {@code menuId} 为归属重新落库。
+     *   <li>{@code change=0}（详情菜单未变化）：将 {@code header} 树压平后与 {@code menuId} 已保存节点按 {@code virId}
+     *       比对，已存在的节点按主键批量更新，未存在的节点批量新增。
      * </ul>
      *
-     * <p>节点归属统一取入参菜单ID，数据隔离按 {@code subject_id} + {@code project_no}，所有写操作均为批量执行。
+     * <p>{@code header} 为空时只做上述清理、不做落库。数据隔离按 {@code subject_id} + {@code project_no}，所有写操作均为批量执行。
+     *
+     * @param menuId 本次表头记录的归属菜单ID（菜单关联的详情菜单ID）
+     * @param previousMenuId 变更前表头记录的归属菜单ID（变更前的详情菜单ID），无变更或新增菜单时为 {@code null}
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveMenuHeader(Long menuId, Integer change, SaveMenuReq.MenuHeaderNode header) {
-        if (menuId == null) {
-            throw new BusinessException("菜单ID不能为空");
-        }
+    public void saveMenuHeader(
+            Long menuId, Long previousMenuId, Integer change, SaveMenuReq.MenuHeaderNode header) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
 
-        // 菜单关联模块已切换：删除该菜单在 sys_menu_header 中的全部关联记录（一条 SQL）
-        if (CHANGE_MODULE_SWITCHED.equals(change)) {
+        // 详情菜单已切换：删除变更前归属菜单在 sys_menu_header 中的全部记录（一条 SQL）
+        if (CHANGE_DETAIL_SWITCHED.equals(change) && previousMenuId != null) {
             int deleted =
                     sysMenuHeaderMapper.delete(
                             Wrappers.<SysMenuHeader>lambdaQuery()
-                                    .eq(SysMenuHeader::getMenuId, menuId)
+                                    .eq(SysMenuHeader::getMenuId, previousMenuId)
                                     .eq(SysMenuHeader::getSubjectId, subjectId)
                                     .eq(SysMenuHeader::getProjectNo, projectNo));
-            log.debug("菜单关联模块已切换，删除表头配置：menuId={}, rows={}", menuId, deleted);
+            log.debug("详情菜单已切换，删除原归属菜单表头配置：previousMenuId={}, rows={}", previousMenuId, deleted);
+        }
+
+        // 未提交表头节点树时不做落库处理
+        if (header == null) {
             return;
         }
 
-        // 未提交表头节点树时不做任何处理
-        if (header == null) {
-            return;
+        // 表头记录挂在该菜单的详情菜单下，未关联详情菜单的菜单不允许保存表头
+        if (menuId == null) {
+            throw new BusinessException("菜单未关联详情菜单，不能保存表头配置");
         }
 
         // 提交的树压平为节点列表（深度优先、父节点在前），父引用直接落父节点虚拟id
@@ -189,13 +198,15 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         }
 
         // 纯读取该菜单已保存的表头节点（数据隔离：subject_id + project_no）
-        List<SysMenuHeader> nodes =
+        List<SysMenuHeader> stored =
                 sysMenuHeaderMapper.selectList(
                         Wrappers.<SysMenuHeader>lambdaQuery()
                                 .eq(SysMenuHeader::getMenuId, menuId)
                                 .eq(SysMenuHeader::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysMenuHeader::getProjectNo, AppContext.getProjectNo())
                                 .orderByAsc(SysMenuHeader::getSortValue, SysMenuHeader::getId));
+        // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头
+        List<SysMenuHeader> nodes = retainCheckedWithAncestors(stored);
         if (nodes.isEmpty()) {
             return new MenuHeaderDisplayResp();
         }
@@ -241,7 +252,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         entity.setSourceId(node.getSourceId());
         entity.setModuleId(node.getModuleId());
         entity.setLabel(node.getLabel());
-        entity.setColors(node.getColors());
+        entity.setColors(toColorsJson(node.getColors()));
         entity.setWidth(node.getWidth());
         entity.setDataIndex(node.getDataIndex());
         entity.setSorted(node.getSorted());
@@ -254,6 +265,37 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
     }
 
     // ==================== 多级列头展示组装 ====================
+
+    /**
+     * 展示节点筛选：只保留已勾选（{@code checked=1}）的节点，并向上补齐其祖先节点
+     *
+     * <p>祖先节点不论是否勾选都保留，否则被勾选的下级列挂不到父节点上、多级列头组装不出来； 没有任何勾选节点时返回空列表。
+     */
+    private List<SysMenuHeader> retainCheckedWithAncestors(List<SysMenuHeader> nodes) {
+        Map<String, SysMenuHeader> nodeByVirId = new LinkedHashMap<>();
+        for (SysMenuHeader node : nodes) {
+            nodeByVirId.putIfAbsent(node.getVirId(), node);
+        }
+        Set<String> retainedVirIds = new HashSet<>();
+        for (SysMenuHeader node : nodes) {
+            if (!CHECKED_YES.equals(node.getChecked())) {
+                continue;
+            }
+            retainedVirIds.add(node.getVirId());
+            // 逐级向上补齐祖先节点，遇到已保留的节点或父节点缺失即终止
+            String parentId = node.getParentId();
+            while (parentId != null && !ROOT_PARENT_ID.equals(parentId)) {
+                SysMenuHeader parent = nodeByVirId.get(parentId);
+                if (parent == null || !retainedVirIds.add(parentId)) {
+                    break;
+                }
+                parentId = parent.getParentId();
+            }
+        }
+        return nodes.stream()
+                .filter(node -> retainedVirIds.contains(node.getVirId()))
+                .collect(Collectors.toList());
+    }
 
     /** 取顶层节点中的根节点，优先本菜单自身对应的菜单节点 */
     private SysMenuHeader selectDisplayRoot(Long menuId, List<SysMenuHeader> topNodes) {
@@ -302,6 +344,19 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
                             .collect(Collectors.toList()));
         }
         return resp;
+    }
+
+    /** 序列化 colors（入参为颜色列表，库中存 JSON 数组串），空列表或失败返回 null */
+    private String toColorsJson(List<String> colors) {
+        if (colors == null || colors.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(colors);
+        } catch (Exception e) {
+            log.warn("菜单表头 colors 序列化失败: {}", colors, e);
+            return null;
+        }
     }
 
     /** 解析 colors（库中为 JSON 数组串），失败或空返回 null */
@@ -499,7 +554,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         resp.setSortValue(
                 stored.getSortValue() != null ? stored.getSortValue() : generated.getSortValue());
         // 表头展示相关配置原样透传
-        resp.setColors(stored.getColors());
+        resp.setColors(parseColors(stored.getColors()));
         resp.setWidth(stored.getWidth());
         resp.setSearchType(stored.getSearchType());
         resp.setFixed(stored.getFixed());

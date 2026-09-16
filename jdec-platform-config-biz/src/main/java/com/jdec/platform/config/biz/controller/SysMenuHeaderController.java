@@ -32,7 +32,7 @@ public class SysMenuHeaderController {
                             + "纯查询接口，不落库：递归子菜单生成的节点不带主键id")
     public ApiResponse<SysMenuHeaderResp> tree(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId,
-            @Parameter(description = "变更标记：0-菜单关联模块未变化，1-菜单关联模块已切换", example = "0")
+            @Parameter(description = "变更标记：0-菜单关联的详情菜单未变化，1-详情菜单已切换", example = "0")
                     @RequestParam(defaultValue = "0")
                     Integer change) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderTree(menuId, change));
@@ -41,7 +41,9 @@ public class SysMenuHeaderController {
     @GetMapping("/display")
     @Operation(
             summary = "查询菜单多级列头展示",
-            description = "根据菜单ID纯读取 sys_menu_header 已保存的配置，按多级列头展示格式返回；无配置时 header 为空")
+            description =
+                    "根据菜单ID纯读取 sys_menu_header 已保存的配置，按多级列头展示格式返回：只输出已勾选（checked=1）的列，"
+                            + "其祖先菜单节点一并保留用于组装多级列头；无已勾选配置时 header 为空")
     public ApiResponse<MenuHeaderDisplayResp> display(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderDisplay(menuId));

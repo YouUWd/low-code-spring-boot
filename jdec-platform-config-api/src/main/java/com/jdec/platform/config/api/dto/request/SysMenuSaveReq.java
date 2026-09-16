@@ -28,6 +28,15 @@ public class SysMenuSaveReq {
     @Schema(description = "父级id，顶层为0")
     private Long pid;
 
+    @AuditField(
+            name = "详情菜单",
+            type = FieldType.RELATION,
+            target = "sys_menu",
+            idField = "id",
+            nameField = "title")
+    @Schema(description = "详情菜单id")
+    private Long detailId;
+
     @AuditField(name = "菜单名称", uniqueIdentifier = true)
     @Schema(description = "菜单名称")
     private String title;

@@ -45,7 +45,7 @@ public class SysMenuHeaderResp {
     private String dataIndex;
 
     @Schema(description = "菜单显示颜色")
-    private String colors;
+    private List<String> colors;
 
     @Schema(description = "列宽(px)")
     private Integer width;
