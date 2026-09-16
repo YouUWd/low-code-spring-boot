@@ -51,11 +51,11 @@ public class SysMenuService implements SysMenuApi {
     /** 顶层父级ID */
     private static final Long ROOT_PID = 0L;
 
-    /** 表头变更标记：菜单关联模块未变化 */
+    /** 表头变更标记：菜单关联的详情菜单未变化 */
     private static final Integer HEADER_CHANGE_NONE = 0;
 
-    /** 表头变更标记：菜单关联模块已切换（表头配置需重新生成） */
-    private static final Integer HEADER_CHANGE_MODULE_SWITCHED = 1;
+    /** 表头变更标记：菜单关联的详情菜单已切换（表头配置需重新生成） */
+    private static final Integer HEADER_CHANGE_DETAIL_SWITCHED = 1;
 
     /**
      * 延迟获取自身代理，避免构造循环依赖。
@@ -141,41 +141,35 @@ public class SysMenuService implements SysMenuApi {
             // 携带整棵树时，当前节点位置以 treeNodes 为准，保证同级重名等单节点校验分组正确
             fillOwnPositionFromTree(node, request.getTreeNodes());
         }
-        // 表头变更标记由后端判定，必须在保存前取旧数据比对（保存后库中已是新模块ID）
-        Integer headerChange = resolveHeaderChange(node);
+        // 表头记录归属菜单为「详情菜单」，判定与旧配置清理都必须在保存前取旧数据（保存后库中已是新的详情菜单ID）
+        SysMenu oldMenu = selectMenuById(node.getId());
+        Long previousHeaderMenuId = oldMenu == null ? null : oldMenu.getDetailId();
+        Integer headerChange =
+                oldMenu != null && !Objects.equals(oldMenu.getDetailId(), node.getDetailId())
+                        ? HEADER_CHANGE_DETAIL_SWITCHED
+                        : HEADER_CHANGE_NONE;
         // 经自身代理调用单节点保存，确保 @DataAudit 审计生效
         SysMenuResp resp = selfProvider.getObject().saveMenuNode(node);
         if (hasTree) {
             // 整棵树父子关系与同级排序同步（参考模块 saveModule / 状态 saveStatus 的树节点拓扑同步逻辑）
             updateMenuTreeNodes(node.getId(), node.getCategory(), request.getTreeNodes());
         }
-        // 多级表头配置随菜单一并保存：模块已切换则删除已保存配置，未切换则按提交的节点树批量更新/新增
-        sysMenuHeaderService.saveMenuHeader(node.getId(), headerChange, request.getHeader());
+        // 多级表头配置随菜单一并保存：表头记录归属菜单取菜单关联的详情菜单ID
+        sysMenuHeaderService.saveMenuHeader(
+                node.getDetailId(), previousHeaderMenuId, headerChange, request.getHeader());
         return resp;
     }
 
-    /**
-     * 判定多级表头变更标记（不再由前端传入）
-     *
-     * <p>按菜单ID 取库中记录的关联模块，与本次提交的模块ID 比对：不一致视为模块已切换，返回 {@code 1}（表头配置需重新生成）； 一致返回 {@code
-     * 0}。新增菜单没有历史模块，返回 {@code 0} 即可。
-     */
-    private Integer resolveHeaderChange(SysMenuSaveReq req) {
-        if (req.getId() == null) {
-            return HEADER_CHANGE_NONE;
+    /** 取库中菜单记录（数据隔离：subject_id + project_no），id 为空或查不到返回 {@code null} */
+    private SysMenu selectMenuById(Long id) {
+        if (id == null) {
+            return null;
         }
-        SysMenu oldEntity =
-                sysMenuMapper.selectOne(
-                        Wrappers.<SysMenu>lambdaQuery()
-                                .eq(SysMenu::getId, req.getId())
-                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
-                                .eq(SysMenu::getProjectNo, AppContext.getProjectNo()));
-        if (oldEntity == null) {
-            return HEADER_CHANGE_NONE;
-        }
-        return Objects.equals(oldEntity.getModuleId(), req.getModuleId())
-                ? HEADER_CHANGE_NONE
-                : HEADER_CHANGE_MODULE_SWITCHED;
+        return sysMenuMapper.selectOne(
+                Wrappers.<SysMenu>lambdaQuery()
+                        .eq(SysMenu::getId, id)
+                        .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                        .eq(SysMenu::getProjectNo, AppContext.getProjectNo()));
     }
 
     /**

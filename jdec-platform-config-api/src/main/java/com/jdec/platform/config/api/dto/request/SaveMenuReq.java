@@ -70,8 +70,8 @@ public class SaveMenuReq {
         @Schema(description = "字段索引（模块id.表名.字段名）", example = "1001.info.company_name")
         private String dataIndex;
 
-        @Schema(description = "菜单显示颜色")
-        private String colors;
+        @Schema(description = "菜单显示颜色（入库时序列化为 JSON 串）")
+        private List<String> colors;
 
         @Schema(description = "列宽(px)")
         private Integer width;

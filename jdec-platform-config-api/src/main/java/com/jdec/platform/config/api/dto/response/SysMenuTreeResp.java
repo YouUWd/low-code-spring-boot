@@ -15,6 +15,9 @@ public class SysMenuTreeResp {
     @Schema(description = "父级id")
     private Long pid;
 
+    @Schema(description = "详情菜单id")
+    private Long detailId;
+
     @Schema(description = "菜单名称")
     private String title;
 

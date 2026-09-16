@@ -20,6 +20,9 @@ public class SysMenu implements Serializable {
     @Schema(description = "父级id")
     private Long pid;
 
+    @Schema(description = "详情菜单id")
+    private Long detailId;
+
     @Schema(description = "所属主体")
     private Long subjectId;
 
