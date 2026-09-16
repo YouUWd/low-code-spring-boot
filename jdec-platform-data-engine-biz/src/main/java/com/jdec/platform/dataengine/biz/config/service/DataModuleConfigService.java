@@ -1,10 +1,10 @@
 package com.jdec.platform.dataengine.biz.config.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.jdec.platform.config.api.dto.common.TableRelationDTO;
-import com.jdec.platform.dataengine.biz.config.dto.ModuleFieldDTO;
-import com.jdec.platform.dataengine.biz.config.dto.ModuleNodeDTO;
-import com.jdec.platform.dataengine.biz.config.dto.SysModuleInfo;
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
+import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
+import com.jdec.platform.dataengine.api.dto.model.TableRelationDTO;
 import com.jdec.platform.dataengine.biz.config.entity.DataSysModule;
 import com.jdec.platform.dataengine.biz.config.entity.DataSysModuleField;
 import com.jdec.platform.dataengine.biz.config.entity.DataSysTableRelation;

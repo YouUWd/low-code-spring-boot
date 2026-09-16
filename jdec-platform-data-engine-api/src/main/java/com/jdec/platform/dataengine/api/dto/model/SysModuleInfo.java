@@ -1,6 +1,5 @@
-package com.jdec.platform.dataengine.biz.config.dto;
+package com.jdec.platform.dataengine.api.dto.model;
 
-import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -42,4 +41,6 @@ public class SysModuleInfo {
 
     @Schema(description = "子模块信息", example = "1")
     private List<ModuleNodeDTO> moduleNodes;
+
+    private List<SysModuleInfo> children;
 }

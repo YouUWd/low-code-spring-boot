@@ -1,4 +1,4 @@
-package com.jdec.platform.dataengine.biz.config.dto;
+package com.jdec.platform.dataengine.api.dto.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;

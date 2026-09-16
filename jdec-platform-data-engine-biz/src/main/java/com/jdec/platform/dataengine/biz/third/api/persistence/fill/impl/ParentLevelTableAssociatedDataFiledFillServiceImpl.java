@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.fill.impl;
 
-import com.jdec.platform.dataengine.biz.dto.TableRelationDTO;
+import com.jdec.platform.dataengine.api.dto.model.TableRelationDTO;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.TableRelationService;

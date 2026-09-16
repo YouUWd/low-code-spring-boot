@@ -8,10 +8,10 @@ import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
 import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
-import com.jdec.platform.dataengine.biz.config.dto.SysModuleInfo;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
@@ -209,8 +209,6 @@ public class DynamicQueryService {
     public List<NestedModuleDataDTO> getDetail(
             List<Long> moduleIds, Long id, String btnType, boolean recursive) {
         List<NestedModuleDataDTO> resultList = new ArrayList<>();
-
-        //        List<SysMenuTreeResp> menuRespList = sysMenuApi.tree(1);
 
         // 获取模块树
         List<SysModuleSimpleTreeResp> moduleNodeResps =
