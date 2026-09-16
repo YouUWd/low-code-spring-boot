@@ -138,8 +138,10 @@ public class TreeResultAssembler {
                     cleanChildRows, sameModuleSubTablePlans, rawDataByNode);
         }
 
-        // 4. 将分组后的子模块实体数组直接挂载在目标容器的 [childModuleId] 键下
+        // 4. 将分组后的子模块实体直接挂载在目标容器的 [childModuleId] 键下 (1:1 挂载单对象 Map，1:N 挂载 List)
         String childModKey = String.valueOf(childModId);
+        boolean isOneToOne = "1:1".equalsIgnoreCase(childPlan.getParentRelationType());
+
         for (Map<String, Object> parentRow : parentRecords) {
             Map<String, Object> targetContainer = containerResolver.apply(parentRow);
             if (targetContainer == null) {
@@ -149,7 +151,14 @@ public class TreeResultAssembler {
             if (pkVal instanceof Number pkNum) {
                 List<Map<String, Object>> matchedChildren =
                         groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
-                targetContainer.put(childModKey, matchedChildren);
+
+                if (isOneToOne) {
+                    Map<String, Object> singleChild =
+                            matchedChildren.isEmpty() ? null : matchedChildren.get(0);
+                    targetContainer.put(childModKey, singleChild);
+                } else {
+                    targetContainer.put(childModKey, matchedChildren);
+                }
 
                 // 5. 🌟 递归自相似：以当前匹配的子实体列表为父级，直接向下装配孙模块（如 106 挂在 104 实体行内）
                 if (!subModulePlans.isEmpty() && !matchedChildren.isEmpty()) {
@@ -157,7 +166,7 @@ public class TreeResultAssembler {
                             matchedChildren, childModId, subModulePlans, rawDataByNode);
                 }
             } else {
-                targetContainer.put(childModKey, Collections.emptyList());
+                targetContainer.put(childModKey, isOneToOne ? null : Collections.emptyList());
             }
         }
     }

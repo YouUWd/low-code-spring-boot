@@ -31,6 +31,9 @@ public class SaveNodePlan {
     /** 当前模块待落库的行记录列表 */
     @Builder.Default private List<Map<String, Object>> records = new ArrayList<>();
 
+    /** 是否为 1:N 集合模式 (true: 返回 List<Long>, false: 1:1 单实体返回 Long) */
+    @Builder.Default private boolean isMany = false;
+
     /** 下级子模块保存计划树 */
     @Builder.Default private List<SaveNodePlan> children = new ArrayList<>();
 }

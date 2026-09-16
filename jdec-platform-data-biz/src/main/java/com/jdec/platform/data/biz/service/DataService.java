@@ -39,4 +39,9 @@ public class DataService implements DataApi {
     public Long save(SaveReq req) {
         return dataPersistenceService.save(req);
     }
+
+    @Override
+    public Map<String, Object> saveAndCollectIds(SaveReq req) {
+        return dataPersistenceService.saveAndCollectIds(req);
+    }
 }

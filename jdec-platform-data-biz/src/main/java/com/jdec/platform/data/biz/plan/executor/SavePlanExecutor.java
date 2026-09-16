@@ -27,21 +27,62 @@ public class SavePlanExecutor {
 
     private final JooqDataContextFactory jooqDataContextFactory;
 
-    /** 平台级自动维护列集合 */
+    /** 平台级核心维护列集合（严格对应《数据库规范》核心标准） */
     private static final Set<String> PLATFORM_COLUMNS =
             Set.of(
                     "subject_id",
                     "created_by",
-                    "created_time",
                     "created_date",
                     "updated_by",
-                    "updated_time",
                     "updated_date",
                     "deleted");
 
-    /** 在单事务内执行整树落库 */
+    /** 在单事务内执行整树落库并返回根记录 ID */
     @Transactional(rollbackFor = Exception.class)
     public Long execute(SavePlan plan) {
+        Map<String, Object> idMap = executeAndCollectIds(plan);
+        if (plan != null
+                && plan.getRootNodePlan() != null
+                && plan.getRootNodePlan().getModuleId() != null) {
+            String modKey = String.valueOf(plan.getRootNodePlan().getModuleId());
+            Object rootVal = idMap.get(modKey);
+            String primaryTable = plan.getRootNodePlan().getPrimaryTable();
+            return extractIdFromIsomorphicNode(rootVal, primaryTable);
+        }
+        return null;
+    }
+
+    private Long extractIdFromIsomorphicNode(Object nodeVal, String primaryTable) {
+        if (nodeVal instanceof Long id) {
+            return id;
+        }
+        if (nodeVal instanceof List<?> list && !list.isEmpty()) {
+            return extractIdFromIsomorphicNode(list.get(0), primaryTable);
+        }
+        if (nodeVal instanceof Map<?, ?> map) {
+            if (map.get("id") instanceof Number num) {
+                return num.longValue();
+            }
+            if (primaryTable != null && map.get(primaryTable) instanceof Map<?, ?> tableMap) {
+                if (tableMap.get("id") instanceof Number num) {
+                    return num.longValue();
+                }
+            }
+            for (Object v : map.values()) {
+                if (v instanceof Map<?, ?> tableMap && tableMap.get("id") instanceof Number num) {
+                    return num.longValue();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 在单事务内执行整树落库并收集返回与请求/详情 100% 读写同构的 ID 结构 示例： { "1001": { "info": { "id": 100 }, "1002": [ {
+     * "basic_info": { "id": 1 } } ] } }
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> executeAndCollectIds(SavePlan plan) {
         if (plan == null || plan.getRootNodePlan() == null) {
             throw new IllegalArgumentException("保存计划为空");
         }
@@ -50,63 +91,126 @@ public class SavePlanExecutor {
         DSLContext dsl = jooqDataContextFactory.getContext();
 
         // 1. 根节点记录持久化
-        Long masterId = null;
+        String primaryTable = rootPlan.getPrimaryTable();
         List<Map<String, Object>> rootRecords = rootPlan.getRecords();
+        List<Map<String, Object>> rootRowResults = new ArrayList<>();
+        Long masterId = null;
 
         if (rootRecords != null && !rootRecords.isEmpty()) {
-            // 默认主表第一条记录为主记录
-            masterId =
-                    upsertSingleRow(dsl, rootPlan.getPrimaryTable(), rootPlan, rootRecords.get(0));
-        }
+            for (Map<String, Object> rootRecord : rootRecords) {
+                Map<String, Object> rootRowMap = new LinkedHashMap<>();
+                Long generatedId = upsertSingleRow(dsl, primaryTable, rootPlan, rootRecord);
+                if (generatedId != null) {
+                    if (masterId == null) {
+                        masterId = generatedId;
+                    }
+                    if (primaryTable != null && !primaryTable.isBlank()) {
+                        rootRowMap.put(primaryTable, Map.of("id", generatedId));
+                    } else {
+                        rootRowMap.put("id", generatedId);
+                    }
+                }
 
-        // 2. 递归级联保存各子孙模块节点并自动传播外键
-        if (rootPlan.getChildren() != null && !rootPlan.getChildren().isEmpty()) {
-            if (masterId == null) {
-                throw new IllegalStateException("主记录 ID 未生成，无法级联保存子模块数据");
+                // 递归级联保存各子孙模块节点并挂载到当前根行对象
+                if (rootPlan.getChildren() != null && !rootPlan.getChildren().isEmpty()) {
+                    Long currentParentId = generatedId != null ? generatedId : masterId;
+                    if (currentParentId == null) {
+                        throw new IllegalStateException("主记录 ID 未生成，无法级联保存子模块数据");
+                    }
+                    for (SaveNodePlan childPlan : rootPlan.getChildren()) {
+                        Object childResult =
+                                saveChildPlanRecursively(dsl, childPlan, currentParentId);
+                        if (childPlan.getModuleId() != null && childResult != null) {
+                            rootRowMap.put(String.valueOf(childPlan.getModuleId()), childResult);
+                        }
+                    }
+                }
+
+                rootRowResults.add(rootRowMap);
             }
+        } else if (rootPlan.getChildren() != null && !rootPlan.getChildren().isEmpty()) {
+            // 没有根行记录但有子模块（容错处理）
+            Map<String, Object> rootRowMap = new LinkedHashMap<>();
             for (SaveNodePlan childPlan : rootPlan.getChildren()) {
-                saveChildPlanRecursively(dsl, childPlan, masterId);
+                Object childResult = saveChildPlanRecursively(dsl, childPlan, null);
+                if (childPlan.getModuleId() != null && childResult != null) {
+                    rootRowMap.put(String.valueOf(childPlan.getModuleId()), childResult);
+                }
+            }
+            rootRowResults.add(rootRowMap);
+        }
+
+        Map<String, Object> resultMap = new LinkedHashMap<>();
+        if (rootPlan.getModuleId() != null) {
+            String modKey = String.valueOf(rootPlan.getModuleId());
+            if (rootPlan.isMany()) {
+                resultMap.put(modKey, rootRowResults);
+            } else {
+                resultMap.put(
+                        modKey,
+                        rootRowResults.isEmpty() ? Collections.emptyMap() : rootRowResults.get(0));
             }
         }
 
-        return masterId;
+        return resultMap;
     }
 
-    /** 递归级联保存子节点并传播外键 */
-    private void saveChildPlanRecursively(DSLContext dsl, SaveNodePlan nodePlan, Long parentId) {
+    /** 递归级联保存子节点并传播外键，同时返回同构的主键结构 (1:1 返回 Map<String, Object>, 1:N 返回 List<Map<String, Object>>) */
+    private Object saveChildPlanRecursively(DSLContext dsl, SaveNodePlan nodePlan, Long parentId) {
         if (nodePlan == null) {
-            return;
+            return null;
         }
 
         String table = nodePlan.getPrimaryTable();
         String fkField = nodePlan.getParentForeignKey();
         List<Map<String, Object>> rows = nodePlan.getRecords();
 
+        // 虚拟模块无物理主表：不执行单行落库，直接将 parentId 透传给下级子模块
         if (table == null || table.isBlank()) {
-            // 虚拟模块无物理主表，不执行单行落库，直接将物理父实体的 parentId 向下透传给子孙节点
+            Map<String, Object> virtualMap = new LinkedHashMap<>();
             if (nodePlan.getChildren() != null && !nodePlan.getChildren().isEmpty()) {
                 for (SaveNodePlan child : nodePlan.getChildren()) {
-                    saveChildPlanRecursively(dsl, child, parentId);
+                    Object childRes = saveChildPlanRecursively(dsl, child, parentId);
+                    if (child.getModuleId() != null && childRes != null) {
+                        virtualMap.put(String.valueOf(child.getModuleId()), childRes);
+                    }
                 }
             }
-            return;
+            return virtualMap;
         }
 
+        List<Map<String, Object>> rowResults = new ArrayList<>();
         if (rows != null) {
             for (Map<String, Object> row : rows) {
+                Map<String, Object> childRowMap = new LinkedHashMap<>();
                 // 强制自动回填外键
                 if (fkField != null && !fkField.isBlank() && parentId != null) {
                     row.put(fkField, parentId);
                 }
                 Long rowId = upsertSingleRow(dsl, table, nodePlan, row);
+                if (rowId != null) {
+                    childRowMap.put(table, Map.of("id", rowId));
+                }
 
                 // 递归向下传播孙节点
                 if (nodePlan.getChildren() != null && !nodePlan.getChildren().isEmpty()) {
+                    Long currentId = rowId != null ? rowId : parentId;
                     for (SaveNodePlan grandChild : nodePlan.getChildren()) {
-                        saveChildPlanRecursively(dsl, grandChild, rowId);
+                        Object grandChildRes = saveChildPlanRecursively(dsl, grandChild, currentId);
+                        if (grandChild.getModuleId() != null && grandChildRes != null) {
+                            childRowMap.put(
+                                    String.valueOf(grandChild.getModuleId()), grandChildRes);
+                        }
                     }
                 }
+                rowResults.add(childRowMap);
             }
+        }
+
+        if (nodePlan.isMany()) {
+            return rowResults;
+        } else {
+            return rowResults.isEmpty() ? Collections.emptyMap() : rowResults.get(0);
         }
     }
 
@@ -147,7 +251,7 @@ public class SavePlanExecutor {
         if (id != null) {
             // Update
             fieldValues.put(DSL.field(DSL.name(table, "updated_by")), currentUserId);
-            fieldValues.put(DSL.field(DSL.name(table, "updated_time")), now);
+            fieldValues.put(DSL.field(DSL.name(table, "updated_date")), now);
 
             dsl.update(DSL.table(DSL.name(table)))
                     .set(fieldValues)
@@ -159,25 +263,45 @@ public class SavePlanExecutor {
             return id;
         } else {
             // Insert
-            fieldValues.put(DSL.field(DSL.name(table, "subject_id")), subjectId);
+            if (validColumns.contains("subject_id") || subjectId != null) {
+                fieldValues.put(
+                        DSL.field(DSL.name(table, "subject_id")),
+                        subjectId != null ? subjectId : 0L);
+            }
             fieldValues.put(DSL.field(DSL.name(table, "created_by")), currentUserId);
-            fieldValues.put(DSL.field(DSL.name(table, "created_time")), now);
+            fieldValues.put(DSL.field(DSL.name(table, "created_date")), now);
             fieldValues.put(DSL.field(DSL.name(table, "updated_by")), currentUserId);
-            fieldValues.put(DSL.field(DSL.name(table, "updated_time")), now);
+            fieldValues.put(DSL.field(DSL.name(table, "updated_date")), now);
             fieldValues.put(DSL.field(DSL.name(table, "deleted")), (byte) 0);
 
-            var insertStep = dsl.insertInto(DSL.table(DSL.name(table))).set(fieldValues);
+            var insertQuery = dsl.insertInto(DSL.table(DSL.name(table))).set(fieldValues);
 
+            Long generatedId = null;
             try {
-                Long generatedId =
-                        insertStep
+                generatedId =
+                        insertQuery
                                 .returningResult(DSL.field(DSL.name(table, "id"), Long.class))
                                 .fetchOne(0, Long.class);
-                return generatedId;
             } catch (Exception ex) {
-                insertStep.execute();
-                return dsl.lastID() != null ? dsl.lastID().longValue() : 1L;
+                log.debug("returningResult 获取自增主键未成功，尝试通过 lastID 回退获取: {}", ex.getMessage());
             }
+
+            if (generatedId == null || generatedId <= 0) {
+                try {
+                    if (dsl.lastID() != null && dsl.lastID().longValue() > 0) {
+                        generatedId = dsl.lastID().longValue();
+                    } else {
+                        // 通过 SELECT LAST_INSERT_ID() 兜底
+                        generatedId =
+                                dsl.select(DSL.function("LAST_INSERT_ID", Long.class))
+                                        .fetchOne(0, Long.class);
+                    }
+                } catch (Exception ex) {
+                    log.warn("获取最后插入主键失败: {}", ex.getMessage());
+                }
+            }
+
+            return generatedId != null && generatedId > 0 ? generatedId : 1L;
         }
     }
 

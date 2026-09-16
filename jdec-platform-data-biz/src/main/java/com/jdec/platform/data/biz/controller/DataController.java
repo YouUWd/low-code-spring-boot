@@ -83,12 +83,12 @@ public class DataController {
     @PostMapping("/save")
     @Operation(
             summary = "通用同构原子保存",
-            description = "与 detail 响应的 data 结构 100% 读写同构，直接提交 detail.data 载荷")
+            description = "与 detail 响应的 data 结构 100% 读写同构，直接提交 detail.data 载荷，返回各模块主键映射")
     public ApiResponse<Map<String, Object>> save(@RequestBody Map<String, Object> data) {
         try {
             SaveReq req = SaveReq.builder().records(List.of(data)).build();
-            Long id = dataApi.save(req);
-            return ApiResponse.success(Map.of("id", id, "masterId", id));
+            Map<String, Object> ids = dataApi.saveAndCollectIds(req);
+            return ApiResponse.success(ids);
         } catch (Exception ex) {
             log.error("Data engine save failed: data={}, err={}", data, ex.getMessage(), ex);
             throw ex;

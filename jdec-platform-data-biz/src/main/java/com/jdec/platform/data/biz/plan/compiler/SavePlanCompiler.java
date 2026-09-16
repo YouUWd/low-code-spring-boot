@@ -106,14 +106,24 @@ public class SavePlanCompiler {
             }
         }
 
+        boolean isMany =
+                node.getRecords() != null
+                        && (node.getRecords().size() > 1 || isRawPayloadArray(node));
+
         return SaveNodePlan.builder()
                 .moduleId(moduleId)
                 .moduleMeta(meta)
                 .primaryTable(primaryTable)
                 .parentForeignKey(parentFk)
+                .isMany(isMany)
                 .records(cleanRecords)
                 .children(childPlans)
                 .build();
+    }
+
+    private boolean isRawPayloadArray(SaveReq node) {
+        // 默认根据关系或调用方设置，在行内子模块中会明确传入 List
+        return false;
     }
 
     /** 规范化行记录，支持解包物理表对象与提取行内数字键挂载的子模块 */
@@ -151,12 +161,15 @@ public class SavePlanCompiler {
             Object val = entry.getValue();
             if (key != null && key.matches("\\d+") && val != null) {
                 Long childModuleId = Long.parseLong(key);
+                boolean childIsMany = (val instanceof List<?>);
                 List<Map<String, Object>> childRecords = extractRecordsFromObject(val);
                 if (!childRecords.isEmpty()) {
                     SaveReq childReq =
                             SaveReq.builder().moduleId(childModuleId).records(childRecords).build();
                     try {
-                        childPlans.add(compileNode(childReq, moduleId, meta));
+                        SaveNodePlan childPlan = compileNode(childReq, moduleId, meta);
+                        childPlan.setMany(childIsMany);
+                        childPlans.add(childPlan);
                     } catch (Exception e) {
                         log.warn("编译行内子模块 [{}] 失败: {}", childModuleId, e.getMessage());
                     }

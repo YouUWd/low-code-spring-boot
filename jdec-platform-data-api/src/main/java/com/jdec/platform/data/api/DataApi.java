@@ -43,6 +43,9 @@ public interface DataApi {
 
     // ==================== 写契约 ====================
 
-    /** 自相似主子表同构原子保存/更新 */
+    /** 自相似主子表同构原子保存/更新 (返回根记录 ID) */
     Long save(SaveReq req);
+
+    /** 自相似主子表同构原子保存/更新 (返回各个模块的主键映射) */
+    Map<String, Object> saveAndCollectIds(SaveReq req);
 }

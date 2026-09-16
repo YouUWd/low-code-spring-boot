@@ -552,6 +552,8 @@ public class QueryPlanCompiler {
                 .primaryTable(primaryTable)
                 .parentKey(parentKey)
                 .parentForeignKey(parentFk)
+                .parentRelationType(
+                        parentRel.relationType() != null ? parentRel.relationType() : "1:N")
                 .pageNo(node.getPageNo())
                 .pageSize(node.getPageSize())
                 .projectedFields(primaryProjectedFields)
@@ -680,7 +682,10 @@ public class QueryPlanCompiler {
     }
 
     public record ParentRelationInfo(
-            String parentKey, String childForeignKey, String parentPrimaryTable) {}
+            String parentKey,
+            String childForeignKey,
+            String parentPrimaryTable,
+            String relationType) {}
 
     /** 沿着模块树向上回溯查找最近的一个配置了有效物理主表的父/祖先模块，同时收集沿途的中间虚拟模块 */
     private ModuleInfo findNearestPhysicalParentMeta(
@@ -732,7 +737,7 @@ public class QueryPlanCompiler {
     private ParentRelationInfo resolveParentRelation(
             String childPrimaryTable, ModuleInfo childMeta, ModuleInfo parentMeta) {
         if (childPrimaryTable == null || childPrimaryTable.isBlank() || parentMeta == null) {
-            return new ParentRelationInfo("id", null, null);
+            return new ParentRelationInfo("id", null, null, "1:N");
         }
 
         // 查找物理父模块 (若直接父模块为虚拟模块，则递归向上回溯至最近具有物理主表的祖先模块)
@@ -750,12 +755,12 @@ public class QueryPlanCompiler {
 
         if (parentPrimary == null || parentPrimary.isBlank()) {
             // 向上回溯到顶层仍未找到任何配置物理主表的父模块 (如根模块即为纯虚拟模块)
-            return new ParentRelationInfo("id", null, null);
+            return new ParentRelationInfo("id", null, null, "1:N");
         }
 
         // 0. 第一性原理特殊情况：当子模块物理主表与物理父模块主表为同一物理表时 (例如 101 与 105 均为 student 表垂直拆分)
         if (parentPrimary.equalsIgnoreCase(childPrimaryTable)) {
-            return new ParentRelationInfo("id", "id", parentPrimary);
+            return new ParentRelationInfo("id", "id", parentPrimary, "1:1");
         }
 
         // 1. 汇聚子模块、物理父模块以及沿途所有中间虚拟模块的 tableRelations
@@ -782,7 +787,12 @@ public class QueryPlanCompiler {
                             (rel.getMainField() != null && !rel.getMainField().isBlank())
                                     ? rel.getMainField().trim()
                                     : "id";
-                    return new ParentRelationInfo(pKey, rel.getJoinField().trim(), parentPrimary);
+                    String relType =
+                            rel.getRelationType() != null && !rel.getRelationType().isBlank()
+                                    ? rel.getRelationType().trim()
+                                    : "1:N";
+                    return new ParentRelationInfo(
+                            pKey, rel.getJoinField().trim(), parentPrimary, relType);
                 }
             }
         }
