@@ -16,18 +16,14 @@ public interface DataEngineApi {
     /**
      * 模块详情数据查询
      *
-     * @param moduleIds 待查询模块id列表
+     * @param rootModuleId 主模块id
      * @param id 详情id
      * @param btnType 查看入口按钮类别
-     * @param topQuery 是否顶层查询，顶层查询会查询模块及其树上的所有子模块。非顶层查询会查询顶层模块到模块id列表指定的路径上的模块数据
+     * @param filterFields 待查询字段id列表
      * @return
      */
     DetailDataResp<NestedModuleDataDTO> getDetail(
-            List<Long> moduleIds,
-            Long id,
-            String btnType,
-            Boolean topQuery,
-            List<Long> filterFields);
+            Long rootModuleId, Long id, String btnType, List<Long> filterFields);
 
     Long save(DynamicSaveReq req);
 

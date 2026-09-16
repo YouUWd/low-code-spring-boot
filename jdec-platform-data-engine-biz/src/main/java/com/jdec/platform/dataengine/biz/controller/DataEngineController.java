@@ -35,11 +35,10 @@ public class DataEngineController {
     @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<DetailDataResp> getDetail(
             @PathVariable Long id,
-            @RequestParam List<Long> moduleIds,
+            Long moduleId,
             String btnType,
-            Boolean topQuery) {
-        return ApiResponse.success(
-                dataEngineApi.getDetail(moduleIds, id, btnType, topQuery, List.of()));
+            @RequestParam List<Long> filterFields) {
+        return ApiResponse.success(dataEngineApi.getDetail(moduleId, id, btnType, filterFields));
     }
 
     @PostMapping("/save")

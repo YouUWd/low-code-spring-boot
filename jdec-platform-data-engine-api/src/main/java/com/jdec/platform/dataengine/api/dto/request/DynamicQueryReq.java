@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.api.dto.request;
 
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
@@ -61,4 +62,6 @@ public class DynamicQueryReq implements Serializable {
 
     @Schema(description = "详情查看按钮类型")
     private String btnType;
+
+    private List<ModuleFieldDTO> fields;
 }

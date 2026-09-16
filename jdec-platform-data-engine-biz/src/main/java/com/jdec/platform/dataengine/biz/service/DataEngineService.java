@@ -39,20 +39,16 @@ public class DataEngineService implements DataEngineApi {
 
     @Override
     public DetailDataResp<NestedModuleDataDTO> getDetail(
-            List<Long> moduleIds,
-            Long id,
-            String btnType,
-            Boolean topQuery,
-            List<Long> filterFields) {
+            Long rootModuleId, Long id, String btnType, List<Long> filterFields) {
 
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleIds.get(0));
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), rootModuleId);
 
         SysModuleInfo meta = copyAndFilterModuleTree(sysModuleInfo, filterFields);
 
         List<NestedModuleDataDTO> detailDatas =
-                dynamicQueryService.getDetail(moduleIds, id, btnType, topQuery);
+                dynamicQueryService.getDetail(rootModuleId, id, btnType, filterFields);
 
         return DetailDataResp.of(
                 meta, CollectionUtils.isEmpty(detailDatas) ? null : detailDatas.get(0));

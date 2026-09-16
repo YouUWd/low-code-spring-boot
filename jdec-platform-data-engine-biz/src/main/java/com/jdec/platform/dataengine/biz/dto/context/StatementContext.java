@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -38,4 +39,6 @@ public class StatementContext extends ListQueryContext implements Serializable {
 
     @Schema(description = "关联外键id集合")
     private List<Long> relateIds;
+
+    private List<ModuleFieldDTO> fields;
 }

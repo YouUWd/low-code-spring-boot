@@ -1,15 +1,13 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
-import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
-import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
+import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
@@ -31,6 +29,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
@@ -59,7 +58,9 @@ public class DynamicQueryService {
     private final SysMenuApi sysMenuApi;
     private final SysRolePermissionApi sysRolePermissionApi;
     private final SysModuleApi sysModuleApi;
+    private final SysFieldApi sysFieldApi;
     private final DataModuleConfigService dataModuleConfigService;
+    private final MetadataCacheService metaCacheService;
 
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
@@ -207,55 +208,99 @@ public class DynamicQueryService {
 
     /** 动态主子表详情查询 (顶层包含 moduleId 等标识，元数据包含 fieldNames 与 permissions) */
     public List<NestedModuleDataDTO> getDetail(
-            List<Long> moduleIds, Long id, String btnType, boolean recursive) {
+            Long rootModuleId, Long id, String btnType, List<Long> filterFields) {
         List<NestedModuleDataDTO> resultList = new ArrayList<>();
 
         // 获取模块树
         List<SysModuleSimpleTreeResp> moduleNodeResps =
                 sysModuleApi.getAvailableModuleTree(
                         null, AppContext.getProjectNo(), AppContext.getSubjectId());
+
         if (CollectionUtils.isEmpty(moduleNodeResps)) {
             log.debug("菜单树查询结果未空，返回空列表。");
             return resultList;
         }
 
-        if (!recursive) {
-            // ========= 模式1：多个模块独立查询，互不关联 =========
+        // 以rootModuleId为根节点的模块树
+        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleNodeResps, rootModuleId);
 
-            List<SysModuleSimpleTreeResp> pruneMenus = pruneForest(moduleNodeResps, moduleIds);
+        Set<Long> involveModules = new HashSet<>();
+        involveModules.add(rootModuleId);
 
-            for (SysModuleSimpleTreeResp menu : pruneMenus) {
-                recursiveQuery(pruneMenus, resultList, menu.getId(), id, btnType, true);
-            }
-        } else {
-            recursiveQuery(moduleNodeResps, resultList, moduleIds.get(0), id, btnType, true);
-        }
+        Set<Long> fieldDirectModuleIds = getRelateModules(filterFields);
+        involveModules.addAll(fieldDirectModuleIds);
+
+        SysModuleSimpleTreeResp pruneMenus = pruneForest(rootNode, involveModules);
+
+        Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap = getModuleFields(filterFields);
+
+        recursiveQuery(
+                pruneMenus, resultList, pruneMenus.getId(), id, btnType, true, moduleIdToFieldMap);
 
         return resultList;
     }
 
+    private Map<Long, List<ModuleFieldDTO>> getModuleFields(List<Long> filterFields) {
+        List<ModuleFieldDTO> fieldDTOs = dataModuleConfigService.listFieldsByIds(filterFields);
+
+        return fieldDTOs.stream().collect(Collectors.groupingBy(ModuleFieldDTO::getModuleId));
+    }
+
+    private Set<Long> getRelateModules(List<Long> filterFields) {
+        List<ModuleFieldDTO> fieldDTOs = dataModuleConfigService.listFieldsByIds(filterFields);
+
+        return fieldDTOs.stream().map(ModuleFieldDTO::getModuleId).collect(Collectors.toSet());
+    }
+
     private void recursiveQuery(
-            List<SysModuleSimpleTreeResp> moduleTree,
+            SysModuleSimpleTreeResp rootNode,
             List<NestedModuleDataDTO> resultList,
             Long topMenuId,
             Long id,
             String btnType,
-            Boolean topQuery) {
+            Boolean topQuery,
+            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
         // ========= 模式2：树形关联查询，多个模块属于同一棵树 =========
         // 取根模块（moduleCodeList第一个为根节点，其余是树内子模块）
-        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleTree, topMenuId);
+        //        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleTree, topMenuId);
         if (rootNode == null) {
             return;
         }
+
+        List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
+        if (moduleIdToFieldMap.containsKey(rootNode.getId())) {
+            moduleFileds = moduleIdToFieldMap.get(rootNode.getId());
+        }
+
+        List<ModuleFieldDTO> finalModuleFileds = moduleFileds;
+        moduleFileds.addAll(
+                getIdAndRelateIdField(rootNode.getId()).stream()
+                        .filter(
+                                ele ->
+                                        !finalModuleFileds.stream()
+                                                .anyMatch(
+                                                        item ->
+                                                                item.getTableName()
+                                                                                .equals(
+                                                                                        ele
+                                                                                                .getTableName())
+                                                                        && item.getColumnName()
+                                                                                .equals(
+                                                                                        ele
+                                                                                                .getColumnName())))
+                        .collect(Collectors.toList()));
+
         DynamicQueryReq singleQueryDTO =
                 DynamicQueryReq.builder()
                         .moduleId(rootNode.getId())
                         .menuId(rootNode.getId())
                         .mainDataId(id)
                         .btnType(btnType)
+                        .fields(moduleFileds)
                         .build();
 
-        NestedModuleDataDTO moduleData = queryModule(singleQueryDTO, rootNode, true, topQuery);
+        NestedModuleDataDTO moduleData =
+                queryModule(singleQueryDTO, rootNode, true, topQuery, moduleIdToFieldMap);
         resultList.add(moduleData);
     }
 
@@ -263,7 +308,8 @@ public class DynamicQueryService {
             DynamicQueryReq queryReq,
             SysModuleSimpleTreeResp rootNode,
             Boolean recursive,
-            Boolean topQUery) {
+            Boolean topQUery,
+            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
         NestedModuleDataDTO.NestedModuleDataDTOBuilder builder = NestedModuleDataDTO.builder();
 
         // 非顶层模块查询，需要设置关联键作为查询条件
@@ -303,6 +349,30 @@ public class DynamicQueryService {
                         AppContext.getProjectNo(), AppContext.getSubjectId(), rootNode.getId());
 
         for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
+            List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
+            if (moduleIdToFieldMap.containsKey(childNode.getId())) {
+                log.debug("模块id:{},模块名称:{}有字段在查询列表,", childNode.getId(), childNode.getModuleName());
+                moduleFileds = moduleIdToFieldMap.get(childNode.getId());
+            }
+
+            List<ModuleFieldDTO> finalModuleFileds = moduleFileds;
+            moduleFileds.addAll(
+                    getIdAndRelateIdField(childNode.getId()).stream()
+                            .filter(
+                                    ele ->
+                                            !finalModuleFileds.stream()
+                                                    .anyMatch(
+                                                            item ->
+                                                                    item.getTableName()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getTableName())
+                                                                            && item.getColumnName()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getColumnName())))
+                            .collect(Collectors.toList()));
+
             // 组装当前模块查询参数
             DynamicQueryReq singleQueryDTO =
                     DynamicQueryReq.builder()
@@ -310,9 +380,10 @@ public class DynamicQueryService {
                             .mainDataId(queryReq.getMainDataId())
                             .relateIds(new ArrayList<>(primaryIds))
                             .btnType(queryReq.getBtnType())
+                            .fields(moduleFileds)
                             .build();
             NestedModuleDataDTO childResultList =
-                    queryModule(singleQueryDTO, childNode, true, false);
+                    queryModule(singleQueryDTO, childNode, true, false, moduleIdToFieldMap);
 
             for (RecordDataDTO vo : currentModuleData) {
                 Long primaryId =
@@ -331,6 +402,43 @@ public class DynamicQueryService {
                 .menuId(rootNode.getId())
                 .record(currentModuleData)
                 .build();
+    }
+
+    private List<ModuleFieldDTO> getIdAndRelateIdField(Long id) {
+        SysModuleInfo moduleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), id);
+
+        Set<String> moduleTables =
+                moduleInfo.getFields().stream()
+                        .map(ModuleFieldDTO::getTableName)
+                        .collect(Collectors.toSet());
+
+        TabTreeNodeDTO tableTreeNode = TabTreeNodeDTO.buildCompanyRoot();
+
+        List<ModuleFieldDTO> moduleFields = new ArrayList<>();
+
+        for (String tableName : moduleTables) {
+            TabTreeNodeDTO targetNode = TabTreeNodeDTO.findSubTreeByValue(tableTreeNode, tableName);
+
+            if (StringUtils.isNotBlank(targetNode.getNode().getSubTableField())) {
+                moduleFields.add(
+                        ModuleFieldDTO.builder()
+                                .moduleId(id)
+                                .tableName(tableName)
+                                .columnName(targetNode.getNode().getSubTableField())
+                                .build());
+            }
+
+            moduleFields.add(
+                    ModuleFieldDTO.builder()
+                            .moduleId(id)
+                            .tableName(tableName)
+                            .columnName("id")
+                            .build());
+        }
+
+        return moduleFields;
     }
 
     /**
@@ -501,6 +609,7 @@ public class DynamicQueryService {
                         .roleId(roleId)
                         .subjectId(subjectId)
                         .queryType(queryType)
+                        .fields(queryReq.getFields())
                         .build();
 
         List<RecordDataDTO> recordDataDTOList =
@@ -758,24 +867,17 @@ public class DynamicQueryService {
     /**
      * 入口方法：森林裁剪（多个根节点）
      *
-     * @param rootList 原始森林，多个根节点
+     * @param root 原始树
      * @param keepIds 需要保留的目标节点ID集合
      * @return 裁剪之后的森林列表；无保留节点返回空集合
      */
-    public static List<SysModuleSimpleTreeResp> pruneForest(
-            List<SysModuleSimpleTreeResp> rootList, Collection<Long> keepIds) {
-        if (rootList == null || rootList.isEmpty() || keepIds == null || keepIds.isEmpty()) {
-            return Collections.emptyList();
+    public static SysModuleSimpleTreeResp pruneForest(
+            SysModuleSimpleTreeResp root, Collection<Long> keepIds) {
+        if (root == null || keepIds == null || keepIds.isEmpty()) {
+            return null;
         }
-
-        List<SysModuleSimpleTreeResp> resultForest = new ArrayList<>();
-        for (SysModuleSimpleTreeResp root : rootList) {
-            SysModuleSimpleTreeResp newRoot = recursiveCloneAndPrune(root, keepIds);
-            if (newRoot != null) {
-                resultForest.add(newRoot);
-            }
-        }
-        return resultForest;
+        SysModuleSimpleTreeResp newRoot = recursiveCloneAndPrune(root, keepIds);
+        return newRoot;
     }
 
     /**

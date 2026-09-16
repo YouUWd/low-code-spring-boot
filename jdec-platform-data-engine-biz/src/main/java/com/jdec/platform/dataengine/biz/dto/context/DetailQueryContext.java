@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.biz.dto.BasicModel;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
@@ -31,4 +32,6 @@ public class DetailQueryContext extends BasicModel {
             requiredMode = Schema.RequiredMode.REQUIRED,
             example = "change/view/change-change")
     private String btnType;
+
+    private List<ModuleFieldDTO> fields;
 }
