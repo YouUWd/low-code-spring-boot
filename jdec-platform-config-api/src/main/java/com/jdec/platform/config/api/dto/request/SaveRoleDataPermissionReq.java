@@ -25,10 +25,26 @@ public class SaveRoleDataPermissionReq {
     private String permissionTypeName;
 
     @Data
-    @Schema(description = "角色数据权限保存请求")
+    @Schema(description = "数据权限节点保存请求")
     public static class SaveDataPermissionReq {
         @Schema(description = "权限节点id")
         private Long permissionId;
+
+        @Schema(description = "数据权限全选：1=全选，0=非全选")
+        private Integer permissionCheckAll;
+
+        @Schema(description = "主体列表")
+        private List<SaveDataSubjectReq> subjects;
+    }
+
+    @Data
+    @Schema(description = "数据权限主体保存请求")
+    public static class SaveDataSubjectReq {
+        @Schema(description = "主体ID")
+        private Long subjectId;
+
+        @Schema(description = "主体全选：1=全选，0=非全选")
+        private Integer subjectCheckAll;
 
         @Schema(description = "业务名称列表")
         private List<String> bizNames;

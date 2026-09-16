@@ -141,7 +141,7 @@ biz:
   system:
     data-permission:
       urls:
-        student_manage: http://localhost:8080/api/student/common/query/get-data-right
+        company: http://localhost:8080/api/student/common/query/get-data-right
         # config_center: http://localhost:8080/api/data-permission
         # auth_center: http://localhost:8080/api/data-permission
 

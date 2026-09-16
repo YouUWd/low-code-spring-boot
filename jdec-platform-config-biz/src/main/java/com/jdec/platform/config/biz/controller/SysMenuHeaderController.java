@@ -1,15 +1,12 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysMenuHeaderApi;
-import com.jdec.platform.config.api.dto.request.SysMenuHeaderReq;
-import com.jdec.platform.config.api.dto.request.UpdateSysMenuHeaderReq;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,10 +26,16 @@ public class SysMenuHeaderController {
     @GetMapping("/tree")
     @Operation(
             summary = "查询菜单表头树",
-            description = "根据菜单ID查询该菜单及其子菜单/字段构成的表头节点树，无配置时按菜单绑定模块的字段生成默认树并落库后返回")
+            description =
+                    "根据菜单ID查询该菜单及其子菜单/字段构成的表头节点树。change=0 时与 sys_menu_header 已保存配置按 virId 合并"
+                            + "（两边都有取表中记录、仅表中有丢弃、仅生成侧有取生成侧默认值）；change=1 时只按菜单当前绑定模块的字段生成，不读表。"
+                            + "纯查询接口，不落库：递归子菜单生成的节点不带主键id")
     public ApiResponse<SysMenuHeaderResp> tree(
-            @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
-        return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderTree(menuId));
+            @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId,
+            @Parameter(description = "变更标记：0-菜单关联模块未变化，1-菜单关联模块已切换", example = "0")
+                    @RequestParam(defaultValue = "0")
+                    Integer change) {
+        return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderTree(menuId, change));
     }
 
     @GetMapping("/display")
@@ -42,24 +45,5 @@ public class SysMenuHeaderController {
     public ApiResponse<MenuHeaderDisplayResp> display(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderDisplay(menuId));
-    }
-
-    @PostMapping("/save")
-    @Operation(
-            summary = "保存菜单表头配置",
-            description =
-                    "批量更新表头节点，按 menuId + 虚拟id(id) 定位记录，更新 parentId、sortOrder、fixed、checked；顶层节点 parentId 传 0")
-    public ApiResponse<Void> save(@RequestBody List<SysMenuHeaderReq> items) {
-        sysMenuHeaderApi.saveMenuHeader(items);
-        return ApiResponse.success();
-    }
-
-    @PutMapping("/edit")
-    @Operation(
-            summary = "编辑菜单表头节点展示配置",
-            description = "按主键 id 更新表头节点的 colors/width/sorted/searchType/ellipsis，字段均非必填，未传字段保持原值")
-    public ApiResponse<Void> edit(@RequestBody UpdateSysMenuHeaderReq req) {
-        sysMenuHeaderApi.updateMenuHeader(req);
-        return ApiResponse.success();
     }
 }

@@ -395,32 +395,75 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
         List<SaveRoleDataPermissionReq.SaveDataPermissionReq> saveDataPermissions =
                 request.getDataPermissions();
 
-        // 1. 删除该角色的所有数据权限关联
-        sysRoleDataPermissionMapper.delete(
-                Wrappers.<SysRoleDataPermission>lambdaQuery()
-                        .eq(SysRoleDataPermission::getRoleId, roleId));
-
-        // 2. 解析并插入新的权限关联
+        // 1. 按权限节点/主体精准清空并重建关联
+        List<SysRoleDataPermission> toInsert = new ArrayList<>();
         if (CollUtil.isNotEmpty(saveDataPermissions)) {
-            List<SysRoleDataPermission> roleDataPermissions =
-                    saveDataPermissions.stream()
-                            .flatMap(
-                                    saveDataPermission ->
-                                            saveDataPermission.getBizNames().stream()
-                                                    .map(
-                                                            bizName -> {
-                                                                SysRoleDataPermission permission =
-                                                                        new SysRoleDataPermission();
-                                                                permission.setRoleId(
-                                                                        request.getRoleId());
-                                                                permission.setDataPermissionId(
-                                                                        saveDataPermission
-                                                                                .getPermissionId());
-                                                                permission.setBizName(bizName);
-                                                                return permission;
-                                                            }))
-                            .toList();
-            sysRoleDataPermissionMapper.insert(roleDataPermissions);
+            for (SaveRoleDataPermissionReq.SaveDataPermissionReq saveDataPermission :
+                    saveDataPermissions) {
+                Long permissionId = saveDataPermission.getPermissionId();
+                if (permissionId == null) {
+                    continue;
+                }
+                boolean permissionCheckAll = isCheckAll(saveDataPermission.getPermissionCheckAll());
+
+                if (permissionCheckAll) {
+                    // 1.1 数据权限全选：清空该权限节点下的所有数据，主体数组有几个就新增几条
+                    sysRoleDataPermissionMapper.delete(
+                            Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                    .eq(SysRoleDataPermission::getRoleId, roleId)
+                                    .eq(SysRoleDataPermission::getDataPermissionId, permissionId));
+                    for (SaveRoleDataPermissionReq.SaveDataSubjectReq subject :
+                            nullToEmpty(saveDataPermission.getSubjects())) {
+                        toInsert.add(
+                                buildDataPermission(
+                                        roleId,
+                                        permissionId,
+                                        subject.getSubjectId(),
+                                        1,
+                                        subject.getSubjectCheckAll(),
+                                        null));
+                    }
+                    continue;
+                }
+
+                List<SaveRoleDataPermissionReq.SaveDataSubjectReq> subjects =
+                        nullToEmpty(saveDataPermission.getSubjects());
+                if (subjects.isEmpty()) {
+                    // 1.2 权限节点未勾选：清空该权限节点下的所有数据
+                    sysRoleDataPermissionMapper.delete(
+                            Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                    .eq(SysRoleDataPermission::getRoleId, roleId)
+                                    .eq(SysRoleDataPermission::getDataPermissionId, permissionId));
+                    continue;
+                }
+
+                for (SaveRoleDataPermissionReq.SaveDataSubjectReq subject : subjects) {
+                    Long subjectId = subject.getSubjectId();
+                    // 1.3 清空该主体下的数据
+                    sysRoleDataPermissionMapper.delete(
+                            Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                    .eq(SysRoleDataPermission::getRoleId, roleId)
+                                    .eq(SysRoleDataPermission::getDataPermissionId, permissionId)
+                                    .eq(SysRoleDataPermission::getSubjectId, subjectId));
+
+                    if (isCheckAll(subject.getSubjectCheckAll())) {
+                        // 1.4 主体全选：新增一条主体全选标识数据，业务名称置空
+                        toInsert.add(
+                                buildDataPermission(roleId, permissionId, subjectId, 0, 1, null));
+                    } else if (CollUtil.isNotEmpty(subject.getBizNames())) {
+                        for (String bizName : subject.getBizNames()) {
+                            toInsert.add(
+                                    buildDataPermission(
+                                            roleId, permissionId, subjectId, 0, 0, bizName));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. 批量插入新的权限关联
+        if (CollUtil.isNotEmpty(toInsert)) {
+            sysRoleDataPermissionMapper.insert(toInsert);
         }
 
         // 3. 记录审计日志（编程式）
@@ -431,6 +474,34 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 request.getPermissionTypeName());
 
         setAffectedContext(roleId);
+    }
+
+    /** 判断全选标识是否为1 */
+    private boolean isCheckAll(Integer checkAll) {
+        return Integer.valueOf(1).equals(checkAll);
+    }
+
+    /** 集合为null时返回空集合 */
+    private <T> List<T> nullToEmpty(List<T> list) {
+        return list == null ? Collections.emptyList() : list;
+    }
+
+    /** 构建角色数据权限关联实体 */
+    private SysRoleDataPermission buildDataPermission(
+            Long roleId,
+            Long permissionId,
+            Long subjectId,
+            Integer permissionCheckAll,
+            Integer subjectCheckAll,
+            String bizName) {
+        SysRoleDataPermission permission = new SysRoleDataPermission();
+        permission.setRoleId(roleId);
+        permission.setDataPermissionId(permissionId);
+        permission.setSubjectId(subjectId);
+        permission.setPermissionCheckAll(permissionCheckAll);
+        permission.setSubjectCheckAll(subjectCheckAll == null ? 0 : subjectCheckAll);
+        permission.setBizName(bizName);
+        return permission;
     }
 
     @Override
@@ -512,40 +583,77 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
 
     @Override
     public RoleDataPermissionResp getRoleDataPermission(Long roleId) {
+        RoleDataPermissionResp permissionResp = new RoleDataPermissionResp();
+        permissionResp.setRoleId(roleId);
+
         // 查询角色数据权限关联
         List<SysRoleDataPermission> roleDataPermissions =
                 sysRoleDataPermissionMapper.selectList(
                         Wrappers.<SysRoleDataPermission>lambdaQuery()
-                                .eq(SysRoleDataPermission::getRoleId, roleId));
+                                .eq(SysRoleDataPermission::getRoleId, roleId)
+                                .orderByAsc(SysRoleDataPermission::getId));
 
         if (roleDataPermissions.isEmpty()) {
-            return new RoleDataPermissionResp();
+            permissionResp.setDataPermission(Collections.emptyList());
+            return permissionResp;
         }
 
-        // 按 dataPermissionId 分组，收集拼接后的权限ID
-        Map<Long, List<String>> groupedPermissions =
+        // 按 dataPermissionId 分组
+        Map<Long, List<SysRoleDataPermission>> groupedByPermission =
                 roleDataPermissions.stream()
                         .collect(
                                 Collectors.groupingBy(
                                         SysRoleDataPermission::getDataPermissionId,
-                                        Collectors.mapping(
-                                                SysRoleDataPermission::getBizName,
-                                                Collectors.toList())));
-        RoleDataPermissionResp permissionResp = new RoleDataPermissionResp();
-        permissionResp.setRoleId(roleId);
-        // 构建响应
-        List<RoleDataPermissionResp.DataPermissionListReq> dataPermissionListReqs =
-                groupedPermissions.entrySet().stream()
-                        .map(
-                                entry -> {
-                                    RoleDataPermissionResp.DataPermissionListReq permissionListReq =
-                                            new RoleDataPermissionResp.DataPermissionListReq();
-                                    permissionListReq.setPermissionId(entry.getKey());
-                                    permissionListReq.setBizNames(entry.getValue());
-                                    return permissionListReq;
-                                })
-                        .toList();
-        permissionResp.setDataPermission(dataPermissionListReqs);
+                                        LinkedHashMap::new,
+                                        Collectors.toList()));
+
+        // 构建响应：权限节点 -> 主体 -> 业务名称
+        List<RoleDataPermissionResp.DataPermissionItem> dataPermissionItems = new ArrayList<>();
+        for (Map.Entry<Long, List<SysRoleDataPermission>> permissionEntry :
+                groupedByPermission.entrySet()) {
+            List<SysRoleDataPermission> permissionRecords = permissionEntry.getValue();
+
+            RoleDataPermissionResp.DataPermissionItem dataPermissionItem =
+                    new RoleDataPermissionResp.DataPermissionItem();
+            dataPermissionItem.setPermissionId(permissionEntry.getKey());
+            dataPermissionItem.setPermissionCheckAll(
+                    permissionRecords.stream().anyMatch(r -> isCheckAll(r.getPermissionCheckAll()))
+                            ? 1
+                            : 0);
+
+            Map<Long, List<SysRoleDataPermission>> groupedBySubject =
+                    permissionRecords.stream()
+                            .collect(
+                                    Collectors.groupingBy(
+                                            SysRoleDataPermission::getSubjectId,
+                                            LinkedHashMap::new,
+                                            Collectors.toList()));
+
+            List<RoleDataPermissionResp.DataPermissionSubject> subjectList = new ArrayList<>();
+            for (Map.Entry<Long, List<SysRoleDataPermission>> subjectEntry :
+                    groupedBySubject.entrySet()) {
+                List<SysRoleDataPermission> subjectRecords = subjectEntry.getValue();
+
+                RoleDataPermissionResp.DataPermissionSubject subject =
+                        new RoleDataPermissionResp.DataPermissionSubject();
+                subject.setSubjectId(subjectEntry.getKey());
+                subject.setSubjectCheckAll(
+                        subjectRecords.stream().anyMatch(r -> isCheckAll(r.getSubjectCheckAll()))
+                                ? 1
+                                : 0);
+                subject.setBizNames(
+                        subjectRecords.stream()
+                                .map(SysRoleDataPermission::getBizName)
+                                .filter(Objects::nonNull)
+                                .toList());
+                subjectList.add(subject);
+            }
+
+            dataPermissionItem.setSubjects(subjectList);
+            dataPermissionItems.add(dataPermissionItem);
+        }
+
+        permissionResp.setDataPermission(dataPermissionItems);
         return permissionResp;
     }
 
@@ -575,9 +683,10 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
             return Collections.emptyList();
         }
 
-        // 4. 构建 permissionId -> bizNames 的映射
+        // 4. 构建 permissionId -> bizNames 的映射（全选标识行 bizName 为空，需过滤）
         Map<Long, List<String>> permissionIdToBizNamesMap =
                 roleDataPermissions.stream()
+                        .filter(permission -> permission.getBizName() != null)
                         .collect(
                                 Collectors.groupingBy(
                                         SysRoleDataPermission::getDataPermissionId,
