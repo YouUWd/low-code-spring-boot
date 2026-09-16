@@ -29,6 +29,7 @@ import com.jdec.platform.common_business.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.common_business.biz.enums.FormButtonEnum;
 import com.jdec.platform.common_business.biz.enums.QueryOpEnum;
 import com.jdec.platform.common_business.biz.service.ConfigCenterApiService;
+import com.jdec.platform.common_business.biz.service.DSLContextFactory;
 import com.jdec.platform.common_business.biz.service.ModuleInfoWithPermissionService;
 import com.jdec.platform.common_business.biz.util.JsonUtil;
 import com.jdec.platform.common_business.biz.util.LoginUserUtil;
@@ -40,11 +41,15 @@ import com.jdec.platform.shared.utils.SpringBeanUtil;
 import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.jooq.*;
+import org.jooq.Record;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ReflectionUtils;
@@ -111,6 +116,8 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
     private final ApprovalApiOpenFeignClient approvalApiOpenFeignClient;
 
     private final PersonalizedUserServiceApi personalizedUserServiceApi;
+
+    private final DSLContextFactory jooqContextFactory;
 
     @Override
     public Map<String, Object> dynamicQueryDetailData(
@@ -2818,26 +2825,23 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
 
         List<DataRightValue> resultList = new ArrayList<>();
 
+        DSLContext dsl = jooqContextFactory.getContext();
+
         for (DataRightAccessReq dataRightAccessReq : req) {
             log.debug(
                     "获取数据库表:{}的列:{}的数据",
                     dataRightAccessReq.getTableName(),
                     dataRightAccessReq.getColumn());
             // 获取表Mapper对象
-            BaseMapper moduleTableMapper =
-                    SpringBeanUtil.getBean(
-                            ToolUtils.snakeToCamelCase(dataRightAccessReq.getTableName())
-                                    + MYBATIS_MAPPER_SUFFIX,
-                            BaseMapper.class);
+            SelectJoinStep<org.jooq.Record> query =
+                    dsl.select(List.of(DSL.field(dataRightAccessReq.getColumn())))
+                            .from(dataRightAccessReq.getTableName());
 
-            // 查询构造条件
-            QueryWrapper queryWrapper = Wrappers.query();
+            query.where(
+                    DSL.field(DSL.name(dataRightAccessReq.getTableName(), "subject_id"))
+                            .in(dataRightAccessReq.getSubjectIds()));
 
-            queryWrapper.select(dataRightAccessReq.getColumn());
-
-            queryWrapper.in("subject_id", dataRightAccessReq.getSubjectIds());
-
-            List<Object> dataList = moduleTableMapper.selectList(queryWrapper);
+            Result<org.jooq.Record> recordsResult = query.fetch();
 
             DataRightValue.DataRightValueBuilder dataRightValueBuilder = DataRightValue.builder();
             dataRightValueBuilder.dataPermissionCode(
@@ -2846,34 +2850,17 @@ public class DynamicDataAccessServiceImpl implements DynamicDataAccessServiceApi
                             + dataRightAccessReq.getColumn());
             dataRightValueBuilder.subject(String.valueOf(subjectId));
 
-            List<String> values =
-                    dataList.stream()
-                            .map(
-                                    ele -> {
-                                        if (Objects.isNull(ele)) {
-                                            log.debug("查询结果为空");
-                                            return null;
-                                        }
-                                        Object columnValue = null;
-                                        Field columnField =
-                                                ReflectionUtils.findField(
-                                                        ele.getClass(),
-                                                        ToolUtils.snakeToCamelCase(
-                                                                dataRightAccessReq.getColumn()));
-                                        if (Objects.nonNull(columnField)) {
-                                            columnField.setAccessible(true);
-                                            columnValue =
-                                                    ReflectionUtils.getField(columnField, ele);
-                                            if (Objects.nonNull(columnValue)) {
-                                                return String.valueOf(columnValue);
-                                            } else {
-                                                return null;
-                                            }
-                                        } else {
-                                            return null;
-                                        }
-                                    })
-                            .collect(Collectors.toList());
+            List<String> values = new ArrayList<>();
+            for (Record r : recordsResult) {
+                Map<String, Object> rowData = r.intoMap();
+                Object targetFieldValue =
+                        rowData.get(ToolUtils.snakeToCamelCase(dataRightAccessReq.getColumn()));
+                if (Objects.isNull(targetFieldValue)) {
+                    values.add(null);
+                } else {
+                    values.add(String.valueOf(targetFieldValue));
+                }
+            }
 
             dataRightValueBuilder.bizNames(values);
 
