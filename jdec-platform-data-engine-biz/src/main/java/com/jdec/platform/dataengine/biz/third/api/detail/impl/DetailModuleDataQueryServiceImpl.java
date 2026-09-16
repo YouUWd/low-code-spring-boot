@@ -85,9 +85,11 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
             statementContext.setId(context.getId());
         }
         DSLContext dslContext = jooqContextFactory.getContext();
+
         statementContext.setDsl(dslContext);
         statementContext.setModuleFilterInfo(moduleFilterInfo);
         statementContext.setTableName(primaryTable);
+        statementContext.setFields(context.getFields());
 
         // 构建SQL select 语句
         SelectJoinStep<Record> selectStep =

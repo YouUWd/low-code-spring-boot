@@ -1,9 +1,9 @@
 package com.jdec.platform.dataengine.biz.controller;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
-import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,12 +33,12 @@ public class DataEngineController {
 
     @GetMapping("/menu/detail/{id}")
     @Operation(summary = "获取详情数据", description = "获取详情数据")
-    public ApiResponse<List<NestedModuleDataDTO>> getDetail(
+    public ApiResponse<DetailDataResp> getDetail(
             @PathVariable Long id,
-            @RequestParam List<Long> moduleIds,
+            Long moduleId,
             String btnType,
-            Boolean topQuery) {
-        return ApiResponse.success(dataEngineApi.getDetail(moduleIds, id, btnType, topQuery));
+            @RequestParam List<Long> filterFields) {
+        return ApiResponse.success(dataEngineApi.getDetail(moduleId, id, btnType, filterFields));
     }
 
     @PostMapping("/save")

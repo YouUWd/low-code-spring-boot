@@ -3,7 +3,7 @@ package com.jdec.platform.dataengine.biz.util;
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.dataengine.api.dto.model.TabNodeDTO;
 import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
-import com.jdec.platform.dataengine.biz.dto.TableRelationDTO;
+import com.jdec.platform.dataengine.api.dto.model.TableRelationDTO;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import org.apache.commons.lang3.StringUtils;

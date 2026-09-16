@@ -1,4 +1,4 @@
-package com.jdec.platform.dataengine.biz.dto;
+package com.jdec.platform.dataengine.api.dto.model;
 
 import java.io.Serializable;
 import lombok.Builder;
@@ -7,6 +7,8 @@ import lombok.Data;
 @Data
 @Builder
 public class TableRelationDTO implements Serializable {
+
+    private Long id;
 
     private String mainTable;
 
@@ -17,4 +19,6 @@ public class TableRelationDTO implements Serializable {
     private String joinField;
 
     private String relationType;
+
+    private String description;
 }

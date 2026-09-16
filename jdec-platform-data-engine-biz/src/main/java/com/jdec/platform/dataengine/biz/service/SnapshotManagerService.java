@@ -11,7 +11,6 @@ import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.snapshot.SnapshotDiffEngine;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -71,7 +70,7 @@ public class SnapshotManagerService implements DataSnapshotApi {
 
         // 1. 查询当前聚合实体完整数据并序列化为 JSON
         List<NestedModuleDataDTO> detailData =
-                dynamicQueryService.getDetail(Arrays.asList(moduleId), dataId, "view", true);
+                dynamicQueryService.getDetail(moduleId, dataId, "view", List.of());
         DynamicDetailResp detailResp = null;
         String currentSnapshotJson = JSON.toJSONString(detailResp);
 
