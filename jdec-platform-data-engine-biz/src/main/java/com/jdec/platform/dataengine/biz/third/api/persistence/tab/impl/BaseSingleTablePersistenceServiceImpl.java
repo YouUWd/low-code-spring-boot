@@ -2,18 +2,26 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.tab.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
+import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
+import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataChangeContent;
+import com.jdec.platform.dataengine.biz.entity.ModuleDataFieldChangeContent;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.mapper.ModuleDataChangeContentMapper;
+import com.jdec.platform.dataengine.biz.service.IModuleDataFieldChangeContentService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,8 +38,10 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
     private final ModuleDataChangeContentMapper moduleDataChangeContentMapper;
 
+    private final IModuleDataFieldChangeContentService iModuleDataFieldChangeContentService;
+
     @Override
-    public Long insertRecord(RecordSaveContext context) {
+    public DataSaveResult insertRecord(RecordSaveContext context) {
         Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
 
         String tableName = context.getTableName();
@@ -74,15 +84,22 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 if (context.getRootModuleMainTableDataId() == null) {
                     context.setRootModuleMainTableDataId(num.longValue());
                 }
-                saveModuleDataChangeContent(context, null, insertedMap, num.longValue());
-                return num.longValue();
+                // saveModuleDataChangeContent(context, null, insertedMap, num.longValue());
+                RowChangeDTO rowChange =
+                        DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
+                                context.getRecord(), null);
+                saveModuleDataFieldChangeContent(context, rowChange, num.longValue());
+                return DataSaveResult.builder()
+                        .dataId(num.longValue())
+                        .rowChange(rowChange)
+                        .build();
             }
         }
         return null;
     }
 
     @Override
-    public Long updateRecord(RecordSaveContext context) {
+    public DataSaveResult updateRecord(RecordSaveContext context) {
         Long id = DataPersistenceUtil.getRecordId(context.getRecord());
         Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
 
@@ -94,11 +111,17 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                                 DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
                                         .eq(id))
                         .fetchOne();
-        // Update
+
+        RowChangeDTO rowChangeDTO =
+                DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
+                        DataPersistenceUtil.convertRecordToMap(oldMap), context.getRecord(), null);
+
+        // Update 不返回任何字段
         context.getDsl()
                 .update(DSL.table(DSL.name(context.getTableName())))
                 .set(fieldValues)
                 .where(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD)).eq(id))
+                // .returning(DSL.asterisk())
                 .execute();
 
         Record newMap =
@@ -112,12 +135,13 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (context.getRootModuleMainTableDataId() == null) {
             context.setRootModuleMainTableDataId(id);
         }
-        saveModuleDataChangeContent(context, oldMap, newMap, id);
-        return id;
+        // saveModuleDataChangeContent(context, oldMap, newMap, id);
+        saveModuleDataFieldChangeContent(context, rowChangeDTO, id);
+        return DataSaveResult.builder().dataId(id).rowChange(rowChangeDTO).build();
     }
 
     @Override
-    public Long saveRecord(RecordSaveContext context) {
+    public DataSaveResult saveRecord(RecordSaveContext context) {
         if (CollectionUtil.isEmpty(context.getRecord())) {
             return null;
         }
@@ -140,8 +164,10 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     && context.getDefaultExcludeFields().contains(entry.getKey())) {
                 continue;
             }
+
             fieldValues.put(
-                    DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))), entry.getValue());
+                    DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                    DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
         }
         // 表单数据 共有的 一些业务字段数据
         if (CollectionUtil.isNotEmpty(context.getBizDataMap())) {
@@ -153,7 +179,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 log.info("fill biz data field {}={}", entry.getKey(), entry.getValue());
                 fieldValues.put(
                         DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
-                        entry.getValue());
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
             }
         }
         // 关联上级表 一些字段 数据
@@ -167,7 +193,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 log.info("fill parent module field {}={}", entry.getKey(), entry.getValue());
                 fieldValues.put(
                         DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
-                        entry.getValue());
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
             }
         }
         // 自动补充默认的字段信息 用户上下文 数据
@@ -181,7 +207,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 log.info("fill user context field {}={}", entry.getKey(), entry.getValue());
                 fieldValues.put(
                         DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
-                        entry.getValue());
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
             }
         }
         return fieldValues;
@@ -270,5 +296,85 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                         .set(fieldValues)
                         .returning(pkField)
                         .fetchOne();
+    }
+
+    private void saveModuleDataFieldChangeContent(
+            RecordSaveContext context, RowChangeDTO rowChange, Long dataId) {
+        if (rowChange == null) {
+            return;
+        }
+
+        if (CollectionUtil.isNotEmpty(rowChange.getColumns())) {
+
+            List<ModuleDataFieldChangeContent> insertList = new ArrayList<>();
+            List<ModuleDataFieldChangeContent> updateList = new ArrayList<>();
+
+            for (FieldChangeDTO fieldChangeDTO : rowChange.getColumns()) {
+                LambdaQueryWrapper<ModuleDataFieldChangeContent> queryWrapper =
+                        new LambdaQueryWrapper<>();
+                queryWrapper.eq(ModuleDataFieldChangeContent::getDataId, dataId);
+                queryWrapper.eq(ModuleDataFieldChangeContent::getTableName, context.getTableName());
+                queryWrapper.eq(
+                        ModuleDataFieldChangeContent::getFieldId, fieldChangeDTO.getField());
+
+                ModuleDataFieldChangeContent old =
+                        iModuleDataFieldChangeContentService.queryOne(queryWrapper);
+
+                if (old == null) {
+                    ModuleDataFieldChangeContent changeContent = new ModuleDataFieldChangeContent();
+                    changeContent.setId(null);
+                    changeContent.setActionId(ModuleDataSaveContextHolder.getContextActionId());
+                    changeContent.setRootModuleId(context.getRootModuleId());
+                    changeContent.setRootTableDataId(context.getRootModuleMainTableDataId());
+                    changeContent.setRootTableDataVersion(
+                            context.getRootModuleMainTableDataVersion());
+                    changeContent.setModuleId(
+                            context.getSysModuleCompleteResp().getModule().getId());
+                    changeContent.setTableName(context.getTableName());
+                    changeContent.setDataId(dataId);
+                    changeContent.setFieldId(fieldChangeDTO.getField());
+                    // changeContent.setContent(null);
+
+                    Map dataMap = new HashMap();
+                    dataMap.put("old", fieldChangeDTO.getOld());
+                    dataMap.put("newer", fieldChangeDTO.getNewer());
+                    try {
+                        String jsonStr = JsonUtil.obj2Json(dataMap);
+                        changeContent.setContent(jsonStr);
+                    } catch (Exception e) {
+                        throw new BusinessException(
+                                ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                                ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                                e);
+                    }
+                    changeContent.setApprovalFlag(1);
+                    changeContent.setActionType(context.getIsInsert() ? 1 : 2);
+                    changeContent.setCreateDate(LocalDateTime.now());
+                    insertList.add(changeContent);
+                } else {
+                    Map dataMap = new HashMap();
+                    dataMap.put("old", fieldChangeDTO.getOld());
+                    dataMap.put("newer", fieldChangeDTO.getNewer());
+                    try {
+                        String jsonStr = JsonUtil.obj2Json(dataMap);
+                        old.setContent(jsonStr);
+                    } catch (Exception e) {
+                        throw new BusinessException(
+                                ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                                ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                                e);
+                    }
+                    old.setCreateDate(LocalDateTime.now());
+                    updateList.add(old);
+                }
+            }
+
+            if (CollectionUtil.isNotEmpty(insertList)) {
+                iModuleDataFieldChangeContentService.batchInsert(insertList);
+            }
+            if (CollectionUtil.isNotEmpty(updateList)) {
+                iModuleDataFieldChangeContentService.batchUpdate(updateList);
+            }
+        }
     }
 }

@@ -1,6 +1,10 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
+import cn.hutool.core.collection.CollectionUtil;
+import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
+import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
+import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,26 +49,143 @@ public class DataPersistenceUtil {
         List<Map<String, Object>> dataMapList =
                 (List<Map<String, Object>>) combinedMap.get(tableName);
 
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> dataMap : dataMapList) {
-            Map<String, Object> tableRecord = (Map<String, Object>) dataMap.get("data");
-            result.add(tableRecord);
-        }
-        return result;
+        //        List<Map<String, Object>> result = new ArrayList<>();
+        //        for (Map<String, Object> dataMap : dataMapList) {
+        //            Map<String, Object> tableRecord = (Map<String, Object>) dataMap.get("data");
+        //            result.add(tableRecord);
+        //        }
+        return dataMapList;
+    }
+
+    public static Map<String, Object> fillTableRecordIdInCombinedMap(
+            Map<String, Object> combinedMap, String tableName, Object id) {
+        Map<String, Object> dataMap = (Map<String, Object>) combinedMap.get(tableName);
+        Map<String, Object> tableRecord = (Map<String, Object>) dataMap.get("data");
+        tableRecord.put("id", id);
+        return tableRecord;
+    }
+
+    public static Map<String, Object> fillTableRecordFieldInRecordMap(
+            Map<String, Object> recordMap, String field, Object id) {
+        recordMap.put(field, id);
+        return recordMap;
+    }
+
+    public static Map<String, Object> fillTableRecordChangeInCombinedMap(
+            Map<String, Object> combinedMap, String tableName, Object dataChange) {
+        Map<String, Object> dataMap = (Map<String, Object>) combinedMap.get(tableName);
+        dataMap.put("change", dataChange);
+
+        return dataMap;
+    }
+
+    public static Map<String, Object> fillTableRecordChangeInRecordMap(
+            Map<String, Object> recordMap, Object dataChange) {
+        recordMap.put("change", dataChange);
+        return recordMap;
     }
 
     public static Map<String, Object> convertRecordToMap(Record r) {
         Map<String, Object> map = new HashMap<>();
-        if (r != null && r.fields() != null) {
-            for (org.jooq.Field field : r.fields()) {
-                Object val = r.get(field);
-                if (val instanceof JSON v) {
-                    map.put(field.getName(), v.data());
-                } else {
-                    map.put(field.getName(), val);
+        try {
+            if (r != null && r.fields() != null) {
+                for (org.jooq.Field field : r.fields()) {
+                    Object val = r.get(field);
+                    if (val instanceof JSON v) {
+                        val = JsonUtil.json2Obj(v.data(), Object.class);
+                        map.put(field.getName(), val);
+                    } else {
+                        map.put(field.getName(), val);
+                    }
                 }
             }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
         return map;
+    }
+
+    public static RowChangeDTO convertUpdateRecordToRowChangeDTO(
+            Map<String, Object> r, Map<String, Object> recordMap, Object fields) {
+
+        if (CollectionUtil.isEmpty(recordMap)) {
+            return null;
+        }
+        List<FieldChangeDTO> fieldChangeDTOList = new ArrayList<>();
+        for (String field : recordMap.keySet()) {
+            Object old = r.get(field);
+            Object newer = recordMap.get(field);
+            FieldChangeDTO fieldChangeDTO = getFieldChangeDTO(field, old, newer);
+            if (fieldChangeDTO != null) {
+                fieldChangeDTOList.add(fieldChangeDTO);
+            }
+        }
+        if (CollectionUtil.isEmpty(fieldChangeDTOList)) {
+            return null;
+        }
+        return RowChangeDTO.builder().columns(fieldChangeDTOList).action("u").name(null).build();
+    }
+
+    public static RowChangeDTO convertInsertRecordToRowChangeDTO(
+            Map<String, Object> recordMap, Object fields) {
+
+        if (CollectionUtil.isEmpty(recordMap)) {
+            return null;
+        }
+        List<FieldChangeDTO> fieldChangeDTOList = new ArrayList<>();
+        for (String field : recordMap.keySet()) {
+            Object newer = recordMap.get(field);
+            FieldChangeDTO fieldChangeDTO = getFieldChangeDTO(field, null, newer);
+            if (fieldChangeDTO != null) {
+                fieldChangeDTOList.add(fieldChangeDTO);
+            }
+        }
+        if (CollectionUtil.isEmpty(fieldChangeDTOList)) {
+            return null;
+        }
+        return RowChangeDTO.builder().columns(fieldChangeDTOList).action("i").name(null).build();
+    }
+
+    public static FieldChangeDTO getFieldChangeDTO(String field, Object old, Object newer) {
+
+        try {
+            String oldValue = String.valueOf(getFieldWriteValue(old));
+
+            String newValue = String.valueOf(getFieldWriteValue(newer));
+
+            if (!oldValue.equals(newValue)) {
+                if (oldValue.equals("null")) {
+                    return FieldChangeDTO.builder().field(field).old(null).newer(newValue).build();
+                } else if (newValue.equals("null")) {
+                    return FieldChangeDTO.builder().field(field).old(oldValue).newer(null).build();
+                } else {
+                    return FieldChangeDTO.builder()
+                            .field(field)
+                            .old(oldValue)
+                            .newer(newValue)
+                            .build();
+                }
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return null;
+    }
+
+    public static Object getFieldWriteValue(Object value) {
+        if (value == null) {
+            return value;
+        }
+        try {
+            if (value instanceof List list) {
+                value = JsonUtil.obj2Json(list);
+            } else if (value instanceof Map map) {
+                value = JsonUtil.obj2Json(map);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return value;
     }
 }

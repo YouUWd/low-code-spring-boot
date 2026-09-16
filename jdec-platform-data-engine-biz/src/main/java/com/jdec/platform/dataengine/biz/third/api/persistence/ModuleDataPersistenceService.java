@@ -4,8 +4,10 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
+import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.TableRelationDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
@@ -16,6 +18,7 @@ import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSa
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.post.ModuleDataSavePostFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
+import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.dataengine.biz.util.TableRelationUtils;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
@@ -144,6 +147,13 @@ public class ModuleDataPersistenceService {
         } finally {
             ModuleDataSaveContextHolder.clear();
         }
+        try {
+            log.info("=======" + "\n");
+            req.setRoot(null);
+            log.info("=======" + JsonUtil.obj2Json(req));
+        } catch (Exception e) {
+
+        }
 
         // moduleDataSavePostFactoryService.postProcess(ModuleDataPostContext.builder().build());
         return rootModuleMainTableDataId.get();
@@ -190,11 +200,14 @@ public class ModuleDataPersistenceService {
             DynamicSaveReqContext currentReq) {
 
         Map<String, Object> parentLevelTableAssociationMap = new HashMap<>();
+        boolean isRootModule = false;
+        TableRelationDTO relationDTO = null;
         // 首先获取父模块主表 与当前模块的主表 之间的关联关系，一般来说 父模块主表的主键字段 关联子模块的主表主表字段
         if (currentReq.getParentModuleId() == null) {
             // 没有父模块，说明是根模块
+            isRootModule = true;
         } else {
-            TableRelationDTO relationDTO =
+            relationDTO =
                     TableRelationUtils.getTableRelationBySubTable(
                             currentReq.getTabTreeNode(),
                             sysModuleCompleteResp.getModule().getPrimaryTable());
@@ -226,7 +239,35 @@ public class ModuleDataPersistenceService {
                         .build();
         // moduleDataSaveNecessaryFieldFillFactoryService.fillData(recordSaveContext);
         // 首先 写入当前 模块 主表的数据
-        primaryTableId = baseSingleTablePersistenceService.saveRecord(recordSaveContext);
+        DataSaveResult dataSaveResult =
+                baseSingleTablePersistenceService.saveRecord(recordSaveContext);
+        primaryTableId = dataSaveResult.getDataId();
+
+        if (recordSaveContext.getIsInsert()) {
+            DataPersistenceUtil.fillTableRecordFieldInRecordMap(
+                    primaryTableRecordMap,
+                    CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD,
+                    primaryTableId);
+            if (!isRootModule) {
+                DataPersistenceUtil.fillTableRecordFieldInRecordMap(
+                        primaryTableRecordMap,
+                        relationDTO.getJoinField(),
+                        currentReq.getParentModulePrimaryTableId());
+            }
+        } else {
+            if (!isRootModule) {
+                DataPersistenceUtil.fillTableRecordFieldInRecordMap(
+                        primaryTableRecordMap,
+                        relationDTO.getJoinField(),
+                        currentReq.getParentModulePrimaryTableId());
+            }
+        }
+        if (dataSaveResult.getRowChange() != null) {
+            DataPersistenceUtil.fillTableRecordChangeInCombinedMap(
+                    dataMap,
+                    sysModuleCompleteResp.getModule().getPrimaryTable(),
+                    dataSaveResult.getRowChange());
+        }
 
         if (primaryTableId == null) {
             log.error(
@@ -275,12 +316,17 @@ public class ModuleDataPersistenceService {
                     Map<String, Object> subTableRecordMap =
                             DataPersistenceUtil.getTableRecordFromCombinedMap(dataMap, moduleTable);
                     //// 首先 写入子表数据
-                    saveModuleRelatedTableRecordData(
-                            subTableRecordMap,
-                            sysModuleCompleteResp,
-                            relationDTO,
-                            modulePrimaryTableId,
-                            currentReq.getTxDsl());
+                    DataSaveResult dataSaveResult =
+                            saveModuleRelatedTableRecordData(
+                                    subTableRecordMap,
+                                    sysModuleCompleteResp,
+                                    relationDTO,
+                                    modulePrimaryTableId,
+                                    currentReq.getTxDsl());
+                    if (dataSaveResult.getRowChange() != null) {
+                        DataPersistenceUtil.fillTableRecordChangeInCombinedMap(
+                                dataMap, moduleTable, dataSaveResult.getRowChange());
+                    }
                 }
                 case ONE_TO_MANY -> {
                     // 1:N
@@ -291,12 +337,19 @@ public class ModuleDataPersistenceService {
 
                     for (Map<String, Object> recordMap : subTableRecordListMap) {
                         // 首先 写入子表数据
-                        saveModuleRelatedTableRecordData(
-                                recordMap,
-                                sysModuleCompleteResp,
-                                relationDTO,
-                                modulePrimaryTableId,
-                                currentReq.getTxDsl());
+                        Map<String, Object> tableRecord =
+                                (Map<String, Object>) recordMap.get("data");
+                        DataSaveResult dataSaveResult =
+                                saveModuleRelatedTableRecordData(
+                                        tableRecord,
+                                        sysModuleCompleteResp,
+                                        relationDTO,
+                                        modulePrimaryTableId,
+                                        currentReq.getTxDsl());
+                        if (dataSaveResult.getRowChange() != null) {
+                            DataPersistenceUtil.fillTableRecordChangeInRecordMap(
+                                    recordMap, dataSaveResult.getRowChange());
+                        }
                     }
                 }
             }
@@ -313,7 +366,7 @@ public class ModuleDataPersistenceService {
      * @param modulePrimaryTableId 主表记录id
      * @return
      */
-    private Long saveModuleRelatedTableRecordData(
+    private DataSaveResult saveModuleRelatedTableRecordData(
             Map<String, Object> recordMap,
             SysModuleResp sysModuleCompleteResp,
             TableRelationDTO relationDTO,
@@ -321,9 +374,12 @@ public class ModuleDataPersistenceService {
             DSLContext dslContext) {
 
         Long subTableId = DataPersistenceUtil.getRecordId(recordMap);
+        boolean isInsert = subTableId == null || subTableId <= 0;
         Map<String, Object> subTableParentLevelTableAssociationMap = new HashMap<>();
-        subTableParentLevelTableAssociationMap.put(
-                relationDTO.getJoinField(), modulePrimaryTableId);
+        if (isInsert) {
+            subTableParentLevelTableAssociationMap.put(
+                    relationDTO.getJoinField(), modulePrimaryTableId);
+        }
         RecordSaveContext subRecordSaveContext =
                 RecordSaveContext.builder()
                         .dsl(dslContext)
@@ -338,7 +394,15 @@ public class ModuleDataPersistenceService {
                         .build();
         // moduleDataSaveNecessaryFieldFillFactoryService.fillData(subRecordSaveContext);
         //// 首先 写入子表数据
-        subTableId = baseSingleTablePersistenceService.saveRecord(subRecordSaveContext);
-        return subTableId;
+        DataSaveResult dataSaveResult =
+                baseSingleTablePersistenceService.saveRecord(subRecordSaveContext);
+        subTableId = dataSaveResult.getDataId();
+        if (isInsert) {
+            DataPersistenceUtil.fillTableRecordFieldInRecordMap(
+                    recordMap, CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, subTableId);
+            DataPersistenceUtil.fillTableRecordFieldInRecordMap(
+                    recordMap, relationDTO.getJoinField(), modulePrimaryTableId);
+        }
+        return dataSaveResult;
     }
 }
