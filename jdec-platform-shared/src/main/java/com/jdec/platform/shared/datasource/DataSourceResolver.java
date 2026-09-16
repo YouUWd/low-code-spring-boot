@@ -63,6 +63,19 @@ public class DataSourceResolver {
     }
 
     /**
+     * 根据 projectNo 解析物理 DataSource 并构建 jOOQ DSLContext。
+     *
+     * <p>解析链路：projectNo -> mapping -> 数据源名称 -> 物理 DataSource
+     *
+     * @param projectNo 项目编号
+     * @return 绑定该项目物理数据源的 DSLContext
+     * @throws BusinessException 如果数据源不存在
+     */
+    public DSLContext getDSLContextByProjectNo(String projectNo) {
+        return DSL.using(resolve(projectNo), SQLDialect.MYSQL);
+    }
+
+    /**
      * 根据 projectNo 获取绑定对应物理 DataSource 的 JdbcTemplate。
      *
      * @param projectNo 项目编号
