@@ -110,8 +110,10 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
             Record recordsResult = selectStep.fetchOne();
 
             Map<String, Object> mainRow = new HashMap<>();
-            mainRow.putAll(recordsResult.intoMap());
-            mainTableIdMap.put(statementContext.getId(), mainRow);
+            if (Objects.nonNull(recordsResult)) {
+                mainRow.putAll(recordsResult.intoMap());
+                mainTableIdMap.put(statementContext.getId(), mainRow);
+            }
 
             Map<String, Object> mainDataMap = new HashMap<>();
             mainDataMap.put("data", mainRow);

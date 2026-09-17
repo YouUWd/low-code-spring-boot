@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.controller;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
@@ -8,7 +9,6 @@ import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,14 +31,16 @@ public class DataEngineController {
         return ApiResponse.success(dataEngineApi.query(req));
     }
 
-    @GetMapping("/menu/detail/{id}")
+    @PostMapping("/menu/detail/{id}")
     @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<DetailDataResp> getDetail(
-            @PathVariable Long id,
-            Long moduleId,
-            String btnType,
-            @RequestParam(required = false) List<Long> filterFields) {
-        return ApiResponse.success(dataEngineApi.getDetail(moduleId, id, btnType, filterFields));
+            @PathVariable Long id, @RequestBody DynamicDetailQueryReq detailQueryReq) {
+        return ApiResponse.success(
+                dataEngineApi.getDetail(
+                        detailQueryReq.getModuleId(),
+                        id,
+                        "view",
+                        detailQueryReq.getFilterFields()));
     }
 
     @PostMapping("/save")
