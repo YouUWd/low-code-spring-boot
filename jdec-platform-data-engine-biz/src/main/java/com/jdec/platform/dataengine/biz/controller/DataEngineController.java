@@ -31,14 +31,14 @@ public class DataEngineController {
         return ApiResponse.success(dataEngineApi.query(req));
     }
 
-    @PostMapping("/menu/detail/{id}")
+    @PostMapping("/menu/detail")
     @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<DetailDataResp> getDetail(
-            @PathVariable Long id, @RequestBody DynamicDetailQueryReq detailQueryReq) {
+            @RequestBody DynamicDetailQueryReq detailQueryReq) {
         return ApiResponse.success(
                 dataEngineApi.getDetail(
                         detailQueryReq.getModuleId(),
-                        id,
+                        detailQueryReq.getId(),
                         "view",
                         detailQueryReq.getFilterFields()));
     }

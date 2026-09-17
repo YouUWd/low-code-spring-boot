@@ -421,6 +421,10 @@ public class DynamicQueryService {
         for (String tableName : moduleTables) {
             TabTreeNodeDTO targetNode = TabTreeNodeDTO.findSubTreeByValue(tableTreeNode, tableName);
 
+            if (Objects.isNull(targetNode)) {
+                continue;
+            }
+
             if (StringUtils.isNotBlank(targetNode.getNode().getSubTableField())) {
                 moduleFields.add(
                         ModuleFieldDTO.builder()
