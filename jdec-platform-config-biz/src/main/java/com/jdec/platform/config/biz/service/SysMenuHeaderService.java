@@ -13,9 +13,14 @@ import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysMenuHeader;
 import com.jdec.platform.config.biz.entity.SysModuleField;
+import com.jdec.platform.config.biz.entity.SysRoleMenu;
+import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.mapper.SysMenuHeaderMapper;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
+import com.jdec.platform.config.open.api.OpenMenuHeaderApi;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -32,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysMenuHeaderService implements SysMenuHeaderApi {
+public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi {
 
     /** 节点类型：菜单 */
     private static final Integer NODE_TYPE_MENU = 0;
@@ -70,23 +75,42 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
     /** 变更标记：菜单关联的详情菜单已切换（表头配置尚未更新入库），0 表示未变化 */
     private static final Integer CHANGE_DETAIL_SWITCHED = 1;
 
+    /** 字段可查阅标记：sys_role_module_field_permission.view = 1 */
+    private static final Integer VIEW_YES = 1;
+
+    /** 角色权限过滤开关：角色菜单/字段权限数据尚未配置完成，暂时关闭（按最大权限返回），配置就绪后置为 true 即可恢复 */
+    private static final boolean ROLE_PERMISSION_FILTER_ENABLED = false;
+
     private final SysMenuHeaderMapper sysMenuHeaderMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
+    private final SysRoleMenuMapper sysRoleMenuMapper;
+    private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final ObjectMapper objectMapper;
 
     @Override
     public SysMenuHeaderResp getMenuHeaderTree(Long menuId, Integer change) {
+        return getMenuHeaderTree(menuId, change, null);
+    }
+
+    @Override
+    public SysMenuHeaderResp getMenuHeaderTree(Long menuId, Integer change, Long roleId) {
         if (menuId == null) {
             throw new BusinessException("菜单ID不能为空");
         }
 
-        // 生成侧：以该菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段
-        List<SysMenuHeaderResp> generatedNodes = buildGeneratedNodes(menuId);
+        // 角色权限过滤暂时关闭：一律按最大权限返回，角色权限数据配置就绪后打开开关即可
+        Long effectiveRoleId = ROLE_PERMISSION_FILTER_ENABLED ? roleId : null;
+
+        // 入参为列表菜单ID，表头记录归属其绑定的详情菜单
+        Long headerMenuId = resolveHeaderMenuId(menuId);
+
+        // 生成侧：以表头归属菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段（effectiveRoleId 非空时按角色过滤）
+        List<SysMenuHeaderResp> generatedNodes = buildGeneratedNodes(headerMenuId, effectiveRoleId);
 
         // 菜单关联的详情菜单已切换（表头配置尚未更新入库）：只用生成侧，不读表
         if (CHANGE_DETAIL_SWITCHED.equals(change)) {
-            return assembleTree(menuId, generatedNodes);
+            return assembleTree(headerMenuId, generatedNodes);
         }
 
         // 详情菜单未变化：与 sys_menu_header 已保存配置按虚拟id 合并
@@ -95,7 +119,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
                         .map(SysMenuHeaderResp::getVirId)
                         .collect(Collectors.toSet());
         Map<String, SysMenuHeader> storedByVirId = new LinkedHashMap<>();
-        for (SysMenuHeader stored : selectStoredNodes(menuId)) {
+        for (SysMenuHeader stored : selectStoredNodes(headerMenuId)) {
             storedByVirId.putIfAbsent(stored.getVirId(), stored);
         }
         List<SysMenuHeaderResp> mergedNodes = new ArrayList<>();
@@ -106,7 +130,16 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
         }
 
         // 仅表中有的节点不再返回（丢弃）；递归子菜单生成的节点直接返回，不落库、不带主键 id
-        return assembleTree(menuId, mergedNodes);
+        return assembleTree(headerMenuId, mergedNodes);
+    }
+
+    @Override
+    public Long resolveHeaderMenuId(Long menuId) {
+        SysMenu menu = selectMenuById(menuId);
+        if (menu == null) {
+            throw new BusinessException("菜单不存在");
+        }
+        return menu.getDetailId() != null ? menu.getDetailId() : menuId;
     }
 
     /**
@@ -393,16 +426,21 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
      * <p>以该菜单为根递归其全部子级菜单，取每个菜单绑定模块（sys_module_field）下的字段：菜单节点虚拟id 为 {@code MENU_{菜单id}}，字段节点为
      * {@code Field_{字段id}}；所有节点的 menu_id 统一取最顶层菜单ID， 顶层节点 parent_id 为 {@code 0}，同级节点从 {@code 1}
      * 起维护排序值。
+     *
+     * <p>{@code roleId} 非空时按角色权限过滤：无权限的子级菜单不参与遍历（根菜单始终保留），非 {@code view=1} 的字段不生成节点。
      */
-    private List<SysMenuHeaderResp> buildGeneratedNodes(Long menuId) {
+    private List<SysMenuHeaderResp> buildGeneratedNodes(Long menuId, Long roleId) {
         SysMenu menu = selectMenuById(menuId);
         if (menu == null) {
             throw new BusinessException("菜单不存在");
         }
 
+        // 角色有权限的菜单ID集合（roleId 为空则不过滤）
+        Set<Long> permittedMenuIds = selectPermittedMenuIds(roleId);
+
         // 收集菜单及其全部子级菜单（树形）
         Map<Long, List<SysMenu>> childrenByPid = new LinkedHashMap<>();
-        collectChildren(childrenByPid, menuId);
+        collectChildren(childrenByPid, menuId, permittedMenuIds);
 
         // 收集所有菜单绑定到的模块ID，一次性查询模块字段
         Set<Long> moduleIds = new HashSet<>();
@@ -416,7 +454,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
                 }
             }
         }
-        Map<Long, List<SysModuleField>> fieldsByModule = selectFieldsGroupByModule(moduleIds);
+        Map<Long, List<SysModuleField>> fieldsByModule =
+                selectFieldsGroupByModule(moduleIds, roleId);
 
         // 先按树形生成，再压平为节点列表
         SysMenuHeaderResp root =
@@ -636,15 +675,56 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
 
     // ==================== 通用查询工具 ====================
 
-    private void collectChildren(Map<Long, List<SysMenu>> childrenByPid, Long parentId) {
+    private void collectChildren(
+            Map<Long, List<SysMenu>> childrenByPid, Long parentId, Set<Long> permittedMenuIds) {
         List<SysMenu> children = selectChildrenByPid(parentId);
+        // 按角色权限过滤无权限的子级菜单（permittedMenuIds 为空表示不过滤）
+        if (permittedMenuIds != null) {
+            children =
+                    children.stream()
+                            .filter(child -> permittedMenuIds.contains(child.getId()))
+                            .collect(Collectors.toList());
+        }
         if (children.isEmpty()) {
             return;
         }
         childrenByPid.put(parentId, children);
         for (SysMenu child : children) {
-            collectChildren(childrenByPid, child.getId());
+            collectChildren(childrenByPid, child.getId(), permittedMenuIds);
         }
+    }
+
+    /** 角色有权限的菜单ID集合；roleId 为空返回 null 表示不做菜单权限过滤 */
+    @Override
+    public Set<Long> selectPermittedMenuIds(Long roleId) {
+        if (roleId == null) {
+            return null;
+        }
+        return sysRoleMenuMapper
+                .selectList(Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId))
+                .stream()
+                .map(SysRoleMenu::getMenuId)
+                .collect(Collectors.toSet());
+    }
+
+    /** 角色可查阅（view=1）的字段ID集合；roleId 为空返回 null 表示不做字段权限过滤 */
+    @Override
+    public Set<Long> selectReadableFieldIds(Long roleId, Collection<Long> fieldIds) {
+        if (roleId == null) {
+            return null;
+        }
+        if (fieldIds.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return sysRoleModuleFieldPermissionMapper
+                .selectList(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .in(SysRoleModuleFieldPermission::getModuleFieldId, fieldIds)
+                                .eq(SysRoleModuleFieldPermission::getView, VIEW_YES))
+                .stream()
+                .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                .collect(Collectors.toSet());
     }
 
     private List<SysMenu> selectChildrenByPid(Long pid) {
@@ -670,7 +750,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
                         .last("LIMIT 1"));
     }
 
-    private Map<Long, List<SysModuleField>> selectFieldsGroupByModule(Set<Long> moduleIds) {
+    /** 按模块查询字段并按模块分组；roleId 非空时仅保留角色 view=1 的字段 */
+    private Map<Long, List<SysModuleField>> selectFieldsGroupByModule(
+            Set<Long> moduleIds, Long roleId) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -680,6 +762,17 @@ public class SysMenuHeaderService implements SysMenuHeaderApi {
                                 .in(SysModuleField::getModuleId, moduleIds)
                                 .orderByAsc(SysModuleField::getSortOrder)
                                 .orderByAsc(SysModuleField::getId));
+        // 按角色字段权限过滤（无记录即无权限，直接丢弃）
+        Set<Long> readableFieldIds =
+                selectReadableFieldIds(
+                        roleId,
+                        fields.stream().map(SysModuleField::getId).collect(Collectors.toList()));
+        if (readableFieldIds != null) {
+            fields =
+                    fields.stream()
+                            .filter(field -> readableFieldIds.contains(field.getId()))
+                            .collect(Collectors.toList());
+        }
         return fields.stream()
                 .collect(
                         Collectors.groupingBy(
