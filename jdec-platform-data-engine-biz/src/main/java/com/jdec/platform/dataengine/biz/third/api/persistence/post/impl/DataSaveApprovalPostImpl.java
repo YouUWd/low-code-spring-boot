@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 public class DataSaveApprovalPostImpl implements BaseDataSavePost {
     @Override
     public Boolean isReferTo(SaveType type) {
-        return null;
+        return false;
     }
 
     @Override

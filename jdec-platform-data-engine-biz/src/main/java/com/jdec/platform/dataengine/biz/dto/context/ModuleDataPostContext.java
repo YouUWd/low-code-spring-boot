@@ -6,4 +6,7 @@ import lombok.experimental.SuperBuilder;
 
 @SuperBuilder
 @Data
-public class ModuleDataPostContext extends BasicSaveModel {}
+public class ModuleDataPostContext extends BasicSaveModel {
+
+    private Long actionId;
+}

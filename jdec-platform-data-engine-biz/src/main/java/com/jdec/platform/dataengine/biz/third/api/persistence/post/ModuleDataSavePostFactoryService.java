@@ -13,9 +13,9 @@ public class ModuleDataSavePostFactoryService {
 
     private final List<BaseDataSavePost> baseDataSavePostList;
 
-    public Boolean postProcess(ModuleDataPostContext context) {
-        return baseDataSavePostList.stream()
+    public void postProcess(ModuleDataPostContext context) {
+        baseDataSavePostList.stream()
                 .filter(post -> post.isReferTo(context.getSaveType()))
-                .anyMatch(post -> post.postProcess(context));
+                .forEach(post -> post.postProcess(context));
     }
 }

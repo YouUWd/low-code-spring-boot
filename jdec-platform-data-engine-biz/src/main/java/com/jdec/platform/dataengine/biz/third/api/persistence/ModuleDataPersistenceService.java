@@ -10,9 +10,11 @@ import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
+import com.jdec.platform.dataengine.biz.dto.context.ModuleDataPostContext;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.RelationType;
+import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSaveCheckFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
@@ -51,8 +53,10 @@ public class ModuleDataPersistenceService {
 
         req.setRoot(TableRelationUtils.getRootTabTreeNode());
         AtomicReference<Long> rootModuleMainTableDataId = new AtomicReference<>();
+        Long actionId = null;
         try {
             ModuleDataSaveContextHolder.openDataChangeFlag(null);
+            actionId = ModuleDataSaveContextHolder.getContextActionId();
             jooqContextFactory
                     .getContext()
                     .transaction(
@@ -155,7 +159,11 @@ public class ModuleDataPersistenceService {
 
         }
 
-        // moduleDataSavePostFactoryService.postProcess(ModuleDataPostContext.builder().build());
+        moduleDataSavePostFactoryService.postProcess(
+                ModuleDataPostContext.builder()
+                        .actionId(actionId)
+                        .saveType(SaveType.NORMAL_SAVE)
+                        .build());
         return rootModuleMainTableDataId.get();
     }
 

@@ -2,7 +2,6 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.tab.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.StrUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
@@ -310,63 +309,65 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
             List<ModuleDataFieldChangeContent> updateList = new ArrayList<>();
 
             for (FieldChangeDTO fieldChangeDTO : rowChange.getColumns()) {
-                LambdaQueryWrapper<ModuleDataFieldChangeContent> queryWrapper =
-                        new LambdaQueryWrapper<>();
-                queryWrapper.eq(ModuleDataFieldChangeContent::getDataId, dataId);
-                queryWrapper.eq(ModuleDataFieldChangeContent::getTableName, context.getTableName());
-                queryWrapper.eq(
-                        ModuleDataFieldChangeContent::getFieldId, fieldChangeDTO.getField());
+                //                LambdaQueryWrapper<ModuleDataFieldChangeContent> queryWrapper =
+                //                        new LambdaQueryWrapper<>();
+                //                queryWrapper.eq(ModuleDataFieldChangeContent::getDataId, dataId);
+                //                queryWrapper.eq(ModuleDataFieldChangeContent::getTableName,
+                // context.getTableName());
+                //                queryWrapper.eq(
+                //                        ModuleDataFieldChangeContent::getFieldId,
+                // fieldChangeDTO.getField());
+                //
+                //                ModuleDataFieldChangeContent old =
+                //
+                // iModuleDataFieldChangeContentService.queryOne(queryWrapper);
 
-                ModuleDataFieldChangeContent old =
-                        iModuleDataFieldChangeContentService.queryOne(queryWrapper);
+                //                if (old == null) {
+                //
+                //                } else {
+                //                    Map dataMap = new HashMap();
+                //                    dataMap.put("old", fieldChangeDTO.getOld());
+                //                    dataMap.put("newer", fieldChangeDTO.getNewer());
+                //                    try {
+                //                        String jsonStr = JsonUtil.obj2Json(dataMap);
+                //                        old.setContent(jsonStr);
+                //                    } catch (Exception e) {
+                //                        throw new BusinessException(
+                //                                ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                //                                ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                //                                e);
+                //                    }
+                //                    old.setCreateDate(LocalDateTime.now());
+                //                    updateList.add(old);
+                //                }
+                ModuleDataFieldChangeContent changeContent = new ModuleDataFieldChangeContent();
+                changeContent.setId(null);
+                changeContent.setActionId(ModuleDataSaveContextHolder.getContextActionId());
+                changeContent.setRootModuleId(context.getRootModuleId());
+                changeContent.setRootTableDataId(context.getRootModuleMainTableDataId());
+                changeContent.setRootTableDataVersion(context.getRootModuleMainTableDataVersion());
+                changeContent.setModuleId(context.getSysModuleCompleteResp().getModule().getId());
+                changeContent.setTableName(context.getTableName());
+                changeContent.setDataId(dataId);
+                changeContent.setFieldId(fieldChangeDTO.getField());
+                // changeContent.setContent(null);
 
-                if (old == null) {
-                    ModuleDataFieldChangeContent changeContent = new ModuleDataFieldChangeContent();
-                    changeContent.setId(null);
-                    changeContent.setActionId(ModuleDataSaveContextHolder.getContextActionId());
-                    changeContent.setRootModuleId(context.getRootModuleId());
-                    changeContent.setRootTableDataId(context.getRootModuleMainTableDataId());
-                    changeContent.setRootTableDataVersion(
-                            context.getRootModuleMainTableDataVersion());
-                    changeContent.setModuleId(
-                            context.getSysModuleCompleteResp().getModule().getId());
-                    changeContent.setTableName(context.getTableName());
-                    changeContent.setDataId(dataId);
-                    changeContent.setFieldId(fieldChangeDTO.getField());
-                    // changeContent.setContent(null);
-
-                    Map dataMap = new HashMap();
-                    dataMap.put("old", fieldChangeDTO.getOld());
-                    dataMap.put("newer", fieldChangeDTO.getNewer());
-                    try {
-                        String jsonStr = JsonUtil.obj2Json(dataMap);
-                        changeContent.setContent(jsonStr);
-                    } catch (Exception e) {
-                        throw new BusinessException(
-                                ApiResponseCodeEnum.SERVER_ERROR.getCode(),
-                                ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
-                                e);
-                    }
-                    changeContent.setApprovalFlag(1);
-                    changeContent.setActionType(context.getIsInsert() ? 1 : 2);
-                    changeContent.setCreateDate(LocalDateTime.now());
-                    insertList.add(changeContent);
-                } else {
-                    Map dataMap = new HashMap();
-                    dataMap.put("old", fieldChangeDTO.getOld());
-                    dataMap.put("newer", fieldChangeDTO.getNewer());
-                    try {
-                        String jsonStr = JsonUtil.obj2Json(dataMap);
-                        old.setContent(jsonStr);
-                    } catch (Exception e) {
-                        throw new BusinessException(
-                                ApiResponseCodeEnum.SERVER_ERROR.getCode(),
-                                ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
-                                e);
-                    }
-                    old.setCreateDate(LocalDateTime.now());
-                    updateList.add(old);
+                Map dataMap = new HashMap();
+                dataMap.put("old", fieldChangeDTO.getOld());
+                dataMap.put("newer", fieldChangeDTO.getNewer());
+                try {
+                    String jsonStr = JsonUtil.obj2Json(dataMap);
+                    changeContent.setContent(jsonStr);
+                } catch (Exception e) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.SERVER_ERROR.getCode(),
+                            ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
+                            e);
                 }
+                changeContent.setApprovalFlag(1);
+                changeContent.setActionType(context.getIsInsert() ? 1 : 2);
+                changeContent.setCreateDate(LocalDateTime.now());
+                insertList.add(changeContent);
             }
 
             if (CollectionUtil.isNotEmpty(insertList)) {
