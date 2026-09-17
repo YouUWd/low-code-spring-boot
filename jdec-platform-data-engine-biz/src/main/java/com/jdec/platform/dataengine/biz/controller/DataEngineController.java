@@ -37,7 +37,7 @@ public class DataEngineController {
             @PathVariable Long id,
             Long moduleId,
             String btnType,
-            @RequestParam List<Long> filterFields) {
+            @RequestParam(required = false) List<Long> filterFields) {
         return ApiResponse.success(dataEngineApi.getDetail(moduleId, id, btnType, filterFields));
     }
 
