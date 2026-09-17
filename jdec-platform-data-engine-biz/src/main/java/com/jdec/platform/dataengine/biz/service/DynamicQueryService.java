@@ -234,8 +234,7 @@ public class DynamicQueryService {
 
         Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap = getModuleFields(filterFields);
 
-        recursiveQuery(
-                pruneMenus, resultList, pruneMenus.getId(), id, btnType, true, moduleIdToFieldMap);
+        recursiveQuery(pruneMenus, resultList, id, btnType, true, moduleIdToFieldMap);
 
         return resultList;
     }
@@ -255,7 +254,6 @@ public class DynamicQueryService {
     private void recursiveQuery(
             SysModuleSimpleTreeResp rootNode,
             List<NestedModuleDataDTO> resultList,
-            Long topMenuId,
             Long id,
             String btnType,
             Boolean topQuery,
@@ -265,6 +263,17 @@ public class DynamicQueryService {
         //        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleTree, topMenuId);
         if (rootNode == null) {
             return;
+        }
+
+        // filterFields为空时，返回本模块所有字段
+        if (moduleIdToFieldMap.isEmpty()) {
+            List<ModuleFieldDTO> moduleFields =
+                    dataModuleConfigService.listFieldsByModuleIds(Arrays.asList(rootNode.getId()));
+            moduleIdToFieldMap.put(
+                    rootNode.getId(),
+                    moduleFields.stream()
+                            .filter(ele -> ele.getModuleId().equals(rootNode.getId()))
+                            .collect(Collectors.toList()));
         }
 
         List<ModuleFieldDTO> moduleFileds = new ArrayList<>();

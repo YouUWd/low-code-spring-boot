@@ -125,6 +125,7 @@ public class DataEngineService implements DataEngineApi {
                         }
                     });
             targetNode.setChildren(newChildren);
+            targetNode.setModuleNodes(sourceNode.getModuleNodes());
         }
         return targetNode;
     }

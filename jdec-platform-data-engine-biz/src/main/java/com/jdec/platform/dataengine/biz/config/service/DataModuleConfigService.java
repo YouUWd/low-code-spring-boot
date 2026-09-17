@@ -214,4 +214,27 @@ public class DataModuleConfigService {
                                         .build())
                 .collect(Collectors.toList());
     }
+
+    public List<ModuleFieldDTO> listFieldsByModuleIds(List<Long> moduleIds) {
+        if (moduleIds == null || moduleIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<DataSysModuleField> fields =
+                moduleFieldMapper.selectList(
+                        Wrappers.<DataSysModuleField>lambdaQuery()
+                                .in(DataSysModuleField::getModuleId, moduleIds));
+        return fields.stream()
+                .map(
+                        f ->
+                                ModuleFieldDTO.builder()
+                                        .id(f.getId())
+                                        .moduleId(f.getModuleId())
+                                        .tableName(f.getTableName())
+                                        .columnName(f.getColumnName())
+                                        .displayName(f.getDisplayName())
+                                        .sortOrder(f.getSortOrder())
+                                        .build())
+                .collect(Collectors.toList());
+    }
 }

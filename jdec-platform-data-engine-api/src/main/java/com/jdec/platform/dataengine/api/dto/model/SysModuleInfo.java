@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.api.dto.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -40,6 +41,7 @@ public class SysModuleInfo {
     private List<TableRelationDTO> tableRelations;
 
     @Schema(description = "子模块信息", example = "1")
+    @JsonIgnore
     private List<ModuleNodeDTO> moduleNodes;
 
     private List<SysModuleInfo> children;
