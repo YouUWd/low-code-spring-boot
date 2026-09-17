@@ -1,6 +1,6 @@
 package com.jdec.platform.data.api.dto.response;
 
-import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import lombok.AllArgsConstructor;

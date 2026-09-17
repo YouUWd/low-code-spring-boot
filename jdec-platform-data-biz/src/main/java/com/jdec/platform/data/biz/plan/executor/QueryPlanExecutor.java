@@ -214,7 +214,15 @@ public class QueryPlanExecutor {
                 .build();
     }
 
-    /** 递归分批批量拉取各层子模块/子表数据 (利用 fk IN (...)) */
+    /**
+     * 递归分批批量拉取各层子模块/子表数据 (利用 fk IN (:parentIds))
+     *
+     * <p>【核心架构设计】： 1. 批量下发 (Batch Fetch)：以上级实体的主键集合为条件执行 {@code fk IN (:parentIds)}，
+     * 单次批量捞出所有子实体，彻底杜绝 N+1 次 SQL 递归查询； 2. 虚拟模块透传 (Transparent Virtual
+     * Pass-Through)：若当前模块为无物理主表的虚拟逻辑节点， 则直接将上层物理主键集合 {@code parentIds}
+     * 原样透传给其下级所有物理子模块，实现跨越虚拟层级的直达查询； 3. 引用索引缓存 (Identity Cache)：拉取出的原始数据按 {@link QueryNodePlan}
+     * 实例精确缓存在 {@code Map<QueryNodePlan, List<Map<String, Object>>>} 中，供 Stage 2 内存装配器进行组装。
+     */
     private void batchFetchChildNodesRecursively(
             DSLContext dsl,
             List<Long> parentIds,
@@ -231,6 +239,12 @@ public class QueryPlanExecutor {
         for (QueryNodePlan childPlan : childPlans) {
             String childTable = childPlan.getPrimaryTable();
             String fkField = childPlan.getParentForeignKey();
+            log.debug(
+                    "[QueryPlanExecutor] 批量拉取子节点数据: moduleId={}, primaryTable={}, fkField={}, parentIdsCount={}",
+                    childPlan.getModuleId(),
+                    childTable,
+                    fkField,
+                    parentIds.size());
 
             if (childTable == null
                     || childTable.isBlank()
@@ -241,8 +255,20 @@ public class QueryPlanExecutor {
                 if ((childTable == null || childTable.isBlank())
                         && childPlan.getChildren() != null
                         && !childPlan.getChildren().isEmpty()) {
+                    log.debug(
+                            "[QueryPlanExecutor] 节点 moduleId={} 为虚拟模块, 透传 parentIds: {} 递归拉取子节点数: {}",
+                            childPlan.getModuleId(),
+                            parentIds,
+                            childPlan.getChildren().size());
                     batchFetchChildNodesRecursively(
                             dsl, parentIds, childPlan.getChildren(), rawDataByNode);
+                } else {
+                    log.warn(
+                            "[QueryPlanExecutor] 节点 moduleId={} 跳过拉取 (childTable={}, fkField={}, hasChildren={})",
+                            childPlan.getModuleId(),
+                            childTable,
+                            fkField,
+                            childPlan.getChildren() != null && !childPlan.getChildren().isEmpty());
                 }
                 continue;
             }
@@ -352,6 +378,12 @@ public class QueryPlanExecutor {
                 }
             }
 
+            log.debug(
+                    "[QueryPlanExecutor] 节点批量拉取完成: moduleId={}, childTable={}, 捕获子行数={}, 产生下级候选主键数={}",
+                    childPlan.getModuleId(),
+                    childTable,
+                    childRows.size(),
+                    childPrimaryIds.size());
             rawDataByNode.put(childPlan, childRows);
 
             // 如果有孙模块/孙表，以当前从表的主键集合继续批量抓取孙表数据

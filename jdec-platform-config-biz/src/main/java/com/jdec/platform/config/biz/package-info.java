@@ -22,5 +22,5 @@
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Config BIZ",
-        allowedDependencies = {"config.api", "auth.api", "hr.api", "shared"})
+        allowedDependencies = {"config.api", "config.open", "auth.api", "hr.api", "shared"})
 package com.jdec.platform.config.biz;

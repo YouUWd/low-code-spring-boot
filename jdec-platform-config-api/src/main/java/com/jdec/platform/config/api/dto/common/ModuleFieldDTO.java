@@ -17,6 +17,8 @@ public class ModuleFieldDTO {
     @Schema(description = "字段ID（更新时使用）", example = "1")
     private Long id;
 
+    private Long moduleId;
+
     @Schema(description = "表名", requiredMode = Schema.RequiredMode.REQUIRED, example = "student")
     private String tableName;
 

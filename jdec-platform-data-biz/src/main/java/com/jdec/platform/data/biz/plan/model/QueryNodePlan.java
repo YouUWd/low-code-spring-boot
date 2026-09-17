@@ -1,6 +1,6 @@
 package com.jdec.platform.data.biz.plan.model;
 
-import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;

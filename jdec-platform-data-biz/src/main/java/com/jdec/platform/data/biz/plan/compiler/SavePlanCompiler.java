@@ -1,16 +1,18 @@
 package com.jdec.platform.data.biz.plan.compiler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.SaveReq;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
-import com.jdec.platform.data.biz.service.MetaCacheService;
+import com.jdec.platform.shared.context.AppContext;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,7 +31,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SavePlanCompiler {
 
-    private final MetaCacheService metaCacheService;
+    private final ConfigApi configApi;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /** 编译顶层保存请求为 SavePlan (支持标准 SaveReq 或直接将 detail.data 作为单条记录回传) */
@@ -72,7 +74,9 @@ public class SavePlanCompiler {
     public SaveNodePlan compileNode(SaveReq node, Long parentModuleId, ModuleInfo parentMeta) {
 
         Long moduleId = node.getModuleId();
-        ModuleInfo meta = metaCacheService.getModuleComplete(moduleId);
+        ModuleInfo meta =
+                configApi.getModuleWithFields(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
         if (meta == null) {
             throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
         }
@@ -266,18 +270,20 @@ public class SavePlanCompiler {
             return "id";
         }
 
-        List<TableRelationDTO> allRelations = new ArrayList<>();
-        if (childMeta != null && childMeta.getTableRelations() != null) {
-            allRelations.addAll(childMeta.getTableRelations());
+        Set<TableRelationDTO> allRelations = new LinkedHashSet<>();
+        List<TableRelationDTO> directRelations =
+                configApi.listTableRelations(
+                        AppContext.getProjectNo(),
+                        Set.of(parentPrimary.toLowerCase(), childPrimaryTable.toLowerCase()));
+        if (directRelations != null) {
+            allRelations.addAll(directRelations);
         }
+
+        allRelations.addAll(listTableRelations(childMeta));
         for (ModuleInfo vm : intermediateVms) {
-            if (vm != null && vm.getTableRelations() != null) {
-                allRelations.addAll(vm.getTableRelations());
-            }
+            allRelations.addAll(listTableRelations(vm));
         }
-        if (physicalParentMeta.getTableRelations() != null) {
-            allRelations.addAll(physicalParentMeta.getTableRelations());
-        }
+        allRelations.addAll(listTableRelations(physicalParentMeta));
 
         for (TableRelationDTO rel : allRelations) {
             if (rel != null
@@ -304,7 +310,9 @@ public class SavePlanCompiler {
         Long curParentId = currentMeta.getParentId();
         Set<Long> visited = new HashSet<>();
         while (curParentId != null && curParentId > 0 && visited.add(curParentId)) {
-            ModuleInfo pMeta = metaCacheService.getModuleComplete(curParentId);
+            ModuleInfo pMeta =
+                    configApi.getModuleWithFields(
+                            AppContext.getProjectNo(), AppContext.getSubjectId(), curParentId);
             if (pMeta == null) {
                 break;
             }
@@ -318,5 +326,34 @@ public class SavePlanCompiler {
             curParentId = pMeta.getParentId();
         }
         return null;
+    }
+
+    private List<TableRelationDTO> listTableRelations(ModuleInfo module) {
+        if (module == null) {
+            return Collections.emptyList();
+        }
+        String projectNo = AppContext.getProjectNo();
+        Set<String> tableNames = new HashSet<>();
+        addTableName(tableNames, module.getPrimaryTable());
+        if (module.getFields() != null) {
+            for (var field : module.getFields()) {
+                addTableName(tableNames, field.getTableName());
+            }
+        }
+        if (module.getParentId() != null && module.getParentId() > 0) {
+            var parent =
+                    configApi.getModuleBasic(
+                            projectNo, AppContext.getSubjectId(), module.getParentId());
+            if (parent != null) {
+                addTableName(tableNames, parent.getPrimaryTable());
+            }
+        }
+        return configApi.listTableRelations(projectNo, tableNames);
+    }
+
+    private void addTableName(Set<String> tableNames, String tableName) {
+        if (tableName != null && !tableName.isBlank()) {
+            tableNames.add(tableName.trim().toLowerCase());
+        }
     }
 }

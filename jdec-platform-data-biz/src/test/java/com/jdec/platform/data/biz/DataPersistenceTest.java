@@ -3,17 +3,19 @@ package com.jdec.platform.data.biz;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 
-import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.SaveReq;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.service.DataPersistenceService;
-import com.jdec.platform.data.biz.service.MetaCacheService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class DataPersistenceTest {
 
-    @Mock private MetaCacheService metaCacheService;
+    @Mock private ConfigApi configApi;
     @Mock private JooqDataContextFactory jooqDataContextFactory;
 
     private SavePlanCompiler savePlanCompiler;
@@ -88,15 +90,6 @@ class DataPersistenceTest {
                                                 .tableName("student_profile")
                                                 .columnName("emergency_phone")
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_profile")
-                                                .joinField("student_id")
-                                                .relationType("1:1")
-                                                .build()))
                         .build();
 
         // 模块 103: 选课管理 (主表 student_course)
@@ -118,21 +111,34 @@ class DataPersistenceTest {
                                                 .tableName("student_course")
                                                 .columnName("student_id")
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_course")
-                                                .joinField("student_id")
-                                                .relationType("1:N")
-                                                .build()))
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockStudentModule);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockCourseModule);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 101L))
+                .thenReturn(mockStudentModule);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 103L))
+                .thenReturn(mockCourseModule);
+        lenient()
+                .when(configApi.listTableRelations(nullable(String.class), anyCollection()))
+                .thenReturn(
+                        List.of(
+                                TableRelationDTO.builder()
+                                        .mainTable("student")
+                                        .mainField("id")
+                                        .joinTable("student_profile")
+                                        .joinField("student_id")
+                                        .relationType("1:1")
+                                        .build(),
+                                TableRelationDTO.builder()
+                                        .mainTable("student")
+                                        .mainField("id")
+                                        .joinTable("student_course")
+                                        .joinField("student_id")
+                                        .relationType("1:N")
+                                        .build()));
 
-        savePlanCompiler = new SavePlanCompiler(metaCacheService);
+        savePlanCompiler = new SavePlanCompiler(configApi);
         savePlanExecutor = new SavePlanExecutor(jooqDataContextFactory);
         dataPersistenceService = new DataPersistenceService(savePlanCompiler, savePlanExecutor);
     }
@@ -256,8 +262,10 @@ class DataPersistenceTest {
                         .build();
         ModuleInfo mockCourseUnder201 = mockCourseModule.toBuilder().parentId(201L).build();
 
-        lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockCourseUnder201);
+        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 103L))
+                .thenReturn(mockCourseUnder201);
 
         // 读写同构结构：studentRow 内部挂载 201 容器，201 容器内部挂载 103 选课记录
         Map<String, Object> studentRow = new HashMap<>();

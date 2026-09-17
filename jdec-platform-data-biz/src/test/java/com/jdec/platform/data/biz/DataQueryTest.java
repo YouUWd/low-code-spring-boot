@@ -5,10 +5,11 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.data.api.dto.common.ModuleNodeDTO;
-import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleNodeDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
@@ -22,7 +23,6 @@ import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import com.jdec.platform.data.biz.service.DataQueryService;
-import com.jdec.platform.data.biz.service.MetaCacheService;
 import java.util.*;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
@@ -52,7 +52,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class DataQueryTest {
 
-    @Mock private MetaCacheService metaCacheService;
+    @Mock private ConfigApi configApi;
     @Mock private JooqDataContextFactory jooqDataContextFactory;
 
     private final TreeResultAssembler treeResultAssembler = new TreeResultAssembler();
@@ -295,55 +295,6 @@ class DataQueryTest {
                                                 .displayName("班级名称")
                                                 .sortOrder(4)
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("clazz_id")
-                                                .joinTable("clazz")
-                                                .joinField("id")
-                                                .relationType("N:1")
-                                                .build(),
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_course")
-                                                .joinField("student_id")
-                                                .relationType("1:N")
-                                                .build(),
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_reward")
-                                                .joinField("student_id")
-                                                .relationType("1:N")
-                                                .build()))
-                        .moduleNodes(
-                                List.of(
-                                        ModuleNodeDTO.builder()
-                                                .id(103L)
-                                                .parentId(101L)
-                                                .moduleCode("MOD-COURSE")
-                                                .moduleName("选课管理")
-                                                .primaryTable("student_course")
-                                                .sortOrder(1)
-                                                .build(),
-                                        ModuleNodeDTO.builder()
-                                                .id(104L)
-                                                .parentId(103L)
-                                                .moduleCode("MOD-SCORE")
-                                                .moduleName("成绩明细")
-                                                .primaryTable("student_course_score_item")
-                                                .sortOrder(2)
-                                                .build(),
-                                        ModuleNodeDTO.builder()
-                                                .id(105L)
-                                                .parentId(101L)
-                                                .moduleCode("MOD-REWARD")
-                                                .moduleName("奖惩荣誉")
-                                                .primaryTable("student_reward")
-                                                .sortOrder(3)
-                                                .build()))
                         .build();
 
         // 模块 103: 选课管理 (主表 student_course)
@@ -380,22 +331,6 @@ class DataQueryTest {
                                                 .displayName("学生ID")
                                                 .sortOrder(3)
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_course")
-                                                .joinField("student_id")
-                                                .relationType("1:N")
-                                                .build(),
-                                        TableRelationDTO.builder()
-                                                .mainTable("student_course")
-                                                .mainField("id")
-                                                .joinTable("student_course_score_item")
-                                                .joinField("course_id")
-                                                .relationType("1:N")
-                                                .build()))
                         .build();
 
         // 模块 104: 成绩明细 (主表 student_course_score_item)
@@ -431,15 +366,6 @@ class DataQueryTest {
                                                 .columnName("course_id")
                                                 .displayName("选课ID")
                                                 .sortOrder(3)
-                                                .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student_course")
-                                                .mainField("id")
-                                                .joinTable("student_course_score_item")
-                                                .joinField("course_id")
-                                                .relationType("1:N")
                                                 .build()))
                         .build();
 
@@ -485,21 +411,12 @@ class DataQueryTest {
                                                 .displayName("学生ID")
                                                 .sortOrder(4)
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_reward")
-                                                .joinField("student_id")
-                                                .relationType("1:N")
-                                                .build()))
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
-        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
-        lenient().when(metaCacheService.getModuleComplete(105L)).thenReturn(mockModule105);
+        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
+        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
+        lenient().when(configApi.getModuleWithFields(null, null, 104L)).thenReturn(mockModule104);
+        lenient().when(configApi.getModuleWithFields(null, null, 105L)).thenReturn(mockModule105);
 
         List<ModuleFieldDTO> allMockFields = new ArrayList<>();
         allMockFields.addAll(mockModule101.getFields());
@@ -508,7 +425,7 @@ class DataQueryTest {
         allMockFields.addAll(mockModule105.getFields());
 
         lenient()
-                .when(metaCacheService.listFieldsByIds(anyList()))
+                .when(configApi.listFieldsByIds(anyList()))
                 .thenAnswer(
                         invocation -> {
                             List<Long> ids = invocation.getArgument(0);
@@ -517,14 +434,63 @@ class DataQueryTest {
                                     .toList();
                         });
 
-        queryPlanCompiler = new QueryPlanCompiler(metaCacheService);
+        lenient()
+                .when(configApi.listModulesByProject(anyString()))
+                .thenReturn(
+                        List.of(
+                                ModuleNodeDTO.builder().id(103L).parentId(101L).build(),
+                                ModuleNodeDTO.builder().id(104L).parentId(103L).build(),
+                                ModuleNodeDTO.builder().id(105L).parentId(101L).build()));
+        lenient()
+                .when(configApi.listTableRelations(nullable(String.class), anyCollection()))
+                .thenReturn(
+                        List.of(
+                                TableRelationDTO.builder()
+                                        .mainTable("student")
+                                        .mainField("id")
+                                        .joinTable("clazz")
+                                        .joinField("id")
+                                        .relationType("N:1")
+                                        .build(),
+                                TableRelationDTO.builder()
+                                        .mainTable("student")
+                                        .mainField("id")
+                                        .joinTable("student_course")
+                                        .joinField("student_id")
+                                        .relationType("1:N")
+                                        .build(),
+                                TableRelationDTO.builder()
+                                        .mainTable("student_course")
+                                        .mainField("id")
+                                        .joinTable("student_course_score_item")
+                                        .joinField("course_id")
+                                        .relationType("1:N")
+                                        .build(),
+                                TableRelationDTO.builder()
+                                        .mainTable("student")
+                                        .mainField("id")
+                                        .joinTable("student_reward")
+                                        .joinField("student_id")
+                                        .relationType("1:N")
+                                        .build(),
+                                TableRelationDTO.builder()
+                                        .mainTable("student")
+                                        .mainField("id")
+                                        .joinTable("student_award")
+                                        .joinField("student_id")
+                                        .relationType("1:N")
+                                        .build(),
+                                TableRelationDTO.builder()
+                                        .mainTable("student_award")
+                                        .mainField("id")
+                                        .joinTable("student_award_detail")
+                                        .joinField("award_id")
+                                        .relationType("1:N")
+                                        .build()));
+
+        queryPlanCompiler = new QueryPlanCompiler(configApi);
         queryPlanExecutor = new QueryPlanExecutor(jooqDataContextFactory, treeResultAssembler);
-        dataQueryService =
-                new DataQueryService(
-                        metaCacheService,
-                        jooqDataContextFactory,
-                        queryPlanCompiler,
-                        queryPlanExecutor);
+        dataQueryService = new DataQueryService(configApi, queryPlanCompiler, queryPlanExecutor);
     }
 
     @Test
@@ -969,12 +935,11 @@ class DataQueryTest {
                                                 .tableName("orphan_table")
                                                 .columnName("content")
                                                 .build()))
-                        .tableRelations(Collections.emptyList())
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(999L)).thenReturn(orphanModule);
+        lenient().when(configApi.getModuleWithFields(null, null, 999L)).thenReturn(orphanModule);
         lenient()
-                .when(metaCacheService.listFieldsByIds(List.of(9991L)))
+                .when(configApi.listFieldsByIds(List.of(9991L)))
                 .thenReturn(orphanModule.getFields());
 
         QueryReq req =
@@ -1029,15 +994,6 @@ class DataQueryTest {
                                                 .displayName("材料名称")
                                                 .sortOrder(3)
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student_award")
-                                                .mainField("id")
-                                                .joinTable("student_award_detail")
-                                                .joinField("award_id")
-                                                .relationType("1:N")
-                                                .build()))
                         .build();
 
         // 将 104 模块的主表修正为 student_award
@@ -1066,21 +1022,14 @@ class DataQueryTest {
                                                 .displayName("荣誉名称")
                                                 .sortOrder(2)
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_award")
-                                                .joinField("student_id")
-                                                .relationType("1:N")
-                                                .build()))
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(106L)).thenReturn(mockModule106);
-        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104Real);
+        lenient().when(configApi.getModuleWithFields(null, null, 106L)).thenReturn(mockModule106);
         lenient()
-                .when(metaCacheService.listFieldsByIds(List.of(1011L, 1012L, 37L, 38L, 74L, 76L)))
+                .when(configApi.getModuleWithFields(null, null, 104L))
+                .thenReturn(mockModule104Real);
+        lenient()
+                .when(configApi.listFieldsByIds(List.of(1011L, 1012L, 37L, 38L, 74L, 76L)))
                 .thenReturn(
                         List.of(
                                 mockModule101.getFields().get(1),
@@ -1143,8 +1092,8 @@ class DataQueryTest {
     @Test
     @DisplayName("测试子模块筛选反向约束根模块 (Semi-Join EXISTS 链式上卷)")
     void testChildModuleFilterRollupToRoot_SemiJoinExists() {
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
+        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
+        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
 
         // 子模块 103 (选课 student_course) 设置筛选条件: course_name LIKE '英语'
         QueryReq req =
@@ -1216,15 +1165,6 @@ class DataQueryTest {
                                                 .displayName("材料名称")
                                                 .sortOrder(3)
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student_award")
-                                                .mainField("id")
-                                                .joinTable("student_award_detail")
-                                                .joinField("award_id")
-                                                .relationType("1:N")
-                                                .build()))
                         .build();
 
         ModuleInfo mockModule104Real =
@@ -1250,27 +1190,20 @@ class DataQueryTest {
                                                 .displayName("荣誉名称")
                                                 .sortOrder(2)
                                                 .build()))
-                        .tableRelations(
-                                List.of(
-                                        TableRelationDTO.builder()
-                                                .mainTable("student")
-                                                .mainField("id")
-                                                .joinTable("student_award")
-                                                .joinField("student_id")
-                                                .relationType("1:N")
-                                                .build()))
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104Real);
-        lenient().when(metaCacheService.getModuleComplete(106L)).thenReturn(mockModule106);
+        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 104L))
+                .thenReturn(mockModule104Real);
+        lenient().when(configApi.getModuleWithFields(null, null, 106L)).thenReturn(mockModule106);
 
         List<ModuleFieldDTO> localFields = new ArrayList<>();
         localFields.addAll(mockModule101.getFields());
         localFields.addAll(mockModule104Real.getFields());
         localFields.addAll(mockModule106.getFields());
         lenient()
-                .when(metaCacheService.listFieldsByIds(anyList()))
+                .when(configApi.listFieldsByIds(anyList()))
                 .thenAnswer(
                         invocation -> {
                             List<Long> ids = invocation.getArgument(0);
@@ -1321,8 +1254,8 @@ class DataQueryTest {
     @Test
     @DisplayName("测试无子模块筛选时保持左外连接语义 (不生成 EXISTS 约束，杜绝误杀主记录)")
     void testNoChildFilterMaintainsLeftJoinSemantics_NoExistsRollup() {
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
+        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
+        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
 
         // 子模块 103 仅投影，没有任何 filters
         QueryReq req =
@@ -1366,8 +1299,10 @@ class DataQueryTest {
                                                 .build()))
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(105L)).thenReturn(mockModule105SameTable);
+        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 105L))
+                .thenReturn(mockModule105SameTable);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1400,9 +1335,9 @@ class DataQueryTest {
     @Test
     @DisplayName("测试 DataPage 序列化输出严格符合顶层挂在根 moduleId 下的契约")
     void testDataPageJsonSerializationMatchesRootModuleIdContract() throws Exception {
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
-        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
+        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
+        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
+        lenient().when(configApi.getModuleWithFields(null, null, 104L)).thenReturn(mockModule104);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1530,10 +1465,10 @@ class DataQueryTest {
                         .fields(List.of(outOfScopeField))
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(999L)).thenReturn(mockModule999);
+        lenient().when(configApi.getModuleWithFields(null, null, 999L)).thenReturn(mockModule999);
         lenient()
                 .when(
-                        metaCacheService.listFieldsByIds(
+                        configApi.listFieldsByIds(
                                 argThat(list -> list != null && list.contains(9991L))))
                 .thenReturn(List.of(mockModule101.getFields().get(1), outOfScopeField));
 
@@ -1565,10 +1500,10 @@ class DataQueryTest {
                         .fields(List.of(outOfScopeField))
                         .build();
 
-        lenient().when(metaCacheService.getModuleComplete(999L)).thenReturn(mockModule999);
+        lenient().when(configApi.getModuleWithFields(null, null, 999L)).thenReturn(mockModule999);
         lenient()
                 .when(
-                        metaCacheService.listFieldsByIds(
+                        configApi.listFieldsByIds(
                                 argThat(list -> list != null && list.contains(9991L))))
                 .thenReturn(List.of(mockModule101.getFields().get(1), outOfScopeField));
 
@@ -1603,8 +1538,10 @@ class DataQueryTest {
                         .build();
         ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
 
-        lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103Under201);
+        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 103L))
+                .thenReturn(mockModule103Under201);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1663,8 +1600,10 @@ class DataQueryTest {
                         .build();
         ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
 
-        lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103Under201);
+        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 103L))
+                .thenReturn(mockModule103Under201);
 
         QueryReq req =
                 QueryReq.builder().moduleId(101L).fields(List.of(1011L, 1012L, 1031L)).build();
@@ -1727,9 +1666,11 @@ class DataQueryTest {
                         .build();
         ModuleInfo mockModule103Under202 = mockModule103.toBuilder().parentId(202L).build();
 
-        lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
-        lenient().when(metaCacheService.getModuleComplete(202L)).thenReturn(mockVirtual202);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103Under202);
+        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
+        lenient().when(configApi.getModuleWithFields(null, null, 202L)).thenReturn(mockVirtual202);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 103L))
+                .thenReturn(mockModule103Under202);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1799,17 +1740,14 @@ class DataQueryTest {
                         .moduleName("教务信息")
                         .primaryTable(null)
                         .parentId(101L)
-                        .tableRelations(List.of(vmRelation))
                         .build();
 
-        ModuleInfo mockCourseWithoutRel =
-                mockModule103.toBuilder()
-                        .parentId(201L)
-                        .tableRelations(Collections.emptyList())
-                        .build();
+        ModuleInfo mockCourseWithoutRel = mockModule103.toBuilder().parentId(201L).build();
 
-        lenient().when(metaCacheService.getModuleComplete(201L)).thenReturn(mockVirtual201);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockCourseWithoutRel);
+        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
+        lenient()
+                .when(configApi.getModuleWithFields(null, null, 103L))
+                .thenReturn(mockCourseWithoutRel);
 
         QueryReq req = QueryReq.builder().moduleId(101L).fields(List.of(1012L, 1031L)).build();
 
@@ -1822,10 +1760,10 @@ class DataQueryTest {
     @Test
     @DisplayName("测试 getDetail 在显式指定 fields 时，返回的 meta.fields 同步精准过滤")
     void testGetDetailWithFieldsFilter() {
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
-        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
-        lenient().when(metaCacheService.getModuleComplete(105L)).thenReturn(mockModule105);
+        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
+        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
+        lenient().when(configApi.getModuleWithFields(null, null, 104L)).thenReturn(mockModule104);
+        lenient().when(configApi.getModuleWithFields(null, null, 105L)).thenReturn(mockModule105);
 
         // 仅请求 1011(学号) 与 1012(姓名)
         DataDetail<Map<String, Object>> detail =
@@ -1841,67 +1779,16 @@ class DataQueryTest {
         assertTrue(
                 detail.getMeta().getFields().stream()
                         .anyMatch(f -> Long.valueOf(1012L).equals(f.getId())));
-        // 验证未包含子模块字段时，meta.children 为空
-        assertTrue(
-                detail.getMeta().getChildren() == null || detail.getMeta().getChildren().isEmpty());
     }
 
     @Test
-    @DisplayName("测试 getDetail 返回完整的自相似 meta.children 树，且子模块正确携带 fields")
-    void testGetDetailMetaChildrenTree() {
-        lenient().when(metaCacheService.getModuleComplete(101L)).thenReturn(mockModule101);
-        lenient().when(metaCacheService.getModuleComplete(103L)).thenReturn(mockModule103);
-        lenient().when(metaCacheService.getModuleComplete(104L)).thenReturn(mockModule104);
-        lenient().when(metaCacheService.getModuleComplete(105L)).thenReturn(mockModule105);
+    @DisplayName("测试 getDetail 只返回当前模块基本信息与字段")
+    void testGetDetailMetadataContainsNoTopology() {
+        DataDetail<Map<String, Object>> detail = dataQueryService.getDetail(101L, 1001L, null);
 
-        // 1. 无 fields 白名单：返回完整的根模块与子孙模块元数据树
-        DataDetail<Map<String, Object>> fullDetail = dataQueryService.getDetail(101L, 1001L, null);
-
-        assertNotNull(fullDetail);
-        ModuleInfo rootMeta = fullDetail.getMeta();
-        assertNotNull(rootMeta);
-        assertNotNull(rootMeta.getChildren());
-        assertFalse(rootMeta.getChildren().isEmpty());
-
-        // 验证 101 的直接子模块包含 103(选课管理) 与 105(奖惩荣誉)
-        var child103 =
-                rootMeta.getChildren().stream()
-                        .filter(c -> Long.valueOf(103L).equals(c.getModuleId()))
-                        .findFirst()
-                        .orElse(null);
-        assertNotNull(child103);
-        assertEquals("选课管理", child103.getModuleName());
-        assertNotNull(child103.getFields());
-        assertFalse(child103.getFields().isEmpty());
-
-        // 验证 103 的下级孙模块包含 104(成绩明细)
-        assertNotNull(child103.getChildren());
-        var grandChild104 =
-                child103.getChildren().stream()
-                        .filter(c -> Long.valueOf(104L).equals(c.getModuleId()))
-                        .findFirst()
-                        .orElse(null);
-        assertNotNull(grandChild104);
-        assertEquals("成绩明细", grandChild104.getModuleName());
-
-        // 2. 携带跨模块 fields 白名单：请求根模块字段 1012 与子模块字段 1031
-        DataDetail<Map<String, Object>> filterDetail =
-                dataQueryService.getDetail(101L, 1001L, List.of(1012L, 1031L));
-
-        assertNotNull(filterDetail);
-        ModuleInfo filterRootMeta = filterDetail.getMeta();
-        assertEquals(1, filterRootMeta.getFields().size());
-        assertEquals(Long.valueOf(1012L), filterRootMeta.getFields().get(0).getId());
-
-        // 验证命中的子模块 103 存在，且 fields 仅包含 1031
-        assertNotNull(filterRootMeta.getChildren());
-        assertEquals(1, filterRootMeta.getChildren().size());
-        ModuleInfo filterChild103 = filterRootMeta.getChildren().get(0);
-        assertEquals(Long.valueOf(103L), filterChild103.getModuleId());
-        assertEquals(1, filterChild103.getFields().size());
-        assertEquals(Long.valueOf(1031L), filterChild103.getFields().get(0).getId());
-
-        // 验证未命中的孙模块 104 与同级子模块 105 被自动修剪
-        assertTrue(filterChild103.getChildren() == null || filterChild103.getChildren().isEmpty());
+        assertNotNull(detail);
+        assertNotNull(detail.getMeta());
+        assertEquals(Long.valueOf(101L), detail.getMeta().getModuleId());
+        assertNotNull(detail.getMeta().getFields());
     }
 }

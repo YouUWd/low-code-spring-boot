@@ -1,8 +1,9 @@
 package com.jdec.platform.data.biz.plan.compiler;
 
-import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.data.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.model.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
@@ -11,9 +12,9 @@ import com.jdec.platform.data.biz.plan.model.JoinTableSpec;
 import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import com.jdec.platform.data.biz.plan.model.QueryPlan;
-import com.jdec.platform.data.biz.service.MetaCacheService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
@@ -39,7 +40,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class QueryPlanCompiler {
 
-    private final MetaCacheService metaCacheService;
+    private final ConfigApi configApi;
 
     /** 内部编译树节点载体 (隔离外部 DTO 与编译期自相似树结构) */
     @lombok.Data
@@ -84,7 +85,7 @@ public class QueryPlanCompiler {
             throw new IllegalArgumentException("查询主模块 ID 不能为空");
         }
 
-        ModuleInfo rootMeta = metaCacheService.getModuleComplete(rootModuleId);
+        ModuleInfo rootMeta = loadQueryMetadata(rootModuleId);
         if (rootMeta == null) {
             throw new IllegalArgumentException("模块 ID [" + rootModuleId + "] 不存在或未配置元数据");
         }
@@ -94,11 +95,9 @@ public class QueryPlanCompiler {
         // 1. 递归收集当前根模块及其所有子孙模块的合法模块 ID 闭包
         Set<Long> allowedModuleIds = new HashSet<>();
         allowedModuleIds.add(rootModuleId);
-        if (rootMeta.getModuleNodes() != null) {
-            for (var node : rootMeta.getModuleNodes()) {
-                if (node != null && node.getId() != null) {
-                    allowedModuleIds.add(node.getId());
-                }
+        for (var node : listDescendantModules(rootModuleId)) {
+            if (node != null && node.getId() != null) {
+                allowedModuleIds.add(node.getId());
             }
         }
 
@@ -125,7 +124,7 @@ public class QueryPlanCompiler {
         // 3. 严格校验字段元数据与子树归属作用域 (Scope Guard)
         List<ModuleFieldDTO> fieldDTOs = Collections.emptyList();
         if (!allFieldIds.isEmpty()) {
-            fieldDTOs = metaCacheService.listFieldsByIds(new ArrayList<>(allFieldIds));
+            fieldDTOs = configApi.listFieldsByIds(new ArrayList<>(allFieldIds));
             if (fieldDTOs == null) {
                 fieldDTOs = Collections.emptyList();
             }
@@ -178,7 +177,7 @@ public class QueryPlanCompiler {
                 allowedModuleIds.add(targetModuleId);
                 return true;
             }
-            ModuleInfo m = metaCacheService.getModuleComplete(cur);
+            ModuleInfo m = loadQueryMetadata(cur);
             cur = (m != null) ? m.getParentId() : null;
         }
         return false;
@@ -229,7 +228,7 @@ public class QueryPlanCompiler {
         Map<Long, ModuleInfo> metaMap = new HashMap<>();
         metaMap.put(rootModuleId, rootMeta);
         for (Long mid : involvedModuleIds) {
-            ModuleInfo m = metaCacheService.getModuleComplete(mid);
+            ModuleInfo m = loadQueryMetadata(mid);
             if (m != null) {
                 metaMap.put(mid, m);
             }
@@ -241,8 +240,7 @@ public class QueryPlanCompiler {
             Long current = mid;
             Set<Long> visited = new HashSet<>();
             while (current != null && visited.add(current)) {
-                ModuleInfo m =
-                        metaMap.computeIfAbsent(current, metaCacheService::getModuleComplete);
+                ModuleInfo m = metaMap.computeIfAbsent(current, id -> loadQueryMetadata(id));
                 if (m != null && m.getParentId() != null) {
                     Long pid = m.getParentId();
                     if (pid != 0L) {
@@ -296,7 +294,7 @@ public class QueryPlanCompiler {
         Map<Long, List<Long>> parentToChildren = new HashMap<>();
         for (Long mid : involvedModuleIds) {
             if (!mid.equals(rootModuleId)) {
-                ModuleInfo m = metaMap.computeIfAbsent(mid, metaCacheService::getModuleComplete);
+                ModuleInfo m = metaMap.computeIfAbsent(mid, id -> loadQueryMetadata(id));
                 Long pid =
                         (m != null && m.getParentId() != null && m.getParentId() != 0L)
                                 ? m.getParentId()
@@ -304,6 +302,13 @@ public class QueryPlanCompiler {
                 parentToChildren.computeIfAbsent(pid, k -> new ArrayList<>()).add(mid);
             }
         }
+
+        // 🌟 结构化模块树推导公理：依据各字段归属模块及其祖先链路，在内存中构建从根节点到子孙叶子节点的完整严格父子拓扑
+        log.debug(
+                "[QueryPlanCompiler] 结构化模块树推导完成: rootModuleId={}, involvedModuleIds={}, parentToChildren={}",
+                rootModuleId,
+                involvedModuleIds,
+                parentToChildren);
 
         return buildInternalNode(
                 rootModuleId,
@@ -362,7 +367,7 @@ public class QueryPlanCompiler {
             boolean isGlobalWhitelistMode) {
 
         Long moduleId = node.getModuleId();
-        ModuleInfo meta = metaCacheService.getModuleComplete(moduleId);
+        ModuleInfo meta = loadQueryMetadata(moduleId);
         if (meta == null) {
             throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
         }
@@ -385,8 +390,8 @@ public class QueryPlanCompiler {
         Map<String, List<PhysicalFieldSpec>> oneToManyFieldsByTable = new LinkedHashMap<>();
         Map<String, TableRelationDTO> oneToManyRelationByTable = new LinkedHashMap<>();
 
-        if (!isVirtual && meta.getTableRelations() != null) {
-            for (TableRelationDTO rel : meta.getTableRelations()) {
+        if (!isVirtual) {
+            for (TableRelationDTO rel : listTableRelations(meta)) {
                 if ("1:N".equalsIgnoreCase(rel.getRelationType())
                         && rel.getJoinTable() != null
                         && !rel.getJoinTable().equalsIgnoreCase(primaryTable)) {
@@ -429,6 +434,13 @@ public class QueryPlanCompiler {
                     if (cp.getPrimaryTable() != null && !cp.getPrimaryTable().isBlank()) {
                         handledTables.add(cp.getPrimaryTable().toLowerCase());
                     }
+                    // 记录编译子节点完成的元数据拓扑关系
+                    log.debug(
+                            "[QueryPlanCompiler] 节点编译子节点完成: parentModuleId={}, childModuleId={}, childTable={}, parentFk={}",
+                            moduleId,
+                            cp.getModuleId(),
+                            cp.getPrimaryTable(),
+                            cp.getParentForeignKey());
                 }
             }
         }
@@ -589,7 +601,7 @@ public class QueryPlanCompiler {
             return Collections.emptyList();
         }
 
-        List<TableRelationDTO> relations = meta.getTableRelations();
+        List<TableRelationDTO> relations = listTableRelations(meta);
         if (relations == null || relations.isEmpty()) {
             throw new IllegalStateException(
                     String.format(
@@ -613,7 +625,8 @@ public class QueryPlanCompiler {
                     isForward = true;
                     break;
                 }
-                // 反向伴生关系: main_table(伴生表) -> join_table(主表) 如 clazz -> student (1:N 视角下的 N:1 归属)
+                // 反向伴生关系: main_table(伴生表) -> join_table(主表) 如 clazz -> student (1:N 视角下的 N:1
+                // 归属)
                 if (compTable.equalsIgnoreCase(rel.getMainTable())
                         && primaryTable.equalsIgnoreCase(rel.getJoinTable())) {
                     matchedRel = rel;
@@ -696,7 +709,7 @@ public class QueryPlanCompiler {
         Long curParentId = currentMeta.getParentId();
         Set<Long> visited = new HashSet<>();
         while (curParentId != null && curParentId > 0 && visited.add(curParentId)) {
-            ModuleInfo pMeta = metaCacheService.getModuleComplete(curParentId);
+            ModuleInfo pMeta = loadQueryMetadata(curParentId);
             if (pMeta == null) {
                 break;
             }
@@ -740,7 +753,7 @@ public class QueryPlanCompiler {
             return new ParentRelationInfo("id", null, null, "1:N");
         }
 
-        // 查找物理父模块 (若直接父模块为虚拟模块，则递归向上回溯至最近具有物理主表的祖先模块)
+        // 1. 定位有效的物理父模块 (若直接父模块为无主表的虚拟模块，则向上递归查找最近的物理祖先模块)
         ModuleInfo physicalParentMeta = parentMeta;
         String parentPrimary = resolvePrimaryTable(physicalParentMeta);
         List<ModuleInfo> intermediateMetas = new ArrayList<>();
@@ -753,42 +766,53 @@ public class QueryPlanCompiler {
             }
         }
 
-        if (parentPrimary == null || parentPrimary.isBlank()) {
-            // 向上回溯到顶层仍未找到任何配置物理主表的父模块 (如根模块即为纯虚拟模块)
+        // 向上回溯到顶层仍未找到任何配置物理主表的父模块 (如根模块即为纯虚拟模块)
+        if (physicalParentMeta == null || parentPrimary == null || parentPrimary.isBlank()) {
             return new ParentRelationInfo("id", null, null, "1:N");
         }
 
-        // 0. 第一性原理特殊情况：当子模块物理主表与物理父模块主表为同一物理表时 (例如 101 与 105 均为 student 表垂直拆分)
+        // 2. 特殊情况：当子模块物理主表与物理父模块主表为同一物理表时 (垂直拆分视图)，外键即为自身主键 id
         if (parentPrimary.equalsIgnoreCase(childPrimaryTable)) {
             return new ParentRelationInfo("id", "id", parentPrimary, "1:1");
         }
 
-        // 1. 汇聚子模块、物理父模块以及沿途所有中间虚拟模块的 tableRelations
-        List<TableRelationDTO> allRelations = new ArrayList<>();
-        if (childMeta != null && childMeta.getTableRelations() != null) {
-            allRelations.addAll(childMeta.getTableRelations());
+        // 3. 汇聚关系定义：直接以 parentPrimary 与 childPrimaryTable 为目标查询关联定义，穿透所有中间虚拟层
+        Set<TableRelationDTO> relationSet = new LinkedHashSet<>();
+        List<TableRelationDTO> directRelations =
+                configApi.listTableRelations(
+                        AppContext.getProjectNo(),
+                        Set.of(parentPrimary.toLowerCase(), childPrimaryTable.toLowerCase()));
+        if (directRelations != null) {
+            relationSet.addAll(directRelations);
         }
-        if (physicalParentMeta.getTableRelations() != null) {
-            allRelations.addAll(physicalParentMeta.getTableRelations());
+
+        List<TableRelationDTO> childRelations = listTableRelations(childMeta);
+        if (childRelations != null) {
+            relationSet.addAll(childRelations);
+        }
+        List<TableRelationDTO> parentRelations = listTableRelations(physicalParentMeta);
+        if (parentRelations != null) {
+            relationSet.addAll(parentRelations);
         }
         for (ModuleInfo interMeta : intermediateMetas) {
-            if (interMeta != null && interMeta.getTableRelations() != null) {
-                allRelations.addAll(interMeta.getTableRelations());
+            List<TableRelationDTO> interRelations = listTableRelations(interMeta);
+            if (interRelations != null) {
+                relationSet.addAll(interRelations);
             }
         }
 
-        // 2. 严格单向匹配: mainTable == parentPrimary && joinTable == childPrimaryTable
-        for (TableRelationDTO rel : allRelations) {
+        // 4. 匹配单向关联: mainTable == parentPrimary && joinTable == childPrimaryTable
+        for (TableRelationDTO rel : relationSet) {
             if (rel != null
                     && parentPrimary.equalsIgnoreCase(rel.getMainTable())
                     && childPrimaryTable.equalsIgnoreCase(rel.getJoinTable())) {
                 if (rel.getJoinField() != null && !rel.getJoinField().isBlank()) {
-                    String pKey =
-                            (rel.getMainField() != null && !rel.getMainField().isBlank())
-                                    ? rel.getMainField().trim()
-                                    : "id";
+                    String pKey = "id";
+                    if (rel.getMainField() != null && !rel.getMainField().isBlank()) {
+                        pKey = rel.getMainField().trim();
+                    }
                     String relType =
-                            rel.getRelationType() != null && !rel.getRelationType().isBlank()
+                            (rel.getRelationType() != null && !rel.getRelationType().isBlank())
                                     ? rel.getRelationType().trim()
                                     : "1:N";
                     return new ParentRelationInfo(
@@ -797,18 +821,13 @@ public class QueryPlanCompiler {
             }
         }
 
-        // 3. 严格 100% 自洽校验：杜绝任何推测与硬编码兜底 (如 parentTable + "_id")
+        // 5. 严格自洽校验：杜绝任何未配置关系的隐式推测
         Long parentModId = physicalParentMeta.getModuleId();
         Long childModId = childMeta != null ? childMeta.getModuleId() : null;
         throw new IllegalStateException(
                 String.format(
                         "元数据关联关系未自洽：未在 sys_table_relation 中找到物理父表 [%s](模块 %s) 到子表 [%s](模块 %s) 的单向关联定义(main_table -> join_table)",
                         parentPrimary, parentModId, childPrimaryTable, childModId));
-    }
-
-    private String resolveParentForeignKey(
-            String childPrimaryTable, ModuleInfo childMeta, ModuleInfo parentMeta) {
-        return resolveParentRelation(childPrimaryTable, childMeta, parentMeta).childForeignKey();
     }
 
     /** 编译字段投影规格 */
@@ -932,14 +951,6 @@ public class QueryPlanCompiler {
         return conditions.isEmpty() ? null : DSL.and(conditions);
     }
 
-    /** 编译过滤条件列表为安全 Condition (以 fieldId 为唯一依据) */
-    private Condition compileConditions(
-            ModuleInfo meta, String primaryTable, List<FilterItem> filters) {
-        Condition base = compileBaseConditions(meta, primaryTable);
-        Condition user = compileUserFilters(meta, primaryTable, filters);
-        return user != null ? base.and(user) : base;
-    }
-
     /** 根据操作符生成具体的 jOOQ Condition */
     private Condition buildSqlCondition(
             String tableName, String columnName, String operator, Object value) {
@@ -1015,5 +1026,79 @@ public class QueryPlanCompiler {
             orderFields.add(DSL.field(DSL.name(primaryTable, "id")).desc());
         }
         return orderFields;
+    }
+
+    private ModuleInfo loadQueryMetadata(Long moduleId) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        return configApi.getModuleWithFields(projectNo, subjectId, moduleId);
+    }
+
+    private List<com.jdec.platform.config.api.dto.common.ModuleNodeDTO> listDescendantModules(
+            Long rootModuleId) {
+        String projectNo = AppContext.getProjectNo();
+        List<com.jdec.platform.config.api.dto.common.ModuleNodeDTO> allModules =
+                configApi.listModulesByProject(projectNo);
+        if (allModules == null || allModules.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, com.jdec.platform.config.api.dto.common.ModuleNodeDTO> moduleMap =
+                allModules.stream()
+                        .filter(node -> node != null && node.getId() != null)
+                        .collect(
+                                Collectors.toMap(
+                                        com.jdec.platform.config.api.dto.common.ModuleNodeDTO
+                                                ::getId,
+                                        node -> node,
+                                        (first, second) -> first));
+        return allModules.stream()
+                .filter(node -> node != null && isDescendant(node, rootModuleId, moduleMap))
+                .toList();
+    }
+
+    private boolean isDescendant(
+            com.jdec.platform.config.api.dto.common.ModuleNodeDTO node,
+            Long rootModuleId,
+            Map<Long, com.jdec.platform.config.api.dto.common.ModuleNodeDTO> moduleMap) {
+        Long parentId = node.getParentId();
+        Set<Long> visited = new HashSet<>();
+        while (parentId != null && parentId > 0 && visited.add(parentId)) {
+            if (parentId.equals(rootModuleId)) {
+                return true;
+            }
+            com.jdec.platform.config.api.dto.common.ModuleNodeDTO parent = moduleMap.get(parentId);
+            parentId = parent != null ? parent.getParentId() : null;
+        }
+        return false;
+    }
+
+    private List<TableRelationDTO> listTableRelations(ModuleInfo module) {
+        if (module == null) {
+            return Collections.emptyList();
+        }
+        Set<String> tableNames = new LinkedHashSet<>();
+        if (module.getPrimaryTable() != null && !module.getPrimaryTable().isBlank()) {
+            tableNames.add(module.getPrimaryTable().trim().toLowerCase());
+        }
+        if (module.getFields() != null) {
+            for (ModuleFieldDTO field : module.getFields()) {
+                if (field.getTableName() != null && !field.getTableName().isBlank()) {
+                    tableNames.add(field.getTableName().trim().toLowerCase());
+                }
+            }
+        }
+        if (module.getParentId() != null && module.getParentId() > 0) {
+            var parent =
+                    configApi.getModuleBasic(
+                            AppContext.getProjectNo(),
+                            AppContext.getSubjectId(),
+                            module.getParentId());
+            if (parent != null
+                    && parent.getPrimaryTable() != null
+                    && !parent.getPrimaryTable().isBlank()) {
+                tableNames.add(parent.getPrimaryTable().trim().toLowerCase());
+            }
+        }
+        return configApi.listTableRelations(AppContext.getProjectNo(), tableNames);
     }
 }

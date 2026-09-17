@@ -1,6 +1,6 @@
 package com.jdec.platform.data.biz.plan.executor;
 
-import com.jdec.platform.data.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
