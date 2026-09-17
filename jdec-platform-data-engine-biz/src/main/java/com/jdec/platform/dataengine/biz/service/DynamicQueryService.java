@@ -435,20 +435,24 @@ public class DynamicQueryService {
             }
 
             if (StringUtils.isNotBlank(targetNode.getNode().getSubTableField())) {
-                moduleFields.add(
-                        ModuleFieldDTO.builder()
-                                .moduleId(id)
-                                .tableName(tableName)
-                                .columnName(targetNode.getNode().getSubTableField())
-                                .build());
-            }
 
-            moduleFields.add(
-                    ModuleFieldDTO.builder()
-                            .moduleId(id)
-                            .tableName(tableName)
-                            .columnName("id")
-                            .build());
+                List<ModuleFieldDTO> idOrPkColumn =
+                        moduleInfo.getFields().stream()
+                                .filter(
+                                        ele ->
+                                                ele.getTableName().equals(tableName)
+                                                        && (ele.getColumnName()
+                                                                        .equals(
+                                                                                targetNode
+                                                                                        .getNode()
+                                                                                        .getSubTableField())
+                                                                || ele.getColumnName()
+                                                                        .equals("id")))
+                                .collect(Collectors.toList());
+                if (!CollectionUtils.isEmpty(idOrPkColumn)) {
+                    moduleFields.addAll(idOrPkColumn);
+                }
+            }
         }
 
         return moduleFields;
