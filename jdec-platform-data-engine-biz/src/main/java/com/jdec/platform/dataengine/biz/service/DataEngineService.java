@@ -1,10 +1,7 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
-import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
-import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
-import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
+import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -17,6 +14,7 @@ import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersiste
 import com.jdec.platform.shared.context.AppContext;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -45,13 +43,35 @@ public class DataEngineService implements DataEngineApi {
                 dataModuleConfigService.getModuleCompleteById(
                         AppContext.getProjectNo(), AppContext.getSubjectId(), rootModuleId);
 
-        SysModuleInfo meta = copyAndFilterModuleTree(sysModuleInfo, filterFields);
+        SysModuleInfo meta = copyAndFilterModuleTree(sysModuleInfo, List.of());
+
+        List<SysModuleInfo> metaList = getListStructure(meta);
 
         List<NestedModuleDataDTO> detailDatas =
                 dynamicQueryService.getDetail(rootModuleId, id, btnType, filterFields);
 
         return DetailDataResp.of(
-                meta, CollectionUtils.isEmpty(detailDatas) ? null : detailDatas.get(0));
+                metaList, CollectionUtils.isEmpty(detailDatas) ? null : detailDatas.get(0));
+    }
+
+    private List<SysModuleInfo> getListStructure(SysModuleInfo meta) {
+        List<SysModuleInfo> list = new ArrayList<>();
+
+        meta.getFileds()
+                .entrySet()
+                .forEach(
+                        entry -> {
+                            entry.getValue().setApply(true);
+                            entry.getValue().setView(true);
+                            entry.getValue().setEdit(true);
+                        });
+        list.add(meta);
+        if (!CollectionUtils.isEmpty(meta.getChildren())) {
+            for (SysModuleInfo sysModuleInfo : meta.getChildren()) {
+                list.addAll(getListStructure(sysModuleInfo));
+            }
+        }
+        return list;
     }
 
     @Override
@@ -91,7 +111,7 @@ public class DataEngineService implements DataEngineApi {
 
         // 拷贝并过滤字段
         List<ModuleFieldDTO> filteredFields =
-                sourceNode.getFields().stream()
+                sourceNode.getFieldList().stream()
                         .filter(
                                 f ->
                                         CollectionUtils.isEmpty(allowedFieldCodeSet)
@@ -103,11 +123,21 @@ public class DataEngineService implements DataEngineApi {
                                     return newField;
                                 })
                         .collect(Collectors.toList());
-        targetNode.setFields(filteredFields);
+        targetNode.setFieldList(filteredFields);
+
+        Map<String, ModuleFieldDTO> fieldMap =
+                filteredFields.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        f -> f.getTableName() + "." + f.getColumnName(), f -> f));
+        targetNode.setFileds(fieldMap);
 
         // 递归拷贝子节点
         List<SysModuleInfo> newChildren = new ArrayList<>();
-        List<ModuleNodeDTO> directChildNodes = sourceNode.getModuleNodes();
+        List<ModuleNodeDTO> directChildNodes =
+                sourceNode.getModuleNodes().stream()
+                        .filter(ele -> ele.getParentId().equals(sourceNode.getModuleId()))
+                        .collect(Collectors.toList());
         if (directChildNodes != null && !directChildNodes.isEmpty()) {
             directChildNodes.forEach(
                     child -> {
@@ -125,7 +155,7 @@ public class DataEngineService implements DataEngineApi {
                         }
                     });
             targetNode.setChildren(newChildren);
-            targetNode.setModuleNodes(sourceNode.getModuleNodes());
+            targetNode.setModuleNodes(directChildNodes);
         }
         return targetNode;
     }
