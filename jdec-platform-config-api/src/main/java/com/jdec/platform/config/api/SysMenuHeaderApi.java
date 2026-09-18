@@ -38,6 +38,8 @@ public interface SysMenuHeaderApi {
      * label/fieldId/moduleId/dataIndex/width/sorted/searchType/ellipsis/fixed/sortValue}。{@code
      * colors} 与 {@code searchType} 在库中均为 JSON 串，此处解析后输出为数组/对象。
      *
+     * <p>入参 {@code menuId} 为列表菜单ID，内部先按统一规则解析表头归属菜单ID（「页面」类型取关联的详情菜单ID，「表」等其它类型取菜单ID 自身）再读取。
+     *
      * <p>该接口不做默认树生成与落库，无配置记录时返回空（header 为 null）。
      *
      * @param menuId 菜单ID

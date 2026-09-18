@@ -78,6 +78,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 字段可查阅标记：sys_role_module_field_permission.view = 1 */
     private static final Integer VIEW_YES = 1;
 
+    /** 菜单类型：页面（仅该类型且关联详情菜单时，表头归属其详情菜单） */
+    private static final Integer MENU_TYPE_PAGE = 2;
+
     /** 角色权限过滤开关：角色菜单/字段权限数据尚未配置完成，暂时关闭（按最大权限返回），配置就绪后置为 true 即可恢复 */
     private static final boolean ROLE_PERMISSION_FILTER_ENABLED = false;
 
@@ -133,31 +136,45 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         return assembleTree(headerMenuId, mergedNodes);
     }
 
+    /**
+     * 菜单ID → 表头归属菜单ID
+     *
+     * <p>仅当菜单类型为「页面」且关联了详情菜单时，表头记录归属其绑定的详情菜单；「表」等其它类型（含未关联详情菜单的页面）直接以该菜单ID 为归属，不再转换。
+     */
     @Override
     public Long resolveHeaderMenuId(Long menuId) {
         SysMenu menu = selectMenuById(menuId);
         if (menu == null) {
             throw new BusinessException("菜单不存在");
         }
-        return menu.getDetailId() != null ? menu.getDetailId() : menuId;
+        return resolveHeaderMenuId(menu);
+    }
+
+    /** 菜单实体 → 表头归属菜单ID（规则同 {@link #resolveHeaderMenuId(Long)}，供调用方复用已加载/待保存的菜单数据，避免重复查库） */
+    public Long resolveHeaderMenuId(SysMenu menu) {
+        if (MENU_TYPE_PAGE.equals(menu.getMenuType()) && menu.getDetailId() != null) {
+            return menu.getDetailId();
+        }
+        return menu.getId();
     }
 
     /**
      * 随菜单一并保存多级表头配置（由 {@code SysMenuService#saveMenu} 内部调用）
      *
-     * <p>表头记录按「归属菜单ID」存放，归属菜单即菜单关联的详情菜单；未关联详情菜单的菜单不允许保存表头配置。
+     * <p>表头记录按「归属菜单ID」存放，归属菜单由 {@link #resolveHeaderMenuId(SysMenu)} 统一解析：菜单类型为「页面」且关联了详情菜单时
+     * 取该详情菜单ID，其余（「表」等）取菜单自身ID。
      *
      * <ul>
-     *   <li>{@code change=1}（详情菜单已切换）：先删除变更前归属菜单（{@code previousMenuId}）在 {@code sys_menu_header}
+     *   <li>{@code change=1}（归属菜单已切换）：先删除变更前归属菜单（{@code previousMenuId}）在 {@code sys_menu_header}
      *       中的全部记录（一条 SQL），再按本次提交的节点树以 {@code menuId} 为归属重新落库。
-     *   <li>{@code change=0}（详情菜单未变化）：将 {@code header} 树压平后与 {@code menuId} 已保存节点按 {@code virId}
+     *   <li>{@code change=0}（归属菜单未变化）：将 {@code header} 树压平后与 {@code menuId} 已保存节点按 {@code virId}
      *       比对，已存在的节点按主键批量更新，未存在的节点批量新增。
      * </ul>
      *
      * <p>{@code header} 为空时只做上述清理、不做落库。数据隔离按 {@code subject_id} + {@code project_no}，所有写操作均为批量执行。
      *
-     * @param menuId 本次表头记录的归属菜单ID（菜单关联的详情菜单ID）
-     * @param previousMenuId 变更前表头记录的归属菜单ID（变更前的详情菜单ID），无变更或新增菜单时为 {@code null}
+     * @param menuId 本次表头记录的归属菜单ID（由 {@code SysMenuService} 按归属规则解析后传入）
+     * @param previousMenuId 变更前表头记录的归属菜单ID，无变更或新增菜单时为 {@code null}
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveMenuHeader(
@@ -230,11 +247,14 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             throw new BusinessException("菜单ID不能为空");
         }
 
+        // 表头记录按归属菜单存放，先按统一规则解析出归属菜单ID
+        Long headerMenuId = resolveHeaderMenuId(menuId);
+
         // 纯读取该菜单已保存的表头节点（数据隔离：subject_id + project_no）
         List<SysMenuHeader> stored =
                 sysMenuHeaderMapper.selectList(
                         Wrappers.<SysMenuHeader>lambdaQuery()
-                                .eq(SysMenuHeader::getMenuId, menuId)
+                                .eq(SysMenuHeader::getMenuId, headerMenuId)
                                 .eq(SysMenuHeader::getSubjectId, AppContext.getSubjectId())
                                 .eq(SysMenuHeader::getProjectNo, AppContext.getProjectNo())
                                 .orderByAsc(SysMenuHeader::getSortValue, SysMenuHeader::getId));
@@ -256,7 +276,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             }
         }
 
-        SysMenuHeader root = selectDisplayRoot(menuId, topNodes);
+        SysMenuHeader root = selectDisplayRoot(headerMenuId, topNodes);
         if (root == null) {
             return new MenuHeaderDisplayResp();
         }

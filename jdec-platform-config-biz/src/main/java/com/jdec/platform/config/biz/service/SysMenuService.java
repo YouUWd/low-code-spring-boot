@@ -48,6 +48,9 @@ public class SysMenuService implements SysMenuApi {
     /** 菜单类型：导航 */
     private static final Integer MENU_TYPE_NAV = 1;
 
+    /** 菜单类型：页面（仅该类型且关联详情菜单时，表头归属其详情菜单） */
+    private static final Integer MENU_TYPE_PAGE = 2;
+
     /** 顶层父级ID */
     private static final Long ROOT_PID = 0L;
 
@@ -141,23 +144,33 @@ public class SysMenuService implements SysMenuApi {
             // 携带整棵树时，当前节点位置以 treeNodes 为准，保证同级重名等单节点校验分组正确
             fillOwnPositionFromTree(node, request.getTreeNodes());
         }
-        // 表头记录归属菜单为「详情菜单」，判定与旧配置清理都必须在保存前取旧数据（保存后库中已是新的详情菜单ID）
+        // 表头记录归属菜单的判定与旧配置清理都必须在保存前取旧数据（保存后库中已是新的菜单类型/详情菜单ID）
         SysMenu oldMenu = selectMenuById(node.getId());
-        Long previousHeaderMenuId = oldMenu == null ? null : oldMenu.getDetailId();
-        Integer headerChange =
-                oldMenu != null && !Objects.equals(oldMenu.getDetailId(), node.getDetailId())
-                        ? HEADER_CHANGE_DETAIL_SWITCHED
-                        : HEADER_CHANGE_NONE;
+        Long previousHeaderMenuId =
+                oldMenu == null ? null : sysMenuHeaderService.resolveHeaderMenuId(oldMenu);
         // 经自身代理调用单节点保存，确保 @DataAudit 审计生效
         SysMenuResp resp = selfProvider.getObject().saveMenuNode(node);
         if (hasTree) {
             // 整棵树父子关系与同级排序同步（参考模块 saveModule / 状态 saveStatus 的树节点拓扑同步逻辑）
             updateMenuTreeNodes(node.getId(), node.getCategory(), request.getTreeNodes());
         }
-        // 多级表头配置随菜单一并保存：表头记录归属菜单取菜单关联的详情菜单ID
+        // 多级表头配置随菜单一并保存：归属菜单与变更标记统一按表头归属解析规则判定
+        Long headerMenuId = resolveHeaderMenuId(node);
+        Integer headerChange =
+                Objects.equals(previousHeaderMenuId, headerMenuId)
+                        ? HEADER_CHANGE_NONE
+                        : HEADER_CHANGE_DETAIL_SWITCHED;
         sysMenuHeaderService.saveMenuHeader(
-                node.getDetailId(), previousHeaderMenuId, headerChange, request.getHeader());
+                headerMenuId, previousHeaderMenuId, headerChange, request.getHeader());
         return resp;
+    }
+
+    /** 提交节点 → 表头归属菜单ID：页面类型且关联详情菜单时取详情菜单ID，其余（表等）取菜单自身ID */
+    private Long resolveHeaderMenuId(SysMenuSaveReq node) {
+        if (MENU_TYPE_PAGE.equals(node.getMenuType()) && node.getDetailId() != null) {
+            return node.getDetailId();
+        }
+        return node.getId();
     }
 
     /** 取库中菜单记录（数据隔离：subject_id + project_no），id 为空或查不到返回 {@code null} */

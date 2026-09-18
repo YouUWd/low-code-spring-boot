@@ -8,9 +8,14 @@ import java.util.Set;
 public interface OpenMenuHeaderApi {
 
     /**
-     * 列表菜单ID → 表头归属菜单ID（菜单关联的详情菜单ID）
+     * 列表菜单ID → 表头归属菜单ID
      *
-     * <p>表头记录（{@code sys_menu_header} / {@code user_menu_header}）均按详情菜单ID 归属，未关联详情菜单时退回菜单ID 自身。
+     * <p>表头记录（{@code sys_menu_header} / {@code user_menu_header}）按表头归属菜单ID 存放：
+     *
+     * <ul>
+     *   <li>菜单类型为「页面」且关联了详情菜单 → 取关联的详情菜单ID；
+     *   <li>菜单类型为「表」等其它情形 → 取菜单ID 自身，不做转换。
+     * </ul>
      *
      * @param menuId 列表菜单ID
      * @return 表头归属菜单ID
@@ -23,7 +28,8 @@ public interface OpenMenuHeaderApi {
      * <p>与 {@code SysMenuHeaderApi#getMenuHeaderTree} 同一套生成与合并逻辑，区别有两点：
      *
      * <ul>
-     *   <li>入参 {@code menuId} 为「列表菜单ID」，内部按其 {@code sys_menu.detail_id} 解析出表头归属菜单ID（详情菜单ID）后再组树；
+     *   <li>入参 {@code menuId} 为「列表菜单ID」，内部按 {@link #resolveHeaderMenuId(Long)} 解析出表头归属菜单ID
+     *       后再组树（「页面」类型 取关联的详情菜单ID，「表」等其它类型取菜单ID 自身）；
      *   <li>入参 {@code roleId} 非空时额外做角色权限过滤：按 {@code sys_role_menu} 过滤无权限的子级菜单，按 {@code
      *       sys_role_module_field_permission} 仅保留 {@code view=1} 的字段；{@code roleId} 为空时与 {@code
      *       SysMenuHeaderApi#getMenuHeaderTree} 完全一致。
