@@ -218,4 +218,26 @@ public class DataController {
             throw ex;
         }
     }
+
+    @GetMapping("/monitor-log/operate")
+    @Operation(
+            summary = "单据操作日志查询",
+            description =
+                    "按模块id + 单据id查询该单据的操作日志：先查操作日志索引表 monitor_operate_index 取出日志id，"
+                            + "再据此回 monitor_log 查明细汇总返回，按记录时间倒序；索引无记录时返回空列表")
+    public ApiResponse<List<MonitorLogResp>> queryOperateLog(
+            @RequestParam Long moduleId, @RequestParam Long dataId) {
+        try {
+            List<MonitorLogResp> result = monitorLogApi.queryOperateLog(moduleId, dataId);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Data engine queryOperateLog failed: moduleId={}, dataId={}, err={}",
+                    moduleId,
+                    dataId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
 }
