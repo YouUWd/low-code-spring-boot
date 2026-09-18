@@ -19,13 +19,13 @@ import com.jdec.platform.data.api.MonitorLogApi;
 import com.jdec.platform.data.api.dto.log.*;
 import com.jdec.platform.data.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.hr.api.SubjectApi;
-import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.SubjectBO;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.RequestContextSnapshot;
+import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.datasource.DataSourceContextHolder;
 import com.jdec.platform.shared.datasource.ProjectProperties;
 import com.jdec.platform.shared.exception.BusinessException;
-import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -56,8 +56,6 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     private final ApprovalChainButtonMapper approvalChainButtonMapper;
     private final SysConfigCategoryApi sysConfigCategoryApi;
     private final SubjectApi subjectApi;
-    private final UserApi userApi;
-    private final SysRoleApi sysRoleApi;
     private final SysMenuApi sysMenuApi;
     private final SysModuleApi sysModuleApi;
     private final MonitorLogApi monitorLogApi;
@@ -134,20 +132,11 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             monitorControlLogReq.setType(0);
             monitorControlLogReq.setSysType("operationLog");
             monitorControlLogReq.setSubjectId(approvalProcessDTO.getSubjectId());
-            List<SubjectBO> subjectList = subjectApi.getSubjectList();
-            String subjectName = "";
-            if (!subjectList.isEmpty()) {
-                subjectName =
-                        subjectList.stream()
-                                .filter(s -> approvalProcessDTO.getSubjectId().equals(s.getId()))
-                                .findFirst()
-                                .map(SubjectBO::getSubjectName)
-                                .orElse("");
-            }
-            monitorControlLogReq.setSubjectName(subjectName);
+
             MonitorLoginInfo loginInfo = new MonitorLoginInfo();
             loginInfo.setUserId(approvalProcessDTO.getCurrentUserId());
             loginInfo.setRoleId(approvalProcessDTO.getRoleId());
+            monitorControlLogReq.setLoginInfo(loginInfo);
             boolean mockFlag =
                     approvalProcessDTO.getCurrentUserId() != null
                             && approvalProcessDTO.getApplicantId() != null
@@ -170,9 +159,10 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             approveBase.setType(approvalProcessDTO.getCurrentUserId().equals(9999999L) ? 0 : 1);
             monitorControlLogReq.setApprove(approveBase);
 
-            monitorControlLogReq.setIp(RequestContextUtils.getClientIp());
-            monitorControlLogReq.setBrowser(RequestContextUtils.getBrowser());
-            monitorControlLogReq.setPlatForm(RequestContextUtils.getPlatform());
+            RequestContextSnapshot requestContext = RequestContextSnapshotHolder.get();
+            monitorControlLogReq.setIp(requestContext.getClientIp());
+            monitorControlLogReq.setBrowser(requestContext.getBrowser());
+            monitorControlLogReq.setPlatForm(requestContext.getPlatform());
             monitorControlLogReq.setModuleId(approvalProcessDTO.getModuleId());
             monitorControlLogReq.setDataId(approvalProcessDTO.getRecordId());
 
@@ -213,20 +203,11 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             monitorMessageLogReq.setType(1);
             monitorMessageLogReq.setSysType("messageLog");
             monitorMessageLogReq.setSubjectId(approvalProcessDTO.getSubjectId());
-            List<SubjectBO> subjectList = subjectApi.getSubjectList();
-            String subjectName = "";
-            if (!subjectList.isEmpty()) {
-                subjectName =
-                        subjectList.stream()
-                                .filter(s -> approvalProcessDTO.getSubjectId().equals(s.getId()))
-                                .findFirst()
-                                .map(SubjectBO::getSubjectName)
-                                .orElse("");
-            }
-            monitorMessageLogReq.setSubjectName(subjectName);
+
             MonitorLoginInfo loginInfo = new MonitorLoginInfo();
             loginInfo.setUserId(approvalProcessDTO.getCurrentUserId());
             loginInfo.setRoleId(approvalProcessDTO.getRoleId());
+            monitorMessageLogReq.setLoginInfo(loginInfo);
             boolean mockFlag =
                     approvalProcessDTO.getCurrentUserId() != null
                             && approvalProcessDTO.getApplicantId() != null
@@ -242,9 +223,10 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                     sysConfigCategoryApi.getConfigItemsByValue(
                             "logStateIcon", approvalProcessDTO.getButton());
 
-            monitorMessageLogReq.setIp(RequestContextUtils.getClientIp());
-            monitorMessageLogReq.setBrowser(RequestContextUtils.getBrowser());
-            monitorMessageLogReq.setPlatForm(RequestContextUtils.getPlatform());
+            RequestContextSnapshot requestContext = RequestContextSnapshotHolder.get();
+            monitorMessageLogReq.setIp(requestContext.getClientIp());
+            monitorMessageLogReq.setBrowser(requestContext.getBrowser());
+            monitorMessageLogReq.setPlatForm(requestContext.getPlatform());
             monitorMessageLogReq.setModuleId(approvalProcessDTO.getModuleId());
             monitorMessageLogReq.setDataId(approvalProcessDTO.getRecordId());
 
@@ -254,7 +236,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                             approvalProcessDTO.getSubjectId(),
                             approvalProcessDTO.getModuleId());
             MonitorContentMessage contentBase = new MonitorContentMessage();
-            contentBase.setLogSubType("operationLog");
+            contentBase.setLogSubType("messageLog");
             contentBase.setModuleName(module.getModule().getModuleName());
             contentBase.setVersion(approvalProcessDTO.getVersionNo());
             contentBase.setLinkName(approvalProcessDTO.getBusinessNumber());

@@ -1,5 +1,6 @@
 package com.jdec.platform.shared.config;
 
+import com.jdec.platform.shared.context.ContextCopyingDecorator;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.context.annotation.Bean;
@@ -31,18 +32,10 @@ public class AsyncConfig {
         executor.setQueueCapacity(500);
         executor.setKeepAliveSeconds(60);
         executor.setThreadNamePrefix("jdec-async-");
-
         // 拒绝策略：当队列满时，由调用方线程同步执行（保证任务不丢失）
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-
-        // ★ 重要：设置 TaskDecorator，用于在异步线程中自动拷贝父线程的上下文
-        // 这样即使你忘记传 projectNo，也能从父线程继承（仅作兜底，不推荐依赖）
-        executor.setTaskDecorator(
-                runnable -> {
-                    // 这里可以拷贝 MDC、AppContext 等上下文
-                    // 但强烈建议：通过参数显式传递 projectNo，不要依赖 ThreadLocal 继承
-                    return runnable;
-                });
+        // 复制请求属性
+        executor.setTaskDecorator(new ContextCopyingDecorator());
 
         executor.initialize();
         return executor;

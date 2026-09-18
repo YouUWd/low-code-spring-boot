@@ -2,11 +2,15 @@ package com.jdec.platform.shared.context.interceptor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.RequestContextSnapshot;
+import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.model.ApiResponse;
+import com.jdec.platform.shared.utils.RequestContextUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -23,6 +27,20 @@ public class AppContextInterceptor implements HandlerInterceptor {
             HttpServletRequest request, HttpServletResponse response, Object handler)
             throws Exception {
         String projectNo = request.getHeader(PROJECT_NO_HEADER);
+
+        RequestContextSnapshot snapshot =
+                RequestContextSnapshot.builder()
+                        .clientIp(RequestContextUtils.getClientIp())
+                        .userAgent(RequestContextUtils.getUserAgent())
+                        .browser(RequestContextUtils.getBrowser())
+                        .platform(RequestContextUtils.getPlatform())
+                        .requestUrl(RequestContextUtils.getRequestUrl())
+                        .requestUri(RequestContextUtils.getRequestUri())
+                        .requestMethod(request.getMethod())
+                        .traceId(MDC.get("traceId"))
+                        .build();
+
+        RequestContextSnapshotHolder.set(snapshot);
 
         // 验证 project-no 必填
         if (projectNo == null || projectNo.isEmpty()) {
@@ -51,5 +69,6 @@ public class AppContextInterceptor implements HandlerInterceptor {
             Object handler,
             Exception ex) {
         AppContext.remove();
+        RequestContextSnapshotHolder.clear();
     }
 }
