@@ -235,11 +235,12 @@ public class QueryPlanCompiler {
         }
 
         // 向上回溯补齐模块树祖先链路，确保孙模块与所有中间节点完整纳入闭包 (Transitive Closure)
+        // 🌟 核心原则：当前模块如果已经是 rootModuleId，或者已追溯到 rootModuleId，严禁继续向上追溯其父模块！
         Set<Long> fullModuleIds = new LinkedHashSet<>(involvedModuleIds);
         for (Long mid : involvedModuleIds) {
             Long current = mid;
             Set<Long> visited = new HashSet<>();
-            while (current != null && visited.add(current)) {
+            while (current != null && !current.equals(rootModuleId) && visited.add(current)) {
                 ModuleInfo m = metaMap.computeIfAbsent(current, id -> loadQueryMetadata(id));
                 if (m != null && m.getParentId() != null) {
                     Long pid = m.getParentId();
