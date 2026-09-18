@@ -1015,7 +1015,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalChain businessApprovalChain;
         if (approvalBusiness.getCurrentStep().equals(1)
                 || approvalChain.getRejectRule().equals("rejectStart")) {
-            approvalChain.setReason(approvalProcessDTO.getReason());
+            approvalChain.setReason(approvalProcessDTO.getReason().toString());
             businessApprovalChain = approvalChain;
             approvalBusiness.setCurrentStep(0);
             approvalVersionRecord.setCurrentStep(0);
@@ -1213,7 +1213,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalBusinessMapper.updateById(approvalBusiness);
         }
         // 变更单据对应版本状态信息
-        approvalVersionRecord.setReason(approvalProcessDTO.getReason());
+        approvalVersionRecord.setReason(approvalProcessDTO.getReason().toString());
         approvalVersionRecord.setStatusTitle(statusNode.getTitle());
         approvalVersionRecord.setStatusId(statusNode.getId());
         approvalVersionRecord.setStatusValue(statusNode.getStatusValue());
