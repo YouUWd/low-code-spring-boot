@@ -12,6 +12,7 @@ import com.jdec.platform.data.api.dto.log.MonitorApproveOperation;
 import com.jdec.platform.data.api.dto.log.MonitorContentBase;
 import com.jdec.platform.data.api.dto.log.MonitorContentMessage;
 import com.jdec.platform.data.api.dto.log.MonitorContentOperation;
+import com.jdec.platform.data.api.dto.log.MonitorContentSystem;
 import com.jdec.platform.data.api.dto.request.MonitorLogSaveReq;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,7 +30,8 @@ class MonitorLogJsonTest {
         String json =
                 """
                 {"logSubType":"operationLog","moduleName":"外部对象","linkName":"外部对象列表",
-                 "version":1,"operation":"提交","result":"成功","fontColor":"#00A870"}
+                 "version":1,"operation":"提交","result":"成功","fontColor":"#00A870",
+                 "menuParam":"external-object/list"}
                 """;
 
         MonitorContentBase content = objectMapper.readValue(json, MonitorContentBase.class);
@@ -40,6 +42,23 @@ class MonitorLogJsonTest {
         assertEquals("提交", operation.getOperation());
         assertEquals("成功", operation.getResult());
         assertEquals("#00A870", operation.getFontColor());
+        assertEquals("external-object/list", operation.getMenuParam());
+    }
+
+    @Test
+    @DisplayName("系统日志 content 按 logSubType 反序列化为子类并保留菜单参数")
+    void shouldDeserializeSystemContent() throws Exception {
+        String json =
+                """
+                {"logSubType":"systemLog","moduleName":"系统","operation":"登录",
+                 "menuParam":"system/login"}
+                """;
+
+        MonitorContentBase content = objectMapper.readValue(json, MonitorContentBase.class);
+
+        MonitorContentSystem system = assertInstanceOf(MonitorContentSystem.class, content);
+        assertEquals("系统", system.getModuleName());
+        assertEquals("system/login", system.getMenuParam());
     }
 
     @Test

@@ -12,7 +12,8 @@ import lombok.Data;
  *
  * <p>承载各类型日志公用的内容字段，类型独有的字段由子类声明；落库前由数据引擎序列化为 JSON 字符串写入 content 列。
  *
- * <p>子类由对象内的 {@code logSubType} 标识决定：{@code operationLog}-操作日志，{@code messageLog}-消息日志；未传时按基类处理。
+ * <p>子类由对象内的 {@code logSubType} 标识决定：{@code operationLog}-操作日志，{@code messageLog}-消息日志， {@code
+ * systemLog}-系统日志；未传时按基类处理。
  */
 @Data
 @JsonTypeInfo(
@@ -25,12 +26,13 @@ import lombok.Data;
     @JsonSubTypes.Type(
             value = MonitorContentOperation.class,
             name = MonitorLogConstant.OPERATION_LOG),
-    @JsonSubTypes.Type(value = MonitorContentMessage.class, name = MonitorLogConstant.MESSAGE_LOG)
+    @JsonSubTypes.Type(value = MonitorContentMessage.class, name = MonitorLogConstant.MESSAGE_LOG),
+    @JsonSubTypes.Type(value = MonitorContentSystem.class, name = MonitorLogConstant.SYSTEM_LOG)
 })
 @Schema(description = "监控日志内容（基类：共用字段）")
 public class MonitorContentBase implements Serializable {
 
-    @Schema(description = "日志子类型：operationLog-操作日志，messageLog-消息日志，其它类型可不传")
+    @Schema(description = "日志子类型：operationLog-操作日志，messageLog-消息日志，systemLog-系统日志")
     private String logSubType;
 
     @Schema(description = "模块名称", example = "外部对象")

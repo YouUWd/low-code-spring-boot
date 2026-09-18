@@ -110,7 +110,7 @@ public class AuditLogSendService {
         req.setPlatForm(RequestContextUtils.getPlatform());
         req.setLoginInfo(buildLoginInfo(loginUserId, loginRoleId));
         req.setMockInfo(buildMockInfo(isMockLogin, mockUserId));
-        req.setContent(buildContent(context));
+        req.setContent(buildContent(context, hrefUrl));
         req.setRemark(parseRemark(context != null ? context.getLogRemark() : null));
         req.setRecordTime(resolveRecordTime(context != null ? context.getLogDate() : null));
         return req;
@@ -157,8 +157,8 @@ public class AuditLogSendService {
         return mockInfo;
     }
 
-    /** 日志内容：操作日志子类型（{@code logSubType=operationLog}），承载模块/链接/操作/结果/字体颜色 */
-    private MonitorContentOperation buildContent(AuditLogSendContext context) {
+    /** 日志内容：操作日志子类型（{@code logSubType=operationLog}），承载模块/链接/操作/结果/字体颜色/菜单参数 */
+    private MonitorContentOperation buildContent(AuditLogSendContext context, String menuParam) {
         MonitorContentOperation content = new MonitorContentOperation();
         content.setLogSubType(MonitorLogConstant.OPERATION_LOG);
         content.setModuleName(context != null ? context.getModule() : null);
@@ -167,6 +167,7 @@ public class AuditLogSendService {
         content.setResult(context != null ? context.getOperatorResult() : null);
         // 字体颜色暂时为空，后续从系统配置获取
         content.setFontColor("");
+        content.setMenuParam(menuParam);
         return content;
     }
 

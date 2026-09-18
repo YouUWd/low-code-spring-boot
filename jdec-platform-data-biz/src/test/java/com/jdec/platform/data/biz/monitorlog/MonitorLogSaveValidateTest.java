@@ -9,6 +9,7 @@ import com.jdec.platform.data.api.dto.log.MonitorApproveBase;
 import com.jdec.platform.data.api.dto.log.MonitorContentBase;
 import com.jdec.platform.data.api.dto.log.MonitorContentMessage;
 import com.jdec.platform.data.api.dto.log.MonitorContentOperation;
+import com.jdec.platform.data.api.dto.log.MonitorContentSystem;
 import com.jdec.platform.data.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.monitorindex.service.MonitorOperateIndexService;
@@ -102,12 +103,26 @@ class MonitorLogSaveValidateTest {
     }
 
     @Test
-    @DisplayName("系统日志只有共用字段，不要求 logSubType")
-    void shouldAllowSystemLogWithoutSubType() {
+    @DisplayName("系统日志漏传 content.logSubType 时拒绝保存")
+    void shouldRejectSystemLogContentWithoutSubType() {
         MonitorLogSaveReq req = new MonitorLogSaveReq();
         req.setType(2);
         MonitorContentBase content = new MonitorContentBase();
         content.setModuleName("系统");
+        req.setContent(content);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service().saveLog(req));
+        assertTrue(ex.getMessage().contains("systemLog"), ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("系统日志 content 带上 systemLog 子类型时通过校验")
+    void shouldAcceptSystemLogWithSubType() {
+        MonitorLogSaveReq req = new MonitorLogSaveReq();
+        req.setType(2);
+        MonitorContentSystem content = new MonitorContentSystem();
+        content.setLogSubType("systemLog");
+        content.setMenuParam("system/login");
         req.setContent(content);
 
         assertNotRejectedBySubTypeCheck(req);

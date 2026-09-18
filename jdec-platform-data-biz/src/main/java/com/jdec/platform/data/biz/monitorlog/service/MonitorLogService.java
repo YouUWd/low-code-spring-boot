@@ -191,7 +191,7 @@ public class MonitorLogService implements MonitorLogApi {
      * <p>子类独有字段靠子类型标识才能被反序列化：调用方传了独有字段却漏传标识时，Jackson 会按基类解析并**静默丢弃**这些字段， 落库后再也找不回来。故对象一旦提交（非
      * null），其子类型标识必须存在且与日志类型对应。
      *
-     * <p>系统日志（type=2）只有共用字段，不做校验。
+     * <p>系统日志（type=2）的 content 只要提交，其子类型标识必须为 systemLog（不传 content 时不校验）。
      */
     private void validateLogSubType(MonitorLogSaveReq req) {
         if (MonitorLogConstant.TYPE_OPERATION_LOG.equals(req.getType())) {
@@ -213,6 +213,11 @@ public class MonitorLogService implements MonitorLogApi {
                         "content",
                         req.getContent().getLogSubType(),
                         MonitorLogConstant.MESSAGE_LOG);
+            }
+        } else if (MonitorLogConstant.TYPE_SYSTEM_LOG.equals(req.getType())) {
+            if (req.getContent() != null) {
+                checkLogSubType(
+                        "content", req.getContent().getLogSubType(), MonitorLogConstant.SYSTEM_LOG);
             }
         }
     }
