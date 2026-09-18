@@ -11,10 +11,12 @@ import com.jdec.platform.data.api.dto.log.MonitorContentMessage;
 import com.jdec.platform.data.api.dto.log.MonitorContentOperation;
 import com.jdec.platform.data.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
+import com.jdec.platform.data.biz.monitorindex.service.MonitorOperateIndexService;
 import com.jdec.platform.data.biz.monitorlog.handler.MonitorLogSaveHandler;
 import com.jdec.platform.data.biz.monitorlog.handler.impl.MessageLogSaveHandler;
 import com.jdec.platform.data.biz.monitorlog.handler.impl.OperationLogSaveHandler;
 import com.jdec.platform.data.biz.monitorlog.handler.impl.SystemLogSaveHandler;
+import com.jdec.platform.data.biz.monitorlog.service.MonitorLogEnrichService;
 import com.jdec.platform.data.biz.monitorlog.service.MonitorLogService;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.List;
@@ -33,7 +35,12 @@ class MonitorLogSaveValidateTest {
                         new MessageLogSaveHandler(objectMapper),
                         new SystemLogSaveHandler(objectMapper));
         // 校验发生在落库之前，数据源不会被真正触达，故用 mock 顶替
-        return new MonitorLogService(mock(JooqDataContextFactory.class), objectMapper, handlers);
+        return new MonitorLogService(
+                mock(JooqDataContextFactory.class),
+                objectMapper,
+                mock(MonitorOperateIndexService.class),
+                mock(MonitorLogEnrichService.class),
+                handlers);
     }
 
     private MonitorLogSaveReq operationReq(MonitorContentBase content) {

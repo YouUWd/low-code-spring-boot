@@ -4,6 +4,7 @@ import com.jdec.platform.data.api.dto.request.MonitorLogQueryReq;
 import com.jdec.platform.data.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.MonitorLogResp;
+import java.util.List;
 
 /**
  * 监控日志 API 接口
@@ -33,4 +34,16 @@ public interface MonitorLogApi {
      * @return 监控日志分页数据
      */
     DataPage<MonitorLogResp> queryLogPage(MonitorLogQueryReq req);
+
+    /**
+     * 按模块 + 单据查询操作日志
+     *
+     * <p>先按 {@code module_id + data_id} 查询操作日志索引表 {@code monitor_operate_index} 得到日志 id，再据此回 {@code
+     * monitor_log} 查询日志明细汇总返回；索引无记录时返回空列表。
+     *
+     * @param moduleId 模块id
+     * @param dataId 单据id
+     * @return 该单据的操作日志列表（按记录时间倒序）
+     */
+    List<MonitorLogResp> queryOperateLog(Long moduleId, Long dataId);
 }

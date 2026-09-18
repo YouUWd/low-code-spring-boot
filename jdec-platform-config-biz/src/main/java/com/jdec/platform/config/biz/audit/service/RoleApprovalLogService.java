@@ -327,7 +327,7 @@ public class RoleApprovalLogService {
             // 构建 controlName（单据操作名称）
             String controlName = operation + "了" + SUB_MODULE;
 
-            // 构建发送上下文，其余信息（用户/角色/主体/菜单/模块/IP等）由 AuditLogSendService 自动补全
+            // 构建发送上下文：只给业务信息，用户/角色/主体只传 id（展示信息由日志侧跨库补全），模块/IP 由 AuditLogSendService 补全
             AuditLogSendContext context =
                     AuditLogSendContext.builder()
                             .module(MODULE)

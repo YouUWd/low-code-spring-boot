@@ -30,10 +30,10 @@ public class MonitorLogSaveReq implements Serializable {
     @Schema(description = "系统日志类型", example = "systemLog")
     private String sysType;
 
-    @Schema(description = "主体id")
+    @Schema(description = "主体id（调用方传，主体名称由日志侧查配置中心按此id补全）")
     private Long subjectId;
 
-    @Schema(description = "主体名称")
+    @Schema(description = "主体名称（日志侧补全，调用方无需传）")
     private String subjectName;
 
     @Schema(description = "审批数据")

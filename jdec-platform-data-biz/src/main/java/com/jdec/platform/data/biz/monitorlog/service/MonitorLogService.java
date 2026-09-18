@@ -9,16 +9,22 @@ import com.jdec.platform.data.api.dto.log.MonitorLoginInfo;
 import com.jdec.platform.data.api.dto.log.MonitorMockInfo;
 import com.jdec.platform.data.api.dto.request.MonitorLogQueryReq;
 import com.jdec.platform.data.api.dto.request.MonitorLogSaveReq;
+import com.jdec.platform.data.api.dto.request.MonitorOperateIndexSaveReq;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.MonitorLogResp;
+import com.jdec.platform.data.api.dto.response.MonitorOperateIndexResp;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
+import com.jdec.platform.data.biz.monitorindex.service.MonitorOperateIndexService;
 import com.jdec.platform.data.biz.monitorlog.entity.MonitorLog;
 import com.jdec.platform.data.biz.monitorlog.handler.MonitorLogSaveHandler;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -76,14 +82,20 @@ public class MonitorLogService implements MonitorLogApi {
 
     private final JooqDataContextFactory jooqDataContextFactory;
     private final ObjectMapper objectMapper;
+    private final MonitorOperateIndexService monitorOperateIndexService;
+    private final MonitorLogEnrichService monitorLogEnrichService;
     private final Map<Integer, MonitorLogSaveHandler> saveHandlers;
 
     public MonitorLogService(
             JooqDataContextFactory jooqDataContextFactory,
             ObjectMapper objectMapper,
+            MonitorOperateIndexService monitorOperateIndexService,
+            MonitorLogEnrichService monitorLogEnrichService,
             List<MonitorLogSaveHandler> handlers) {
         this.jooqDataContextFactory = jooqDataContextFactory;
         this.objectMapper = objectMapper;
+        this.monitorOperateIndexService = monitorOperateIndexService;
+        this.monitorLogEnrichService = monitorLogEnrichService;
         this.saveHandlers =
                 handlers.stream()
                         .collect(
@@ -95,6 +107,18 @@ public class MonitorLogService implements MonitorLogApi {
 
     @Override
     public void saveLog(MonitorLogSaveReq req) {
+        saveLog(AppContext.getProjectNo(), req);
+    }
+
+    /**
+     * 保存监控日志（指定项目编码解析数据源）。
+     *
+     * <p>用于日志表与业务库不同源的场景：调用方显式传入日志库对应的项目编码，无需依赖请求上下文。
+     *
+     * @param projectNo 数据源解析用的项目编码
+     * @param req 监控日志保存请求
+     */
+    public void saveLog(String projectNo, MonitorLogSaveReq req) {
         if (req == null) {
             throw new BusinessException("监控日志不能为空");
         }
@@ -106,19 +130,57 @@ public class MonitorLogService implements MonitorLogApi {
             throw new BusinessException("不支持的日志类型：" + req.getType());
         }
         validateLogSubType(req);
+        // 调用方只传 id，其余展示信息（用户、主体、角色）跨库查回后补全
+        monitorLogEnrichService.enrich(projectNo, req);
 
         MonitorLog entity = handler.buildEntity(req);
         Map<Field<Object>, Object> values = toFieldValues(entity);
+
+        // 操作日志与其索引必须同事务落库：索引写入失败时日志一并回滚
         jooqDataContextFactory
-                .getContext()
-                .insertInto(DSL.table(DSL.name(TABLE_MONITOR_LOG)))
-                .set(values)
-                .execute();
+                .getContext(projectNo)
+                .transaction(
+                        configuration -> {
+                            DSLContext tx = DSL.using(configuration);
+                            tx.insertInto(DSL.table(DSL.name(TABLE_MONITOR_LOG)))
+                                    .set(values)
+                                    .execute();
+                            saveOperateIndex(tx, entity);
+                        });
+
         log.debug(
-                "保存监控日志：type={}, moduleId={}, dataId={}",
+                "保存监控日志：projectNo={}, type={}, moduleId={}, dataId={}",
+                projectNo,
                 entity.getType(),
                 entity.getModuleId(),
                 entity.getDataId());
+    }
+
+    /**
+     * 操作日志额外写入索引表 {@code monitor_operate_index}，便于按「模块 + 单据」反查该单据的操作日志。
+     *
+     * <p>使用调用方事务内的 {@code dsl} 写入，与日志落库共用同一连接。其他类型日志不建索引。
+     */
+    private void saveOperateIndex(DSLContext dsl, MonitorLog entity) {
+        if (!MonitorLogConstant.TYPE_OPERATION_LOG.equals(entity.getType())) {
+            return;
+        }
+        MonitorOperateIndexSaveReq indexReq = new MonitorOperateIndexSaveReq();
+        indexReq.setLogId(currentInsertId(dsl));
+        indexReq.setModuleId(entity.getModuleId());
+        indexReq.setDataId(entity.getDataId());
+        monitorOperateIndexService.saveIndex(dsl, indexReq);
+    }
+
+    /**
+     * 取当前连接最近一次插入的自增主键。
+     *
+     * <p>MySQL 不支持 {@code INSERT .. RETURNING}，jOOQ 的 {@code returningResult()} 在该方言下会静默返回 {@code
+     * null}，故改用同连接的 {@code LAST_INSERT_ID()}（jOOQ 的方言函数 {@link DSLContext#lastID()}）取主键。
+     */
+    private Long currentInsertId(DSLContext dsl) {
+        BigInteger id = dsl.lastID();
+        return id == null ? null : id.longValue();
     }
 
     // ==================== 保存校验 ====================
@@ -206,6 +268,39 @@ public class MonitorLogService implements MonitorLogApi {
                         .map(this::toResp)
                         .collect(Collectors.toList());
         return DataPage.of(pageNo, pageSize, (long) total, records);
+    }
+
+    /**
+     * 按模块 + 单据查询操作日志
+     *
+     * <p>两步查询：先按 {@code module_id + data_id} 从索引表 {@code monitor_operate_index} 取出日志 id，再去 {@code
+     * monitor_log} 查明细汇总返回。索引表只有操作日志（type=0）才会写入，故无需再按类型过滤。
+     */
+    @Override
+    public List<MonitorLogResp> queryOperateLog(Long moduleId, Long dataId) {
+        if (moduleId == null || dataId == null) {
+            throw new BusinessException("模块id与单据id不能为空");
+        }
+        List<Long> logIds =
+                monitorOperateIndexService.listByData(moduleId, dataId).stream()
+                        .map(MonitorOperateIndexResp::getLogId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .collect(Collectors.toList());
+        if (logIds.isEmpty()) {
+            return List.of();
+        }
+        return jooqDataContextFactory
+                .getContext()
+                .select(LOG_COLUMNS)
+                .from(DSL.table(DSL.name(TABLE_MONITOR_LOG)))
+                .where(DSL.field(DSL.name("id"), Long.class).in(logIds))
+                .orderBy(
+                        DSL.field(DSL.name("record_time")).desc(), DSL.field(DSL.name("id")).desc())
+                .fetchInto(MonitorLog.class)
+                .stream()
+                .map(this::toResp)
+                .collect(Collectors.toList());
     }
 
     // ==================== 查询条件 ====================

@@ -83,7 +83,3 @@ wechat:
         agent-id: 1000003
         token: energy-work
         aes-key: ''
-
-# ===== 审计日志配置 =====
-audit:
-  monitor-log-url: ${AUDIT_MONITOR_LOG_URL:http://119.36.78.123:5009/api/monitorlog/addControlLog}

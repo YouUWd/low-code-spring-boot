@@ -662,8 +662,8 @@ public class DataAuditAspect {
     /**
      * 发送审计日志到监控服务（非阻塞）。
      *
-     * <p>仅组装调用方自定义的字段（单据ID、操作名称、备注），其余信息（登录用户/模拟用户、角色、主体、菜单、模块、IP、浏览器、平台等） 由 {@link
-     * AuditLogSendService} 根据当前请求上下文统一补全后发送。
+     * <p>仅组装调用方自定义的字段（单据ID、操作名称、备注）；登录用户/模拟用户、角色、主体只传 id，其展示信息（姓名、头像、工号、部门、岗位、
+     * 角色名称、主体名称）由日志侧跨库补全，模块、IP、浏览器、平台由 {@link AuditLogSendService} 根据当前请求上下文补全后发送。
      *
      * <p>注意：此方法在事务提交成功后调用，发送失败仅记录日志，不会影响业务事务。
      */
@@ -713,7 +713,7 @@ public class DataAuditAspect {
             }
         }
 
-        // 构建发送上下文，其余信息（用户/角色/主体/菜单/模块/IP等）由 AuditLogSendService 自动补全
+        // 构建发送上下文：只给业务信息，用户/角色/主体只传 id（展示信息由日志侧跨库补全），模块/IP 由 AuditLogSendService 补全
         AuditLogSendContext context =
                 AuditLogSendContext.builder()
                         .module(auditResult.getModule())
