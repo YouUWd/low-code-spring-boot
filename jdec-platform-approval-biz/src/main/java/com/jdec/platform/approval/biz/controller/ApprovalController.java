@@ -22,7 +22,7 @@ public class ApprovalController {
     private final IApprovalEngine approvalService;
     private final ApplicationEventPublisher eventPublisher;
 
-    @PostMapping("/BusinessNum")
+    /* @PostMapping("/BusinessNum")
     @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
     public ApiResponse<Map<String, Object>> getBusinessTypeList(@RequestBody ApprovalListReq req) {
         return ApiResponse.success(approvalService.getBusinessTypeList(req));
@@ -33,7 +33,7 @@ public class ApprovalController {
     public ApiResponse<List<Map<String, Object>>> getBusinessList(
             @RequestBody ApprovalListReq req) {
         return ApiResponse.success(approvalService.getBusinessList(req));
-    }
+    }*/
 
     @PostMapping("/BusinessNextId")
     @Operation(summary = "查询待办下一个单据ID", description = "查询待办下一个单据ID")
@@ -59,5 +59,11 @@ public class ApprovalController {
     public ApiResponse<Long> approvalProcess(@RequestBody ApprovalEvent approvalEvent) {
         eventPublisher.publishEvent(approvalEvent);
         return ApiResponse.success();
+    }
+
+    @GetMapping("/{moduleId}")
+    @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
+    public ApiResponse<Map<String, Object>> getListNumber(@PathVariable Long moduleId) {
+        return ApiResponse.success(approvalService.getListNumber(moduleId));
     }
 }

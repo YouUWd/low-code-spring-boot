@@ -6,23 +6,26 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.AsyncTaskService;
 import com.jdec.platform.approval.api.dto.ApprovalProcessDTO;
+import com.jdec.platform.approval.biz.dto.LogContentDTO;
 import com.jdec.platform.approval.biz.entity.ApprovalChain;
 import com.jdec.platform.approval.biz.mapper.ApprovalChainButtonMapper;
 import com.jdec.platform.approval.biz.mapper.ApprovalChainMapper;
+import com.jdec.platform.approval.biz.util.JsonUtil;
 import com.jdec.platform.approval.biz.util.ToolUtils;
 import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.data.api.MonitorLogApi;
+import com.jdec.platform.data.api.dto.log.*;
+import com.jdec.platform.data.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.hr.api.SubjectApi;
 import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.hr.api.bo.SubjectBO;
-// import com.jdec.platform.monitorlog.api.MonitorLogApi;
-// import com.jdec.platform.monitorlog.api.dto.request.MonitorControlLogReq;
-// import com.jdec.platform.monitorlog.api.dto.request.MonitorMessageLogReq;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSourceContextHolder;
 import com.jdec.platform.shared.datasource.ProjectProperties;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.utils.RequestContextUtils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -57,7 +60,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     private final SysRoleApi sysRoleApi;
     private final SysMenuApi sysMenuApi;
     private final SysModuleApi sysModuleApi;
-    // private final MonitorLogApi monitorLogApi;
+    private final MonitorLogApi monitorLogApi;
     private final SysUserApi sysUserApi;
     private final SysWechatTemplateApi sysWechatTemplateApi;
     private final ApprovalChainMapper approvalChainMapper;
@@ -125,40 +128,11 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     // =========================================================================
     // 保存操作日志-----------------------------------------------------------------------
     private void saveActionLog(ApprovalProcessDTO approvalProcessDTO) {
-        /*
         try {
-            // 1. 获取对应节点 action 的操作日志描述
-            String actionName = "";
-            Long actionType = 0L;
-            if (List.of("cancel", "submit", "create").contains(approvalProcessDTO.getButton())) {
-                SysConfigItemResp modelConfig =
-                        sysConfigCategoryApi.getConfigItemsByValue(
-                                "logStateIcon", approvalProcessDTO.getButton());
-                if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
-                    actionName = "已" + modelConfig.getLabel();
-                    actionType = modelConfig.getId();
-                }
-            } else {
-                LambdaQueryWrapper<ApprovalChainButton> configWrapper = new LambdaQueryWrapper<>();
-                configWrapper.eq(
-                        ApprovalChainButton::getSerialNumber, approvalProcessDTO.getSerialNumber());
-                configWrapper.eq(
-                        ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
-                configWrapper.eq(
-                        ApprovalChainButton::getCurrentStep, approvalProcessDTO.getCurrentStep());
-                configWrapper
-                        .eq(ApprovalChainButton::getButtonTypeValue, approvalProcessDTO.getButton())
-                        .last("LIMIT 1");
-                ApprovalChainButton approvalChainButton =
-                        approvalChainButtonMapper.selectOne(configWrapper);
-                if (Objects.nonNull(approvalChainButton)) {
-                    actionName = approvalChainButton.getLogName();
-                    actionType = approvalChainButton.getButtonTypeId();
-                }
-            }
-
-            // 2. 插入日志记录
-            MonitorControlLogReq monitorControlLogReq = new MonitorControlLogReq();
+            // 日志记录
+            MonitorLogSaveReq monitorControlLogReq = new MonitorLogSaveReq();
+            monitorControlLogReq.setType(0);
+            monitorControlLogReq.setSysType("operationLog");
             monitorControlLogReq.setSubjectId(approvalProcessDTO.getSubjectId());
             List<SubjectBO> subjectList = subjectApi.getSubjectList();
             String subjectName = "";
@@ -171,87 +145,53 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                                 .orElse("");
             }
             monitorControlLogReq.setSubjectName(subjectName);
-            UserBO loginUser = new UserBO();
-            if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
-                monitorControlLogReq.setApprovalType(1);
-                loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
-            } else {
-                loginUser.setId(9999999L);
-                loginUser.setUserName("系统自动审批");
-                monitorControlLogReq.setApprovalType(0);
-            }
-            monitorControlLogReq.setLoginUserId(approvalProcessDTO.getCurrentUserId());
-            if (Objects.nonNull(loginUser)) {
-                monitorControlLogReq.setLoginUserName(loginUser.getUserName());
-                monitorControlLogReq.setLoginAvater(loginUser.getUserAvatar());
-                monitorControlLogReq.setLoginUserNumber(loginUser.getWorkNumber());
-                monitorControlLogReq.setLoginUserDeptId(loginUser.getDepartmentId());
-                monitorControlLogReq.setLoginUserDeptName(loginUser.getDepartmentName());
-                monitorControlLogReq.setLoginUserJobId(loginUser.getJobId());
-                monitorControlLogReq.setLoginUserJobName(loginUser.getJobName());
-            }
-            monitorControlLogReq.setLoginRoleId(approvalProcessDTO.getRoleId());
-            RoleConfigDetailResp roleDetail =
-                    sysRoleApi.getRoleConfigDetail(approvalProcessDTO.getRoleId());
-            if (Objects.nonNull(roleDetail)) {
-                monitorControlLogReq.setLoginRoleName(roleDetail.getRoleName());
-            }
+            MonitorLoginInfo loginInfo = new MonitorLoginInfo();
+            loginInfo.setUserId(approvalProcessDTO.getCurrentUserId());
+            loginInfo.setRoleId(approvalProcessDTO.getRoleId());
             boolean mockFlag =
                     approvalProcessDTO.getCurrentUserId() != null
                             && approvalProcessDTO.getApplicantId() != null
                             && !approvalProcessDTO
                                     .getCurrentUserId()
                                     .equals(approvalProcessDTO.getApplicantId());
-            monitorControlLogReq.setMockFlag(mockFlag ? 1 : 0);
-            if (mockFlag) {
-                UserBO mockUser = new UserBO();
-                if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
-                    mockUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
-                } else {
-                    mockUser.setId(9999999L);
-                    mockUser.setUserName("系统自动审批");
-                }
-                monitorControlLogReq.setMockUserId(approvalProcessDTO.getApplicantId());
-                monitorControlLogReq.setMockUserName(mockUser.getUserName());
-                monitorControlLogReq.setMockUserAvater(mockUser.getUserAvatar());
-                monitorControlLogReq.setMockUserNumber(mockUser.getWorkNumber());
-            }
-            monitorControlLogReq.setIp(RequestContextUtils.getClientIp());
-            monitorControlLogReq.setBrowser(RequestContextUtils.getBrowser());
-            monitorControlLogReq.setPlatForm(RequestContextUtils.getPlatform());
-            monitorControlLogReq.setLogContent(null);
-            monitorControlLogReq.setDataId(approvalProcessDTO.getRecordId());
-            if (Objects.nonNull(approvalProcessDTO.getReason())) {
-                monitorControlLogReq.setLogRemark(approvalProcessDTO.getReason());
-            }
+            MonitorMockInfo mockInfo = new MonitorMockInfo();
+            mockInfo.setFlag(mockFlag ? 1 : 0);
+            mockInfo.setUserId(approvalProcessDTO.getApplicantId());
+            monitorControlLogReq.setMockInfo(mockInfo);
+
             SysConfigItemResp modelConfig =
                     sysConfigCategoryApi.getConfigItemsByValue(
                             "logStateIcon", approvalProcessDTO.getButton());
-            monitorControlLogReq.setActionName(actionName);
-            monitorControlLogReq.setActionType(approvalProcessDTO.getButton());
-            monitorControlLogReq.setActionTypeTitle(modelConfig.getLabel());
-            monitorControlLogReq.setActionPath(modelConfig.getExtra());
-            monitorControlLogReq.setHrefName(approvalProcessDTO.getBusinessNumber());
-            monitorControlLogReq.setOrderVersion(
-                    Objects.isNull(approvalProcessDTO.getVersionNo())
-                            ? 1
-                            : approvalProcessDTO.getVersionNo());
-            monitorControlLogReq.setControlName(modelConfig.getLabel());
-            monitorControlLogReq.setOperatorResult("成功");
-            monitorControlLogReq.setFontColor("");
-            if (Objects.nonNull(approvalProcessDTO.getMenuId())) {
-                monitorControlLogReq.setMenuId(approvalProcessDTO.getMenuId());
-                SysMenuResp menu = sysMenuApi.getMenuById(approvalProcessDTO.getMenuId());
-                monitorControlLogReq.setMenuParam(menu.getParam());
-            }
+            MonitorApproveOperation approveBase = new MonitorApproveOperation();
+            approveBase.setLogSubType("operationLog");
+            approveBase.setPath(modelConfig.getExtra());
+            approveBase.setName(modelConfig.getLabel());
+            approveBase.setResult(modelConfig.getDescription());
+            approveBase.setType(approvalProcessDTO.getCurrentUserId().equals(9999999L) ? 0 : 1);
+            monitorControlLogReq.setApprove(approveBase);
+
+            monitorControlLogReq.setIp(RequestContextUtils.getClientIp());
+            monitorControlLogReq.setBrowser(RequestContextUtils.getBrowser());
+            monitorControlLogReq.setPlatForm(RequestContextUtils.getPlatform());
             monitorControlLogReq.setModuleId(approvalProcessDTO.getModuleId());
+            monitorControlLogReq.setDataId(approvalProcessDTO.getRecordId());
+
             SysModuleResp module =
                     sysModuleApi.getModuleCompleteById(
                             AppContext.getProjectNo(),
                             approvalProcessDTO.getSubjectId(),
                             approvalProcessDTO.getModuleId());
-            monitorControlLogReq.setModuleName(module.getModule().getModuleName());
-            monitorLogApi.recordOrderRunLog(monitorControlLogReq, AppContext.getProjectNo());
+            MonitorContentOperation contentBase = new MonitorContentOperation();
+            contentBase.setLogSubType("operationLog");
+            contentBase.setModuleName(module.getModule().getModuleName());
+            contentBase.setVersion(approvalProcessDTO.getVersionNo());
+            contentBase.setLinkName(approvalProcessDTO.getBusinessNumber());
+            contentBase.setOperation(modelConfig.getLabel());
+            contentBase.setResult("成功");
+            contentBase.setFontColor("");
+            monitorControlLogReq.setContent(contentBase);
+            monitorControlLogReq.setRemark(approvalProcessDTO.getReason());
+            monitorLogApi.saveLog(monitorControlLogReq);
             log.info(
                     "审批操作日志保存成功: businessNumber={}, businessId={}, action={}",
                     approvalProcessDTO.getBusinessNumber(),
@@ -262,17 +202,16 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             // 日志异常
             log.error("审批操作日志保存异常", e);
         }
-
-         */
     }
 
     // 保存消息日志-----------------------------------------------------------------------
     private void saveWeChatMessageLog(
             ApprovalProcessDTO approvalProcessDTO, List<Long> receivers, String content) {
-        /*
         try {
             // 插入企业微信消息日志记录
-            MonitorMessageLogReq monitorMessageLogReq = new MonitorMessageLogReq();
+            MonitorLogSaveReq monitorMessageLogReq = new MonitorLogSaveReq();
+            monitorMessageLogReq.setType(1);
+            monitorMessageLogReq.setSysType("messageLog");
             monitorMessageLogReq.setSubjectId(approvalProcessDTO.getSubjectId());
             List<SubjectBO> subjectList = subjectApi.getSubjectList();
             String subjectName = "";
@@ -285,109 +224,70 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                                 .orElse("");
             }
             monitorMessageLogReq.setSubjectName(subjectName);
-            UserBO loginUser = new UserBO();
-            if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
-                monitorMessageLogReq.setApprovalType(1);
-                loginUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
-            } else {
-                loginUser.setId(9999999L);
-                loginUser.setUserName("系统自动审批");
-                monitorMessageLogReq.setApprovalType(0);
-            }
-            monitorMessageLogReq.setLoginUserId(approvalProcessDTO.getCurrentUserId());
-            if (Objects.nonNull(loginUser)) {
-                monitorMessageLogReq.setLoginUserName(loginUser.getUserName());
-                monitorMessageLogReq.setLoginAvater(loginUser.getUserAvatar());
-                monitorMessageLogReq.setLoginUserNumber(loginUser.getWorkNumber());
-                monitorMessageLogReq.setLoginUserDeptId(loginUser.getDepartmentId());
-                monitorMessageLogReq.setLoginUserDeptName(loginUser.getDepartmentName());
-                monitorMessageLogReq.setLoginUserJobId(loginUser.getJobId());
-                monitorMessageLogReq.setLoginUserJobName(loginUser.getJobName());
-            }
-            monitorMessageLogReq.setLoginRoleId(approvalProcessDTO.getRoleId());
-            RoleConfigDetailResp roleDetail =
-                    sysRoleApi.getRoleConfigDetail(approvalProcessDTO.getRoleId());
-            if (Objects.nonNull(roleDetail)) {
-                monitorMessageLogReq.setLoginRoleName(roleDetail.getRoleName());
-            }
+            MonitorLoginInfo loginInfo = new MonitorLoginInfo();
+            loginInfo.setUserId(approvalProcessDTO.getCurrentUserId());
+            loginInfo.setRoleId(approvalProcessDTO.getRoleId());
             boolean mockFlag =
                     approvalProcessDTO.getCurrentUserId() != null
                             && approvalProcessDTO.getApplicantId() != null
                             && !approvalProcessDTO
                                     .getCurrentUserId()
                                     .equals(approvalProcessDTO.getApplicantId());
-            monitorMessageLogReq.setMockFlag(mockFlag ? 1 : 0);
-            if (mockFlag) {
-                UserBO mockUser = new UserBO();
-                if (!approvalProcessDTO.getCurrentUserId().equals(9999999L)) {
-                    mockUser = userApi.getUserById(approvalProcessDTO.getCurrentUserId());
-                } else {
-                    mockUser.setId(9999999L);
-                    mockUser.setUserName("系统自动审批");
-                }
-                monitorMessageLogReq.setMockUserId(approvalProcessDTO.getApplicantId());
-                monitorMessageLogReq.setMockUserName(mockUser.getUserName());
-                monitorMessageLogReq.setMockUserAvater(mockUser.getUserAvatar());
-                monitorMessageLogReq.setMockUserNumber(mockUser.getWorkNumber());
-            }
-            monitorMessageLogReq.setIp(RequestContextUtils.getClientIp());
-            monitorMessageLogReq.setBrowser(RequestContextUtils.getBrowser());
-            monitorMessageLogReq.setPlatForm(RequestContextUtils.getPlatform());
-            monitorMessageLogReq.setLogContent(content);
-            monitorMessageLogReq.setDataId(approvalProcessDTO.getRecordId());
-            if (Objects.nonNull(approvalProcessDTO.getReason())) {
-                monitorMessageLogReq.setLogRemark(approvalProcessDTO.getReason());
-            }
+            MonitorMockInfo mockInfo = new MonitorMockInfo();
+            mockInfo.setFlag(mockFlag ? 1 : 0);
+            mockInfo.setUserId(approvalProcessDTO.getApplicantId());
+            monitorMessageLogReq.setMockInfo(mockInfo);
+
             SysConfigItemResp modelConfig =
                     sysConfigCategoryApi.getConfigItemsByValue(
                             "logStateIcon", approvalProcessDTO.getButton());
-            monitorMessageLogReq.setHrefName(approvalProcessDTO.getBusinessNumber());
-            monitorMessageLogReq.setOrderVersion(
-                    Objects.isNull(approvalProcessDTO.getVersionNo())
-                            ? 1
-                            : approvalProcessDTO.getVersionNo());
-            monitorMessageLogReq.setControlName(modelConfig.getLabel());
-            monitorMessageLogReq.setOperatorResult("成功");
-            monitorMessageLogReq.setFontColor("");
-            if (Objects.nonNull(approvalProcessDTO.getMenuId())) {
-                monitorMessageLogReq.setMenuId(approvalProcessDTO.getMenuId());
-                SysMenuResp menu = sysMenuApi.getMenuById(approvalProcessDTO.getMenuId());
-                monitorMessageLogReq.setMenuParam(menu.getParam());
-            }
+
+            monitorMessageLogReq.setIp(RequestContextUtils.getClientIp());
+            monitorMessageLogReq.setBrowser(RequestContextUtils.getBrowser());
+            monitorMessageLogReq.setPlatForm(RequestContextUtils.getPlatform());
             monitorMessageLogReq.setModuleId(approvalProcessDTO.getModuleId());
+            monitorMessageLogReq.setDataId(approvalProcessDTO.getRecordId());
+
             SysModuleResp module =
                     sysModuleApi.getModuleCompleteById(
                             AppContext.getProjectNo(),
                             approvalProcessDTO.getSubjectId(),
                             approvalProcessDTO.getModuleId());
-            monitorMessageLogReq.setModuleName(module.getModule().getModuleName());
-            LogContentDTO contentDTO =
-                    LogContentDTO.builder()
-                            .moduleId(monitorMessageLogReq.getModuleId())
-                            .moduleName(monitorMessageLogReq.getModuleName())
-                            .menuId(monitorMessageLogReq.getMenuId())
-                            .menuParam(monitorMessageLogReq.getMenuParam())
-                            .hrefName(monitorMessageLogReq.getHrefName())
-                            .dataId(String.valueOf(monitorMessageLogReq.getDataId()))
-                            .orderVersion(monitorMessageLogReq.getOrderVersion().toString())
-                            .controlName(monitorMessageLogReq.getControlName())
-                            .messageReceivers(receivers)
-                            .build();
-            monitorMessageLogReq.setLogRemark(JsonUtil.obj2Json(contentDTO));
+            MonitorContentMessage contentBase = new MonitorContentMessage();
+            contentBase.setLogSubType("operationLog");
+            contentBase.setModuleName(module.getModule().getModuleName());
+            contentBase.setVersion(approvalProcessDTO.getVersionNo());
+            contentBase.setLinkName(approvalProcessDTO.getBusinessNumber());
+            contentBase.setOperation(modelConfig.getLabel());
+            contentBase.setContent(content);
+            monitorMessageLogReq.setContent(contentBase);
 
-            monitorLogApi.recordMessageLog(monitorMessageLogReq, AppContext.getProjectNo());
+            if (Objects.nonNull(approvalProcessDTO.getMenuId())) {
+                SysMenuResp menu = sysMenuApi.getMenuById(approvalProcessDTO.getMenuId());
+                LogContentDTO contentDTO =
+                        LogContentDTO.builder()
+                                .moduleId(monitorMessageLogReq.getModuleId())
+                                .moduleName(module.getModule().getModuleName())
+                                .menuId(approvalProcessDTO.getMenuId())
+                                .menuParam(menu.getParam())
+                                .hrefName(approvalProcessDTO.getBusinessNumber())
+                                .dataId(String.valueOf(monitorMessageLogReq.getDataId()))
+                                .orderVersion(approvalProcessDTO.getVersionNo().toString())
+                                .controlName(modelConfig.getLabel())
+                                .messageReceivers(receivers)
+                                .build();
+                monitorMessageLogReq.setRemark(JsonUtil.obj2Json(contentDTO));
+            }
+            monitorLogApi.saveLog(monitorMessageLogReq);
             log.info(
                     "消息日志保存成功: businessNumber={}, businessId={}, action={}",
                     approvalProcessDTO.getBusinessNumber(),
                     approvalProcessDTO.getRecordId(),
                     approvalProcessDTO.getButton());
-
         } catch (Exception e) {
             // 日志异常
             log.error("消息日志保存异常", e);
         }
-
-             */
     }
 
     // ======================================组装并发送审批消息==========================================
@@ -556,7 +456,8 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                 if (Objects.nonNull(approvalProcessDTO.getReason())) {
                     ObjectMapper mapper = new ObjectMapper();
                     try {
-                        JsonNode jsonNode = mapper.readTree(approvalProcessDTO.getReason());
+                        JsonNode jsonNode =
+                                mapper.readTree(approvalProcessDTO.getReason().toString());
                         reason = jsonNode.path("comment").asText("");
                     } catch (Exception e) {
                         reason = "";

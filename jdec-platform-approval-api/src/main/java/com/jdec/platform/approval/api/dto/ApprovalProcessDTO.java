@@ -57,7 +57,7 @@ public class ApprovalProcessDTO {
     private Integer currentStep;
 
     // 驳回原因、取消原因
-    private String reason;
+    private Object reason;
 
     // 驳回到指定状态步骤
     private Integer rejectStep;

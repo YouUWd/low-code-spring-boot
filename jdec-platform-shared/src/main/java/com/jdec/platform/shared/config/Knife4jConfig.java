@@ -49,4 +49,13 @@ public class Knife4jConfig {
                 .packagesToScan("com.jdec.platform.data.biz.controller")
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi comBizApi() {
+        return GroupedOpenApi.builder()
+                .group("comBiz")
+                .displayName("通用功能管理")
+                .packagesToScan("com.jdec.platform.approval.biz.controller")
+                .build();
+    }
 }

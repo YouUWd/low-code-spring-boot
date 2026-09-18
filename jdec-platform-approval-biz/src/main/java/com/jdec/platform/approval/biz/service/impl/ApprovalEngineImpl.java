@@ -21,6 +21,8 @@ import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.security.SecurityUtils;
+import com.jdec.platform.shared.security.model.LoginUser;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
@@ -159,8 +161,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     @Override
     public Map<String, Object> getBusinessTypeList(ApprovalListReq approvalProcessReq) {
         Map<String, Object> resultMap = new HashMap<>();
-        if (approvalProcessReq.getModuleIdList().isEmpty()
-                || approvalProcessReq.getSubjectIdList().isEmpty()) {
+        if (approvalProcessReq.getModuleIdList().isEmpty()) {
+            //   || approvalProcessReq.getSubjectIdList().isEmpty()) {
             resultMap.put("todoNum", 0);
             resultMap.put("doneNum", 0);
             resultMap.put("allNum", 0);
@@ -171,7 +173,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                         approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
         todoWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-        todoWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+        //   todoWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         todoWrapper.and(
                 wrapper ->
                         wrapper.nested(
@@ -222,7 +224,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         resultMap.put("todoNum", todoList.size());
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
         processWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-        processWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+        // processWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         // processWrapper.eq(ApprovalBusiness::getApprovalUids,
         // approvalProcessReq.getApplicantId());
         processWrapper.apply(
@@ -235,7 +237,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         resultMap.put("doneNum", processList.size());
         LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
         allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-        allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+        // allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         if (Objects.nonNull(approvalProcessReq.getRecordIdList())
                 && !approvalProcessReq.getRecordIdList().isEmpty()) {
             allWrapper.in(ApprovalBusiness::getRecordId, approvalProcessReq.getRecordIdList());
@@ -261,8 +263,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 && !approvalProcessReq.getAllowedIdList().isEmpty()) {
             LambdaQueryWrapper<ApprovalBusiness> allowedWrapper = new LambdaQueryWrapper<>();
             allowedWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-            allowedWrapper.in(
-                    ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
+            // allowedWrapper.in(
+            //         ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
             allowedWrapper.in(ApprovalBusiness::getRecordId, approvalProcessReq.getAllowedIdList());
             List<ApprovalBusiness> allowedList = approvalBusinessMapper.selectList(allowedWrapper);
             allList.addAll(allowedList);
@@ -276,8 +278,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     public List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq) {
         List<ApprovalBusiness> toDoList = new ArrayList<>();
         List<Map<String, Object>> respList = new ArrayList<>();
-        if (approvalListReq.getModuleIdList().isEmpty()
-                || approvalListReq.getSubjectIdList().isEmpty()) {
+        if (approvalListReq.getModuleIdList().isEmpty()) {
+            //   || approvalListReq.getSubjectIdList().isEmpty()) {
             return respList;
         }
         List<Long> approvalTypeIds =
@@ -286,7 +288,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (approvalListReq.getApprovalType() != 2) {
             LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
             todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            todoWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+            //  todoWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
             todoWrapper.and(
                     wrapper ->
                             wrapper.nested(
@@ -354,7 +356,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else {
             LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
             processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            processWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+            //  processWrapper.in(ApprovalBusiness::getSubjectId,
+            // approvalListReq.getSubjectIdList());
             processWrapper.apply(
                     "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
             if (Objects.nonNull(approvalListReq.getRecordIdList())
@@ -374,7 +377,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (approvalListReq.getApprovalType() == 3) {
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
             allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+            //   allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
             if (Objects.nonNull(approvalListReq.getRecordIdList())
                     && !approvalListReq.getRecordIdList().isEmpty()) {
                 allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
@@ -399,8 +402,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     && !approvalListReq.getAllowedIdList().isEmpty()) {
                 LambdaQueryWrapper<ApprovalBusiness> allowedWrapper = new LambdaQueryWrapper<>();
                 allowedWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-                allowedWrapper.in(
-                        ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
+                //   allowedWrapper.in(
+                //           ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
                 allowedWrapper.in(
                         ApprovalBusiness::getRecordId, approvalListReq.getAllowedIdList());
                 List<ApprovalBusiness> allowedList =
@@ -416,6 +419,32 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
         }
         return respList;
+    }
+
+    @Override
+    public Map<String, Object> getListNumber(Long moduleId) {
+        LoginUser loginUserInfo = SecurityUtils.getLoginUser();
+        boolean isMockLogin =
+                loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
+        Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : loginUserInfo.getUserId();
+        ApprovalListReq req = new ApprovalListReq();
+        req.setModuleIdList(List.of(moduleId));
+        req.setRoleId(loginUserInfo.getRoleId());
+        req.setApplicantId(mockUserId);
+        return getBusinessTypeList(req);
+    }
+
+    @Override
+    public List<Map<String, Object>> getListButton(Long moduleId, Integer approvalType) {
+        LoginUser loginUserInfo = SecurityUtils.getLoginUser();
+        boolean isMockLogin =
+                loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
+        Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : loginUserInfo.getUserId();
+        ApprovalListReq req = new ApprovalListReq();
+        req.setModuleIdList(List.of(moduleId));
+        req.setRoleId(loginUserInfo.getRoleId());
+        req.setApplicantId(mockUserId);
+        return getBusinessList(req);
     }
 
     // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
@@ -1773,18 +1802,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         Map<String, Object> approvalListResp = new HashMap<>();
         approvalListResp.put("recordId", approvalBusiness.getRecordId());
         Map<String, Object> businessNo = new HashMap<>();
-        businessNo.put("businessNumber", approvalBusiness.getBusinessNumber());
-        businessNo.put("versionNo", approvalBusiness.getVersionNo());
-        approvalListResp.put("businessNo", businessNo);
-        approvalListResp.put("createUser", convertUserResp(approvalBusiness.getCreatedBy()));
-        approvalListResp.put("createdDate", approvalBusiness.getCreatedDate());
-        Map<String, Object> approvalStatus = new HashMap<>();
-        approvalStatus.put("id", approvalBusiness.getStatusId());
-        approvalStatus.put("statusValue", approvalBusiness.getStatusValue());
-        approvalStatus.put("title", approvalBusiness.getStatusTitle());
-        approvalStatus.put("statusBackground", approvalBusiness.getStatusBackground());
-        approvalStatus.put("statusFontColor", approvalBusiness.getStatusFontColor());
-        approvalListResp.put("approvalStatus", approvalStatus);
+        // businessNo.put("businessNumber", approvalBusiness.getBusinessNumber());
+        // businessNo.put("versionNo", approvalBusiness.getVersionNo());
+        // approvalListResp.put("businessNo", businessNo);
+        // approvalListResp.put("createUser", convertUserResp(approvalBusiness.getCreatedBy()));
+        // approvalListResp.put("createdDate", approvalBusiness.getCreatedDate());
+        //        Map<String, Object> approvalStatus = new HashMap<>();
+        //        approvalStatus.put("id", approvalBusiness.getStatusId());
+        //        approvalStatus.put("statusValue", approvalBusiness.getStatusValue());
+        //        approvalStatus.put("title", approvalBusiness.getStatusTitle());
+        //        approvalStatus.put("statusBackground", approvalBusiness.getStatusBackground());
+        //        approvalStatus.put("statusFontColor", approvalBusiness.getStatusFontColor());
+        //        approvalListResp.put("approvalStatus", approvalStatus);
         Map<String, Object> btnInfo = new LinkedHashMap<>();
         String alias = "view";
         String btnName = "查阅";
@@ -1801,9 +1830,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             btnInfo.put("buttonName", btnName);
         }
         List<Map<String, Object>> btnList = new ArrayList<>();
-        btnList.add(btnInfo);
-        approvalListResp.put("btnList", btnList);
-        return approvalListResp;
+        // btnList.add(btnInfo);
+        approvalListResp.put("btnInfo", btnInfo);
+        return btnInfo;
     }
 
     private ActionLogResp.UserVO convertUserResp(Long userId) {
