@@ -115,8 +115,8 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                 mainTableIdMap.put(statementContext.getId(), mainRow);
             }
 
-            Map<String, Object> mainDataMap = new HashMap<>();
-            mainDataMap.put("data", mainRow);
+            //            Map<String, Object> mainDataMap = new HashMap<>();
+            //            mainDataMap.put("data", mainRow);
 
             // 放入主表数据
             //            tableData.put(primaryTable, mainDataMap);
@@ -147,13 +147,17 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                     }
                 }
                 Map<String, Object> rowData = r.intoMap();
-                mainTableIdMap.put(Long.parseLong(String.valueOf(rowData.get("id"))), rowData);
+                mainTableIdMap.put(
+                        Long.parseLong(
+                                String.valueOf(
+                                        rowData.get(statementContext.getTableName() + "." + "id"))),
+                        rowData);
 
                 mainRow.add(rowData);
             }
 
-            Map<String, Object> mainDataMap = new HashMap<>();
-            mainDataMap.put("data", mainRow);
+            //            Map<String, Object> mainDataMap = new HashMap<>();
+            //            mainDataMap.put("data", mainRow);
 
             // 放入主表数据
             //            tableData.put(primaryTable, mainDataMap);
@@ -180,27 +184,21 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         }
 
         for (Map.Entry<Long, Map<String, Object>> mainTableItem : mainTableIdMap.entrySet()) {
-            Map<String, Object> combineRow = new HashMap<>();
+            Map<String, Object> rowData = new HashMap<>();
+            rowData.putAll(mainTableItem.getValue());
 
-            Map<String, Object> mainRowData = new HashMap<>();
-            mainRowData.put("data", mainTableItem.getValue());
-            combineRow.put(primaryTable, mainRowData);
             for (ModuleTable tableDto :
                     statementContext.getModuleFilterInfo().getModuleTableList()) {
                 List<Map<String, Object>> subTableROwDatas =
                         multiTableDataMap.get(tableDto.getTableName()).get(mainTableItem.getKey());
                 if (!CollectionUtils.isEmpty(subTableROwDatas)) {
-                    Map<String, Object> subRowData = new HashMap<>();
-                    subRowData.put("data", subTableROwDatas);
-                    combineRow.put(tableDto.getTableName(), subRowData);
+
+                    rowData.putAll(subTableROwDatas.get(0));
                 }
             }
 
             recordDataDTOList.add(
-                    RecordDataDTO.builder()
-                            .combinedRow(combineRow)
-                            .subModule(new ArrayList<>())
-                            .build());
+                    RecordDataDTO.builder().row(rowData).children(new ArrayList<>()).build());
         }
 
         return recordDataDTOList;

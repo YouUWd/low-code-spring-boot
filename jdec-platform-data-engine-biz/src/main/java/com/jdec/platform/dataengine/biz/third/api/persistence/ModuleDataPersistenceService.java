@@ -109,8 +109,8 @@ public class ModuleDataPersistenceService {
 
                                             // 如果当前模块有子模块的数据
                                             if (CollectionUtil.isNotEmpty(
-                                                    recordDataDTO.getSubModule())) {
-                                                recordDataDTO.getSubModule().stream()
+                                                    recordDataDTO.getChildren())) {
+                                                recordDataDTO.getChildren().stream()
                                                         .forEach(
                                                                 subModule -> {
                                                                     // 构造保存子模的数据的上下文
@@ -174,7 +174,7 @@ public class ModuleDataPersistenceService {
                         currentReq.getNestedModuleData().getModuleId());
 
         // 模块数据
-        if (CollectionUtil.isEmpty(recordDataDTO.getCombinedRow())) {
+        if (CollectionUtil.isEmpty(recordDataDTO.getRow())) {
             log.error(
                     "模块id={},name={}记录数据为空",
                     sysModuleCompleteResp.getModule().getId(),
@@ -186,11 +186,11 @@ public class ModuleDataPersistenceService {
         // 首先 写入当前 模块 主表的数据,主表数据 只有一行
         Long primaryTableId =
                 saveModulePrimaryTableData(
-                        recordDataDTO.getCombinedRow(), sysModuleCompleteResp, currentReq);
+                        recordDataDTO.getRow(), sysModuleCompleteResp, currentReq);
 
         // 在写入当前模块 关联的表数据
         saveModuleRelatedTableData(
-                recordDataDTO.getCombinedRow(), sysModuleCompleteResp, primaryTableId, currentReq);
+                recordDataDTO.getRow(), sysModuleCompleteResp, primaryTableId, currentReq);
 
         return primaryTableId;
     }

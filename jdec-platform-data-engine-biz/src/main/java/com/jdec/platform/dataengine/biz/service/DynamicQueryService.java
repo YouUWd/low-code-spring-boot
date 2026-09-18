@@ -214,7 +214,7 @@ public class DynamicQueryService {
         // 获取模块树
         List<SysModuleSimpleTreeResp> moduleNodeResps =
                 sysModuleApi.getAvailableModuleTree(
-                        null, AppContext.getProjectNo(), AppContext.getSubjectId());
+                        1, AppContext.getProjectNo(), AppContext.getSubjectId());
 
         if (CollectionUtils.isEmpty(moduleNodeResps)) {
             log.debug("菜单树查询结果未空，返回空列表。");
@@ -357,6 +357,16 @@ public class DynamicQueryService {
                 dataModuleConfigService.getModuleCompleteById(
                         AppContext.getProjectNo(), AppContext.getSubjectId(), rootNode.getId());
 
+        Boolean virtualModule = false;
+
+        if (StringUtils.isBlank(sysModuleInfo.getPrimaryTable())
+                && CollectionUtils.isEmpty(primaryIds)) {
+            log.debug("模块id:{},模块名称:{}为虚模块", rootNode.getId(), rootNode.getModuleName());
+            primaryIds.addAll(queryReq.getRelateIds());
+            currentModuleData.add(RecordDataDTO.builder().children(new ArrayList<>()).build());
+            virtualModule = true;
+        }
+
         for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
             List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
             if (moduleIdToFieldMap.containsKey(childNode.getId())) {
@@ -394,16 +404,34 @@ public class DynamicQueryService {
             NestedModuleDataDTO childResultList =
                     queryModule(singleQueryDTO, childNode, true, false, moduleIdToFieldMap);
 
-            for (RecordDataDTO vo : currentModuleData) {
-                Long primaryId =
-                        extractFieldValue(
-                                vo.getCombinedRow(), "id", sysModuleInfo.getPrimaryTable());
-                vo.getSubModule()
+            if (virtualModule) {
+                currentModuleData
+                        .get(0)
+                        .getChildren()
                         .addAll(
                                 filterSubModuleList(
                                         List.of(childResultList),
-                                        Set.of(primaryId),
+                                        primaryIds,
                                         TabTreeNodeDTO.buildCompanyRoot()));
+            } else {
+                for (RecordDataDTO vo : currentModuleData) {
+                    Long primaryId =
+                            extractFieldValue(vo.getRow(), "id", sysModuleInfo.getPrimaryTable());
+                    if (Objects.isNull(vo.getRow())) {
+                        log.debug(
+                                "子模块id:{},模块名称:{}是虚模块",
+                                childNode.getId(),
+                                childNode.getModuleName());
+                        vo.getChildren().add(childResultList);
+                    } else {
+                        vo.getChildren()
+                                .addAll(
+                                        filterSubModuleList(
+                                                List.of(childResultList),
+                                                Set.of(primaryId),
+                                                TabTreeNodeDTO.buildCompanyRoot()));
+                    }
+                }
             }
         }
 
@@ -435,24 +463,20 @@ public class DynamicQueryService {
             }
 
             if (StringUtils.isNotBlank(targetNode.getNode().getSubTableField())) {
-
-                List<ModuleFieldDTO> idOrPkColumn =
-                        moduleInfo.getFields().stream()
-                                .filter(
-                                        ele ->
-                                                ele.getTableName().equals(tableName)
-                                                        && (ele.getColumnName()
-                                                                        .equals(
-                                                                                targetNode
-                                                                                        .getNode()
-                                                                                        .getSubTableField())
-                                                                || ele.getColumnName()
-                                                                        .equals("id")))
-                                .collect(Collectors.toList());
-                if (!CollectionUtils.isEmpty(idOrPkColumn)) {
-                    moduleFields.addAll(idOrPkColumn);
-                }
+                moduleFields.add(
+                        ModuleFieldDTO.builder()
+                                .moduleId(id)
+                                .tableName(tableName)
+                                .columnName(targetNode.getNode().getSubTableField())
+                                .build());
             }
+
+            moduleFields.add(
+                    ModuleFieldDTO.builder()
+                            .moduleId(id)
+                            .tableName(tableName)
+                            .columnName("id")
+                            .build());
         }
 
         return moduleFields;
@@ -495,7 +519,7 @@ public class DynamicQueryService {
                                         // 读取子表的【外键字段】
                                         Long fkVal =
                                                 extractFieldValue(
-                                                        record.getCombinedRow(),
+                                                        record.getRow(),
                                                         targetNode.getNode().getSubTableField(),
                                                         sysModuleInfo.getPrimaryTable());
                                         if (fkVal == null) {
@@ -507,21 +531,21 @@ public class DynamicQueryService {
                             .map(
                                     record -> {
                                         RecordDataDTO newRecord = new RecordDataDTO();
-                                        newRecord.setCombinedRow(record.getCombinedRow());
+                                        newRecord.setRow(record.getRow());
                                         // 获取当前这条记录主键，作为下一级子模块的父主键集合
                                         Long currentPk =
                                                 extractFieldValue(
-                                                        record.getCombinedRow(),
+                                                        record.getRow(),
                                                         "id",
                                                         sysModuleInfo.getPrimaryTable());
                                         Set<Long> childPkSet = Collections.singleton(currentPk);
                                         // 下一层外键固定 member_id
                                         List<NestedModuleDataDTO> childSub =
                                                 filterSubModuleList(
-                                                        record.getSubModule(),
+                                                        record.getChildren(),
                                                         childPkSet,
                                                         tableTree);
-                                        newRecord.setSubModule(childSub);
+                                        newRecord.setChildren(childSub);
                                         return newRecord;
                                     })
                             .collect(Collectors.toList());
@@ -533,18 +557,9 @@ public class DynamicQueryService {
 
     // 通用提取字段
     private static Long extractFieldValue(
-            Map<String, Object> combinedRow, String fieldName, String tableName) {
-        if (combinedRow == null || combinedRow.isEmpty()) return null;
-        Map.Entry<String, Object> first =
-                combinedRow.entrySet().stream()
-                        .filter(ele -> ele.getKey().equals(tableName))
-                        .findFirst()
-                        .orElse(null);
-        if (first == null) return null;
-        Map<String, Object> data =
-                (Map<String, Object>) ((Map<String, Object>) first.getValue()).get("data");
-        if (data == null) return null;
-        Object val = data.get(fieldName);
+            Map<String, Object> row, String fieldName, String tableName) {
+        if (row == null || row.isEmpty()) return null;
+        Object val = row.get(tableName + "." + fieldName);
         if (val == null) return null;
         return Long.parseLong(val.toString());
     }
@@ -559,32 +574,47 @@ public class DynamicQueryService {
         }
 
         for (RecordDataDTO recordDataDTO : currentModuleData) {
-            if (!recordDataDTO.getCombinedRow().isEmpty()) {
-                Map<String, Object> moduleData =
-                        (Map<String, Object>)
-                                recordDataDTO.getCombinedRow().get(sysModuleInfo.getPrimaryTable());
-                Object tableData = moduleData.get("data");
-                if (Objects.nonNull(tableData)) {
-                    if (tableData instanceof List) {
+            if (!recordDataDTO.getRow().isEmpty()) {
+                String primaryTableName = sysModuleInfo.getPrimaryTable();
+
+                Map<String, Object> primaryTableData = new HashMap<>();
+                // 获取primaryTableName数据
+                for (Map.Entry<String, Object> entry : recordDataDTO.getRow().entrySet()) {
+                    if (entry.getKey().contains(primaryTableName)) {
+                        primaryTableData.put(entry.getKey(), entry.getValue());
+                    }
+                }
+
+                if (Objects.nonNull(primaryTableData)) {
+                    if (primaryTableData instanceof List) {
                         List<Map<String, Object>> moduleTableData =
-                                (List<Map<String, Object>>) tableData;
+                                (List<Map<String, Object>>) primaryTableData;
 
                         if (Objects.nonNull(moduleTableData)
                                 && !CollectionUtils.isEmpty(moduleTableData)) {
                             primaryIds.addAll(
                                     moduleTableData.stream()
-                                            .filter(ele -> ele.containsKey("id"))
+                                            .filter(
+                                                    ele ->
+                                                            ele.containsKey(
+                                                                    primaryTableName + "." + "id"))
                                             .map(
                                                     item ->
                                                             Long.parseLong(
-                                                                    String.valueOf(item.get("id"))))
+                                                                    String.valueOf(
+                                                                            item.get(
+                                                                                    primaryTableName
+                                                                                            + "."
+                                                                                            + "id"))))
                                             .collect(Collectors.toList()));
                         }
                     } else {
-                        Map<String, Object> moduleTableData = (Map<String, Object>) tableData;
-                        if (moduleTableData.containsKey("id")) {
+                        if (primaryTableData.containsKey(primaryTableName + "." + "id")) {
                             primaryIds.add(
-                                    Long.parseLong(String.valueOf(moduleTableData.get("id"))));
+                                    Long.parseLong(
+                                            String.valueOf(
+                                                    primaryTableData.get(
+                                                            primaryTableName + "." + "id"))));
                         }
                     }
                 }
@@ -601,7 +631,7 @@ public class DynamicQueryService {
             DynamicQueryResp listData = query(queryDTO);
             Map<String, Object> targetMap = new HashMap<>();
             BeanUtil.beanToMap(listData, targetMap, false, true);
-            RecordDataDTO.builder().combinedRow(targetMap);
+            RecordDataDTO.builder().row(targetMap);
             resultList.add(null);
         } else {
             // 查找详情模块数据

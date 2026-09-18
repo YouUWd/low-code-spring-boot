@@ -148,8 +148,12 @@ public class JooqSqlBuilder {
                         .map(
                                 item ->
                                         DSL.field(
-                                                /*item.getTableName() + "." + */ item
-                                                        .getColumnName()))
+                                                        /*item.getTableName() + "." + */ item
+                                                                .getColumnName())
+                                                .as(
+                                                        item.getTableName()
+                                                                + "."
+                                                                + item.getColumnName()))
                         .collect(Collectors.toList());
         SelectJoinStep<Record> query;
         if (CollectionUtils.isEmpty(fields)) {

@@ -165,6 +165,22 @@ public class TabTreeNodeDTO implements Serializable {
                 TabTreeNodeDTO.builder().node(creditRatingNode).children(new ArrayList<>()).build();
         root.getChildren().add(creditRatingRoot);
 
+        TabNodeDTO companyContactNode =
+                TabNodeDTO.builder()
+                        .tableName("company_contact")
+                        .parentTableName("info")
+                        .joinType("1:N")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO companyContactNodeRoot =
+                TabTreeNodeDTO.builder()
+                        .node(companyContactNode)
+                        .children(new ArrayList<>())
+                        .build();
+        root.getChildren().add(companyContactNodeRoot);
+
         TabNodeDTO memberContactNode3 =
                 TabNodeDTO.builder()
                         .tableName("member_contact")
