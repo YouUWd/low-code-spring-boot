@@ -512,46 +512,52 @@ public class DynamicQueryService {
             TabTreeNodeDTO targetNode =
                     TabTreeNodeDTO.findSubTreeByValue(tableTree, sysModuleInfo.getPrimaryTable());
 
-            List<RecordDataDTO> filteredRecords =
-                    subModule.getRecord().stream()
-                            .filter(
-                                    record -> {
-                                        // 读取子表的【外键字段】
-                                        Long fkVal =
-                                                extractFieldValue(
-                                                        record.getRow(),
-                                                        targetNode.getNode().getSubTableField(),
-                                                        sysModuleInfo.getPrimaryTable());
-                                        if (fkVal == null) {
-                                            return false;
-                                        }
-                                        // 子表外键 在父主键集合内，保留
-                                        return parentPkSet.contains(fkVal);
-                                    })
-                            .map(
-                                    record -> {
-                                        RecordDataDTO newRecord = new RecordDataDTO();
-                                        newRecord.setRow(record.getRow());
-                                        // 获取当前这条记录主键，作为下一级子模块的父主键集合
-                                        Long currentPk =
-                                                extractFieldValue(
-                                                        record.getRow(),
-                                                        "id",
-                                                        sysModuleInfo.getPrimaryTable());
-                                        Set<Long> childPkSet = Collections.singleton(currentPk);
-                                        // 下一层外键固定 member_id
-                                        List<NestedModuleDataDTO> childSub =
-                                                filterSubModuleList(
-                                                        record.getChildren(),
-                                                        childPkSet,
-                                                        tableTree);
-                                        newRecord.setChildren(childSub);
-                                        return newRecord;
-                                    })
-                            .collect(Collectors.toList());
-            newSubModule.setRecord(filteredRecords);
-            resultList.add(newSubModule);
+            if (Objects.isNull(targetNode)) {
+                newSubModule.setRecord(subModule.getRecord());
+                resultList.add(newSubModule);
+            } else {
+                List<RecordDataDTO> filteredRecords =
+                        subModule.getRecord().stream()
+                                .filter(
+                                        record -> {
+                                            // 读取子表的【外键字段】
+                                            Long fkVal =
+                                                    extractFieldValue(
+                                                            record.getRow(),
+                                                            targetNode.getNode().getSubTableField(),
+                                                            sysModuleInfo.getPrimaryTable());
+                                            if (fkVal == null) {
+                                                return false;
+                                            }
+                                            // 子表外键 在父主键集合内，保留
+                                            return parentPkSet.contains(fkVal);
+                                        })
+                                .map(
+                                        record -> {
+                                            RecordDataDTO newRecord = new RecordDataDTO();
+                                            newRecord.setRow(record.getRow());
+                                            // 获取当前这条记录主键，作为下一级子模块的父主键集合
+                                            Long currentPk =
+                                                    extractFieldValue(
+                                                            record.getRow(),
+                                                            "id",
+                                                            sysModuleInfo.getPrimaryTable());
+                                            Set<Long> childPkSet = Collections.singleton(currentPk);
+                                            // 下一层外键固定 member_id
+                                            List<NestedModuleDataDTO> childSub =
+                                                    filterSubModuleList(
+                                                            record.getChildren(),
+                                                            childPkSet,
+                                                            tableTree);
+                                            newRecord.setChildren(childSub);
+                                            return newRecord;
+                                        })
+                                .collect(Collectors.toList());
+                newSubModule.setRecord(filteredRecords);
+                resultList.add(newSubModule);
+            }
         }
+
         return resultList;
     }
 
