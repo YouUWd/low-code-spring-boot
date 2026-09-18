@@ -186,7 +186,7 @@ public class DataModuleConfigService {
                 .moduleName(module.getModuleName())
                 .moduleDesc(module.getModuleDesc())
                 .primaryTable(module.getPrimaryTable())
-                .fields(fieldInfos)
+                .fieldList(fieldInfos)
                 .tableRelations(relationDTOs)
                 .moduleNodes(childModuleNodes)
                 .build();

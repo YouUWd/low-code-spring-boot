@@ -91,7 +91,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             Set<String> tableNames = new HashSet<>();
 
             tableNames.addAll(
-                    moduleInfoResp.getFields().stream()
+                    moduleInfoResp.getFieldList().stream()
                             .map(x -> x.getTableName())
                             .collect(Collectors.toSet()));
 
@@ -111,7 +111,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             //            }
             SysFieldResp defaultSysFieldResp = new SysFieldResp();
 
-            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getFields()) {
+            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getFieldList()) {
 
                 SysFieldResp sysFieldResp =
                         sysFieldRespMap.getOrDefault(
@@ -383,7 +383,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
                 // 过滤SimpleField，只查询有权限的字段
                 List<ModuleFieldDTO> filteredSimpleFields =
-                        moduleInfoResp.getFields().stream()
+                        moduleInfoResp.getFieldList().stream()
                                 .filter(
                                         e ->
                                                 tableNameToAllowedFields.containsKey(
@@ -642,7 +642,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                 moduleFilterInfoBuilder.simpleModuleFields(simpleFieldInfo);
             } else {
                 moduleFilterInfoBuilder.simpleModuleFields(
-                        moduleInfoResp.getFields().stream()
+                        moduleInfoResp.getFieldList().stream()
                                 .map(
                                         ele ->
                                                 ModuleField.builder()
@@ -664,7 +664,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());
 
             Set<String> subTableNames =
-                    moduleInfoResp.getFields().stream()
+                    moduleInfoResp.getFieldList().stream()
                             .filter(
                                     ele ->
                                             !moduleInfoResp
@@ -740,7 +740,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
             List<ModuleField> allFields = new ArrayList<>();
 
-            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getFields()) {
+            for (ModuleFieldDTO simpleFieldItem : moduleInfoResp.getFieldList()) {
                 allFields.add(
                         ModuleField.builder()
                                 .fieldCode(simpleFieldItem.getColumnName())
@@ -841,7 +841,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
 
                 // 过滤SimpleField，只查询有权限的字段
                 List<ModuleFieldDTO> filteredSimpleFields =
-                        moduleInfoResp.getFields().stream()
+                        moduleInfoResp.getFieldList().stream()
                                 .filter(
                                         e ->
                                                 tableNameToAllowedFields.containsKey(
@@ -1078,7 +1078,7 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());
 
             Set<String> subTableNames =
-                    moduleInfoResp.getFields().stream()
+                    moduleInfoResp.getFieldList().stream()
                             .filter(
                                     ele ->
                                             !moduleInfoResp

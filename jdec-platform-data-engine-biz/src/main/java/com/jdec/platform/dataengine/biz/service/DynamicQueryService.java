@@ -447,7 +447,7 @@ public class DynamicQueryService {
                         AppContext.getProjectNo(), AppContext.getSubjectId(), id);
 
         Set<String> moduleTables =
-                moduleInfo.getFields().stream()
+                moduleInfo.getFieldList().stream()
                         .map(ModuleFieldDTO::getTableName)
                         .collect(Collectors.toSet());
 

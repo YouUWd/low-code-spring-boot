@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.api.dto.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,14 +36,18 @@ public class SysModuleInfo {
     private String primaryTable;
 
     @Schema(description = "模块字段", example = "1")
-    private List<ModuleFieldDTO> fields;
+    @JsonIgnore
+    private List<ModuleFieldDTO> fieldList;
+
+    private Map<String, ModuleFieldDTO> fileds;
 
     @Schema(description = "模块表关系", example = "1")
+    @JsonIgnore
     private List<TableRelationDTO> tableRelations;
 
     @Schema(description = "子模块信息", example = "1")
     @JsonIgnore
     private List<ModuleNodeDTO> moduleNodes;
 
-    private List<SysModuleInfo> children;
+    @JsonIgnore private List<SysModuleInfo> children;
 }
