@@ -41,6 +41,9 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
     @Override
     public DataSaveResult insertRecord(RecordSaveContext context) {
+        if (CollectionUtil.isEmpty(context.getRecord())) {
+            return DataSaveResult.builder().dataId(0L).build();
+        }
         Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
 
         String tableName = context.getTableName();
@@ -86,7 +89,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 // saveModuleDataChangeContent(context, null, insertedMap, num.longValue());
                 RowChangeDTO rowChange =
                         DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
-                                context.getRecord(), null);
+                                context.getRecord(), context.getTableName(), null);
                 saveModuleDataFieldChangeContent(context, rowChange, num.longValue());
                 return DataSaveResult.builder()
                         .dataId(num.longValue())
@@ -99,7 +102,10 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
     @Override
     public DataSaveResult updateRecord(RecordSaveContext context) {
-        Long id = DataPersistenceUtil.getRecordId(context.getRecord());
+        Long id = DataPersistenceUtil.getTableRowId(context.getRecord());
+        if (DataPersistenceUtil.isOnlyHasId(context.getRecord())) {
+            return DataSaveResult.builder().dataId(id).build();
+        }
         Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
 
         Record oldMap =
@@ -113,7 +119,10 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
         RowChangeDTO rowChangeDTO =
                 DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
-                        DataPersistenceUtil.convertRecordToMap(oldMap), context.getRecord(), null);
+                        DataPersistenceUtil.convertRecordToMap(oldMap),
+                        context.getRecord(),
+                        context.getTableName(),
+                        null);
 
         // Update 不返回任何字段
         context.getDsl()
@@ -144,11 +153,10 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isEmpty(context.getRecord())) {
             return null;
         }
-        Long id = DataPersistenceUtil.getRecordId(context.getRecord());
-        if (id != null && id > 0) {
-            return updateRecord(context);
-        } else {
+        if (context.getIsInsert()) {
             return insertRecord(context);
+        } else {
+            return updateRecord(context);
         }
     }
 
@@ -220,7 +228,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         changeContent.setRootModuleId(context.getRootModuleId());
         changeContent.setMainTableDataId(context.getRootModuleMainTableDataId());
         changeContent.setMainTableDataVersion(context.getRootModuleMainTableDataVersion());
-        changeContent.setModuleId(context.getSysModuleCompleteResp().getModule().getId());
+        changeContent.setModuleId(context.getSysModuleCompleteResp().getModuleId());
         changeContent.setTableName(context.getTableName());
         changeContent.setDataId(dataId);
         changeContent.setParentDataId(context.getParentLevelTableId());
@@ -346,7 +354,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 changeContent.setRootModuleId(context.getRootModuleId());
                 changeContent.setRootTableDataId(context.getRootModuleMainTableDataId());
                 changeContent.setRootTableDataVersion(context.getRootModuleMainTableDataVersion());
-                changeContent.setModuleId(context.getSysModuleCompleteResp().getModule().getId());
+                changeContent.setModuleId(context.getSysModuleCompleteResp().getModuleId());
                 changeContent.setTableName(context.getTableName());
                 changeContent.setDataId(dataId);
                 changeContent.setFieldId(fieldChangeDTO.getField());

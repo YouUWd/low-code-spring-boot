@@ -14,22 +14,22 @@ import org.jooq.Record;
 
 public class DataPersistenceUtil {
 
-    public static Long getRecordId(Map<String, Object> record) {
+    public static Long getTableRowId(Map<String, Object> record) {
         Object idObj = record.get(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
         Long id = idObj instanceof Number num ? num.longValue() : null;
         return id;
     }
 
-    public static Map<String, Object> getTableRecordMap(
-            Map<String, Object> recordMap, String tableName) {
-        Map<String, Object> tableRecord = new HashMap<>();
-        recordMap.forEach(
+    public static Map<String, Object> getTableRowMapFromWideRow(
+            Map<String, Object> wideRowMap, String tableName) {
+        Map<String, Object> rowMap = new HashMap<>();
+        wideRowMap.forEach(
                 (key, value) -> {
                     if (key.startsWith(tableName)) {
-                        tableRecord.put(key.substring(tableName.length() + 1), value);
+                        rowMap.put(key.substring(tableName.length() + 1), value);
                     }
                 });
-        return tableRecord;
+        return rowMap;
     }
 
     public static List<Map<String, Object>> getTableRecordListMap(
@@ -71,6 +71,28 @@ public class DataPersistenceUtil {
         return recordMap;
     }
 
+    public static Map<String, Object> fillTableRowFieldInWideRow(
+            Map<String, Object> wideRowMap, String table, String field, Object id) {
+        wideRowMap.put(table + "." + field, id);
+        return wideRowMap;
+    }
+
+    public static boolean isExistFiledInInWideRow(
+            Map<String, Object> wideRowMap, String table, String field) {
+        return wideRowMap.containsKey(table + "." + field)
+                && wideRowMap.get(table + "." + field) != null;
+    }
+
+    public static boolean isEmpty(Map<String, Object> rowMap) {
+        return CollectionUtil.isEmpty(rowMap);
+    }
+
+    public static boolean isOnlyHasId(Map<String, Object> rowMap) {
+        return CollectionUtil.isNotEmpty(rowMap)
+                && rowMap.size() == 1
+                && rowMap.containsKey(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
+    }
+
     public static Map<String, Object> fillTableRecordChangeInCombinedMap(
             Map<String, Object> combinedMap, String tableName, Object dataChange) {
         Map<String, Object> dataMap = (Map<String, Object>) combinedMap.get(tableName);
@@ -106,7 +128,7 @@ public class DataPersistenceUtil {
     }
 
     public static RowChangeDTO convertUpdateRecordToRowChangeDTO(
-            Map<String, Object> r, Map<String, Object> recordMap, Object fields) {
+            Map<String, Object> r, Map<String, Object> recordMap, String table, Object fields) {
 
         if (CollectionUtil.isEmpty(recordMap)) {
             return null;
@@ -115,7 +137,8 @@ public class DataPersistenceUtil {
         for (String field : recordMap.keySet()) {
             Object old = r.get(field);
             Object newer = recordMap.get(field);
-            FieldChangeDTO fieldChangeDTO = getFieldChangeDTO(field, old, newer);
+            FieldChangeDTO fieldChangeDTO =
+                    getFieldChangeDTO(getFullFieldName(table, field), old, newer);
             if (fieldChangeDTO != null) {
                 fieldChangeDTOList.add(fieldChangeDTO);
             }
@@ -127,7 +150,7 @@ public class DataPersistenceUtil {
     }
 
     public static RowChangeDTO convertInsertRecordToRowChangeDTO(
-            Map<String, Object> recordMap, Object fields) {
+            Map<String, Object> recordMap, String table, Object fields) {
 
         if (CollectionUtil.isEmpty(recordMap)) {
             return null;
@@ -135,7 +158,8 @@ public class DataPersistenceUtil {
         List<FieldChangeDTO> fieldChangeDTOList = new ArrayList<>();
         for (String field : recordMap.keySet()) {
             Object newer = recordMap.get(field);
-            FieldChangeDTO fieldChangeDTO = getFieldChangeDTO(field, null, newer);
+            FieldChangeDTO fieldChangeDTO =
+                    getFieldChangeDTO(getFullFieldName(table, field), null, newer);
             if (fieldChangeDTO != null) {
                 fieldChangeDTOList.add(fieldChangeDTO);
             }
@@ -171,6 +195,10 @@ public class DataPersistenceUtil {
             throw new RuntimeException(e);
         }
         return null;
+    }
+
+    public static String getFullFieldName(String tableName, String field) {
+        return tableName + "." + field;
     }
 
     public static Object getFieldWriteValue(Object value) {

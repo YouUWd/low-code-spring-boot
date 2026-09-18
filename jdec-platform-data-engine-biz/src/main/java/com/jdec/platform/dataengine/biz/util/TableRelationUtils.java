@@ -122,8 +122,33 @@ public class TableRelationUtils {
 
         TabTreeNodeDTO root7 =
                 TabTreeNodeDTO.builder().node(node7).children(new ArrayList<>()).build();
-
         root3.getChildren().add(root7);
+
+        TabNodeDTO node8 =
+                TabNodeDTO.builder()
+                        .tableName("digital_account")
+                        .parentTableName("info")
+                        .joinType("1:N")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO root8 =
+                TabTreeNodeDTO.builder().node(node8).children(new ArrayList<>()).build();
+        root1.getChildren().add(root8);
+
+        TabNodeDTO node9 =
+                TabNodeDTO.builder()
+                        .tableName("company_contact")
+                        .parentTableName("info")
+                        .joinType("1:N")
+                        .parentTableField("id")
+                        .subTableField("company_id")
+                        .build();
+
+        TabTreeNodeDTO root9 =
+                TabTreeNodeDTO.builder().node(node9).children(new ArrayList<>()).build();
+        root1.getChildren().add(root9);
 
         return root1;
     }
