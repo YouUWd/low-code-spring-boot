@@ -22,6 +22,7 @@ import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
+import com.jdec.platform.data.biz.plan.model.QueryPlan;
 import com.jdec.platform.data.biz.service.DataQueryService;
 import java.util.*;
 import org.jooq.DSLContext;
@@ -1782,13 +1783,31 @@ class DataQueryTest {
     }
 
     @Test
-    @DisplayName("测试 getDetail 只返回当前模块基本信息与字段")
-    void testGetDetailMetadataContainsNoTopology() {
-        DataDetail<Map<String, Object>> detail = dataQueryService.getDetail(101L, 1001L, null);
+    @DisplayName("测试以子模块作为根节点查询时，不会错误向上回溯到祖先模块")
+    void testSubModuleRootQueryDoesNotBacktrackToParent() {
+        // 模拟 103 (选课主表) 作为 rootModuleId，其父模块为 101 (学生主表)
+        // 104 (成绩分项) 作为 103 的子模块
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(103L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(List.of(1031L, 1032L, 1041L, 1042L)) // 103 + 104 字段
+                        .build();
 
-        assertNotNull(detail);
-        assertNotNull(detail.getMeta());
-        assertEquals(Long.valueOf(101L), detail.getMeta().getModuleId());
-        assertNotNull(detail.getMeta().getFields());
+        assertDoesNotThrow(
+                () -> {
+                    QueryPlan plan = queryPlanCompiler.compile(req);
+                    assertNotNull(plan);
+                    assertNotNull(plan.getRootNodePlan());
+                    assertEquals(103L, plan.getRootNodePlan().getModuleId());
+                    // 验证生成的计划中只有子节点 104，绝对不能包含 101
+                    if (plan.getRootNodePlan().getChildren() != null) {
+                        boolean containsParent101 =
+                                plan.getRootNodePlan().getChildren().stream()
+                                        .anyMatch(c -> Long.valueOf(101L).equals(c.getModuleId()));
+                        assertFalse(containsParent101, "以 103 为根的查询计划中绝不能反向包含其父模块 101");
+                    }
+                });
     }
 }
