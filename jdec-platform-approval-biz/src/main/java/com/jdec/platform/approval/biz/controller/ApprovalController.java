@@ -41,11 +41,12 @@ public class ApprovalController {
         return ApiResponse.success(approvalService.getBusinessNextId(req));
     }
 
-    @PostMapping("/detail")
-    @Operation(summary = "查询单据数据", description = "查询单据数据")
-    public ApiResponse<Map<String, Object>> getApprovalDetail(@RequestBody ApprovalProcessReq req) {
-        return ApiResponse.success(approvalService.getApprovalDetail(req));
-    }
+    //    @PostMapping("/detail")
+    //    @Operation(summary = "查询单据数据", description = "查询单据数据")
+    //    public ApiResponse<Map<String, Object>> getApprovalDetail(@RequestBody ApprovalProcessReq
+    // req) {
+    //        return ApiResponse.success(approvalService.getApprovalDetail(req));
+    //    }
 
     @PostMapping("/ApprovalStep")
     @Operation(summary = "查询已经审批的步骤状态", description = "查询已经审批的步骤状态")
@@ -72,5 +73,14 @@ public class ApprovalController {
     public ApiResponse<List<Map<String, Object>>> getListButton(
             @PathVariable Long moduleId, @RequestParam Integer approvalType) {
         return ApiResponse.success(approvalService.getListButton(moduleId, approvalType));
+    }
+
+    @GetMapping("/detail/{moduleId}/{recordId}")
+    @Operation(summary = "查询单据列表按钮", description = "查询查询单据列表按钮")
+    public ApiResponse<Map<String, Object>> getApprovalData(
+            @PathVariable Long moduleId,
+            @PathVariable Long recordId,
+            @RequestParam String btnType) {
+        return ApiResponse.success(approvalService.getApprovalData(moduleId, recordId, btnType));
     }
 }

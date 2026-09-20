@@ -461,6 +461,21 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return getBusinessList(req);
     }
 
+    @Override
+    public Map<String, Object> getApprovalData(Long moduleId, Long recordId, String button) {
+        LoginUser loginUserInfo = SecurityUtils.getLoginUser();
+        boolean isMockLogin =
+                loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
+        Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : loginUserInfo.getUserId();
+        ApprovalProcessReq req = new ApprovalProcessReq();
+        req.setModuleId(moduleId);
+        req.setRecordId(recordId);
+        req.setRoleId(loginUserInfo.getRoleId());
+        req.setApplicantId(mockUserId);
+        req.setButton(button);
+        return getApprovalDetail(req);
+    }
+
     // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
     @Override
     public Long getBusinessNextId(ApprovalProcessReq approvalProcessReq) {

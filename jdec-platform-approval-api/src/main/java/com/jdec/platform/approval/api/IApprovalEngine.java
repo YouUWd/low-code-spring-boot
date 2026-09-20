@@ -22,8 +22,11 @@ public interface IApprovalEngine {
     // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
     Long getBusinessNextId(ApprovalProcessReq approvalProcessDTO);
 
-    // 查询单据审批详细数据---------------------------------------------------------------------------
+    // 查询单据审批详细数据-旧---------------------------------------------------------------------------
     Map<String, Object> getApprovalDetail(ApprovalProcessReq req);
+
+    // 查询单据审批详细数据---------------------------------------------------------------------------
+    Map<String, Object> getApprovalData(Long moduleId, Long recordId, String button);
 
     // 查询已经审批的步骤
     List<Map<String, Object>> getApprovalStep(ApprovalDataReq req);
