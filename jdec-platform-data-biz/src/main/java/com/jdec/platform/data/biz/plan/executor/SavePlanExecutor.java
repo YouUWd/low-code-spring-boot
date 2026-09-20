@@ -5,6 +5,7 @@ import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.time.LocalDateTime;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -244,7 +245,7 @@ public class SavePlanExecutor {
             fieldValues.put(DSL.field(DSL.name(table, col)), entry.getValue());
         }
 
-        Long currentUserId = AppContext.getUserId();
+        Long currentUserId = UserContext.getUserId();
         Long subjectId = AppContext.getSubjectId();
         LocalDateTime now = LocalDateTime.now();
 

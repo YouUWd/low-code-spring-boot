@@ -12,6 +12,7 @@ import com.jdec.platform.data.api.dto.request.SaveUserMenuHeaderReq;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.header.entity.UserMenuHeader;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -172,7 +173,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
 
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
-        Long currentUserId = AppContext.getUserId();
+        Long currentUserId = UserContext.getUserId();
         LocalDateTime now = LocalDateTime.now();
 
         // 已保存的节点按主键更新，未保存的节点新增

@@ -1,6 +1,7 @@
 package com.jdec.platform.shared.security;
 
 import com.jdec.platform.shared.context.TokenContext;
+import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.model.LoginUser;
 import io.jsonwebtoken.Claims;
