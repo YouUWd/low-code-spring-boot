@@ -1,8 +1,8 @@
 package com.jdec.platform.data.biz.monitorlog.handler.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jdec.platform.data.api.constant.MonitorLogConstant;
 import com.jdec.platform.data.biz.monitorlog.handler.AbstractMonitorLogSaveHandler;
+import com.jdec.platform.shared.constant.MonitorLogConstant;
 import org.springframework.stereotype.Component;
 
 /** 操作日志保存处理器 */

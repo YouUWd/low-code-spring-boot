@@ -2,7 +2,6 @@ package com.jdec.platform.data.biz.monitorlog.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.data.api.MonitorLogApi;
-import com.jdec.platform.data.api.constant.MonitorLogConstant;
 import com.jdec.platform.data.api.dto.log.MonitorApproveBase;
 import com.jdec.platform.data.api.dto.log.MonitorContentBase;
 import com.jdec.platform.data.api.dto.log.MonitorLoginInfo;
@@ -17,10 +16,12 @@ import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.monitorindex.service.MonitorOperateIndexService;
 import com.jdec.platform.data.biz.monitorlog.entity.MonitorLog;
 import com.jdec.platform.data.biz.monitorlog.handler.MonitorLogSaveHandler;
+import com.jdec.platform.shared.constant.MonitorLogConstant;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -320,13 +321,13 @@ public class MonitorLogService implements MonitorLogApi {
             condition =
                     condition.and(
                             DSL.field(DSL.name("record_time"), LocalDateTime.class)
-                                    .ge(req.getStartTime()));
+                                    .ge(req.getStartTime().atStartOfDay()));
         }
         if (req.getEndTime() != null) {
             condition =
                     condition.and(
                             DSL.field(DSL.name("record_time"), LocalDateTime.class)
-                                    .le(req.getEndTime()));
+                                    .le(req.getEndTime().atTime(LocalTime.MAX)));
         }
         if (req.getType() != null) {
             condition = condition.and(DSL.field(DSL.name("type"), Integer.class).eq(req.getType()));

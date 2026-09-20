@@ -2,7 +2,7 @@ package com.jdec.platform.config.api.dto.log;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.jdec.platform.config.api.constant.MonitorLogConstant;
+import com.jdec.platform.shared.constant.MonitorLogConstant;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import lombok.Data;

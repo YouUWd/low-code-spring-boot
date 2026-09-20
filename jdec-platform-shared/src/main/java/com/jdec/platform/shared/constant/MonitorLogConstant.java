@@ -1,6 +1,10 @@
-package com.jdec.platform.data.api.constant;
+package com.jdec.platform.shared.constant;
 
-/** 监控日志常量（日志类型取值与 {@code sys_config_item} 中「日志类型」配置项一致） */
+/**
+ * 监控日志常量
+ *
+ * <p>与数据引擎 {@code monitor_log} 的日志类型取值保持一致（同 {@code sys_config_item} 中「日志类型」配置项）。
+ */
 public final class MonitorLogConstant {
 
     /** 日志类型：操作日志 */

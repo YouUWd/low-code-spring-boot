@@ -34,8 +34,6 @@ public class DataSourceResolver {
         // 1. 通过映射获取数据源名称
         String dsName = projectProperties.getDatasourceMapping().getOrDefault(projectNo, projectNo);
 
-        log.debug("解析数据源: projectNo={}, mappedDsName={}", projectNo, dsName);
-
         // 2. 获取物理 DataSource
         DataSource ds = dynamicRoutingDataSource.getDataSource(dsName);
         if (ds == null) {

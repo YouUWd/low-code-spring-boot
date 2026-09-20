@@ -2,7 +2,7 @@ package com.jdec.platform.data.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,11 +27,11 @@ public class MonitorLogQueryReq implements Serializable {
     @Schema(description = "每页条数", example = "20")
     private Integer pageSize;
 
-    @Schema(description = "记录时间起（含）", example = "2026-09-01 00:00:00")
-    private LocalDateTime startTime;
+    @Schema(description = "记录时间起（含），仅日期，按当天 00:00:00 查询", example = "2026-09-01")
+    private LocalDate startTime;
 
-    @Schema(description = "记录时间止（含）", example = "2026-09-30 23:59:59")
-    private LocalDateTime endTime;
+    @Schema(description = "记录时间止（含），仅日期，按当天 23:59:59 查询", example = "2026-09-30")
+    private LocalDate endTime;
 
     @Schema(description = "日志类型：0-操作日志，1-消息日志，2-系统日志，为空时不过滤", example = "0")
     private Integer type;
