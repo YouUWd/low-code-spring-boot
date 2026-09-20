@@ -61,16 +61,16 @@ public class ApprovalController {
         return ApiResponse.success();
     }
 
-    @GetMapping("/{moduleId}")
+    @GetMapping("/getListNumber/{moduleId}")
     @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
     public ApiResponse<Map<String, Object>> getListNumber(@PathVariable Long moduleId) {
         return ApiResponse.success(approvalService.getListNumber(moduleId));
     }
 
-    @GetMapping("/{moduleId}")
+    @GetMapping("/getListButton/{moduleId}")
     @Operation(summary = "查询单据列表按钮", description = "查询查询单据列表按钮")
     public ApiResponse<List<Map<String, Object>>> getListButton(
-            @PathVariable Long moduleId, @PathVariable Integer approvalType) {
+            @PathVariable Long moduleId, @RequestParam Integer approvalType) {
         return ApiResponse.success(approvalService.getListButton(moduleId, approvalType));
     }
 }
