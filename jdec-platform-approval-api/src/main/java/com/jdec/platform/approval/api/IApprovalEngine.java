@@ -8,13 +8,13 @@ import java.util.Map;
 
 public interface IApprovalEngine {
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部数量------------------------------------------------
-    Map<String, Object> getBusinessTypeList(ApprovalListReq approvalProcessDTO);
+    List<Map<String, Object>> getBusinessTypeList(ApprovalListReq approvalProcessDTO);
 
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
     List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq);
 
     // 根据菜单ID查询用户指定业务的代办，已办，全部数量-------------------------------------------------
-    Map<String, Object> getListNumber(Long moduleId);
+    List<Map<String, Object>> getListNumber(Long moduleId);
 
     // 根据菜单ID及类型查询用户指定业务的代办，已办，全部列表ID------------------------------------------------
     List<Map<String, Object>> getListButton(Long moduleId, Integer approvalType);

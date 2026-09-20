@@ -159,13 +159,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 查询操作人在当前模块下的审批链业务代办/已办/全部数量-------------------------------------------
     @Override
-    public Map<String, Object> getBusinessTypeList(ApprovalListReq approvalProcessReq) {
-        Map<String, Object> resultMap = new HashMap<>();
+    public List<Map<String, Object>> getBusinessTypeList(ApprovalListReq approvalProcessReq) {
+        List<Map<String, Object>> resultMap = new LinkedList<>();
         if (approvalProcessReq.getModuleIdList().isEmpty()) {
             //   || approvalProcessReq.getSubjectIdList().isEmpty()) {
-            resultMap.put("todoNum", 0);
-            resultMap.put("doneNum", 0);
-            resultMap.put("allNum", 0);
             return resultMap;
         }
         List<Long> approvalTypeIds =
@@ -221,7 +218,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 item ->
                         !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
                                 && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
-        resultMap.put("todoNum", todoList.size());
+        Map<String, Object> todo = new HashMap<>();
+        todo.put("label", "待办");
+        todo.put("type", "todo");
+        todo.put("count", todoList.size());
+        resultMap.add(todo);
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
         processWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
         // processWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
@@ -234,7 +235,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 item ->
                         !Objects.equals(item.getCreatedBy(), approvalProcessReq.getApplicantId())
                                 && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
-        resultMap.put("doneNum", processList.size());
+        Map<String, Object> done = new HashMap<>();
+        done.put("label", "已办");
+        done.put("type", "done");
+        done.put("count", processList.size());
+        resultMap.add(done);
         LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
         allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
         // allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
@@ -269,7 +274,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             List<ApprovalBusiness> allowedList = approvalBusinessMapper.selectList(allowedWrapper);
             allList.addAll(allowedList);
         }
-        resultMap.put("allNum", allList.size());
+        Map<String, Object> all = new HashMap<>();
+        all.put("label", "全部");
+        all.put("type", "all");
+        all.put("count", allList.size());
+        resultMap.add(all);
         return resultMap;
     }
 
@@ -331,7 +340,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                                                             ::getCurrentStep,
                                                                     0)));
             todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
-            todoWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
+            // todoWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
             toDoList = approvalBusinessMapper.selectList(todoWrapper);
             List<ApprovalBusiness> submitList =
                     toDoList.stream().filter(item -> item.getCurrentStep() == 0).toList();
@@ -360,10 +369,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             // approvalListReq.getSubjectIdList());
             processWrapper.apply(
                     "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
-            if (Objects.nonNull(approvalListReq.getRecordIdList())
-                    && !approvalListReq.getRecordIdList().isEmpty()) {
-                processWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
-            }
+            //            if (Objects.nonNull(approvalListReq.getRecordIdList())
+            //                    && !approvalListReq.getRecordIdList().isEmpty()) {
+            //                processWrapper.in(ApprovalBusiness::getRecordId,
+            // approvalListReq.getRecordIdList());
+            //            }
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
             resultList.removeIf(
                     item ->
@@ -378,14 +388,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
             allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
             //   allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-            if (Objects.nonNull(approvalListReq.getRecordIdList())
-                    && !approvalListReq.getRecordIdList().isEmpty()) {
-                allWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
-            }
-            if (Objects.nonNull(approvalListReq.getAllowedIdList())
-                    && !approvalListReq.getAllowedIdList().isEmpty()) {
-                allWrapper.notIn(ApprovalBusiness::getRecordId, approvalListReq.getAllowedIdList());
-            }
+            //            if (Objects.nonNull(approvalListReq.getRecordIdList())
+            //                    && !approvalListReq.getRecordIdList().isEmpty()) {
+            //                allWrapper.in(ApprovalBusiness::getRecordId,
+            // approvalListReq.getRecordIdList());
+            //            }
+            //            if (Objects.nonNull(approvalListReq.getAllowedIdList())
+            //                    && !approvalListReq.getAllowedIdList().isEmpty()) {
+            //                allWrapper.notIn(ApprovalBusiness::getRecordId,
+            // approvalListReq.getAllowedIdList());
+            //            }
             List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
             allList.removeIf(
                     item ->
@@ -404,8 +416,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 allowedWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
                 //   allowedWrapper.in(
                 //           ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-                allowedWrapper.in(
-                        ApprovalBusiness::getRecordId, approvalListReq.getAllowedIdList());
+                //                allowedWrapper.in(
+                //                        ApprovalBusiness::getRecordId,
+                // approvalListReq.getAllowedIdList());
                 List<ApprovalBusiness> allowedList =
                         approvalBusinessMapper.selectList(allowedWrapper);
                 allList.addAll(allowedList);
@@ -422,7 +435,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     @Override
-    public Map<String, Object> getListNumber(Long moduleId) {
+    public List<Map<String, Object>> getListNumber(Long moduleId) {
         LoginUser loginUserInfo = SecurityUtils.getLoginUser();
         boolean isMockLogin =
                 loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
@@ -1800,9 +1813,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 转换对象--------------------------------------------------------------------------
     private Map<String, Object> convertMapResp(
             ApprovalBusiness approvalBusiness, Integer approvalType) {
-        Map<String, Object> approvalListResp = new HashMap<>();
-        approvalListResp.put("recordId", approvalBusiness.getRecordId());
-        Map<String, Object> businessNo = new HashMap<>();
+        // Map<String, Object> approvalListResp = new HashMap<>();
+        // approvalListResp.put("recordId", approvalBusiness.getRecordId());
+        // Map<String, Object> businessNo = new HashMap<>();
         // businessNo.put("businessNumber", approvalBusiness.getBusinessNumber());
         // businessNo.put("versionNo", approvalBusiness.getVersionNo());
         // approvalListResp.put("businessNo", businessNo);
@@ -1822,6 +1835,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             alias = "handle";
             btnName = "办理";
         }
+        btnInfo.put("recordId", approvalBusiness.getRecordId());
         btnInfo.put("buttonKey", alias);
         SysConfigItemResp modelConfig =
                 sysConfigCategoryApi.getConfigItemsByValue("ListButtonStyle", alias);
@@ -1830,9 +1844,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else {
             btnInfo.put("buttonName", btnName);
         }
-        List<Map<String, Object>> btnList = new ArrayList<>();
+        // List<Map<String, Object>> btnList = new ArrayList<>();
         // btnList.add(btnInfo);
-        approvalListResp.put("btnInfo", btnInfo);
+        // approvalListResp.put("btnInfo", btnInfo);
         return btnInfo;
     }
 
