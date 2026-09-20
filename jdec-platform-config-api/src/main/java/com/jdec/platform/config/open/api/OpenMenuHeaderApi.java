@@ -1,5 +1,6 @@
 package com.jdec.platform.config.open.api;
 
+import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import java.util.Collection;
 import java.util.Set;
@@ -63,4 +64,16 @@ public interface OpenMenuHeaderApi {
      * @return 可查阅的字段ID集合，roleId 为空时返回 null
      */
     Set<Long> selectReadableFieldIds(Long roleId, Collection<Long> fieldIds);
+
+    /**
+     * 查询菜单默认多级列头展示结构（供数据引擎在用户未个性化时回退使用）
+     *
+     * <p>与 {@code SysMenuHeaderApi#getMenuHeaderDisplay} 同一套逻辑：纯读取 {@code sys_menu_header} 中该菜单（按
+     * {@code subject_id} + {@code project_no} 隔离）已保存的节点，只输出已勾选（{@code
+     * checked=1}）的列并保留其祖先菜单节点；无配置记录时返回空（{@code header} 为 null）。
+     *
+     * @param menuId 列表菜单ID，内部按 {@link #resolveHeaderMenuId(Long)} 解析出表头归属菜单ID 后读取
+     * @return 多级列头展示结构
+     */
+    MenuHeaderDisplayResp getMenuHeaderDisplay(Long menuId);
 }

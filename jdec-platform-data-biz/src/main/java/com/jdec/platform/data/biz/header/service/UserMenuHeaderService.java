@@ -108,6 +108,11 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 纯读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no）
         List<UserMenuHeader> stored = selectUserNodes(userId, headerMenuId);
 
+        // 用户在该菜单下没有任何个性化配置：回退取 config 侧该菜单已保存的默认表头配置
+        if (stored.isEmpty()) {
+            return openMenuHeaderApi.getMenuHeaderDisplay(menuId);
+        }
+
         // 角色权限过滤（角色权限数据尚未配置完成，先注释；权限就绪后去掉注释即可按角色过滤菜单与字段）
         // stored = filterByRolePermission(stored, headerMenuId, roleId);
 
