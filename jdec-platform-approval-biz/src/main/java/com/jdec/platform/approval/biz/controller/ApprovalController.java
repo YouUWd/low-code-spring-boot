@@ -76,7 +76,7 @@ public class ApprovalController {
     }
 
     @GetMapping("/detail/{moduleId}/{recordId}")
-    @Operation(summary = "查询单据列表按钮", description = "查询查询单据列表按钮")
+    @Operation(summary = "查询单据审批详情数据", description = "查询单据审批详情数据")
     public ApiResponse<Map<String, Object>> getApprovalData(
             @PathVariable Long moduleId,
             @PathVariable Long recordId,
