@@ -441,6 +441,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
         Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : loginUserInfo.getUserId();
         ApprovalListReq req = new ApprovalListReq();
+        req.setApprovalType(approvalType);
         req.setModuleIdList(List.of(moduleId));
         req.setRoleId(loginUserInfo.getRoleId());
         req.setApplicantId(mockUserId);
