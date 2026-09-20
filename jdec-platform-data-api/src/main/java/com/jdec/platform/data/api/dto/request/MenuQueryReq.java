@@ -31,4 +31,7 @@ public class MenuQueryReq implements Serializable {
 
     @Schema(description = "平铺排序规则列表")
     private List<SortItem> sorts;
+
+    @Schema(description = "审批流过滤类型: 1-待办, 2-已办, 3-全部 (可选，默认3)", example = "3")
+    private Integer approvalType;
 }

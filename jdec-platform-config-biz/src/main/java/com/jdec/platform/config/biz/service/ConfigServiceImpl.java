@@ -4,12 +4,16 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleNodeDTO;
+import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
+import com.jdec.platform.config.api.dto.common.ModulePermissionDTO.FieldPermissionItem;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
+import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.entity.SysTableRelation;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysTableRelationMapper;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -35,6 +39,7 @@ public class ConfigServiceImpl implements ConfigApi {
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysTableRelationMapper sysTableRelationMapper;
+    private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
 
     @Override
     public ModuleNodeDTO getModuleBasic(Long moduleId) {
@@ -187,6 +192,138 @@ public class ConfigServiceImpl implements ConfigApi {
                 .primaryTable(module.getPrimaryTable())
                 .fields(fieldInfos)
                 .build();
+    }
+
+    @Override
+    public Map<Long, ModulePermissionDTO> getModulePermissions(
+            Long roleId, Collection<Long> moduleIds) {
+        if (roleId == null || moduleIds == null || moduleIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        // 1. 查询所有模块以构建模块父子拓扑
+        List<SysModule> allModules = sysModuleMapper.selectList(Wrappers.emptyWrapper());
+        if (allModules == null || allModules.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        // parentId -> List<SysModule>
+        Map<Long, List<SysModule>> childrenMap =
+                allModules.stream()
+                        .filter(m -> m.getParentId() != null)
+                        .collect(Collectors.groupingBy(SysModule::getParentId));
+
+        // 2. 对每个传入的 moduleId，收集其自身及所有子孙模块 ID 集合
+        Map<Long, Set<Long>> moduleFamilyMap = new LinkedHashMap<>();
+        Set<Long> allRelevantModuleIds = new HashSet<>();
+
+        for (Long rootModId : moduleIds) {
+            if (rootModId == null) {
+                continue;
+            }
+            Set<Long> family = new LinkedHashSet<>();
+            family.add(rootModId);
+            collectDescendantModuleIds(rootModId, childrenMap, family);
+            moduleFamilyMap.put(rootModId, family);
+            allRelevantModuleIds.addAll(family);
+        }
+
+        if (allRelevantModuleIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        // 3. 批量查询涉及的所有模块在对应 roleId 下的字段权限配置记录
+        List<SysRoleModuleFieldPermission> permissions =
+                sysRoleModuleFieldPermissionMapper.selectList(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .in(
+                                        SysRoleModuleFieldPermission::getModuleId,
+                                        allRelevantModuleIds));
+
+        // moduleId -> List<SysRoleModuleFieldPermission>
+        Map<Long, List<SysRoleModuleFieldPermission>> permMapByModuleId =
+                (permissions != null)
+                        ? permissions.stream()
+                                .collect(
+                                        Collectors.groupingBy(
+                                                SysRoleModuleFieldPermission::getModuleId))
+                        : Collections.emptyMap();
+
+        // 4. 为每个请求的 moduleId 构造 ModulePermissionDTO (涵盖自身及子孙模块的全部字段权限)
+        Map<Long, ModulePermissionDTO> result = new LinkedHashMap<>();
+
+        for (Map.Entry<Long, Set<Long>> entry : moduleFamilyMap.entrySet()) {
+            Long targetModuleId = entry.getKey();
+            Set<Long> familyModuleIds = entry.getValue();
+
+            boolean modApply = false;
+            boolean modView = false;
+            boolean modEdit = false;
+
+            Map<Long, FieldPermissionItem> fieldPermMap = new LinkedHashMap<>();
+
+            for (Long subModId : familyModuleIds) {
+                List<SysRoleModuleFieldPermission> subPerms =
+                        permMapByModuleId.getOrDefault(subModId, Collections.emptyList());
+
+                for (SysRoleModuleFieldPermission p : subPerms) {
+                    if (p.getModuleFieldId() == null) {
+                        continue;
+                    }
+                    boolean itemApply = p.getApply() != null && p.getApply() == 1;
+                    boolean itemView = p.getView() != null && p.getView() == 1;
+                    boolean itemEdit = p.getEdit() != null && p.getEdit() == 1;
+
+                    if (itemApply) {
+                        modApply = true;
+                    }
+                    if (itemView) {
+                        modView = true;
+                    }
+                    if (itemEdit) {
+                        modEdit = true;
+                    }
+
+                    FieldPermissionItem item =
+                            FieldPermissionItem.builder()
+                                    .fieldId(p.getModuleFieldId())
+                                    .moduleId(subModId)
+                                    .apply(itemApply)
+                                    .view(itemView)
+                                    .edit(itemEdit)
+                                    .build();
+
+                    fieldPermMap.put(p.getModuleFieldId(), item);
+                }
+            }
+
+            ModulePermissionDTO dto =
+                    ModulePermissionDTO.builder()
+                            .moduleId(targetModuleId)
+                            .apply(modApply)
+                            .view(modView)
+                            .edit(modEdit)
+                            .fieldPermissions(fieldPermMap)
+                            .build();
+
+            result.put(targetModuleId, dto);
+        }
+
+        return result;
+    }
+
+    private void collectDescendantModuleIds(
+            Long parentId, Map<Long, List<SysModule>> childrenMap, Set<Long> result) {
+        List<SysModule> children = childrenMap.get(parentId);
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+        for (SysModule child : children) {
+            if (child.getId() != null && result.add(child.getId())) {
+                collectDescendantModuleIds(child.getId(), childrenMap, result);
+            }
+        }
     }
 
     private ModuleNodeDTO toModuleNodeDTO(SysModule m) {

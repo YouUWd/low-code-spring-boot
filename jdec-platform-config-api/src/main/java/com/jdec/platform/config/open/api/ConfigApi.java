@@ -3,9 +3,11 @@ package com.jdec.platform.config.open.api;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleNodeDTO;
+import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 统一配置开放接口 (供数据引擎、流程引擎等下游核心消费)
@@ -80,4 +82,18 @@ public interface ConfigApi {
      * @return 关联关系列表
      */
     List<TableRelationDTO> listTableRelations(String projectNo, Collection<String> tableNames);
+
+    // ================= 4. 角色模块字段权限 (sys_role_module_field_permission) =============
+
+    /**
+     * 获取指定角色在指定模块列表下的权限汇总信息
+     *
+     * <p>规则：只要当前模块及其子模块的 sys_role_module_field_permission 中有 view/apply/edit，就代表有相关权限； 且返回对象的
+     * fieldPermissions 中涵盖当前模块及其子孙模块的所有字段权限明细。
+     *
+     * @param roleId 角色 ID
+     * @param moduleIds 模块 ID 集合
+     * @return 按 moduleId 映射的模块权限 DTO (Map<moduleId, ModulePermissionDTO>)
+     */
+    Map<Long, ModulePermissionDTO> getModulePermissions(Long roleId, Collection<Long> moduleIds);
 }

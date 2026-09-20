@@ -1,7 +1,10 @@
 package com.jdec.platform.data.biz.service;
 
+import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
+import com.jdec.platform.config.api.dto.common.ModulePermissionDTO.FieldPermissionItem;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -9,6 +12,7 @@ import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.UserMenuHeaderApi;
 import com.jdec.platform.data.api.dto.request.MenuQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.response.ApprovalRowItem;
 import com.jdec.platform.data.api.dto.response.DataDetail;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.DataRecordItem;
@@ -17,6 +21,7 @@ import com.jdec.platform.data.api.dto.response.MenuDataResp;
 import com.jdec.platform.data.api.dto.response.MenuDetailResp;
 import com.jdec.platform.data.api.dto.response.ModuleDataNode;
 import com.jdec.platform.data.api.dto.response.ModuleMetaDTO;
+import com.jdec.platform.data.api.dto.response.ModuleSimplePermissionDTO;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -38,13 +43,14 @@ public class DataAggregateService {
     private final DataApi dataApi;
     private final ConfigApi configApi;
     private final UserMenuHeaderApi userMenuHeaderApi;
+    private final IApprovalEngine approvalEngine;
 
     /**
      * 基于菜单 ID 的动态数据列表查询 (自动通过 UserMenuHeaderApi 解析勾选的 fieldId 列表与 rootModuleId)
      *
      * @param menuId 菜单 ID
      * @param req 面向 UI 的查询过滤、排序与分页请求体 (可选)
-     * @return 包含顶层多级列头与自相似数据树的复合响应
+     * @return 包含顶层多级列头、权限汇总、审批链数据与自相似数据树的复合响应
      */
     public MenuDataResp queryByMenu(Long menuId, MenuQueryReq req) {
         if (menuId == null) {
@@ -101,8 +107,82 @@ public class DataAggregateService {
                         .record(recordItems)
                         .build();
 
-        // 7. 组装顶层包含 header 和 data 的响应
-        return MenuDataResp.builder().header(headerDisplay.getHeader()).data(dataTree).build();
+        // 7. 查询根模块及子模块汇总权限 (转换为 1/0)
+        ModuleSimplePermissionDTO simplePerm = null;
+        Long roleId = UserContext.getRoleId();
+        if (roleId != null) {
+            Map<Long, ModulePermissionDTO> permMap =
+                    configApi.getModulePermissions(roleId, Collections.singletonList(rootModuleId));
+            if (permMap != null && permMap.containsKey(rootModuleId)) {
+                ModulePermissionDTO rootPerm = permMap.get(rootModuleId);
+                simplePerm =
+                        ModuleSimplePermissionDTO.builder()
+                                .apply(Boolean.TRUE.equals(rootPerm.getApply()) ? 1 : 0)
+                                .view(Boolean.TRUE.equals(rootPerm.getView()) ? 1 : 0)
+                                .edit(Boolean.TRUE.equals(rootPerm.getEdit()) ? 1 : 0)
+                                .build();
+            }
+        }
+
+        // 8. 查询审批链按钮数据
+        List<ApprovalRowItem> approvalRows = new ArrayList<>();
+        try {
+            Integer approvalType =
+                    (req != null && req.getApprovalType() != null) ? req.getApprovalType() : 3;
+            List<Map<String, Object>> approvalRawList =
+                    approvalEngine.getListButton(rootModuleId, approvalType);
+
+            if (approvalRawList != null && !approvalRawList.isEmpty()) {
+                Map<Long, List<Map<String, Object>>> btnGroupMap = new LinkedHashMap<>();
+
+                for (Map<String, Object> rawBtn : approvalRawList) {
+                    if (rawBtn == null) {
+                        continue;
+                    }
+                    Long recordId = null;
+                    Object rIdObj = rawBtn.get("recordId");
+                    if (rIdObj instanceof Number num) {
+                        recordId = num.longValue();
+                    } else if (rIdObj != null) {
+                        try {
+                            recordId = Long.valueOf(rIdObj.toString());
+                        } catch (Exception ignored) {
+                        }
+                    }
+
+                    if (recordId == null) {
+                        continue;
+                    }
+
+                    // 构造纯净的按钮对象 (移除 recordId，仅保留按钮属性)
+                    Map<String, Object> btnInfo = new LinkedHashMap<>();
+                    for (Map.Entry<String, Object> e : rawBtn.entrySet()) {
+                        if (!"recordId".equals(e.getKey())) {
+                            btnInfo.put(e.getKey(), e.getValue());
+                        }
+                    }
+
+                    btnGroupMap.computeIfAbsent(recordId, k -> new ArrayList<>()).add(btnInfo);
+                }
+
+                for (Map.Entry<Long, List<Map<String, Object>>> entry : btnGroupMap.entrySet()) {
+                    Map<String, Object> rowMap = new LinkedHashMap<>();
+                    rowMap.put("id", entry.getKey());
+                    rowMap.put("btnList", entry.getValue());
+                    approvalRows.add(ApprovalRowItem.builder().row(rowMap).build());
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("获取审批链按钮数据失败或当前模块未配置审批流: moduleId={}, err={}", rootModuleId, ex.getMessage());
+        }
+
+        // 9. 组装顶层包含 header, permission, approval 和 data 的响应
+        return MenuDataResp.builder()
+                .header(headerDisplay.getHeader())
+                .permission(simplePerm)
+                .approval(approvalRows.isEmpty() ? null : approvalRows)
+                .data(dataTree)
+                .build();
     }
 
     /**
@@ -254,6 +334,13 @@ public class DataAggregateService {
         List<ModuleMetaDTO> metaList = new ArrayList<>();
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
+        Long roleId = UserContext.getRoleId();
+
+        // 批量获取涉及模块的权限信息
+        Map<Long, ModulePermissionDTO> modulePerms =
+                (roleId != null && !collectedModuleMenuMap.isEmpty())
+                        ? configApi.getModulePermissions(roleId, collectedModuleMenuMap.keySet())
+                        : Collections.emptyMap();
 
         for (Map.Entry<Long, Long> entry : collectedModuleMenuMap.entrySet()) {
             Long modId = entry.getKey();
@@ -262,19 +349,38 @@ public class DataAggregateService {
             ModuleInfo modMeta = configApi.getModuleWithFields(projectNo, subjectId, modId);
             Map<String, FieldMetaDTO> fieldsMap = new LinkedHashMap<>();
 
+            ModulePermissionDTO modPerm = modulePerms != null ? modulePerms.get(modId) : null;
+            Map<Long, FieldPermissionItem> fieldPermMap =
+                    (modPerm != null && modPerm.getFieldPermissions() != null)
+                            ? modPerm.getFieldPermissions()
+                            : Collections.emptyMap();
+
             if (modMeta != null && modMeta.getFields() != null) {
                 for (ModuleFieldDTO f : modMeta.getFields()) {
                     String tableName =
                             f.getTableName() != null ? f.getTableName() : modMeta.getPrimaryTable();
                     String fieldKey = tableName + "." + f.getColumnName();
 
+                    FieldPermissionItem permItem = fieldPermMap.get(f.getId());
+
+                    boolean canApply = permItem != null && Boolean.TRUE.equals(permItem.getApply());
+                    boolean canView = permItem != null && Boolean.TRUE.equals(permItem.getView());
+                    boolean canEdit = permItem != null && Boolean.TRUE.equals(permItem.getEdit());
+
+                    // 若未配置权限角色或不在权限控制中，默认或者根据配置项生效
+                    if (roleId == null || permItem == null) {
+                        canApply = true;
+                        canView = true;
+                        canEdit = true;
+                    }
+
                     FieldMetaDTO fieldMeta =
                             FieldMetaDTO.builder()
                                     .id(f.getId())
                                     .displayName(f.getDisplayName())
-                                    .apply(true)
-                                    .view(true)
-                                    .edit(true)
+                                    .apply(canApply)
+                                    .view(canView)
+                                    .edit(canEdit)
                                     .build();
 
                     fieldsMap.put(fieldKey, fieldMeta);
