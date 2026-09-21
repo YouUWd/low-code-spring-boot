@@ -102,4 +102,10 @@ public class JwtTokenProvider {
         Claims claims = parseToken(token);
         return claims != null ? Long.parseLong(claims.getSubject()) : null;
     }
+
+    /** 从令牌中获取用户手机号。 */
+    public String getUserPhone(String token) {
+        Claims claims = parseToken(token);
+        return claims != null ? claims.get("phone", String.class) : null;
+    }
 }
