@@ -57,4 +57,6 @@ public interface CommonConstant {
     String MONITOR_LOG_OPERATOR_LOG_TYPE = "operation-log";
 
     String TABLE_DEFAULT_PRIMARY_KEY_FIELD = "id";
+
+    String TABLE_DEFAULT_DELETED_FIELD = "deleted";
 }

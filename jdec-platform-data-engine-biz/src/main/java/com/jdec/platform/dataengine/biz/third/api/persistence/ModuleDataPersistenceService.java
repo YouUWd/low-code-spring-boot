@@ -56,6 +56,7 @@ public class ModuleDataPersistenceService {
     public Long save(DynamicSaveReq req) {
         // moduleDataSaveCheckFactoryService.check(ModuleDataCheckContext.builder().build());
 
+        Map<Long, SysModuleInfo> moduleCacheMap = new HashMap<>();
         req.setRoot(TableRelationUtils.getRootTabTreeNode());
         AtomicReference<Long> rootModuleMainTableDataId = new AtomicReference<>();
         Long actionId = null;
@@ -105,7 +106,10 @@ public class ModuleDataPersistenceService {
 
                                             // 保存 当前模块一行数据 主表数据只有一行
                                             Long resultId =
-                                                    saveModuleData(recordDataDTO, currentReq);
+                                                    saveModuleData(
+                                                            recordDataDTO,
+                                                            currentReq,
+                                                            moduleCacheMap);
 
                                             // 捕获根模块的 主表记录ID
                                             if (first) {
@@ -173,13 +177,27 @@ public class ModuleDataPersistenceService {
         return rootModuleMainTableDataId.get();
     }
 
-    private Long saveModuleData(RecordDataDTO recordDataDTO, DynamicSaveReqContext currentReq) {
+    private Long saveModuleData(
+            RecordDataDTO recordDataDTO,
+            DynamicSaveReqContext currentReq,
+            Map<Long, SysModuleInfo> moduleCacheMap) {
+
         // 获取模块元数据
-        SysModuleInfo sysModuleCompleteResp =
-                moduleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(),
-                        AppContext.getSubjectId(),
-                        currentReq.getNestedModuleData().getModuleId());
+        SysModuleInfo sysModuleCompleteResp = null;
+        if (moduleCacheMap.containsKey(currentReq.getNestedModuleData().getModuleId())) {
+            sysModuleCompleteResp =
+                    moduleCacheMap.get(currentReq.getNestedModuleData().getModuleId());
+        } else {
+            // 获取模块元数据
+            sysModuleCompleteResp =
+                    moduleConfigService.getModuleCompleteById(
+                            AppContext.getProjectNo(),
+                            AppContext.getSubjectId(),
+                            currentReq.getNestedModuleData().getModuleId());
+            if (sysModuleCompleteResp != null) {
+                moduleCacheMap.put(sysModuleCompleteResp.getModuleId(), sysModuleCompleteResp);
+            }
+        }
 
         //
         if (sysModuleCompleteResp == null) {
@@ -315,6 +333,12 @@ public class ModuleDataPersistenceService {
             //                    dataMap,
             //                    sysModuleCompleteResp.getPrimaryTable(),
             //                    dataSaveResult.getRowChange());
+            if (recordDataDTO.getRowChanges() == null) {
+                recordDataDTO.setRowChanges(new ArrayList<>());
+                recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
+            } else {
+                recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
+            }
         }
 
         if (primaryTableId == null) {
@@ -344,7 +368,7 @@ public class ModuleDataPersistenceService {
             Long modulePrimaryTableId,
             DynamicSaveReqContext currentReq) {
         Set<String> tables =
-                sysModuleCompleteResp.getFields().stream()
+                sysModuleCompleteResp.getFieldList().stream()
                         .map(x -> x.getTableName())
                         .collect(Collectors.toSet());
         tables =
@@ -375,6 +399,13 @@ public class ModuleDataPersistenceService {
                         // DataPersistenceUtil.fillTableRecordChangeInCombinedMap(
                         //                                dataMap, moduleTable,
                         // dataSaveResult.getRowChange());
+
+                        if (recordDataDTO.getRowChanges() == null) {
+                            recordDataDTO.setRowChanges(new ArrayList<>());
+                            recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
+                        } else {
+                            recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
+                        }
                     }
                 }
                 case ONE_TO_MANY -> {
@@ -470,6 +501,15 @@ public class ModuleDataPersistenceService {
                     relationDTO.getJoinTable(),
                     relationDTO.getJoinField(),
                     modulePrimaryTableId);
+        } else {
+            if (!DataPersistenceUtil.isExistFiledInInWideRow(
+                    dataMap, relationDTO.getJoinTable(), relationDTO.getJoinField())) {
+                DataPersistenceUtil.fillTableRowFieldInWideRow(
+                        dataMap,
+                        relationDTO.getJoinTable(),
+                        relationDTO.getJoinField(),
+                        modulePrimaryTableId);
+            }
         }
         return dataSaveResult;
     }

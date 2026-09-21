@@ -2,13 +2,13 @@ package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.jooq.JSON;
 import org.jooq.Record;
 
@@ -18,6 +18,12 @@ public class DataPersistenceUtil {
         Object idObj = record.get(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
         Long id = idObj instanceof Number num ? num.longValue() : null;
         return id;
+    }
+
+    public static Boolean getTableRowDeletedField(Map<String, Object> record) {
+        Object idObj = record.get(CommonConstant.TABLE_DEFAULT_DELETED_FIELD);
+        Boolean flag = idObj instanceof Boolean bool ? bool : null;
+        return flag;
     }
 
     public static Map<String, Object> getTableRowMapFromWideRow(
@@ -128,7 +134,12 @@ public class DataPersistenceUtil {
     }
 
     public static RowChangeDTO convertUpdateRecordToRowChangeDTO(
-            Map<String, Object> r, Map<String, Object> recordMap, String table, Object fields) {
+            Map<String, Object> r,
+            Map<String, Object> recordMap,
+            String table,
+            Map<String, ModuleFieldDTO> fieldMap,
+            List<String> uniqueFields,
+            Boolean isDelete) {
 
         if (CollectionUtil.isEmpty(recordMap)) {
             return null;
@@ -137,8 +148,10 @@ public class DataPersistenceUtil {
         for (String field : recordMap.keySet()) {
             Object old = r.get(field);
             Object newer = recordMap.get(field);
+            String displayName =
+                    fieldMap.get(field) != null ? fieldMap.get(field).getDisplayName() : null;
             FieldChangeDTO fieldChangeDTO =
-                    getFieldChangeDTO(getFullFieldName(table, field), old, newer);
+                    getFieldChangeDTO(getFullFieldName(table, field), displayName, old, newer);
             if (fieldChangeDTO != null) {
                 fieldChangeDTOList.add(fieldChangeDTO);
             }
@@ -146,11 +159,18 @@ public class DataPersistenceUtil {
         if (CollectionUtil.isEmpty(fieldChangeDTOList)) {
             return null;
         }
-        return RowChangeDTO.builder().columns(fieldChangeDTOList).action("u").name(null).build();
+        return RowChangeDTO.builder()
+                .columns(fieldChangeDTOList)
+                .action(isDelete ? "d" : "u")
+                .name(getUniqueName(recordMap, uniqueFields))
+                .build();
     }
 
     public static RowChangeDTO convertInsertRecordToRowChangeDTO(
-            Map<String, Object> recordMap, String table, Object fields) {
+            Map<String, Object> recordMap,
+            String table,
+            Map<String, ModuleFieldDTO> fieldMap,
+            List<String> uniqueFields) {
 
         if (CollectionUtil.isEmpty(recordMap)) {
             return null;
@@ -158,8 +178,10 @@ public class DataPersistenceUtil {
         List<FieldChangeDTO> fieldChangeDTOList = new ArrayList<>();
         for (String field : recordMap.keySet()) {
             Object newer = recordMap.get(field);
+            String displayName =
+                    fieldMap.get(field) != null ? fieldMap.get(field).getDisplayName() : null;
             FieldChangeDTO fieldChangeDTO =
-                    getFieldChangeDTO(getFullFieldName(table, field), null, newer);
+                    getFieldChangeDTO(getFullFieldName(table, field), displayName, null, newer);
             if (fieldChangeDTO != null) {
                 fieldChangeDTOList.add(fieldChangeDTO);
             }
@@ -167,10 +189,31 @@ public class DataPersistenceUtil {
         if (CollectionUtil.isEmpty(fieldChangeDTOList)) {
             return null;
         }
-        return RowChangeDTO.builder().columns(fieldChangeDTOList).action("i").name(null).build();
+        return RowChangeDTO.builder()
+                .columns(fieldChangeDTOList)
+                .action("i")
+                .name(getUniqueName(recordMap, uniqueFields))
+                .build();
     }
 
-    public static FieldChangeDTO getFieldChangeDTO(String field, Object old, Object newer) {
+    public static String getUniqueName(Map<String, Object> recordMap, List<String> uniqueFields) {
+
+        StringBuilder stringBuilder = new StringBuilder();
+        for (String uniqueField : uniqueFields) {
+            if (recordMap.containsKey(uniqueField)) {
+                Object value = getFieldWriteValue(recordMap.get(uniqueField));
+                if (value != null) {
+                    if (stringBuilder.length() > 0) {
+                        stringBuilder.append(" ").append(String.valueOf(value));
+                    }
+                }
+            }
+        }
+        return stringBuilder.toString();
+    }
+
+    public static FieldChangeDTO getFieldChangeDTO(
+            String field, String displayName, Object old, Object newer) {
 
         try {
             String oldValue = String.valueOf(getFieldWriteValue(old));
@@ -179,14 +222,25 @@ public class DataPersistenceUtil {
 
             if (!oldValue.equals(newValue)) {
                 if (oldValue.equals("null")) {
-                    return FieldChangeDTO.builder().field(field).old(null).newer(newValue).build();
+                    return FieldChangeDTO.builder()
+                            .field(field)
+                            .old(null)
+                            .newer(newValue)
+                            .name(displayName)
+                            .build();
                 } else if (newValue.equals("null")) {
-                    return FieldChangeDTO.builder().field(field).old(oldValue).newer(null).build();
+                    return FieldChangeDTO.builder()
+                            .field(field)
+                            .old(oldValue)
+                            .newer(null)
+                            .name(displayName)
+                            .build();
                 } else {
                     return FieldChangeDTO.builder()
                             .field(field)
                             .old(oldValue)
                             .newer(newValue)
+                            .name(displayName)
                             .build();
                 }
             }
@@ -195,6 +249,28 @@ public class DataPersistenceUtil {
             throw new RuntimeException(e);
         }
         return null;
+    }
+
+    public static Map<String, ModuleFieldDTO> getModuleTableFieldMap(
+            List<ModuleFieldDTO> moduleFieldDTOList, String tableName) {
+        if (CollectionUtil.isEmpty(moduleFieldDTOList)) {
+            return new HashMap<>();
+        }
+        return moduleFieldDTOList.stream()
+                .filter(x -> StringUtils.equals(x.getTableName(), tableName))
+                .collect(Collectors.toMap(x -> x.getColumnName(), x -> x));
+    }
+
+    public static List<String> getModuleTableUniqueNameField(
+            List<ModuleFieldDTO> moduleFieldDTOList, String tableName) {
+        if (CollectionUtil.isEmpty(moduleFieldDTOList)) {
+            return new ArrayList<>();
+        }
+        return moduleFieldDTOList.stream()
+                .filter(x -> x.getBizKeyOrder() != null)
+                .sorted(Comparator.comparing(ModuleFieldDTO::getBizKeyOrder))
+                .map(x -> x.getColumnName())
+                .collect(Collectors.toList());
     }
 
     public static String getFullFieldName(String tableName, String field) {

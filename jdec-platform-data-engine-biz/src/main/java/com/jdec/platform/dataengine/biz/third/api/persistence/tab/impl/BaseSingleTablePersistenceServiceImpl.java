@@ -89,7 +89,14 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 // saveModuleDataChangeContent(context, null, insertedMap, num.longValue());
                 RowChangeDTO rowChange =
                         DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
-                                context.getRecord(), context.getTableName(), null);
+                                context.getRecord(),
+                                context.getTableName(),
+                                DataPersistenceUtil.getModuleTableFieldMap(
+                                        context.getSysModuleCompleteResp().getFieldList(),
+                                        context.getTableName()),
+                                DataPersistenceUtil.getModuleTableUniqueNameField(
+                                        context.getSysModuleCompleteResp().getFieldList(),
+                                        context.getTableName()));
                 saveModuleDataFieldChangeContent(context, rowChange, num.longValue());
                 return DataSaveResult.builder()
                         .dataId(num.longValue())
@@ -106,6 +113,13 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (DataPersistenceUtil.isOnlyHasId(context.getRecord())) {
             return DataSaveResult.builder().dataId(id).build();
         }
+        Boolean deletedFalg = false;
+
+        Boolean deletedField = DataPersistenceUtil.getTableRowDeletedField(context.getRecord());
+        if (deletedField != null && deletedField) {
+            deletedFalg = true;
+        }
+
         Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
 
         Record oldMap =
@@ -122,7 +136,13 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                         DataPersistenceUtil.convertRecordToMap(oldMap),
                         context.getRecord(),
                         context.getTableName(),
-                        null);
+                        DataPersistenceUtil.getModuleTableFieldMap(
+                                context.getSysModuleCompleteResp().getFieldList(),
+                                context.getTableName()),
+                        DataPersistenceUtil.getModuleTableUniqueNameField(
+                                context.getSysModuleCompleteResp().getFieldList(),
+                                context.getTableName()),
+                        deletedFalg);
 
         // Update 不返回任何字段
         context.getDsl()

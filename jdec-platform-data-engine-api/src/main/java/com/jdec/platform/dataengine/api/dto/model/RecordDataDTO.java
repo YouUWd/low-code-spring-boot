@@ -21,4 +21,6 @@ public class RecordDataDTO implements java.io.Serializable {
     private List<NestedModuleDataDTO> children;
 
     private Map<String, VersionCompareItem> changeList;
+
+    private List<RowChangeDTO> rowChanges;
 }
