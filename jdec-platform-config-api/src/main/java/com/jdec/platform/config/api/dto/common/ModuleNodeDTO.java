@@ -20,6 +20,12 @@ public class ModuleNodeDTO {
     @Schema(description = "父模块ID", example = "101")
     private Long parentId;
 
+    @Schema(description = "项目编号", example = "PRJ001")
+    private String projectNo;
+
+    @Schema(description = "所属主体ID", example = "1")
+    private Long subjectId;
+
     @Schema(description = "模块编码", example = "MOD-STUDENT-COURSE")
     private String moduleCode;
 

@@ -2,6 +2,8 @@ package com.jdec.platform.data.biz.plan.compiler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.SaveReq;
@@ -12,7 +14,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,7 +51,9 @@ public class SavePlanCompiler {
             throw new IllegalArgumentException("保存请求或模块 ID 不能为空");
         }
 
-        SaveNodePlan rootPlan = compileNode(req, null, null);
+        ModuleTreeDTO tree = loadModuleTree(req.getModuleId());
+        ProjectTableRelationsDTO projectRelations = getProjectRelations();
+        SaveNodePlan rootPlan = compileNode(req, null, null, projectRelations, tree);
         return SavePlan.builder().rootNodePlan(rootPlan).build();
     }
 
@@ -70,19 +73,29 @@ public class SavePlanCompiler {
         return req;
     }
 
-    /** 递归编译单节点保存计划 */
+    /** 递归编译单节点保存计划 (对外兼容老签名) */
     public SaveNodePlan compileNode(SaveReq node, Long parentModuleId, ModuleInfo parentMeta) {
+        ModuleTreeDTO tree = node.getModuleId() != null ? loadModuleTree(node.getModuleId()) : null;
+        return compileNode(node, parentModuleId, parentMeta, getProjectRelations(), tree);
+    }
+
+    /** 递归编译单节点保存计划 (内部共享 projectRelations 与 ModuleTreeDTO) */
+    public SaveNodePlan compileNode(
+            SaveReq node,
+            Long parentModuleId,
+            ModuleInfo parentMeta,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
 
         Long moduleId = node.getModuleId();
-        ModuleInfo meta =
-                configApi.getModuleWithFields(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+        ModuleInfo meta = tree != null ? tree.getModule(moduleId) : null;
         if (meta == null) {
-            throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
+            throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未在当前模块树中配置元数据");
         }
 
         String primaryTable = resolvePrimaryTable(meta);
-        String parentFk = resolveParentForeignKey(primaryTable, meta, parentMeta);
+        String parentFk =
+                resolveParentForeignKey(primaryTable, meta, parentMeta, projectRelations, tree);
 
         List<SaveNodePlan> childPlans = new ArrayList<>();
 
@@ -90,7 +103,7 @@ public class SavePlanCompiler {
         if (node.getChildren() != null && !node.getChildren().isEmpty()) {
             for (SaveReq childNode : node.getChildren()) {
                 if (childNode != null && childNode.getModuleId() != null) {
-                    childPlans.add(compileNode(childNode, moduleId, meta));
+                    childPlans.add(compileNode(childNode, moduleId, meta, projectRelations, tree));
                 }
             }
         }
@@ -105,7 +118,14 @@ public class SavePlanCompiler {
                     continue;
                 }
                 Map<String, Object> cleanRow =
-                        normalizeRow(rawRow, primaryTable, moduleId, meta, childPlans);
+                        normalizeRow(
+                                rawRow,
+                                primaryTable,
+                                moduleId,
+                                meta,
+                                childPlans,
+                                projectRelations,
+                                tree);
                 cleanRecords.add(cleanRow);
             }
         }
@@ -136,7 +156,9 @@ public class SavePlanCompiler {
             String primaryTable,
             Long moduleId,
             ModuleInfo meta,
-            List<SaveNodePlan> childPlans) {
+            List<SaveNodePlan> childPlans,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
         Map<String, Object> cleanRow = new HashMap<>(rawRow);
         String modKey = moduleId != null ? String.valueOf(moduleId) : null;
 
@@ -171,7 +193,8 @@ public class SavePlanCompiler {
                     SaveReq childReq =
                             SaveReq.builder().moduleId(childModuleId).records(childRecords).build();
                     try {
-                        SaveNodePlan childPlan = compileNode(childReq, moduleId, meta);
+                        SaveNodePlan childPlan =
+                                compileNode(childReq, moduleId, meta, projectRelations, tree);
                         childPlan.setMany(childIsMany);
                         childPlans.add(childPlan);
                     } catch (Exception e) {
@@ -187,7 +210,8 @@ public class SavePlanCompiler {
             List<SaveReq> rowChildren = parseRowChildren(rowChildrenObj);
             for (SaveReq rowChildNode : rowChildren) {
                 if (rowChildNode != null && rowChildNode.getModuleId() != null) {
-                    childPlans.add(compileNode(rowChildNode, moduleId, meta));
+                    childPlans.add(
+                            compileNode(rowChildNode, moduleId, meta, projectRelations, tree));
                 }
             }
         }
@@ -244,7 +268,11 @@ public class SavePlanCompiler {
     }
 
     private String resolveParentForeignKey(
-            String childPrimaryTable, ModuleInfo childMeta, ModuleInfo parentMeta) {
+            String childPrimaryTable,
+            ModuleInfo childMeta,
+            ModuleInfo parentMeta,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
         if (childPrimaryTable == null || childPrimaryTable.isBlank() || parentMeta == null) {
             return null;
         }
@@ -255,7 +283,7 @@ public class SavePlanCompiler {
 
         if (parentPrimary == null || parentPrimary.isBlank()) {
             intermediateVms.add(parentMeta);
-            physicalParentMeta = findNearestPhysicalParentMeta(parentMeta, intermediateVms);
+            physicalParentMeta = findNearestPhysicalParentMeta(parentMeta, intermediateVms, tree);
             if (physicalParentMeta != null) {
                 parentPrimary = resolvePrimaryTable(physicalParentMeta);
             }
@@ -270,30 +298,17 @@ public class SavePlanCompiler {
             return "id";
         }
 
-        Set<TableRelationDTO> allRelations = new LinkedHashSet<>();
-        List<TableRelationDTO> directRelations =
-                configApi.listTableRelations(
-                        AppContext.getProjectNo(),
-                        Set.of(parentPrimary.toLowerCase(), childPrimaryTable.toLowerCase()));
-        if (directRelations != null) {
-            allRelations.addAll(directRelations);
+        TableRelationDTO matchedRel = null;
+        if (projectRelations != null) {
+            matchedRel = projectRelations.findDirectRelation(parentPrimary, childPrimaryTable);
         }
 
-        allRelations.addAll(listTableRelations(childMeta));
-        for (ModuleInfo vm : intermediateVms) {
-            allRelations.addAll(listTableRelations(vm));
-        }
-        allRelations.addAll(listTableRelations(physicalParentMeta));
-
-        for (TableRelationDTO rel : allRelations) {
-            if (rel != null
-                    && parentPrimary.equalsIgnoreCase(rel.getMainTable())
-                    && childPrimaryTable.equalsIgnoreCase(rel.getJoinTable())) {
-                if (rel.getJoinField() != null && !rel.getJoinField().isBlank()) {
-                    return rel.getJoinField().trim();
-                }
+        if (matchedRel != null) {
+            if (matchedRel.getJoinField() != null && !matchedRel.getJoinField().isBlank()) {
+                return matchedRel.getJoinField().trim();
             }
         }
+
         Long parentModId = physicalParentMeta.getModuleId();
         Long childModId = childMeta != null ? childMeta.getModuleId() : null;
         throw new IllegalStateException(
@@ -303,16 +318,14 @@ public class SavePlanCompiler {
     }
 
     private ModuleInfo findNearestPhysicalParentMeta(
-            ModuleInfo currentMeta, List<ModuleInfo> intermediateCollector) {
+            ModuleInfo currentMeta, List<ModuleInfo> intermediateCollector, ModuleTreeDTO tree) {
         if (currentMeta == null) {
             return null;
         }
         Long curParentId = currentMeta.getParentId();
         Set<Long> visited = new HashSet<>();
         while (curParentId != null && curParentId > 0 && visited.add(curParentId)) {
-            ModuleInfo pMeta =
-                    configApi.getModuleWithFields(
-                            AppContext.getProjectNo(), AppContext.getSubjectId(), curParentId);
+            ModuleInfo pMeta = tree != null ? tree.getModule(curParentId) : null;
             if (pMeta == null) {
                 break;
             }
@@ -328,32 +341,14 @@ public class SavePlanCompiler {
         return null;
     }
 
-    private List<TableRelationDTO> listTableRelations(ModuleInfo module) {
-        if (module == null) {
-            return Collections.emptyList();
-        }
+    private ModuleTreeDTO loadModuleTree(Long rootModuleId) {
         String projectNo = AppContext.getProjectNo();
-        Set<String> tableNames = new HashSet<>();
-        addTableName(tableNames, module.getPrimaryTable());
-        if (module.getFields() != null) {
-            for (var field : module.getFields()) {
-                addTableName(tableNames, field.getTableName());
-            }
-        }
-        if (module.getParentId() != null && module.getParentId() > 0) {
-            var parent =
-                    configApi.getModuleBasic(
-                            projectNo, AppContext.getSubjectId(), module.getParentId());
-            if (parent != null) {
-                addTableName(tableNames, parent.getPrimaryTable());
-            }
-        }
-        return configApi.listTableRelations(projectNo, tableNames);
+        Long subjectId = AppContext.getSubjectId();
+        return configApi.getModuleTree(projectNo, subjectId, rootModuleId);
     }
 
-    private void addTableName(Set<String> tableNames, String tableName) {
-        if (tableName != null && !tableName.isBlank()) {
-            tableNames.add(tableName.trim().toLowerCase());
-        }
+    private ProjectTableRelationsDTO getProjectRelations() {
+        String projectNo = AppContext.getProjectNo();
+        return configApi.getProjectTableRelations(projectNo);
     }
 }
