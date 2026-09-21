@@ -407,22 +407,13 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                 boolean permissionCheckAll = isCheckAll(saveDataPermission.getPermissionCheckAll());
 
                 if (permissionCheckAll) {
-                    // 1.1 数据权限全选：清空该权限节点下的所有数据，主体数组有几个就新增几条
+                    // 1.1 数据权限全选：清空该权限节点下的所有数据，仅新增一条节点级全选记录
+                    // （主体ID为空，表示该权限节点下所有主体均全选）
                     sysRoleDataPermissionMapper.delete(
                             Wrappers.<SysRoleDataPermission>lambdaQuery()
                                     .eq(SysRoleDataPermission::getRoleId, roleId)
                                     .eq(SysRoleDataPermission::getDataPermissionId, permissionId));
-                    for (SaveRoleDataPermissionReq.SaveDataSubjectReq subject :
-                            nullToEmpty(saveDataPermission.getSubjects())) {
-                        toInsert.add(
-                                buildDataPermission(
-                                        roleId,
-                                        permissionId,
-                                        subject.getSubjectId(),
-                                        1,
-                                        subject.getSubjectCheckAll(),
-                                        null));
-                    }
+                    toInsert.add(buildDataPermission(roleId, permissionId, null, 1, 0, null));
                     continue;
                 }
 
@@ -621,8 +612,10 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                             ? 1
                             : 0);
 
+            // 节点级全选记录 subjectId 为空，不属于任何主体，不参与主体维度分组
             Map<Long, List<SysRoleDataPermission>> groupedBySubject =
                     permissionRecords.stream()
+                            .filter(r -> r.getSubjectId() != null)
                             .collect(
                                     Collectors.groupingBy(
                                             SysRoleDataPermission::getSubjectId,
