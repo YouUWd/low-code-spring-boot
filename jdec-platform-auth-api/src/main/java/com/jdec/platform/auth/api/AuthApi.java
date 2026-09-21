@@ -1,20 +1,25 @@
 package com.jdec.platform.auth.api;
 
-import com.jdec.platform.auth.api.dto.request.LoginReq;
-import com.jdec.platform.auth.api.dto.request.SendCodeReq;
-import com.jdec.platform.auth.api.dto.response.LoginResp;
+import com.jdec.platform.auth.api.dto.request.SelectRoleReq;
+import com.jdec.platform.auth.api.dto.response.CurrentUserCheckResp;
+import com.jdec.platform.auth.api.dto.response.LoginResult;
+import com.jdec.platform.auth.api.dto.response.SelectRoleResp;
+import com.jdec.platform.shared.model.ApiResponse;
 
-/** 认证 Service */
+/** Auth 模块暴露的 API */
 public interface AuthApi {
 
-    /** 用户名密码登录 */
-    LoginResp login(LoginReq request);
+    LoginResult login(String token);
 
-    /** 退出登录 */
-    void logout();
+    CurrentUserCheckResp getCurrentUserCheckInfo(String phone);
 
-    /** 获取当前用户信息 */
-    LoginResp getUserInfo();
+    Boolean logout(String token);
 
-    String sendVerifyCode(SendCodeReq req);
+    /**
+     * 切换角色：解析出最终主体/角色，返回主体列表与菜单树，并刷新 Redis 中的当前角色缓存。
+     *
+     * <p>返回 {@link ApiResponse} 而非纯 DTO，是为了忠实保留源项目契约：当角色无权限时需返回 业务码 804 且仍携带 {@code
+     * data}（主体列表与菜单树），纯 DTO 无法表达「非 200 业务码 + 数据」的组合。
+     */
+    ApiResponse<SelectRoleResp> selectRole(SelectRoleReq req);
 }

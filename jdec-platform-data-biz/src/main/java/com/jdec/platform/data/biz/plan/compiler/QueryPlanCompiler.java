@@ -2,6 +2,8 @@ package com.jdec.platform.data.biz.plan.compiler;
 
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.FilterItem;
@@ -14,7 +16,6 @@ import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import com.jdec.platform.data.biz.plan.model.QueryPlan;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
@@ -75,6 +76,50 @@ public class QueryPlanCompiler {
         return compile(queryReq);
     }
 
+    /** 编译单据详情精准查询请求为 QueryPlan (自动由 ModuleTreeDTO 提取主键 id 字段，零重复 I/O) */
+    public QueryPlan compileDetail(Long moduleId, Long id, List<Long> fields) {
+        if (moduleId == null || id == null) {
+            throw new IllegalArgumentException("模块 ID 和单据 ID 不能为空");
+        }
+
+        ModuleTreeDTO tree = loadModuleTree(moduleId);
+        if (tree == null || tree.getRootModule() == null) {
+            throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
+        }
+
+        ModuleInfo rootMeta = tree.getRootModule();
+        Long idFieldId = null;
+        if (rootMeta.getFields() != null) {
+            for (ModuleFieldDTO f : rootMeta.getFields()) {
+                if ("id".equalsIgnoreCase(f.getColumnName())) {
+                    idFieldId = f.getId();
+                    break;
+                }
+            }
+        }
+
+        if (idFieldId == null) {
+            throw new IllegalStateException(
+                    String.format(
+                            "模块 [%s](ID: %d) 的元数据中未配置主键 [id] 字段，无法执行单据详情查询",
+                            rootMeta.getModuleName(), moduleId));
+        }
+
+        List<FilterItem> filters =
+                List.of(FilterItem.builder().fieldId(idFieldId).operator("EQ").value(id).build());
+
+        QueryReq queryReq =
+                QueryReq.builder()
+                        .moduleId(moduleId)
+                        .pageNo(1)
+                        .pageSize(1)
+                        .fields(fields)
+                        .filters(filters)
+                        .build();
+
+        return compile(queryReq);
+    }
+
     /** 编译顶层查询请求为完整的 QueryPlan (以根 moduleId 与 fields 驱动，自动校验子树范围并推导执行树) */
     public QueryPlan compile(QueryReq req) {
         if (req == null) {
@@ -85,23 +130,14 @@ public class QueryPlanCompiler {
             throw new IllegalArgumentException("查询主模块 ID 不能为空");
         }
 
-        ModuleInfo rootMeta = loadQueryMetadata(rootModuleId);
-        if (rootMeta == null) {
+        ModuleTreeDTO tree = loadModuleTree(rootModuleId);
+        if (tree == null || tree.getRootModule() == null) {
             throw new IllegalArgumentException("模块 ID [" + rootModuleId + "] 不存在或未配置元数据");
         }
 
         boolean isGlobalWhitelistMode = req.getFields() != null && !req.getFields().isEmpty();
 
-        // 1. 递归收集当前根模块及其所有子孙模块的合法模块 ID 闭包
-        Set<Long> allowedModuleIds = new HashSet<>();
-        allowedModuleIds.add(rootModuleId);
-        for (var node : listDescendantModules(rootModuleId)) {
-            if (node != null && node.getId() != null) {
-                allowedModuleIds.add(node.getId());
-            }
-        }
-
-        // 2. 收集请求中出现的所有 fieldId (包括 fields, filters, sorts)
+        // 1. 收集请求中出现的所有 fieldId (包括 fields, filters, sorts)
         Set<Long> allFieldIds = new LinkedHashSet<>();
         if (req.getFields() != null) {
             allFieldIds.addAll(req.getFields());
@@ -121,27 +157,17 @@ public class QueryPlanCompiler {
             }
         }
 
-        // 3. 严格校验字段元数据与子树归属作用域 (Scope Guard)
-        List<ModuleFieldDTO> fieldDTOs = Collections.emptyList();
+        // 2. 严格校验字段元数据与子树归属作用域 (Scope Guard，全内存 O(1) 检索，零外部 I/O)
+        List<ModuleFieldDTO> fieldDTOs = new ArrayList<>();
         if (!allFieldIds.isEmpty()) {
-            fieldDTOs = configApi.listFieldsByIds(new ArrayList<>(allFieldIds));
-            if (fieldDTOs == null) {
-                fieldDTOs = Collections.emptyList();
-            }
-            Map<Long, ModuleFieldDTO> fieldIdMap = new HashMap<>();
-            for (ModuleFieldDTO f : fieldDTOs) {
-                if (f != null && f.getId() != null) {
-                    fieldIdMap.put(f.getId(), f);
-                }
-            }
             for (Long fid : allFieldIds) {
-                ModuleFieldDTO f = fieldIdMap.get(fid);
+                ModuleFieldDTO f = tree.getField(fid);
                 if (f == null) {
-                    throw new IllegalArgumentException("未查询到指定字段的元数据定义: " + fid);
+                    throw new IllegalArgumentException(
+                            String.format("未在当前模块树 [%d] 的元数据中查询到指定字段定义: %d", rootModuleId, fid));
                 }
                 Long fModuleId = f.getModuleId();
-                if (fModuleId != null
-                        && !isDescendantOrSelf(fModuleId, rootModuleId, allowedModuleIds)) {
+                if (fModuleId != null && !tree.containsModule(fModuleId)) {
                     throw new IllegalArgumentException(
                             String.format(
                                     "字段 [%s] (ID: %d, 所属模块: %d) 不属于主模块 [%d] 及其子模块作用域范围",
@@ -152,41 +178,24 @@ public class QueryPlanCompiler {
                                     fModuleId,
                                     rootModuleId));
                 }
+                fieldDTOs.add(f);
             }
         }
 
-        // 4. 自动推导并构建内部结构化树
+        // 3. 自动推导并构建内部结构化树 (直接消费 ModuleTreeDTO，零 DB 开销与零回溯)
         InternalQueryNode structuredTree =
-                buildInternalQueryTree(req, rootMeta, allFieldIds, fieldDTOs);
-        QueryNodePlan rootPlan = compileNode(structuredTree, null, null, isGlobalWhitelistMode);
+                buildInternalQueryTree(req, tree, allFieldIds, fieldDTOs);
+        ProjectTableRelationsDTO projectRelations = getProjectRelations();
+        QueryNodePlan rootPlan =
+                compileNode(
+                        structuredTree, null, null, isGlobalWhitelistMode, projectRelations, tree);
         return QueryPlan.builder().rootNodePlan(rootPlan).build();
     }
 
-    private boolean isDescendantOrSelf(
-            Long targetModuleId, Long rootModuleId, Set<Long> allowedModuleIds) {
-        if (targetModuleId == null) {
-            return false;
-        }
-        if (targetModuleId.equals(rootModuleId) || allowedModuleIds.contains(targetModuleId)) {
-            return true;
-        }
-        Long cur = targetModuleId;
-        Set<Long> visited = new HashSet<>();
-        while (cur != null && cur > 0 && visited.add(cur)) {
-            if (cur.equals(rootModuleId)) {
-                allowedModuleIds.add(targetModuleId);
-                return true;
-            }
-            ModuleInfo m = loadQueryMetadata(cur);
-            cur = (m != null) ? m.getParentId() : null;
-        }
-        return false;
-    }
-
-    /** 根据平铺的 fields/filters/sorts 与 config-engine 拓扑，自动推导并组装内部结构化查询请求树 */
+    /** 根据平铺的 fields/filters/sorts 与 ModuleTreeDTO 拓扑，自动组装内部结构化查询请求树 */
     private InternalQueryNode buildInternalQueryTree(
             QueryReq req,
-            ModuleInfo rootMeta,
+            ModuleTreeDTO tree,
             Set<Long> allFieldIds,
             List<ModuleFieldDTO> fieldDTOs) {
 
@@ -225,34 +234,19 @@ public class QueryPlanCompiler {
                     .build();
         }
 
-        Map<Long, ModuleInfo> metaMap = new HashMap<>();
-        metaMap.put(rootModuleId, rootMeta);
-        for (Long mid : involvedModuleIds) {
-            ModuleInfo m = loadQueryMetadata(mid);
-            if (m != null) {
-                metaMap.put(mid, m);
-            }
-        }
-
-        // 向上回溯补齐模块树祖先链路，确保孙模块与所有中间节点完整纳入闭包 (Transitive Closure)
-        // 🌟 核心原则：当前模块如果已经是 rootModuleId，或者已追溯到 rootModuleId，严禁继续向上追溯其父模块！
+        // 向上补齐涉及模块到根节点的祖先节点闭包 (直接从 tree 的 moduleMap 获取，零 DB 查询)
         Set<Long> fullModuleIds = new LinkedHashSet<>(involvedModuleIds);
         for (Long mid : involvedModuleIds) {
             Long current = mid;
-            Set<Long> visited = new HashSet<>();
-            while (current != null && !current.equals(rootModuleId) && visited.add(current)) {
-                ModuleInfo m = metaMap.computeIfAbsent(current, id -> loadQueryMetadata(id));
-                if (m != null && m.getParentId() != null) {
+            while (current != null && !current.equals(rootModuleId)) {
+                ModuleInfo m = tree.getModule(current);
+                if (m != null && m.getParentId() != null && m.getParentId() != 0L) {
                     Long pid = m.getParentId();
-                    if (pid != 0L) {
-                        fullModuleIds.add(pid);
-                        if (pid.equals(rootModuleId)) {
-                            break;
-                        }
-                        current = pid;
-                    } else {
+                    fullModuleIds.add(pid);
+                    if (pid.equals(rootModuleId)) {
                         break;
                     }
+                    current = pid;
                 } else {
                     break;
                 }
@@ -292,24 +286,24 @@ public class QueryPlanCompiler {
         }
 
         // 构建模块层级 parentToChildren 映射 (严格基于真实模块树层级，杜绝跨级悬挂)
-        Map<Long, List<Long>> parentToChildren = new HashMap<>();
+        Map<Long, List<Long>> activeParentToChildren = new HashMap<>();
         for (Long mid : involvedModuleIds) {
             if (!mid.equals(rootModuleId)) {
-                ModuleInfo m = metaMap.computeIfAbsent(mid, id -> loadQueryMetadata(id));
+                ModuleInfo m = tree.getModule(mid);
                 Long pid =
                         (m != null && m.getParentId() != null && m.getParentId() != 0L)
                                 ? m.getParentId()
                                 : rootModuleId;
-                parentToChildren.computeIfAbsent(pid, k -> new ArrayList<>()).add(mid);
+                activeParentToChildren.computeIfAbsent(pid, k -> new ArrayList<>()).add(mid);
             }
         }
 
-        // 🌟 结构化模块树推导公理：依据各字段归属模块及其祖先链路，在内存中构建从根节点到子孙叶子节点的完整严格父子拓扑
+        // 🌟 结构化模块树推导完成
         log.debug(
                 "[QueryPlanCompiler] 结构化模块树推导完成: rootModuleId={}, involvedModuleIds={}, parentToChildren={}",
                 rootModuleId,
                 involvedModuleIds,
-                parentToChildren);
+                activeParentToChildren);
 
         return buildInternalNode(
                 rootModuleId,
@@ -318,7 +312,7 @@ public class QueryPlanCompiler {
                 fieldsByModule,
                 filtersByModule,
                 sortsByModule,
-                parentToChildren);
+                activeParentToChildren);
     }
 
     private InternalQueryNode buildInternalNode(
@@ -365,16 +359,19 @@ public class QueryPlanCompiler {
             InternalQueryNode node,
             Long parentModuleId,
             ModuleInfo parentMeta,
-            boolean isGlobalWhitelistMode) {
+            boolean isGlobalWhitelistMode,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
 
         Long moduleId = node.getModuleId();
-        ModuleInfo meta = loadQueryMetadata(moduleId);
+        ModuleInfo meta = tree != null ? tree.getModule(moduleId) : null;
         if (meta == null) {
-            throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未配置元数据");
+            throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未在当前模块树中配置元数据");
         }
 
         String primaryTable = resolvePrimaryTable(meta);
-        ParentRelationInfo parentRel = resolveParentRelation(primaryTable, meta, parentMeta);
+        ParentRelationInfo parentRel =
+                resolveParentRelation(primaryTable, meta, parentMeta, projectRelations, tree);
         String parentFk = parentRel.childForeignKey();
         String parentKey = parentRel.parentKey();
         boolean isVirtual = primaryTable == null || primaryTable.isBlank();
@@ -391,12 +388,19 @@ public class QueryPlanCompiler {
         Map<String, List<PhysicalFieldSpec>> oneToManyFieldsByTable = new LinkedHashMap<>();
         Map<String, TableRelationDTO> oneToManyRelationByTable = new LinkedHashMap<>();
 
-        if (!isVirtual) {
-            for (TableRelationDTO rel : listTableRelations(meta)) {
-                if ("1:N".equalsIgnoreCase(rel.getRelationType())
-                        && rel.getJoinTable() != null
-                        && !rel.getJoinTable().equalsIgnoreCase(primaryTable)) {
-                    oneToManyRelationByTable.put(rel.getJoinTable().toLowerCase(), rel);
+        if (!isVirtual && projectRelations != null) {
+            String lowerPrimary = primaryTable.toLowerCase();
+            List<TableRelationDTO> fwdRels =
+                    projectRelations.getForwardRelations() != null
+                            ? projectRelations.getForwardRelations().get(lowerPrimary)
+                            : null;
+            if (fwdRels != null) {
+                for (TableRelationDTO rel : fwdRels) {
+                    if ("1:N".equalsIgnoreCase(rel.getRelationType())
+                            && rel.getJoinTable() != null
+                            && !rel.getJoinTable().equalsIgnoreCase(primaryTable)) {
+                        oneToManyRelationByTable.put(rel.getJoinTable().trim().toLowerCase(), rel);
+                    }
                 }
             }
         }
@@ -430,7 +434,13 @@ public class QueryPlanCompiler {
             for (InternalQueryNode childNode : node.getChildren()) {
                 if (childNode != null && childNode.getModuleId() != null) {
                     QueryNodePlan cp =
-                            compileNode(childNode, moduleId, meta, isGlobalWhitelistMode);
+                            compileNode(
+                                    childNode,
+                                    moduleId,
+                                    meta,
+                                    isGlobalWhitelistMode,
+                                    projectRelations,
+                                    tree);
                     childPlans.add(cp);
                     if (cp.getPrimaryTable() != null && !cp.getPrimaryTable().isBlank()) {
                         handledTables.add(cp.getPrimaryTable().toLowerCase());
@@ -490,7 +500,8 @@ public class QueryPlanCompiler {
         List<JoinTableSpec> companionJoins =
                 isVirtual
                         ? Collections.emptyList()
-                        : resolveCompanionJoins(primaryTable, primaryProjectedFields, meta);
+                        : resolveCompanionJoins(
+                                primaryTable, primaryProjectedFields, meta, projectRelations);
 
         // 7. 第一性原理：自底向上汇聚子孙模块过滤约束 (Semi-Join / EXISTS 链式上卷，穿透虚拟中间层)
         List<Condition> rollupConditions = new ArrayList<>();
@@ -580,7 +591,10 @@ public class QueryPlanCompiler {
 
     /** 基于 sys_table_relation 单向定义推导伴生表物理 JOIN 规格 */
     private List<JoinTableSpec> resolveCompanionJoins(
-            String primaryTable, List<PhysicalFieldSpec> projectedFields, ModuleInfo meta) {
+            String primaryTable,
+            List<PhysicalFieldSpec> projectedFields,
+            ModuleInfo meta,
+            ProjectTableRelationsDTO projectRelations) {
         if (primaryTable == null
                 || primaryTable.isBlank()
                 || meta == null
@@ -602,37 +616,23 @@ public class QueryPlanCompiler {
             return Collections.emptyList();
         }
 
-        List<TableRelationDTO> relations = listTableRelations(meta);
-        if (relations == null || relations.isEmpty()) {
-            throw new IllegalStateException(
-                    String.format(
-                            "模块 [%s] 投影了伴生表字段 %s，但在 sys_table_relation 中未配置任何表关联元数据",
-                            meta.getModuleId(), neededCompanionTables));
-        }
-
         List<JoinTableSpec> joinSpecs = new ArrayList<>();
         for (String compTable : neededCompanionTables) {
             TableRelationDTO matchedRel = null;
             boolean isForward = false; // primary -> compTable
 
-            for (TableRelationDTO rel : relations) {
-                if (rel == null || rel.getMainTable() == null || rel.getJoinTable() == null) {
-                    continue;
-                }
+            if (projectRelations != null) {
                 // 正向关系: main_table(主表) -> join_table(伴生表) 如 student -> student_profile (1:1)
-                if (primaryTable.equalsIgnoreCase(rel.getMainTable())
-                        && compTable.equalsIgnoreCase(rel.getJoinTable())) {
-                    matchedRel = rel;
+                matchedRel = projectRelations.findDirectRelation(primaryTable, compTable);
+                if (matchedRel != null) {
                     isForward = true;
-                    break;
-                }
-                // 反向伴生关系: main_table(伴生表) -> join_table(主表) 如 clazz -> student (1:N 视角下的 N:1
-                // 归属)
-                if (compTable.equalsIgnoreCase(rel.getMainTable())
-                        && primaryTable.equalsIgnoreCase(rel.getJoinTable())) {
-                    matchedRel = rel;
-                    isForward = false;
-                    break;
+                } else {
+                    // 反向伴生关系: main_table(伴生表) -> join_table(主表) 如 clazz -> student (1:N 视角下的 N:1
+                    // 归属)
+                    matchedRel = projectRelations.findDirectRelation(compTable, primaryTable);
+                    if (matchedRel != null) {
+                        isForward = false;
+                    }
                 }
             }
 
@@ -644,40 +644,52 @@ public class QueryPlanCompiler {
             }
 
             if (isForward) {
-                // student.id = student_profile.student_id
                 joinSpecs.add(
                         JoinTableSpec.builder()
+                                .targetTable(compTable)
+                                .targetField(
+                                        matchedRel.getJoinField() != null
+                                                        && !matchedRel.getJoinField().isBlank()
+                                                ? matchedRel.getJoinField().trim()
+                                                : "id")
                                 .sourceTable(primaryTable)
                                 .sourceField(
                                         matchedRel.getMainField() != null
                                                         && !matchedRel.getMainField().isBlank()
-                                                ? matchedRel.getMainField()
+                                                ? matchedRel.getMainField().trim()
                                                 : "id")
-                                .targetTable(matchedRel.getJoinTable())
-                                .targetField(matchedRel.getJoinField())
-                                .relationType(matchedRel.getRelationType())
+                                .relationType(
+                                        matchedRel.getRelationType() != null
+                                                        && !matchedRel.getRelationType().isBlank()
+                                                ? matchedRel.getRelationType().trim()
+                                                : "1:1")
                                 .build());
             } else {
-                // student.clazz_id = clazz.id
                 joinSpecs.add(
                         JoinTableSpec.builder()
-                                .sourceTable(primaryTable)
-                                .sourceField(matchedRel.getJoinField())
-                                .targetTable(matchedRel.getMainTable())
+                                .targetTable(compTable)
                                 .targetField(
                                         matchedRel.getMainField() != null
                                                         && !matchedRel.getMainField().isBlank()
-                                                ? matchedRel.getMainField()
+                                                ? matchedRel.getMainField().trim()
                                                 : "id")
-                                .relationType(matchedRel.getRelationType())
+                                .sourceTable(primaryTable)
+                                .sourceField(
+                                        matchedRel.getJoinField() != null
+                                                        && !matchedRel.getJoinField().isBlank()
+                                                ? matchedRel.getJoinField().trim()
+                                                : "id")
+                                .relationType(
+                                        matchedRel.getRelationType() != null
+                                                        && !matchedRel.getRelationType().isBlank()
+                                                ? matchedRel.getRelationType().trim()
+                                                : "N:1")
                                 .build());
             }
         }
-
         return joinSpecs;
     }
 
-    /** 解析模块物理主表名 */
     public String resolvePrimaryTable(ModuleInfo meta) {
         if (meta == null) {
             return "";
@@ -703,14 +715,14 @@ public class QueryPlanCompiler {
 
     /** 沿着模块树向上回溯查找最近的一个配置了有效物理主表的父/祖先模块，同时收集沿途的中间虚拟模块 */
     private ModuleInfo findNearestPhysicalParentMeta(
-            ModuleInfo currentMeta, List<ModuleInfo> intermediateCollector) {
+            ModuleInfo currentMeta, List<ModuleInfo> intermediateCollector, ModuleTreeDTO tree) {
         if (currentMeta == null) {
             return null;
         }
         Long curParentId = currentMeta.getParentId();
         Set<Long> visited = new HashSet<>();
         while (curParentId != null && curParentId > 0 && visited.add(curParentId)) {
-            ModuleInfo pMeta = loadQueryMetadata(curParentId);
+            ModuleInfo pMeta = tree != null ? tree.getModule(curParentId) : null;
             if (pMeta == null) {
                 break;
             }
@@ -749,7 +761,11 @@ public class QueryPlanCompiler {
      * 若直接父模块为虚拟模块 (无主表)，则自动递归向上查找最近的有物理主表的祖先模块进行关联。
      */
     private ParentRelationInfo resolveParentRelation(
-            String childPrimaryTable, ModuleInfo childMeta, ModuleInfo parentMeta) {
+            String childPrimaryTable,
+            ModuleInfo childMeta,
+            ModuleInfo parentMeta,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
         if (childPrimaryTable == null || childPrimaryTable.isBlank() || parentMeta == null) {
             return new ParentRelationInfo("id", null, null, "1:N");
         }
@@ -761,7 +777,7 @@ public class QueryPlanCompiler {
 
         if (parentPrimary == null || parentPrimary.isBlank()) {
             intermediateMetas.add(parentMeta);
-            physicalParentMeta = findNearestPhysicalParentMeta(parentMeta, intermediateMetas);
+            physicalParentMeta = findNearestPhysicalParentMeta(parentMeta, intermediateMetas, tree);
             if (physicalParentMeta != null) {
                 parentPrimary = resolvePrimaryTable(physicalParentMeta);
             }
@@ -777,52 +793,29 @@ public class QueryPlanCompiler {
             return new ParentRelationInfo("id", "id", parentPrimary, "1:1");
         }
 
-        // 3. 汇聚关系定义：直接以 parentPrimary 与 childPrimaryTable 为目标查询关联定义，穿透所有中间虚拟层
-        Set<TableRelationDTO> relationSet = new LinkedHashSet<>();
-        List<TableRelationDTO> directRelations =
-                configApi.listTableRelations(
-                        AppContext.getProjectNo(),
-                        Set.of(parentPrimary.toLowerCase(), childPrimaryTable.toLowerCase()));
-        if (directRelations != null) {
-            relationSet.addAll(directRelations);
+        // 3. 匹配单向关联: mainTable == parentPrimary && joinTable == childPrimaryTable
+        TableRelationDTO matchedRel = null;
+        if (projectRelations != null) {
+            matchedRel = projectRelations.findDirectRelation(parentPrimary, childPrimaryTable);
         }
 
-        List<TableRelationDTO> childRelations = listTableRelations(childMeta);
-        if (childRelations != null) {
-            relationSet.addAll(childRelations);
-        }
-        List<TableRelationDTO> parentRelations = listTableRelations(physicalParentMeta);
-        if (parentRelations != null) {
-            relationSet.addAll(parentRelations);
-        }
-        for (ModuleInfo interMeta : intermediateMetas) {
-            List<TableRelationDTO> interRelations = listTableRelations(interMeta);
-            if (interRelations != null) {
-                relationSet.addAll(interRelations);
-            }
-        }
-
-        // 4. 匹配单向关联: mainTable == parentPrimary && joinTable == childPrimaryTable
-        for (TableRelationDTO rel : relationSet) {
-            if (rel != null
-                    && parentPrimary.equalsIgnoreCase(rel.getMainTable())
-                    && childPrimaryTable.equalsIgnoreCase(rel.getJoinTable())) {
-                if (rel.getJoinField() != null && !rel.getJoinField().isBlank()) {
-                    String pKey = "id";
-                    if (rel.getMainField() != null && !rel.getMainField().isBlank()) {
-                        pKey = rel.getMainField().trim();
-                    }
-                    String relType =
-                            (rel.getRelationType() != null && !rel.getRelationType().isBlank())
-                                    ? rel.getRelationType().trim()
-                                    : "1:N";
-                    return new ParentRelationInfo(
-                            pKey, rel.getJoinField().trim(), parentPrimary, relType);
+        if (matchedRel != null) {
+            if (matchedRel.getJoinField() != null && !matchedRel.getJoinField().isBlank()) {
+                String pKey = "id";
+                if (matchedRel.getMainField() != null && !matchedRel.getMainField().isBlank()) {
+                    pKey = matchedRel.getMainField().trim();
                 }
+                String relType =
+                        (matchedRel.getRelationType() != null
+                                        && !matchedRel.getRelationType().isBlank())
+                                ? matchedRel.getRelationType().trim()
+                                : "1:N";
+                return new ParentRelationInfo(
+                        pKey, matchedRel.getJoinField().trim(), parentPrimary, relType);
             }
         }
 
-        // 5. 严格自洽校验：杜绝任何未配置关系的隐式推测
+        // 4. 严格自洽校验：杜绝任何未配置关系的隐式推测
         Long parentModId = physicalParentMeta.getModuleId();
         Long childModId = childMeta != null ? childMeta.getModuleId() : null;
         throw new IllegalStateException(
@@ -1029,77 +1022,14 @@ public class QueryPlanCompiler {
         return orderFields;
     }
 
-    private ModuleInfo loadQueryMetadata(Long moduleId) {
+    private ModuleTreeDTO loadModuleTree(Long rootModuleId) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
-        return configApi.getModuleWithFields(projectNo, subjectId, moduleId);
+        return configApi.getModuleTree(projectNo, subjectId, rootModuleId);
     }
 
-    private List<com.jdec.platform.config.api.dto.common.ModuleNodeDTO> listDescendantModules(
-            Long rootModuleId) {
+    private ProjectTableRelationsDTO getProjectRelations() {
         String projectNo = AppContext.getProjectNo();
-        List<com.jdec.platform.config.api.dto.common.ModuleNodeDTO> allModules =
-                configApi.listModulesByProject(projectNo);
-        if (allModules == null || allModules.isEmpty()) {
-            return Collections.emptyList();
-        }
-        Map<Long, com.jdec.platform.config.api.dto.common.ModuleNodeDTO> moduleMap =
-                allModules.stream()
-                        .filter(node -> node != null && node.getId() != null)
-                        .collect(
-                                Collectors.toMap(
-                                        com.jdec.platform.config.api.dto.common.ModuleNodeDTO
-                                                ::getId,
-                                        node -> node,
-                                        (first, second) -> first));
-        return allModules.stream()
-                .filter(node -> node != null && isDescendant(node, rootModuleId, moduleMap))
-                .toList();
-    }
-
-    private boolean isDescendant(
-            com.jdec.platform.config.api.dto.common.ModuleNodeDTO node,
-            Long rootModuleId,
-            Map<Long, com.jdec.platform.config.api.dto.common.ModuleNodeDTO> moduleMap) {
-        Long parentId = node.getParentId();
-        Set<Long> visited = new HashSet<>();
-        while (parentId != null && parentId > 0 && visited.add(parentId)) {
-            if (parentId.equals(rootModuleId)) {
-                return true;
-            }
-            com.jdec.platform.config.api.dto.common.ModuleNodeDTO parent = moduleMap.get(parentId);
-            parentId = parent != null ? parent.getParentId() : null;
-        }
-        return false;
-    }
-
-    private List<TableRelationDTO> listTableRelations(ModuleInfo module) {
-        if (module == null) {
-            return Collections.emptyList();
-        }
-        Set<String> tableNames = new LinkedHashSet<>();
-        if (module.getPrimaryTable() != null && !module.getPrimaryTable().isBlank()) {
-            tableNames.add(module.getPrimaryTable().trim().toLowerCase());
-        }
-        if (module.getFields() != null) {
-            for (ModuleFieldDTO field : module.getFields()) {
-                if (field.getTableName() != null && !field.getTableName().isBlank()) {
-                    tableNames.add(field.getTableName().trim().toLowerCase());
-                }
-            }
-        }
-        if (module.getParentId() != null && module.getParentId() > 0) {
-            var parent =
-                    configApi.getModuleBasic(
-                            AppContext.getProjectNo(),
-                            AppContext.getSubjectId(),
-                            module.getParentId());
-            if (parent != null
-                    && parent.getPrimaryTable() != null
-                    && !parent.getPrimaryTable().isBlank()) {
-                tableNames.add(parent.getPrimaryTable().trim().toLowerCase());
-            }
-        }
-        return configApi.listTableRelations(AppContext.getProjectNo(), tableNames);
+        return configApi.getProjectTableRelations(projectNo);
     }
 }

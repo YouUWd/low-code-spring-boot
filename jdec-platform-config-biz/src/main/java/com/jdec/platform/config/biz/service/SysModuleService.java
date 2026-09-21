@@ -184,7 +184,7 @@ public class SysModuleService implements SysModuleApi {
 
     @Override
     @Transactional
-    @ConfigChangeNotify(changeType = ChangeType.MODULE_CHANGED, moduleIdExpr = "#request.module.id")
+    @ConfigChangeNotify(changeType = ChangeType.MODULE_CHANGED, moduleIdExpr = "#result")
     public Long saveModule(String projectNo, Long subjectId, SaveModuleReq request) {
         SaveModuleReq.SaveSysModuleReq req = request.getModule();
         if (req == null) {

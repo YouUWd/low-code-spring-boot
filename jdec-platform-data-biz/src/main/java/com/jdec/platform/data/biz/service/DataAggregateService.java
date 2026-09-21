@@ -5,6 +5,7 @@ import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO.FieldPermissionItem;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -341,12 +342,13 @@ public class DataAggregateService {
                 (roleId != null && !collectedModuleMenuMap.isEmpty())
                         ? configApi.getModulePermissions(roleId, collectedModuleMenuMap.keySet())
                         : Collections.emptyMap();
+        ModuleTreeDTO treeDTO = configApi.getModuleTree(projectNo, subjectId, moduleId);
 
         for (Map.Entry<Long, Long> entry : collectedModuleMenuMap.entrySet()) {
             Long modId = entry.getKey();
             Long mId = entry.getValue();
 
-            ModuleInfo modMeta = configApi.getModuleWithFields(projectNo, subjectId, modId);
+            ModuleInfo modMeta = (treeDTO != null) ? treeDTO.getModule(modId) : null;
             Map<String, FieldMetaDTO> fieldsMap = new LinkedHashMap<>();
 
             ModulePermissionDTO modPerm = modulePerms != null ? modulePerms.get(modId) : null;

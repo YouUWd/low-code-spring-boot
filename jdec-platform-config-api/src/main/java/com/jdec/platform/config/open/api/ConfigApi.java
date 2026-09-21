@@ -1,12 +1,9 @@
 package com.jdec.platform.config.open.api;
 
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.config.api.dto.common.ModuleInfo;
-import com.jdec.platform.config.api.dto.common.ModuleNodeDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
-import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import java.util.Collection;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,69 +16,24 @@ public interface ConfigApi {
     // ================= 1. 模块基础与拓扑 (sys_module) =================
 
     /**
-     * 获取单个模块的基础元数据 (原子接口，轻量，不拉取字段和关联关系)
+     * 获取指定根模块及其所有子孙模块的完整聚合树 (包含节点元数据、字段字典、子树父子关系与白名单闭包，基于统一整树缓存)
      *
-     * @param moduleId 模块 ID
-     * @return 模块基础节点信息，若不存在返回 null
+     * @param projectNo 项目编码 (可选校验)
+     * @param subjectId 主体 ID (可选校验)
+     * @param rootModuleId 根模块 ID
+     * @return 模块子树聚合 DTO，若不存在则返回 null
      */
-    ModuleNodeDTO getModuleBasic(Long moduleId);
+    ModuleTreeDTO getModuleTree(String projectNo, Long subjectId, Long rootModuleId);
+
+    // ================= 2. 物理表关系 (sys_table_relation) =============
 
     /**
-     * 获取指定上下文中的模块基础信息，不加载字段、表关系和子孙拓扑。
-     *
-     * @param projectNo 项目编码 (可选过滤)
-     * @param subjectId 主体 ID (可选过滤)
-     * @param moduleId 模块 ID
-     * @return 模块基础节点信息，若不存在或不属于上下文则返回 null
-     */
-    ModuleNodeDTO getModuleBasic(String projectNo, Long subjectId, Long moduleId);
-
-    /**
-     * 获取指定上下文中的模块基本信息及该模块字段信息，不包含模块树和表关系。
-     *
-     * @param projectNo 项目编码 (可选过滤)
-     * @param subjectId 主体 ID (可选过滤)
-     * @param moduleId 模块 ID
-     * @return 模块基本信息及字段列表，若不存在或不属于上下文则返回 null
-     */
-    ModuleInfo getModuleWithFields(String projectNo, Long subjectId, Long moduleId);
-
-    /**
-     * 查询指定项目下的所有模块基础节点列表 (用于推导子孙拓扑、白名单与作用域闭包)
+     * 查询指定项目下的全量物理表关联拓扑聚合信息 (含正向/反向双向索引 Map)
      *
      * @param projectNo 项目编码
-     * @return 该项目辖下的所有模块基础节点
+     * @return 项目表关联拓扑聚合 DTO，含双向映射 Map
      */
-    List<ModuleNodeDTO> listModulesByProject(String projectNo);
-
-    // ================= 2. 字段字典 (sys_module_field) =================
-
-    /**
-     * 根据模块ID获取该模块配置的全部物理字段列表
-     *
-     * @param moduleId 模块 ID
-     * @return 字段列表，按 sortOrder 升序排列
-     */
-    List<ModuleFieldDTO> listFieldsByModuleId(Long moduleId);
-
-    /**
-     * 根据字段ID列表批量获取字段配置 (用于查询计划编译器白名单与平铺字段分流)
-     *
-     * @param fieldIds 字段 ID 列表
-     * @return 字段列表
-     */
-    List<ModuleFieldDTO> listFieldsByIds(List<Long> fieldIds);
-
-    // ================= 3. 物理表关系 (sys_table_relation) =============
-
-    /**
-     * 查询指定项目中涉及指定物理表集合的双向/单向关联关系
-     *
-     * @param projectNo 项目编码
-     * @param tableNames 涉及的物理表名集合
-     * @return 关联关系列表
-     */
-    List<TableRelationDTO> listTableRelations(String projectNo, Collection<String> tableNames);
+    ProjectTableRelationsDTO getProjectTableRelations(String projectNo);
 
     // ================= 4. 角色模块字段权限 (sys_role_module_field_permission) =============
 
@@ -96,4 +48,16 @@ public interface ConfigApi {
      * @return 按 moduleId 映射的模块权限 DTO (Map<moduleId, ModulePermissionDTO>)
      */
     Map<Long, ModulePermissionDTO> getModulePermissions(Long roleId, Collection<Long> moduleIds);
+
+    // ================= 5. 元数据缓存管理 (Cache Eviction) =============
+
+    /**
+     * 精准清理指定模块的元数据缓存 (包括模块基础信息、字段配置、子孙拓扑闭包等)
+     *
+     * @param moduleId 模块 ID
+     */
+    void clearModuleCache(Long moduleId);
+
+    /** 全量清空所有配置元数据缓存 (模块、字段、表关系、子孙拓扑等) */
+    void clearMetaCache();
 }

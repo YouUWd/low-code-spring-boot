@@ -3,12 +3,15 @@ package com.jdec.platform.data.biz;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.SaveReq;
@@ -16,9 +19,13 @@ import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.service.DataPersistenceService;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -46,6 +53,7 @@ class DataPersistenceTest {
     private DSLContext dslContext;
     private ModuleInfo mockStudentModule;
     private ModuleInfo mockCourseModule;
+    private Map<Long, ModuleInfo> allKnownModules = new HashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -113,30 +121,105 @@ class DataPersistenceTest {
                                                 .build()))
                         .build();
 
+        allKnownModules.put(101L, mockStudentModule);
+        allKnownModules.put(103L, mockCourseModule);
+
         lenient()
-                .when(configApi.getModuleWithFields(null, null, 101L))
-                .thenReturn(mockStudentModule);
+                .when(configApi.getModuleTree(any(), any(), anyLong()))
+                .thenAnswer(
+                        invocation -> {
+                            Long rootId = invocation.getArgument(2);
+                            ModuleInfo rootInfo = allKnownModules.get(rootId);
+                            if (rootInfo == null) {
+                                return null;
+                            }
+
+                            Set<Long> allowedIds = new LinkedHashSet<>();
+                            Map<Long, ModuleInfo> modMap = new LinkedHashMap<>();
+                            Map<Long, List<Long>> p2c = new LinkedHashMap<>();
+                            Map<Long, ModuleFieldDTO> fMap = new LinkedHashMap<>();
+                            Map<Long, Long> f2m = new LinkedHashMap<>();
+
+                            List<Long> queue = new ArrayList<>();
+                            queue.add(rootId);
+                            allowedIds.add(rootId);
+                            modMap.put(rootId, rootInfo);
+
+                            int idx = 0;
+                            while (idx < queue.size()) {
+                                Long cur = queue.get(idx++);
+                                for (ModuleInfo m : allKnownModules.values()) {
+                                    if (cur.equals(m.getParentId())) {
+                                        allowedIds.add(m.getModuleId());
+                                        modMap.put(m.getModuleId(), m);
+                                        p2c.computeIfAbsent(cur, k -> new ArrayList<>())
+                                                .add(m.getModuleId());
+                                        queue.add(m.getModuleId());
+                                    }
+                                }
+                            }
+
+                            for (ModuleInfo m : modMap.values()) {
+                                if (m.getFields() != null) {
+                                    for (ModuleFieldDTO f : m.getFields()) {
+                                        fMap.put(f.getId(), f);
+                                        f2m.put(f.getId(), m.getModuleId());
+                                    }
+                                }
+                            }
+
+                            return ModuleTreeDTO.builder()
+                                    .rootModuleId(rootId)
+                                    .projectNo("company")
+                                    .subjectId(1L)
+                                    .rootModule(rootInfo)
+                                    .moduleMap(modMap)
+                                    .parentToChildren(p2c)
+                                    .fieldMap(fMap)
+                                    .fieldToModuleMap(f2m)
+                                    .allowedModuleIds(allowedIds)
+                                    .build();
+                        });
+        List<TableRelationDTO> mockRelations =
+                List.of(
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("id")
+                                .joinTable("student_profile")
+                                .joinField("student_id")
+                                .relationType("1:1")
+                                .build(),
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("id")
+                                .joinTable("student_course")
+                                .joinField("student_id")
+                                .relationType("1:N")
+                                .build());
+
+        Map<String, List<TableRelationDTO>> forwardMap = new HashMap<>();
+        Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
+        for (TableRelationDTO r : mockRelations) {
+            forwardMap
+                    .computeIfAbsent(
+                            r.getMainTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .add(r);
+            reverseMap
+                    .computeIfAbsent(
+                            r.getJoinTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .add(r);
+        }
+        ProjectTableRelationsDTO mockProjectRelations =
+                ProjectTableRelationsDTO.builder()
+                        .projectNo("company")
+                        .allRelations(mockRelations)
+                        .forwardRelations(forwardMap)
+                        .reverseRelations(reverseMap)
+                        .build();
+
         lenient()
-                .when(configApi.getModuleWithFields(null, null, 103L))
-                .thenReturn(mockCourseModule);
-        lenient()
-                .when(configApi.listTableRelations(nullable(String.class), anyCollection()))
-                .thenReturn(
-                        List.of(
-                                TableRelationDTO.builder()
-                                        .mainTable("student")
-                                        .mainField("id")
-                                        .joinTable("student_profile")
-                                        .joinField("student_id")
-                                        .relationType("1:1")
-                                        .build(),
-                                TableRelationDTO.builder()
-                                        .mainTable("student")
-                                        .mainField("id")
-                                        .joinTable("student_course")
-                                        .joinField("student_id")
-                                        .relationType("1:N")
-                                        .build()));
+                .when(configApi.getProjectTableRelations(nullable(String.class)))
+                .thenReturn(mockProjectRelations);
 
         savePlanCompiler = new SavePlanCompiler(configApi);
         savePlanExecutor = new SavePlanExecutor(jooqDataContextFactory);
@@ -262,10 +345,8 @@ class DataPersistenceTest {
                         .build();
         ModuleInfo mockCourseUnder201 = mockCourseModule.toBuilder().parentId(201L).build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 103L))
-                .thenReturn(mockCourseUnder201);
+        allKnownModules.put(201L, mockVirtual201);
+        allKnownModules.put(103L, mockCourseUnder201);
 
         // 读写同构结构：studentRow 内部挂载 201 容器，201 容器内部挂载 103 选课记录
         Map<String, Object> studentRow = new HashMap<>();

@@ -26,6 +26,8 @@
         <module>jdec-platform-config-biz</module>
         <module>jdec-platform-hr-api</module>
         <module>jdec-platform-hr-biz</module>
+        <module>jdec-platform-common-api</module>
+        <module>jdec-platform-common-biz</module>
         <module>jdec-platform-data-api</module>
         <module>jdec-platform-data-biz</module>
         <module>jdec-platform-approval-api</module>
@@ -103,6 +105,17 @@
             <dependency>
                 <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-hr-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-common-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-common-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -193,20 +206,6 @@
         </dependencies>
     </dependencyManagement>
 
-<!--    <repositories>
-        <repository>
-            <id>aliyunmaven</id>
-            <url>https://maven.aliyun.com/repository/public</url>
-            <releases>
-                <enabled>true</enabled>
-                &lt;!&ndash; 忽略校验失败警告 &ndash;&gt;
-                <checksumPolicy>ignore</checksumPolicy>
-            </releases>
-            <snapshots>
-                <enabled>false</enabled>
-            </snapshots>
-        </repository>
-    </repositories>-->
 
     <pluginRepositories>
         <pluginRepository>

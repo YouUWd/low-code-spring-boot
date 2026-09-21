@@ -46,16 +46,16 @@ public class ModuleChangeListener implements MessageListener {
             }
 
             if (moduleId != null) {
-                //                configApi.clearModuleCache(moduleId);
+                configApi.clearModuleCache(moduleId);
                 log.info("已精准淘汰模块 {} 的配置元数据缓存", moduleId);
             } else {
-                //                configApi.clearMetaCache();
+                configApi.clearMetaCache();
                 log.info("未解析到 moduleId，全量清空配置元数据缓存");
             }
         } catch (Exception e) {
             log.error("解析或处理配置变更广播通知失败，使用全量清退兜底", e);
             try {
-                //                configApi.clearMetaCache();
+                configApi.clearMetaCache();
             } catch (Exception ex) {
                 log.error("全量清退配置元数据缓存兜底失败", ex);
             }

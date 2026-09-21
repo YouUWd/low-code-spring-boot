@@ -6,6 +6,8 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleNodeDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO.FieldPermissionItem;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
@@ -22,6 +24,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 
 /**
@@ -42,155 +47,268 @@ public class ConfigServiceImpl implements ConfigApi {
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
 
     @Override
-    public ModuleNodeDTO getModuleBasic(Long moduleId) {
+    @Cacheable(cacheNames = "config:module_tree", key = "#rootModuleId", unless = "#result == null")
+    public ModuleTreeDTO getModuleTree(String projectNo, Long subjectId, Long rootModuleId) {
+        log.info(
+                "[Cache Miss -> DB Query] getModuleTree: projectNo={}, subjectId={}, rootModuleId={}",
+                projectNo,
+                subjectId,
+                rootModuleId);
+        if (rootModuleId == null) {
+            return null;
+        }
+
+        ModuleNodeDTO rootBasic = getModuleBasic(projectNo, subjectId, rootModuleId);
+        if (rootBasic == null) {
+            return null;
+        }
+
+        String pNo = projectNo != null ? projectNo : rootBasic.getProjectNo();
+        Long sId = subjectId != null ? subjectId : rootBasic.getSubjectId();
+
+        List<SysModule> moduleList =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(pNo != null && !pNo.isBlank(), SysModule::getProjectNo, pNo)
+                                .eq(sId != null, SysModule::getSubjectId, sId)
+                                .orderByAsc(SysModule::getSortOrder));
+
+        if (moduleList == null || moduleList.isEmpty()) {
+            return null;
+        }
+
+        Map<Long, SysModule> allModuleMap =
+                moduleList.stream()
+                        .filter(m -> m.getId() != null)
+                        .collect(Collectors.toMap(SysModule::getId, m -> m, (k1, k2) -> k1));
+
+        SysModule rootModule = allModuleMap.get(rootModuleId);
+        if (rootModule == null) {
+            return null;
+        }
+
+        Map<Long, List<SysModule>> globalChildrenMap =
+                moduleList.stream()
+                        .filter(m -> m.getParentId() != null)
+                        .collect(Collectors.groupingBy(SysModule::getParentId));
+
+        List<SysModule> subTreeModules = new ArrayList<>();
+        subTreeModules.add(rootModule);
+        collectDescendantSysModules(
+                rootModuleId, globalChildrenMap, subTreeModules, new HashSet<>());
+
+        Set<Long> allowedModuleIds = new LinkedHashSet<>();
+        for (SysModule m : subTreeModules) {
+            if (m.getId() != null) {
+                allowedModuleIds.add(m.getId());
+            }
+        }
+
+        // 批量一次性查询子树下所有模块的字段配置
+        Map<Long, List<ModuleFieldDTO>> moduleFieldsMap = new LinkedHashMap<>();
+        if (!allowedModuleIds.isEmpty()) {
+            List<SysModuleField> allFields =
+                    sysModuleFieldMapper.selectList(
+                            Wrappers.<SysModuleField>lambdaQuery()
+                                    .in(SysModuleField::getModuleId, allowedModuleIds)
+                                    .orderByAsc(SysModuleField::getSortOrder));
+            if (allFields != null && !allFields.isEmpty()) {
+                moduleFieldsMap =
+                        allFields.stream()
+                                .filter(f -> f.getModuleId() != null)
+                                .map(this::toModuleFieldDTO)
+                                .collect(
+                                        Collectors.groupingBy(
+                                                ModuleFieldDTO::getModuleId,
+                                                LinkedHashMap::new,
+                                                Collectors.toList()));
+            }
+        }
+
+        Map<Long, List<Long>> parentToChildren = new LinkedHashMap<>();
+        Map<Long, ModuleInfo> moduleInfoMap = new LinkedHashMap<>();
+        Map<Long, ModuleFieldDTO> fieldMap = new LinkedHashMap<>();
+        Map<Long, Long> fieldToModuleMap = new LinkedHashMap<>();
+
+        for (SysModule m : subTreeModules) {
+            Long mid = m.getId();
+
+            List<ModuleFieldDTO> fields =
+                    moduleFieldsMap.getOrDefault(mid, Collections.emptyList());
+
+            for (ModuleFieldDTO f : fields) {
+                if (f != null && f.getId() != null) {
+                    fieldMap.put(f.getId(), f);
+                    fieldToModuleMap.put(f.getId(), mid);
+                }
+            }
+
+            ModuleInfo minfo =
+                    ModuleInfo.builder()
+                            .moduleId(mid)
+                            .parentId(m.getParentId())
+                            .projectNo(m.getProjectNo())
+                            .subjectId(m.getSubjectId())
+                            .moduleCode(m.getModuleCode())
+                            .moduleName(m.getModuleName())
+                            .moduleDesc(m.getModuleDesc())
+                            .primaryTable(m.getPrimaryTable())
+                            .fields(fields)
+                            .build();
+
+            moduleInfoMap.put(mid, minfo);
+
+            if (!mid.equals(rootModuleId)) {
+                Long pid =
+                        (m.getParentId() != null && m.getParentId() != 0L)
+                                ? m.getParentId()
+                                : rootModuleId;
+                parentToChildren.computeIfAbsent(pid, k -> new ArrayList<>()).add(mid);
+            }
+        }
+
+        ModuleInfo rootModuleInfo = moduleInfoMap.get(rootModuleId);
+
+        ModuleTreeDTO treeDTO =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(rootModuleId)
+                        .projectNo(pNo)
+                        .subjectId(sId)
+                        .rootModule(rootModuleInfo)
+                        .moduleMap(moduleInfoMap)
+                        .parentToChildren(parentToChildren)
+                        .fieldMap(fieldMap)
+                        .fieldToModuleMap(fieldToModuleMap)
+                        .allowedModuleIds(allowedModuleIds)
+                        .build();
+
+        log.info(
+                "[getModuleTree] 构建模块树成功: rootModuleId={}, moduleCount={}, fieldCount={}",
+                rootModuleId,
+                moduleInfoMap.size(),
+                fieldMap.size());
+
+        return treeDTO;
+    }
+
+    private void collectDescendantSysModules(
+            Long currentId,
+            Map<Long, List<SysModule>> childrenMap,
+            List<SysModule> result,
+            Set<Long> visited) {
+        if (!visited.add(currentId)) {
+            return;
+        }
+        List<SysModule> children = childrenMap.get(currentId);
+        if (children == null || children.isEmpty()) {
+            return;
+        }
+        for (SysModule child : children) {
+            if (child != null && child.getId() != null) {
+                result.add(child);
+                collectDescendantSysModules(child.getId(), childrenMap, result, visited);
+            }
+        }
+    }
+
+    @Cacheable(
+            cacheNames = "config:module_basic",
+            key = "#moduleId",
+            unless =
+                    "#result == null"
+                            + " || (#projectNo != null && !#projectNo.equals(#result.projectNo))"
+                            + " || (#subjectId != null && !#subjectId.equals(#result.subjectId))")
+    public ModuleNodeDTO getModuleBasic(String projectNo, Long subjectId, Long moduleId) {
+        log.info(
+                "[Cache Miss -> DB Query] getModuleBasic: projectNo={}, subjectId={}, moduleId={}",
+                projectNo,
+                subjectId,
+                moduleId);
         if (moduleId == null) {
             return null;
         }
         SysModule module = sysModuleMapper.selectById(moduleId);
         if (module == null) {
+            log.warn("[getModuleBasic] 模块不存在: moduleId={}", moduleId);
             return null;
         }
-        return toModuleNodeDTO(module);
-    }
-
-    @Override
-    public ModuleNodeDTO getModuleBasic(String projectNo, Long subjectId, Long moduleId) {
-        if (moduleId == null) {
+        if (projectNo != null && !Objects.equals(module.getProjectNo(), projectNo)) {
+            log.warn(
+                    "[getModuleBasic] projectNo 校验不匹配: 请求={}, 数据库={}",
+                    projectNo,
+                    module.getProjectNo());
             return null;
         }
-        SysModule module = sysModuleMapper.selectById(moduleId);
-        if (module == null
-                || (projectNo != null && !Objects.equals(module.getProjectNo(), projectNo))
-                || (subjectId != null && !Objects.equals(module.getSubjectId(), subjectId))) {
+        if (subjectId != null && !Objects.equals(module.getSubjectId(), subjectId)) {
+            log.warn(
+                    "[getModuleBasic] subjectId 校验不匹配: 请求={}, 数据库={}",
+                    subjectId,
+                    module.getSubjectId());
             return null;
         }
-        return toModuleNodeDTO(module);
+        ModuleNodeDTO dto = toModuleNodeDTO(module);
+        log.info("[getModuleBasic] 查询数据库成功: moduleId={}, dto={}", moduleId, dto);
+        return dto;
     }
 
     @Override
-    public List<ModuleNodeDTO> listModulesByProject(String projectNo) {
-        List<SysModule> modules =
-                sysModuleMapper.selectList(
-                        Wrappers.<SysModule>lambdaQuery()
-                                .eq(
-                                        projectNo != null && !projectNo.isBlank(),
-                                        SysModule::getProjectNo,
-                                        projectNo)
-                                .orderByAsc(SysModule::getSortOrder));
-        if (modules == null || modules.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return modules.stream().map(this::toModuleNodeDTO).collect(Collectors.toList());
-    }
-
-    @Override
-    public List<ModuleFieldDTO> listFieldsByModuleId(Long moduleId) {
-        if (moduleId == null) {
-            return Collections.emptyList();
-        }
-        List<SysModuleField> fields =
-                sysModuleFieldMapper.selectList(
-                        Wrappers.<SysModuleField>lambdaQuery()
-                                .eq(SysModuleField::getModuleId, moduleId)
-                                .orderByAsc(SysModuleField::getSortOrder));
-        if (fields == null || fields.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return fields.stream().map(this::toModuleFieldDTO).collect(Collectors.toList());
-    }
-
-    @Override
-    public List<ModuleFieldDTO> listFieldsByIds(List<Long> fieldIds) {
-        if (fieldIds == null || fieldIds.isEmpty()) {
-            return Collections.emptyList();
-        }
-        List<SysModuleField> fields =
-                sysModuleFieldMapper.selectList(
-                        Wrappers.<SysModuleField>lambdaQuery().in(SysModuleField::getId, fieldIds));
-        if (fields == null || fields.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return fields.stream().map(this::toModuleFieldDTO).collect(Collectors.toList());
-    }
-
-    @Override
-    public List<TableRelationDTO> listTableRelations(
-            String projectNo, Collection<String> tableNames) {
-        if (tableNames == null || tableNames.isEmpty()) {
-            return Collections.emptyList();
-        }
-        Set<String> lowerTables =
-                tableNames.stream()
-                        .filter(t -> t != null && !t.isBlank())
-                        .map(t -> t.trim().toLowerCase())
-                        .collect(Collectors.toSet());
-        if (lowerTables.isEmpty()) {
-            return Collections.emptyList();
-        }
-
+    @Cacheable(
+            cacheNames = "config:project_table_relations",
+            key = "#projectNo != null ? #projectNo : ''",
+            unless = "#result == null")
+    public ProjectTableRelationsDTO getProjectTableRelations(String projectNo) {
+        log.info("[Cache Miss -> DB Query] getProjectTableRelations: projectNo={}", projectNo);
         List<SysTableRelation> relations =
                 sysTableRelationMapper.selectList(
                         Wrappers.<SysTableRelation>lambdaQuery()
                                 .eq(
                                         projectNo != null && !projectNo.isBlank(),
                                         SysTableRelation::getProjectNo,
-                                        projectNo)
-                                .and(
-                                        w ->
-                                                w.in(SysTableRelation::getMainTable, lowerTables)
-                                                        .or()
-                                                        .in(
-                                                                SysTableRelation::getJoinTable,
-                                                                lowerTables)));
+                                        projectNo));
 
         if (relations == null || relations.isEmpty()) {
-            return Collections.emptyList();
+            return ProjectTableRelationsDTO.builder()
+                    .projectNo(projectNo)
+                    .allRelations(Collections.emptyList())
+                    .forwardRelations(Collections.emptyMap())
+                    .reverseRelations(Collections.emptyMap())
+                    .build();
         }
 
-        return relations.stream()
-                .filter(
-                        r -> {
-                            String mainT =
-                                    r.getMainTable() != null
-                                            ? r.getMainTable().trim().toLowerCase()
-                                            : "";
-                            String joinT =
-                                    r.getJoinTable() != null
-                                            ? r.getJoinTable().trim().toLowerCase()
-                                            : "";
-                            return lowerTables.contains(mainT) && lowerTables.contains(joinT);
-                        })
-                .map(this::toTableRelationDTO)
-                .collect(Collectors.toList());
-    }
+        List<TableRelationDTO> allDtoList =
+                relations.stream().map(this::toTableRelationDTO).collect(Collectors.toList());
 
-    @Override
-    public ModuleInfo getModuleWithFields(String projectNo, Long subjectId, Long moduleId) {
-        if (moduleId == null) {
-            return null;
+        Map<String, List<TableRelationDTO>> forwardMap = new HashMap<>();
+        Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
+
+        for (TableRelationDTO rel : allDtoList) {
+            if (rel == null) {
+                continue;
+            }
+            if (rel.getMainTable() != null && !rel.getMainTable().isBlank()) {
+                forwardMap
+                        .computeIfAbsent(
+                                rel.getMainTable().trim().toLowerCase(), k -> new ArrayList<>())
+                        .add(rel);
+            }
+            if (rel.getJoinTable() != null && !rel.getJoinTable().isBlank()) {
+                reverseMap
+                        .computeIfAbsent(
+                                rel.getJoinTable().trim().toLowerCase(), k -> new ArrayList<>())
+                        .add(rel);
+            }
         }
 
-        SysModule module = sysModuleMapper.selectById(moduleId);
-        if (module == null) {
-            return null;
-        }
-        if (projectNo != null && !Objects.equals(module.getProjectNo(), projectNo)) {
-            return null;
-        }
-        if (subjectId != null && !Objects.equals(module.getSubjectId(), subjectId)) {
-            return null;
-        }
+        log.info(
+                "[getProjectTableRelations] 查询数据库成功: projectNo={}, relationCount={}",
+                projectNo,
+                allDtoList.size());
 
-        List<ModuleFieldDTO> fieldInfos = listFieldsByModuleId(moduleId);
-
-        return ModuleInfo.builder()
-                .moduleId(module.getId())
-                .parentId(module.getParentId() != null ? module.getParentId() : 0L)
-                .moduleCode(module.getModuleCode())
-                .moduleName(module.getModuleName())
-                .moduleDesc(module.getModuleDesc())
-                .primaryTable(module.getPrimaryTable())
-                .fields(fieldInfos)
+        return ProjectTableRelationsDTO.builder()
+                .projectNo(projectNo)
+                .allRelations(allDtoList)
+                .forwardRelations(forwardMap)
+                .reverseRelations(reverseMap)
                 .build();
     }
 
@@ -330,6 +448,8 @@ public class ConfigServiceImpl implements ConfigApi {
         return ModuleNodeDTO.builder()
                 .id(m.getId())
                 .parentId(m.getParentId())
+                .projectNo(m.getProjectNo())
+                .subjectId(m.getSubjectId())
                 .moduleCode(m.getModuleCode())
                 .moduleName(m.getModuleName())
                 .primaryTable(m.getPrimaryTable())
@@ -358,5 +478,27 @@ public class ConfigServiceImpl implements ConfigApi {
                 .relationType(r.getRelationType())
                 .description(r.getDescription())
                 .build();
+    }
+
+    @Override
+    @Caching(
+            evict = {
+                @CacheEvict(cacheNames = "config:module_basic", key = "#moduleId"),
+                @CacheEvict(cacheNames = "config:module_tree", allEntries = true),
+                @CacheEvict(cacheNames = "config:project_table_relations", allEntries = true)
+            })
+    public void clearModuleCache(Long moduleId) {
+        log.info("已通过注解式缓存精准淘汰模块 {} 的元数据缓存及全量模块树缓存", moduleId);
+    }
+
+    @Override
+    @Caching(
+            evict = {
+                @CacheEvict(cacheNames = "config:module_basic", allEntries = true),
+                @CacheEvict(cacheNames = "config:module_tree", allEntries = true),
+                @CacheEvict(cacheNames = "config:project_table_relations", allEntries = true)
+            })
+    public void clearMetaCache() {
+        log.info("已通过注解式缓存全量清空所有配置元数据缓存");
     }
 }

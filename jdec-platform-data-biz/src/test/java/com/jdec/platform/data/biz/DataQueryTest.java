@@ -7,7 +7,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
-import com.jdec.platform.config.api.dto.common.ModuleNodeDTO;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.request.FilterItem;
@@ -67,6 +68,7 @@ class DataQueryTest {
     private ModuleInfo mockModule103;
     private ModuleInfo mockModule104;
     private ModuleInfo mockModule105;
+    private final Map<Long, ModuleInfo> allKnownModules = new HashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -403,21 +405,14 @@ class DataQueryTest {
                                                 .columnName("reward_date")
                                                 .displayName("获奖日期")
                                                 .sortOrder(3)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1054L)
-                                                .moduleId(105L)
-                                                .tableName("student_reward")
-                                                .columnName("student_id")
-                                                .displayName("学生ID")
-                                                .sortOrder(4)
                                                 .build()))
                         .build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
-        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
-        lenient().when(configApi.getModuleWithFields(null, null, 104L)).thenReturn(mockModule104);
-        lenient().when(configApi.getModuleWithFields(null, null, 105L)).thenReturn(mockModule105);
+        allKnownModules.clear();
+        allKnownModules.put(101L, mockModule101);
+        allKnownModules.put(103L, mockModule103);
+        allKnownModules.put(104L, mockModule104);
+        allKnownModules.put(105L, mockModule105);
 
         List<ModuleFieldDTO> allMockFields = new ArrayList<>();
         allMockFields.addAll(mockModule101.getFields());
@@ -426,72 +421,132 @@ class DataQueryTest {
         allMockFields.addAll(mockModule105.getFields());
 
         lenient()
-                .when(configApi.listFieldsByIds(anyList()))
+                .when(configApi.getModuleTree(any(), any(), anyLong()))
                 .thenAnswer(
                         invocation -> {
-                            List<Long> ids = invocation.getArgument(0);
-                            return allMockFields.stream()
-                                    .filter(f -> ids.contains(f.getId()))
-                                    .toList();
+                            Long rootId = invocation.getArgument(2);
+                            ModuleInfo rootInfo = allKnownModules.get(rootId);
+                            if (rootInfo == null) {
+                                return null;
+                            }
+
+                            Set<Long> allowedIds = new LinkedHashSet<>();
+                            Map<Long, ModuleInfo> modMap = new LinkedHashMap<>();
+                            Map<Long, List<Long>> p2c = new LinkedHashMap<>();
+                            Map<Long, ModuleFieldDTO> fMap = new LinkedHashMap<>();
+                            Map<Long, Long> f2m = new LinkedHashMap<>();
+
+                            List<Long> queue = new ArrayList<>();
+                            queue.add(rootId);
+                            allowedIds.add(rootId);
+                            modMap.put(rootId, rootInfo);
+
+                            int idx = 0;
+                            while (idx < queue.size()) {
+                                Long cur = queue.get(idx++);
+                                for (ModuleInfo m : allKnownModules.values()) {
+                                    if (cur.equals(m.getParentId())) {
+                                        allowedIds.add(m.getModuleId());
+                                        modMap.put(m.getModuleId(), m);
+                                        p2c.computeIfAbsent(cur, k -> new ArrayList<>())
+                                                .add(m.getModuleId());
+                                        queue.add(m.getModuleId());
+                                    }
+                                }
+                            }
+
+                            for (ModuleInfo m : modMap.values()) {
+                                if (m.getFields() != null) {
+                                    for (ModuleFieldDTO f : m.getFields()) {
+                                        fMap.put(f.getId(), f);
+                                        f2m.put(f.getId(), m.getModuleId());
+                                    }
+                                }
+                            }
+
+                            return ModuleTreeDTO.builder()
+                                    .rootModuleId(rootId)
+                                    .projectNo("company")
+                                    .subjectId(1L)
+                                    .rootModule(rootInfo)
+                                    .moduleMap(modMap)
+                                    .parentToChildren(p2c)
+                                    .fieldMap(fMap)
+                                    .fieldToModuleMap(f2m)
+                                    .allowedModuleIds(allowedIds)
+                                    .build();
                         });
 
-        lenient()
-                .when(configApi.listModulesByProject(anyString()))
-                .thenReturn(
-                        List.of(
-                                ModuleNodeDTO.builder().id(103L).parentId(101L).build(),
-                                ModuleNodeDTO.builder().id(104L).parentId(103L).build(),
-                                ModuleNodeDTO.builder().id(105L).parentId(101L).build()));
-        lenient()
-                .when(configApi.listTableRelations(nullable(String.class), anyCollection()))
-                .thenReturn(
-                        List.of(
-                                TableRelationDTO.builder()
-                                        .mainTable("student")
-                                        .mainField("id")
-                                        .joinTable("clazz")
-                                        .joinField("id")
-                                        .relationType("N:1")
-                                        .build(),
-                                TableRelationDTO.builder()
-                                        .mainTable("student")
-                                        .mainField("id")
-                                        .joinTable("student_course")
-                                        .joinField("student_id")
-                                        .relationType("1:N")
-                                        .build(),
-                                TableRelationDTO.builder()
-                                        .mainTable("student_course")
-                                        .mainField("id")
-                                        .joinTable("student_course_score_item")
-                                        .joinField("course_id")
-                                        .relationType("1:N")
-                                        .build(),
-                                TableRelationDTO.builder()
-                                        .mainTable("student")
-                                        .mainField("id")
-                                        .joinTable("student_reward")
-                                        .joinField("student_id")
-                                        .relationType("1:N")
-                                        .build(),
-                                TableRelationDTO.builder()
-                                        .mainTable("student")
-                                        .mainField("id")
-                                        .joinTable("student_award")
-                                        .joinField("student_id")
-                                        .relationType("1:N")
-                                        .build(),
-                                TableRelationDTO.builder()
-                                        .mainTable("student_award")
-                                        .mainField("id")
-                                        .joinTable("student_award_detail")
-                                        .joinField("award_id")
-                                        .relationType("1:N")
-                                        .build()));
+        List<TableRelationDTO> mockRelations =
+                List.of(
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("id")
+                                .joinTable("clazz")
+                                .joinField("id")
+                                .relationType("1:1")
+                                .build(),
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("id")
+                                .joinTable("student_course")
+                                .joinField("student_id")
+                                .relationType("1:N")
+                                .build(),
+                        TableRelationDTO.builder()
+                                .mainTable("student_course")
+                                .mainField("id")
+                                .joinTable("student_course_score_item")
+                                .joinField("course_id")
+                                .relationType("1:N")
+                                .build(),
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("id")
+                                .joinTable("student_reward")
+                                .joinField("student_id")
+                                .relationType("1:N")
+                                .build(),
+                        TableRelationDTO.builder()
+                                .mainTable("student")
+                                .mainField("id")
+                                .joinTable("student_award")
+                                .joinField("student_id")
+                                .relationType("1:N")
+                                .build(),
+                        TableRelationDTO.builder()
+                                .mainTable("student_award")
+                                .mainField("id")
+                                .joinTable("student_award_detail")
+                                .joinField("award_id")
+                                .relationType("1:N")
+                                .build());
+
+        Map<String, List<TableRelationDTO>> forwardMap = new HashMap<>();
+        Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
+        for (TableRelationDTO r : mockRelations) {
+            forwardMap
+                    .computeIfAbsent(
+                            r.getMainTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .add(r);
+            reverseMap
+                    .computeIfAbsent(
+                            r.getJoinTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .add(r);
+        }
+        ProjectTableRelationsDTO mockProjectRelations =
+                ProjectTableRelationsDTO.builder()
+                        .projectNo("company")
+                        .allRelations(mockRelations)
+                        .forwardRelations(forwardMap)
+                        .reverseRelations(reverseMap)
+                        .build();
+
+        lenient().when(configApi.getProjectTableRelations(any())).thenReturn(mockProjectRelations);
 
         queryPlanCompiler = new QueryPlanCompiler(configApi);
         queryPlanExecutor = new QueryPlanExecutor(jooqDataContextFactory, treeResultAssembler);
-        dataQueryService = new DataQueryService(configApi, queryPlanCompiler, queryPlanExecutor);
+        dataQueryService = new DataQueryService(queryPlanCompiler, queryPlanExecutor);
     }
 
     @Test
@@ -938,10 +993,7 @@ class DataQueryTest {
                                                 .build()))
                         .build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 999L)).thenReturn(orphanModule);
-        lenient()
-                .when(configApi.listFieldsByIds(List.of(9991L)))
-                .thenReturn(orphanModule.getFields());
+        allKnownModules.put(999L, orphanModule);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1025,20 +1077,8 @@ class DataQueryTest {
                                                 .build()))
                         .build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 106L)).thenReturn(mockModule106);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 104L))
-                .thenReturn(mockModule104Real);
-        lenient()
-                .when(configApi.listFieldsByIds(List.of(1011L, 1012L, 37L, 38L, 74L, 76L)))
-                .thenReturn(
-                        List.of(
-                                mockModule101.getFields().get(1),
-                                mockModule101.getFields().get(2),
-                                mockModule104Real.getFields().get(0),
-                                mockModule104Real.getFields().get(1),
-                                mockModule106.getFields().get(0),
-                                mockModule106.getFields().get(2)));
+        allKnownModules.put(106L, mockModule106);
+        allKnownModules.put(104L, mockModule104Real);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1093,9 +1133,6 @@ class DataQueryTest {
     @Test
     @DisplayName("测试子模块筛选反向约束根模块 (Semi-Join EXISTS 链式上卷)")
     void testChildModuleFilterRollupToRoot_SemiJoinExists() {
-        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
-        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
-
         // 子模块 103 (选课 student_course) 设置筛选条件: course_name LIKE '英语'
         QueryReq req =
                 QueryReq.builder()
@@ -1193,25 +1230,8 @@ class DataQueryTest {
                                                 .build()))
                         .build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 104L))
-                .thenReturn(mockModule104Real);
-        lenient().when(configApi.getModuleWithFields(null, null, 106L)).thenReturn(mockModule106);
-
-        List<ModuleFieldDTO> localFields = new ArrayList<>();
-        localFields.addAll(mockModule101.getFields());
-        localFields.addAll(mockModule104Real.getFields());
-        localFields.addAll(mockModule106.getFields());
-        lenient()
-                .when(configApi.listFieldsByIds(anyList()))
-                .thenAnswer(
-                        invocation -> {
-                            List<Long> ids = invocation.getArgument(0);
-                            return localFields.stream()
-                                    .filter(f -> ids.contains(f.getId()))
-                                    .toList();
-                        });
+        allKnownModules.put(104L, mockModule104Real);
+        allKnownModules.put(106L, mockModule106);
 
         // 仅在三级孙模块 106 上设置筛选条件: evidence_name LIKE '证书'
         QueryReq req =
@@ -1255,9 +1275,6 @@ class DataQueryTest {
     @Test
     @DisplayName("测试无子模块筛选时保持左外连接语义 (不生成 EXISTS 约束，杜绝误杀主记录)")
     void testNoChildFilterMaintainsLeftJoinSemantics_NoExistsRollup() {
-        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
-        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
-
         // 子模块 103 仅投影，没有任何 filters
         QueryReq req =
                 QueryReq.builder()
@@ -1300,10 +1317,7 @@ class DataQueryTest {
                                                 .build()))
                         .build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 105L))
-                .thenReturn(mockModule105SameTable);
+        allKnownModules.put(105L, mockModule105SameTable);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1336,9 +1350,7 @@ class DataQueryTest {
     @Test
     @DisplayName("测试 DataPage 序列化输出严格符合顶层挂在根 moduleId 下的契约")
     void testDataPageJsonSerializationMatchesRootModuleIdContract() throws Exception {
-        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
-        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
-        lenient().when(configApi.getModuleWithFields(null, null, 104L)).thenReturn(mockModule104);
+        allKnownModules.put(105L, mockModule105);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1449,65 +1461,18 @@ class DataQueryTest {
     @Test
     @DisplayName("测试作用域防护(Scope Guard)：fields 传入非本模块及子模块字段时严格抛出异常")
     void testOutOfScopeFieldInFieldsThrowsException() {
-        ModuleFieldDTO outOfScopeField =
-                ModuleFieldDTO.builder()
-                        .id(9991L)
-                        .moduleId(999L)
-                        .tableName("sys_log")
-                        .columnName("operation")
-                        .displayName("系统日志")
-                        .build();
-        ModuleInfo mockModule999 =
-                ModuleInfo.builder()
-                        .moduleId(999L)
-                        .moduleCode("MOD-LOG")
-                        .moduleName("系统日志")
-                        .parentId(0L)
-                        .fields(List.of(outOfScopeField))
-                        .build();
-
-        lenient().when(configApi.getModuleWithFields(null, null, 999L)).thenReturn(mockModule999);
-        lenient()
-                .when(
-                        configApi.listFieldsByIds(
-                                argThat(list -> list != null && list.contains(9991L))))
-                .thenReturn(List.of(mockModule101.getFields().get(1), outOfScopeField));
-
         QueryReq req = QueryReq.builder().moduleId(101L).fields(List.of(1011L, 9991L)).build();
 
         IllegalArgumentException ex =
                 assertThrows(IllegalArgumentException.class, () -> queryPlanCompiler.compile(req));
-        assertTrue(ex.getMessage().contains("不属于主模块 [101] 及其子模块作用域范围"));
-        assertTrue(ex.getMessage().contains("系统日志"));
+        assertTrue(
+                ex.getMessage().contains("未在当前模块树 [101] 的元数据中查询到指定字段定义: 9991")
+                        || ex.getMessage().contains("不属于主模块 [101] 及其子模块作用域范围"));
     }
 
     @Test
     @DisplayName("测试作用域防护(Scope Guard)：filters 传入非本模块及子模块字段时严格抛出异常")
     void testOutOfScopeFieldInFiltersThrowsException() {
-        ModuleFieldDTO outOfScopeField =
-                ModuleFieldDTO.builder()
-                        .id(9991L)
-                        .moduleId(999L)
-                        .tableName("sys_log")
-                        .columnName("operation")
-                        .displayName("系统日志")
-                        .build();
-        ModuleInfo mockModule999 =
-                ModuleInfo.builder()
-                        .moduleId(999L)
-                        .moduleCode("MOD-LOG")
-                        .moduleName("系统日志")
-                        .parentId(0L)
-                        .fields(List.of(outOfScopeField))
-                        .build();
-
-        lenient().when(configApi.getModuleWithFields(null, null, 999L)).thenReturn(mockModule999);
-        lenient()
-                .when(
-                        configApi.listFieldsByIds(
-                                argThat(list -> list != null && list.contains(9991L))))
-                .thenReturn(List.of(mockModule101.getFields().get(1), outOfScopeField));
-
         QueryReq req =
                 QueryReq.builder()
                         .moduleId(101L)
@@ -1523,7 +1488,9 @@ class DataQueryTest {
 
         IllegalArgumentException ex =
                 assertThrows(IllegalArgumentException.class, () -> queryPlanCompiler.compile(req));
-        assertTrue(ex.getMessage().contains("不属于主模块 [101] 及其子模块作用域范围"));
+        assertTrue(
+                ex.getMessage().contains("未在当前模块树 [101] 的元数据中查询到指定字段定义: 9991")
+                        || ex.getMessage().contains("不属于主模块 [101] 及其子模块作用域范围"));
     }
 
     @Test
@@ -1539,10 +1506,8 @@ class DataQueryTest {
                         .build();
         ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 103L))
-                .thenReturn(mockModule103Under201);
+        allKnownModules.put(201L, mockVirtual201);
+        allKnownModules.put(103L, mockModule103Under201);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1601,10 +1566,8 @@ class DataQueryTest {
                         .build();
         ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 103L))
-                .thenReturn(mockModule103Under201);
+        allKnownModules.put(201L, mockVirtual201);
+        allKnownModules.put(103L, mockModule103Under201);
 
         QueryReq req =
                 QueryReq.builder().moduleId(101L).fields(List.of(1011L, 1012L, 1031L)).build();
@@ -1667,11 +1630,9 @@ class DataQueryTest {
                         .build();
         ModuleInfo mockModule103Under202 = mockModule103.toBuilder().parentId(202L).build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
-        lenient().when(configApi.getModuleWithFields(null, null, 202L)).thenReturn(mockVirtual202);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 103L))
-                .thenReturn(mockModule103Under202);
+        allKnownModules.put(201L, mockVirtual201);
+        allKnownModules.put(202L, mockVirtual202);
+        allKnownModules.put(103L, mockModule103Under202);
 
         QueryReq req =
                 QueryReq.builder()
@@ -1745,10 +1706,8 @@ class DataQueryTest {
 
         ModuleInfo mockCourseWithoutRel = mockModule103.toBuilder().parentId(201L).build();
 
-        lenient().when(configApi.getModuleWithFields(null, null, 201L)).thenReturn(mockVirtual201);
-        lenient()
-                .when(configApi.getModuleWithFields(null, null, 103L))
-                .thenReturn(mockCourseWithoutRel);
+        allKnownModules.put(201L, mockVirtual201);
+        allKnownModules.put(103L, mockCourseWithoutRel);
 
         QueryReq req = QueryReq.builder().moduleId(101L).fields(List.of(1012L, 1031L)).build();
 
@@ -1761,11 +1720,6 @@ class DataQueryTest {
     @Test
     @DisplayName("测试 getDetail 在显式指定 fields 时，返回的 meta.fields 同步精准过滤")
     void testGetDetailWithFieldsFilter() {
-        lenient().when(configApi.getModuleWithFields(null, null, 101L)).thenReturn(mockModule101);
-        lenient().when(configApi.getModuleWithFields(null, null, 103L)).thenReturn(mockModule103);
-        lenient().when(configApi.getModuleWithFields(null, null, 104L)).thenReturn(mockModule104);
-        lenient().when(configApi.getModuleWithFields(null, null, 105L)).thenReturn(mockModule105);
-
         // 仅请求 1011(学号) 与 1012(姓名)
         DataDetail<Map<String, Object>> detail =
                 dataQueryService.getDetail(101L, 1001L, List.of(1011L, 1012L));

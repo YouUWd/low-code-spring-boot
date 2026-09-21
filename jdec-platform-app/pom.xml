@@ -34,6 +34,11 @@
 
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-common-biz</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-data-biz</artifactId>
         </dependency>
 
