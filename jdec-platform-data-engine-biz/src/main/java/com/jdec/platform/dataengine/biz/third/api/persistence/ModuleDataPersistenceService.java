@@ -344,7 +344,7 @@ public class ModuleDataPersistenceService {
             Long modulePrimaryTableId,
             DynamicSaveReqContext currentReq) {
         Set<String> tables =
-                sysModuleCompleteResp.getFields().stream()
+                sysModuleCompleteResp.getFieldList().stream()
                         .map(x -> x.getTableName())
                         .collect(Collectors.toSet());
         tables =
