@@ -18,7 +18,6 @@ import com.jdec.platform.dataengine.biz.enums.RelationType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSaveCheckFactoryService;
-import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.post.ModuleDataSavePostFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
@@ -45,9 +44,6 @@ public class ModuleDataPersistenceService {
     private final ModuleDataSaveCheckFactoryService moduleDataSaveCheckFactoryService;
 
     private final ModuleDataSavePostFactoryService moduleDataSavePostFactoryService;
-
-    private final ModuleDataSaveNecessaryFieldFillFactoryService
-            moduleDataSaveNecessaryFieldFillFactoryService;
 
     private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
 
@@ -292,6 +288,7 @@ public class ModuleDataPersistenceService {
                         .parentLevelTableId(currentReq.getParentModulePrimaryTableId())
                         .defaultUserContextDataMap(null)
                         .isInsert(primaryTableId == null || primaryTableId <= 0)
+                        .isRootModuleMainTable(isRootModule ? true : false)
                         .rootModuleId(currentReq.getRootModuleId())
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
@@ -393,7 +390,8 @@ public class ModuleDataPersistenceService {
                                     sysModuleCompleteResp,
                                     relationDTO,
                                     modulePrimaryTableId,
-                                    currentReq.getTxDsl());
+                                    currentReq.getTxDsl(),
+                                    currentReq);
                     if (dataSaveResult.getRowChange() != null) {
                         //
                         // DataPersistenceUtil.fillTableRecordChangeInCombinedMap(
@@ -454,7 +452,8 @@ public class ModuleDataPersistenceService {
             SysModuleInfo sysModuleCompleteResp,
             TableRelationDTO relationDTO,
             Long modulePrimaryTableId,
-            DSLContext dslContext) {
+            DSLContext dslContext,
+            DynamicSaveReqContext currentReq) {
 
         Map<String, Object> dataMap = recordDataDTO.getRow();
 
@@ -484,6 +483,10 @@ public class ModuleDataPersistenceService {
                         .parentLevelTableId(modulePrimaryTableId)
                         .defaultUserContextDataMap(null)
                         .isInsert(subTableId == null || subTableId <= 0)
+                        .isRootModuleMainTable(false)
+                        .rootModuleId(currentReq.getRootModuleId())
+                        .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
+                        .sysModuleCompleteResp(sysModuleCompleteResp)
                         .build();
         // moduleDataSaveNecessaryFieldFillFactoryService.fillData(subRecordSaveContext);
         //// 首先 写入子表数据

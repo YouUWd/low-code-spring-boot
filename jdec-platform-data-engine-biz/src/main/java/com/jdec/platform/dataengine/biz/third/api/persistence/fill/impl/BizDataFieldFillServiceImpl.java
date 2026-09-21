@@ -17,9 +17,11 @@ public class BizDataFieldFillServiceImpl implements BaseDataSaveNecessaryFieldFi
     @Override
     public Map<String, Object> fillData(RecordSaveContext recordSaveContext) {
         Map<String, Object> fMap = new HashMap<>();
-        if (recordSaveContext.getIsInsert()) {
+        if (recordSaveContext.getIsInsert() && recordSaveContext.getIsRootModuleMainTable()) {
             fMap.put("business_no", ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
             fMap.put("business_status", 0);
+            fMap.put("version_no", 1);
+            fMap.put("module_id", recordSaveContext.getSysModuleCompleteResp().getModuleId());
             recordSaveContext.setBizDataMap(fMap);
         }
         return fMap;

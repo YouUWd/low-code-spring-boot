@@ -4,6 +4,7 @@ import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.BaseDataSaveNecessaryFieldFillService;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.security.SecurityUtils;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -20,14 +21,26 @@ public class UserContextDataFieldFillServiceImpl implements BaseDataSaveNecessar
         Map<String, Object> fMap = new HashMap<>();
         if (recordSaveContext.getIsInsert()) {
             fMap.put("subject_id", AppContext.getSubjectId());
-            fMap.put("create_by", AppContext.getUserId());
-            fMap.put("update_by", AppContext.getUserId());
-            fMap.put("create_date", LocalDateTime.now());
-            fMap.put("update_date", LocalDateTime.now());
+            fMap.put(
+                    "created_by",
+                    SecurityUtils.isMockLogin()
+                            ? SecurityUtils.getMockUserId()
+                            : SecurityUtils.getRealUserId());
+            fMap.put(
+                    "updated_by",
+                    SecurityUtils.isMockLogin()
+                            ? SecurityUtils.getMockUserId()
+                            : SecurityUtils.getRealUserId());
+            fMap.put("created_date", LocalDateTime.now());
+            fMap.put("updated_date", LocalDateTime.now());
             recordSaveContext.setDefaultUserContextDataMap(fMap);
         } else {
-            fMap.put("update_by", AppContext.getUserId());
-            fMap.put("update_date", LocalDateTime.now());
+            fMap.put(
+                    "updated_by",
+                    SecurityUtils.isMockLogin()
+                            ? SecurityUtils.getMockUserId()
+                            : AppContext.getUserId());
+            fMap.put("updated_date", LocalDateTime.now());
         }
         return fMap;
     }

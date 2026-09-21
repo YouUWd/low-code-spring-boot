@@ -51,4 +51,6 @@ public class RecordSaveContext extends BasicSaveModel {
     private Set<String> defaultExcludeFields;
 
     private Boolean isInsert;
+
+    private Boolean isRootModuleMainTable;
 }

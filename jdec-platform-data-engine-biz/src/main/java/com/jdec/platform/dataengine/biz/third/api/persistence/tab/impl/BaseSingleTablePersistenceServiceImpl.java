@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.tab.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.StrUtil;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
@@ -14,14 +15,12 @@ import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.mapper.ModuleDataChangeContentMapper;
 import com.jdec.platform.dataengine.biz.service.IModuleDataFieldChangeContentService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
+import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.*;
@@ -39,12 +38,22 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
     private final IModuleDataFieldChangeContentService iModuleDataFieldChangeContentService;
 
+    private final ModuleDataSaveNecessaryFieldFillFactoryService
+            moduleDataSaveNecessaryFieldFillFactoryService;
+
     @Override
     public DataSaveResult insertRecord(RecordSaveContext context) {
         if (CollectionUtil.isEmpty(context.getRecord())) {
             return DataSaveResult.builder().dataId(0L).build();
         }
-        Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
+        context.setDefaultExcludeFields(new HashSet<>());
+        moduleDataSaveNecessaryFieldFillFactoryService.fillData(context);
+        Map<Field<Object>, Object> fieldValues =
+                getRecordFieldValues(
+                        context,
+                        DataPersistenceUtil.getModuleTableFieldMap(
+                                context.getSysModuleCompleteResp().getFieldList(),
+                                context.getTableName()));
 
         String tableName = context.getTableName();
         // 手动定义表和主键字段，标记IDENTITY
@@ -115,12 +124,27 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         }
         Boolean deletedFalg = false;
 
-        Boolean deletedField = DataPersistenceUtil.getTableRowDeletedField(context.getRecord());
-        if (deletedField != null && deletedField) {
+        Integer deletedField = DataPersistenceUtil.getTableRowDeletedField(context.getRecord());
+        if (deletedField != null && deletedField == 1) {
             deletedFalg = true;
         }
 
-        Map<Field<Object>, Object> fieldValues = getRecordFieldValues(context);
+        context.setDefaultExcludeFields(
+                Set.of(
+                        "subject_id",
+                        "business_no",
+                        "version_no",
+                        "module_id",
+                        "created_by",
+                        "created_date"));
+        moduleDataSaveNecessaryFieldFillFactoryService.fillData(context);
+
+        Map<Field<Object>, Object> fieldValues =
+                getRecordFieldValues(
+                        context,
+                        DataPersistenceUtil.getModuleTableFieldMap(
+                                context.getSysModuleCompleteResp().getFieldList(),
+                                context.getTableName()));
 
         Record oldMap =
                 context.getDsl()
@@ -180,10 +204,19 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         }
     }
 
-    private Map<Field<Object>, Object> getRecordFieldValues(RecordSaveContext context) {
+    private Map<Field<Object>, Object> getRecordFieldValues(
+            RecordSaveContext context, Map<String, ModuleFieldDTO> fieldMap) {
         Map<Field<Object>, Object> fieldValues = new HashMap<>();
         // 表单数据
         for (Map.Entry<String, Object> entry : context.getRecord().entrySet()) {
+            if (CollectionUtil.isNotEmpty(fieldMap) && !fieldMap.containsKey(entry.getKey())) {
+                log.info(
+                        "fill form data table={} has no field={}",
+                        context.getTableName(),
+                        entry.getKey());
+                continue;
+            }
+
             if (CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD.equalsIgnoreCase(entry.getKey())) {
                 continue;
             }
@@ -199,8 +232,15 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         // 表单数据 共有的 一些业务字段数据
         if (CollectionUtil.isNotEmpty(context.getBizDataMap())) {
             for (Map.Entry<String, Object> entry : context.getBizDataMap().entrySet()) {
-                if (CollectionUtil.isEmpty(context.getDefaultExcludeFields())
-                        || context.getDefaultExcludeFields().contains(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(fieldMap) && !fieldMap.containsKey(entry.getKey())) {
+                    log.info(
+                            "fill biz data table={} has no field={}",
+                            context.getTableName(),
+                            entry.getKey());
+                    continue;
+                }
+                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;
                 }
                 log.info("fill biz data field {}={}", entry.getKey(), entry.getValue());
@@ -227,6 +267,13 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isNotEmpty(context.getDefaultUserContextDataMap())) {
             for (Map.Entry<String, Object> entry :
                     context.getDefaultUserContextDataMap().entrySet()) {
+                if (CollectionUtil.isNotEmpty(fieldMap) && !fieldMap.containsKey(entry.getKey())) {
+                    log.info(
+                            "fill user context table={} has no field={}",
+                            context.getTableName(),
+                            entry.getKey());
+                    continue;
+                }
                 if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
                         && context.getDefaultExcludeFields().contains(entry.getKey())) {
                     continue;

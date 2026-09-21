@@ -20,10 +20,10 @@ public class DataPersistenceUtil {
         return id;
     }
 
-    public static Boolean getTableRowDeletedField(Map<String, Object> record) {
+    public static Integer getTableRowDeletedField(Map<String, Object> record) {
         Object idObj = record.get(CommonConstant.TABLE_DEFAULT_DELETED_FIELD);
-        Boolean flag = idObj instanceof Boolean bool ? bool : null;
-        return flag;
+        Integer deleted = idObj instanceof Number num ? num.intValue() : null;
+        return deleted;
     }
 
     public static Map<String, Object> getTableRowMapFromWideRow(

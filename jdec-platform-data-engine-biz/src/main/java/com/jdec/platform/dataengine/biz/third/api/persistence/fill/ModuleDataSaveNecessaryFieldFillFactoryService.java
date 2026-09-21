@@ -11,7 +11,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ModuleDataSaveNecessaryFieldFillFactoryService {
 
-    private List<BaseDataSaveNecessaryFieldFillService> baseDataSaveNecessaryFieldFillServices;
+    private final List<BaseDataSaveNecessaryFieldFillService>
+            baseDataSaveNecessaryFieldFillServices;
 
     public void fillData(RecordSaveContext recordSaveContext) {
         baseDataSaveNecessaryFieldFillServices.forEach(
