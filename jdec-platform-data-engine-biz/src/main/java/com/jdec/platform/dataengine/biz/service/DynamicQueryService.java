@@ -234,7 +234,13 @@ public class DynamicQueryService {
 
         Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap = getModuleFields(filterFields);
 
-        recursiveQuery(pruneMenus, resultList, id, btnType, true, moduleIdToFieldMap);
+        Boolean historyQUery = false;
+
+        if (historyQUery) {
+            recursiveQuery(pruneMenus, resultList, id, btnType, true, moduleIdToFieldMap);
+        } else {
+            getHistoryDetailData(pruneMenus, resultList, id, btnType, moduleIdToFieldMap);
+        }
 
         return resultList;
     }
@@ -669,6 +675,151 @@ public class DynamicQueryService {
                 detailBizQueryService.queryDetailBiz(detailQueryContext);
 
         return recordDataDTOList;
+    }
+
+    private void getHistoryDetailData(
+            SysModuleSimpleTreeResp moduleTree,
+            List<NestedModuleDataDTO> resultList,
+            Long id,
+            String btnType,
+            Map<Long, List<ModuleFieldDTO>> moduleFieldsMap) {
+
+        Long subjectId = AppContext.getSubjectId();
+        Long roleId = AppContext.getRoleId();
+
+        QueryType queryType = QueryType.DETAIL_APPROVAL_HISTORY;
+
+        DetailQueryContext detailQueryContext =
+                DetailQueryContext.builder()
+                        .btnType(btnType)
+                        .id(id)
+                        //                        .relateIds(queryReq.getRelateIds())
+                        //                        .menuId(queryReq.getMenuId())
+                        .moduleId(moduleTree.getId())
+                        .roleId(roleId)
+                        .subjectId(subjectId)
+                        .queryType(queryType)
+                        //                        .fields(queryReq.getFields())
+                        .build();
+
+        recursiveFillModuleFields(moduleTree, moduleFieldsMap);
+
+        List<RecordDataDTO> recordDataDTOList =
+                detailBizQueryService.queryDetailBiz(detailQueryContext);
+
+        NestedModuleDataDTO.NestedModuleDataDTOBuilder nestedModuleDataDTOBuilder =
+                NestedModuleDataDTO.builder();
+
+        nestedModuleDataDTOBuilder.moduleId(moduleTree.getId());
+        nestedModuleDataDTOBuilder.record(recordDataDTOList);
+
+        resultList.add(nestedModuleDataDTOBuilder.build());
+
+        filterInPlace(resultList, moduleFieldsMap);
+    }
+
+    private void recursiveFillModuleFields(
+            SysModuleSimpleTreeResp moduleTree,
+            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
+
+        // filterFields为空时，返回本模块所有字段
+        if (moduleIdToFieldMap.isEmpty()) {
+            List<ModuleFieldDTO> moduleFields =
+                    dataModuleConfigService.listFieldsByModuleIds(
+                            Arrays.asList(moduleTree.getId()));
+            moduleIdToFieldMap.put(
+                    moduleTree.getId(),
+                    moduleFields.stream()
+                            .filter(ele -> ele.getModuleId().equals(moduleTree.getId()))
+                            .collect(Collectors.toList()));
+        }
+
+        List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
+        if (moduleIdToFieldMap.containsKey(moduleTree.getId())) {
+            moduleFileds = moduleIdToFieldMap.get(moduleTree.getId());
+        }
+
+        List<ModuleFieldDTO> finalModuleFileds = moduleFileds;
+        List<ModuleFieldDTO> relateFields =
+                getIdAndRelateIdField(moduleTree.getId()).stream()
+                        .filter(
+                                ele ->
+                                        !finalModuleFileds.stream()
+                                                .anyMatch(
+                                                        item ->
+                                                                item.getTableName()
+                                                                                .equals(
+                                                                                        ele
+                                                                                                .getTableName())
+                                                                        && item.getColumnName()
+                                                                                .equals(
+                                                                                        ele
+                                                                                                .getColumnName())))
+                        .collect(Collectors.toList());
+
+        moduleIdToFieldMap
+                .computeIfAbsent(moduleTree.getId(), k -> new ArrayList<>())
+                .addAll(relateFields);
+
+        for (SysModuleSimpleTreeResp child : moduleTree.getChildren()) {
+            recursiveFillModuleFields(child, moduleIdToFieldMap);
+        }
+    }
+
+    /**
+     * 原地递归过滤模块树
+     *
+     * @param moduleNodeList 待处理ModuleNode列表（直接原地修改）
+     * @param moduleIdToFieldMap 模块id及模块显示字段映射map
+     */
+    public static void filterInPlace(
+            List<NestedModuleDataDTO> moduleNodeList,
+            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
+        if (moduleNodeList == null || moduleNodeList.isEmpty()) {
+            return;
+        }
+
+        // Iterator安全删除：过滤moduleNode，不符合moduleId直接移除
+        Iterator<NestedModuleDataDTO> moduleIt = moduleNodeList.iterator();
+        while (moduleIt.hasNext()) {
+            NestedModuleDataDTO moduleNode = moduleIt.next();
+            Long moduleId = moduleNode.getModuleId();
+            // moduleId不满足条件 → 删除当前moduleNode
+            if (!moduleIdToFieldMap.containsKey(moduleId)) {
+                moduleIt.remove();
+                continue;
+            }
+
+            // moduleId符合，继续处理内部record列表
+            List<RecordDataDTO> recordList = moduleNode.getRecord();
+            if (recordList == null || recordList.isEmpty()) {
+                continue;
+            }
+
+            Set<String> tableFields =
+                    moduleIdToFieldMap.get(moduleId).stream()
+                            .map(ele -> ele.getTableName() + "." + ele.getColumnName())
+                            .collect(Collectors.toSet());
+
+            for (RecordDataDTO recordNode : recordList) {
+                // 1. 过滤row里面的字段key，原地删除不满足key
+                Map<String, Object> rowMap = recordNode.getRow();
+                if (rowMap != null) {
+                    Iterator<Map.Entry<String, Object>> rowIt = rowMap.entrySet().iterator();
+                    while (rowIt.hasNext()) {
+                        Map.Entry<String, Object> entry = rowIt.next();
+                        String key = entry.getKey();
+                        if (!tableFields.contains(key)) {
+                            rowIt.remove();
+                        }
+                    }
+                }
+
+                // 2. 递归处理当前record下的children（子ModuleNode列表）
+                List<NestedModuleDataDTO> children = recordNode.getChildren();
+                filterInPlace(children, moduleIdToFieldMap);
+            }
+        }
     }
 
     /**
