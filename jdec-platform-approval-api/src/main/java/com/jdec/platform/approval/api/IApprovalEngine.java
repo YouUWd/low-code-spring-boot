@@ -14,7 +14,7 @@ public interface IApprovalEngine {
     List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq);
 
     // 根据菜单ID查询用户指定业务的代办，已办，全部数量-------------------------------------------------
-    List<Map<String, Object>> getListNumber(Long menuId);
+    List<Map<String, Object>> getListNumber(Long moduleId);
 
     // 根据菜单ID及类型查询用户指定业务的代办，已办，全部列表ID------------------------------------------------
     List<Map<String, Object>> getListButton(Long moduleId, Integer approvalType);

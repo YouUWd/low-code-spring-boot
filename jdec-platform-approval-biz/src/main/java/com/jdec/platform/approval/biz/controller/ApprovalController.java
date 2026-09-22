@@ -3,6 +3,7 @@ package com.jdec.platform.approval.biz.controller;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.*;
+import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class ApprovalController {
     private final IApprovalEngine approvalService;
     private final ApplicationEventPublisher eventPublisher;
+    private final OpenMenuApi openMenuApi;
 
     /* @PostMapping("/BusinessNum")
     @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
@@ -65,7 +67,8 @@ public class ApprovalController {
     @GetMapping("/getListNumber/{moduleId}")
     @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
     public ApiResponse<List<Map<String, Object>>> getListNumber(@PathVariable Long menuId) {
-        return ApiResponse.success(approvalService.getListNumber(menuId));
+        Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);
+        return ApiResponse.success(approvalService.getListNumber(moduleId));
     }
 
     @GetMapping("/getListButton/{moduleId}")
