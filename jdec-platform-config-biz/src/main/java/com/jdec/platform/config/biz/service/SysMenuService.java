@@ -15,6 +15,7 @@ import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
+import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -38,7 +39,7 @@ import org.springframework.util.CollectionUtils;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysMenuService implements SysMenuApi {
+public class SysMenuService implements SysMenuApi, OpenMenuApi {
 
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleMenuMapper sysRoleMenuMapper;
@@ -171,6 +172,20 @@ public class SysMenuService implements SysMenuApi {
             return node.getDetailId();
         }
         return node.getId();
+    }
+
+    @Override
+    public Long getModuleIdByMenuId(Long menuId) {
+        SysMenu menu = selectMenuById(menuId);
+        if (menu == null) {
+            return null;
+        }
+        // 页面类型且关联了详情菜单 → 取详情菜单绑定的模块；否则取当前菜单绑定的模块
+        if (MENU_TYPE_PAGE.equals(menu.getMenuType()) && menu.getDetailId() != null) {
+            SysMenu detailMenu = selectMenuById(menu.getDetailId());
+            return detailMenu == null ? null : detailMenu.getModuleId();
+        }
+        return menu.getModuleId();
     }
 
     /** 取库中菜单记录（数据隔离：subject_id + project_no），id 为空或查不到返回 {@code null} */
