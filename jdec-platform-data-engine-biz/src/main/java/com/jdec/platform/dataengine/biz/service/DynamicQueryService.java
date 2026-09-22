@@ -241,7 +241,11 @@ public class DynamicQueryService {
         Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap =
                 getModuleFields(dynamicDetailQueryReq.getFilterFields());
 
-        boolean currentQUery = true;
+        boolean history = false;
+
+        if (Objects.nonNull(dynamicDetailQueryReq.getHistory())) {
+            history = dynamicDetailQueryReq.getHistory();
+        }
 
         // TODO 通过menuId和moduleId查审批链配置获取
         boolean hasApproval = true;
@@ -249,7 +253,7 @@ public class DynamicQueryService {
         QueryType queryType;
 
         if (hasApproval) {
-            if (currentQUery) {
+            if (!history) {
                 queryType = QueryType.DETAIL_APPROVAL_CURRENT;
             } else {
                 queryType = QueryType.DETAIL_APPROVAL_HISTORY;
