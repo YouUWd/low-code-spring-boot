@@ -220,7 +220,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
         Map<String, Object> todo = new HashMap<>();
         todo.put("label", "待办");
-        todo.put("type", "todo");
+        todo.put("type", "1");
         todo.put("count", todoList.size());
         resultMap.add(todo);
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
@@ -237,7 +237,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
         Map<String, Object> done = new HashMap<>();
         done.put("label", "已办");
-        done.put("type", "done");
+        done.put("type", "2");
         done.put("count", processList.size());
         resultMap.add(done);
         LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
@@ -276,7 +276,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         Map<String, Object> all = new HashMap<>();
         all.put("label", "全部");
-        all.put("type", "all");
+        all.put("type", "3");
         all.put("count", allList.size());
         resultMap.add(all);
         return resultMap;
