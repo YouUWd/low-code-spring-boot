@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
 import lombok.RequiredArgsConstructor;
 import org.jooq.Condition;

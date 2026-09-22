@@ -1,11 +1,11 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.request.SearchItemReq;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.QueryOpEnum;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
 import com.jdec.platform.dataengine.biz.util.ToolUtils;
 import com.jdec.platform.shared.exception.BusinessException;

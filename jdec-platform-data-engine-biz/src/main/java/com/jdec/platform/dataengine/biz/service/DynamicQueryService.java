@@ -7,7 +7,9 @@ import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.*;
+import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
@@ -18,11 +20,12 @@ import com.jdec.platform.dataengine.biz.dto.ModuleField;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleTable;
 import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
+import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
+import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
@@ -63,6 +66,8 @@ public class DynamicQueryService {
     private final MetadataCacheService metaCacheService;
 
     private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
+
+    private final DetailDataProcessFactory detailDataProcessFactory;
 
     /** 一体化列表分页查询 */
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -208,7 +213,7 @@ public class DynamicQueryService {
 
     /** 动态主子表详情查询 (顶层包含 moduleId 等标识，元数据包含 fieldNames 与 permissions) */
     public List<NestedModuleDataDTO> getDetail(
-            Long rootModuleId, Long id, String btnType, List<Long> filterFields) {
+            DynamicDetailQueryReq dynamicDetailQueryReq, String btnType) {
         List<NestedModuleDataDTO> resultList = new ArrayList<>();
 
         // 获取模块树
@@ -222,27 +227,81 @@ public class DynamicQueryService {
         }
 
         // 以rootModuleId为根节点的模块树
-        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleNodeResps, rootModuleId);
+        SysModuleSimpleTreeResp rootNode =
+                findSubTreeByValue(moduleNodeResps, dynamicDetailQueryReq.getModuleId());
 
         Set<Long> involveModules = new HashSet<>();
-        involveModules.add(rootModuleId);
+        involveModules.add(dynamicDetailQueryReq.getModuleId());
 
-        Set<Long> fieldDirectModuleIds = getRelateModules(filterFields);
+        Set<Long> fieldDirectModuleIds = getRelateModules(dynamicDetailQueryReq.getFilterFields());
         involveModules.addAll(fieldDirectModuleIds);
 
         SysModuleSimpleTreeResp pruneMenus = pruneForest(rootNode, involveModules);
 
-        Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap = getModuleFields(filterFields);
+        Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap =
+                getModuleFields(dynamicDetailQueryReq.getFilterFields());
 
-        Boolean historyQUery = false;
+        boolean currentQUery = true;
 
-        if (historyQUery) {
-            recursiveQuery(pruneMenus, resultList, id, btnType, true, moduleIdToFieldMap);
+        // TODO 通过menuId和moduleId查审批链配置获取
+        boolean hasApproval = true;
+
+        QueryType queryType;
+
+        if (hasApproval) {
+            if (currentQUery) {
+                queryType = QueryType.DETAIL_APPROVAL_CURRENT;
+            } else {
+                queryType = QueryType.DETAIL_APPROVAL_HISTORY;
+            }
         } else {
-            getHistoryDetailData(pruneMenus, resultList, id, btnType, moduleIdToFieldMap);
+            queryType = QueryType.DETAIL;
         }
 
+        switch (queryType) {
+            case DETAIL, DETAIL_APPROVAL_CURRENT -> {
+                recursiveQuery(
+                        pruneMenus,
+                        resultList,
+                        dynamicDetailQueryReq.getId(),
+                        btnType,
+                        true,
+                        moduleIdToFieldMap,
+                        queryType);
+                fillCurrentQueryCompareInfo(
+                        pruneMenus, resultList, dynamicDetailQueryReq, btnType, moduleIdToFieldMap);
+            }
+            case DETAIL_APPROVAL_HISTORY ->
+                    getHistoryDetailData(
+                            pruneMenus,
+                            resultList,
+                            dynamicDetailQueryReq,
+                            btnType,
+                            moduleIdToFieldMap);
+            default -> throw new IllegalStateException("Unexpected value: " + queryType);
+        }
+
+        DataIntegrationContext dataIntegrationContext =
+                DataIntegrationContext.builder()
+                        .moduleId(dynamicDetailQueryReq.getModuleId())
+                        .id(dynamicDetailQueryReq.getId())
+                        .version(dynamicDetailQueryReq.getVersion())
+                        .moduleIdToFieldMap(moduleIdToFieldMap)
+                        .queryType(queryType)
+                        .build();
+
+        detailDataProcessFactory.processData(resultList, dataIntegrationContext);
+
         return resultList;
+    }
+
+    private void fillCurrentQueryCompareInfo(
+            SysModuleSimpleTreeResp pruneMenus,
+            List<NestedModuleDataDTO> resultList,
+            DynamicDetailQueryReq dynamicDetailQueryReq,
+            String btnType,
+            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
+        //        DSLContext dslContext = Ds
     }
 
     private Map<Long, List<ModuleFieldDTO>> getModuleFields(List<Long> filterFields) {
@@ -263,7 +322,8 @@ public class DynamicQueryService {
             Long id,
             String btnType,
             Boolean topQuery,
-            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
+            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap,
+            QueryType queryType) {
         // ========= 模式2：树形关联查询，多个模块属于同一棵树 =========
         // 取根模块（moduleCodeList第一个为根节点，其余是树内子模块）
         //        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleTree, topMenuId);
@@ -312,6 +372,7 @@ public class DynamicQueryService {
                         .mainDataId(id)
                         .btnType(btnType)
                         .fields(moduleFileds)
+                        .queryType(queryType)
                         .build();
 
         NestedModuleDataDTO moduleData =
@@ -336,19 +397,11 @@ public class DynamicQueryService {
         // TODO 通过menuId和moduleId查审批链配置获取
         boolean hasApproval = true;
 
-        QueryType queryType;
-
-        if (hasApproval) {
-            queryType = QueryType.DETAIL_APPROVAL_CURRENT;
-        } else {
-            queryType = QueryType.DETAIL;
-        }
-
         queryReq.setType(hasApproval ? 3 : 4);
 
         List<RecordDataDTO> currentModuleData = new ArrayList<>();
 
-        currentModuleData = querySingleModule(rootNode, queryReq, queryType);
+        currentModuleData = querySingleModule(rootNode, queryReq, queryReq.getQueryType());
 
         if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
             return builder.moduleId(rootNode.getId())
@@ -406,6 +459,7 @@ public class DynamicQueryService {
                             .relateIds(new ArrayList<>(primaryIds))
                             .btnType(queryReq.getBtnType())
                             .fields(moduleFileds)
+                            .queryType(queryReq.getQueryType())
                             .build();
             NestedModuleDataDTO childResultList =
                     queryModule(singleQueryDTO, childNode, true, false, moduleIdToFieldMap);
@@ -680,7 +734,7 @@ public class DynamicQueryService {
     private void getHistoryDetailData(
             SysModuleSimpleTreeResp moduleTree,
             List<NestedModuleDataDTO> resultList,
-            Long id,
+            DynamicDetailQueryReq dynamicDetailQueryReq,
             String btnType,
             Map<Long, List<ModuleFieldDTO>> moduleFieldsMap) {
 
@@ -692,7 +746,8 @@ public class DynamicQueryService {
         DetailQueryContext detailQueryContext =
                 DetailQueryContext.builder()
                         .btnType(btnType)
-                        .id(id)
+                        .id(dynamicDetailQueryReq.getId())
+                        .version(dynamicDetailQueryReq.getVersion())
                         //                        .relateIds(queryReq.getRelateIds())
                         //                        .menuId(queryReq.getMenuId())
                         .moduleId(moduleTree.getId())
@@ -714,8 +769,6 @@ public class DynamicQueryService {
         nestedModuleDataDTOBuilder.record(recordDataDTOList);
 
         resultList.add(nestedModuleDataDTOBuilder.build());
-
-        filterInPlace(resultList, moduleFieldsMap);
     }
 
     private void recursiveFillModuleFields(
@@ -763,62 +816,6 @@ public class DynamicQueryService {
 
         for (SysModuleSimpleTreeResp child : moduleTree.getChildren()) {
             recursiveFillModuleFields(child, moduleIdToFieldMap);
-        }
-    }
-
-    /**
-     * 原地递归过滤模块树
-     *
-     * @param moduleNodeList 待处理ModuleNode列表（直接原地修改）
-     * @param moduleIdToFieldMap 模块id及模块显示字段映射map
-     */
-    public static void filterInPlace(
-            List<NestedModuleDataDTO> moduleNodeList,
-            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
-        if (moduleNodeList == null || moduleNodeList.isEmpty()) {
-            return;
-        }
-
-        // Iterator安全删除：过滤moduleNode，不符合moduleId直接移除
-        Iterator<NestedModuleDataDTO> moduleIt = moduleNodeList.iterator();
-        while (moduleIt.hasNext()) {
-            NestedModuleDataDTO moduleNode = moduleIt.next();
-            Long moduleId = moduleNode.getModuleId();
-            // moduleId不满足条件 → 删除当前moduleNode
-            if (!moduleIdToFieldMap.containsKey(moduleId)) {
-                moduleIt.remove();
-                continue;
-            }
-
-            // moduleId符合，继续处理内部record列表
-            List<RecordDataDTO> recordList = moduleNode.getRecord();
-            if (recordList == null || recordList.isEmpty()) {
-                continue;
-            }
-
-            Set<String> tableFields =
-                    moduleIdToFieldMap.get(moduleId).stream()
-                            .map(ele -> ele.getTableName() + "." + ele.getColumnName())
-                            .collect(Collectors.toSet());
-
-            for (RecordDataDTO recordNode : recordList) {
-                // 1. 过滤row里面的字段key，原地删除不满足key
-                Map<String, Object> rowMap = recordNode.getRow();
-                if (rowMap != null) {
-                    Iterator<Map.Entry<String, Object>> rowIt = rowMap.entrySet().iterator();
-                    while (rowIt.hasNext()) {
-                        Map.Entry<String, Object> entry = rowIt.next();
-                        String key = entry.getKey();
-                        if (!tableFields.contains(key)) {
-                            rowIt.remove();
-                        }
-                    }
-                }
-
-                // 2. 递归处理当前record下的children（子ModuleNode列表）
-                List<NestedModuleDataDTO> children = recordNode.getChildren();
-                filterInPlace(children, moduleIdToFieldMap);
-            }
         }
     }
 

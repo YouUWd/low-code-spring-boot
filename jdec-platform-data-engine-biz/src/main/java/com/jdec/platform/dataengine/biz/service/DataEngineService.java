@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.service;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
+import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
@@ -37,18 +38,20 @@ public class DataEngineService implements DataEngineApi {
 
     @Override
     public DetailDataResp<NestedModuleDataDTO> getDetail(
-            Long rootModuleId, Long id, String btnType, List<Long> filterFields) {
+            DynamicDetailQueryReq dynamicDetailQueryReq, String btnType) {
 
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), rootModuleId);
+                        AppContext.getProjectNo(),
+                        AppContext.getSubjectId(),
+                        dynamicDetailQueryReq.getModuleId());
 
         SysModuleInfo meta = copyAndFilterModuleTree(sysModuleInfo, List.of());
 
         List<SysModuleInfo> metaList = getListStructure(meta);
 
         List<NestedModuleDataDTO> detailDatas =
-                dynamicQueryService.getDetail(rootModuleId, id, btnType, filterFields);
+                dynamicQueryService.getDetail(dynamicDetailQueryReq, btnType);
 
         return DetailDataResp.of(
                 metaList, CollectionUtils.isEmpty(detailDatas) ? null : detailDatas.get(0));

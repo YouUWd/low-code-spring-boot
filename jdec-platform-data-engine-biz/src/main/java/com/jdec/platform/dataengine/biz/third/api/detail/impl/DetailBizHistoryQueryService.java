@@ -2,11 +2,10 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.mapper.DataEngineSnapshotMapper;
-import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.data.ListDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.detail.DataSnapshotModuleService;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailBizReferQueryService;
@@ -34,8 +33,6 @@ public class DetailBizHistoryQueryService implements DetailBizReferQueryService 
     private final DataSnapshotModuleService dataSnapshotModuleService;
 
     private final ListDataProcessFactory listDataProcessFactory;
-
-    private final DetailDataProcessFactory detailDataProcessFactory;
 
     @Override
     public Boolean isReferTo(QueryType queryType) {

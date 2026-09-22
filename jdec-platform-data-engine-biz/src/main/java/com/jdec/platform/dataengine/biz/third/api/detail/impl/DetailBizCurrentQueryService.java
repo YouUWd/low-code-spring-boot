@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleInfo;
@@ -8,7 +9,6 @@ import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.ModuleType;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailBizReferQueryService;
@@ -100,22 +100,6 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
                 recordDataDTOList =
                         detailModuleDataQueryService.queryDetailModuleData(
                                 detailModuleQueryContext);
-
-                //                retrunMap.putAll(detailMap);
-
-                //                 DataIntegrationContext 构建要区分是带否审批链 目前只有  context.getMenuId()
-                // 是带审批链的
-                //                                detailDataProcessFactory.processData(
-                //                                        (Map) retrunMap.get(context.getMenuId()),
-                //                                        retrunMap,
-                //                                        DataIntegrationContext.builder()
-                //                                                .subjectId(context.getSubjectId())
-                //                                                .roleId(context.getRoleId())
-                //                                                .queryType(context.getQueryType())
-                //                                                .id(context.getId())
-                //
-                // .moduleFilterInfo(moduleFilterInfo)
-                //                                                .build());
             }
         }
 

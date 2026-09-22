@@ -1,18 +1,11 @@
 package com.jdec.platform.dataengine.biz.third.api.data.impl;
 
-import cn.hutool.core.collection.CollectionUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.jdec.platform.dataengine.biz.common.ResultSetConstantKey;
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
-import com.jdec.platform.dataengine.biz.entity.DataEngineSnapshot;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.mapper.DataEngineSnapshotMapper;
-import com.jdec.platform.dataengine.biz.third.api.data.DataProcessUtils;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessService;
-import com.jdec.platform.dataengine.biz.vo.VersionInfo;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,38 +27,27 @@ public class VersionListDataProcessServiceImpl implements DetailDataProcessServi
 
     @Override
     public void processAssembleData(
-            Map<Object, Object> moduleData,
-            Map<Object, Object> returnMap,
-            DataIntegrationContext context) {
+            List<NestedModuleDataDTO> records, DataIntegrationContext context) {
 
-        LambdaQueryWrapper<DataEngineSnapshot> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.eq(
-                DataEngineSnapshot::getModuleId,
-                context.getModuleFilterInfo().getModuleInfo().getModuleId());
-        lambdaQueryWrapper.eq(DataEngineSnapshot::getDataId, context.getId());
-        List<DataEngineSnapshot> dataEngineSnapshotList =
-                dataEngineSnapshotMapper.selectList(lambdaQueryWrapper);
-        if (CollectionUtil.isNotEmpty(dataEngineSnapshotList)) {
-            List<VersionInfo> versionInfoList = new ArrayList<>();
-            for (DataEngineSnapshot ds : dataEngineSnapshotList) {
-                VersionInfo versionInfo =
-                        VersionInfo.builder()
-                                .recordId(ds.getDataId())
-                                .statusValue(ds.getFinalStatusValue())
-                                .versionNo(ds.getVersionNo())
-                                .businessNo(ds.getBusinessNo())
-                                .history(true)
-                                .build();
-                versionInfoList.add(versionInfo);
-            }
-            DataProcessUtils.fillMapUnitiveData(
-                    moduleData, ResultSetConstantKey.RESULT_SET_KEY_VERSION_LIST, versionInfoList);
-        }
+        /**
+         * LambdaQueryWrapper<DataEngineSnapshot> lambdaQueryWrapper = new LambdaQueryWrapper<>();
+         * lambdaQueryWrapper.eq( DataEngineSnapshot::getModuleId,
+         * context.getModuleFilterInfo().getModuleInfo().getModuleId());
+         * lambdaQueryWrapper.eq(DataEngineSnapshot::getDataId, context.getId());
+         * List<DataEngineSnapshot> dataEngineSnapshotList =
+         * dataEngineSnapshotMapper.selectList(lambdaQueryWrapper); if
+         * (CollectionUtil.isNotEmpty(dataEngineSnapshotList)) { List<VersionInfo> versionInfoList =
+         * new ArrayList<>(); for (DataEngineSnapshot ds : dataEngineSnapshotList) { VersionInfo
+         * versionInfo = VersionInfo.builder() .recordId(ds.getDataId())
+         * .statusValue(ds.getFinalStatusValue()) .versionNo(ds.getVersionNo())
+         * .businessNo(ds.getBusinessNo()) .history(true) .build();
+         * versionInfoList.add(versionInfo); } DataProcessUtils.fillMapUnitiveData( moduleData,
+         * ResultSetConstantKey.RESULT_SET_KEY_VERSION_LIST, versionInfoList); }
+         */
     }
 
     @Override
     public Boolean isReferTo(QueryType queryType) {
-        return false;
-        //        return TYPE_SET.contains(queryType);
+        return TYPE_SET.contains(queryType);
     }
 }
