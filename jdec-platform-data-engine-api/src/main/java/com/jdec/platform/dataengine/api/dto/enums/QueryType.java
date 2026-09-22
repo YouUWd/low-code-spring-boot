@@ -1,4 +1,4 @@
-package com.jdec.platform.dataengine.biz.enums;
+package com.jdec.platform.dataengine.api.dto.enums;
 
 /** 用于区分 查询类型 */
 public enum QueryType {

@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api;
 
-import com.jdec.platform.dataengine.biz.enums.QueryType;
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 
 public interface ReferService {
 

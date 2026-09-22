@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.dto;
 
-import com.jdec.platform.dataengine.biz.enums.QueryType;
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import java.io.Serializable;
 import lombok.Data;
 import lombok.NoArgsConstructor;

@@ -36,12 +36,7 @@ public class DataEngineController {
     @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<DetailDataResp> getDetail(
             @RequestBody DynamicDetailQueryReq detailQueryReq) {
-        return ApiResponse.success(
-                dataEngineApi.getDetail(
-                        detailQueryReq.getModuleId(),
-                        detailQueryReq.getId(),
-                        "view",
-                        detailQueryReq.getFilterFields()));
+        return ApiResponse.success(dataEngineApi.getDetail(detailQueryReq, "view"));
     }
 
     @PostMapping("/save")

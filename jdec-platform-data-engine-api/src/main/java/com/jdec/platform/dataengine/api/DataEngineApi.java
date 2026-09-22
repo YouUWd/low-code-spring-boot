@@ -3,13 +3,13 @@ package com.jdec.platform.dataengine.api;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
+import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
 import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
-import java.util.List;
 
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
@@ -24,7 +24,7 @@ public interface DataEngineApi {
      * @return
      */
     DetailDataResp<NestedModuleDataDTO> getDetail(
-            Long rootModuleId, Long id, String btnType, List<Long> filterFields);
+            DynamicDetailQueryReq dynamicDetailQueryReq, String btnType);
 
     Long save(DynamicSaveReq req);
 

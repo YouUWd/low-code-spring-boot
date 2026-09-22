@@ -69,8 +69,7 @@ public class SnapshotManagerService implements DataSnapshotApi {
         ensureSnapshotTable(dsl);
 
         // 1. 查询当前聚合实体完整数据并序列化为 JSON
-        List<NestedModuleDataDTO> detailData =
-                dynamicQueryService.getDetail(moduleId, dataId, "view", List.of());
+        List<NestedModuleDataDTO> detailData = dynamicQueryService.getDetail(null, "view");
         DynamicDetailResp detailResp = null;
         String currentSnapshotJson = JSON.toJSONString(detailResp);
 

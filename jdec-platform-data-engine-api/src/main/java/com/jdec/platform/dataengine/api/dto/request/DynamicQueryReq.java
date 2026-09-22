@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.api.dto.request;
 
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -64,4 +65,6 @@ public class DynamicQueryReq implements Serializable {
     private String btnType;
 
     private List<ModuleFieldDTO> fields;
+
+    private QueryType queryType;
 }

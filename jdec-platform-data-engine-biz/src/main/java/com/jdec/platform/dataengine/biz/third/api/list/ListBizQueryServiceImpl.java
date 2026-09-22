@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.list;
 
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
@@ -8,7 +9,6 @@ import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.service.FieldTransformService;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
 import com.jdec.platform.dataengine.biz.service.PermissionFilterService;

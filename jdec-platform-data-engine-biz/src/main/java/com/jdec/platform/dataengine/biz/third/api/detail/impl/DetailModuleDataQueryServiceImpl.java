@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
+import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
@@ -9,7 +10,6 @@ import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleTable;
 import com.jdec.platform.dataengine.biz.dto.context.DetailModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
-import com.jdec.platform.dataengine.biz.enums.QueryType;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
 import com.jdec.platform.dataengine.biz.third.api.condition.ConditionBuilderFactory;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailModuleDataQueryService;

@@ -26,6 +26,8 @@
         <module>jdec-platform-config-biz</module>
         <module>jdec-platform-hr-api</module>
         <module>jdec-platform-hr-biz</module>
+        <module>jdec-platform-common-api</module>
+        <module>jdec-platform-common-biz</module>
         <module>jdec-platform-app</module>
         <module>jdec-platform-common-business-api</module>
         <module>jdec-platform-common-business-biz</module>
@@ -109,6 +111,7 @@
                 <artifactId>jdec-platform-hr-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
+
             <dependency>
                 <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-common-business-api</artifactId>
@@ -139,6 +142,18 @@
                 <artifactId>jdec-platform-monitorlog-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
+
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-common-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-common-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
             <dependency>
                 <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-approval-api</artifactId>
@@ -176,11 +191,6 @@
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
             </dependency>
-            <!--<dependency>
-                <groupId>org.springdoc</groupId>
-                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-                <version>${springdoc-openapi.version}</version>
-            </dependency>-->
             <!-- Knife4j -->
             <dependency>
                 <groupId>com.github.xiaoymin</groupId>

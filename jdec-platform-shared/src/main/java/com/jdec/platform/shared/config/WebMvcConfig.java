@@ -24,6 +24,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         //                                                "/api/**",
                         "/api/config/sys/user/check-permission",
+                        "/api/config/init/**", // 系统初始化：无需登录
+                        "/api/student/login", // 学生端登录：无需登录
+                        "/api/student/permission/check-current-user",
                         "/doc.html", // API 文档
                         "/webjars/**",
                         "/v3/api-docs/**",
@@ -37,7 +40,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/student/**")
                 .addPathPatterns("/api/monitorlog/**")
                 .addPathPatterns("/api/data-engine/**")
-                .excludePathPatterns("/api/config/auth/**");
+                .excludePathPatterns(
+                        "/api/config/auth/**", "/api/config/init/**"); // 系统初始化：无需 X-Project-No 上下文
     }
 
     @Override
