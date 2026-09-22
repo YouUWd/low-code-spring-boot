@@ -268,8 +268,6 @@ public class DynamicQueryService {
                         true,
                         moduleIdToFieldMap,
                         queryType);
-                fillCurrentQueryCompareInfo(
-                        pruneMenus, resultList, dynamicDetailQueryReq, btnType, moduleIdToFieldMap);
             }
             case DETAIL_APPROVAL_HISTORY ->
                     getHistoryDetailData(
@@ -281,27 +279,23 @@ public class DynamicQueryService {
             default -> throw new IllegalStateException("Unexpected value: " + queryType);
         }
 
-        DataIntegrationContext dataIntegrationContext =
-                DataIntegrationContext.builder()
-                        .moduleId(dynamicDetailQueryReq.getModuleId())
-                        .id(dynamicDetailQueryReq.getId())
-                        .version(dynamicDetailQueryReq.getVersion())
-                        .moduleIdToFieldMap(moduleIdToFieldMap)
-                        .queryType(queryType)
-                        .build();
+        // 需要版本对比数据时才进行组装
+        if (Objects.nonNull(dynamicDetailQueryReq.getShowVersionCompare())
+                && dynamicDetailQueryReq.getShowVersionCompare()) {
 
-        detailDataProcessFactory.processData(resultList, dataIntegrationContext);
+            DataIntegrationContext dataIntegrationContext =
+                    DataIntegrationContext.builder()
+                            .moduleId(dynamicDetailQueryReq.getModuleId())
+                            .id(dynamicDetailQueryReq.getId())
+                            .version(dynamicDetailQueryReq.getVersion())
+                            .moduleIdToFieldMap(moduleIdToFieldMap)
+                            .queryType(queryType)
+                            .build();
+
+            detailDataProcessFactory.processData(resultList, dataIntegrationContext);
+        }
 
         return resultList;
-    }
-
-    private void fillCurrentQueryCompareInfo(
-            SysModuleSimpleTreeResp pruneMenus,
-            List<NestedModuleDataDTO> resultList,
-            DynamicDetailQueryReq dynamicDetailQueryReq,
-            String btnType,
-            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
-        //        DSLContext dslContext = Ds
     }
 
     private Map<Long, List<ModuleFieldDTO>> getModuleFields(List<Long> filterFields) {
