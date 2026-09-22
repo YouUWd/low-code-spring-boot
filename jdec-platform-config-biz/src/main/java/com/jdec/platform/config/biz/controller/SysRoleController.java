@@ -5,10 +5,7 @@ import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.hr.api.DepartmentApi;
-import com.jdec.platform.hr.api.UserApi;
-import com.jdec.platform.hr.api.bo.DepartmentBO;
-import com.jdec.platform.hr.api.dto.response.UserTreeNodeResp;
+import com.jdec.platform.config.biz.hr.HrQueryService;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,14 +28,13 @@ public class SysRoleController {
 
     private final SysRoleApi sysRoleApi;
     private final SysUserApi sysUserApi;
-    private final UserApi userApi;
-    private final DepartmentApi departmentApi;
+    private final HrQueryService hrQueryService;
 
     @GetMapping("/get-user-tree")
     @Operation(summary = "获取人员架构树", description = "按照部门层级展示人员架构")
-    public ApiResponse<List<UserTreeNodeResp>> getUserTreeList(
+    public ApiResponse<List<UserSearchTreeNodeResp>> getUserTreeList(
             @Parameter(description = "用户类型", example = "1") @RequestParam Integer userType) {
-        return ApiResponse.success(userApi.getUserTreeList(userType));
+        return ApiResponse.success(hrQueryService.getUserTreeList(userType));
     }
 
     @GetMapping("/get-user-tree-for-search")
@@ -168,25 +164,13 @@ public class SysRoleController {
             deptUsers.computeIfAbsent(userNode.getDepartId(), k -> new ArrayList<>()).add(userNode);
         }
 
-        // 4. 从HR模块获取部门列表
-        List<DepartmentBO> departmentList = departmentApi.getDepartmentList();
+        // 4. 从人力库获取部门节点（id=D+部门ID、pid=D+父部门ID、label=部门名）
+        List<UserSearchTreeNodeResp> departListWithUsers = hrQueryService.listDepartmentNodes();
 
-        // 5. 构建部门节点并挂载用户
-        List<UserSearchTreeNodeResp> departListWithUsers = new ArrayList<>();
-        for (DepartmentBO dept : departmentList) {
-            String pid = (dept.getPid() != null && dept.getPid() != 0) ? "D" + dept.getPid() : "D0";
-            UserSearchTreeNodeResp node =
-                    UserSearchTreeNodeResp.builder()
-                            .id("D" + dept.getId())
-                            .label(dept.getName())
-                            .pid(pid)
-                            .type(dept.getType() != null ? dept.getType() : 1)
-                            .children(
-                                    new ArrayList<>(
-                                            deptUsers.getOrDefault(
-                                                    "D" + dept.getId(), new ArrayList<>())))
-                            .build();
-            departListWithUsers.add(node);
+        // 5. 挂载各部门下的用户
+        for (UserSearchTreeNodeResp dept : departListWithUsers) {
+            dept.setChildren(
+                    new ArrayList<>(deptUsers.getOrDefault(dept.getId(), new ArrayList<>())));
         }
 
         // 6. 构建嵌套树

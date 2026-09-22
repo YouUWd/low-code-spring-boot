@@ -18,12 +18,11 @@ import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleSubject;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
 import com.jdec.platform.config.biz.entity.SysUser;
+import com.jdec.platform.config.biz.hr.HrQueryService;
 import com.jdec.platform.config.biz.mapper.SysRoleMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
-import com.jdec.platform.hr.api.DepartmentApi;
-import com.jdec.platform.hr.api.bo.DepartmentBO;
 import com.jdec.platform.shared.constant.VirtualUserConstants;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -50,7 +49,7 @@ public class SysUserService implements SysUserApi {
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleMapper sysRoleMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
-    private final DepartmentApi departmentApi;
+    private final HrQueryService hrQueryService;
 
     @Override
     public PageResult<SysUserPageResp> getUserPage(QuerySysUserPageReq query) {
@@ -446,27 +445,16 @@ public class SysUserService implements SysUserApi {
                 deptUsers.computeIfAbsent("D" + deptId, k -> new ArrayList<>()).add(userNode);
             }
         }
-        // 1. 从人力获取部门列表
-        List<DepartmentBO> departmentList = departmentApi.getDepartmentList();
-        // 4. 构建部门节点并挂载用户
-        List<UserSearchTreeNodeResp> departListWithUsers = new ArrayList<>();
-        for (DepartmentBO dept : departmentList) {
-            String pid = (dept.getPid() != null && dept.getPid() != 0) ? "D" + dept.getPid() : "D0";
-            UserSearchTreeNodeResp node =
-                    UserSearchTreeNodeResp.builder()
-                            .id("D" + dept.getId())
-                            .label(dept.getName())
-                            .pid(pid)
-                            .type(dept.getType() != null ? dept.getType() : 1)
-                            .children(
-                                    new ArrayList<>(
-                                            deptUsers.getOrDefault(
-                                                    "D" + dept.getId(), new ArrayList<>())))
-                            .build();
-            departListWithUsers.add(node);
+        // 1. 从人力库获取部门节点（id=D+部门ID、pid=D+父部门ID、label=部门名）
+        List<UserSearchTreeNodeResp> departListWithUsers = hrQueryService.listDepartmentNodes();
+
+        // 2. 挂载各部门下的用户
+        for (UserSearchTreeNodeResp dept : departListWithUsers) {
+            dept.setChildren(
+                    new ArrayList<>(deptUsers.getOrDefault(dept.getId(), new ArrayList<>())));
         }
 
-        // 5. 构建嵌套树
+        // 3. 构建嵌套树
         List<UserSearchTreeNodeResp> tree = buildNestedTree(departListWithUsers, "D0");
         return tree;
         // 6. 过滤掉没有用户的部门

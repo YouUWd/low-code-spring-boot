@@ -5,8 +5,7 @@ import com.jdec.platform.config.api.dto.request.RoleSubjectReq;
 import com.jdec.platform.config.api.dto.request.RoleUserReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
-import com.jdec.platform.hr.api.bo.SubjectBO;
-import com.jdec.platform.hr.api.bo.UserBO;
+import com.jdec.platform.config.biz.entity.SysUser;
 import com.jdec.platform.shared.enums.EffectiveTypeEnum;
 import java.time.LocalDate;
 import java.util.*;
@@ -46,12 +45,12 @@ public class RoleApprovalLogService {
     public void logRoleCreate(
             Long roleId,
             SaveRoleUserReq request,
-            Map<Long, SubjectBO> subjectMap,
-            Map<Long, UserBO> hrUserMap) {
+            Map<Long, String> subjectNameMap,
+            Map<Long, SysUser> hrUserMap) {
 
         // 1. 构建新增操作的 ModuleAction
         List<Map<String, Object>> moduleActions =
-                buildCreateActions(request, subjectMap, hrUserMap);
+                buildCreateActions(request, subjectNameMap, hrUserMap);
 
         // 2. 发送审批日志
         sendApprovalLog("新增", roleId, moduleActions);
@@ -74,8 +73,8 @@ public class RoleApprovalLogService {
             SaveRoleUserReq request,
             List<RoleUserReq> oldRoleUsers,
             List<RoleSubjectReq> oldRoleSubjects,
-            Map<Long, SubjectBO> subjectMap,
-            Map<Long, UserBO> hrUserMap) {
+            Map<Long, String> subjectNameMap,
+            Map<Long, SysUser> hrUserMap) {
 
         // 1. 构建字段变更列表
         List<Map<String, Object>> columns = new ArrayList<>();
@@ -86,9 +85,10 @@ public class RoleApprovalLogService {
         }
 
         // 授权主体对比（简单字符串拼接，不对齐）
-        List<String> oldSubjectDisplayNames = buildSubjectDisplayNames(oldRoleSubjects, subjectMap);
+        List<String> oldSubjectDisplayNames =
+                buildSubjectDisplayNames(oldRoleSubjects, subjectNameMap);
         List<String> newSubjectDisplayNames =
-                buildSubjectDisplayNames(request.getSubjectList(), subjectMap);
+                buildSubjectDisplayNames(request.getSubjectList(), subjectNameMap);
 
         String oldSubjectStr =
                 oldSubjectDisplayNames.isEmpty() ? "" : String.join(",", oldSubjectDisplayNames);
@@ -149,7 +149,9 @@ public class RoleApprovalLogService {
 
     /** 构建新增角色的 ModuleAction 列表 */
     private List<Map<String, Object>> buildCreateActions(
-            SaveRoleUserReq request, Map<Long, SubjectBO> subjectMap, Map<Long, UserBO> hrUserMap) {
+            SaveRoleUserReq request,
+            Map<Long, String> subjectNameMap,
+            Map<Long, SysUser> hrUserMap) {
 
         List<Map<String, Object>> columns = new ArrayList<>();
 
@@ -158,7 +160,7 @@ public class RoleApprovalLogService {
 
         // 授权主体
         List<String> subjectDisplayNames =
-                buildSubjectDisplayNames(request.getSubjectList(), subjectMap);
+                buildSubjectDisplayNames(request.getSubjectList(), subjectNameMap);
         String subjectDisplayStr = String.join(",", subjectDisplayNames);
         columns.add(buildColumn("授权主体", "", subjectDisplayStr, "subject"));
 
@@ -222,18 +224,16 @@ public class RoleApprovalLogService {
 
     /** 构建主体显示名列表 */
     private List<String> buildSubjectDisplayNames(
-            List<RoleSubjectReq> subjectList, Map<Long, SubjectBO> subjectMap) {
+            List<RoleSubjectReq> subjectList, Map<Long, String> subjectNameMap) {
         if (subjectList == null) {
             return Collections.emptyList();
         }
         return subjectList.stream()
                 .map(
                         s -> {
-                            SubjectBO sb = subjectMap.get(s.getSubjectId());
                             String name =
-                                    sb != null
-                                            ? sb.getSubjectName()
-                                            : String.valueOf(s.getSubjectId());
+                                    subjectNameMap.getOrDefault(
+                                            s.getSubjectId(), String.valueOf(s.getSubjectId()));
                             return buildSubjectDisplayName(
                                     name,
                                     formatEffectiveTime(
@@ -254,7 +254,7 @@ public class RoleApprovalLogService {
 
     /** 构建用户显示名列表 */
     private List<String> buildUserDisplayNames(
-            List<RoleUserReq> userList, Map<Long, UserBO> hrUserMap) {
+            List<RoleUserReq> userList, Map<Long, SysUser> hrUserMap) {
         if (userList == null) {
             return Collections.emptyList();
         }
@@ -262,7 +262,7 @@ public class RoleApprovalLogService {
                 .map(
                         u -> {
                             Long userId = Long.parseLong(u.getUserId());
-                            UserBO ub = hrUserMap.get(userId);
+                            SysUser ub = hrUserMap.get(userId);
                             String name = ub != null ? ub.getUserName() : u.getUserName();
                             return buildUserDisplayName(
                                     name,

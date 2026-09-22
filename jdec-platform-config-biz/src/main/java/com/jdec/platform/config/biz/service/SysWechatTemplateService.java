@@ -14,8 +14,8 @@ import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import com.jdec.platform.config.biz.audit.service.SysWechatTemplateLogService;
 import com.jdec.platform.config.biz.audit.service.SysWechatTemplateParamLogService;
 import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.hr.HrQueryService;
 import com.jdec.platform.config.biz.mapper.*;
-import com.jdec.platform.hr.api.UserApi;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -47,7 +47,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final ObjectMapper objectMapper;
-    private final UserApi userApi;
+    private final HrQueryService hrQueryService;
     private final WeChatWorkService weChatWorkService;
     private final SysMessageRecordMapper sysMessageRecordMapper;
     private final SysWechatTemplateLogService wechatTemplateLogService;
@@ -163,7 +163,8 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
             throw new BusinessException(400, "当前用户未绑定手机号");
         }
         String wechatUserId =
-                userApi.getWeChatUserIdByPhone(phone)
+                hrQueryService
+                        .getWeChatUserIdByPhone(phone)
                         .orElseThrow(() -> new BusinessException(400, "当前用户未绑定企业微信账号"));
 
         // 获取参数集

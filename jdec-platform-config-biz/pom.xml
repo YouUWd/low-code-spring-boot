@@ -14,10 +14,6 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-config-api</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-hr-api</artifactId>
-        </dependency>
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
