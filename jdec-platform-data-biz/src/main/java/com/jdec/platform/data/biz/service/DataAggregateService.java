@@ -74,41 +74,7 @@ public class DataAggregateService {
         List<Long> headerFields = extractFieldIdsFromHeader(headerDisplay);
         Map<Long, Long> headerModuleMenuMap = extractModuleMenuMapFromHeader(headerDisplay);
 
-        // 3. 构建底层 DataApi 的 QueryReq 请求
-        QueryReq queryReq =
-                QueryReq.builder()
-                        .moduleId(rootModuleId)
-                        .pageNo(req != null ? req.getPageNo() : null)
-                        .pageSize(req != null ? req.getPageSize() : null)
-                        .fields(headerFields)
-                        .filters(req != null ? req.getFilters() : null)
-                        .sorts(req != null ? req.getSorts() : null)
-                        .build();
-
-        // 4. 调用底层 DataApi 执行查询
-        DataPage<Map<String, Object>> page = dataApi.query(queryReq);
-        List<Map<String, Object>> rawRecords =
-                (page != null) ? page.getRecords() : Collections.emptyList();
-
-        // 5. 转换装配为 DataRecordItem 列表
-        List<DataRecordItem> recordItems = new ArrayList<>();
-        if (rawRecords != null && !rawRecords.isEmpty()) {
-            for (Map<String, Object> rawItem : rawRecords) {
-                DataRecordItem item = transformRecord(rootModuleId, rawItem, headerModuleMenuMap);
-                recordItems.add(item);
-            }
-        }
-
-        // 6. 构建根 ModuleDataNode 数据树 (根节点的 menuId 优先使用表头配置，或回退到传入的 menuId)
-        Long rootMenuId = headerModuleMenuMap.getOrDefault(rootModuleId, menuId);
-        ModuleDataNode dataTree =
-                ModuleDataNode.builder()
-                        .moduleId(rootModuleId)
-                        .menuId(rootMenuId)
-                        .record(recordItems)
-                        .build();
-
-        // 7. 查询根模块及子模块汇总权限 (转换为 1/0)
+        // 3. 查询根模块及子模块汇总权限 (转换为 1/0)
         ModuleSimplePermissionDTO simplePerm = null;
         Long roleId = UserContext.getRoleId();
         if (roleId != null) {
@@ -125,17 +91,15 @@ public class DataAggregateService {
             }
         }
 
-        // 8. 查询审批链按钮数据
-        List<ApprovalRowItem> approvalRows = new ArrayList<>();
+        // 4. 前置查询审批链按钮数据并建立 recordId -> List<btnInfo> 映射
+        Integer approvalType =
+                (req != null && req.getApprovalType() != null) ? req.getApprovalType() : 3;
+        Map<Long, List<Map<String, Object>>> btnGroupMap = new LinkedHashMap<>();
         try {
-            Integer approvalType =
-                    (req != null && req.getApprovalType() != null) ? req.getApprovalType() : 3;
             List<Map<String, Object>> approvalRawList =
                     approvalEngine.getListButton(rootModuleId, approvalType);
 
             if (approvalRawList != null && !approvalRawList.isEmpty()) {
-                Map<Long, List<Map<String, Object>>> btnGroupMap = new LinkedHashMap<>();
-
                 for (Map<String, Object> rawBtn : approvalRawList) {
                     if (rawBtn == null) {
                         continue;
@@ -165,17 +129,126 @@ public class DataAggregateService {
 
                     btnGroupMap.computeIfAbsent(recordId, k -> new ArrayList<>()).add(btnInfo);
                 }
-
-                for (Map.Entry<Long, List<Map<String, Object>>> entry : btnGroupMap.entrySet()) {
-                    Map<String, Object> rowMap = new LinkedHashMap<>();
-                    rowMap.put("id", entry.getKey());
-                    rowMap.put("btnList", entry.getValue());
-                    approvalRows.add(ApprovalRowItem.builder().row(rowMap).build());
-                }
             }
         } catch (Exception ex) {
             log.warn("获取审批链按钮数据失败或当前模块未配置审批流: moduleId={}, err={}", rootModuleId, ex.getMessage());
         }
+
+        // 5. 待办/已办 (approvalType == 1 或 2) 前置过滤处理
+        List<com.jdec.platform.data.api.dto.request.FilterItem> filters =
+                req != null && req.getFilters() != null
+                        ? new ArrayList<>(req.getFilters())
+                        : new ArrayList<>();
+
+        Long rootMenuId = headerModuleMenuMap.getOrDefault(rootModuleId, menuId);
+
+        if (approvalType == 1 || approvalType == 2) {
+            Set<Long> recordIds = btnGroupMap.keySet();
+            if (recordIds.isEmpty()) {
+                // 无待办/已办数据，直接返回空结果，避免无效数据库查询
+                ModuleDataNode emptyDataTree =
+                        ModuleDataNode.builder()
+                                .moduleId(rootModuleId)
+                                .menuId(rootMenuId)
+                                .record(Collections.emptyList())
+                                .build();
+                return MenuDataResp.builder()
+                        .header(headerDisplay.getHeader())
+                        .permission(simplePerm)
+                        .approval(null)
+                        .data(emptyDataTree)
+                        .build();
+            }
+
+            // 获取根模块的 id 字段 fieldId
+            ModuleTreeDTO moduleTree =
+                    configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+            Long idFieldId = null;
+            if (moduleTree != null && moduleTree.getRootModule() != null) {
+                List<ModuleFieldDTO> fields = moduleTree.getRootModule().getFields();
+                if (fields != null) {
+                    for (ModuleFieldDTO f : fields) {
+                        if ("id".equalsIgnoreCase(f.getColumnName())) {
+                            idFieldId = f.getId();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (idFieldId != null) {
+                filters.add(
+                        com.jdec.platform.data.api.dto.request.FilterItem.builder()
+                                .fieldId(idFieldId)
+                                .operator("IN")
+                                .value(new ArrayList<>(recordIds))
+                                .build());
+            } else {
+                log.warn("模块 [{}] 未配置物理主键 [id] 字段，无法对审批 recordIds 进行 SQL 范围过滤", rootModuleId);
+            }
+        }
+
+        // 6. 构建底层 DataApi 的 QueryReq 请求并执行物理分页查询
+        QueryReq queryReq =
+                QueryReq.builder()
+                        .moduleId(rootModuleId)
+                        .pageNo(req != null ? req.getPageNo() : null)
+                        .pageSize(req != null ? req.getPageSize() : null)
+                        .fields(headerFields)
+                        .filters(filters)
+                        .sorts(req != null ? req.getSorts() : null)
+                        .build();
+
+        DataPage<Map<String, Object>> page = dataApi.query(queryReq);
+        List<Map<String, Object>> rawRecords =
+                (page != null) ? page.getRecords() : Collections.emptyList();
+
+        // 7. 转换装配为 DataRecordItem 列表
+        List<DataRecordItem> recordItems = new ArrayList<>();
+        List<ApprovalRowItem> approvalRows = new ArrayList<>();
+        Long currentUserId = UserContext.getUserId();
+
+        if (rawRecords != null && !rawRecords.isEmpty()) {
+            for (Map<String, Object> rawItem : rawRecords) {
+                DataRecordItem item = transformRecord(rootModuleId, rawItem, headerModuleMenuMap);
+                recordItems.add(item);
+
+                // 提取当前记录的主键 ID，匹配装配当前页对应的审批按钮
+                Long recordId = extractRecordId(rawItem, rootModuleId);
+                if (recordId != null) {
+                    List<Map<String, Object>> btnList = btnGroupMap.get(recordId);
+
+                    // 若 approvalType == 3 且审批链中未返回该记录的按钮，根据 created_by 是否为当前登录人兜底补充
+                    if ((btnList == null || btnList.isEmpty()) && approvalType == 3) {
+                        Long createdBy = extractCreatedBy(rawItem, rootModuleId);
+                        Map<String, Object> fallbackBtn = new LinkedHashMap<>();
+                        if (currentUserId != null && Objects.equals(currentUserId, createdBy)) {
+                            fallbackBtn.put("buttonKey", "handle");
+                            fallbackBtn.put("buttonName", "办理");
+                        } else {
+                            fallbackBtn.put("buttonKey", "view");
+                            fallbackBtn.put("buttonName", "查阅");
+                        }
+                        btnList = Collections.singletonList(fallbackBtn);
+                    }
+
+                    if (btnList != null && !btnList.isEmpty()) {
+                        Map<String, Object> rowMap = new LinkedHashMap<>();
+                        rowMap.put("id", recordId);
+                        rowMap.put("btnList", btnList);
+                        approvalRows.add(ApprovalRowItem.builder().row(rowMap).build());
+                    }
+                }
+            }
+        }
+
+        // 8. 构建根 ModuleDataNode 数据树
+        ModuleDataNode dataTree =
+                ModuleDataNode.builder()
+                        .moduleId(rootModuleId)
+                        .menuId(rootMenuId)
+                        .record(recordItems)
+                        .build();
 
         // 9. 组装顶层包含 header, permission, approval 和 data 的响应
         return MenuDataResp.builder()
@@ -530,5 +603,117 @@ public class DataAggregateService {
             }
         }
         return true;
+    }
+
+    /** 从原始记录或展平后的行数据中提取主键 ID */
+    @SuppressWarnings("unchecked")
+    private Long extractRecordId(Map<String, Object> rawItem, Long currentModuleId) {
+        if (rawItem == null || rawItem.isEmpty()) {
+            return null;
+        }
+
+        // 1. 直接取根属性 "id"
+        Object idVal = rawItem.get("id");
+        if (idVal != null) {
+            return parseLong(idVal);
+        }
+
+        // 2. 如果包含模块包裹，例如 { "1001": { "member": { "id": 123 } } }
+        String modKey = String.valueOf(currentModuleId);
+        if (rawItem.containsKey(modKey) && rawItem.get(modKey) instanceof Map<?, ?> innerMap) {
+            Map<String, Object> modContent = (Map<String, Object>) innerMap;
+            if (modContent.containsKey("id")) {
+                return parseLong(modContent.get("id"));
+            }
+            for (Object subVal : modContent.values()) {
+                if (subVal instanceof Map<?, ?> tableMap) {
+                    if (tableMap.containsKey("id")) {
+                        return parseLong(tableMap.get("id"));
+                    }
+                }
+            }
+        }
+
+        // 3. 遍历寻找可能存在的 table.id 或嵌套 map 中的 id
+        for (Map.Entry<String, Object> entry : rawItem.entrySet()) {
+            String key = entry.getKey();
+            if (key.endsWith(".id")) {
+                return parseLong(entry.getValue());
+            }
+            if (entry.getValue() instanceof Map<?, ?> subMap && subMap.containsKey("id")) {
+                return parseLong(subMap.get("id"));
+            }
+        }
+
+        return null;
+    }
+
+    /** 从原始记录或展平后的行数据中提取 created_by 字段值 */
+    @SuppressWarnings("unchecked")
+    private Long extractCreatedBy(Map<String, Object> rawItem, Long currentModuleId) {
+        if (rawItem == null || rawItem.isEmpty()) {
+            return null;
+        }
+
+        // 1. 直接取根属性 "created_by" 或 "createdBy"
+        Object val = rawItem.get("created_by");
+        if (val == null) {
+            val = rawItem.get("createdBy");
+        }
+        if (val != null) {
+            return parseLong(val);
+        }
+
+        // 2. 如果包含模块包裹，例如 { "1001": { "member": { "created_by": 123 } } }
+        String modKey = String.valueOf(currentModuleId);
+        if (rawItem.containsKey(modKey) && rawItem.get(modKey) instanceof Map<?, ?> innerMap) {
+            Map<String, Object> modContent = (Map<String, Object>) innerMap;
+            if (modContent.containsKey("created_by")) {
+                return parseLong(modContent.get("created_by"));
+            }
+            if (modContent.containsKey("createdBy")) {
+                return parseLong(modContent.get("createdBy"));
+            }
+            for (Object subVal : modContent.values()) {
+                if (subVal instanceof Map<?, ?> tableMap) {
+                    if (tableMap.containsKey("created_by")) {
+                        return parseLong(tableMap.get("created_by"));
+                    }
+                    if (tableMap.containsKey("createdBy")) {
+                        return parseLong(tableMap.get("createdBy"));
+                    }
+                }
+            }
+        }
+
+        // 3. 遍历寻找可能存在的 table.created_by 或嵌套 map
+        for (Map.Entry<String, Object> entry : rawItem.entrySet()) {
+            String key = entry.getKey();
+            if (key.endsWith(".created_by") || key.endsWith(".createdBy")) {
+                return parseLong(entry.getValue());
+            }
+            if (entry.getValue() instanceof Map<?, ?> subMap) {
+                if (subMap.containsKey("created_by")) {
+                    return parseLong(subMap.get("created_by"));
+                }
+                if (subMap.containsKey("createdBy")) {
+                    return parseLong(subMap.get("createdBy"));
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private Long parseLong(Object val) {
+        if (val instanceof Number num) {
+            return num.longValue();
+        } else if (val != null) {
+            try {
+                return Long.valueOf(val.toString());
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 }

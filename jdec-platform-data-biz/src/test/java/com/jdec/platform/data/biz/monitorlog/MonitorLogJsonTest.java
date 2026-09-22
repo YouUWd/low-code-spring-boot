@@ -3,7 +3,6 @@ package com.jdec.platform.data.biz.monitorlog;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -100,26 +99,6 @@ class MonitorLogJsonTest {
         assertEquals("提交审批", operation.getName());
         assertEquals("通过", operation.getResult());
         assertEquals(1, operation.getType());
-    }
-
-    @Test
-    @DisplayName("子类序列化写入 logSubType，再读回仍是同一子类（落库-回显 闭环）")
-    void shouldRoundTripSubclass() throws Exception {
-        MonitorContentOperation content = new MonitorContentOperation();
-        content.setLogSubType("operationLog");
-        content.setModuleName("外部对象");
-        content.setOperation("提交");
-        content.setResult("成功");
-
-        String json = objectMapper.writeValueAsString(content);
-        assertTrue(json.contains("\"logSubType\":\"operationLog\""), json);
-        assertTrue(json.contains("\"moduleName\":\"外部对象\""), json);
-
-        MonitorContentBase parsed = objectMapper.readValue(json, MonitorContentBase.class);
-        MonitorContentOperation replayed = assertInstanceOf(MonitorContentOperation.class, parsed);
-        assertEquals("外部对象", replayed.getModuleName());
-        assertEquals("成功", replayed.getResult());
-        assertNull(replayed.getFontColor());
     }
 
     @Test

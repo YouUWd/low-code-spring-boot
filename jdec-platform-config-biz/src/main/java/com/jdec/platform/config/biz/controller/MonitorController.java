@@ -24,7 +24,7 @@ public class MonitorController {
     }
 
     @PostMapping("/sendSystemLog")
-    @Operation(summary = "发送系统菜单日志")
+    @Operation(summary = "发送系统日志")
     public ApiResponse<Void> sendSystemLog() {
         return ApiResponse.customResponse(200, "模拟接口，没有真实实现", null);
     }
