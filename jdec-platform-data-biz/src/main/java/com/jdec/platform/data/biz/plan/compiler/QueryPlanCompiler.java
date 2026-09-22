@@ -496,12 +496,17 @@ public class QueryPlanCompiler {
             }
         }
 
-        // 6. 识别并编译当前主表所需伴生表 (1:1 或 N:1) 的物理 JOIN 规格
+        // 6. 识别并编译当前主表所需伴生表 (1:1 或 N:1) 的物理 JOIN 规格 (同时涵盖投影字段、过滤字段与排序字段)
         List<JoinTableSpec> companionJoins =
                 isVirtual
                         ? Collections.emptyList()
                         : resolveCompanionJoins(
-                                primaryTable, primaryProjectedFields, meta, projectRelations);
+                                primaryTable,
+                                primaryProjectedFields,
+                                node.getFilters(),
+                                node.getSorts(),
+                                meta,
+                                projectRelations);
 
         // 7. 第一性原理：自底向上汇聚子孙模块过滤约束 (Semi-Join / EXISTS 链式上卷，穿透虚拟中间层)
         List<Condition> rollupConditions = new ArrayList<>();
@@ -589,25 +594,60 @@ public class QueryPlanCompiler {
                 .build();
     }
 
-    /** 基于 sys_table_relation 单向定义推导伴生表物理 JOIN 规格 */
+    /** 基于 sys_table_relation 单向定义推导伴生表物理 JOIN 规格 (兼顾投影字段、过滤字段与排序字段) */
     private List<JoinTableSpec> resolveCompanionJoins(
             String primaryTable,
             List<PhysicalFieldSpec> projectedFields,
+            List<FilterItem> filters,
+            List<SortItem> sorts,
             ModuleInfo meta,
             ProjectTableRelationsDTO projectRelations) {
-        if (primaryTable == null
-                || primaryTable.isBlank()
-                || meta == null
-                || projectedFields == null) {
+        if (primaryTable == null || primaryTable.isBlank() || meta == null) {
             return Collections.emptyList();
         }
 
         Set<String> neededCompanionTables = new LinkedHashSet<>();
-        for (PhysicalFieldSpec spec : projectedFields) {
-            if (spec != null && spec.getTableName() != null) {
-                String tbl = spec.getTableName().trim();
-                if (!tbl.equalsIgnoreCase(primaryTable)) {
-                    neededCompanionTables.add(tbl.toLowerCase());
+        if (projectedFields != null) {
+            for (PhysicalFieldSpec spec : projectedFields) {
+                if (spec != null && spec.getTableName() != null) {
+                    String tbl = spec.getTableName().trim();
+                    if (!tbl.equalsIgnoreCase(primaryTable)) {
+                        neededCompanionTables.add(tbl.toLowerCase());
+                    }
+                }
+            }
+        }
+
+        Map<Long, String> fieldTableMap = null;
+        if (meta.getFields() != null) {
+            fieldTableMap = new HashMap<>();
+            for (ModuleFieldDTO f : meta.getFields()) {
+                if (f != null && f.getId() != null && f.getTableName() != null) {
+                    fieldTableMap.put(f.getId(), f.getTableName().trim().toLowerCase());
+                }
+            }
+        }
+
+        // 遍历当前节点过滤条件中引用的字段所涉及的物理表 (支持 options 或过滤字段未投影场景)
+        if (filters != null && fieldTableMap != null) {
+            for (FilterItem filter : filters) {
+                if (filter != null && filter.getFieldId() != null) {
+                    String tbl = fieldTableMap.get(filter.getFieldId());
+                    if (tbl != null && !tbl.equalsIgnoreCase(primaryTable)) {
+                        neededCompanionTables.add(tbl);
+                    }
+                }
+            }
+        }
+
+        // 遍历当前节点排序规则中引用的字段所涉及的物理表 (支持排序字段未投影场景)
+        if (sorts != null && fieldTableMap != null) {
+            for (SortItem sort : sorts) {
+                if (sort != null && sort.getFieldId() != null) {
+                    String tbl = fieldTableMap.get(sort.getFieldId());
+                    if (tbl != null && !tbl.equalsIgnoreCase(primaryTable)) {
+                        neededCompanionTables.add(tbl);
+                    }
                 }
             }
         }

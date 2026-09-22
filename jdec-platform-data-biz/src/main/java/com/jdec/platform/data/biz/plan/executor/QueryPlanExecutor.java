@@ -561,9 +561,22 @@ public class QueryPlanExecutor {
         }
         childCond = childCond.and(distinctField.isNotNull());
 
-        // 向上回溯父级外键关系，构建连接到符合 root 过滤条件主数据的 EXISTS 约束
-        QueryNodePlan parentNode = pathToTarget.get(pathToTarget.size() - 2);
-        String parentTable = parentNode.getPrimaryTable();
+        // 向上回溯寻找最近的物理祖先节点（跳过虚拟模块），构建连接到符合 root 过滤条件主数据的 EXISTS 约束
+        QueryNodePlan physicalParentNode = null;
+        for (int i = pathToTarget.size() - 2; i >= 0; i--) {
+            QueryNodePlan candidate = pathToTarget.get(i);
+            if (candidate != null
+                    && candidate.getPrimaryTable() != null
+                    && !candidate.getPrimaryTable().isBlank()) {
+                physicalParentNode = candidate;
+                break;
+            }
+        }
+        if (physicalParentNode == null) {
+            physicalParentNode = rootPlan;
+        }
+
+        String parentTable = physicalParentNode.getPrimaryTable();
         String parentKey = targetNode.getParentKey() != null ? targetNode.getParentKey() : "id";
         String childFk = targetNode.getParentForeignKey();
 
@@ -571,8 +584,8 @@ public class QueryPlanExecutor {
                 && !childFk.isBlank()
                 && parentTable != null
                 && !parentTable.isBlank()) {
-            // EXISTS (SELECT 1 FROM rootTable LEFT JOIN ... WHERE rootTable.id = childTable.fk AND
-            // rootPlan.condition)
+            // EXISTS (SELECT 1 FROM rootTable LEFT JOIN ... WHERE parentTable.parentKey =
+            // targetPrimaryTable.childFk AND rootPlan.condition)
             SelectJoinStep<?> rootMatchStep =
                     dsl.selectOne().from(DSL.table(DSL.name(rootPrimaryTable)));
             if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
@@ -601,7 +614,7 @@ public class QueryPlanExecutor {
             Condition rootCond =
                     rootPlan.getCondition() != null ? rootPlan.getCondition() : DSL.noCondition();
             Condition correlationCond =
-                    DSL.field(DSL.name(rootPrimaryTable, parentKey))
+                    DSL.field(DSL.name(parentTable, parentKey))
                             .eq(DSL.field(DSL.name(targetPrimaryTable, childFk)));
 
             childCond =

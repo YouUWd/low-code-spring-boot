@@ -21,7 +21,7 @@ public class DataAggregateController {
 
     private final DataAggregateService dataAggregateService;
 
-    @PostMapping("/menu/{menuId}/query")
+    @PostMapping("/menu/{menuId}")
     @Operation(
             summary = "基于菜单 ID 的动态数据列表查询",
             description =
