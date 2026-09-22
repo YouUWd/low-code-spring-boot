@@ -1,16 +1,14 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
-import com.jdec.platform.dataengine.api.dto.model.*;
-import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
-import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
-import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
+import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
+import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
-import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
+import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
@@ -86,18 +84,13 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public ApprovalStepInfo getApprovalStepInfo(ApprovalProcessReq approvalProcessReq) {
-        return null;
-    }
-
-    @Override
-    public VersionCompareInfo getVersionCompareInfo(Long primaryKeyId) {
-        return null;
-    }
-
-    @Override
     public NestedModuleDataDTO processApprovalStatus(ApprovalStatusCallBackReq req) {
         return moduleDataApprovalBizService.processApprovalStatus(req);
+    }
+
+    @Override
+    public List<VersionListResp> getVersionList(VersionListQueryReq versionListQueryReq) {
+        return List.of();
     }
 
     // ======================  深拷贝版本（不修改原始树，返回新树，推荐业务使用） ======================

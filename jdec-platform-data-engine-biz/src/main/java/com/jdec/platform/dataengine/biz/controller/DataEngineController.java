@@ -1,15 +1,14 @@
 package com.jdec.platform.dataengine.biz.controller;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
-import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
+import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,6 +36,13 @@ public class DataEngineController {
     public ApiResponse<DetailDataResp> getDetail(
             @RequestBody DynamicDetailQueryReq detailQueryReq) {
         return ApiResponse.success(dataEngineApi.getDetail(detailQueryReq, "view"));
+    }
+
+    @PostMapping("/menu/version-list")
+    @Operation(summary = "获取版本列表数据", description = "获取版本列表数据")
+    public ApiResponse<List<VersionListResp>> getVersionList(
+            @RequestBody VersionListQueryReq versionListQueryReq) {
+        return ApiResponse.success(dataEngineApi.getVersionList(versionListQueryReq));
     }
 
     @PostMapping("/save")
