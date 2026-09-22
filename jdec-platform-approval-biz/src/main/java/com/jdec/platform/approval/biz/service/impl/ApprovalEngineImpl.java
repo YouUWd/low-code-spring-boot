@@ -18,6 +18,7 @@ import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
 import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -56,6 +57,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final SysButtonApi sysButtonApi;
     private final SysRolePermissionApi sysRolePermissionApi;
     private final ConfigChangeMessagePublisher messagePublisher;
+    private final OpenMenuApi openMenuApi;
     private final AsyncTaskService asyncTaskService; // 注入异步 Service
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
@@ -435,7 +437,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     @Override
-    public List<Map<String, Object>> getListNumber(Long moduleId) {
+    public List<Map<String, Object>> getListNumber(Long menuId) {
+        Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);
         LoginUser loginUserInfo = SecurityUtils.getLoginUser();
         boolean isMockLogin =
                 loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());

@@ -175,6 +175,7 @@ public class SysMenuService implements SysMenuApi, OpenMenuApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Long getModuleIdByMenuId(Long menuId) {
         SysMenu menu = selectMenuById(menuId);
         if (menu == null) {
