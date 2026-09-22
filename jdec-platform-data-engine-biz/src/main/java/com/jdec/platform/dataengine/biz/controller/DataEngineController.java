@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.controller;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -47,5 +48,11 @@ public class DataEngineController {
     @Operation(summary = "保存模块数据", description = "保存模块数据")
     public ApiResponse<Long> save(@RequestBody DynamicSaveReq req) {
         return ApiResponse.success(dataEngineApi.save(req));
+    }
+
+    @PostMapping("/process")
+    @Operation(summary = "审批状态回调", description = "用于测试")
+    public ApiResponse<Object> save(@RequestBody ApprovalStatusCallBackReq req) {
+        return ApiResponse.success(dataEngineApi.processApprovalStatus(req));
     }
 }

@@ -59,4 +59,12 @@ public interface CommonConstant {
     String TABLE_DEFAULT_PRIMARY_KEY_FIELD = "id";
 
     String TABLE_DEFAULT_DELETED_FIELD = "deleted";
+
+    String TABLE_DEFAULT_BUSINESS_STATUS_FIELD = "business_status";
+
+    String TABLE_DEFAULT_VERSION_NO_FIELD = "version_no";
+
+    String TABLE_DEFAULT_MODULE_ID_FIELD = "module_id";
+
+    String TABLE_DEFAULT_BUSINESS_NO_FIELD = "business_no";
 }

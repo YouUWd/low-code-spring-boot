@@ -26,6 +26,10 @@ public class DataPersistenceUtil {
         return deleted;
     }
 
+    public static Object getTableRowFieldValue(Map<String, Object> record, String field) {
+        return record.get(field);
+    }
+
     public static Map<String, Object> getTableRowMapFromWideRow(
             Map<String, Object> wideRowMap, String tableName) {
         Map<String, Object> rowMap = new HashMap<>();

@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.service;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalProcessReq;
+import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalStepInfo;
@@ -10,6 +11,7 @@ import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionCompareInfo;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
+import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.ArrayList;
@@ -27,6 +29,7 @@ public class DataEngineService implements DataEngineApi {
 
     private final DynamicQueryService dynamicQueryService;
     private final ModuleDataPersistenceService moduleDataPersistenceService;
+    private final ModuleDataApprovalBizService moduleDataApprovalBizService;
 
     private final DataModuleConfigService dataModuleConfigService;
 
@@ -87,6 +90,11 @@ public class DataEngineService implements DataEngineApi {
     @Override
     public VersionCompareInfo getVersionCompareInfo(Long primaryKeyId) {
         return null;
+    }
+
+    @Override
+    public NestedModuleDataDTO processApprovalStatus(ApprovalStatusCallBackReq req) {
+        return moduleDataApprovalBizService.processApprovalStatus(req);
     }
 
     // ======================  深拷贝版本（不修改原始树，返回新树，推荐业务使用） ======================
