@@ -12,11 +12,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 /** 字段权限 元数据 */
 @Service
 @RequiredArgsConstructor
+@Order(-100)
 public class FieldFilterDetailDataProcessServiceImpl implements DetailDataProcessService {
     private final Set<QueryType> TYPE_SET = Set.of(QueryType.DETAIL_APPROVAL_HISTORY);
 
