@@ -5,6 +5,7 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
+import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
@@ -83,13 +84,16 @@ public class ModuleDataApprovalBizService {
         }
         // 终态需要切 快照保存
         NestedModuleDataDTO result = null;
+        DynamicDetailQueryReq queryReq = new DynamicDetailQueryReq();
+        queryReq.setModuleId(rootModule.getModuleId());
+        queryReq.setId(req.getDataId());
+        queryReq.setVersion(req.getVersionNo());
+        queryReq.setFilterFields(new ArrayList<>(filterField));
+        queryReq.setShowVersionCompare(false);
         if (req.getIsTermination() != null && req.getIsTermination()) {
+
             List<NestedModuleDataDTO> nestedModuleDataDTOList =
-                    dynamicQueryService.getDetail(
-                            rootModuleMainTableId,
-                            req.getDataId(),
-                            null,
-                            filterField.stream().toList());
+                    dynamicQueryService.getDetail(queryReq, null);
 
             result = nestedModuleDataDTOList.get(0);
             Object versionNo =
@@ -125,11 +129,7 @@ public class ModuleDataApprovalBizService {
             iModuleDataSnapshotContentService.save(moduleDataSnapshotContent);
         } else {
             List<NestedModuleDataDTO> nestedModuleDataDTOList =
-                    dynamicQueryService.getDetail(
-                            rootModuleMainTableId,
-                            req.getDataId(),
-                            null,
-                            filterField.stream().toList());
+                    dynamicQueryService.getDetail(queryReq, null);
             result = nestedModuleDataDTOList.get(0);
         }
         // todo  result   要构建 版本间的字段 对比 返回给审批链
