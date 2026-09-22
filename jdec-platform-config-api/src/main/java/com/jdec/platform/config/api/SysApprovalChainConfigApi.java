@@ -27,6 +27,9 @@ public interface SysApprovalChainConfigApi {
     /** 查询审批链配置详情（返回同模块同类型的所有配置） */
     ModuleApprovalChainConfigResp getApprovalConfig(Long moduleId, Long approvalTypeId);
 
+    /** 查询模块是否有审批链（不统计停用） */
+    Boolean getApprovalStatus(List<Long> moduleIds);
+
     /** 根据模块ID和角色ID查询包含角色的审批链类型ID列表 */
     List<Long> getApprovalTypeIdList(List<Long> moduleIds, Long roleId);
 }

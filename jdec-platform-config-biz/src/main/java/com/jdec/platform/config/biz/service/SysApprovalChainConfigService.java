@@ -1261,13 +1261,29 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
         // 1. 查询模块默认启用的审批链类型
         long chainTypeId = 0L;
         if (Objects.nonNull(approvalTypeId) && approvalTypeId > 0) {
-            chainTypeId = approvalTypeId;
+            LambdaQueryWrapper<SysApprovalChainType> typeQueryFirst = Wrappers.lambdaQuery();
+            typeQueryFirst.eq(SysApprovalChainType::getModuleId, moduleId);
+            typeQueryFirst.eq(SysApprovalChainType::getEnabled, true);
+            typeQueryFirst.eq(SysApprovalChainType::getId, approvalTypeId);
+            SysApprovalChainType chainTypeFirst =
+                    sysApprovalChainTypeMapper.selectOne(typeQueryFirst);
+            chainTypeId = chainTypeFirst != null ? chainTypeFirst.getId() : 0L;
         } else {
             LambdaQueryWrapper<SysApprovalChainType> typeQuery = Wrappers.lambdaQuery();
             typeQuery.eq(SysApprovalChainType::getModuleId, moduleId);
+            typeQuery.eq(SysApprovalChainType::getEnabled, true);
             typeQuery.eq(SysApprovalChainType::getDefaultFlag, true).last("LIMIT 1");
             SysApprovalChainType chainType = sysApprovalChainTypeMapper.selectOne(typeQuery);
             chainTypeId = chainType != null ? chainType.getId() : 0L;
+            if (chainTypeId == 0) {
+                LambdaQueryWrapper<SysApprovalChainType> typeQueryFirst = Wrappers.lambdaQuery();
+                typeQueryFirst.eq(SysApprovalChainType::getModuleId, moduleId);
+                typeQueryFirst.eq(SysApprovalChainType::getEnabled, true);
+                typeQueryFirst.orderByAsc(SysApprovalChainType::getId).last("LIMIT 1");
+                SysApprovalChainType chainTypeFirst =
+                        sysApprovalChainTypeMapper.selectOne(typeQueryFirst);
+                chainTypeId = chainTypeFirst != null ? chainTypeFirst.getId() : 0L;
+            }
         }
         // 2. 依然为空则抛出异常
         if (chainTypeId == 0) {
@@ -1375,6 +1391,16 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
             }
         }
         return result;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public Boolean getApprovalStatus(List<Long> moduleIds) {
+        LambdaQueryWrapper<SysApprovalChainType> typeQuery = Wrappers.lambdaQuery();
+        typeQuery.in(SysApprovalChainType::getModuleId, moduleIds);
+        typeQuery.eq(SysApprovalChainType::getEnabled, true);
+        Long num = sysApprovalChainTypeMapper.selectCount(typeQuery);
+        return num > 0;
     }
 
     /** 根据模块ID和角色ID查询包含角色的审批链类型ID列表 */
