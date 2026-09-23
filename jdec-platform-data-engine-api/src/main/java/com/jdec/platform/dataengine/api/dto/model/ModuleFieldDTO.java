@@ -40,9 +40,9 @@ public class ModuleFieldDTO {
     @JsonIgnore
     private Integer sortOrder;
 
-    private Boolean apply = true;
+    private Boolean apply = false;
 
-    private Boolean view = true;
+    private Boolean view = false;
 
-    private Boolean edit = true;
+    private Boolean edit = false;
 }

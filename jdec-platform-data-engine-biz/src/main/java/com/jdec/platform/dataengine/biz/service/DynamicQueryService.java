@@ -11,7 +11,9 @@ import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
+import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
+import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
@@ -29,14 +31,13 @@ import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.jooq.Condition;
-import org.jooq.DSLContext;
+import org.jooq.*;
 import org.jooq.Record;
-import org.jooq.Result;
 import org.jooq.impl.DSL;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -985,44 +986,6 @@ public class DynamicQueryService {
         return allRightField;
     }
 
-    /** 批量抓取当前页主表 ID 集合关联的 1:N 从表记录 */
-    //    private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
-    //            DSLContext dsl, SysModuleResp completeResp, List<Long> primaryIds) {
-    //
-    //        Map<String, Map<Long, List<Map<String, Object>>>> result = new HashMap<>();
-    //        if (primaryIds == null || primaryIds.isEmpty() || completeResp.getModuleTables() ==
-    // null) {
-    //            return result;
-    //        }
-    //
-    //        for (ModuleTableDTO tableDto : completeResp.getModuleTables()) {
-    //            String rType = tableDto.getRelationType();
-    //            if ("1:N".equalsIgnoreCase(rType) || "ONE_TO_MANY".equalsIgnoreCase(rType)) {
-    //                String tableName = tableDto.getTableName();
-    //                String rightField = tableDto.getJoinRightField(); // 外键字段, 如 student_id
-    //
-    //                Result<Record> subRecords =
-    //                        dsl.select(DSL.asterisk())
-    //                                .from(DSL.table(DSL.name(tableName)))
-    //                                .where(DSL.field(DSL.name(tableName,
-    // rightField)).in(primaryIds))
-    //                                .fetch();
-    //
-    //                Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
-    //                for (Record r : subRecords) {
-    //                    Map<String, Object> rMap = r.intoMap();
-    //                    Object fkVal = rMap.get(rightField);
-    //                    if (fkVal instanceof Number fkNum) {
-    //                        grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
-    //                                .add(rMap);
-    //                    }
-    //                }
-    //                result.put(tableName, grouped);
-    //            }
-    //        }
-    //        return result;
-    //    }
-
     /**
      * 森林查找：入参多个根节点List，找到第一个匹配节点值的节点，返回其整个子树
      *
@@ -1110,5 +1073,111 @@ public class DynamicQueryService {
             // 当前节点不是目标节点，且没有任何子节点需要保留 → 裁掉
             return null;
         }
+    }
+
+    public List<VersionListResp> getVersionList(VersionListQueryReq versionListQueryReq) {
+        Long id = versionListQueryReq.getId();
+        Long moduleId = versionListQueryReq.getModuleId();
+
+        SysModuleInfo sysModuleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+
+        String primaryTable = sysModuleInfo.getPrimaryTable();
+
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        SelectJoinStep<Record> query =
+                dslContext.select(DSL.asterisk()).from(DSL.name(primaryTable));
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+
+        conditions.add(DSL.field(DSL.name(primaryTable, "module_id")).eq(moduleId));
+        conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
+
+        query.where(conditions);
+
+        query.stream().limit(1);
+
+        Record recordsResult = query.fetchOne();
+
+        List<VersionListResp> versionList = new ArrayList<>();
+
+        if (Objects.nonNull(recordsResult)) {
+            Map<String, Object> resultMap = recordsResult.intoMap();
+
+            if (resultMap.containsKey("version_no")) {
+                Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
+                versionList.add(
+                        VersionListResp.builder()
+                                .version(versionNo)
+                                .history(false)
+                                .btnType("view")
+                                .build());
+            }
+        }
+
+        List<VersionListResp> historyVersionList = getHistoryVersionList(moduleId, id);
+
+        if (!CollectionUtils.isEmpty(historyVersionList)) {
+            versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
+        }
+
+        versionList.addAll(historyVersionList);
+
+        return versionList;
+    }
+
+    private List<VersionListResp> getHistoryVersionList(Long moduleId, Long id) {
+
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        SelectJoinStep<Record> query =
+                dslContext.select(DSL.asterisk()).from(DSL.name("module_data_snapshot_content"));
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+
+        conditions.add(
+                DSL.field(DSL.name("module_data_snapshot_content", "root_module_id")).eq(moduleId));
+        conditions.add(
+                DSL.field(DSL.name("module_data_snapshot_content", "root_table_data_id")).eq(id));
+
+        query.orderBy(
+                DSL.field(DSL.name("module_data_snapshot_content", "root_table_data_version"))
+                        .desc());
+
+        query.where(conditions);
+
+        Result<Record> recordsResult = query.fetch();
+
+        List<VersionListResp> historyVersionList = new ArrayList<>();
+
+        for (Record r : recordsResult) {
+            Map<String, Object> resultMap = r.intoMap();
+            if (Objects.nonNull(resultMap.get("root_table_data_version"))) {
+                Integer versionNo =
+                        Integer.parseInt(String.valueOf(resultMap.get("root_table_data_version")));
+                historyVersionList.add(
+                        VersionListResp.builder()
+                                .version(versionNo)
+                                .history(true)
+                                .btnType("view")
+                                .build());
+            }
+        }
+
+        historyVersionList.sort(Comparator.comparing(VersionListResp::getVersion).reversed());
+
+        if (!CollectionUtils.isEmpty(historyVersionList)) {
+            // 设置上一版本版本号
+            int i = 0;
+            int last = (historyVersionList.size() - 1);
+            while (i < (last)) {
+                historyVersionList.get(i).setPreVersion(historyVersionList.get(i + 1).getVersion());
+                i++;
+            }
+        }
+
+        return historyVersionList;
     }
 }
