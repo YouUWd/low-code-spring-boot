@@ -28,6 +28,8 @@ public class HistoryVersionCompareDataProcessServiceImpl implements DetailDataPr
 
     private final JooqContextFactory jooqContextFactory;
 
+    private final ModuleTreeDiffService moduleTreeDiffService;
+
     private final Set<QueryType> TYPE_SET = Set.of(QueryType.DETAIL_APPROVAL_HISTORY);
 
     @Override
@@ -39,11 +41,13 @@ public class HistoryVersionCompareDataProcessServiceImpl implements DetailDataPr
     public void processAssembleData(
             List<NestedModuleDataDTO> records, DataIntegrationContext context) {
         List<NestedModuleDataDTO> preVersionData = getPreVersionData(context);
-        if (CollectionUtils.isEmpty(records) || CollectionUtils.isEmpty(preVersionData)) {
+        if (CollectionUtils.isEmpty(records)) {
             return;
         }
-        CurrentVersionCompareDataProcessServiceImpl.ModuleTreeDiffUtil.diffModuleTree(
-                preVersionData.get(0), records.get(0), new HashMap<>());
+        moduleTreeDiffService.diffModuleTree(
+                CollectionUtils.isEmpty(preVersionData) ? null : preVersionData.get(0),
+                records.get(0),
+                new HashMap<>());
 
         log.debug("历史版本查询版本对比方法触发。");
     }
