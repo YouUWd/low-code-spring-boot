@@ -207,16 +207,13 @@ public class TreeResultAssembler {
                     cleanChildRows, sameModuleSubTablePlans, rawDataByNode);
         }
 
-        // 4. 将分组后的子模块实体直接挂载在目标容器的 [childModuleId] 键下 (1:1 挂载单对象 Map，1:N 挂载 List)
-        String childModKey = String.valueOf(childModId);
-        boolean isOneToOne = "1:1".equalsIgnoreCase(childPlan.getParentRelationType());
-
+        // 4. 将分组后的子模块实体挂载在目标容器的 children 列表中 (自相似读写同构)
         for (Map<String, Object> parentRow : parentRecords) {
             Map<String, Object> targetContainer = containerResolver.apply(parentRow);
             if (targetContainer == null) {
                 log.warn(
                         "[TreeResultAssembler] 无法获取父行对应的目标容器(targetContainer=null)，子模块挂载失败: childModuleId={}",
-                        childModKey);
+                        childModId);
                 continue;
             }
             Object pkVal = extractRowPrimaryId(parentRow);
@@ -225,30 +222,39 @@ public class TreeResultAssembler {
                         groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
 
                 log.debug(
-                        "[TreeResultAssembler] 父行匹配装配: parentPkVal={}, childModuleKey={}, 匹配到子实体行数={}",
+                        "[TreeResultAssembler] 父行匹配装配: parentPkVal={}, childModuleId={}, 匹配到子实体行数={}",
                         pkNum.longValue(),
-                        childModKey,
+                        childModId,
                         matchedChildren.size());
 
-                if (isOneToOne) {
-                    Map<String, Object> singleChild =
-                            matchedChildren.isEmpty() ? null : matchedChildren.get(0);
-                    targetContainer.put(childModKey, singleChild);
-                } else {
-                    targetContainer.put(childModKey, matchedChildren);
-                }
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> childrenList =
+                        (List<Map<String, Object>>)
+                                targetContainer.computeIfAbsent("children", k -> new ArrayList<>());
 
-                // 5. 🌟 递归自相似：以当前匹配的子实体列表为父级，直接向下装配孙模块（如 106 挂在 104 实体行内）
+                Map<String, Object> childModuleNode = new LinkedHashMap<>();
+                childModuleNode.put("moduleId", childModId);
+                childModuleNode.put("records", matchedChildren);
+                childrenList.add(childModuleNode);
+
+                // 5. 🌟 递归自相似：以当前匹配的子实体列表为父级，直接向下装配孙模块
                 if (!subModulePlans.isEmpty() && !matchedChildren.isEmpty()) {
                     assembleChildrenRecursively(
                             matchedChildren, childModId, subModulePlans, rawDataByNode);
                 }
             } else {
                 log.warn(
-                        "[TreeResultAssembler] 父行主键 pkVal 非数值或为空，置空挂载: pkVal={}, childModuleKey={}",
+                        "[TreeResultAssembler] 父行主键 pkVal 非数值或为空，置空挂载: pkVal={}, childModuleId={}",
                         pkVal,
-                        childModKey);
-                targetContainer.put(childModKey, isOneToOne ? null : Collections.emptyList());
+                        childModId);
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> childrenList =
+                        (List<Map<String, Object>>)
+                                targetContainer.computeIfAbsent("children", k -> new ArrayList<>());
+                Map<String, Object> childModuleNode = new LinkedHashMap<>();
+                childModuleNode.put("moduleId", childModId);
+                childModuleNode.put("records", Collections.emptyList());
+                childrenList.add(childModuleNode);
             }
         }
     }

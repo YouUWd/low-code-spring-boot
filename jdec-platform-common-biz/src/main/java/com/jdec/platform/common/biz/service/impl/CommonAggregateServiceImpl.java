@@ -146,13 +146,16 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
             String rootModKey = String.valueOf(rootModuleId);
-            for (Map<String, Object> wrappedRecord : rawDataPage.getRecords()) {
-                if (wrappedRecord == null) {
+            for (Map<String, Object> rawRecord : rawDataPage.getRecords()) {
+                if (rawRecord == null) {
                     continue;
                 }
                 @SuppressWarnings("unchecked")
                 Map<String, Object> rootRowData =
-                        (Map<String, Object>) wrappedRecord.getOrDefault(rootModKey, wrappedRecord);
+                        rawRecord.containsKey(rootModKey)
+                                        && rawRecord.get(rootModKey) instanceof Map<?, ?>
+                                ? (Map<String, Object>) rawRecord.get(rootModKey)
+                                : rawRecord;
                 rootNode.getRecord().add(buildDataRecordItem(rootModuleId, menuId, rootRowData));
             }
         }
@@ -202,8 +205,14 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         if (dataDetail != null && dataDetail.getData() != null) {
-            dataTree.getRecord()
-                    .add(buildDataRecordItem(rootModuleId, menuId, dataDetail.getData()));
+            String rootModKey = String.valueOf(rootModuleId);
+            Map<String, Object> rawData = dataDetail.getData();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> rootRowData =
+                    rawData.containsKey(rootModKey) && rawData.get(rootModKey) instanceof Map<?, ?>
+                            ? (Map<String, Object>) rawData.get(rootModKey)
+                            : rawData;
+            dataTree.getRecord().add(buildDataRecordItem(rootModuleId, menuId, rootRowData));
         }
 
         // 4. 构建模块元数据配置列表 (ModuleMetaDTO)
@@ -240,8 +249,47 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             String key = entry.getKey();
             Object value = entry.getValue();
 
-            if (value instanceof Map<?, ?> subMap) {
-                // 判断是否为物理表空间 map (如 key=info 或 key 为子模块ID)
+            // 1. 标准 children 树解析
+            if ("children".equals(key) && value instanceof List<?> childrenList) {
+                for (Object childObj : childrenList) {
+                    if (childObj instanceof Map<?, ?> childMap) {
+                        Long subModId = null;
+                        Object modIdObj = childMap.get("moduleId");
+                        if (modIdObj instanceof Number num) {
+                            subModId = num.longValue();
+                        } else if (modIdObj != null) {
+                            try {
+                                subModId = Long.valueOf(modIdObj.toString());
+                            } catch (Exception ignored) {
+                            }
+                        }
+
+                        List<DataRecordItem> childItems = new ArrayList<>();
+                        Object recordsObj = childMap.get("records");
+                        if (recordsObj instanceof List<?> recList) {
+                            for (Object recItem : recList) {
+                                if (recItem instanceof Map<?, ?> castedMap) {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> mapItem = (Map<String, Object>) castedMap;
+                                    childItems.add(buildDataRecordItem(subModId, null, mapItem));
+                                }
+                            }
+                        } else if (recordsObj instanceof Map<?, ?> singleMap) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> mapItem = (Map<String, Object>) singleMap;
+                            childItems.add(buildDataRecordItem(subModId, null, mapItem));
+                        }
+
+                        ModuleDataNode childNode =
+                                ModuleDataNode.builder()
+                                        .moduleId(subModId)
+                                        .record(childItems)
+                                        .build();
+                        childrenNodes.add(childNode);
+                    }
+                }
+            } else if (value instanceof Map<?, ?> subMap) {
+                // 判断是否为历史数字 key 子模块或物理表空间 map (如 key=info)
                 boolean isModuleIdKey = false;
                 Long subModId = null;
                 try {
