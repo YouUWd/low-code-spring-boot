@@ -1,5 +1,6 @@
 package com.jdec.platform.data.biz.plan.executor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
+import org.jooq.JSON;
 import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SelectJoinStep;
@@ -171,10 +173,6 @@ public class QueryPlanExecutor {
                     if (spec.getColumnName() != null) {
                         String tbl =
                                 spec.getTableName() != null ? spec.getTableName() : primaryTable;
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> tableMap =
-                                (Map<String, Object>)
-                                        rootRow.computeIfAbsent(tbl, k -> new LinkedHashMap<>());
                         try {
                             String alias =
                                     tbl.equalsIgnoreCase(primaryTable)
@@ -184,8 +182,17 @@ public class QueryPlanExecutor {
                             try {
                                 val = r.get(alias);
                             } catch (Exception e) {
-                                val = r.get(spec.getColumnName());
+                                try {
+                                    val = r.get(spec.getColumnName());
+                                } catch (Exception ignored) {
+                                }
                             }
+                            val = parseIfJson(val);
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> tableMap =
+                                    (Map<String, Object>)
+                                            rootRow.computeIfAbsent(
+                                                    tbl, k -> new LinkedHashMap<>());
                             tableMap.put(spec.getColumnName(), val);
                         } catch (Exception ignored) {
                         }
@@ -373,6 +380,7 @@ public class QueryPlanExecutor {
                                 } catch (Exception ignored) {
                                 }
                             }
+                            val = parseIfJson(val);
                             @SuppressWarnings("unchecked")
                             Map<String, Object> targetTableMap =
                                     (Map<String, Object>)
@@ -755,6 +763,38 @@ public class QueryPlanExecutor {
 
             return DSL.exists(intermediateStep.where(currentCond));
         }
+    }
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** 自动将 JSON 字符串或 jOOQ JSON 对象转换为结构化的 List/Map，保持返回值纯净 */
+    private Object parseIfJson(Object val) {
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof JSON jooqJson) {
+            String jsonStr = jooqJson.data();
+            if (jsonStr == null || jsonStr.isBlank()) {
+                return null;
+            }
+            try {
+                return objectMapper.readValue(jsonStr, Object.class);
+            } catch (Exception e) {
+                return jsonStr;
+            }
+        }
+        if (val instanceof String str) {
+            String trimmed = str.trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
+                    || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                try {
+                    return objectMapper.readValue(trimmed, Object.class);
+                } catch (Exception ignored) {
+                    return val;
+                }
+            }
+        }
+        return val;
     }
 
     private boolean findPathToField(

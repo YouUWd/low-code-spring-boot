@@ -311,8 +311,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 } else {
                     for (Map.Entry<?, ?> colEntry : subMap.entrySet()) {
                         String colName = Objects.toString(colEntry.getKey(), "");
-                        flatRow.put(key + "." + colName, colEntry.getValue());
-                        flatRow.put(colName, colEntry.getValue());
+                        if (!colName.isBlank()) {
+                            flatRow.put(key + "." + colName, colEntry.getValue());
+                        }
                     }
                 }
             } else if (value instanceof List<?> listVal) {
@@ -443,6 +444,16 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             for (DataRecordItem item : dataNode.getRecord()) {
                 if (item != null && item.getRow() != null) {
                     Object idObj = item.getRow().get("id");
+                    if (idObj == null) {
+                        for (Map.Entry<String, Object> entry : item.getRow().entrySet()) {
+                            if ("id".equalsIgnoreCase(entry.getKey())
+                                    || entry.getKey().endsWith(".id")
+                                    || entry.getKey().endsWith(".ID")) {
+                                idObj = entry.getValue();
+                                break;
+                            }
+                        }
+                    }
                     if (idObj instanceof Number num) {
                         Long recordId = num.longValue();
                         List<Map<String, Object>> btns =

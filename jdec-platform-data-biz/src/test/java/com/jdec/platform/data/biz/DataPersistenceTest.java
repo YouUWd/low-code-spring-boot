@@ -20,12 +20,14 @@ import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.service.DataPersistenceService;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -40,6 +42,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+/**
+ * 数据持久化引擎 (Save Engine) 单元测试
+ *
+ * <p>基于 config_center、school 和 company 真实业务元数据与关系拓扑设计：
+ *
+ * <p>1. School 多级深层树：学生档案 (101) -> 选课 (105) -> 选课考核分项 (108) 1:N:N 级联持久化与外键自动传播
+ *
+ * <p>2. Company 外部对象树：外部对象 (1001) -> 基本信息 (1002 1:1) / 人员 (1003 1:N)
+ *
+ * <p>3. 虚拟容器模块穿透：外部对象 (1001) -> 虚拟联系方式 (1020) -> 地址 (1005 1:1) & 联系方式 (1006 1:N)
+ */
 @ExtendWith(MockitoExtension.class)
 class DataPersistenceTest {
 
@@ -51,78 +64,44 @@ class DataPersistenceTest {
     private DataPersistenceService dataPersistenceService;
 
     private DSLContext dslContext;
-    private ModuleInfo mockStudentModule;
-    private ModuleInfo mockCourseModule;
-    private Map<Long, ModuleInfo> allKnownModules = new HashMap<>();
+    private final Map<Long, ModuleInfo> allKnownModules = new HashMap<>();
+    private final List<TableRelationDTO> allKnownRelations = new ArrayList<>();
+    private final List<String> executedSqlList = new ArrayList<>();
+    private final AtomicLong idGenerator = new AtomicLong(2000L);
 
     @BeforeEach
     void setUp() {
+        executedSqlList.clear();
+        idGenerator.set(2000L);
+
         MockDataProvider provider =
                 new MockDataProvider() {
                     @Override
                     public MockResult[] execute(MockExecuteContext ctx) {
-                        DSLContext create = DSL.using(SQLDialect.POSTGRES);
-                        var result = create.newResult(DSL.field("id", Long.class));
-                        var record = create.newRecord(DSL.field("id", Long.class));
-                        record.setValue(DSL.field("id", Long.class), 2001L);
-                        result.add(record);
-                        return new MockResult[] {new MockResult(1, result)};
+                        String sql = ctx.sql();
+                        executedSqlList.add(sql);
+                        DSLContext create = DSL.using(SQLDialect.MYSQL);
+
+                        if (sql.toLowerCase().contains("returning")
+                                || sql.toLowerCase().contains("insert into")
+                                || sql.toLowerCase().contains("last_insert_id")) {
+                            long newId = idGenerator.incrementAndGet();
+                            var result = create.newResult(DSL.field("id", Long.class));
+                            var record = create.newRecord(DSL.field("id", Long.class));
+                            record.setValue(DSL.field("id", Long.class), newId);
+                            result.add(record);
+                            return new MockResult[] {new MockResult(1, result)};
+                        }
+
+                        return new MockResult[] {new MockResult(1, create.newResult())};
                     }
                 };
 
         MockConnection connection = new MockConnection(provider);
-        dslContext = DSL.using(connection, SQLDialect.POSTGRES);
+        dslContext = DSL.using(connection, SQLDialect.MYSQL);
         lenient().when(jooqDataContextFactory.getContext()).thenReturn(dslContext);
 
-        // 模块 101: 学生档案 (主表 student，从表 student_profile)
-        mockStudentModule =
-                ModuleInfo.builder()
-                        .moduleId(101L)
-                        .moduleCode("MOD-STUDENT")
-                        .primaryTable("student")
-                        .parentId(0L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(1001L)
-                                                .tableName("student")
-                                                .columnName("name")
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1002L)
-                                                .tableName("student")
-                                                .columnName("student_no")
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1003L)
-                                                .tableName("student_profile")
-                                                .columnName("emergency_phone")
-                                                .build()))
-                        .build();
-
-        // 模块 103: 选课管理 (主表 student_course)
-        mockCourseModule =
-                ModuleInfo.builder()
-                        .moduleId(103L)
-                        .moduleCode("MOD-STUDENT-COURSE")
-                        .primaryTable("student_course")
-                        .parentId(101L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(1004L)
-                                                .tableName("student_course")
-                                                .columnName("course_name")
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1005L)
-                                                .tableName("student_course")
-                                                .columnName("student_id")
-                                                .build()))
-                        .build();
-
-        allKnownModules.put(101L, mockStudentModule);
-        allKnownModules.put(103L, mockCourseModule);
+        initMockMetadata();
 
         lenient()
                 .when(configApi.getModuleTree(any(), any(), anyLong()))
@@ -134,6 +113,7 @@ class DataPersistenceTest {
                                 return null;
                             }
 
+                            String projectNo = rootId < 1000L ? "school" : "company";
                             Set<Long> allowedIds = new LinkedHashSet<>();
                             Map<Long, ModuleInfo> modMap = new LinkedHashMap<>();
                             Map<Long, List<Long>> p2c = new LinkedHashMap<>();
@@ -170,7 +150,7 @@ class DataPersistenceTest {
 
                             return ModuleTreeDTO.builder()
                                     .rootModuleId(rootId)
-                                    .projectNo("company")
+                                    .projectNo(projectNo)
                                     .subjectId(1L)
                                     .rootModule(rootInfo)
                                     .moduleMap(modMap)
@@ -180,26 +160,10 @@ class DataPersistenceTest {
                                     .allowedModuleIds(allowedIds)
                                     .build();
                         });
-        List<TableRelationDTO> mockRelations =
-                List.of(
-                        TableRelationDTO.builder()
-                                .mainTable("student")
-                                .mainField("id")
-                                .joinTable("student_profile")
-                                .joinField("student_id")
-                                .relationType("1:1")
-                                .build(),
-                        TableRelationDTO.builder()
-                                .mainTable("student")
-                                .mainField("id")
-                                .joinTable("student_course")
-                                .joinField("student_id")
-                                .relationType("1:N")
-                                .build());
 
         Map<String, List<TableRelationDTO>> forwardMap = new HashMap<>();
         Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
-        for (TableRelationDTO r : mockRelations) {
+        for (TableRelationDTO r : allKnownRelations) {
             forwardMap
                     .computeIfAbsent(
                             r.getMainTable().toLowerCase(), k -> new java.util.ArrayList<>())
@@ -211,8 +175,8 @@ class DataPersistenceTest {
         }
         ProjectTableRelationsDTO mockProjectRelations =
                 ProjectTableRelationsDTO.builder()
-                        .projectNo("company")
-                        .allRelations(mockRelations)
+                        .projectNo("school")
+                        .allRelations(allKnownRelations)
                         .forwardRelations(forwardMap)
                         .reverseRelations(reverseMap)
                         .build();
@@ -226,155 +190,438 @@ class DataPersistenceTest {
         dataPersistenceService = new DataPersistenceService(savePlanCompiler, savePlanExecutor);
     }
 
-    @Test
-    @DisplayName("测试单模块同构保存: records 单条主记录持久化")
-    void testSaveSingleModule() {
-        Map<String, Object> recordData = new HashMap<>();
-        recordData.put("name", "李四");
-        recordData.put("student_no", "S002");
-        recordData.put("emergency_phone", "13800000002");
+    private void initMockMetadata() {
+        allKnownModules.clear();
+        allKnownRelations.clear();
 
-        SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(recordData)).build();
+        // ------------------------- School 模块元数据 -------------------------
+        ModuleInfo mockModule101 =
+                ModuleInfo.builder()
+                        .moduleId(101L)
+                        .moduleCode("MOD-SCHOOL-STUDENT")
+                        .primaryTable("student")
+                        .parentId(0L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(1L)
+                                                .tableName("student")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(2L)
+                                                .tableName("student")
+                                                .columnName("student_no")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(3L)
+                                                .tableName("student")
+                                                .columnName("name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(4L)
+                                                .tableName("student")
+                                                .columnName("gender")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(6L)
+                                                .tableName("student")
+                                                .columnName("clazz_id")
+                                                .build()))
+                        .build();
+
+        ModuleInfo mockModule105 =
+                ModuleInfo.builder()
+                        .moduleId(105L)
+                        .moduleCode("MOD-STUDENT-COURSE")
+                        .primaryTable("student_course")
+                        .parentId(101L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(28L)
+                                                .tableName("student_course")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(29L)
+                                                .tableName("student_course")
+                                                .columnName("student_id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(32L)
+                                                .tableName("student_course")
+                                                .columnName("course_name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(33L)
+                                                .tableName("student_course")
+                                                .columnName("score")
+                                                .build()))
+                        .build();
+
+        ModuleInfo mockModule108 =
+                ModuleInfo.builder()
+                        .moduleId(108L)
+                        .moduleCode("MOD-STUDENT-COURSE-SCORE")
+                        .primaryTable("student_course_score_item")
+                        .parentId(105L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(57L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(58L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("student_course_id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(59L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("item_name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(61L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("score")
+                                                .build()))
+                        .build();
+
+        allKnownModules.put(101L, mockModule101);
+        allKnownModules.put(105L, mockModule105);
+        allKnownModules.put(108L, mockModule108);
+
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("student")
+                        .mainField("id")
+                        .joinTable("student_course")
+                        .joinField("student_id")
+                        .relationType("1:N")
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("student_course")
+                        .mainField("id")
+                        .joinTable("student_course_score_item")
+                        .joinField("student_course_id")
+                        .relationType("1:N")
+                        .build());
+
+        // ------------------------- Company 模块元数据 -------------------------
+        ModuleInfo mockModule1001 =
+                ModuleInfo.builder()
+                        .moduleId(1001L)
+                        .moduleCode("COMPANY-ROOT")
+                        .primaryTable("info")
+                        .parentId(0L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10001L)
+                                                .tableName("info")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10002L)
+                                                .tableName("info")
+                                                .columnName("company_name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10006L)
+                                                .tableName("info")
+                                                .columnName("cooperation_types")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10010L)
+                                                .tableName("info")
+                                                .columnName("audit_status")
+                                                .build()))
+                        .build();
+
+        ModuleInfo mockModule1002 =
+                ModuleInfo.builder()
+                        .moduleId(1002L)
+                        .moduleCode("COMPANY-BASIC-INFO")
+                        .primaryTable("basic_info")
+                        .parentId(1001L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10011L)
+                                                .tableName("basic_info")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10012L)
+                                                .tableName("basic_info")
+                                                .columnName("uscc")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10013L)
+                                                .tableName("basic_info")
+                                                .columnName("short_name")
+                                                .build()))
+                        .build();
+
+        ModuleInfo mockModule1020 =
+                ModuleInfo.builder()
+                        .moduleId(1020L)
+                        .moduleCode("COMPANY-MEMBER-V")
+                        .primaryTable(null) // 虚拟模块
+                        .parentId(1001L)
+                        .fields(Collections.emptyList())
+                        .build();
+
+        ModuleInfo mockModule1005 =
+                ModuleInfo.builder()
+                        .moduleId(1005L)
+                        .moduleCode("COMPANY-CONTACT-ADDR")
+                        .primaryTable("address")
+                        .parentId(1020L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10048L)
+                                                .tableName("address")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10050L)
+                                                .tableName("address")
+                                                .columnName("comm_region")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10051L)
+                                                .tableName("address")
+                                                .columnName("comm_detail")
+                                                .build()))
+                        .build();
+
+        ModuleInfo mockModule1006 =
+                ModuleInfo.builder()
+                        .moduleId(1006L)
+                        .moduleCode("COMPANY-CONTACT-BIZ")
+                        .primaryTable("company_contact")
+                        .parentId(1020L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10053L)
+                                                .tableName("company_contact")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10054L)
+                                                .tableName("company_contact")
+                                                .columnName("contact_type")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10055L)
+                                                .tableName("company_contact")
+                                                .columnName("contact_value")
+                                                .build()))
+                        .build();
+
+        allKnownModules.put(1001L, mockModule1001);
+        allKnownModules.put(1002L, mockModule1002);
+        allKnownModules.put(1020L, mockModule1020);
+        allKnownModules.put(1005L, mockModule1005);
+        allKnownModules.put(1006L, mockModule1006);
+
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("basic_info")
+                        .joinField("company_id")
+                        .relationType("1:1")
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("address")
+                        .joinField("company_id")
+                        .relationType("1:1")
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("company_contact")
+                        .joinField("company_id")
+                        .relationType("1:N")
+                        .build());
+    }
+
+    @Test
+    @DisplayName("测试单模块同构保存 (School): student 表单条记录插入")
+    void testSaveSingleModuleSchool() {
+        Map<String, Object> studentRow = new HashMap<>();
+        studentRow.put("name", "张三");
+        studentRow.put("student_no", "S001");
+        studentRow.put("gender", "男");
+
+        SaveReq saveReq =
+                SaveReq.builder()
+                        .moduleId(101L)
+                        .records(List.of(Map.of("student", studentRow)))
+                        .build();
 
         Long savedId = dataPersistenceService.save(saveReq);
 
         assertNotNull(savedId);
-        assertEquals(2001L, savedId);
+        assertTrue(savedId > 0);
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(sql -> sql.toLowerCase().contains("insert into `student`")));
     }
 
     @Test
-    @DisplayName("测试树形模块级 children 级联保存: 父模块 101 关联子模块 103")
-    void testSaveTreeModuleChildren() {
-        Map<String, Object> studentData = new HashMap<>();
-        studentData.put("name", "王五");
-        studentData.put("student_no", "S003");
+    @DisplayName("测试多级深层树级联保存 (School 101 -> 105 -> 108): 学生 -> 选课 -> 成绩分项")
+    void testSaveCascadeTreeSchool() {
+        // 孙记录: 成绩分项 108
+        Map<String, Object> scoreItem = new HashMap<>();
+        scoreItem.put("item_name", "期末大作业");
+        scoreItem.put("score", 95.0);
 
-        Map<String, Object> courseData = new HashMap<>();
-        courseData.put("course_name", "高等数学");
+        // 子记录: 选课 105 行对象 (包含 student_course 与 children)
+        Map<String, Object> courseRow = new HashMap<>();
+        courseRow.put("course_name", "大学英语");
+        courseRow.put("score", 90.0);
 
-        SaveReq req =
+        Map<String, Object> courseRecord = new HashMap<>();
+        courseRecord.put("student_course", courseRow);
+        courseRecord.put(
+                "children",
+                List.of(
+                        Map.of(
+                                "moduleId",
+                                108L,
+                                "records",
+                                List.of(Map.of("student_course_score_item", scoreItem)))));
+
+        // 根记录: 学生 101 行对象 (包含 student 与 children)
+        Map<String, Object> studentRow = new HashMap<>();
+        studentRow.put("name", "李四");
+        studentRow.put("student_no", "S002");
+
+        Map<String, Object> rootRecord = new HashMap<>();
+        rootRecord.put("student", studentRow);
+        rootRecord.put(
+                "children", List.of(Map.of("moduleId", 105L, "records", List.of(courseRecord))));
+
+        SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(rootRecord)).build();
+
+        Long savedId = dataPersistenceService.save(saveReq);
+        assertNotNull(savedId);
+
+        // 校验 3 张表的 INSERT 均被顺序触发
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(sql -> sql.toLowerCase().contains("insert into `student`")));
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql -> sql.toLowerCase().contains("insert into `student_course`")));
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase()
+                                                .contains(
+                                                        "insert into `student_course_score_item`")));
+    }
+
+    @Test
+    @DisplayName("测试虚拟模块穿透级联保存 (Company 1001 -> 1020 -> 1005 / 1006)")
+    void testSaveVirtualModuleCascadeCompany() {
+        // 地址 1005
+        Map<String, Object> addrRow = new HashMap<>();
+        addrRow.put("comm_region", "宁夏回族自治区/石嘴山市");
+        addrRow.put("comm_detail", "大武口区高新技术产业园8号");
+
+        // 联系方式 1006 (多条)
+        Map<String, Object> contact1 = new HashMap<>();
+        contact1.put("contact_type", "PHONE");
+        contact1.put("contact_value", "0710-3255895");
+
+        Map<String, Object> contact2 = new HashMap<>();
+        contact2.put("contact_type", "MOBILE");
+        contact2.put("contact_value", "13585855898");
+
+        // 虚拟容器 1020 行对象
+        Map<String, Object> virtualContainer = new HashMap<>();
+        virtualContainer.put(
+                "children",
+                List.of(
+                        Map.of("moduleId", 1005L, "records", List.of(Map.of("address", addrRow))),
+                        Map.of(
+                                "moduleId",
+                                1006L,
+                                "records",
+                                List.of(
+                                        Map.of("company_contact", contact1),
+                                        Map.of("company_contact", contact2)))));
+
+        // 根记录 1001 行对象
+        Map<String, Object> infoRow = new HashMap<>();
+        infoRow.put("company_name", "盛港焦化有限公司");
+        infoRow.put("cooperation_types", "[\"供应商\"]");
+
+        Map<String, Object> rootRecord = new HashMap<>();
+        rootRecord.put("info", infoRow);
+        rootRecord.put(
+                "children",
+                List.of(Map.of("moduleId", 1020L, "records", List.of(virtualContainer))));
+
+        SaveReq saveReq = SaveReq.builder().moduleId(1001L).records(List.of(rootRecord)).build();
+
+        Long savedId = dataPersistenceService.save(saveReq);
+        assertNotNull(savedId);
+
+        // 校验根表与穿透子表的 INSERT
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(sql -> sql.toLowerCase().contains("insert into `info`")));
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(sql -> sql.toLowerCase().contains("insert into `address`")));
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase()
+                                                .contains("insert into `company_contact`")));
+    }
+
+    @Test
+    @DisplayName("测试更新模式 (Update Mode): 携带主键 id 触发精准 update 语句")
+    void testUpdateExistingRecord() {
+        Map<String, Object> studentRow = new HashMap<>();
+        studentRow.put("id", 1001L);
+        studentRow.put("name", "张三(已更新)");
+        studentRow.put("student_no", "S001");
+
+        SaveReq saveReq =
                 SaveReq.builder()
                         .moduleId(101L)
-                        .records(List.of(studentData))
-                        .children(
-                                List.of(
-                                        SaveReq.builder()
-                                                .moduleId(103L)
-                                                .records(List.of(courseData))
-                                                .build()))
+                        .records(List.of(Map.of("student", studentRow)))
                         .build();
 
-        Long savedId = dataPersistenceService.save(req);
-        assertNotNull(savedId);
-        assertEquals(2001L, savedId);
-    }
+        Long savedId = dataPersistenceService.save(saveReq);
+        assertEquals(1001L, savedId);
 
-    @Test
-    @DisplayName("测试行内自相似读写同构级联保存: 对齐 query 响应 records[0].children 结构原样提交")
-    void testSaveTreeRowLevelIsomorphic() {
-        Map<String, Object> courseData = new HashMap<>();
-        courseData.put("course_name", "大学英语");
-
-        SaveReq childNode = SaveReq.builder().moduleId(103L).records(List.of(courseData)).build();
-
-        Map<String, Object> studentRow = new HashMap<>();
-        studentRow.put("name", "赵六");
-        studentRow.put("student_no", "S004");
-        // 行内直接挂载子模块树 (完全对齐 Response)
-        studentRow.put("children", List.of(childNode));
-
-        SaveReq req = SaveReq.builder().moduleId(101L).records(List.of(studentRow)).build();
-
-        Long savedId = dataPersistenceService.save(req);
-        assertNotNull(savedId);
-        assertEquals(2001L, savedId);
-    }
-
-    @Test
-    @DisplayName("测试读写同构：直接使用实体表名与数字键子模块保存 (例如 student + \"103\")")
-    void testSaveIsomorphicWithChildModuleId() {
-        Map<String, Object> studentRow = new HashMap<>();
-        studentRow.put("student", Map.of("name", "钱七", "student_no", "S007"));
-        studentRow.put("103", List.of(Map.of("student_course", Map.of("course_name", "数据结构与算法"))));
-
-        SaveReq req = SaveReq.builder().moduleId(101L).records(List.of(studentRow)).build();
-
-        Long savedId = dataPersistenceService.save(req);
-        assertNotNull(savedId);
-        assertEquals(2001L, savedId);
-    }
-
-    @Test
-    @DisplayName("测试方案A读写同构：直接将 detail 接口返回的 data 载荷放入 records 进行保存 (免传 moduleId，自动推导)")
-    void testSaveIsomorphicWithDetailPayloadDirectly() {
-        // 模拟 detail 接口返回的 data 载荷格式：{"101": { "student": {...}, "103": [...] }}
-        Map<String, Object> innerStudent = new HashMap<>();
-        innerStudent.put("student", Map.of("name", "孙八", "student_no", "S008"));
-        innerStudent.put("103", List.of(Map.of("student_course", Map.of("course_name", "大学物理"))));
-
-        Map<String, Object> detailDataPayload = Map.of("101", innerStudent);
-
-        // 前端直接包装 data 载荷，不传 moduleId
-        SaveReq req = SaveReq.builder().records(List.of(detailDataPayload)).build();
-
-        var savePlan = savePlanCompiler.compile(req);
-        assertNotNull(savePlan);
-        var rootPlan = savePlan.getRootNodePlan();
-        assertEquals(101L, rootPlan.getModuleId());
-        assertEquals("student", rootPlan.getPrimaryTable());
-        assertEquals(1, rootPlan.getRecords().size());
-        assertEquals("孙八", rootPlan.getRecords().get(0).get("name"));
-        assertEquals(1, rootPlan.getChildren().size());
-        assertEquals(103L, rootPlan.getChildren().get(0).getModuleId());
-
-        Long savedId = dataPersistenceService.save(req);
-        assertNotNull(savedId);
-        assertEquals(2001L, savedId);
-    }
-
-    @Test
-    @DisplayName("测试虚拟模块保存：101(学生) -> 201(虚拟模块-教务信息) -> 103(选课管理) 读写同构递归落库")
-    void testSaveWithVirtualModuleContainer() {
-        ModuleInfo mockVirtual201 =
-                ModuleInfo.builder()
-                        .moduleId(201L)
-                        .moduleCode("MOD-ACADEMIC")
-                        .moduleName("教务信息")
-                        .primaryTable(null)
-                        .parentId(101L)
-                        .build();
-        ModuleInfo mockCourseUnder201 = mockCourseModule.toBuilder().parentId(201L).build();
-
-        allKnownModules.put(201L, mockVirtual201);
-        allKnownModules.put(103L, mockCourseUnder201);
-
-        // 读写同构结构：studentRow 内部挂载 201 容器，201 容器内部挂载 103 选课记录
-        Map<String, Object> studentRow = new HashMap<>();
-        studentRow.put("name", "周八");
-        studentRow.put("student_no", "S008");
-        studentRow.put("201", Map.of("103", List.of(Map.of("course_name", "高等数学"))));
-
-        SaveReq req = SaveReq.builder().moduleId(101L).records(List.of(studentRow)).build();
-
-        // 验证编译计划
-        var savePlan = savePlanCompiler.compile(req);
-        assertNotNull(savePlan);
-        var rootNode = savePlan.getRootNodePlan();
-        assertEquals(101L, rootNode.getModuleId());
-        assertEquals("student", rootNode.getPrimaryTable());
-
-        var child201 = rootNode.getChildren().get(0);
-        assertEquals(201L, child201.getModuleId());
-        assertTrue(child201.getPrimaryTable() == null || child201.getPrimaryTable().isBlank());
-
-        var child103 = child201.getChildren().get(0);
-        assertEquals(103L, child103.getModuleId());
-        assertEquals("student_course", child103.getPrimaryTable());
-        assertEquals("student_id", child103.getParentForeignKey());
-
-        // 验证落库执行
-        Long savedId = dataPersistenceService.save(req);
-        assertNotNull(savedId);
-        assertEquals(2001L, savedId);
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("update `student`")
+                                                && sql.toLowerCase().contains("where")
+                                                && sql.toLowerCase().contains("id")));
     }
 }

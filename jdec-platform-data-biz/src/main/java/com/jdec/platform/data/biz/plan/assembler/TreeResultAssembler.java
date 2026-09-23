@@ -81,10 +81,10 @@ public class TreeResultAssembler {
             QueryNodePlan virtualPlan,
             Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
 
-        String virtualKey = String.valueOf(virtualPlan.getModuleId());
+        Long virtualModuleId = virtualPlan.getModuleId();
         log.debug(
                 "[TreeResultAssembler] 开始装配虚拟模块逻辑容器: virtualModuleId={}, 目标父行数={}, 下级子计划数={}",
-                virtualKey,
+                virtualModuleId,
                 parentRecords.size(),
                 virtualPlan.getChildren() != null ? virtualPlan.getChildren().size() : 0);
 
@@ -94,11 +94,19 @@ public class TreeResultAssembler {
             Map<String, Object> parentContainer = targetContainers.get(parentRow);
             Map<String, Object> thisVirtualContainer = new LinkedHashMap<>();
             if (parentContainer != null) {
-                parentContainer.put(virtualKey, thisVirtualContainer);
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> childrenList =
+                        (List<Map<String, Object>>)
+                                parentContainer.computeIfAbsent("children", k -> new ArrayList<>());
+
+                Map<String, Object> virtualNode = new LinkedHashMap<>();
+                virtualNode.put("moduleId", virtualModuleId);
+                virtualNode.put("records", Collections.singletonList(thisVirtualContainer));
+                childrenList.add(virtualNode);
             } else {
                 log.warn(
-                        "[TreeResultAssembler] 未能在 targetContainers 中定位到父行引用，虚拟容器无法挂载: virtualKey={}, parentRowId={}",
-                        virtualKey,
+                        "[TreeResultAssembler] 未能在 targetContainers 中定位到父行引用，虚拟容器无法挂载: virtualModuleId={}, parentRowId={}",
+                        virtualModuleId,
                         extractRowPrimaryId(parentRow));
             }
             nextContainers.put(parentRow, thisVirtualContainer);
@@ -106,14 +114,14 @@ public class TreeResultAssembler {
 
         List<QueryNodePlan> subPlans = virtualPlan.getChildren();
         if (subPlans == null || subPlans.isEmpty()) {
-            log.debug("[TreeResultAssembler] 虚拟模块 [{}] 的 subPlans 为空，跳过下级子节点装配", virtualKey);
+            log.debug("[TreeResultAssembler] 虚拟模块 [{}] 的 subPlans 为空，跳过下级子节点装配", virtualModuleId);
             return;
         }
 
         for (QueryNodePlan subPlan : subPlans) {
             log.debug(
                     "[TreeResultAssembler] 递归向下装配虚拟模块 [{}] 的子节点: childModuleId={}, primaryTable={}, parentFk={}",
-                    virtualKey,
+                    virtualModuleId,
                     subPlan.getModuleId(),
                     subPlan.getPrimaryTable(),
                     subPlan.getParentForeignKey());
