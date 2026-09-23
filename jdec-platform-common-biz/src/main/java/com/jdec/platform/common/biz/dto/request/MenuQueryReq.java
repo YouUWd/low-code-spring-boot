@@ -1,5 +1,6 @@
-package com.jdec.platform.data.api.dto.request;
+package com.jdec.platform.common.biz.dto.request;
 
+import com.jdec.platform.data.api.dto.request.SortItem;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
@@ -11,7 +12,7 @@ import lombok.NoArgsConstructor;
 /**
  * 基于菜单的动态列表分页/过滤查询请求模型 (面向前端 UI 隔离层)
  *
- * <p>前端仅需按需传递分页、过滤和排序规则，根模块 ID 与投影字段统一由后端通过 menuId 和表头配置自动解析推导。
+ * <p>前端仅需按需传递分页、纯平铺单字段过滤和排序规则，根模块 ID 与投影字段统一由后端通过 menuId 和表头配置自动解析推导。
  */
 @Data
 @Builder
@@ -26,8 +27,8 @@ public class MenuQueryReq implements Serializable {
     @Schema(description = "每页条数 / 明细上限条数", example = "20")
     private Integer pageSize;
 
-    @Schema(description = "平铺过滤条件列表")
-    private List<FilterItem> filters;
+    @Schema(description = "纯平铺单字段过滤条件列表 (默认以平级 AND 组合，避免多层树形嵌套)")
+    private List<FlatFilterItem> filters;
 
     @Schema(description = "平铺排序规则列表")
     private List<SortItem> sorts;

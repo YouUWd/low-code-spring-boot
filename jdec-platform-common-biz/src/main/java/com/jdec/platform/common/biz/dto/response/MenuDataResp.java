@@ -1,7 +1,10 @@
-package com.jdec.platform.data.api.dto.response;
+package com.jdec.platform.common.biz.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
+import com.jdec.platform.data.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.data.api.dto.response.ModuleDataNode;
+import com.jdec.platform.data.api.dto.response.ModuleSimplePermissionDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
