@@ -12,14 +12,7 @@ import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,7 +29,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     private final DataApi dataApi;
 
     @Override
-    public Map<Integer, Long> getApprovalCountByMenu(Long menuId) {
+    public List<Map<String, Object>> getApprovalCountByMenu(Long menuId) {
         if (menuId == null) {
             throw new IllegalArgumentException("菜单 ID 不能为空");
         }
@@ -136,12 +129,23 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
                                     .filters(totalFilters)
                                     .build());
         }
-
-        Map<Integer, Long> countMap = new LinkedHashMap<>();
-        countMap.put(1, todoCount != null ? todoCount : 0L);
-        countMap.put(2, doneCount);
-        countMap.put(3, totalCount != null ? totalCount : 0L);
-        return countMap;
+        List<Map<String, Object>> resultMap = new LinkedList<>();
+        Map<String, Object> todo = new HashMap<>();
+        todo.put("label", "待办");
+        todo.put("type", "1");
+        todo.put("count", todoCount != null ? todoCount : 0L);
+        resultMap.add(todo);
+        Map<String, Object> done = new HashMap<>();
+        done.put("label", "已办");
+        done.put("type", "2");
+        done.put("count", doneCount);
+        resultMap.add(done);
+        Map<String, Object> all = new HashMap<>();
+        all.put("label", "全部");
+        all.put("type", "3");
+        all.put("count", totalCount != null ? totalCount : 0L);
+        resultMap.add(all);
+        return resultMap;
     }
 
     private ApprovalButtonsGroup queryAllApprovalButtons(Long rootModuleId) {

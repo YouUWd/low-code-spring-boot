@@ -4,6 +4,7 @@ import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,9 +27,10 @@ public class CommonApprovalController {
     @Operation(
             summary = "基于菜单 ID 一次性统计待办、已办和全部的记录数量",
             description = "仅需传入 menuId，一次性返回 Map 映射：1(待办)、2(已办)、3(全部) 的全量数量")
-    public ApiResponse<Map<Integer, Long>> getApprovalCountByMenu(@PathVariable Long menuId) {
+    public ApiResponse<List<Map<String, Object>>> getApprovalCountByMenu(
+            @PathVariable Long menuId) {
         try {
-            Map<Integer, Long> result = commonApprovalService.getApprovalCountByMenu(menuId);
+            List<Map<String, Object>> result = commonApprovalService.getApprovalCountByMenu(menuId);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(
