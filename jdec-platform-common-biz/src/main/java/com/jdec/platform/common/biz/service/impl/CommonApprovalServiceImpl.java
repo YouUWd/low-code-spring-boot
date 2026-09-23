@@ -2,6 +2,7 @@ package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
+import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -27,6 +28,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     private final OpenMenuApi openMenuApi;
     private final ConfigApi configApi;
     private final DataApi dataApi;
+    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
 
     @Override
     public List<Map<String, Object>> getApprovalCountByMenu(Long menuId) {
@@ -42,108 +44,116 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
         RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId);
 
-        // 2. 一次性获取审批链全部按钮数据 (approvalType = 3 会内部包含待办与已办)
-        ApprovalButtonsGroup approvalGroup = queryAllApprovalButtons(rootModuleId);
-        Map<Long, List<Map<String, Object>>> todoBtnMap = approvalGroup.todoBtns();
-        Map<Long, List<Map<String, Object>>> doneBtnMap = approvalGroup.doneBtns();
-
-        // 3. 统计【待办数量】 (approvalType = 1)
-        ApprovalFilterResult todoFilterResult =
-                buildApprovalFilters(1, rootModuleId, rootFieldIds, todoBtnMap);
-        Long todoCount = 0L;
-        if (!todoFilterResult.shortCircuitEmpty()) {
-            todoCount =
-                    dataApi.count(
-                            QueryReq.builder()
-                                    .moduleId(rootModuleId)
-                                    .filters(todoFilterResult.filters())
-                                    .build());
-        }
-
-        // 4. 统计【已办数量】 (approvalType = 2: 直接使用审批链接口返回的数据量，无需额外查询 SQL)
-        Long doneCount = (long) doneBtnMap.size();
-
-        // 5. 统计【全部数量】 (结合待办分支与审批链返回的已办 id 集合)
-        Set<Long> doneRecordIds = doneBtnMap.keySet();
-        Set<Long> todoRecordIds = todoBtnMap.keySet();
-        Set<Long> allApprovalIds = new LinkedHashSet<>(doneRecordIds);
-        allApprovalIds.addAll(todoRecordIds);
-
-        List<FilterItem> totalFilters = new ArrayList<>();
-
-        Long currentUserId = UserContext.getUserId();
-        boolean hasApprovalIds = !allApprovalIds.isEmpty() && rootFieldIds.idFieldId() != null;
-        boolean canQueryDraft =
-                currentUserId != null
-                        && rootFieldIds.createdByFieldId() != null
-                        && rootFieldIds.businessStatusFieldId() != null;
-
-        Long totalCount = 0L;
-        if (!hasApprovalIds && !canQueryDraft) {
-            totalCount = 0L;
-        } else {
-            FilterItem approvalBranch = null;
-            if (hasApprovalIds) {
-                approvalBranch =
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.idFieldId())
-                                .operator("IN")
-                                .value(new ArrayList<>(allApprovalIds))
-                                .build();
-            }
-
-            FilterItem draftBranch = null;
-            if (canQueryDraft) {
-                List<FilterItem> draftItems = new ArrayList<>();
-                draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.createdByFieldId())
-                                .operator("EQ")
-                                .value(currentUserId)
-                                .build());
-                draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.businessStatusFieldId())
-                                .operator("EQ")
-                                .value(1)
-                                .build());
-                draftBranch = FilterItem.builder().logic("AND").children(draftItems).build();
-            }
-
-            if (approvalBranch != null && draftBranch != null) {
-                totalFilters.add(
-                        FilterItem.builder()
-                                .logic("OR")
-                                .children(Arrays.asList(approvalBranch, draftBranch))
-                                .build());
-            } else if (approvalBranch != null) {
-                totalFilters.add(approvalBranch);
-            } else {
-                totalFilters.add(draftBranch);
-            }
-
-            totalCount =
-                    dataApi.count(
-                            QueryReq.builder()
-                                    .moduleId(rootModuleId)
-                                    .filters(totalFilters)
-                                    .build());
-        }
         List<Map<String, Object>> resultMap = new LinkedList<>();
         Map<String, Object> todo = new HashMap<>();
         todo.put("label", "待办");
         todo.put("type", "1");
-        todo.put("count", todoCount != null ? todoCount : 0L);
         resultMap.add(todo);
         Map<String, Object> done = new HashMap<>();
         done.put("label", "已办");
         done.put("type", "2");
-        done.put("count", doneCount);
         resultMap.add(done);
         Map<String, Object> all = new HashMap<>();
         all.put("label", "全部");
         all.put("type", "3");
+        Long todoCount = 0L;
+        Long doneCount = 0L;
+        Long totalCount = 0L;
+        if (sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModuleId))) {
+            // 2. 一次性获取审批链全部按钮数据 (approvalType = 3 会内部包含待办与已办)
+            ApprovalButtonsGroup approvalGroup = queryAllApprovalButtons(rootModuleId);
+            Map<Long, List<Map<String, Object>>> todoBtnMap = approvalGroup.todoBtns();
+            Map<Long, List<Map<String, Object>>> doneBtnMap = approvalGroup.doneBtns();
+
+            // 3. 统计【待办数量】 (approvalType = 1)
+            ApprovalFilterResult todoFilterResult =
+                    buildApprovalFilters(1, rootModuleId, rootFieldIds, todoBtnMap);
+
+            if (!todoFilterResult.shortCircuitEmpty()) {
+                todoCount =
+                        dataApi.count(
+                                QueryReq.builder()
+                                        .moduleId(rootModuleId)
+                                        .filters(todoFilterResult.filters())
+                                        .build());
+            }
+
+            // 4. 统计【已办数量】 (approvalType = 2: 直接使用审批链接口返回的数据量，无需额外查询 SQL)
+            doneCount = (long) doneBtnMap.size();
+
+            // 5. 统计【全部数量】 (结合待办分支与审批链返回的已办 id 集合)
+            Set<Long> doneRecordIds = doneBtnMap.keySet();
+            Set<Long> todoRecordIds = todoBtnMap.keySet();
+            Set<Long> allApprovalIds = new LinkedHashSet<>(doneRecordIds);
+            allApprovalIds.addAll(todoRecordIds);
+
+            List<FilterItem> totalFilters = new ArrayList<>();
+
+            Long currentUserId = UserContext.getUserId();
+            boolean hasApprovalIds = !allApprovalIds.isEmpty() && rootFieldIds.idFieldId() != null;
+            boolean canQueryDraft =
+                    currentUserId != null
+                            && rootFieldIds.createdByFieldId() != null
+                            && rootFieldIds.businessStatusFieldId() != null;
+
+            if (!hasApprovalIds && !canQueryDraft) {
+                totalCount = 0L;
+            } else {
+                FilterItem approvalBranch = null;
+                if (hasApprovalIds) {
+                    approvalBranch =
+                            FilterItem.builder()
+                                    .fieldId(rootFieldIds.idFieldId())
+                                    .operator("IN")
+                                    .value(new ArrayList<>(allApprovalIds))
+                                    .build();
+                }
+
+                FilterItem draftBranch = null;
+                if (canQueryDraft) {
+                    List<FilterItem> draftItems = new ArrayList<>();
+                    draftItems.add(
+                            FilterItem.builder()
+                                    .fieldId(rootFieldIds.createdByFieldId())
+                                    .operator("EQ")
+                                    .value(currentUserId)
+                                    .build());
+                    draftItems.add(
+                            FilterItem.builder()
+                                    .fieldId(rootFieldIds.businessStatusFieldId())
+                                    .operator("EQ")
+                                    .value(1)
+                                    .build());
+                    draftBranch = FilterItem.builder().logic("AND").children(draftItems).build();
+                }
+
+                if (approvalBranch != null && draftBranch != null) {
+                    totalFilters.add(
+                            FilterItem.builder()
+                                    .logic("OR")
+                                    .children(Arrays.asList(approvalBranch, draftBranch))
+                                    .build());
+                } else if (approvalBranch != null) {
+                    totalFilters.add(approvalBranch);
+                } else {
+                    totalFilters.add(draftBranch);
+                }
+
+                totalCount =
+                        dataApi.count(
+                                QueryReq.builder()
+                                        .moduleId(rootModuleId)
+                                        .filters(totalFilters)
+                                        .build());
+            }
+        } else {
+            totalCount = dataApi.count(QueryReq.builder().moduleId(rootModuleId).build());
+        }
+        todo.put("count", todoCount != null ? todoCount : 0L);
+        done.put("count", doneCount);
         all.put("count", totalCount != null ? totalCount : 0L);
+        resultMap.add(todo);
+        resultMap.add(done);
         resultMap.add(all);
         return resultMap;
     }
