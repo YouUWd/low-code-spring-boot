@@ -36,6 +36,9 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
         List<NestedModuleDataDTO> preVersionData = getPreVersionData(context);
         Map<Long, Map<Long, Map<String, Object>>> currentVersionMap =
                 buildCurrentModuleChangeIndex(context.getModuleId(), context.getId());
+        if (CollectionUtils.isEmpty(records) || CollectionUtils.isEmpty(preVersionData)) {
+            return;
+        }
         ModuleTreeDiffUtil.diffModuleTree(preVersionData.get(0), records.get(0), currentVersionMap);
     }
 
@@ -273,15 +276,19 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
                 VersionCompareItem.VersionCompareItemBuilder versionCompareItem =
                         VersionCompareItem.builder();
 
+                boolean addVersionItem = false;
+
                 // 值相同跳过，只记录变更字段
                 if (!Objects.equals(oldVal, newVal)) {
                     versionCompareItem.pre(oldVal).current(newVal);
+                    addVersionItem = true;
                     //                    continue;
                 }
                 if (Objects.nonNull(currentChangeMap.get(fieldKey))) {
                     String changeStr = String.valueOf(currentChangeMap.get(fieldKey));
 
                     try {
+                        addVersionItem = true;
                         InterFieldCompareItem interFieldCompareItem =
                                 JsonUtil.json2Obj(changeStr, InterFieldCompareItem.class);
                         versionCompareItem
@@ -293,7 +300,9 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
                 }
 
                 // 构造 {pre:旧值, currentOld:旧值, current:新值}
-                changeList.put(entry.getKey(), versionCompareItem.build());
+                if (addVersionItem) {
+                    changeList.put(entry.getKey(), versionCompareItem.build());
+                }
             }
             return changeList;
         }

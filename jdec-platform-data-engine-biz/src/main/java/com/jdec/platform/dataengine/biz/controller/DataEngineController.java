@@ -38,7 +38,7 @@ public class DataEngineController {
         return ApiResponse.success(dataEngineApi.getDetail(detailQueryReq, "view"));
     }
 
-    @PostMapping("/menu/version-list")
+    @PostMapping("/menu/get-version-list")
     @Operation(summary = "获取版本列表数据", description = "获取版本列表数据")
     public ApiResponse<List<VersionListResp>> getVersionList(
             @RequestBody VersionListQueryReq versionListQueryReq) {

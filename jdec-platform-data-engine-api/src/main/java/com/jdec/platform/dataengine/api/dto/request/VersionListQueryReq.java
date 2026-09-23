@@ -14,4 +14,7 @@ public class VersionListQueryReq {
 
     @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
     private Long moduleId;
+
+    @Schema(description = "详情模式", requiredMode = Schema.RequiredMode.REQUIRED, example = "view")
+    private String btnType;
 }
