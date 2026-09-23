@@ -137,17 +137,13 @@ public class QueryPlanCompiler {
 
         boolean isGlobalWhitelistMode = req.getFields() != null && !req.getFields().isEmpty();
 
-        // 1. 收集请求中出现的所有 fieldId (包括 fields, filters, sorts)
+        // 1. 收集请求中出现的所有 fieldId (包括 fields, filters 递归, sorts)
         Set<Long> allFieldIds = new LinkedHashSet<>();
         if (req.getFields() != null) {
             allFieldIds.addAll(req.getFields());
         }
         if (req.getFilters() != null) {
-            for (var f : req.getFilters()) {
-                if (f != null && f.getFieldId() != null) {
-                    allFieldIds.add(f.getFieldId());
-                }
-            }
+            collectFieldIdsFromFilters(req.getFilters(), allFieldIds);
         }
         if (req.getSorts() != null) {
             for (var s : req.getSorts()) {
@@ -955,34 +951,82 @@ public class QueryPlanCompiler {
 
         List<Condition> conditions = new ArrayList<>();
         for (FilterItem item : filters) {
-            if (item == null || item.getValue() == null || "".equals(item.getValue())) {
-                continue;
-            }
-            if (item.getFieldId() == null) {
-                continue;
-            }
-
-            ModuleFieldDTO targetField = fieldIdMap.get(item.getFieldId());
-            if (targetField == null) {
-                continue;
-            }
-
-            String tbl =
-                    (targetField.getTableName() != null && !targetField.getTableName().isBlank())
-                            ? targetField.getTableName()
-                            : primaryTable;
-            String col = targetField.getColumnName();
-            if (col == null || col.isBlank()) {
-                continue;
-            }
-
-            Condition singleCond = buildSqlCondition(tbl, col, item.getOperator(), item.getValue());
-            if (singleCond != null && !DSL.noCondition().equals(singleCond)) {
-                conditions.add(singleCond);
+            Condition cond = compileSingleFilterItem(item, fieldIdMap, primaryTable);
+            if (cond != null && !DSL.noCondition().equals(cond)) {
+                conditions.add(cond);
             }
         }
 
         return conditions.isEmpty() ? null : DSL.and(conditions);
+    }
+
+    /** 递归编译单个 FilterItem (支持叶子单字段条件和复合条件组) */
+    private Condition compileSingleFilterItem(
+            FilterItem item, Map<Long, ModuleFieldDTO> fieldIdMap, String primaryTable) {
+        if (item == null) {
+            return null;
+        }
+
+        // 1. 如果包含 children，作为条件组处理 (AND / OR)
+        if (item.getChildren() != null && !item.getChildren().isEmpty()) {
+            List<Condition> subConditions = new ArrayList<>();
+            for (FilterItem child : item.getChildren()) {
+                Condition subCond = compileSingleFilterItem(child, fieldIdMap, primaryTable);
+                if (subCond != null && !DSL.noCondition().equals(subCond)) {
+                    subConditions.add(subCond);
+                }
+            }
+            if (subConditions.isEmpty()) {
+                return null;
+            }
+            String logic =
+                    (item.getLogic() != null && !item.getLogic().isBlank())
+                            ? item.getLogic().toUpperCase().trim()
+                            : "AND";
+            return "OR".equals(logic) ? DSL.or(subConditions) : DSL.and(subConditions);
+        }
+
+        // 2. 单字段条件处理
+        if (item.getValue() == null || "".equals(item.getValue())) {
+            return null;
+        }
+        if (item.getFieldId() == null) {
+            return null;
+        }
+
+        ModuleFieldDTO targetField = fieldIdMap.get(item.getFieldId());
+        if (targetField == null) {
+            return null;
+        }
+
+        String tbl =
+                (targetField.getTableName() != null && !targetField.getTableName().isBlank())
+                        ? targetField.getTableName()
+                        : primaryTable;
+        String col = targetField.getColumnName();
+        if (col == null || col.isBlank()) {
+            return null;
+        }
+
+        return buildSqlCondition(tbl, col, item.getOperator(), item.getValue());
+    }
+
+    /** 递归收集过滤条件树中引用的所有 fieldId */
+    private void collectFieldIdsFromFilters(List<FilterItem> filters, Set<Long> fieldIdSet) {
+        if (filters == null || filters.isEmpty() || fieldIdSet == null) {
+            return;
+        }
+        for (FilterItem f : filters) {
+            if (f == null) {
+                continue;
+            }
+            if (f.getFieldId() != null) {
+                fieldIdSet.add(f.getFieldId());
+            }
+            if (f.getChildren() != null && !f.getChildren().isEmpty()) {
+                collectFieldIdsFromFilters(f.getChildren(), fieldIdSet);
+            }
+        }
     }
 
     /** 根据操作符生成具体的 jOOQ Condition */
@@ -1007,6 +1051,18 @@ public class QueryPlanCompiler {
                     yield field.in(coll);
                 } else if (value instanceof Object[] arr) {
                     yield field.in(arr);
+                } else {
+                    yield field.eq(value);
+                }
+            }
+            case "BETWEEN", "RANGE" -> {
+                if (value instanceof Collection<?> coll && coll.size() >= 2) {
+                    Iterator<?> it = coll.iterator();
+                    Object start = it.next();
+                    Object end = it.next();
+                    yield field.between(start, end);
+                } else if (value instanceof Object[] arr && arr.length >= 2) {
+                    yield field.between(arr[0], arr[1]);
                 } else {
                     yield field.eq(value);
                 }

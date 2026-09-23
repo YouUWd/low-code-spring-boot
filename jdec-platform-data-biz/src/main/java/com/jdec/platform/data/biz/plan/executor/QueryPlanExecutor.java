@@ -37,23 +37,19 @@ public class QueryPlanExecutor {
     private final JooqDataContextFactory jooqDataContextFactory;
     private final TreeResultAssembler treeResultAssembler;
 
-    /** 执行整树查询计划 (纯数据引擎，返回分页数据页) */
-    public DataPage<Map<String, Object>> execute(QueryPlan plan) {
+    /** 执行计数查询计划 (返回满足条件的记录总数) */
+    public Long executeCount(QueryPlan plan) {
         if (plan == null || plan.getRootNodePlan() == null) {
-            return DataPage.empty(1, 20);
+            return 0L;
         }
 
         QueryNodePlan rootPlan = plan.getRootNodePlan();
         String primaryTable = rootPlan.getPrimaryTable();
-        DSLContext dsl = jooqDataContextFactory.getContext();
-
-        // 0. 防御空主表 (如未配置的虚拟模块)
         if (primaryTable == null || primaryTable.isBlank()) {
-            return DataPage.empty(rootPlan.getPageNo(), rootPlan.getPageSize());
+            return 0L;
         }
 
-        // ==================== Stage 0: 根节点扫描与分页 ====================
-        // 1. 构建主表精确 COUNT 查询 (若有伴生表同样需 LEFT JOIN 保证伴生表条件解析正常)
+        DSLContext dsl = jooqDataContextFactory.getContext();
         SelectJoinStep<?> countStep = dsl.selectCount().from(DSL.table(DSL.name(primaryTable)));
         if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
             for (var joinSpec : rootPlan.getCompanionJoins()) {
@@ -76,7 +72,28 @@ public class QueryPlanExecutor {
             }
         }
 
-        long total = countStep.where(rootPlan.getCondition()).fetchOne(0, Long.class);
+        Long total = countStep.where(rootPlan.getCondition()).fetchOne(0, Long.class);
+        return total != null ? total : 0L;
+    }
+
+    /** 执行整树查询计划 (纯数据引擎，返回分页数据页) */
+    public DataPage<Map<String, Object>> execute(QueryPlan plan) {
+        if (plan == null || plan.getRootNodePlan() == null) {
+            return DataPage.empty(1, 20);
+        }
+
+        QueryNodePlan rootPlan = plan.getRootNodePlan();
+        String primaryTable = rootPlan.getPrimaryTable();
+        DSLContext dsl = jooqDataContextFactory.getContext();
+
+        // 0. 防御空主表 (如未配置的虚拟模块)
+        if (primaryTable == null || primaryTable.isBlank()) {
+            return DataPage.empty(rootPlan.getPageNo(), rootPlan.getPageSize());
+        }
+
+        // ==================== Stage 0: 根节点扫描与分页 ====================
+        // 1. 构建主表精确 COUNT 查询 (若有伴生表同样需 LEFT JOIN 保证伴生表条件解析正常)
+        long total = executeCount(plan);
 
         int pageNo =
                 (rootPlan.getPageNo() != null && rootPlan.getPageNo() > 0)
@@ -561,31 +578,17 @@ public class QueryPlanExecutor {
         }
         childCond = childCond.and(distinctField.isNotNull());
 
-        // 向上回溯寻找最近的物理祖先节点（跳过虚拟模块），构建连接到符合 root 过滤条件主数据的 EXISTS 约束
-        QueryNodePlan physicalParentNode = null;
-        for (int i = pathToTarget.size() - 2; i >= 0; i--) {
-            QueryNodePlan candidate = pathToTarget.get(i);
-            if (candidate != null
-                    && candidate.getPrimaryTable() != null
-                    && !candidate.getPrimaryTable().isBlank()) {
-                physicalParentNode = candidate;
-                break;
+        // 向上逐跳回溯构建递归 EXISTS 链，穿透虚拟模块并正确关联到符合 root 过滤条件的主数据
+        List<QueryNodePlan> physicalPath = new ArrayList<>();
+        for (QueryNodePlan pNode : pathToTarget) {
+            if (pNode != null
+                    && pNode.getPrimaryTable() != null
+                    && !pNode.getPrimaryTable().isBlank()) {
+                physicalPath.add(pNode);
             }
         }
-        if (physicalParentNode == null) {
-            physicalParentNode = rootPlan;
-        }
 
-        String parentTable = physicalParentNode.getPrimaryTable();
-        String parentKey = targetNode.getParentKey() != null ? targetNode.getParentKey() : "id";
-        String childFk = targetNode.getParentForeignKey();
-
-        if (childFk != null
-                && !childFk.isBlank()
-                && parentTable != null
-                && !parentTable.isBlank()) {
-            // EXISTS (SELECT 1 FROM rootTable LEFT JOIN ... WHERE parentTable.parentKey =
-            // targetPrimaryTable.childFk AND rootPlan.condition)
+        if (physicalPath.size() > 1) {
             SelectJoinStep<?> rootMatchStep =
                     dsl.selectOne().from(DSL.table(DSL.name(rootPrimaryTable)));
             if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
@@ -613,12 +616,22 @@ public class QueryPlanExecutor {
 
             Condition rootCond =
                     rootPlan.getCondition() != null ? rootPlan.getCondition() : DSL.noCondition();
-            Condition correlationCond =
-                    DSL.field(DSL.name(parentTable, parentKey))
-                            .eq(DSL.field(DSL.name(targetPrimaryTable, childFk)));
 
-            childCond =
-                    childCond.and(DSL.exists(rootMatchStep.where(correlationCond.and(rootCond))));
+            // 自底向上为物理路径上的各层构建 EXISTS 嵌套
+            // 例如: target=108, path=[101(student), 105(student_course), 108(score_item)]
+            // 外层: targetNode 是 108
+            // 嵌套链: EXISTS (SELECT 1 FROM student WHERE rootCond AND EXISTS (SELECT 1 FROM
+            // student_course WHERE student.id = student_course.student_id AND
+            // student_course.id = score_item.course_id))
+            Condition currentInnerCond = rootCond;
+
+            // 递归链构建
+            Condition existsChain =
+                    buildRecursiveExistsChain(
+                            dsl, physicalPath, 0, physicalPath.size() - 1, rootMatchStep, rootCond);
+            if (existsChain != null) {
+                childCond = childCond.and(existsChain);
+            }
         }
 
         Result<?> records = selectStep.where(childCond).fetch();
@@ -630,6 +643,126 @@ public class QueryPlanExecutor {
             }
         }
         return results;
+    }
+
+    /**
+     * 递归构建从根物理节点逐跳向下到目标物理节点的 EXISTS 关联链
+     *
+     * <p>例如路径为 [101(student), 105(student_course), 108(score_item)]: 生成: EXISTS (SELECT 1 FROM
+     * student LEFT JOIN ... WHERE rootCond AND EXISTS (SELECT 1 FROM student_course WHERE
+     * student.id = student_course.student_id AND student_course.id = score_item.course_id))
+     */
+    private Condition buildRecursiveExistsChain(
+            DSLContext dsl,
+            List<QueryNodePlan> physicalPath,
+            int currentIndex,
+            int targetIndex,
+            SelectJoinStep<?> rootMatchStep,
+            Condition rootCond) {
+        if (currentIndex < 0 || currentIndex >= targetIndex) {
+            return null;
+        }
+
+        QueryNodePlan currentPhysicalNode = physicalPath.get(currentIndex);
+        QueryNodePlan nextPhysicalNode = physicalPath.get(currentIndex + 1);
+
+        String currentTable = currentPhysicalNode.getPrimaryTable();
+        String nextTable = nextPhysicalNode.getPrimaryTable();
+
+        String parentKey =
+                nextPhysicalNode.getParentKey() != null ? nextPhysicalNode.getParentKey() : "id";
+        String childFk = nextPhysicalNode.getParentForeignKey();
+
+        if (childFk == null || childFk.isBlank() || currentTable == null || nextTable == null) {
+            return null;
+        }
+
+        // 当前层与下一层的父子关联: currentTable.parentKey = nextTable.childFk
+        Condition linkToNextCondition =
+                DSL.field(DSL.name(currentTable, parentKey))
+                        .eq(DSL.field(DSL.name(nextTable, childFk)));
+
+        if (currentIndex == 0) {
+            // 顶层根节点
+            Condition fullRootCondition = rootCond != null ? rootCond : DSL.noCondition();
+
+            if (currentIndex + 1 == targetIndex) {
+                // 只有一层 (直接子模块): EXISTS (SELECT 1 FROM root WHERE root.id = target.fk AND
+                // rootCond)
+                fullRootCondition = fullRootCondition.and(linkToNextCondition);
+            } else {
+                // 深度 >= 2: 将 linkToNextCondition 和后续更深层的 EXISTS 嵌套一并构建在下一层
+                Condition nextChain =
+                        buildRecursiveExistsChain(
+                                dsl,
+                                physicalPath,
+                                currentIndex + 1,
+                                targetIndex,
+                                null,
+                                linkToNextCondition);
+                if (nextChain != null) {
+                    fullRootCondition = fullRootCondition.and(nextChain);
+                }
+            }
+
+            return DSL.exists(rootMatchStep.where(fullRootCondition));
+        } else {
+            // 中间节点
+            SelectJoinStep<?> intermediateStep =
+                    dsl.selectOne().from(DSL.table(DSL.name(currentTable)));
+            if (currentPhysicalNode.getCompanionJoins() != null
+                    && !currentPhysicalNode.getCompanionJoins().isEmpty()) {
+                for (var joinSpec : currentPhysicalNode.getCompanionJoins()) {
+                    String tgtTable = joinSpec.getTargetTable();
+                    String tgtField = joinSpec.getTargetField();
+                    String srcTable = joinSpec.getSourceTable();
+                    String srcField = joinSpec.getSourceField();
+                    intermediateStep =
+                            (SelectJoinStep<?>)
+                                    intermediateStep
+                                            .leftJoin(DSL.table(DSL.name(tgtTable)))
+                                            .on(
+                                                    DSL.field(DSL.name(srcTable, srcField))
+                                                            .eq(
+                                                                    DSL.field(
+                                                                            DSL.name(
+                                                                                    tgtTable,
+                                                                                    tgtField))))
+                                            .and(
+                                                    DSL.field(DSL.name(tgtTable, "deleted"))
+                                                            .eq((byte) 0));
+                }
+            }
+
+            // 当前节点的自身条件 (含 deleted=0) + 上级传下来的父子关联 (rootCond: 即父节点.id = 当前中间节点.fk)
+            Condition currentCond =
+                    currentPhysicalNode.getCondition() != null
+                            ? currentPhysicalNode.getCondition()
+                            : DSL.noCondition();
+            if (rootCond != null && !DSL.noCondition().equals(rootCond)) {
+                currentCond = currentCond.and(rootCond);
+            }
+
+            if (currentIndex + 1 == targetIndex) {
+                // 到达最后一跳: 当前中间表直接关联目标表 (例如 student_course.id = score_item.course_id)
+                currentCond = currentCond.and(linkToNextCondition);
+            } else {
+                // 还有更深层级: 递归向下构建，并将当前与下一跳的关联条件传入作为其 rootCond
+                Condition nextInnerExists =
+                        buildRecursiveExistsChain(
+                                dsl,
+                                physicalPath,
+                                currentIndex + 1,
+                                targetIndex,
+                                null,
+                                linkToNextCondition);
+                if (nextInnerExists != null) {
+                    currentCond = currentCond.and(nextInnerExists);
+                }
+            }
+
+            return DSL.exists(intermediateStep.where(currentCond));
+        }
     }
 
     private boolean findPathToField(

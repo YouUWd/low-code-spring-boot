@@ -38,6 +38,12 @@ public class DataQueryService {
         return queryPlanExecutor.execute(plan);
     }
 
+    /** 通用动态模块树数量统计 (仅执行 Stage 0 根节点计数扫描) */
+    public Long count(QueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compile(req);
+        return queryPlanExecutor.executeCount(plan);
+    }
+
     /** 动态单据详情精准查询快捷方法 (无下级展开) */
     public DataDetail<Map<String, Object>> getDetail(Long moduleId, Long id) {
         return getDetail(moduleId, id, (List<Long>) null);

@@ -2,6 +2,7 @@ package com.jdec.platform.data.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,16 +11,17 @@ import lombok.NoArgsConstructor;
 /**
  * 结构化查询过滤条件项
  *
- * <p>核心以 fieldId (sys_module_field.id) 作为权威物理凭据，100% 严密自洽，杜绝歧义与 SQL 注入。
+ * <p>核心以 fieldId (sys_module_field.id) 作为权威物理凭据，100% 严密自洽，杜绝歧义与 SQL 注入。 支持嵌套条件组 (logic: AND / OR,
+ * children)。
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "结构化检索条件项（fieldId 权威驱动）")
+@Schema(description = "结构化检索条件项（fieldId 权威驱动，支持树形条件组）")
 public class FilterItem implements Serializable {
 
-    @Schema(description = "字段权威元数据主键 (sys_module_field.id)，优先使用", example = "1001")
+    @Schema(description = "字段权威元数据主键 (sys_module_field.id)，单条件时必填", example = "1001")
     private Long fieldId;
 
     @Schema(
@@ -29,4 +31,10 @@ public class FilterItem implements Serializable {
 
     @Schema(description = "检索值 (单值如 \"高等数学\"，区间如 [90, 100]，多选如 [\"A\", \"B\"])")
     private Object value;
+
+    @Schema(description = "条件组合逻辑: AND, OR (当存在 children 子条件时生效)", example = "AND")
+    private String logic;
+
+    @Schema(description = "嵌套子过滤条件列表（用于组装复合逻辑组，如 A OR (B AND C)）")
+    private List<FilterItem> children;
 }

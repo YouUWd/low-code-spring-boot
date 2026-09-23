@@ -26,6 +26,11 @@ public class DataService implements DataApi {
     }
 
     @Override
+    public Long count(QueryReq req) {
+        return dataQueryService.count(req);
+    }
+
+    @Override
     public List<DataOption> getOptions(OptionReq req) {
         return dataQueryService.getOptions(req);
     }

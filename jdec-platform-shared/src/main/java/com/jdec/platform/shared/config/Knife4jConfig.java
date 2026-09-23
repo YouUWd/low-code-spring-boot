@@ -51,10 +51,19 @@ public class Knife4jConfig {
     }
 
     @Bean
-    public GroupedOpenApi comBizApi() {
+    public GroupedOpenApi commonApi() {
         return GroupedOpenApi.builder()
-                .group("comBiz")
-                .displayName("通用功能管理")
+                .group("COMMON")
+                .displayName("公共业务")
+                .packagesToScan("com.jdec.platform.common.biz.controller")
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi approvalApi() {
+        return GroupedOpenApi.builder()
+                .group("APPROVAL")
+                .displayName("审批流程")
                 .packagesToScan("com.jdec.platform.approval.biz.controller")
                 .build();
     }

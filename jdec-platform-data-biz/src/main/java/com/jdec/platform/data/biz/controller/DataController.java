@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.*;
 /** 通用低代码数据引擎控制器 提供跨业务模块的通用动态读写能力 */
 @Slf4j
 @RestController
-@RequestMapping("/api/data/engine")
+@RequestMapping("/api/data")
 @RequiredArgsConstructor
 @Tag(name = "通用低代码数据引擎接口", description = "提供通用的动态查询、详情加载与自相似树形同构保存")
 public class DataController {
@@ -45,6 +45,22 @@ public class DataController {
         } catch (Exception ex) {
             log.error(
                     "Data engine query failed: moduleId={}, err={}",
+                    req.getModuleId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/count")
+    @Operation(summary = "通用动态计数查询", description = "返回满足组合过滤条件的记录总数")
+    public ApiResponse<Long> count(@RequestBody QueryReq req) {
+        try {
+            Long result = dataApi.count(req);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Data engine count failed: moduleId={}, err={}",
                     req.getModuleId(),
                     ex.getMessage(),
                     ex);

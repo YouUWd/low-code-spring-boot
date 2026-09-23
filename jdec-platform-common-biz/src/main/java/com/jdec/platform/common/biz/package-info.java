@@ -27,5 +27,13 @@
  */
 @org.springframework.modulith.ApplicationModule(
         displayName = "Common BIZ",
-        allowedDependencies = {"common.api", "config.api", "hr.api", "shared"})
+        allowedDependencies = {
+            "common.api",
+            "config.api",
+            "config.open",
+            "hr.api",
+            "approval.api",
+            "data.api",
+            "shared"
+        })
 package com.jdec.platform.common.biz;

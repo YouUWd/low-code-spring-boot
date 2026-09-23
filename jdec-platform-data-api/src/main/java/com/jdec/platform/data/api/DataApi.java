@@ -17,6 +17,9 @@ public interface DataApi {
     /** 通用动态数据集查询 (纯数据引擎，返回 DataPage 分页列表) */
     DataPage<Map<String, Object>> query(QueryReq req);
 
+    /** 通用动态数据集数量统计 (纯数据引擎，返回满足条件的记录总数) */
+    Long count(QueryReq req);
+
     /**
      * 单据详情精准查询快捷方法
      *

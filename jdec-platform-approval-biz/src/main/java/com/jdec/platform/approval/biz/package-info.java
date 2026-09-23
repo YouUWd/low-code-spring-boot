@@ -5,6 +5,7 @@
             "approval.api",
             "data.api",
             "config.api",
+            "config.open",
             "auth.api",
             "hr.api",
             "shared"
