@@ -1,4 +1,4 @@
-package com.jdec.platform.data.api.dto.response;
+package com.jdec.platform.common.api.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;

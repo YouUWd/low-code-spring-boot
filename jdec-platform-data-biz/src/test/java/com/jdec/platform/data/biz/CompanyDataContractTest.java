@@ -632,21 +632,22 @@ class CompanyDataContractTest {
         }
 
         @Test
-        @DisplayName("C11 getDetail 的 data 与 query 的 records[0] 结构同构")
+        @DisplayName("C11 getDetail 的 records[0] 与 query 的 records[0] 结构同构")
         void getDetailDataIsIsomorphicToQueryRecord() {
             List<Long> fields = List.of(10001L, 10002L, 10011L, 10012L);
             Map<String, Object> fromQuery =
                     queryService.query(req(1001L, fields)).getRecords().get(0);
 
             DataDetail<Map<String, Object>> detail = queryService.getDetail(1001L, 1L, fields);
-            Map<String, Object> fromDetail = detail.getData();
+            assertEquals(1001L, detail.getModuleId());
+            assertNotNull(detail.getRecords());
+            assertFalse(detail.getRecords().isEmpty());
+            Map<String, Object> fromDetail = detail.getRecords().get(0);
 
             assertEquals(fromQuery.keySet(), fromDetail.keySet(), "key 集合必须一致");
             assertEquals(
                     childrenOf(fromQuery).get(0).get("moduleId"),
                     childrenOf(fromDetail).get(0).get("moduleId"));
-            assertNotNull(detail.getMeta(), "详情应同时返回 meta");
-            assertEquals(1001L, detail.getMeta().getModuleId());
         }
 
         @Test

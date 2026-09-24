@@ -1048,6 +1048,64 @@ public class QueryPlanCompiler {
             case "LTE" -> field.le(value);
             case "IS_NULL" -> field.isNull();
             case "IS_NOT_NULL" -> field.isNotNull();
+            case "CONTAINS", "JSON_CONTAINS", "CONTAINS_ANY" -> {
+                // 包含任一元素: value 可以是单个字符串/数值，也可以是集合
+                if (value instanceof Collection<?> coll) {
+                    List<Condition> orList = new ArrayList<>();
+                    for (Object item : coll) {
+                        if (item != null) {
+                            String itemJson = formatJsonValue(item);
+                            orList.add(
+                                    DSL.condition(
+                                            "JSON_CONTAINS({0}, {1})", field, DSL.val(itemJson)));
+                        }
+                    }
+                    yield orList.isEmpty() ? DSL.noCondition() : DSL.or(orList);
+                } else if (value instanceof Object[] arr) {
+                    List<Condition> orList = new ArrayList<>();
+                    for (Object item : arr) {
+                        if (item != null) {
+                            String itemJson = formatJsonValue(item);
+                            orList.add(
+                                    DSL.condition(
+                                            "JSON_CONTAINS({0}, {1})", field, DSL.val(itemJson)));
+                        }
+                    }
+                    yield orList.isEmpty() ? DSL.noCondition() : DSL.or(orList);
+                } else {
+                    String itemJson = formatJsonValue(value);
+                    yield DSL.condition("JSON_CONTAINS({0}, {1})", field, DSL.val(itemJson));
+                }
+            }
+            case "CONTAINS_ALL", "JSON_CONTAINS_ALL" -> {
+                // 包含全部元素: value 集合中的所有元素都必须存在
+                if (value instanceof Collection<?> coll) {
+                    List<Condition> andList = new ArrayList<>();
+                    for (Object item : coll) {
+                        if (item != null) {
+                            String itemJson = formatJsonValue(item);
+                            andList.add(
+                                    DSL.condition(
+                                            "JSON_CONTAINS({0}, {1})", field, DSL.val(itemJson)));
+                        }
+                    }
+                    yield andList.isEmpty() ? DSL.noCondition() : DSL.and(andList);
+                } else if (value instanceof Object[] arr) {
+                    List<Condition> andList = new ArrayList<>();
+                    for (Object item : arr) {
+                        if (item != null) {
+                            String itemJson = formatJsonValue(item);
+                            andList.add(
+                                    DSL.condition(
+                                            "JSON_CONTAINS({0}, {1})", field, DSL.val(itemJson)));
+                        }
+                    }
+                    yield andList.isEmpty() ? DSL.noCondition() : DSL.and(andList);
+                } else {
+                    String itemJson = formatJsonValue(value);
+                    yield DSL.condition("JSON_CONTAINS({0}, {1})", field, DSL.val(itemJson));
+                }
+            }
             case "IN" -> {
                 if (value instanceof Collection<?> coll) {
                     yield field.in(coll);
@@ -1071,6 +1129,25 @@ public class QueryPlanCompiler {
             }
             default -> field.like("%" + value + "%");
         };
+    }
+
+    /** 辅助将 Java 值格式化为适合 JSON_CONTAINS 匹配的目标 JSON 标量字符串 (如 "客户" -> "\"客户\"", 123 -> "123") */
+    private String formatJsonValue(Object val) {
+        if (val == null) {
+            return "null";
+        }
+        if (val instanceof Number || val instanceof Boolean) {
+            return String.valueOf(val);
+        }
+        String str = String.valueOf(val).trim();
+        if ((str.startsWith("{") && str.endsWith("}"))
+                || (str.startsWith("[") && str.endsWith("]"))) {
+            return str;
+        }
+        if (str.startsWith("\"") && str.endsWith("\"")) {
+            return str;
+        }
+        return "\"" + str + "\"";
     }
 
     /** 编译排序规则列表 (以 fieldId 为唯一依据) */

@@ -2,27 +2,31 @@ package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.DataRecordItem;
+import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
+import com.jdec.platform.common.api.dto.response.ModuleDataNode;
+import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
+import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
+import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.response.ApprovalRowItem;
 import com.jdec.platform.data.api.dto.response.DataDetail;
+import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
-import com.jdec.platform.data.api.dto.response.DataRecordItem;
-import com.jdec.platform.data.api.dto.response.FieldMetaDTO;
-import com.jdec.platform.data.api.dto.response.ModuleDataNode;
-import com.jdec.platform.data.api.dto.response.ModuleMetaDTO;
-import com.jdec.platform.data.api.dto.response.ModuleSimplePermissionDTO;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -45,9 +49,11 @@ import org.springframework.stereotype.Service;
 public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private final UserMenuHeaderApi userMenuHeaderApi;
+    private final OpenMenuApi openMenuApi;
     private final ConfigApi configApi;
     private final DataApi dataApi;
     private final IApprovalEngine approvalEngine;
+    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
 
     @Override
     public MenuDataResp queryByMenu(Long menuId, MenuQueryReq req) {
@@ -108,28 +114,41 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 4. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req != null ? req.getApprovalType() : null;
-        ApprovalButtonsGroup approvalGroup = queryApprovalButtons(rootModuleId, approvalType);
-
-        Map<Long, List<Map<String, Object>>> approvalBtnMap = approvalGroup.relevantBtns();
-        Map<Long, List<Map<String, Object>>> allBtnsMap = approvalGroup.allBtns();
-
-        ApprovalFilterResult approvalFilterResult =
-                buildApprovalFilters(approvalType, rootModuleId, rootFieldIds, approvalBtnMap);
-        if (approvalFilterResult.shortCircuitEmpty()) {
-            // 短路直接返回空数据
-            ModuleDataNode emptyNode =
-                    ModuleDataNode.builder()
-                            .moduleId(rootModuleId)
-                            .menuId(menuId)
-                            .record(Collections.emptyList())
-                            .build();
-
-            return assembleMenuDataResp(
-                    headerRoot, menuId, rootModuleId, roleId, emptyNode, allBtnsMap);
+        boolean hasApprovalChain = false;
+        try {
+            hasApprovalChain =
+                    Boolean.TRUE.equals(
+                            sysApprovalChainConfigApi.getApprovalStatus(
+                                    Collections.singletonList(rootModuleId)));
+        } catch (Exception ex) {
+            log.warn("查询模块审批链状态失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
         }
 
-        if (!approvalFilterResult.filters().isEmpty()) {
-            finalFilters.addAll(approvalFilterResult.filters());
+        Map<Long, List<Map<String, Object>>> allBtnsMap = null;
+        if (hasApprovalChain) {
+            ApprovalButtonsGroup approvalGroup = queryApprovalButtons(rootModuleId, approvalType);
+            Map<Long, List<Map<String, Object>>> approvalBtnMap = approvalGroup.relevantBtns();
+            allBtnsMap = approvalGroup.allBtns();
+
+            ApprovalFilterResult approvalFilterResult =
+                    buildApprovalFilters(approvalType, rootModuleId, rootFieldIds, approvalBtnMap);
+            if (approvalFilterResult.shortCircuitEmpty()) {
+                // 短路直接返回空数据
+                ModuleDataNode emptyNode =
+                        ModuleDataNode.builder()
+                                .moduleId(rootModuleId)
+                                .menuId(menuId)
+                                .total(0L)
+                                .record(Collections.emptyList())
+                                .build();
+
+                return assembleMenuDataResp(
+                        headerRoot, menuId, rootModuleId, roleId, emptyNode, allBtnsMap);
+            }
+
+            if (!approvalFilterResult.filters().isEmpty()) {
+                finalFilters.addAll(approvalFilterResult.filters());
+            }
         }
         queryReqBuilder.filters(finalFilters);
 
@@ -137,10 +156,15 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         DataPage<Map<String, Object>> rawDataPage = dataApi.query(queryReqBuilder.build());
 
         // 6. 将 Map 数据集结构转换为自相似同构树节点 ModuleDataNode
+        Long total =
+                (rawDataPage != null && rawDataPage.getTotal() != null)
+                        ? rawDataPage.getTotal()
+                        : 0L;
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
                         .menuId(menuId)
+                        .total(total)
                         .record(new ArrayList<>())
                         .build();
 
@@ -204,9 +228,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .record(new ArrayList<>())
                         .build();
 
-        if (dataDetail != null && dataDetail.getData() != null) {
+        if (dataDetail != null
+                && dataDetail.getRecords() != null
+                && !dataDetail.getRecords().isEmpty()) {
             String rootModKey = String.valueOf(rootModuleId);
-            Map<String, Object> rawData = dataDetail.getData();
+            Map<String, Object> rawData = dataDetail.getRecords().get(0);
             @SuppressWarnings("unchecked")
             Map<String, Object> rootRowData =
                     rawData.containsKey(rootModKey) && rawData.get(rootModKey) instanceof Map<?, ?>
@@ -220,6 +246,51 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 5. 组装响应结构
         return MenuDetailResp.builder().meta(metaList).data(dataTree).build();
+    }
+
+    @Override
+    public List<DataOption> getOptionsByMenu(
+            Long menuId, com.jdec.platform.common.biz.dto.request.MenuOptionReq req) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+        if (req == null || req.getFieldId() == null) {
+            throw new IllegalArgumentException("目标字段 ID (fieldId) 不能为空");
+        }
+
+        // 1. 通过 OpenMenuApi 获取菜单关联的根模块 ID
+        Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (rootModuleId == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 未关联有效的根模块 ID");
+        }
+
+        // 2. 组装单层 AND 组合过滤条件
+        List<FilterItem> finalFilters = new ArrayList<>();
+        if (req.getFilters() != null && !req.getFilters().isEmpty()) {
+            for (var flatFilter : req.getFilters()) {
+                if (flatFilter != null && flatFilter.getFieldId() != null) {
+                    finalFilters.add(
+                            FilterItem.builder()
+                                    .fieldId(flatFilter.getFieldId())
+                                    .operator(
+                                            flatFilter.getOperator() != null
+                                                    ? flatFilter.getOperator()
+                                                    : "EQ")
+                                    .value(flatFilter.getValue())
+                                    .build());
+                }
+            }
+        }
+
+        // 3. 构建 OptionReq 并调用底层低代码数据引擎
+        OptionReq optionReq =
+                OptionReq.builder()
+                        .moduleId(rootModuleId)
+                        .fieldId(req.getFieldId())
+                        .filters(finalFilters)
+                        .build();
+
+        return dataApi.getOptions(optionReq);
     }
 
     private void collectCheckedFieldIds(MenuHeaderColumnResp node, List<Long> result) {
@@ -439,8 +510,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         // 2. 组装每条记录的审批链行信息 (ApprovalRowItem)
-        List<ApprovalRowItem> approvalRows = new ArrayList<>();
-        if (dataNode != null && dataNode.getRecord() != null && allBtnsMap != null) {
+        List<ApprovalRowItem> approvalRows = null;
+        if (allBtnsMap != null && dataNode != null && dataNode.getRecord() != null) {
+            approvalRows = new ArrayList<>();
             for (DataRecordItem item : dataNode.getRecord()) {
                 if (item != null && item.getRow() != null) {
                     Object idObj = item.getRow().get("id");

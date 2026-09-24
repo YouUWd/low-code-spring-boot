@@ -49,16 +49,11 @@ public class DataQueryService {
         return getDetail(moduleId, id, (List<Long>) null);
     }
 
-    /** 动态单据详情精准查询门面 (底层以 compileDetail 驱动，第一层级保证且只返回单条记录 Map，下级子模块自相似嵌套) */
+    /** 动态单据详情精准查询门面 (底层以 compileDetail 驱动，返回与 DataPage 同构的 DataDetail 实体记录) */
     public DataDetail<Map<String, Object>> getDetail(Long moduleId, Long id, List<Long> fields) {
         QueryPlan plan = queryPlanCompiler.compileDetail(moduleId, id, fields);
         DataPage<Map<String, Object>> page = queryPlanExecutor.execute(plan);
-        Map<String, Object> record =
-                (page != null && page.getRecords() != null && !page.getRecords().isEmpty())
-                        ? page.getRecords().get(0)
-                        : Collections.emptyMap();
-
-        return DataDetail.of(plan.getRootNodePlan().getModuleMeta(), record);
+        return DataDetail.of(moduleId, page != null ? page.getRecords() : Collections.emptyList());
     }
 
     /** 通用字段搜索下拉候选项查询 (基于 QueryPlan 统一编译与执行) */

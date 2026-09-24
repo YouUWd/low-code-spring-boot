@@ -100,6 +100,20 @@ class DataQueryTest {
                             res.add(r2);
                             return new MockResult[] {new MockResult(2, res)};
                         }
+                        if (sql.contains("cooperation_types")) {
+                            var res = c.newResult(DSL.field("cooperation_types", String.class));
+                            var r1 = c.newRecord(DSL.field("cooperation_types", String.class));
+                            r1.setValue(
+                                    DSL.field("cooperation_types", String.class),
+                                    "[\"客户\", \"供应商\"]");
+                            var r2 = c.newRecord(DSL.field("cooperation_types", String.class));
+                            r2.setValue(
+                                    DSL.field("cooperation_types", String.class),
+                                    "[\"供应商\", \"战略伙伴\"]");
+                            res.add(r1);
+                            res.add(r2);
+                            return new MockResult[] {new MockResult(2, res)};
+                        }
                         var res = c.newResult(DSL.field("val", String.class));
                         var r1 = c.newRecord(DSL.field("val", String.class));
                         r1.setValue(DSL.field("val", String.class), "候选值A");
@@ -995,6 +1009,43 @@ class DataQueryTest {
     }
 
     @Test
+    @DisplayName("测试 JSON 数组字段过滤 (JSON_CONTAINS / CONTAINS_ANY / CONTAINS_ALL)")
+    void testQueryJsonContainsFilter() {
+        List<FilterItem> filters =
+                List.of(
+                        FilterItem.builder()
+                                .fieldId(10006L) // info.cooperation_types
+                                .operator("CONTAINS")
+                                .value("客户")
+                                .build(),
+                        FilterItem.builder()
+                                .fieldId(10007L) // info.industry_tags
+                                .operator("CONTAINS_ALL")
+                                .value(List.of("焦化", "煤炭"))
+                                .build());
+
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(1001L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(List.of(10001L, 10002L, 10006L, 10007L))
+                        .filters(filters)
+                        .build();
+
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        assertNotNull(page);
+
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("json_contains")
+                                                && sql.toLowerCase().contains("cooperation_types")
+                                                && sql.toLowerCase().contains("industry_tags")));
+    }
+
+    @Test
     @DisplayName("测试排序字段解析 (Sorting Direction)")
     void testQuerySorts() {
         List<SortItem> sorts =
@@ -1024,7 +1075,7 @@ class DataQueryTest {
     }
 
     @Test
-    @DisplayName("测试去重下拉候选项查询 (Get Options)")
+    @DisplayName("测试去重下拉候选项查询 (Get Options): 标量字段")
     void testGetOptions() {
         OptionReq req = OptionReq.builder().moduleId(101L).fieldId(32L).build(); // course_name
 
@@ -1034,5 +1085,27 @@ class DataQueryTest {
         assertEquals(2, options.size());
         assertTrue(options.stream().anyMatch(o -> "大学英语".equals(o.getLabel())));
         assertTrue(options.stream().anyMatch(o -> "高等数学".equals(o.getLabel())));
+    }
+
+    @Test
+    @DisplayName("测试去重下拉候选项查询 (Get Options): JSON 数组字段打散展平与去重")
+    void testGetOptionsJsonArray() {
+        OptionReq req =
+                OptionReq.builder().moduleId(1001L).fieldId(10006L).build(); // cooperation_types
+
+        List<DataOption> options = dataQueryService.getOptions(req);
+
+        assertNotNull(options);
+        // 原数据为 2 行: 行1 ["客户", "供应商"], 行2 ["供应商", "战略伙伴"] -> 展平去重后应为 ["客户", "供应商", "战略伙伴"]
+        assertEquals(3, options.size());
+        assertTrue(
+                options.stream()
+                        .anyMatch(o -> "客户".equals(o.getLabel()) && "客户".equals(o.getValue())));
+        assertTrue(
+                options.stream()
+                        .anyMatch(o -> "供应商".equals(o.getLabel()) && "供应商".equals(o.getValue())));
+        assertTrue(
+                options.stream()
+                        .anyMatch(o -> "战略伙伴".equals(o.getLabel()) && "战略伙伴".equals(o.getValue())));
     }
 }
