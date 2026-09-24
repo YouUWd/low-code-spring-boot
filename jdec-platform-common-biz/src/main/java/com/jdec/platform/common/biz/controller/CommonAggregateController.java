@@ -1,12 +1,15 @@
 package com.jdec.platform.common.biz.controller;
 
+import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
+import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -62,6 +65,26 @@ public class CommonAggregateController {
                     "Common aggregate getDetailByMenu failed: menuId={}, id={}, err={}",
                     menuId,
                     id,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/menu/{menuId}/options")
+    @Operation(
+            summary = "基于菜单 ID 的字段搜索下拉候选项",
+            description = "根据菜单 ID 自动解析模块上下文，支持传入单层 AND 组合过滤条件，获取去重候选值列表")
+    public ApiResponse<List<DataOption>> getOptionsByMenu(
+            @PathVariable Long menuId, @RequestBody MenuOptionReq req) {
+        try {
+            List<DataOption> result = commonAggregateService.getOptionsByMenu(menuId, req);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common aggregate getOptionsByMenu failed: menuId={}, fieldId={}, err={}",
+                    menuId,
+                    req != null ? req.getFieldId() : null,
                     ex.getMessage(),
                     ex);
             throw ex;

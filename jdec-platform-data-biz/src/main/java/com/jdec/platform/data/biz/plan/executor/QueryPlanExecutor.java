@@ -535,14 +535,7 @@ public class QueryPlanExecutor {
             cond = cond.and(distinctField.isNotNull());
 
             Result<?> records = selectStep.where(cond).fetch();
-            List<String> results = new ArrayList<>();
-            for (Record r : records) {
-                Object val = r.get(0);
-                if (val != null) {
-                    results.add(String.valueOf(val));
-                }
-            }
-            return results;
+            return extractDistinctOptionValues(records);
         }
 
         // 2. 如果目标字段属于子节点 (1:N 从表或子模块)，从子表出发 SELECT DISTINCT targetField，
@@ -635,14 +628,38 @@ public class QueryPlanExecutor {
         }
 
         Result<?> records = selectStep.where(childCond).fetch();
-        List<String> results = new ArrayList<>();
+        return extractDistinctOptionValues(records);
+    }
+
+    /** 从 SELECT DISTINCT 结果集中提取候选值，自动解析与展平 JSON 数组并进行内存去重 */
+    private List<String> extractDistinctOptionValues(Result<?> records) {
+        if (records == null || records.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Set<String> uniqueValues = new LinkedHashSet<>();
         for (Record r : records) {
-            Object val = r.get(0);
-            if (val != null) {
-                results.add(String.valueOf(val));
+            Object rawVal = r.get(0);
+            if (rawVal == null) {
+                continue;
+            }
+            Object parsed = parseIfJson(rawVal);
+            if (parsed instanceof Iterable<?> iterable) {
+                for (Object item : iterable) {
+                    if (item != null) {
+                        String s = String.valueOf(item).trim();
+                        if (!s.isEmpty()) {
+                            uniqueValues.add(s);
+                        }
+                    }
+                }
+            } else {
+                String s = String.valueOf(parsed).trim();
+                if (!s.isEmpty()) {
+                    uniqueValues.add(s);
+                }
             }
         }
-        return results;
+        return new ArrayList<>(uniqueValues);
     }
 
     /**
