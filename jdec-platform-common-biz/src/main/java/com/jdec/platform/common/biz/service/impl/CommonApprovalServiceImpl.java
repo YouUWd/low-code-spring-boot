@@ -48,11 +48,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         Map<String, Object> todo = new HashMap<>();
         todo.put("label", "待办");
         todo.put("type", "1");
-        resultMap.add(todo);
         Map<String, Object> done = new HashMap<>();
         done.put("label", "已办");
         done.put("type", "2");
-        resultMap.add(done);
         Map<String, Object> all = new HashMap<>();
         all.put("label", "全部");
         all.put("type", "3");
