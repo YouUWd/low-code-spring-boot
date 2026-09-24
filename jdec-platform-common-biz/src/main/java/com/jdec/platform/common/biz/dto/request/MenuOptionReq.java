@@ -26,4 +26,10 @@ public class MenuOptionReq implements Serializable {
 
     @Schema(description = "纯平铺单字段过滤条件列表 (默认以平级 AND 组合)")
     private List<FlatFilterItem> filters;
+
+    @Schema(description = "候选项排序方向: ASC (升序) / DESC (降序)，为 null 或空时默认不进行额外排序", example = "ASC")
+    private String direction;
+
+    @Schema(description = "审批流过滤类型: 1-待办, 2-已办, 3-全部 (可选，默认3)", example = "3")
+    private Integer approvalType;
 }

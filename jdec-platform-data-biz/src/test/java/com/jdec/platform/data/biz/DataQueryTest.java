@@ -1108,4 +1108,34 @@ class DataQueryTest {
                 options.stream()
                         .anyMatch(o -> "战略伙伴".equals(o.getLabel()) && "战略伙伴".equals(o.getValue())));
     }
+
+    @Test
+    @DisplayName("测试去重下拉候选项查询 (Get Options): 可选排序方向")
+    void testGetOptionsWithSortDirection() {
+        // 1. 测试 ASC 升序
+        OptionReq reqAsc =
+                OptionReq.builder()
+                        .moduleId(101L)
+                        .fieldId(32L) // course_name
+                        .direction("ASC")
+                        .build();
+        List<DataOption> optionsAsc = dataQueryService.getOptions(reqAsc);
+        assertNotNull(optionsAsc);
+        assertEquals(2, optionsAsc.size());
+        assertEquals("大学英语", optionsAsc.get(0).getLabel());
+        assertEquals("高等数学", optionsAsc.get(1).getLabel());
+
+        // 2. 测试 DESC 降序
+        OptionReq reqDesc =
+                OptionReq.builder()
+                        .moduleId(101L)
+                        .fieldId(32L) // course_name
+                        .direction("DESC")
+                        .build();
+        List<DataOption> optionsDesc = dataQueryService.getOptions(reqDesc);
+        assertNotNull(optionsDesc);
+        assertEquals(2, optionsDesc.size());
+        assertEquals("高等数学", optionsDesc.get(0).getLabel());
+        assertEquals("大学英语", optionsDesc.get(1).getLabel());
+    }
 }

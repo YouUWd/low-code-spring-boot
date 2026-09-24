@@ -27,4 +27,7 @@ public class OptionReq implements Serializable {
 
     @Schema(description = "平铺过滤条件列表 (fieldId 必须属于当前模块或其子模块)")
     private List<FilterItem> filters;
+
+    @Schema(description = "候选项排序方向: ASC (升序) / DESC (降序)，为 null 或空时默认不进行额外排序", example = "ASC")
+    private String direction;
 }
