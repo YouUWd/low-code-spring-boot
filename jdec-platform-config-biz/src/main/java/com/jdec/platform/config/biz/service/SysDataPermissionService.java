@@ -12,8 +12,12 @@ import com.jdec.platform.config.api.dto.request.SysDataPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.entity.SysDataPermission;
+import com.jdec.platform.config.biz.entity.SysModule;
+import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysProjectSubject;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
+import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysProjectSubjectMapper;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
@@ -43,6 +47,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
 
     private final SysDataPermissionMapper sysDataPermissionMapper;
     private final SysProjectSubjectMapper sysProjectSubjectMapper;
+    private final SysModuleMapper sysModuleMapper;
+    private final SysModuleFieldMapper sysModuleFieldMapper;
     private final DataSourceResolver dataSourceResolver;
 
     @Override
@@ -149,25 +155,36 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                         new LambdaQueryWrapper<SysProjectSubject>()
                                 .eq(SysProjectSubject::getProjectNo, AppContext.getProjectNo()));
 
-        // 3. 收集所有 code 并转换为查询参数（编码形如「表名*字段名」）
+        // 3. 解析每个权限节点关联的主体（模块数据来源主体与项目主体取交集）
+        Map<String, List<SysProjectSubject>> codeSubjectMap = resolveNodeSubjects(list, subjects);
+
+        // 4. 按节点关联的主体转换为查询参数（编码形如「表名*字段名」）
         List<DataPermissionQueryItem> queryItems = new ArrayList<>();
         for (SysDataPermission permission : list) {
-            if (permission.getCode() != null && permission.getCode().contains("*")) {
-                String[] parts = permission.getCode().split("\\*");
-                if (parts.length == 2) {
-                    DataPermissionQueryItem item = new DataPermissionQueryItem();
-                    item.setTableName(parts[0]);
-                    item.setColumn(parts[1]);
-                    queryItems.add(item);
-                }
+            List<SysProjectSubject> nodeSubjects = codeSubjectMap.get(permission.getCode());
+            String[] parts = splitCode(permission.getCode());
+            if (CollUtil.isEmpty(nodeSubjects) || parts == null) {
+                continue;
             }
+            DataPermissionQueryItem item = new DataPermissionQueryItem();
+            item.setTableName(parts[0]);
+            item.setColumn(parts[1]);
+            item.setSubjectIds(
+                    nodeSubjects.stream()
+                            .map(SysProjectSubject::getSubjectId)
+                            .filter(Objects::nonNull)
+                            .distinct()
+                            .collect(Collectors.toList()));
+            queryItems.add(item);
         }
 
-        // 4. 直连项目编码对应的数据源查询，按 主体ID -> 权限编码 缓存业务数据
+        // 5. 直连项目编码对应的数据源查询，按 主体ID -> 权限编码 缓存业务数据
         Map<Long, Map<String, List<String>>> subjectBizDataMap =
-                querySubjectBizData(subjects, queryItems);
+                CollUtil.isEmpty(queryItems)
+                        ? new HashMap<>()
+                        : queryBizData(AppContext.getProjectNo(), queryItems);
 
-        // 5. 层层封装返回：权限节点 -> 主体列表 -> 主体业务数据
+        // 6. 层层封装返回：权限节点 -> 主体列表 -> 主体业务数据
         return list.stream()
                 .map(
                         type -> {
@@ -179,7 +196,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                             resp.setSort(type.getSort());
                             resp.setStatus(type.getStatus());
                             resp.setSubjectInfos(
-                                    subjects.stream()
+                                    CollUtil.emptyIfNull(codeSubjectMap.get(type.getCode()))
+                                            .stream()
                                             .map(
                                                     subject -> {
                                                         SysDataPermissionResp.SubjectInfo info =
@@ -206,25 +224,110 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                 .collect(Collectors.toList());
     }
 
-    /** 组装查询项的主体ID后，查询当前项目下所有主体的业务数据 */
-    private Map<Long, Map<String, List<String>>> querySubjectBizData(
-            List<SysProjectSubject> subjects, List<DataPermissionQueryItem> queryItems) {
-        if (CollUtil.isEmpty(queryItems) || CollUtil.isEmpty(subjects)) {
-            return new HashMap<>();
+    /**
+     * 解析每个数据权限节点关联的主体列表。
+     *
+     * <p>按权限编码「表名*字段名」在 {@code sys_module_field} 中匹配模块ID，再取 {@code sys_module} 的 {@code
+     * source_subjects}（为空时回退 {@code subject_id}），各模块主体合并去重后与当前项目主体取交集， 按项目主体顺序返回。
+     */
+    private Map<String, List<SysProjectSubject>> resolveNodeSubjects(
+            List<SysDataPermission> permissions, List<SysProjectSubject> projectSubjects) {
+        Map<String, List<SysProjectSubject>> codeSubjectMap = new HashMap<>();
+        if (CollUtil.isEmpty(projectSubjects)) {
+            return codeSubjectMap;
         }
 
-        List<Long> subjectIds =
-                subjects.stream()
-                        .map(SysProjectSubject::getSubjectId)
-                        .filter(Objects::nonNull)
-                        .distinct()
-                        .collect(Collectors.toList());
-        if (subjectIds.isEmpty()) {
-            return new HashMap<>();
+        // 权限编码 -> [表名, 字段名]
+        Map<String, String[]> codePartsMap = new LinkedHashMap<>();
+        for (SysDataPermission permission : permissions) {
+            String[] parts = splitCode(permission.getCode());
+            if (parts != null) {
+                codePartsMap.put(permission.getCode(), parts);
+            }
+        }
+        if (codePartsMap.isEmpty()) {
+            return codeSubjectMap;
         }
 
-        queryItems.forEach(item -> item.setSubjectIds(subjectIds));
-        return queryBizData(AppContext.getProjectNo(), queryItems);
+        // 1. 按表名 + 字段名查询模块字段，得到 权限编码 -> 模块ID集合
+        Set<String> tableNames =
+                codePartsMap.values().stream().map(parts -> parts[0]).collect(Collectors.toSet());
+        Set<String> columnNames =
+                codePartsMap.values().stream().map(parts -> parts[1]).collect(Collectors.toSet());
+        List<SysModuleField> fields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .in(SysModuleField::getTableName, tableNames)
+                                .in(SysModuleField::getColumnName, columnNames));
+        Map<String, Set<Long>> codeModuleIdsMap = new HashMap<>();
+        for (SysModuleField field : fields) {
+            if (field.getModuleId() == null) {
+                continue;
+            }
+            String code = field.getTableName() + "*" + field.getColumnName();
+            if (codePartsMap.containsKey(code)) {
+                codeModuleIdsMap
+                        .computeIfAbsent(code, key -> new LinkedHashSet<>())
+                        .add(field.getModuleId());
+            }
+        }
+        if (codeModuleIdsMap.isEmpty()) {
+            return codeSubjectMap;
+        }
+
+        // 2. 查询模块，取得每个模块的数据来源主体
+        Set<Long> moduleIds =
+                codeModuleIdsMap.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
+        Map<Long, SysModule> moduleMap =
+                sysModuleMapper
+                        .selectList(
+                                Wrappers.<SysModule>lambdaQuery()
+                                        .in(SysModule::getId, moduleIds)
+                                        .eq(SysModule::getProjectNo, AppContext.getProjectNo()))
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        SysModule::getId,
+                                        module -> module,
+                                        (first, second) -> first));
+
+        // 3. 合并各模块主体去重后，与项目主体取交集
+        for (Map.Entry<String, String[]> entry : codePartsMap.entrySet()) {
+            Set<Long> subjectIds = new LinkedHashSet<>();
+            for (Long moduleId : codeModuleIdsMap.getOrDefault(entry.getKey(), Set.of())) {
+                SysModule module = moduleMap.get(moduleId);
+                if (module == null) {
+                    continue;
+                }
+                if (CollUtil.isNotEmpty(module.getSourceSubjects())) {
+                    module.getSourceSubjects().stream()
+                            .filter(Objects::nonNull)
+                            .forEach(subjectIds::add);
+                } else if (module.getSubjectId() != null) {
+                    subjectIds.add(module.getSubjectId());
+                }
+            }
+            codeSubjectMap.put(
+                    entry.getKey(),
+                    projectSubjects.stream()
+                            .filter(
+                                    subject ->
+                                            subject.getSubjectId() != null
+                                                    && subjectIds.contains(subject.getSubjectId()))
+                            .collect(Collectors.toList()));
+        }
+        return codeSubjectMap;
+    }
+
+    /** 拆解权限编码「表名*字段名」，非法编码返回 null */
+    private String[] splitCode(String code) {
+        if (!StringUtils.hasText(code) || !code.contains("*")) {
+            return null;
+        }
+        String[] parts = code.split("\\*");
+        return parts.length == 2 && StringUtils.hasText(parts[0]) && StringUtils.hasText(parts[1])
+                ? parts
+                : null;
     }
 
     /**
