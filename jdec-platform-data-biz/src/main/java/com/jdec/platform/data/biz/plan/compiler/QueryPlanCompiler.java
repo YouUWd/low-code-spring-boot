@@ -380,6 +380,8 @@ public class QueryPlanCompiler {
                                 meta, primaryTable, node.getFields(), isGlobalWhitelistMode);
 
         // 识别 1:N 关系从表字段并自动拆分至子节点计划
+        // TODO: 引入开关配置项（如 jdec.data.query.allow-module-internal-one-to-many 或 Config Center 系统参数），
+        // 控制是否允许模块内配置 1:N 从表字段。若关闭则严格校验并抛出异常，引导开发者在元数据中将 1:N 抽象为独立子模块。
         List<PhysicalFieldSpec> primaryProjectedFields = new ArrayList<>();
         Map<String, List<PhysicalFieldSpec>> oneToManyFieldsByTable = new LinkedHashMap<>();
         Map<String, TableRelationDTO> oneToManyRelationByTable = new LinkedHashMap<>();

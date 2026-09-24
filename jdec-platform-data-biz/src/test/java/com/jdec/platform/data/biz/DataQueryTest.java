@@ -1,10 +1,15 @@
 package com.jdec.platform.data.biz;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.lenient;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
@@ -15,23 +20,26 @@ import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
-import com.jdec.platform.data.api.dto.response.DataDetail;
 import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
-import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
-import com.jdec.platform.data.biz.plan.model.QueryPlan;
 import com.jdec.platform.data.biz.service.DataQueryService;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.jooq.tools.jdbc.MockConnection;
 import org.jooq.tools.jdbc.MockDataProvider;
-import org.jooq.tools.jdbc.MockExecuteContext;
 import org.jooq.tools.jdbc.MockResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,15 +49,19 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * 数据引擎模块树自相似驱动与读写同构单元测试
+ * 数据查询引擎 (Data Query Engine) 单元测试
  *
- * <p>模块 101（学生档案）：主表 student，伴生表 clazz
+ * <p>基于 config_center、school 和 company 真实业务元数据与关系拓扑设计：
  *
- * <p>子模块 103（选课）：从表 student_course (1:N)
+ * <p>1. School 多级深层树：学生 (101) -> 选课 (105) -> 选课考核分项 (108) 1:N:N 深度递归自相似查询
  *
- * <p>子模块 104（考核分项）：孙表 student_course_score_item (1:N:N)
+ * <p>2. School 荣誉多分枝：学生 (101) -> 荣誉 (104) -> 荣誉佐证明细 (106)
  *
- * <p>子模块 105（奖惩）：从表 student_reward (1:N)
+ * <p>3. Company 虚拟容器模块：外部对象 (1001) -> 虚拟联系方式 (1020) -> 地址 (1005 1:1) & 联系方式 (1006 1:N)
+ *
+ * <p>4. JSON 字段原生解析：info.cooperation_types 与 info.industry_tags 自动转换为 List
+ *
+ * <p>5. 动态过滤组合、排序、分页与去重候选项 (Options) 查询
  */
 @ExtendWith(MockitoExtension.class)
 class DataQueryTest {
@@ -58,367 +70,93 @@ class DataQueryTest {
     @Mock private JooqDataContextFactory jooqDataContextFactory;
 
     private final TreeResultAssembler treeResultAssembler = new TreeResultAssembler();
-
     private QueryPlanCompiler queryPlanCompiler;
     private QueryPlanExecutor queryPlanExecutor;
     private DataQueryService dataQueryService;
 
     private DSLContext dslContext;
-    private ModuleInfo mockModule101;
-    private ModuleInfo mockModule103;
-    private ModuleInfo mockModule104;
-    private ModuleInfo mockModule105;
     private final Map<Long, ModuleInfo> allKnownModules = new HashMap<>();
+    private final List<TableRelationDTO> allKnownRelations = new ArrayList<>();
+    private final List<String> executedSqlList = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
+        executedSqlList.clear();
+
         MockDataProvider provider =
-                new MockDataProvider() {
-                    @Override
-                    public MockResult[] execute(MockExecuteContext ctx) {
-                        String sql = ctx.sql().toLowerCase();
-                        DSLContext create = DSL.using(SQLDialect.MYSQL);
+                ctx -> {
+                    String sql = ctx.sql().toLowerCase();
+                    executedSqlList.add(sql);
+                    DSLContext c = DSL.using(SQLDialect.MYSQL);
 
-                        // 0. SELECT DISTINCT 候选值查询响应
-                        if (sql.contains("select distinct")) {
-                            if (sql.contains("course_name")) {
-                                var res = create.newResult(DSL.field("course_name", String.class));
-                                var r1 = create.newRecord(DSL.field("course_name", String.class));
-                                r1.setValue(DSL.field("course_name", String.class), "大学英语");
-                                var r2 = create.newRecord(DSL.field("course_name", String.class));
-                                r2.setValue(DSL.field("course_name", String.class), "高等数学");
-                                res.add(r1);
-                                res.add(r2);
-                                return new MockResult[] {new MockResult(2, res)};
-                            }
-                            var res = create.newResult(DSL.field("val", String.class));
-                            var r1 = create.newRecord(DSL.field("val", String.class));
-                            r1.setValue(DSL.field("val", String.class), "候选值A");
+                    if (sql.contains("select distinct")) {
+                        if (sql.contains("course_name")) {
+                            var res = c.newResult(DSL.field("course_name", String.class));
+                            var r1 = c.newRecord(DSL.field("course_name", String.class));
+                            r1.setValue(DSL.field("course_name", String.class), "大学英语");
+                            var r2 = c.newRecord(DSL.field("course_name", String.class));
+                            r2.setValue(DSL.field("course_name", String.class), "高等数学");
                             res.add(r1);
-                            return new MockResult[] {new MockResult(1, res)};
+                            res.add(r2);
+                            return new MockResult[] {new MockResult(2, res)};
                         }
-
-                        // 1. COUNT 查询响应
-                        if (sql.contains("count(*)")) {
-                            var result = create.newResult(DSL.field("count", Long.class));
-                            var record = create.newRecord(DSL.field("count", Long.class));
-                            record.setValue(DSL.field("count", Long.class), 1L);
-                            result.add(record);
-                            return new MockResult[] {new MockResult(1, result)};
-                        }
-
-                        // 2. 子模块 104 孙表 student_course_score_item 批量查询响应
-                        if (sql.contains("from `student_course_score_item` where")
-                                && !sql.contains("from `student_course`")
-                                && !sql.contains("from `student`")) {
-                            var result =
-                                    create.newResult(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("course_id", Long.class),
-                                            DSL.field("item_name", String.class),
-                                            DSL.field("score", Double.class),
-                                            DSL.field("deleted", Byte.class));
-                            var record =
-                                    create.newRecord(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("course_id", Long.class),
-                                            DSL.field("item_name", String.class),
-                                            DSL.field("score", Double.class),
-                                            DSL.field("deleted", Byte.class));
-                            record.setValue(DSL.field("id", Long.class), 801L);
-                            record.setValue(DSL.field("course_id", Long.class), 301L);
-                            record.setValue(DSL.field("item_name", String.class), "期末大作业");
-                            record.setValue(DSL.field("score", Double.class), 95.0);
-                            record.setValue(DSL.field("deleted", Byte.class), (byte) 0);
-                            result.add(record);
-                            return new MockResult[] {new MockResult(1, result)};
-                        }
-
-                        // 3. 子模块 103 从表 student_course 批量查询响应
-                        if (sql.contains("from `student_course` where")
-                                && !sql.contains("from `student`")) {
-                            var result =
-                                    create.newResult(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("student_id", Long.class),
-                                            DSL.field("course_name", String.class),
-                                            DSL.field("teacher_name", String.class),
-                                            DSL.field("deleted", Byte.class));
-                            var record =
-                                    create.newRecord(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("student_id", Long.class),
-                                            DSL.field("course_name", String.class),
-                                            DSL.field("teacher_name", String.class),
-                                            DSL.field("deleted", Byte.class));
-                            record.setValue(DSL.field("id", Long.class), 301L);
-                            record.setValue(DSL.field("student_id", Long.class), 1001L);
-                            record.setValue(DSL.field("course_name", String.class), "大学英语");
-                            record.setValue(DSL.field("teacher_name", String.class), "李老师");
-                            record.setValue(DSL.field("deleted", Byte.class), (byte) 0);
-                            result.add(record);
-                            return new MockResult[] {new MockResult(1, result)};
-                        }
-
-                        // 4. 子模块 104/105 从表 student_reward / student_award 批量查询响应
-                        if ((sql.contains("from `student_reward` where")
-                                        || sql.contains("from `student_award` where"))
-                                && !sql.contains("from `student`")) {
-                            var result =
-                                    create.newResult(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("student_id", Long.class),
-                                            DSL.field("reward_name", String.class),
-                                            DSL.field("reward_level", String.class),
-                                            DSL.field("reward_date", String.class),
-                                            DSL.field("award_name", String.class),
-                                            DSL.field("deleted", Byte.class));
-                            var record =
-                                    create.newRecord(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("student_id", Long.class),
-                                            DSL.field("reward_name", String.class),
-                                            DSL.field("reward_level", String.class),
-                                            DSL.field("reward_date", String.class),
-                                            DSL.field("award_name", String.class),
-                                            DSL.field("deleted", Byte.class));
-                            record.setValue(DSL.field("id", Long.class), 501L);
-                            record.setValue(DSL.field("student_id", Long.class), 1001L);
-                            record.setValue(DSL.field("reward_name", String.class), "国家一等奖学金");
-                            record.setValue(DSL.field("award_name", String.class), "国家一等奖学金");
-                            record.setValue(DSL.field("reward_level", String.class), "国家级");
-                            record.setValue(DSL.field("reward_date", String.class), "2026-06-15");
-                            record.setValue(DSL.field("deleted", Byte.class), (byte) 0);
-                            result.add(record);
-                            return new MockResult[] {new MockResult(1, result)};
-                        }
-
-                        // 4.1 孙模块 106 从表 student_award_detail 批量查询响应
-                        if (sql.contains("from `student_award_detail` where")
-                                && !sql.contains("from `student_award`")
-                                && !sql.contains("from `student`")) {
-                            var result =
-                                    create.newResult(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("award_id", Long.class),
-                                            DSL.field("evidence_name", String.class),
-                                            DSL.field("deleted", Byte.class));
-                            var record =
-                                    create.newRecord(
-                                            DSL.field("id", Long.class),
-                                            DSL.field("award_id", Long.class),
-                                            DSL.field("evidence_name", String.class),
-                                            DSL.field("deleted", Byte.class));
-                            record.setValue(DSL.field("id", Long.class), 7401L);
-                            record.setValue(DSL.field("award_id", Long.class), 501L);
-                            record.setValue(DSL.field("evidence_name", String.class), "国家级证书扫描件");
-                            record.setValue(DSL.field("deleted", Byte.class), (byte) 0);
-                            result.add(record);
-                            return new MockResult[] {new MockResult(1, result)};
-                        }
-
-                        // 5. 主表与伴生平铺表查询响应
-                        var result =
-                                create.newResult(
-                                        DSL.field("id", Long.class),
-                                        DSL.field("student_no", String.class),
-                                        DSL.field("name", String.class),
-                                        DSL.field("clazz_id", Long.class),
-                                        DSL.field("class_name", String.class));
-                        var record =
-                                create.newRecord(
-                                        DSL.field("id", Long.class),
-                                        DSL.field("student_no", String.class),
-                                        DSL.field("name", String.class),
-                                        DSL.field("clazz_id", Long.class),
-                                        DSL.field("class_name", String.class));
-
-                        record.setValue(DSL.field("id", Long.class), 1001L);
-                        record.setValue(DSL.field("student_no", String.class), "S001");
-                        record.setValue(DSL.field("name", String.class), "张三");
-                        record.setValue(DSL.field("clazz_id", Long.class), 201L);
-                        record.setValue(DSL.field("class_name", String.class), "高三(1)班");
-                        result.add(record);
-
-                        return new MockResult[] {new MockResult(1, result)};
+                        var res = c.newResult(DSL.field("val", String.class));
+                        var r1 = c.newRecord(DSL.field("val", String.class));
+                        r1.setValue(DSL.field("val", String.class), "候选值A");
+                        res.add(r1);
+                        return new MockResult[] {new MockResult(1, res)};
                     }
+
+                    if (sql.contains("count(*)")) {
+                        var res = c.newResult(DSL.field("count", Long.class));
+                        var rec = c.newRecord(DSL.field("count", Long.class));
+                        rec.setValue(DSL.field("count", Long.class), 1L);
+                        res.add(rec);
+                        return new MockResult[] {new MockResult(1, res)};
+                    }
+
+                    java.util.regex.Pattern p =
+                            java.util.regex.Pattern.compile("`(\\w+)`\\.`(\\w+)` as `(\\w+)`");
+                    java.util.regex.Matcher m = p.matcher(ctx.sql());
+                    List<String> tables = new ArrayList<>();
+                    List<String> cols = new ArrayList<>();
+                    List<String> aliases = new ArrayList<>();
+                    while (m.find()) {
+                        tables.add(m.group(1));
+                        cols.add(m.group(2));
+                        aliases.add(m.group(3));
+                    }
+
+                    if (aliases.isEmpty()) {
+                        return new MockResult[] {new MockResult(0, c.newResult())};
+                    }
+
+                    org.jooq.Field<?>[] fs = new org.jooq.Field<?>[aliases.size()];
+                    for (int i = 0; i < aliases.size(); i++) {
+                        fs[i] = DSL.field(aliases.get(i), Object.class);
+                    }
+
+                    String fromTable = tables.get(0);
+                    int n = "company_contact".equals(fromTable) ? 2 : 1;
+
+                    var res = c.newResult(fs);
+                    for (int row = 0; row < n; row++) {
+                        var rec = c.newRecord(fs);
+                        for (int i = 0; i < aliases.size(); i++) {
+                            rec.setValue(
+                                    (org.jooq.Field) fs[i],
+                                    valueOf(tables.get(i), cols.get(i), row));
+                        }
+                        res.add(rec);
+                    }
+                    return new MockResult[] {new MockResult(n, res)};
                 };
 
         MockConnection connection = new MockConnection(provider);
         dslContext = DSL.using(connection, SQLDialect.MYSQL);
         lenient().when(jooqDataContextFactory.getContext()).thenReturn(dslContext);
 
-        // 模块 101: 学生综合档案 (主表 student，伴生表 clazz)
-        mockModule101 =
-                ModuleInfo.builder()
-                        .moduleId(101L)
-                        .moduleCode("MOD-STUDENT")
-                        .moduleName("学生综合档案")
-                        .primaryTable("student")
-                        .parentId(0L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(1010L)
-                                                .moduleId(101L)
-                                                .tableName("student")
-                                                .columnName("id")
-                                                .displayName("学生ID")
-                                                .sortOrder(0)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1011L)
-                                                .moduleId(101L)
-                                                .tableName("student")
-                                                .columnName("student_no")
-                                                .displayName("学号")
-                                                .sortOrder(1)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1012L)
-                                                .moduleId(101L)
-                                                .tableName("student")
-                                                .columnName("name")
-                                                .displayName("姓名")
-                                                .sortOrder(2)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1013L)
-                                                .moduleId(101L)
-                                                .tableName("student")
-                                                .columnName("clazz_id")
-                                                .displayName("班级ID")
-                                                .sortOrder(3)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1014L)
-                                                .moduleId(101L)
-                                                .tableName("clazz")
-                                                .columnName("class_name")
-                                                .displayName("班级名称")
-                                                .sortOrder(4)
-                                                .build()))
-                        .build();
-
-        // 模块 103: 选课管理 (主表 student_course)
-        mockModule103 =
-                ModuleInfo.builder()
-                        .moduleId(103L)
-                        .moduleCode("MOD-COURSE")
-                        .moduleName("选课管理")
-                        .primaryTable("student_course")
-                        .parentId(101L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(1031L)
-                                                .moduleId(103L)
-                                                .tableName("student_course")
-                                                .columnName("course_name")
-                                                .displayName("课程名称")
-                                                .sortOrder(1)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1032L)
-                                                .moduleId(103L)
-                                                .tableName("student_course")
-                                                .columnName("teacher_name")
-                                                .displayName("任课老师")
-                                                .sortOrder(2)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1033L)
-                                                .moduleId(103L)
-                                                .tableName("student_course")
-                                                .columnName("student_id")
-                                                .displayName("学生ID")
-                                                .sortOrder(3)
-                                                .build()))
-                        .build();
-
-        // 模块 104: 成绩明细 (主表 student_course_score_item)
-        mockModule104 =
-                ModuleInfo.builder()
-                        .moduleId(104L)
-                        .moduleCode("MOD-SCORE")
-                        .moduleName("成绩明细")
-                        .primaryTable("student_course_score_item")
-                        .parentId(103L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(1041L)
-                                                .moduleId(104L)
-                                                .tableName("student_course_score_item")
-                                                .columnName("item_name")
-                                                .displayName("考核项")
-                                                .sortOrder(1)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1042L)
-                                                .moduleId(104L)
-                                                .tableName("student_course_score_item")
-                                                .columnName("score")
-                                                .displayName("得分")
-                                                .sortOrder(2)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1043L)
-                                                .moduleId(104L)
-                                                .tableName("student_course_score_item")
-                                                .columnName("course_id")
-                                                .displayName("选课ID")
-                                                .sortOrder(3)
-                                                .build()))
-                        .build();
-
-        // 模块 105: 奖惩荣誉 (主表 student_reward)
-        mockModule105 =
-                ModuleInfo.builder()
-                        .moduleId(105L)
-                        .moduleCode("MOD-REWARD")
-                        .moduleName("奖惩荣誉")
-                        .primaryTable("student_reward")
-                        .parentId(101L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(1051L)
-                                                .moduleId(105L)
-                                                .tableName("student_reward")
-                                                .columnName("reward_name")
-                                                .displayName("奖惩名称")
-                                                .sortOrder(1)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1052L)
-                                                .moduleId(105L)
-                                                .tableName("student_reward")
-                                                .columnName("reward_level")
-                                                .displayName("级别")
-                                                .sortOrder(2)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(1053L)
-                                                .moduleId(105L)
-                                                .tableName("student_reward")
-                                                .columnName("reward_date")
-                                                .displayName("获奖日期")
-                                                .sortOrder(3)
-                                                .build()))
-                        .build();
-
-        allKnownModules.clear();
-        allKnownModules.put(101L, mockModule101);
-        allKnownModules.put(103L, mockModule103);
-        allKnownModules.put(104L, mockModule104);
-        allKnownModules.put(105L, mockModule105);
-
-        List<ModuleFieldDTO> allMockFields = new ArrayList<>();
-        allMockFields.addAll(mockModule101.getFields());
-        allMockFields.addAll(mockModule103.getFields());
-        allMockFields.addAll(mockModule104.getFields());
-        allMockFields.addAll(mockModule105.getFields());
+        initMockMetadata();
 
         lenient()
                 .when(configApi.getModuleTree(any(), any(), anyLong()))
@@ -430,6 +168,7 @@ class DataQueryTest {
                                 return null;
                             }
 
+                            String projectNo = rootId < 1000L ? "school" : "company";
                             Set<Long> allowedIds = new LinkedHashSet<>();
                             Map<Long, ModuleInfo> modMap = new LinkedHashMap<>();
                             Map<Long, List<Long>> p2c = new LinkedHashMap<>();
@@ -466,7 +205,7 @@ class DataQueryTest {
 
                             return ModuleTreeDTO.builder()
                                     .rootModuleId(rootId)
-                                    .projectNo("company")
+                                    .projectNo(projectNo)
                                     .subjectId(1L)
                                     .rootModule(rootInfo)
                                     .moduleMap(modMap)
@@ -477,54 +216,9 @@ class DataQueryTest {
                                     .build();
                         });
 
-        List<TableRelationDTO> mockRelations =
-                List.of(
-                        TableRelationDTO.builder()
-                                .mainTable("student")
-                                .mainField("id")
-                                .joinTable("clazz")
-                                .joinField("id")
-                                .relationType("1:1")
-                                .build(),
-                        TableRelationDTO.builder()
-                                .mainTable("student")
-                                .mainField("id")
-                                .joinTable("student_course")
-                                .joinField("student_id")
-                                .relationType("1:N")
-                                .build(),
-                        TableRelationDTO.builder()
-                                .mainTable("student_course")
-                                .mainField("id")
-                                .joinTable("student_course_score_item")
-                                .joinField("course_id")
-                                .relationType("1:N")
-                                .build(),
-                        TableRelationDTO.builder()
-                                .mainTable("student")
-                                .mainField("id")
-                                .joinTable("student_reward")
-                                .joinField("student_id")
-                                .relationType("1:N")
-                                .build(),
-                        TableRelationDTO.builder()
-                                .mainTable("student")
-                                .mainField("id")
-                                .joinTable("student_award")
-                                .joinField("student_id")
-                                .relationType("1:N")
-                                .build(),
-                        TableRelationDTO.builder()
-                                .mainTable("student_award")
-                                .mainField("id")
-                                .joinTable("student_award_detail")
-                                .joinField("award_id")
-                                .relationType("1:N")
-                                .build());
-
         Map<String, List<TableRelationDTO>> forwardMap = new HashMap<>();
         Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
-        for (TableRelationDTO r : mockRelations) {
+        for (TableRelationDTO r : allKnownRelations) {
             forwardMap
                     .computeIfAbsent(
                             r.getMainTable().toLowerCase(), k -> new java.util.ArrayList<>())
@@ -536,489 +230,104 @@ class DataQueryTest {
         }
         ProjectTableRelationsDTO mockProjectRelations =
                 ProjectTableRelationsDTO.builder()
-                        .projectNo("company")
-                        .allRelations(mockRelations)
+                        .projectNo("school")
+                        .allRelations(allKnownRelations)
                         .forwardRelations(forwardMap)
                         .reverseRelations(reverseMap)
                         .build();
 
-        lenient().when(configApi.getProjectTableRelations(any())).thenReturn(mockProjectRelations);
+        lenient()
+                .when(configApi.getProjectTableRelations(nullable(String.class)))
+                .thenReturn(mockProjectRelations);
 
         queryPlanCompiler = new QueryPlanCompiler(configApi);
         queryPlanExecutor = new QueryPlanExecutor(jooqDataContextFactory, treeResultAssembler);
         dataQueryService = new DataQueryService(queryPlanCompiler, queryPlanExecutor);
     }
 
-    @Test
-    @DisplayName("测试自相似模块树驱动查询: 101 包含 103(含104) 与 105，行内自相似挂载")
-    void testStandardListQueryWithSelfSimilarTree() {
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(10)
-                        .fields(
-                                List.of(
-                                        1011L, 1012L, 1013L, 1014L, 1031L, 1032L, 1041L, 1042L,
-                                        1051L, 1052L, 1053L))
-                        .sorts(List.of(SortItem.builder().fieldId(1011L).direction("DESC").build()))
-                        .build();
+    private void initMockMetadata() {
+        allKnownModules.clear();
+        allKnownRelations.clear();
 
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-
-        // 1. 验证响应与根数据页 (根记录严格由 101 根模块包裹)
-        assertNotNull(response);
-        assertEquals(1, response.getRecords().size());
-        Map<String, Object> rootRow = response.getRecords().get(0);
-        assertTrue(rootRow.containsKey("101"), "根记录必须由当前根模块 101 包裹");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentRecord = (Map<String, Object>) rootRow.get("101");
-        assertNotNull(studentRecord);
-
-        // 2. 验证主表与伴生表字段在根实体下包装展开 (无冗余平铺 id)
-        assertNull(studentRecord.get("id"));
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) studentRecord.get("student");
-        assertNotNull(student);
-        assertEquals(1001L, ((Number) student.get("id")).longValue());
-        assertEquals("S001", student.get("student_no"));
-        assertEquals("张三", student.get("name"));
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> clazz = (Map<String, Object>) studentRecord.get("clazz");
-        assertNotNull(clazz);
-        assertEquals("高三(1)班", clazz.get("class_name"));
-
-        // 3. 验证子模块 103 选课从表 (直接挂载在 101 实体行内)
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courseList = (List<Map<String, Object>>) studentRecord.get("103");
-        assertNotNull(courseList);
-        assertEquals(1, courseList.size());
-        Map<String, Object> course0 = courseList.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> courseTable = (Map<String, Object>) course0.get("student_course");
-        assertNotNull(courseTable);
-        assertEquals(301L, ((Number) courseTable.get("id")).longValue());
-        assertEquals("大学英语", courseTable.get("course_name"));
-        assertEquals("李老师", courseTable.get("teacher_name"));
-        // 确认外键 student_id 未被显式请求已干净剥离
-        assertNull(courseTable.get("student_id"));
-
-        // 4. 验证孙模块 104 直接挂载在选课实体 course0 行内
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> scoreItemList = (List<Map<String, Object>>) course0.get("104");
-        assertNotNull(scoreItemList);
-        assertEquals(1, scoreItemList.size());
-        Map<String, Object> item0 = scoreItemList.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> itemTable =
-                (Map<String, Object>) item0.get("student_course_score_item");
-        assertNotNull(itemTable);
-        assertEquals(801L, ((Number) itemTable.get("id")).longValue());
-        assertEquals("期末大作业", itemTable.get("item_name"));
-        assertEquals(95.0, itemTable.get("score"));
-        assertNull(itemTable.get("course_id"));
-
-        // 5. 验证子模块 105 奖惩荣誉从表 (直接挂载在学生实体行内)
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rewardList = (List<Map<String, Object>>) studentRecord.get("105");
-        assertNotNull(rewardList);
-        assertEquals(1, rewardList.size());
-        Map<String, Object> reward0 = rewardList.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> rewardTable = (Map<String, Object>) reward0.get("student_reward");
-        assertNotNull(rewardTable);
-        assertEquals(501L, ((Number) rewardTable.get("id")).longValue());
-        assertEquals("国家一等奖学金", rewardTable.get("reward_name"));
-        assertEquals("国家级", rewardTable.get("reward_level"));
-        assertEquals("2026-06-15", rewardTable.get("reward_date"));
-        assertNull(rewardTable.get("student_id"));
-    }
-
-    @Test
-    @DisplayName("测试平铺 fields 数组驱动：仅传递主模块 moduleId 与 fields 数组，全自动推导多级查询树")
-    void testPureFieldsQueryWithAutomaticTreeInference() {
-        // 请求中平铺请求跨 101, 103, 104, 105 的字段，无需构造任何 children
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(10)
-                        .fields(
-                                List.of(
-                                        1011L,
-                                        1012L, // 模块 101 (根)
-                                        1031L,
-                                        1032L, // 模块 103 (子)
-                                        1041L,
-                                        1042L, // 模块 104 (孙)
-                                        1051L // 模块 105 (子)
-                                        ))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1012L)
-                                                .operator("EQ")
-                                                .value("张三")
-                                                .build()))
-                        .sorts(List.of(SortItem.builder().fieldId(1011L).direction("DESC").build()))
-                        .build();
-
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-
-        assertNotNull(response);
-        assertEquals(1, response.getRecords().size());
-        Map<String, Object> rootRow = response.getRecords().get(0);
-        assertTrue(rootRow.containsKey("101"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentRecord = (Map<String, Object>) rootRow.get("101");
-        assertNotNull(studentRecord);
-
-        // 验证主表字段
-        assertNull(studentRecord.get("id"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) studentRecord.get("student");
-        assertNotNull(student);
-        assertEquals(1001L, ((Number) student.get("id")).longValue());
-        assertEquals("S001", student.get("student_no"));
-        assertEquals("张三", student.get("name"));
-
-        // 验证自动推导并层级挂载的子孙模块 (直接挂载在 studentRecord 行内)
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courses = (List<Map<String, Object>>) studentRecord.get("103");
-        assertNotNull(courses);
-        Map<String, Object> course0 = courses.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> courseTable = (Map<String, Object>) course0.get("student_course");
-        assertNotNull(courseTable);
-        assertEquals("大学英语", courseTable.get("course_name"));
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> scoreItems = (List<Map<String, Object>>) course0.get("104");
-        assertNotNull(scoreItems);
-        Map<String, Object> item0 = scoreItems.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> itemTable =
-                (Map<String, Object>) item0.get("student_course_score_item");
-        assertNotNull(itemTable);
-        assertEquals("期末大作业", itemTable.get("item_name"));
-        assertEquals(95.0, itemTable.get("score"));
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rewards = (List<Map<String, Object>>) studentRecord.get("105");
-        assertNotNull(rewards);
-        Map<String, Object> reward0 = rewards.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> rewardTable = (Map<String, Object>) reward0.get("student_reward");
-        assertNotNull(rewardTable);
-        assertEquals("国家一等奖学金", rewardTable.get("reward_name"));
-    }
-
-    @Test
-    @DisplayName("测试独立节点基于纯 fieldId 过滤: 杜绝表名/列名推导")
-    void testNodeFilteringWithFieldId() {
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(10)
-                        .fields(List.of(1011L, 1012L, 1031L))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1012L)
-                                                .operator("eq")
-                                                .value("张三")
-                                                .build(),
-                                        FilterItem.builder()
-                                                .fieldId(1031L)
-                                                .operator("like")
-                                                .value("英语")
-                                                .build()))
-                        .build();
-
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-
-        assertNotNull(response);
-        assertEquals(1, response.getRecords().size());
-        Map<String, Object> rootRow = response.getRecords().get(0);
-        assertTrue(rootRow.containsKey("101"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> root = (Map<String, Object>) rootRow.get("101");
-        assertNotNull(root);
-        assertNull(root.get("id"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) root.get("student");
-        assertNotNull(student);
-        assertEquals(1001L, ((Number) student.get("id")).longValue());
-        assertEquals("张三", student.get("name"));
-    }
-
-    @Test
-    @DisplayName("测试多节点独立 sorts 排序配置")
-    void testNodeSortingWithFieldId() {
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1011L, 1012L, 1031L))
-                        .sorts(
-                                List.of(
-                                        SortItem.builder().fieldId(1011L).direction("ASC").build(),
-                                        SortItem.builder().fieldId(1012L).direction("DESC").build(),
-                                        SortItem.builder().fieldId(1031L).direction("ASC").build()))
-                        .build();
-
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-        assertNotNull(response);
-        assertEquals(1, response.getRecords().size());
-    }
-
-    @Test
-    @DisplayName("测试单模块查询 (无子节点) 纯净运行")
-    void testSingleModuleQuery() {
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(20)
-                        .fields(List.of(1011L, 1012L))
-                        .build();
-
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-        assertNotNull(response);
-        assertEquals(1, response.getRecords().size());
-        Map<String, Object> rootRow = response.getRecords().get(0);
-        assertTrue(rootRow.containsKey("101"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> root = (Map<String, Object>) rootRow.get("101");
-        assertNotNull(root);
-        assertNull(root.get("id"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) root.get("student");
-        assertNotNull(student);
-        assertEquals(1001L, ((Number) student.get("id")).longValue());
-        assertEquals("S001", student.get("student_no"));
-    }
-
-    @Test
-    @DisplayName("测试单据详情查询: 基于 filters 主键过滤与 pageSize=1 统一定位")
-    void testQuerySingleRecordByFilter() {
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(1)
-                        .fields(List.of(1011L, 1012L))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1011L)
-                                                .operator("EQ")
-                                                .value("S001")
-                                                .build()))
-                        .build();
-        DataPage<Map<String, Object>> result = dataQueryService.query(req);
-        assertNotNull(result);
-        assertEquals(1, result.getRecords().size());
-        Map<String, Object> rootRow = result.getRecords().get(0);
-        assertTrue(rootRow.containsKey("101"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> record = (Map<String, Object>) rootRow.get("101");
-        assertNotNull(record);
-        assertNull(record.get("id"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) record.get("student");
-        assertNotNull(student);
-        assertEquals(1001L, ((Number) student.get("id")).longValue());
-        assertEquals("S001", student.get("student_no"));
-        assertEquals("张三", student.get("name"));
-    }
-
-    @Test
-    @DisplayName("测试按 ID 查询单据详情: getDetail 返回单行 Map")
-    void testGetDetailById() {
-        DataDetail<Map<String, Object>> result = dataQueryService.getDetail(101L, 1001L);
-        assertNotNull(result);
-        assertNotNull(result.getData());
-        assertTrue(result.getData().containsKey("101"), "getDetail 单据详情单行也应保持 101 模块包裹");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> data101 = (Map<String, Object>) result.getData().get("101");
-        assertNotNull(data101);
-        assertNull(data101.get("id"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) data101.get("student");
-        assertNotNull(student);
-        assertEquals(1001L, ((Number) student.get("id")).longValue());
-        assertEquals("张三", student.get("name"));
-        assertEquals("S001", student.get("student_no"));
-    }
-
-    @Test
-    @DisplayName("测试选项候选值查询 getOptions")
-    void testGetOptions() {
-        // 字段 1031L 为 mockModule103 下的 course_name 字段
-        OptionReq req = OptionReq.builder().moduleId(103L).fieldId(1031L).build();
-
-        List<DataOption> options = dataQueryService.getOptions(req);
-        assertNotNull(options);
-        assertEquals(2, options.size());
-        assertEquals("大学英语", options.get(0).getLabel());
-    }
-
-    @Test
-    @DisplayName("测试选项候选值查询携带业务过滤条件 filters")
-    void testGetOptionsWithFilters() {
-        // 字段 1031L 为 mockModule103 下的 course_name 字段，且携带老师过滤条件 1032L EQ 李老师
-        OptionReq req =
-                OptionReq.builder()
-                        .moduleId(103L)
-                        .fieldId(1031L)
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1032L)
-                                                .operator("EQ")
-                                                .value("李老师")
-                                                .build()))
-                        .build();
-
-        List<DataOption> options = dataQueryService.getOptions(req);
-        assertNotNull(options);
-        assertEquals(2, options.size());
-    }
-
-    @Test
-    @DisplayName("测试选项候选值查询跨模块过滤联动 (子模块字段候选项受根模块过滤条件约束)")
-    void testGetOptionsChildFieldWithRootFilter() {
-        // 请求根模块 101，获取子模块 103 的 course_name (1031L) 候选项，同时携带根模块学生姓名 (1012L) 过滤条件
-        OptionReq req =
-                OptionReq.builder()
-                        .moduleId(101L)
-                        .fieldId(1031L)
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1012L)
-                                                .operator("EQ")
-                                                .value("张三")
-                                                .build()))
-                        .build();
-
-        List<DataOption> options = dataQueryService.getOptions(req);
-        assertNotNull(options);
-        assertEquals(2, options.size());
-        assertEquals("大学英语", options.get(0).getLabel());
-    }
-
-    @Test
-    @DisplayName("测试选项候选值查询跨模块校验失败 (fieldId 不属于主模块及其子模块)")
-    void testGetOptionsOutOfScopeThrows() {
-        // 请求主模块 103，但请求了主模块 101 的学生名字段 1012L
-        OptionReq req = OptionReq.builder().moduleId(103L).fieldId(1012L).build();
-
-        assertThrows(IllegalArgumentException.class, () -> dataQueryService.getOptions(req));
-    }
-
-    @Test
-    @DisplayName("测试模块元数据为空时抛出合规异常")
-    void testNonExistentModuleThrows() {
-        QueryReq req = QueryReq.builder().moduleId(9999L).build();
-        assertThrows(IllegalArgumentException.class, () -> dataQueryService.query(req));
-    }
-
-    @Test
-    @DisplayName("测试显式白名单模式严格零推测：请求仅包含子模块字段时根模块业务字段不被推测全选")
-    void testWhitelistModeStrictProjectionWithZeroInference() {
-        // 请求根模块 101，但 fields 只请求了子模块 103 的字段 1031L (course_name) 与 1032L (teacher_name)
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(10)
-                        .fields(List.of(1031L, 1032L))
-                        .build();
-
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-        assertNotNull(response);
-        assertEquals(1, response.getRecords().size());
-        Map<String, Object> rootRow = response.getRecords().get(0);
-        assertTrue(rootRow.containsKey("101"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> record = (Map<String, Object>) rootRow.get("101");
-        assertNotNull(record);
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) record.get("student");
-        assertNotNull(student);
-        // 主表仅作为实体标识保留主键 id，绝不推测全选未请求的业务字段 (student_no, name, clazz_id 等)
-        assertEquals(1001L, ((Number) student.get("id")).longValue());
-        assertNull(student.get("student_no"));
-        assertNull(student.get("name"));
-        assertNull(student.get("clazz_id"));
-
-        // 验证子模块 103 直接挂载在 record 行内
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courses = (List<Map<String, Object>>) record.get("103");
-        assertNotNull(courses);
-        assertEquals(1, courses.size());
-        Map<String, Object> c0 = courses.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> courseTable = (Map<String, Object>) c0.get("student_course");
-        assertNotNull(courseTable);
-        assertEquals(301L, ((Number) courseTable.get("id")).longValue());
-        assertEquals("大学英语", courseTable.get("course_name"));
-        assertEquals("李老师", courseTable.get("teacher_name"));
-        // 未请求的外键字段 student_id 干净剥离
-        assertNull(courseTable.get("student_id"));
-    }
-
-    @Test
-    @DisplayName("测试模块树多层传递闭包与单向TableRelation严格推导：缺少关系定义时必须抛出自洽异常，严禁推测")
-    void testModuleTreeTransitiveClosureAndZeroGuessRelation() {
-        // 构造一个没有在 tableRelations 中配置关联的伪造子模块
-        ModuleInfo orphanModule =
+        // ------------------------- School 模块元数据 -------------------------
+        ModuleInfo mockModule101 =
                 ModuleInfo.builder()
-                        .moduleId(999L)
-                        .moduleCode("MOD-ORPHAN")
-                        .primaryTable("orphan_table")
+                        .moduleId(101L)
+                        .moduleCode("MOD-SCHOOL-STUDENT")
+                        .primaryTable("student")
+                        .parentId(0L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(1L)
+                                                .moduleId(101L)
+                                                .tableName("student")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(2L)
+                                                .moduleId(101L)
+                                                .tableName("student")
+                                                .columnName("student_no")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(3L)
+                                                .moduleId(101L)
+                                                .tableName("student")
+                                                .columnName("name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(4L)
+                                                .moduleId(101L)
+                                                .tableName("student")
+                                                .columnName("gender")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(6L)
+                                                .moduleId(101L)
+                                                .tableName("student")
+                                                .columnName("clazz_id")
+                                                .build()))
+                        .build();
+
+        ModuleInfo mockModule104 =
+                ModuleInfo.builder()
+                        .moduleId(104L)
+                        .moduleCode("MOD-STUDENT-AWARD")
+                        .primaryTable("student_award")
                         .parentId(101L)
                         .fields(
                                 List.of(
                                         ModuleFieldDTO.builder()
-                                                .id(9991L)
-                                                .moduleId(999L)
-                                                .tableName("orphan_table")
-                                                .columnName("content")
+                                                .id(37L)
+                                                .moduleId(104L)
+                                                .tableName("student_award")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(38L)
+                                                .moduleId(104L)
+                                                .tableName("student_award")
+                                                .columnName("student_id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(39L)
+                                                .moduleId(104L)
+                                                .tableName("student_award")
+                                                .columnName("award_name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(56L)
+                                                .moduleId(104L)
+                                                .tableName("student_award")
+                                                .columnName("level")
                                                 .build()))
                         .build();
 
-        allKnownModules.put(999L, orphanModule);
-
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(10)
-                        .fields(List.of(9991L))
-                        .build();
-
-        // 必须抛出 IllegalStateException，提示未自洽的元数据关联关系，决不允许约定俗成推测
-        IllegalStateException ex =
-                assertThrows(IllegalStateException.class, () -> dataQueryService.query(req));
-        assertTrue(ex.getMessage().contains("元数据关联关系未自洽"));
-        assertTrue(ex.getMessage().contains("orphan_table"));
-    }
-
-    @Test
-    @DisplayName("测试三层模块树 101 -> 104 -> 106：验证 106 模块 ID 完整保留，不丢失且不被错误扁平化嵌套")
-    void testThreeLevelModuleHierarchyAwardAndDetail_106RetainsModuleId() {
-        // 构造模块 106: 荣誉材料与佐证明细 (挂在 104 下)
         ModuleInfo mockModule106 =
                 ModuleInfo.builder()
                         .moduleId(106L)
                         .moduleCode("MOD-STUDENT-AWARD-DETAIL")
-                        .moduleName("荣誉材料与佐证明细")
                         .primaryTable("student_award_detail")
                         .parentId(104L)
                         .fields(
@@ -1028,740 +337,702 @@ class DataQueryTest {
                                                 .moduleId(106L)
                                                 .tableName("student_award_detail")
                                                 .columnName("id")
-                                                .displayName("材料ID")
-                                                .sortOrder(1)
                                                 .build(),
                                         ModuleFieldDTO.builder()
                                                 .id(75L)
                                                 .moduleId(106L)
                                                 .tableName("student_award_detail")
                                                 .columnName("award_id")
-                                                .displayName("荣誉ID")
-                                                .sortOrder(2)
                                                 .build(),
                                         ModuleFieldDTO.builder()
                                                 .id(76L)
                                                 .moduleId(106L)
                                                 .tableName("student_award_detail")
                                                 .columnName("evidence_name")
-                                                .displayName("材料名称")
-                                                .sortOrder(3)
-                                                .build()))
-                        .build();
-
-        // 将 104 模块的主表修正为 student_award
-        ModuleInfo mockModule104Real =
-                ModuleInfo.builder()
-                        .moduleId(104L)
-                        .moduleCode("MOD-STUDENT-AWARD")
-                        .moduleName("荣誉与奖惩管理")
-                        .primaryTable("student_award")
-                        .parentId(101L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(37L)
-                                                .moduleId(104L)
-                                                .tableName("student_award")
-                                                .columnName("id")
-                                                .displayName("荣誉ID")
-                                                .sortOrder(1)
                                                 .build(),
                                         ModuleFieldDTO.builder()
-                                                .id(38L)
-                                                .moduleId(104L)
-                                                .tableName("student_award")
-                                                .columnName("award_name")
-                                                .displayName("荣誉名称")
-                                                .sortOrder(2)
-                                                .build()))
-                        .build();
-
-        allKnownModules.put(106L, mockModule106);
-        allKnownModules.put(104L, mockModule104Real);
-
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(10)
-                        .fields(List.of(1011L, 1012L, 37L, 38L, 74L, 76L))
-                        .build();
-
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-
-        assertNotNull(response);
-        assertEquals(1, response.getRecords().size());
-        Map<String, Object> rootRow = response.getRecords().get(0);
-        assertTrue(rootRow.containsKey("101"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentRecord = (Map<String, Object>) rootRow.get("101");
-        assertNotNull(studentRecord);
-
-        // 1. 验证 101 根模块主表
-        @SuppressWarnings("unchecked")
-        Map<String, Object> student = (Map<String, Object>) studentRecord.get("student");
-        assertNotNull(student);
-
-        // 2. 验证 104 子模块直接挂载在 101 实体行内
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> awardList = (List<Map<String, Object>>) studentRecord.get("104");
-        assertNotNull(awardList);
-        assertEquals(1, awardList.size());
-        Map<String, Object> award0 = awardList.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> awardTable = (Map<String, Object>) award0.get("student_award");
-        assertNotNull(awardTable);
-        assertEquals(501L, ((Number) awardTable.get("id")).longValue());
-        assertEquals("国家一等奖学金", awardTable.get("award_name"));
-
-        // 3. 🌟 核心验证：106 孙模块直接自包含挂载在 104 荣誉实体行内 (award0["106"])
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> detailList = (List<Map<String, Object>>) award0.get("106");
-        assertNotNull(detailList, "104 荣誉行内必须自包含 106 佐证材料子模块列表");
-        assertEquals(1, detailList.size());
-        Map<String, Object> detail0 = detailList.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> detailTable = (Map<String, Object>) detail0.get("student_award_detail");
-        assertNotNull(detailTable);
-        assertEquals(7401L, ((Number) detailTable.get("id")).longValue());
-        assertEquals("国家级证书扫描件", detailTable.get("evidence_name"));
-        // 验证未显式请求的外键 award_id 已干净剔除
-        assertNull(detailTable.get("award_id"));
-    }
-
-    @Test
-    @DisplayName("测试子模块筛选反向约束根模块 (Semi-Join EXISTS 链式上卷)")
-    void testChildModuleFilterRollupToRoot_SemiJoinExists() {
-        // 子模块 103 (选课 student_course) 设置筛选条件: course_name LIKE '英语'
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1011L, 1012L, 1031L, 1032L))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1031L)
-                                                .operator("LIKE")
-                                                .value("英语")
-                                                .build()))
-                        .build();
-
-        var queryPlan = queryPlanCompiler.compile(req);
-        assertNotNull(queryPlan);
-        var rootPlan = queryPlan.getRootNodePlan();
-        assertNotNull(rootPlan);
-
-        // 1. 验证根节点必须包含针对 student_course 的 exists 子查询
-        String rootCondSql = rootPlan.getCondition().toString().toLowerCase();
-        assertTrue(
-                rootCondSql.contains("exists"), "子模块 103 存在过滤条件时，根节点 Condition 必须上卷 EXISTS 半连接约束");
-        assertTrue(rootCondSql.contains("student_course"), "EXISTS 子查询必须针对子表 student_course");
-        assertTrue(rootCondSql.contains("student_id"), "EXISTS 子查询中必须关联从表外键 student_id");
-        assertTrue(rootCondSql.contains("英语"), "EXISTS 子查询中必须包含子模块的业务筛选值 '英语'");
-
-        // 2. 验证 rootPlan 的 effectiveFilterCondition 非空
-        assertNotNull(rootPlan.getEffectiveFilterCondition());
-
-        // 3. 验证执行查询成功
-        DataPage<Map<String, Object>> result = queryPlanExecutor.execute(queryPlan);
-        assertNotNull(result);
-        assertEquals(1, result.getRecords().size());
-    }
-
-    @Test
-    @DisplayName("测试三级子孙模块筛选链式上卷反向约束根模块 (Nested EXISTS)")
-    void testThreeLevelModuleFilterRollupToRoot_NestedSemiJoin() {
-        ModuleInfo mockModule106 =
-                ModuleInfo.builder()
-                        .moduleId(106L)
-                        .primaryTable("student_award_detail")
-                        .parentId(104L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(74L)
+                                                .id(77L)
                                                 .moduleId(106L)
                                                 .tableName("student_award_detail")
-                                                .columnName("id")
-                                                .displayName("佐证ID")
-                                                .sortOrder(1)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(75L)
-                                                .moduleId(106L)
-                                                .tableName("student_award_detail")
-                                                .columnName("award_id")
-                                                .displayName("荣誉ID")
-                                                .sortOrder(2)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(76L)
-                                                .moduleId(106L)
-                                                .tableName("student_award_detail")
-                                                .columnName("evidence_name")
-                                                .displayName("材料名称")
-                                                .sortOrder(3)
+                                                .columnName("evidence_no")
                                                 .build()))
                         .build();
 
-        ModuleInfo mockModule104Real =
-                ModuleInfo.builder()
-                        .moduleId(104L)
-                        .primaryTable("student_award")
-                        .parentId(101L)
-                        .fields(
-                                List.of(
-                                        ModuleFieldDTO.builder()
-                                                .id(37L)
-                                                .moduleId(104L)
-                                                .tableName("student_award")
-                                                .columnName("id")
-                                                .displayName("荣誉ID")
-                                                .sortOrder(1)
-                                                .build(),
-                                        ModuleFieldDTO.builder()
-                                                .id(38L)
-                                                .moduleId(104L)
-                                                .tableName("student_award")
-                                                .columnName("award_name")
-                                                .displayName("荣誉名称")
-                                                .sortOrder(2)
-                                                .build()))
-                        .build();
-
-        allKnownModules.put(104L, mockModule104Real);
-        allKnownModules.put(106L, mockModule106);
-
-        // 仅在三级孙模块 106 上设置筛选条件: evidence_name LIKE '证书'
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1011L, 1012L, 37L, 38L, 74L, 76L))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(76L)
-                                                .operator("LIKE")
-                                                .value("证书")
-                                                .build()))
-                        .build();
-
-        var queryPlan = queryPlanCompiler.compile(req);
-        var rootPlan = queryPlan.getRootNodePlan();
-        assertNotNull(rootPlan);
-
-        // 1. 验证 104 子节点包含针对 106 的 exists 条件
-        var child104 = rootPlan.getChildren().get(0);
-        String child104Sql = child104.getCondition().toString().toLowerCase();
-        assertTrue(child104Sql.contains("exists"));
-        assertTrue(child104Sql.contains("student_award_detail"));
-        assertTrue(child104Sql.contains("award_id"));
-        assertTrue(child104Sql.contains("证书"));
-
-        // 2. 验证根节点 101 包含链式上卷的 exists 条件 (外层查 student_award，内层查 student_award_detail)
-        String rootSql = rootPlan.getCondition().toString().toLowerCase();
-        assertTrue(rootSql.contains("exists"));
-        assertTrue(rootSql.contains("student_award"));
-        assertTrue(rootSql.contains("student_award_detail"));
-        assertTrue(rootSql.contains("证书"));
-
-        // 3. 执行查询
-        DataPage<Map<String, Object>> result = queryPlanExecutor.execute(queryPlan);
-        assertNotNull(result);
-        assertEquals(1, result.getRecords().size());
-    }
-
-    @Test
-    @DisplayName("测试无子模块筛选时保持左外连接语义 (不生成 EXISTS 约束，杜绝误杀主记录)")
-    void testNoChildFilterMaintainsLeftJoinSemantics_NoExistsRollup() {
-        // 子模块 103 仅投影，没有任何 filters
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1011L, 1012L, 1031L, 1032L))
-                        .build();
-
-        var queryPlan = queryPlanCompiler.compile(req);
-        var rootPlan = queryPlan.getRootNodePlan();
-        assertNotNull(rootPlan);
-
-        // 根节点绝不能包含 exists
-        String rootCondSql = rootPlan.getCondition().toString().toLowerCase();
-        assertFalse(rootCondSql.contains("exists"), "无子模块筛选时，根节点绝不能生成 EXISTS 约束");
-        assertNull(rootPlan.getEffectiveFilterCondition());
-
-        DataPage<Map<String, Object>> result = queryPlanExecutor.execute(queryPlan);
-        assertNotNull(result);
-        assertEquals(1, result.getRecords().size());
-    }
-
-    @Test
-    @DisplayName("测试同物理表垂直拆分模块过滤反向约束 (直接 AND 合并，不生成 EXISTS)")
-    void testSameTableModuleFilterRollup_DirectAndMerge() {
-        // 模拟 105 模块与 101 模块同为主表 student
-        ModuleInfo mockModule105SameTable =
+        ModuleInfo mockModule105 =
                 ModuleInfo.builder()
                         .moduleId(105L)
-                        .primaryTable("student")
+                        .moduleCode("MOD-STUDENT-COURSE")
+                        .primaryTable("student_course")
                         .parentId(101L)
                         .fields(
                                 List.of(
                                         ModuleFieldDTO.builder()
-                                                .id(1051L)
+                                                .id(28L)
                                                 .moduleId(105L)
-                                                .tableName("student")
-                                                .columnName("hobby")
-                                                .displayName("爱好")
-                                                .sortOrder(1)
+                                                .tableName("student_course")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(29L)
+                                                .moduleId(105L)
+                                                .tableName("student_course")
+                                                .columnName("student_id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(32L)
+                                                .moduleId(105L)
+                                                .tableName("student_course")
+                                                .columnName("course_name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(33L)
+                                                .moduleId(105L)
+                                                .tableName("student_course")
+                                                .columnName("score")
                                                 .build()))
                         .build();
 
-        allKnownModules.put(105L, mockModule105SameTable);
-
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1011L, 1012L, 1051L))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1051L)
-                                                .operator("LIKE")
-                                                .value("篮球")
-                                                .build()))
-                        .build();
-
-        var queryPlan = queryPlanCompiler.compile(req);
-        var rootPlan = queryPlan.getRootNodePlan();
-        assertNotNull(rootPlan);
-
-        // 根节点应当直接 AND 合并 hobby 条件，绝不包含 EXISTS
-        String rootCondSql = rootPlan.getCondition().toString().toLowerCase();
-        assertFalse(rootCondSql.contains("exists"), "同表垂直拆分模块过滤条件应直接合并，不生成 EXISTS");
-        assertTrue(rootCondSql.contains("hobby"), "根节点必须包含同表子模块的筛选字段 hobby");
-        assertTrue(rootCondSql.contains("篮球"), "根节点必须包含同表子模块的筛选值 '篮球'");
-
-        DataPage<Map<String, Object>> result = queryPlanExecutor.execute(queryPlan);
-        assertNotNull(result);
-        assertEquals(1, result.getRecords().size());
-    }
-
-    @Test
-    @DisplayName("测试 DataPage 序列化输出严格符合顶层挂在根 moduleId 下的契约")
-    void testDataPageJsonSerializationMatchesRootModuleIdContract() throws Exception {
-        allKnownModules.put(105L, mockModule105);
-
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .pageNo(1)
-                        .pageSize(10)
-                        .fields(List.of(1011L, 1012L, 1013L, 1014L, 1031L, 1032L, 1041L, 1042L))
-                        .build();
-
-        DataPage<Map<String, Object>> response = dataQueryService.query(req);
-        assertNotNull(response);
-
-        ObjectMapper mapper = new ObjectMapper();
-        String json = mapper.writeValueAsString(response);
-
-        // 验证 records 顶层节点
-        JsonNode rootNode = mapper.readTree(json);
-        assertTrue(rootNode.has("records"), "JSON 根节点必须包含 'records' 数组");
-        assertEquals(1, rootNode.get("records").size());
-
-        // 验证三级递归自相似数据链路：records[0]["101"] 根模块包裹，行内自包含物理表与子模块数组
-        JsonNode rootRecord = rootNode.get("records").get(0);
-        assertTrue(rootRecord.has("101"), "每条记录必须包含根模块 101 包裹对象");
-        JsonNode studentNode = rootRecord.get("101");
-        assertEquals("S001", studentNode.get("student").get("student_no").asText());
-        assertEquals("张三", studentNode.get("student").get("name").asText());
-        assertEquals("高三(1)班", studentNode.get("clazz").get("class_name").asText());
-
-        // 二级模块 103 选课 (包含在 101 内部)
-        JsonNode courseNode = studentNode.get("103").get(0);
-        assertEquals("大学英语", courseNode.get("student_course").get("course_name").asText());
-
-        // 三级模块 104 成绩项 (包含在 103 选课内部)
-        JsonNode scoreNode = courseNode.get("104").get(0);
-        assertEquals("期末大作业", scoreNode.get("student_course_score_item").get("item_name").asText());
-        assertEquals(95.0, scoreNode.get("student_course_score_item").get("score").asDouble());
-    }
-
-    @Test
-    @DisplayName("测试同模块 1:N 物理从表装配时自动解包消除双层同名嵌套")
-    void testAssembleSameModuleSubTableUnwrapped() {
-        TreeResultAssembler assembler = new TreeResultAssembler();
-
-        // 根层记录（学生记录）
-        Map<String, Object> studentRow = new LinkedHashMap<>();
-        studentRow.put("student", Map.of("id", 5L, "name", "张三"));
-
-        // 选课子记录（未装配前，包含物理表和外键）
-        Map<String, Object> courseRow = new LinkedHashMap<>();
-        courseRow.put("student_course", Map.of("id", 8L, "student_id", 5L, "course_name", "高等数学"));
-        courseRow.put("_fk_student_id", 5L);
-
-        // 同模块子计划（成绩分项，属于同一模块 103）
-        QueryNodePlan scoreSubPlan =
-                QueryNodePlan.builder()
-                        .moduleId(103L)
+        ModuleInfo mockModule108 =
+                ModuleInfo.builder()
+                        .moduleId(108L)
+                        .moduleCode("MOD-STUDENT-COURSE-SCORE")
                         .primaryTable("student_course_score_item")
-                        .parentForeignKey("student_course_id")
-                        .build();
-
-        // 选课子计划（属于模块 103，挂载成绩分项计划）
-        QueryNodePlan coursePlan =
-                QueryNodePlan.builder()
-                        .moduleId(103L)
-                        .primaryTable("student_course")
-                        .parentForeignKey("student_id")
-                        .children(List.of(scoreSubPlan))
-                        .build();
-
-        // 模拟执行器拉取的原始从表记录（已被包裹在物理表空间内）
-        Map<String, Object> rawScoreRow = new LinkedHashMap<>();
-        rawScoreRow.put(
-                "student_course_score_item",
-                Map.of("id", 28L, "student_course_id", 8L, "item_name", "期中测验", "score", 85.0));
-        rawScoreRow.put("_fk_student_course_id", 8L);
-
-        Map<QueryNodePlan, List<Map<String, Object>>> rawData = new IdentityHashMap<>();
-        rawData.put(coursePlan, List.of(courseRow));
-        rawData.put(scoreSubPlan, List.of(rawScoreRow));
-
-        // 从根层学生开始递归装配子模块 103 及其同模块从表
-        assembler.assembleChildrenRecursively(
-                List.of(studentRow), 101L, List.of(coursePlan), rawData);
-
-        // 验证：studentRow 下挂载子模块 103 数组
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courseList = (List<Map<String, Object>>) studentRow.get("103");
-        assertNotNull(courseList, "必须成功装配 103 模块");
-        assertEquals(1, courseList.size());
-
-        Map<String, Object> c0 = courseList.get(0);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> scoreItems =
-                (List<Map<String, Object>>) c0.get("student_course_score_item");
-        assertNotNull(scoreItems, "必须成功装配同模块从表数组");
-        assertEquals(1, scoreItems.size());
-
-        // 核心断言：消除双层嵌套，项内部直接包含物理字段，绝无同名外层包裹
-        Map<String, Object> scoreItem = scoreItems.get(0);
-        assertFalse(
-                scoreItem.containsKey("student_course_score_item"),
-                "严禁在从表项内部再次嵌套同名物理表 student_course_score_item");
-        assertEquals(28L, ((Number) scoreItem.get("id")).longValue());
-        assertEquals("期中测验", scoreItem.get("item_name"));
-        assertEquals(85.0, ((Number) scoreItem.get("score")).doubleValue());
-    }
-
-    @Test
-    @DisplayName("测试作用域防护(Scope Guard)：fields 传入非本模块及子模块字段时严格抛出异常")
-    void testOutOfScopeFieldInFieldsThrowsException() {
-        QueryReq req = QueryReq.builder().moduleId(101L).fields(List.of(1011L, 9991L)).build();
-
-        IllegalArgumentException ex =
-                assertThrows(IllegalArgumentException.class, () -> queryPlanCompiler.compile(req));
-        assertTrue(
-                ex.getMessage().contains("未在当前模块树 [101] 的元数据中查询到指定字段定义: 9991")
-                        || ex.getMessage().contains("不属于主模块 [101] 及其子模块作用域范围"));
-    }
-
-    @Test
-    @DisplayName("测试作用域防护(Scope Guard)：filters 传入非本模块及子模块字段时严格抛出异常")
-    void testOutOfScopeFieldInFiltersThrowsException() {
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1011L))
-                        .filters(
+                        .parentId(105L)
+                        .fields(
                                 List.of(
-                                        FilterItem.builder()
-                                                .fieldId(9991L)
-                                                .operator("EQ")
-                                                .value("TEST")
+                                        ModuleFieldDTO.builder()
+                                                .id(57L)
+                                                .moduleId(108L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(58L)
+                                                .moduleId(108L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("student_course_id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(59L)
+                                                .moduleId(108L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("item_name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(61L)
+                                                .moduleId(108L)
+                                                .tableName("student_course_score_item")
+                                                .columnName("score")
                                                 .build()))
                         .build();
 
-        IllegalArgumentException ex =
-                assertThrows(IllegalArgumentException.class, () -> queryPlanCompiler.compile(req));
-        assertTrue(
-                ex.getMessage().contains("未在当前模块树 [101] 的元数据中查询到指定字段定义: 9991")
-                        || ex.getMessage().contains("不属于主模块 [101] 及其子模块作用域范围"));
-    }
+        allKnownModules.put(101L, mockModule101);
+        allKnownModules.put(104L, mockModule104);
+        allKnownModules.put(106L, mockModule106);
+        allKnownModules.put(105L, mockModule105);
+        allKnownModules.put(108L, mockModule108);
 
-    @Test
-    @DisplayName("虚拟模块测试：101(学生) -> 201(虚拟模块-教务信息) -> 103(选课管理) 穿透关联与 Semi-Join 上卷")
-    void testVirtualModuleCompilationAndExistsRollup() {
-        ModuleInfo mockVirtual201 =
-                ModuleInfo.builder()
-                        .moduleId(201L)
-                        .moduleCode("MOD-ACADEMIC")
-                        .moduleName("教务信息")
-                        .primaryTable(null)
-                        .parentId(101L)
-                        .build();
-        ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
-
-        allKnownModules.put(201L, mockVirtual201);
-        allKnownModules.put(103L, mockModule103Under201);
-
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1012L, 1031L))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1031L)
-                                                .operator("EQ")
-                                                .value("高等数学")
-                                                .build()))
-                        .build();
-
-        var plan = queryPlanCompiler.compile(req);
-        assertNotNull(plan);
-        var rootPlan = plan.getRootNodePlan();
-        assertEquals(101L, rootPlan.getModuleId());
-        assertEquals("student", rootPlan.getPrimaryTable());
-
-        // 验证第一层子节点为虚拟模块 201
-        assertNotNull(rootPlan.getChildren());
-        assertEquals(1, rootPlan.getChildren().size());
-        var plan201 = rootPlan.getChildren().get(0);
-        assertEquals(201L, plan201.getModuleId());
-        assertTrue(plan201.getPrimaryTable() == null || plan201.getPrimaryTable().isBlank());
-        assertTrue(plan201.getProjectedFields().isEmpty());
-
-        // 验证虚拟模块 201 下的子节点为物理模块 103
-        assertNotNull(plan201.getChildren());
-        assertEquals(1, plan201.getChildren().size());
-        var plan103 = plan201.getChildren().get(0);
-        assertEquals(103L, plan103.getModuleId());
-        assertEquals("student_course", plan103.getPrimaryTable());
-        assertEquals("student_id", plan103.getParentForeignKey());
-
-        // 验证 Semi-Join EXISTS 条件直接由物理父模块 101 的 student 表上卷，穿透虚拟模块 201
-        assertNotNull(rootPlan.getEffectiveFilterCondition());
-        String condSql = rootPlan.getEffectiveFilterCondition().toString().toLowerCase();
-        assertTrue(condSql.contains("exists"));
-        assertTrue(condSql.contains("student_course"));
-        assertTrue(condSql.contains("student_id"));
-        assertTrue(condSql.contains("高等数学"));
-    }
-
-    @Test
-    @DisplayName("虚拟模块测试：101(学生) -> 201(虚拟模块) -> 103(选课管理) 树形结果装配与 Map 容器隔离")
-    void testVirtualModuleExecutionAndTreeAssembly() {
-        ModuleInfo mockVirtual201 =
-                ModuleInfo.builder()
-                        .moduleId(201L)
-                        .moduleCode("MOD-ACADEMIC")
-                        .moduleName("教务信息")
-                        .primaryTable("")
-                        .parentId(101L)
-                        .build();
-        ModuleInfo mockModule103Under201 = mockModule103.toBuilder().parentId(201L).build();
-
-        allKnownModules.put(201L, mockVirtual201);
-        allKnownModules.put(103L, mockModule103Under201);
-
-        QueryReq req =
-                QueryReq.builder().moduleId(101L).fields(List.of(1011L, 1012L, 1031L)).build();
-
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
-        assertNotNull(page);
-        assertNotNull(page.getRecords());
-        assertEquals(1, page.getRecords().size());
-
-        Map<String, Object> wrapped = page.getRecords().get(0);
-        assertTrue(wrapped.get("101") instanceof Map<?, ?>);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentRow = (Map<String, Object>) wrapped.get("101");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentTable = (Map<String, Object>) studentRow.get("student");
-        assertEquals("张三", studentTable.get("name"));
-        assertEquals("S001", studentTable.get("student_no"));
-
-        // 验证虚拟模块在行内以 Map<String, Object> 逻辑容器形式挂载
-        assertTrue(studentRow.get("201") instanceof Map<?, ?>);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> vmContainer = (Map<String, Object>) studentRow.get("201");
-        assertNotNull(vmContainer);
-
-        // 验证虚拟模块容器内包含子模块 103 选课记录列表
-        assertTrue(vmContainer.get("103") instanceof List<?>);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courseList = (List<Map<String, Object>>) vmContainer.get("103");
-        assertNotNull(courseList);
-        assertEquals(1, courseList.size());
-
-        Map<String, Object> courseRow = courseList.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> courseTable = (Map<String, Object>) courseRow.get("student_course");
-        assertEquals("大学英语", courseTable.get("course_name"));
-
-        // 验证内部技术字段彻底清除
-        assertFalse(courseRow.containsKey("_fk_student_id"));
-        assertFalse(courseRow.containsKey("_row_id"));
-    }
-
-    @Test
-    @DisplayName("多级嵌套虚拟模块测试：101(学生) -> 201(虚拟A) -> 202(虚拟B) -> 103(选课) 跨多级穿透关联与嵌套装配")
-    void testMultiLevelNestedVirtualModules() {
-        ModuleInfo mockVirtual201 =
-                ModuleInfo.builder()
-                        .moduleId(201L)
-                        .moduleCode("MOD-VM-A")
-                        .moduleName("业务综合A")
-                        .primaryTable(null)
-                        .parentId(101L)
-                        .build();
-        ModuleInfo mockVirtual202 =
-                ModuleInfo.builder()
-                        .moduleId(202L)
-                        .moduleCode("MOD-VM-B")
-                        .moduleName("业务综合B")
-                        .primaryTable("")
-                        .parentId(201L)
-                        .build();
-        ModuleInfo mockModule103Under202 = mockModule103.toBuilder().parentId(202L).build();
-
-        allKnownModules.put(201L, mockVirtual201);
-        allKnownModules.put(202L, mockVirtual202);
-        allKnownModules.put(103L, mockModule103Under202);
-
-        QueryReq req =
-                QueryReq.builder()
-                        .moduleId(101L)
-                        .fields(List.of(1012L, 1031L))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .fieldId(1031L)
-                                                .operator("EQ")
-                                                .value("大学英语")
-                                                .build()))
-                        .build();
-
-        var plan = queryPlanCompiler.compile(req);
-        assertNotNull(plan);
-
-        // 验证三级树结构：101 -> 201 -> 202 -> 103
-        var rootPlan = plan.getRootNodePlan();
-        var plan201 = rootPlan.getChildren().get(0);
-        assertEquals(201L, plan201.getModuleId());
-        var plan202 = plan201.getChildren().get(0);
-        assertEquals(202L, plan202.getModuleId());
-        var plan103 = plan202.getChildren().get(0);
-        assertEquals(103L, plan103.getModuleId());
-        assertEquals("student_id", plan103.getParentForeignKey());
-
-        // 验证执行与多层装配
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
-        Map<String, Object> wrapped = page.getRecords().get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentRow = (Map<String, Object>) wrapped.get("101");
-        assertNotNull(studentRow);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> vm201 = (Map<String, Object>) studentRow.get("201");
-        assertNotNull(vm201);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> vm202 = (Map<String, Object>) vm201.get("202");
-        assertNotNull(vm202);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courses = (List<Map<String, Object>>) vm202.get("103");
-        assertNotNull(courses);
-        assertEquals(1, courses.size());
-        Map<String, Object> courseRow = courses.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> courseTable = (Map<String, Object>) courseRow.get("student_course");
-        assertEquals("大学英语", courseTable.get("course_name"));
-    }
-
-    @Test
-    @DisplayName("虚拟模块关联定义在虚拟模块自身时支持关系向上聚合识别")
-    void testVirtualModuleRelationDefinedOnVirtualModule() {
-        // 关系既不在 101 上，也不在 103 上，而是配置在 201 虚拟模块上
-        TableRelationDTO vmRelation =
+        allKnownRelations.add(
                 TableRelationDTO.builder()
                         .mainTable("student")
                         .mainField("id")
                         .joinTable("student_course")
                         .joinField("student_id")
                         .relationType("1:N")
-                        .build();
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("student_course")
+                        .mainField("id")
+                        .joinTable("student_course_score_item")
+                        .joinField("student_course_id")
+                        .relationType("1:N")
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("student")
+                        .mainField("id")
+                        .joinTable("student_award")
+                        .joinField("student_id")
+                        .relationType("1:N")
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("student_award")
+                        .mainField("id")
+                        .joinTable("student_award_detail")
+                        .joinField("award_id")
+                        .relationType("1:N")
+                        .build());
 
-        ModuleInfo mockVirtual201 =
+        // ------------------------- Company 模块元数据 -------------------------
+        ModuleInfo mockModule1001 =
                 ModuleInfo.builder()
-                        .moduleId(201L)
-                        .moduleCode("MOD-ACADEMIC")
-                        .moduleName("教务信息")
-                        .primaryTable(null)
-                        .parentId(101L)
+                        .moduleId(1001L)
+                        .moduleCode("COMPANY-ROOT")
+                        .primaryTable("info")
+                        .parentId(0L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10001L)
+                                                .moduleId(1001L)
+                                                .tableName("info")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10002L)
+                                                .moduleId(1001L)
+                                                .tableName("info")
+                                                .columnName("company_name")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10006L)
+                                                .moduleId(1001L)
+                                                .tableName("info")
+                                                .columnName("cooperation_types")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10007L)
+                                                .moduleId(1001L)
+                                                .tableName("info")
+                                                .columnName("industry_tags")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10010L)
+                                                .moduleId(1001L)
+                                                .tableName("info")
+                                                .columnName("audit_status")
+                                                .build()))
                         .build();
 
-        ModuleInfo mockCourseWithoutRel = mockModule103.toBuilder().parentId(201L).build();
+        ModuleInfo mockModule1002 =
+                ModuleInfo.builder()
+                        .moduleId(1002L)
+                        .moduleCode("COMPANY-BASIC-INFO")
+                        .primaryTable("basic_info")
+                        .parentId(1001L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10011L)
+                                                .moduleId(1002L)
+                                                .tableName("basic_info")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10012L)
+                                                .moduleId(1002L)
+                                                .tableName("basic_info")
+                                                .columnName("uscc")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10013L)
+                                                .moduleId(1002L)
+                                                .tableName("basic_info")
+                                                .columnName("short_name")
+                                                .build()))
+                        .build();
 
-        allKnownModules.put(201L, mockVirtual201);
-        allKnownModules.put(103L, mockCourseWithoutRel);
+        ModuleInfo mockModule1020 =
+                ModuleInfo.builder()
+                        .moduleId(1020L)
+                        .moduleCode("COMPANY-MEMBER-V")
+                        .primaryTable(null) // 虚拟模块
+                        .parentId(1001L)
+                        .fields(Collections.emptyList())
+                        .build();
 
-        QueryReq req = QueryReq.builder().moduleId(101L).fields(List.of(1012L, 1031L)).build();
+        ModuleInfo mockModule1005 =
+                ModuleInfo.builder()
+                        .moduleId(1005L)
+                        .moduleCode("COMPANY-CONTACT-ADDR")
+                        .primaryTable("address")
+                        .parentId(1020L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10048L)
+                                                .moduleId(1005L)
+                                                .tableName("address")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10050L)
+                                                .moduleId(1005L)
+                                                .tableName("address")
+                                                .columnName("comm_region")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10051L)
+                                                .moduleId(1005L)
+                                                .tableName("address")
+                                                .columnName("comm_detail")
+                                                .build()))
+                        .build();
 
-        var plan = queryPlanCompiler.compile(req);
-        assertNotNull(plan);
-        var plan103 = plan.getRootNodePlan().getChildren().get(0).getChildren().get(0);
-        assertEquals("student_id", plan103.getParentForeignKey());
+        ModuleInfo mockModule1006 =
+                ModuleInfo.builder()
+                        .moduleId(1006L)
+                        .moduleCode("COMPANY-CONTACT-BIZ")
+                        .primaryTable("company_contact")
+                        .parentId(1020L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(10053L)
+                                                .moduleId(1006L)
+                                                .tableName("company_contact")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10054L)
+                                                .moduleId(1006L)
+                                                .tableName("company_contact")
+                                                .columnName("contact_type")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(10055L)
+                                                .moduleId(1006L)
+                                                .tableName("company_contact")
+                                                .columnName("contact_value")
+                                                .build()))
+                        .build();
+
+        allKnownModules.put(1001L, mockModule1001);
+        allKnownModules.put(1002L, mockModule1002);
+        allKnownModules.put(1020L, mockModule1020);
+        allKnownModules.put(1005L, mockModule1005);
+        allKnownModules.put(1006L, mockModule1006);
+
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("basic_info")
+                        .joinField("company_id")
+                        .relationType("1:1")
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("address")
+                        .joinField("company_id")
+                        .relationType("1:1")
+                        .build());
+        allKnownRelations.add(
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("company_contact")
+                        .joinField("company_id")
+                        .relationType("1:N")
+                        .build());
+    }
+
+    private static Object valueOf(String table, String col, int row) {
+        String k = table + "." + col;
+        switch (k) {
+                // School 模块字段
+            case "student.id":
+                return 1001L;
+            case "student.name":
+                return "张三";
+            case "student.student_no":
+                return "S001";
+            case "student.gender":
+                return "男";
+            case "student.clazz_id":
+                return 10L;
+            case "student.deleted":
+                return (byte) 0;
+
+            case "student_course.id":
+                return 301L;
+            case "student_course.student_id":
+                return 1001L;
+            case "student_course.course_name":
+                return "大学英语";
+            case "student_course.score":
+                return 92.0;
+            case "student_course.deleted":
+                return (byte) 0;
+
+            case "student_course_score_item.id":
+                return 801L;
+            case "student_course_score_item.student_course_id":
+                return 301L;
+            case "student_course_score_item.item_name":
+                return "期末大作业";
+            case "student_course_score_item.score":
+                return 95.0;
+            case "student_course_score_item.deleted":
+                return (byte) 0;
+
+            case "student_award.id":
+                return 501L;
+            case "student_award.student_id":
+                return 1001L;
+            case "student_award.award_name":
+                return "国家一等奖学金";
+            case "student_award.level":
+                return "国家级";
+            case "student_award.deleted":
+                return (byte) 0;
+
+            case "student_award_detail.id":
+                return 901L;
+            case "student_award_detail.award_id":
+                return 501L;
+            case "student_award_detail.evidence_name":
+                return "国家级奖学金证书";
+            case "student_award_detail.evidence_no":
+                return "CERT-2026-001";
+            case "student_award_detail.deleted":
+                return (byte) 0;
+
+                // Company 模块字段
+            case "info.id":
+                return 139L;
+            case "info.company_name":
+                return "石嘴山市盛港煤焦化有限公司";
+            case "info.cooperation_types":
+                return "[\"客户\", \"供应商\"]";
+            case "info.industry_tags":
+                return "[\"焦化\", \"煤炭\"]";
+            case "info.audit_status":
+                return "APPROVED";
+            case "info.deleted":
+                return (byte) 0;
+
+            case "basic_info.id":
+                return 18L;
+            case "basic_info.company_id":
+                return 139L;
+            case "basic_info.uscc":
+                return "91640200MA75WXYZ89";
+            case "basic_info.short_name":
+                return "盛港焦化";
+            case "basic_info.deleted":
+                return (byte) 0;
+
+            case "address.id":
+                return 12L;
+            case "address.company_id":
+                return 139L;
+            case "address.comm_region":
+                return "宁夏回族自治区/石嘴山市/大武口区";
+            case "address.comm_detail":
+                return "高新技术产业开发区8号";
+            case "address.deleted":
+                return (byte) 0;
+
+            case "company_contact.id":
+                return (long) (8 + row);
+            case "company_contact.company_id":
+                return 139L;
+            case "company_contact.contact_type":
+                return row == 0 ? "PHONE" : "MOBILE";
+            case "company_contact.contact_value":
+                return row == 0 ? "0710-3255895" : "13585855898";
+            case "company_contact.deleted":
+                return (byte) 0;
+
+            default:
+                if ("id".equals(col)) {
+                    return 1L;
+                }
+                if ("deleted".equals(col)) {
+                    return (byte) 0;
+                }
+                return null;
+        }
     }
 
     @Test
-    @DisplayName("测试 getDetail 在显式指定 fields 时，返回的 meta.fields 同步精准过滤")
-    void testGetDetailWithFieldsFilter() {
-        // 仅请求 1011(学号) 与 1012(姓名)
-        DataDetail<Map<String, Object>> detail =
-                dataQueryService.getDetail(101L, 1001L, List.of(1011L, 1012L));
-
-        assertNotNull(detail);
-        assertNotNull(detail.getMeta());
-        assertNotNull(detail.getMeta().getFields());
-        // 验证 meta.fields 严格过滤为 2 个请求字段
-        assertTrue(
-                detail.getMeta().getFields().stream()
-                        .anyMatch(f -> Long.valueOf(1011L).equals(f.getId())));
-        assertTrue(
-                detail.getMeta().getFields().stream()
-                        .anyMatch(f -> Long.valueOf(1012L).equals(f.getId())));
-    }
-
-    @Test
-    @DisplayName("测试以子模块作为根节点查询时，不会错误向上回溯到祖先模块")
-    void testSubModuleRootQueryDoesNotBacktrackToParent() {
-        // 模拟 103 (选课主表) 作为 rootModuleId，其父模块为 101 (学生主表)
-        // 104 (成绩分项) 作为 103 的子模块
+    @DisplayName("测试单模块查询 (School 101): 返回 DataPage 结构与顶层 moduleId 规范")
+    void testQuerySingleModuleSchool() {
         QueryReq req =
                 QueryReq.builder()
-                        .moduleId(103L)
+                        .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
-                        .fields(List.of(1031L, 1032L, 1041L, 1042L)) // 103 + 104 字段
+                        .fields(List.of(1L, 2L, 3L))
                         .build();
 
-        assertDoesNotThrow(
-                () -> {
-                    QueryPlan plan = queryPlanCompiler.compile(req);
-                    assertNotNull(plan);
-                    assertNotNull(plan.getRootNodePlan());
-                    assertEquals(103L, plan.getRootNodePlan().getModuleId());
-                    // 验证生成的计划中只有子节点 104，绝对不能包含 101
-                    if (plan.getRootNodePlan().getChildren() != null) {
-                        boolean containsParent101 =
-                                plan.getRootNodePlan().getChildren().stream()
-                                        .anyMatch(c -> Long.valueOf(101L).equals(c.getModuleId()));
-                        assertFalse(containsParent101, "以 103 为根的查询计划中绝不能反向包含其父模块 101");
-                    }
-                });
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+
+        assertNotNull(page);
+        assertEquals(101L, page.getModuleId());
+        assertEquals(1, page.getPageNo());
+        assertEquals(10, page.getPageSize());
+        assertEquals(1L, page.getTotal());
+        assertNotNull(page.getRecords());
+        assertEquals(1, page.getRecords().size());
+
+        Map<String, Object> firstRow = page.getRecords().get(0);
+        assertNotNull(firstRow.get("student"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> studentMap = (Map<String, Object>) firstRow.get("student");
+        assertEquals(1001L, studentMap.get("id"));
+        assertEquals("张三", studentMap.get("name"));
+        assertEquals("S001", studentMap.get("student_no"));
+    }
+
+    @Test
+    @DisplayName("测试多级深层自相似树查询 (School 101 -> 105 -> 108): 学生 -> 选课 -> 成绩分项")
+    void testQueryDeepCascadeTreeSchool() {
+        // 请求同时包含 101(学生), 105(选课), 108(成绩分项) 的字段
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(101L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(List.of(1L, 3L, 28L, 32L, 57L, 59L))
+                        .build();
+
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+
+        assertNotNull(page);
+        assertEquals(101L, page.getModuleId());
+
+        Map<String, Object> rootRow = page.getRecords().get(0);
+        assertNotNull(rootRow.get("student"));
+
+        // 校验第一层 children 挂载 105
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rootChildren =
+                (List<Map<String, Object>>) rootRow.get("children");
+        assertNotNull(rootChildren);
+        assertFalse(rootChildren.isEmpty());
+
+        Map<String, Object> courseNode =
+                rootChildren.stream()
+                        .filter(c -> Long.valueOf(105L).equals(c.get("moduleId")))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(courseNode);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> courseRecords =
+                (List<Map<String, Object>>) courseNode.get("records");
+        assertEquals(1, courseRecords.size());
+
+        Map<String, Object> courseRecord = courseRecords.get(0);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> courseTable = (Map<String, Object>) courseRecord.get("student_course");
+        assertEquals(301L, courseTable.get("id"));
+        assertEquals("大学英语", courseTable.get("course_name"));
+
+        // 校验第二层 children 递归挂载 108
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> courseChildren =
+                (List<Map<String, Object>>) courseRecord.get("children");
+        assertNotNull(courseChildren);
+
+        Map<String, Object> scoreNode =
+                courseChildren.stream()
+                        .filter(c -> Long.valueOf(108L).equals(c.get("moduleId")))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(scoreNode);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> scoreRecords =
+                (List<Map<String, Object>>) scoreNode.get("records");
+        assertEquals(1, scoreRecords.size());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> scoreTable =
+                (Map<String, Object>) scoreRecords.get(0).get("student_course_score_item");
+        assertEquals(801L, scoreTable.get("id"));
+        assertEquals("期末大作业", scoreTable.get("item_name"));
+    }
+
+    @Test
+    @DisplayName("测试同级多分枝子树查询 (School 101 -> 104 -> 106 & 105 -> 108)")
+    void testQueryMultipleBranchesSchool() {
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(101L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(List.of(1L, 3L, 37L, 39L, 74L, 76L, 28L, 32L, 57L, 59L))
+                        .build();
+
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        assertNotNull(page);
+
+        Map<String, Object> rootRow = page.getRecords().get(0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> children = (List<Map<String, Object>>) rootRow.get("children");
+        assertNotNull(children);
+
+        // 验证同级包含 104 (荣誉) 与 105 (选课)
+        boolean hasAward =
+                children.stream().anyMatch(c -> Long.valueOf(104L).equals(c.get("moduleId")));
+        boolean hasCourse =
+                children.stream().anyMatch(c -> Long.valueOf(105L).equals(c.get("moduleId")));
+        assertTrue(hasAward);
+        assertTrue(hasCourse);
+
+        // 验证 104 下挂载 106
+        Map<String, Object> awardNode =
+                children.stream()
+                        .filter(c -> Long.valueOf(104L).equals(c.get("moduleId")))
+                        .findFirst()
+                        .orElseThrow();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> awardRecords =
+                (List<Map<String, Object>>) awardNode.get("records");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> awardChildren =
+                (List<Map<String, Object>>) awardRecords.get(0).get("children");
+        assertTrue(
+                awardChildren.stream().anyMatch(c -> Long.valueOf(106L).equals(c.get("moduleId"))));
+    }
+
+    @Test
+    @DisplayName("测试虚拟模块与 JSON 原生解析 (Company 1001 -> 1020 -> 1005 / 1006)")
+    void testQueryVirtualModuleAndJsonParsingCompany() {
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(1001L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(
+                                List.of(
+                                        10001L, 10002L, 10006L, 10007L, 10048L, 10050L, 10053L,
+                                        10055L))
+                        .build();
+
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        assertNotNull(page);
+        assertEquals(1001L, page.getModuleId());
+
+        Map<String, Object> rootRow = page.getRecords().get(0);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> infoTable = (Map<String, Object>) rootRow.get("info");
+        assertNotNull(infoTable);
+        assertEquals("石嘴山市盛港煤焦化有限公司", infoTable.get("company_name"));
+
+        // 验证 JSON 数组被原生解析为 List
+        Object coopTypes = infoTable.get("cooperation_types");
+        assertInstanceOf(List.class, coopTypes);
+        @SuppressWarnings("unchecked")
+        List<String> coopList = (List<String>) coopTypes;
+        assertEquals(List.of("客户", "供应商"), coopList);
+
+        // 验证虚拟模块 1020 作为节点挂载在 children 下 (方案 A 规范)
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rootChildren =
+                (List<Map<String, Object>>) rootRow.get("children");
+        assertNotNull(rootChildren);
+
+        Map<String, Object> virtualNode =
+                rootChildren.stream()
+                        .filter(c -> Long.valueOf(1020L).equals(c.get("moduleId")))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(virtualNode);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> virtualRecords =
+                (List<Map<String, Object>>) virtualNode.get("records");
+        assertEquals(1, virtualRecords.size());
+
+        Map<String, Object> virtualContainer = virtualRecords.get(0);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> subChildren =
+                (List<Map<String, Object>>) virtualContainer.get("children");
+        assertNotNull(subChildren);
+
+        // 虚拟容器内部挂载 1005 (地址) 和 1006 (联系方式)
+        boolean hasAddr =
+                subChildren.stream().anyMatch(c -> Long.valueOf(1005L).equals(c.get("moduleId")));
+        boolean hasContact =
+                subChildren.stream().anyMatch(c -> Long.valueOf(1006L).equals(c.get("moduleId")));
+        assertTrue(hasAddr);
+        assertTrue(hasContact);
+    }
+
+    @Test
+    @DisplayName("测试动态多维组合过滤条件 (Dynamic Filter Items)")
+    void testQueryDynamicFilters() {
+        List<FilterItem> filters =
+                List.of(
+                        FilterItem.builder()
+                                .fieldId(3L) // student.name
+                                .operator("LIKE")
+                                .value("张%")
+                                .build(),
+                        FilterItem.builder()
+                                .fieldId(1L) // student.id
+                                .operator("IN")
+                                .value(List.of(1001L, 1002L))
+                                .build());
+
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(101L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(List.of(1L, 2L, 3L))
+                        .filters(filters)
+                        .build();
+
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        assertNotNull(page);
+
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("where")
+                                                && sql.toLowerCase().contains("like")
+                                                && sql.toLowerCase().contains("in")));
+    }
+
+    @Test
+    @DisplayName("测试排序字段解析 (Sorting Direction)")
+    void testQuerySorts() {
+        List<SortItem> sorts =
+                List.of(
+                        SortItem.builder().fieldId(1L).direction("DESC").build(),
+                        SortItem.builder().fieldId(2L).direction("ASC").build());
+
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(101L)
+                        .pageNo(1)
+                        .pageSize(10)
+                        .fields(List.of(1L, 2L))
+                        .sorts(sorts)
+                        .build();
+
+        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        assertNotNull(page);
+
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("order by")
+                                                && sql.toLowerCase().contains("desc")
+                                                && sql.toLowerCase().contains("asc")));
+    }
+
+    @Test
+    @DisplayName("测试去重下拉候选项查询 (Get Options)")
+    void testGetOptions() {
+        OptionReq req = OptionReq.builder().moduleId(101L).fieldId(32L).build(); // course_name
+
+        List<DataOption> options = dataQueryService.getOptions(req);
+
+        assertNotNull(options);
+        assertEquals(2, options.size());
+        assertTrue(options.stream().anyMatch(o -> "大学英语".equals(o.getLabel())));
+        assertTrue(options.stream().anyMatch(o -> "高等数学".equals(o.getLabel())));
     }
 }

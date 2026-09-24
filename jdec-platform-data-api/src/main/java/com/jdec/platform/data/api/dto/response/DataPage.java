@@ -19,6 +19,9 @@ import lombok.NoArgsConstructor;
 @Schema(description = "分页数据响应")
 public class DataPage<T> implements Serializable {
 
+    @Schema(description = "模块 ID", example = "1001")
+    private Long moduleId;
+
     @Schema(description = "当前页码", example = "1")
     private Integer pageNo;
 
@@ -32,8 +35,9 @@ public class DataPage<T> implements Serializable {
     private List<T> records;
 
     public static <T> DataPage<T> of(
-            Integer pageNo, Integer pageSize, Long total, List<T> records) {
+            Long moduleId, Integer pageNo, Integer pageSize, Long total, List<T> records) {
         return DataPage.<T>builder()
+                .moduleId(moduleId)
                 .pageNo(pageNo)
                 .pageSize(pageSize)
                 .total(total)
@@ -41,12 +45,22 @@ public class DataPage<T> implements Serializable {
                 .build();
     }
 
-    public static <T> DataPage<T> empty(Integer pageNo, Integer pageSize) {
+    public static <T> DataPage<T> of(
+            Integer pageNo, Integer pageSize, Long total, List<T> records) {
+        return of(null, pageNo, pageSize, total, records);
+    }
+
+    public static <T> DataPage<T> empty(Long moduleId, Integer pageNo, Integer pageSize) {
         return DataPage.<T>builder()
+                .moduleId(moduleId)
                 .pageNo(pageNo != null ? pageNo : 1)
                 .pageSize(pageSize != null ? pageSize : 20)
                 .total(0L)
                 .records(Collections.emptyList())
                 .build();
+    }
+
+    public static <T> DataPage<T> empty(Integer pageNo, Integer pageSize) {
+        return empty(null, pageNo, pageSize);
     }
 }
