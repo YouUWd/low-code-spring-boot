@@ -31,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /** 列表表头节点 Service 实现 */
 @Slf4j
@@ -309,7 +310,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         entity.setWidth(node.getWidth());
         entity.setDataIndex(node.getDataIndex());
         entity.setSorted(node.getSorted());
-        entity.setSearchType(node.getSearchType());
+        // search_type 在库中为 JSON 列，空串不是合法 JSON，统一归一为 null
+        entity.setSearchType(
+                StringUtils.hasText(node.getSearchType()) ? node.getSearchType() : null);
         entity.setEllipsis(node.getEllipsis());
         entity.setFixed(node.getFixed());
         entity.setChecked(node.getChecked());

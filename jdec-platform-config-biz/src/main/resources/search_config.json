@@ -232,7 +232,7 @@
     "businessTypeName": "文本",
     "searchConfig": [
       {
-        "code": "IN",
+        "code": "JSON_CONTAINS",
         "name": "模糊查询",
         "component": "singleFuzzySelect"
       }

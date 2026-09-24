@@ -3,7 +3,7 @@
         displayName = "Approval BIZ",
         allowedDependencies = {
             "approval.api",
-            "data.api",
+            "common.api",
             "config.api",
             "config.open",
             "auth.api",

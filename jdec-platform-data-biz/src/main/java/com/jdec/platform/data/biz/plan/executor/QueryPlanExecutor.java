@@ -1,11 +1,11 @@
 package com.jdec.platform.data.biz.plan.executor;
 
 import com.jdec.platform.data.api.dto.response.DataPage;
-import com.jdec.platform.data.biz.dsl.JooqDataContextFactory;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import com.jdec.platform.data.biz.plan.model.QueryPlan;
+import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
