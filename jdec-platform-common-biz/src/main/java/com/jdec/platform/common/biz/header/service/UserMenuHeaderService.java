@@ -235,6 +235,28 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                 updated.get());
     }
 
+    @Override
+    public void resetUserMenuHeader(Long userId, Long menuId) {
+        if (userId == null || menuId == null) {
+            throw new BusinessException("用户ID与菜单ID不能为空");
+        }
+
+        // 用户表头记录按详情菜单ID 归属，与保存/查询保持一致
+        Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
+
+        // 单条删除语句本身即原子，无需事务（Spring 事务也覆盖不到该物理业务库）
+        int deleted =
+                jooqDataContextFactory
+                        .getContext()
+                        .deleteFrom(DSL.table(DSL.name(TABLE_USER_MENU_HEADER)))
+                        .where(DSL.field(DSL.name("user_id")).eq(userId))
+                        .and(DSL.field(DSL.name("menu_id")).eq(headerMenuId))
+                        .and(DSL.field(DSL.name("subject_id")).eq(AppContext.getSubjectId()))
+                        .and(DSL.field(DSL.name("project_no")).eq(AppContext.getProjectNo()))
+                        .execute();
+        log.debug("恢复默认用户个性化表头：userId={}, menuId={}, 删除={}", userId, headerMenuId, deleted);
+    }
+
     // ==================== 用户表头读写 ====================
 
     /**

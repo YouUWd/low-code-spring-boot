@@ -74,6 +74,29 @@ public class CommonMenuHeaderController {
         }
     }
 
+    @PostMapping("/reset")
+    @Operation(
+            summary = "恢复默认表头",
+            description =
+                    "删除该用户在指定列表菜单下的个性化表头配置（user_menu_header 中 userId + 表头归属菜单ID + 当前主体 + 当前项目编码 的全部节点），"
+                            + "删除后查询/展示接口自然回退到系统默认表头配置；表头归属菜单与保存/查询同一套转换规则，"
+                            + "主体与项目编码取当前请求上下文，无需前端传递")
+    public ApiResponse<Void> resetUserMenuHeader(
+            @RequestParam Long userId, @RequestParam Long menuId) {
+        try {
+            userMenuHeaderApi.resetUserMenuHeader(userId, menuId);
+            return ApiResponse.success();
+        } catch (Exception ex) {
+            log.error(
+                    "Common menu-header resetUserMenuHeader failed: userId={}, menuId={}, err={}",
+                    userId,
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
     @GetMapping("/display")
     @Operation(
             summary = "用户个性化表头展示",
