@@ -62,7 +62,6 @@ jdec:
       student_manage: student_manage
       config_engine: config_engine
       company: company
-      company: company
 # ===== MyBatis-Plus 开发模式 =====
 mybatis-plus:
   configuration:
