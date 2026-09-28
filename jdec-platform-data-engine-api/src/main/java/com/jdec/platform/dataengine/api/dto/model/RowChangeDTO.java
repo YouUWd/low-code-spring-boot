@@ -19,4 +19,8 @@ public class RowChangeDTO implements Serializable {
     private String name;
 
     private String action;
+
+    private Long dataId;
+
+    private List<ModuleChangeDTO> children;
 }

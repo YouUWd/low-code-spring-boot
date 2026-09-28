@@ -49,6 +49,6 @@ public class ParentLevelTableAssociatedDataFiledFillServiceImpl
 
     @Override
     public Boolean isReferTo(SaveType type) {
-        return true;
+        return false;
     }
 }

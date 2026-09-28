@@ -37,4 +37,10 @@ public class IModuleDataFieldChangeContentServiceImpl
             LambdaQueryWrapper<ModuleDataFieldChangeContent> wrapper) {
         return moduleDataFieldChangeContentMapper.selectOne(wrapper);
     }
+
+    @Override
+    public List<ModuleDataFieldChangeContent> queryList(
+            LambdaQueryWrapper<ModuleDataFieldChangeContent> wrapper) {
+        return moduleDataFieldChangeContentMapper.selectList(wrapper);
+    }
 }

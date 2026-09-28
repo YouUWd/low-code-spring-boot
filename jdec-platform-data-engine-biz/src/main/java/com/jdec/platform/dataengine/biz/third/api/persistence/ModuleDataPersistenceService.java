@@ -1,8 +1,13 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.jdec.platform.config.api.SysFieldApi;
+import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
+import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
+import com.jdec.platform.config.api.dto.response.PermissionTableGroupResp;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
+import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.api.dto.model.TableRelationDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
@@ -15,9 +20,9 @@ import com.jdec.platform.dataengine.biz.dto.context.ModuleDataPostContext;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.RelationType;
+import com.jdec.platform.dataengine.biz.enums.SaveButtonType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
-import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSaveCheckFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.post.ModuleDataSavePostFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
@@ -41,24 +46,29 @@ public class ModuleDataPersistenceService {
     private final MetadataCacheService metadataCacheService;
     private final JooqContextFactory jooqContextFactory;
 
-    private final ModuleDataSaveCheckFactoryService moduleDataSaveCheckFactoryService;
-
     private final ModuleDataSavePostFactoryService moduleDataSavePostFactoryService;
 
     private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
 
     private final DataModuleConfigService moduleConfigService;
 
-    public Long save(DynamicSaveReq req) {
-        // moduleDataSaveCheckFactoryService.check(ModuleDataCheckContext.builder().build());
+    private final SysModuleFieldPermissionApi sysModuleFieldPermissionApi;
 
+    private final SysFieldApi sysFieldApi;
+
+    public Long save(DynamicSaveReq req) {
+
+        // 模块是否关联审批链 保存类型
+        SaveType finalSaveType = getSaveType(req);
         Map<Long, SysModuleInfo> moduleCacheMap = new HashMap<>();
-        req.setRoot(TableRelationUtils.getRootTabTreeNode());
+
+        TabTreeNodeDTO rootTabTreeNode = TableRelationUtils.getRootTabTreeNode();
         AtomicReference<Long> rootModuleMainTableDataId = new AtomicReference<>();
         Long actionId = null;
         try {
             ModuleDataSaveContextHolder.openDataChangeFlag(null);
             actionId = ModuleDataSaveContextHolder.getContextActionId();
+
             jooqContextFactory
                     .getContext()
                     .transaction(
@@ -78,8 +88,11 @@ public class ModuleDataPersistenceService {
                                                     .parentModulePrimaryTableId(null)
                                                     .rootModuleId(rootModuleId) // 第一层的 根模块就是自己的模块ID
                                                     .rootModuleMainTableDataId(null)
-                                                    .tabTreeNode(req.getRoot())
+                                                    .rootModuleMainTableDataVersion(null)
+                                                    .rootModuleMainTableDataStatus(null)
+                                                    .tabTreeNode(rootTabTreeNode)
                                                     .txDsl(txDsl)
+                                                    .saveType(finalSaveType)
                                                     .build());
                                     boolean first = true;
 
@@ -132,8 +145,7 @@ public class ModuleDataPersistenceService {
                                                                                     .parentModulePrimaryTableId(
                                                                                             resultId)
                                                                                     .tabTreeNode(
-                                                                                            req
-                                                                                                    .getRoot())
+                                                                                            rootTabTreeNode)
                                                                                     .rootModuleId(
                                                                                             rootModuleId)
                                                                                     .rootModuleMainTableDataId(
@@ -159,10 +171,8 @@ public class ModuleDataPersistenceService {
         }
         try {
             log.info("=======" + "\n");
-            req.setRoot(null);
             log.info("=======" + JsonUtil.obj2Json(req));
         } catch (Exception e) {
-
         }
 
         moduleDataSavePostFactoryService.postProcess(
@@ -190,7 +200,61 @@ public class ModuleDataPersistenceService {
                             AppContext.getProjectNo(),
                             AppContext.getSubjectId(),
                             currentReq.getNestedModuleData().getModuleId());
+
+            // 构建模块 字段权限数据
             if (sysModuleCompleteResp != null) {
+                List<PermissionTableGroupResp> permissionTableGroupResps =
+                        sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
+                                AppContext.getProjectNo(),
+                                AppContext.getSubjectId(),
+                                AppContext.getRoleId(),
+                                currentReq.getNestedModuleData().getModuleId());
+                Set<String> writeFields = new HashSet<>();
+                Set<String> updateFields = new HashSet<>();
+                Set<String> readFields = new HashSet<>();
+                if (CollectionUtil.isNotEmpty(permissionTableGroupResps)) {
+                    for (PermissionTableGroupResp resp : permissionTableGroupResps) {
+                        if (CollectionUtil.isNotEmpty(resp.getWritableFields())) {
+                            writeFields.addAll(
+                                    resp.getWritableFields().stream()
+                                            .map(x -> x.getTableName() + "." + x.getColumnName())
+                                            .collect(Collectors.toSet()));
+                        }
+                        if (CollectionUtil.isNotEmpty(resp.getUpdatableFields())) {
+                            updateFields.addAll(
+                                    resp.getUpdatableFields().stream()
+                                            .map(x -> x.getTableName() + "." + x.getColumnName())
+                                            .collect(Collectors.toSet()));
+                        }
+                        if (CollectionUtil.isNotEmpty(resp.getReadableFields())) {
+                            readFields.addAll(
+                                    resp.getReadableFields().stream()
+                                            .map(x -> x.getTableName() + "." + x.getColumnName())
+                                            .collect(Collectors.toSet()));
+                        }
+                    }
+                    sysModuleCompleteResp.setWriteFields(writeFields);
+                    sysModuleCompleteResp.setUpdateFields(updateFields);
+                    sysModuleCompleteResp.setReadFields(readFields);
+                }
+                // 构建模块 表字段
+                Set<String> tables =
+                        sysModuleCompleteResp.getFieldList().stream()
+                                .map(x -> x.getTableName())
+                                .collect(Collectors.toSet());
+                Set<String> allFields = new HashSet<>();
+                for (String t : tables) {
+                    List<ColumnInfoResp> columnInfoRespList =
+                            sysFieldApi.getTableColumns(
+                                    AppContext.getProjectNo(), AppContext.getSubjectId(), t);
+                    if (CollectionUtil.isNotEmpty(columnInfoRespList)) {
+                        allFields.addAll(
+                                columnInfoRespList.stream()
+                                        .map(x -> t + "." + x.getColumnName())
+                                        .collect(Collectors.toSet()));
+                    }
+                }
+                sysModuleCompleteResp.setAllFields(allFields);
                 moduleCacheMap.put(sysModuleCompleteResp.getModuleId(), sysModuleCompleteResp);
             }
         }
@@ -292,6 +356,7 @@ public class ModuleDataPersistenceService {
                         .rootModuleId(currentReq.getRootModuleId())
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
+                        .saveType(currentReq.getSaveType())
                         .build();
         // moduleDataSaveNecessaryFieldFillFactoryService.fillData(recordSaveContext);
         // 首先 写入当前 模块 主表的数据
@@ -487,6 +552,7 @@ public class ModuleDataPersistenceService {
                         .rootModuleId(currentReq.getRootModuleId())
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
+                        .saveType(currentReq.getSaveType())
                         .build();
         // moduleDataSaveNecessaryFieldFillFactoryService.fillData(subRecordSaveContext);
         //// 首先 写入子表数据
@@ -515,5 +581,35 @@ public class ModuleDataPersistenceService {
             }
         }
         return dataSaveResult;
+    }
+
+    /*
+     * 获取保存类型  模块关联 审批链  和 保存按钮
+     */
+    private SaveType getSaveType(DynamicSaveReq req) {
+        boolean isRelatedApproval = true;
+        SaveButtonType saveButtonType = SaveButtonType.getSaveButtonTypeByKey(req.getBtnType());
+        if (saveButtonType == null) {
+            saveButtonType = SaveButtonType.SAVE;
+        }
+        SaveType saveType = null;
+        if (isRelatedApproval) {
+            switch (saveButtonType) {
+                case SAVE -> {
+                    // 保存
+                    saveType = SaveType.APPROVAL_SAVE;
+                }
+                case CHANGE -> {
+                    // 提交
+                    saveType = SaveType.APPROVAL_CHANGE;
+                }
+                case REAL_TIME_CHANGE -> {
+                    saveType = SaveType.APPROVAL_REALTIME;
+                }
+            }
+        } else {
+            saveType = SaveType.NORMAL_SAVE;
+        }
+        return saveType;
     }
 }

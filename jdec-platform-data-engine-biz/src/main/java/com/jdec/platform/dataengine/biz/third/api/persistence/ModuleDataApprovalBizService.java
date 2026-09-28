@@ -1,17 +1,19 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
-import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
-import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
+import cn.hutool.core.collection.CollectionUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
+import com.jdec.platform.dataengine.biz.entity.ModuleDataFieldChangeContent;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataSnapshotContent;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.service.DynamicQueryService;
+import com.jdec.platform.dataengine.biz.service.IModuleDataFieldChangeContentService;
 import com.jdec.platform.dataengine.biz.service.IModuleDataSnapshotContentService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
@@ -35,7 +37,9 @@ public class ModuleDataApprovalBizService {
 
     private final IModuleDataSnapshotContentService iModuleDataSnapshotContentService;
 
-    public NestedModuleDataDTO processApprovalStatus(ApprovalStatusCallBackReq req) {
+    private final IModuleDataFieldChangeContentService iModuleDataFieldChangeContentService;
+
+    public ApprovalProcessResultResp processApprovalStatus(ApprovalStatusCallBackReq req) {
 
         SysModuleInfo rootModule =
                 moduleConfigService.getModuleCompleteById(
@@ -132,7 +136,72 @@ public class ModuleDataApprovalBizService {
                     dynamicQueryService.getDetail(queryReq, null);
             result = nestedModuleDataDTOList.get(0);
         }
+
+        LambdaQueryWrapper<ModuleDataFieldChangeContent> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ModuleDataFieldChangeContent::getRootModuleId, rootModule.getModuleId());
+        wrapper.eq(ModuleDataFieldChangeContent::getRootTableDataId, req.getDataId());
+        wrapper.eq(ModuleDataFieldChangeContent::getRootModuleId, req.getVersionNo());
+
+        List<ModuleDataFieldChangeContent> changeContentList =
+                iModuleDataFieldChangeContentService.queryList(wrapper);
+
         // todo  result   要构建 版本间的字段 对比 返回给审批链
+        ApprovalProcessResultResp resp =
+                ApprovalProcessResultResp.builder().nestedModuleData(result).build();
+
+        return resp;
+    }
+
+    private List<ModuleChangeDTO> buildModuleChangeDTO(
+            NestedModuleDataDTO nestedModuleDataDTO, Map<Long, SysModuleInfo> moduleCacheMap) {
+
+        Long moduleId = nestedModuleDataDTO.getModuleId();
+        SysModuleInfo sysModule = null;
+        if (moduleCacheMap.containsKey(moduleId)) {
+            sysModule = moduleCacheMap.get(moduleId);
+        } else {
+            sysModule =
+                    moduleConfigService.getModuleCompleteById(
+                            AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+        }
+        List<ModuleChangeDTO> result = new ArrayList<>();
+        ModuleChangeDTO moduleChangeDTO = ModuleChangeDTO.builder().build();
+        moduleChangeDTO.setMId(sysModule.getModuleId());
+        moduleChangeDTO.setName(sysModule.getModuleName());
+
+        if (CollectionUtil.isEmpty(nestedModuleDataDTO.getRecord())) {
+            result.add(moduleChangeDTO);
+            return result;
+        }
+
+        for (RecordDataDTO recordDataDTO : nestedModuleDataDTO.getRecord()) {
+
+            // 这一行没有变更日志
+            if (CollectionUtil.isEmpty(recordDataDTO.getRowChanges())) {
+
+                ActionChangeDTO Action = new ActionChangeDTO();
+
+                RowChangeDTO r = new RowChangeDTO();
+
+                if (CollectionUtil.isEmpty(recordDataDTO.getChildren())) {
+                    r.setChildren(new ArrayList<>());
+                    List<RowChangeDTO> child = new ArrayList<>();
+                    child.add(r);
+                    Action.setU(child);
+                    moduleChangeDTO.setActions(Action);
+                    result.add(moduleChangeDTO);
+                    return result;
+                }
+            }
+
+            RowChangeDTO rowChangeDTO = recordDataDTO.getRowChanges().get(0);
+        }
+        result.add(moduleChangeDTO);
+
         return result;
+
+        ////
+        // moduleChangeDTO.setActions(buildActionChangeDTO(nestedModuleDataDTO,sysModule,moduleCacheMap));
+
     }
 }

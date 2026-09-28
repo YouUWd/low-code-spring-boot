@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.dto.context;
 
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
+import com.jdec.platform.dataengine.biz.enums.SaveType;
 import java.io.Serializable;
 import lombok.Builder;
 import lombok.Data;
@@ -26,7 +27,18 @@ public class DynamicSaveReqContext implements Serializable {
     // 根模块对应的主表数据ID
     private Long rootModuleMainTableDataId;
 
+    // 根模块对应的主表数据的版本
+    private Integer rootModuleMainTableDataVersion;
+
+    // 根模块对应的主表数据的版本
+    private Integer rootModuleMainTableDataStatus;
+
+    // 当前模块对应的表树节点（与上级模块表关联关系）
     private TabTreeNodeDTO tabTreeNode;
 
+    // 事务DSL
     private DSLContext txDsl;
+
+    // 保存类型
+    private SaveType saveType;
 }

@@ -296,4 +296,19 @@ public class DataPersistenceUtil {
         }
         return value;
     }
+
+    public static boolean isEqualValue(Object o1, Object o2) {
+        if (o1 == null && o2 == null) {
+            return true;
+        }
+        if (o1 == null && o2 != null) {
+            return false;
+        }
+        if (o1 != null && o2 == null) {
+            return false;
+        }
+        String o1Value = String.valueOf(getFieldWriteValue(o1));
+        String o2Value = String.valueOf(getFieldWriteValue(o2));
+        return o1Value.equals(o2Value);
+    }
 }

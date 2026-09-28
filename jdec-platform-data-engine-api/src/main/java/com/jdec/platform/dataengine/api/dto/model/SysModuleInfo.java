@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -50,4 +51,12 @@ public class SysModuleInfo {
     private List<ModuleNodeDTO> moduleNodes;
 
     @JsonIgnore private List<SysModuleInfo> children;
+
+    private Set<String> writeFields;
+
+    private Set<String> updateFields;
+
+    private Set<String> readFields;
+
+    private Set<String> allFields;
 }

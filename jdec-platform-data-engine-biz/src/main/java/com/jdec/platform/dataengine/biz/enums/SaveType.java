@@ -6,6 +6,7 @@ import lombok.Getter;
 public enum SaveType {
     NORMAL_SAVE("save"),
     APPROVAL_SAVE("approval_save"),
+    APPROVAL_CHANGE("approval_change"),
     APPROVAL_REALTIME("realtime_save"),
     ;
 

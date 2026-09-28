@@ -6,6 +6,7 @@ import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
 import com.jdec.platform.dataengine.api.dto.request.*;
+import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
@@ -84,7 +85,7 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public NestedModuleDataDTO processApprovalStatus(ApprovalStatusCallBackReq req) {
+    public ApprovalProcessResultResp processApprovalStatus(ApprovalStatusCallBackReq req) {
         return moduleDataApprovalBizService.processApprovalStatus(req);
     }
 

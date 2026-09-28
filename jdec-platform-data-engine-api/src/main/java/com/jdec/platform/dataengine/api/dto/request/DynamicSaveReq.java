@@ -2,7 +2,6 @@ package com.jdec.platform.dataengine.api.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -21,9 +20,6 @@ public class DynamicSaveReq {
 
     @Schema(description = "模块嵌套数据")
     private NestedModuleDataDTO nestedModuleData;
-
-    @Schema(description = "表关联关系树")
-    private TabTreeNodeDTO root;
 
     @Schema(description = "按钮类型")
     private String btnType;

@@ -1,6 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.check;
 
-import com.jdec.platform.dataengine.biz.dto.context.ModuleDataCheckContext;
+import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,7 +13,7 @@ public class ModuleDataSaveCheckFactoryService {
 
     private final List<BaseDataSaveCheck> baseDataSaveCheckList;
 
-    public Boolean check(ModuleDataCheckContext context) {
+    public Boolean check(RecordSaveContext context) {
         return baseDataSaveCheckList.stream()
                 .filter(check -> check.isReferTo(context.getSaveType()))
                 .allMatch(check -> check.check(context));

@@ -38,6 +38,9 @@ public class RecordSaveContext extends BasicSaveModel {
     // 表记录
     private Map<String, Object> record;
 
+    // 从数据库读出的记录
+    private Map<String, Object> readOutRecord;
+
     // 需要提前生成的 一些业务字段 businessNo  businessStatus
     private Map<String, Object> bizDataMap;
 

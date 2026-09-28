@@ -18,4 +18,7 @@ public interface IModuleDataFieldChangeContentService {
 
     public ModuleDataFieldChangeContent queryOne(
             LambdaQueryWrapper<ModuleDataFieldChangeContent> wrapper);
+
+    public List<ModuleDataFieldChangeContent> queryList(
+            LambdaQueryWrapper<ModuleDataFieldChangeContent> wrapper);
 }
