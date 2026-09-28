@@ -14,11 +14,11 @@ import com.jdec.platform.common.api.dto.response.MonitorOperateIndexResp;
 import com.jdec.platform.common.biz.monitorindex.service.MonitorOperateIndexService;
 import com.jdec.platform.common.biz.monitorlog.entity.MonitorLog;
 import com.jdec.platform.common.biz.monitorlog.handler.MonitorLogSaveHandler;
-import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.constant.MonitorLogConstant;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.model.PageResult;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,11 +29,8 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.jooq.Condition;
-import org.jooq.DSLContext;
-import org.jooq.Field;
+import org.jooq.*;
 import org.jooq.Record;
-import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 
@@ -240,7 +237,7 @@ public class MonitorLogService implements MonitorLogApi {
     }
 
     @Override
-    public DataPage<MonitorLogResp> queryLogPage(MonitorLogQueryReq req) {
+    public PageResult<MonitorLogResp> queryLogPage(MonitorLogQueryReq req) {
         int pageNo =
                 req != null && req.getPageNo() != null && req.getPageNo() > 0
                         ? req.getPageNo()
@@ -256,7 +253,7 @@ public class MonitorLogService implements MonitorLogApi {
 
         int total = dsl.fetchCount(table, condition);
         if (total == 0) {
-            return DataPage.empty(pageNo, pageSize);
+            return PageResult.of((long) pageNo, (long) pageSize, 0L, List.of());
         }
 
         List<MonitorLogResp> records =
@@ -273,7 +270,7 @@ public class MonitorLogService implements MonitorLogApi {
                         .stream()
                         .map(this::toResp)
                         .collect(Collectors.toList());
-        return DataPage.of(pageNo, pageSize, (long) total, records);
+        return PageResult.of((long) pageNo, (long) pageSize, (long) total, records);
     }
 
     /**

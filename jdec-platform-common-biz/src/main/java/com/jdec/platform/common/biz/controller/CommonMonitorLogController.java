@@ -4,8 +4,8 @@ import com.jdec.platform.common.api.MonitorLogApi;
 import com.jdec.platform.common.api.dto.request.MonitorLogQueryReq;
 import com.jdec.platform.common.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.common.api.dto.response.MonitorLogResp;
-import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.model.ApiResponse;
+import com.jdec.platform.shared.model.PageResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
@@ -49,10 +49,10 @@ public class CommonMonitorLogController {
             description =
                     "支持记录时间范围（record_time）、日志类型（type）与关键词模糊（同时作用于 content 与 remark）筛选，"
                             + "按记录时间倒序返回；approve、content 等字段已由 JSON 字符串反序列化为对象")
-    public ApiResponse<DataPage<MonitorLogResp>> queryMonitorLogPage(
+    public ApiResponse<PageResult<MonitorLogResp>> queryMonitorLogPage(
             @RequestBody MonitorLogQueryReq req) {
         try {
-            DataPage<MonitorLogResp> result = monitorLogApi.queryLogPage(req);
+            PageResult<MonitorLogResp> result = monitorLogApi.queryLogPage(req);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error("Common monitor-log queryMonitorLogPage failed: err={}", ex.getMessage(), ex);

@@ -3,7 +3,7 @@ package com.jdec.platform.common.api;
 import com.jdec.platform.common.api.dto.request.MonitorLogQueryReq;
 import com.jdec.platform.common.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.common.api.dto.response.MonitorLogResp;
-import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.shared.model.PageResult;
 import java.util.List;
 
 /**
@@ -33,7 +33,7 @@ public interface MonitorLogApi {
      * @param req 分页查询请求
      * @return 监控日志分页数据
      */
-    DataPage<MonitorLogResp> queryLogPage(MonitorLogQueryReq req);
+    PageResult<MonitorLogResp> queryLogPage(MonitorLogQueryReq req);
 
     /**
      * 按模块 + 单据查询操作日志
