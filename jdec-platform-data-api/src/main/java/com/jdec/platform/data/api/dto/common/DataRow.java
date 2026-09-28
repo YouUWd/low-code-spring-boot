@@ -6,10 +6,12 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -147,7 +149,7 @@ public class DataRow implements Serializable {
         }
         return children.stream()
                 .filter(b -> childModuleId.equals(b.getModuleId()))
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 
     /** 追加挂载子模块数据区块 */
@@ -156,7 +158,7 @@ public class DataRow implements Serializable {
             return this;
         }
         if (children == null) {
-            children = new java.util.ArrayList<>();
+            children = new ArrayList<>();
         }
         children.add(block);
         return this;

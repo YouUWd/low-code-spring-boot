@@ -167,12 +167,10 @@ class DataPersistenceTest {
         Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
         for (TableRelationDTO r : allKnownRelations) {
             forwardMap
-                    .computeIfAbsent(
-                            r.getMainTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .computeIfAbsent(r.getMainTable().toLowerCase(), k -> new ArrayList<>())
                     .add(r);
             reverseMap
-                    .computeIfAbsent(
-                            r.getJoinTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .computeIfAbsent(r.getJoinTable().toLowerCase(), k -> new ArrayList<>())
                     .add(r);
         }
         ProjectTableRelationsDTO mockProjectRelations =

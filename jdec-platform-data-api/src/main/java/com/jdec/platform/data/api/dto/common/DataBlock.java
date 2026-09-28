@@ -1,8 +1,10 @@
 package com.jdec.platform.data.api.dto.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.jdec.platform.data.api.dto.response.DataPage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -79,9 +81,9 @@ public class DataBlock implements Serializable {
             return this;
         }
         if (records == null) {
-            records = new java.util.ArrayList<>();
-        } else if (!(records instanceof java.util.ArrayList)) {
-            records = new java.util.ArrayList<>(records);
+            records = new ArrayList<>();
+        } else if (!(records instanceof ArrayList)) {
+            records = new ArrayList<>(records);
         }
         records.add(row);
         return this;
@@ -94,8 +96,7 @@ public class DataBlock implements Serializable {
     }
 
     /** 包装为标准分页响应 */
-    public com.jdec.platform.data.api.dto.response.DataPage<DataBlock> toPage(
-            Integer pageNo, Integer pageSize, Long total) {
-        return com.jdec.platform.data.api.dto.response.DataPage.of(this, pageNo, pageSize, total);
+    public DataPage<DataBlock> toPage(Integer pageNo, Integer pageSize, Long total) {
+        return DataPage.of(this, pageNo, pageSize, total);
     }
 }

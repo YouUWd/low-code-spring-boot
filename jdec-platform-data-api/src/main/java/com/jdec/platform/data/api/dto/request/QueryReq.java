@@ -3,6 +3,7 @@ package com.jdec.platform.data.api.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -41,9 +42,9 @@ public class QueryReq implements Serializable {
     public <T extends QueryReq> T filter(FilterItem filter) {
         if (filter != null) {
             if (this.filters == null) {
-                this.filters = new java.util.ArrayList<>();
-            } else if (!(this.filters instanceof java.util.ArrayList)) {
-                this.filters = new java.util.ArrayList<>(this.filters);
+                this.filters = new ArrayList<>();
+            } else if (!(this.filters instanceof ArrayList)) {
+                this.filters = new ArrayList<>(this.filters);
             }
             this.filters.add(filter);
         }
@@ -55,9 +56,9 @@ public class QueryReq implements Serializable {
     public <T extends QueryReq> T sort(SortItem sort) {
         if (sort != null) {
             if (this.sorts == null) {
-                this.sorts = new java.util.ArrayList<>();
-            } else if (!(this.sorts instanceof java.util.ArrayList)) {
-                this.sorts = new java.util.ArrayList<>(this.sorts);
+                this.sorts = new ArrayList<>();
+            } else if (!(this.sorts instanceof ArrayList)) {
+                this.sorts = new ArrayList<>(this.sorts);
             }
             this.sorts.add(sort);
         }
@@ -69,9 +70,9 @@ public class QueryReq implements Serializable {
     public <T extends QueryReq> T field(Long fieldId) {
         if (fieldId != null) {
             if (this.fields == null) {
-                this.fields = new java.util.ArrayList<>();
-            } else if (!(this.fields instanceof java.util.ArrayList)) {
-                this.fields = new java.util.ArrayList<>(this.fields);
+                this.fields = new ArrayList<>();
+            } else if (!(this.fields instanceof ArrayList)) {
+                this.fields = new ArrayList<>(this.fields);
             }
             this.fields.add(fieldId);
         }

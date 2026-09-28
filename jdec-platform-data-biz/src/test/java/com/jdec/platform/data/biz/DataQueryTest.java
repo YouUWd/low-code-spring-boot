@@ -37,6 +37,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -131,9 +133,8 @@ class DataQueryTest {
                         return new MockResult[] {new MockResult(1, res)};
                     }
 
-                    java.util.regex.Pattern p =
-                            java.util.regex.Pattern.compile("`(\\w+)`\\.`(\\w+)` as `(\\w+)`");
-                    java.util.regex.Matcher m = p.matcher(ctx.sql());
+                    Pattern p = Pattern.compile("`(\\w+)`\\.`(\\w+)` as `(\\w+)`");
+                    Matcher m = p.matcher(ctx.sql());
                     List<String> tables = new ArrayList<>();
                     List<String> cols = new ArrayList<>();
                     List<String> aliases = new ArrayList<>();
@@ -236,12 +237,10 @@ class DataQueryTest {
         Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
         for (TableRelationDTO r : allKnownRelations) {
             forwardMap
-                    .computeIfAbsent(
-                            r.getMainTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .computeIfAbsent(r.getMainTable().toLowerCase(), k -> new ArrayList<>())
                     .add(r);
             reverseMap
-                    .computeIfAbsent(
-                            r.getJoinTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .computeIfAbsent(r.getJoinTable().toLowerCase(), k -> new ArrayList<>())
                     .add(r);
         }
         ProjectTableRelationsDTO mockProjectRelations =
