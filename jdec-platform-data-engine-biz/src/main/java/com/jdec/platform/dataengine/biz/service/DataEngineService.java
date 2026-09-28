@@ -1,5 +1,7 @@
 package com.jdec.platform.dataengine.biz.service;
 
+import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
+import com.jdec.platform.config.api.dto.response.PermissionTableGroupResp;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
@@ -11,10 +13,12 @@ import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
+import com.jdec.platform.dataengine.biz.dto.FieldPermissionItem;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -32,6 +36,8 @@ public class DataEngineService implements DataEngineApi {
     private final ModuleDataApprovalBizService moduleDataApprovalBizService;
 
     private final DataModuleConfigService dataModuleConfigService;
+
+    private final SysModuleFieldPermissionApi sysModuleFieldPermissionApi;
 
     @Override
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -61,15 +67,6 @@ public class DataEngineService implements DataEngineApi {
 
     private List<SysModuleInfo> getListStructure(SysModuleInfo meta) {
         List<SysModuleInfo> list = new ArrayList<>();
-
-        meta.getFileds()
-                .entrySet()
-                .forEach(
-                        entry -> {
-                            entry.getValue().setApply(true);
-                            entry.getValue().setView(true);
-                            entry.getValue().setEdit(true);
-                        });
         list.add(meta);
         if (!CollectionUtils.isEmpty(meta.getChildren())) {
             for (SysModuleInfo sysModuleInfo : meta.getChildren()) {
@@ -91,7 +88,7 @@ public class DataEngineService implements DataEngineApi {
 
     @Override
     public List<VersionListResp> getVersionList(VersionListQueryReq versionListQueryReq) {
-        return List.of();
+        return dynamicQueryService.getVersionList(versionListQueryReq);
     }
 
     // ======================  深拷贝版本（不修改原始树，返回新树，推荐业务使用） ======================
@@ -114,6 +111,57 @@ public class DataEngineService implements DataEngineApi {
         targetNode.setModuleId(sourceNode.getModuleId());
         targetNode.setPrimaryTable(sourceNode.getPrimaryTable());
 
+        List<PermissionTableGroupResp> moduleFieldsPermission =
+                sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
+                        AppContext.getProjectNo(),
+                        AppContext.getSubjectId(),
+                        AppContext.getRoleId(),
+                        sourceNode.getModuleId());
+
+        Map<String, FieldPermissionItem> fieldPermissionMap = new HashMap<>();
+
+        for (PermissionTableGroupResp permissionTableGroupResp : moduleFieldsPermission) {
+
+            permissionTableGroupResp
+                    .getReadableFields()
+                    .forEach(
+                            ele -> {
+                                fieldPermissionMap
+                                        .computeIfAbsent(
+                                                permissionTableGroupResp.getTableName()
+                                                        + "."
+                                                        + ele.getColumnName(),
+                                                v -> FieldPermissionItem.builder().build())
+                                        .setView(true);
+                            });
+
+            permissionTableGroupResp
+                    .getUpdatableFields()
+                    .forEach(
+                            ele -> {
+                                fieldPermissionMap
+                                        .computeIfAbsent(
+                                                permissionTableGroupResp.getTableName()
+                                                        + "."
+                                                        + ele.getColumnName(),
+                                                v -> FieldPermissionItem.builder().build())
+                                        .setEdit(true);
+                            });
+
+            permissionTableGroupResp
+                    .getWritableFields()
+                    .forEach(
+                            ele -> {
+                                fieldPermissionMap
+                                        .computeIfAbsent(
+                                                permissionTableGroupResp.getTableName()
+                                                        + "."
+                                                        + ele.getColumnName(),
+                                                v -> FieldPermissionItem.builder().build())
+                                        .setApply(true);
+                            });
+        }
+
         // 拷贝并过滤字段
         List<ModuleFieldDTO> filteredFields =
                 sourceNode.getFieldList().stream()
@@ -125,6 +173,65 @@ public class DataEngineService implements DataEngineApi {
                                 srcField -> {
                                     ModuleFieldDTO newField = new ModuleFieldDTO();
                                     BeanUtils.copyProperties(srcField, newField);
+                                    newField.setView(false);
+                                    newField.setEdit(false);
+                                    newField.setApply(false);
+                                    if (fieldPermissionMap.containsKey(
+                                            newField.getTableName()
+                                                    + "."
+                                                    + newField.getColumnName())) {
+                                        newField.setApply(
+                                                fieldPermissionMap
+                                                                        .get(
+                                                                                newField
+                                                                                                .getTableName()
+                                                                                        + "."
+                                                                                        + newField
+                                                                                                .getColumnName())
+                                                                        .getApply()
+                                                                != null
+                                                        && fieldPermissionMap
+                                                                .get(
+                                                                        newField.getTableName()
+                                                                                + "."
+                                                                                + newField
+                                                                                        .getColumnName())
+                                                                .getApply());
+                                        newField.setEdit(
+                                                fieldPermissionMap
+                                                                        .get(
+                                                                                newField
+                                                                                                .getTableName()
+                                                                                        + "."
+                                                                                        + newField
+                                                                                                .getColumnName())
+                                                                        .getEdit()
+                                                                != null
+                                                        && fieldPermissionMap
+                                                                .get(
+                                                                        newField.getTableName()
+                                                                                + "."
+                                                                                + newField
+                                                                                        .getColumnName())
+                                                                .getEdit());
+                                        newField.setView(
+                                                fieldPermissionMap
+                                                                        .get(
+                                                                                newField
+                                                                                                .getTableName()
+                                                                                        + "."
+                                                                                        + newField
+                                                                                                .getColumnName())
+                                                                        .getView()
+                                                                != null
+                                                        && fieldPermissionMap
+                                                                .get(
+                                                                        newField.getTableName()
+                                                                                + "."
+                                                                                + newField
+                                                                                        .getColumnName())
+                                                                .getView());
+                                    }
                                     return newField;
                                 })
                         .collect(Collectors.toList());
