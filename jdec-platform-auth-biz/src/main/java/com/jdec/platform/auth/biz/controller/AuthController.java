@@ -49,6 +49,7 @@ public class AuthController {
             @RequestHeader("JWT-TOKEN") String token) {
         try {
             TokenContext.setToken(token);
+            AppContext.setContext("company", 0L);
             return ApiResponse.success(authService.getCurrentUserCheckInfo(token));
         } finally {
             TokenContext.clear();
