@@ -47,7 +47,7 @@ public class DataEngineService implements DataEngineApi {
 
     @Override
     public DetailDataResp<NestedModuleDataDTO> getDetail(
-            DynamicDetailQueryReq dynamicDetailQueryReq, String btnType) {
+            DynamicDetailQueryReq dynamicDetailQueryReq) {
 
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
@@ -60,7 +60,8 @@ public class DataEngineService implements DataEngineApi {
         List<SysModuleInfo> metaList = getListStructure(meta);
 
         List<NestedModuleDataDTO> detailDatas =
-                dynamicQueryService.getDetail(dynamicDetailQueryReq, btnType);
+                dynamicQueryService.getDetail(
+                        dynamicDetailQueryReq, dynamicDetailQueryReq.getBtnType());
 
         return DetailDataResp.of(
                 metaList, CollectionUtils.isEmpty(detailDatas) ? null : detailDatas.get(0));

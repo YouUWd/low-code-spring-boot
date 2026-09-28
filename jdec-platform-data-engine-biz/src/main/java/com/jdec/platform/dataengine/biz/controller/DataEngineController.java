@@ -35,7 +35,7 @@ public class DataEngineController {
     @Operation(summary = "获取详情数据", description = "获取详情数据")
     public ApiResponse<DetailDataResp> getDetail(
             @RequestBody DynamicDetailQueryReq detailQueryReq) {
-        return ApiResponse.success(dataEngineApi.getDetail(detailQueryReq, "view"));
+        return ApiResponse.success(dataEngineApi.getDetail(detailQueryReq));
     }
 
     @PostMapping("/menu/get-version-list")
