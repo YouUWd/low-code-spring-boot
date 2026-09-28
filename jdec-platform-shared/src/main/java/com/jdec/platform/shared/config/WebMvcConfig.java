@@ -35,6 +35,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         // 应用上下文拦截器
         registry.addInterceptor(appContextInterceptor)
+                .addPathPatterns("/api/student/permission/check-current-user")
                 .addPathPatterns("/api/config/**")
                 .addPathPatterns("/api/data/**")
                 .addPathPatterns("/api/student/**")
