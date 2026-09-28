@@ -16,6 +16,7 @@ import org.jooq.Field;
 import org.jooq.JSON;
 import org.jooq.Record;
 import org.jooq.Result;
+import org.jooq.SelectConditionStep;
 import org.jooq.SelectJoinStep;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Component;
@@ -454,7 +455,8 @@ public class QueryPlanExecutor {
     }
 
     /** 执行字段候选值去重查询 (保证选项严格属于符合当前分页过滤条件的候选集) */
-    public List<String> executeDistinctOptions(QueryPlan plan, Long targetFieldId) {
+    public List<String> executeDistinctOptions(
+            QueryPlan plan, Long targetFieldId, String direction) {
         if (plan == null || plan.getRootNodePlan() == null) {
             return Collections.emptyList();
         }
@@ -534,8 +536,17 @@ public class QueryPlanExecutor {
             }
             cond = cond.and(distinctField.isNotNull());
 
-            Result<?> records = selectStep.where(cond).fetch();
-            return extractDistinctOptionValues(records);
+            SelectConditionStep<?> conditionStep = selectStep.where(cond);
+            Result<?> records;
+            if (direction != null && !direction.isBlank()) {
+                records =
+                        "DESC".equalsIgnoreCase(direction.trim())
+                                ? conditionStep.orderBy(distinctField.desc()).fetch()
+                                : conditionStep.orderBy(distinctField.asc()).fetch();
+            } else {
+                records = conditionStep.fetch();
+            }
+            return extractDistinctOptionValues(records, direction);
         }
 
         // 2. 如果目标字段属于子节点 (1:N 从表或子模块)，从子表出发 SELECT DISTINCT targetField，
@@ -610,14 +621,6 @@ public class QueryPlanExecutor {
             Condition rootCond =
                     rootPlan.getCondition() != null ? rootPlan.getCondition() : DSL.noCondition();
 
-            // 自底向上为物理路径上的各层构建 EXISTS 嵌套
-            // 例如: target=108, path=[101(student), 105(student_course), 108(score_item)]
-            // 外层: targetNode 是 108
-            // 嵌套链: EXISTS (SELECT 1 FROM student WHERE rootCond AND EXISTS (SELECT 1 FROM
-            // student_course WHERE student.id = student_course.student_id AND
-            // student_course.id = score_item.course_id))
-            Condition currentInnerCond = rootCond;
-
             // 递归链构建
             Condition existsChain =
                     buildRecursiveExistsChain(
@@ -627,12 +630,26 @@ public class QueryPlanExecutor {
             }
         }
 
-        Result<?> records = selectStep.where(childCond).fetch();
-        return extractDistinctOptionValues(records);
+        SelectConditionStep<?> childConditionStep = selectStep.where(childCond);
+        Result<?> records;
+        if (direction != null && !direction.isBlank()) {
+            records =
+                    "DESC".equalsIgnoreCase(direction.trim())
+                            ? childConditionStep.orderBy(distinctField.desc()).fetch()
+                            : childConditionStep.orderBy(distinctField.asc()).fetch();
+        } else {
+            records = childConditionStep.fetch();
+        }
+        return extractDistinctOptionValues(records, direction);
     }
 
-    /** 从 SELECT DISTINCT 结果集中提取候选值，自动解析与展平 JSON 数组并进行内存去重 */
-    private List<String> extractDistinctOptionValues(Result<?> records) {
+    /** 兼容无 direction 参数的重载方法 */
+    public List<String> executeDistinctOptions(QueryPlan plan, Long targetFieldId) {
+        return executeDistinctOptions(plan, targetFieldId, null);
+    }
+
+    /** 从 SELECT DISTINCT 结果集中提取候选值，自动解析与展平 JSON 数组并进行内存去重（支持按需可选排序） */
+    private List<String> extractDistinctOptionValues(Result<?> records, String direction) {
         if (records == null || records.isEmpty()) {
             return Collections.emptyList();
         }
@@ -659,7 +676,16 @@ public class QueryPlanExecutor {
                 }
             }
         }
-        return new ArrayList<>(uniqueValues);
+
+        List<String> result = new ArrayList<>(uniqueValues);
+        if (direction != null && !direction.isBlank()) {
+            if ("DESC".equalsIgnoreCase(direction.trim())) {
+                result.sort(Collections.reverseOrder());
+            } else {
+                Collections.sort(result);
+            }
+        }
+        return result;
     }
 
     /**

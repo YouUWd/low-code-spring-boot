@@ -74,7 +74,9 @@ public class CommonAggregateController {
     @PostMapping("/menu/{menuId}/options")
     @Operation(
             summary = "基于菜单 ID 的字段搜索下拉候选项",
-            description = "根据菜单 ID 自动解析模块上下文，支持传入单层 AND 组合过滤条件，获取去重候选值列表")
+            description =
+                    "根据菜单 ID 自动解析模块上下文，根据 approvalType(1-待办, 2-已办, 3-全部) 进行审批流状态过滤，"
+                            + "支持传入单层 AND 组合过滤条件与可选排序方向，获取去重候选值列表")
     public ApiResponse<List<DataOption>> getOptionsByMenu(
             @PathVariable Long menuId, @RequestBody MenuOptionReq req) {
         try {

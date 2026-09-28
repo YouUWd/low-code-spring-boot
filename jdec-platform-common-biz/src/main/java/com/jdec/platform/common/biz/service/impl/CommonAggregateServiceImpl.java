@@ -282,12 +282,42 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             }
         }
 
-        // 3. 构建 OptionReq 并调用底层低代码数据引擎
+        // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
+        Integer approvalType = req.getApprovalType();
+        boolean hasApprovalChain = false;
+        try {
+            hasApprovalChain =
+                    Boolean.TRUE.equals(
+                            sysApprovalChainConfigApi.getApprovalStatus(
+                                    Collections.singletonList(rootModuleId)));
+        } catch (Exception ex) {
+            log.warn("查询模块审批链状态失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
+        }
+
+        if (hasApprovalChain && approvalType != null) {
+            RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId);
+            ApprovalButtonsGroup approvalGroup = queryApprovalButtons(rootModuleId, approvalType);
+            Map<Long, List<Map<String, Object>>> approvalBtnMap = approvalGroup.relevantBtns();
+
+            ApprovalFilterResult approvalFilterResult =
+                    buildApprovalFilters(approvalType, rootModuleId, rootFieldIds, approvalBtnMap);
+            if (approvalFilterResult.shortCircuitEmpty()) {
+                // 审批过滤无候选匹配时短路直接返回空候选项列表
+                return Collections.emptyList();
+            }
+
+            if (!approvalFilterResult.filters().isEmpty()) {
+                finalFilters.addAll(approvalFilterResult.filters());
+            }
+        }
+
+        // 4. 构建 OptionReq 并调用底层低代码数据引擎
         OptionReq optionReq =
                 OptionReq.builder()
                         .moduleId(rootModuleId)
                         .fieldId(req.getFieldId())
                         .filters(finalFilters)
+                        .direction(req.getDirection())
                         .build();
 
         return dataApi.getOptions(optionReq);
@@ -603,7 +633,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Long currentUserId = UserContext.getUserId();
 
         if (approvalType == 1) {
-            // 【待办】: (id IN recordIds) OR (created_by == currentUserId && business_status == 1)
+            // 【待办】: (id IN recordIds) OR (created_by == currentUserId && business_status ==
+            // 1)
             Set<Long> todoRecordIds = btnGroupMap.keySet();
             boolean hasApprovalIds = !todoRecordIds.isEmpty() && rootFieldIds.idFieldId() != null;
             boolean canQueryDraft =
@@ -667,7 +698,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             .value(new ArrayList<>(doneRecordIds))
                             .build());
         } else if (approvalType == 3) {
-            // 【全部】: (id IN allApprovalRecordIds) OR (created_by == currentUserId && business_status
+            // 【全部】: (id IN allApprovalRecordIds) OR (created_by == currentUserId &&
+            // business_status
             // == 1)
             Set<Long> allApprovalRecordIds = btnGroupMap.keySet();
             boolean hasApprovalIds =

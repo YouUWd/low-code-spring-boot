@@ -59,7 +59,9 @@ public class DataQueryService {
     /** 通用字段搜索下拉候选项查询 (基于 QueryPlan 统一编译与执行) */
     public List<DataOption> getOptions(OptionReq req) {
         QueryPlan plan = queryPlanCompiler.compile(req);
-        List<String> values = queryPlanExecutor.executeDistinctOptions(plan, req.getFieldId());
+        List<String> values =
+                queryPlanExecutor.executeDistinctOptions(
+                        plan, req.getFieldId(), req.getDirection());
 
         List<DataOption> options = new ArrayList<>();
         for (String val : values) {
