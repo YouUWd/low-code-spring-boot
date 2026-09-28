@@ -238,7 +238,7 @@ public class AuthServiceImpl implements AuthApi {
     /** 登录页展示的系统信息（沿用源项目的固定值，后续可外部化为配置）。 */
     private SysInfoDTO buildSysInfo() {
         SysInfoDTO sysInfo = new SysInfoDTO();
-        sysInfo.setTitle("九鼎昊天学生管理系统");
+        sysInfo.setTitle("外部对象管理系统");
         sysInfo.setLogo(
                 "http://119.36.78.123:9077/storage/upload/LIdqTCsyOZIqYJ4fsxeBhntUy860blvL8ZSbN7ic.svg");
         sysInfo.setIcon(
@@ -247,7 +247,7 @@ public class AuthServiceImpl implements AuthApi {
         sysInfo.setSubjectColor("rgb(29, 120, 250)");
         sysInfo.setLoginBgImg(
                 "http://119.36.78.123:9077/storage/upload/CB5c5JVPOEIBoK6LKBL5PzZEll5dE27tD2AFU3uR.png");
-        sysInfo.setInternalUrl(internalUrl);
+        sysInfo.setInternalUrl("http://192.168.2.41:5101/home");
         return sysInfo;
     }
 
