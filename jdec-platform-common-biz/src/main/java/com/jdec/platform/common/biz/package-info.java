@@ -34,6 +34,7 @@
             "hr.api",
             "approval.api",
             "data.api",
+            "dataengine.api",
             "shared"
         })
 package com.jdec.platform.common.biz;

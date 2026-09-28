@@ -1093,7 +1093,7 @@ public class DynamicQueryService {
         // 构造SQL 查询条件
         List<Condition> conditions = new ArrayList<>();
 
-        conditions.add(DSL.field(DSL.name(primaryTable, "module_id")).eq(moduleId));
+        //        conditions.add(DSL.field(DSL.name(primaryTable, "module_id")).eq(moduleId));
         conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
 
         query.where(conditions);

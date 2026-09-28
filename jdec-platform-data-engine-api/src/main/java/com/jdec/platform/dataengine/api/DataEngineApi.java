@@ -11,8 +11,7 @@ import java.util.List;
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
 
-    DetailDataResp<NestedModuleDataDTO> getDetail(
-            DynamicDetailQueryReq dynamicDetailQueryReq, String btnType);
+    DetailDataResp<NestedModuleDataDTO> getDetail(DynamicDetailQueryReq dynamicDetailQueryReq);
 
     Long save(DynamicSaveReq req);
 
