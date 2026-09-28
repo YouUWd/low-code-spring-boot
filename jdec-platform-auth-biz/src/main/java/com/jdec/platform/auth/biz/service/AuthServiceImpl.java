@@ -247,7 +247,7 @@ public class AuthServiceImpl implements AuthApi {
         sysInfo.setSubjectColor("rgb(29, 120, 250)");
         sysInfo.setLoginBgImg(
                 "http://119.36.78.123:9077/storage/upload/CB5c5JVPOEIBoK6LKBL5PzZEll5dE27tD2AFU3uR.png");
-        sysInfo.setInternalUrl("http://192.168.2.41:5101/home");
+        sysInfo.setInternalUrl("http://192.168.60.253:5008");
         return sysInfo;
     }
 
