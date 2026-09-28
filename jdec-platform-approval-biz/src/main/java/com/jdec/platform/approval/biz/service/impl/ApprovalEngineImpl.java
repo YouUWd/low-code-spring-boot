@@ -80,6 +80,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 查询单据审批详细数据--------------------------------------------------------------------
     @Override
     public Map<String, Object> getApprovalDetail(ApprovalProcessReq req) {
+        if (Objects.isNull(req.getRoleId())) {
+            throw new BusinessException(601, "角色为空");
+        }
         Map<String, Object> result = new HashMap<>();
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
