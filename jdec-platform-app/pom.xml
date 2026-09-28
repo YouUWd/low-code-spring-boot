@@ -32,7 +32,6 @@
             <artifactId>jdec-platform-config-biz</artifactId>
         </dependency>
 
-        </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-hr-biz</artifactId>

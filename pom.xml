@@ -30,12 +30,8 @@
         <module>jdec-platform-common-biz</module>
         <module>jdec-platform-data-api</module>
         <module>jdec-platform-data-biz</module>
-        <module>jdec-platform-common-business-api</module>
-        <module>jdec-platform-common-business-biz</module>
         <module>jdec-platform-data-engine-api</module>
         <module>jdec-platform-data-engine-biz</module>
-        <module>jdec-platform-monitorlog-api</module>
-        <module>jdec-platform-monitorlog-biz</module>
         <module>jdec-platform-approval-api</module>
         <module>jdec-platform-approval-biz</module>
         <module>jdec-platform-app</module>

@@ -42,7 +42,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/monitorlog/**")
                 .addPathPatterns("/api/data-engine/**")
                 .excludePathPatterns(
-                        "/api/config/auth/**", "/api/config/init/**"); // 系统初始化：无需 X-Project-No 上下文
+                        "/api/config/auth/**", "/api/config/init/**") // 系统初始化：无需 X-Project-No 上下文
                 .excludePathPatterns(
                         "/api/config/auth/**", "/api/config/init/**"); // 系统初始化：无需 X-Project-No 上下文
     }
