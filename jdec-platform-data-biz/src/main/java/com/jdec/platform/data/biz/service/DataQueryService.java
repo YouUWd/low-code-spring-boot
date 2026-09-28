@@ -1,8 +1,10 @@
 package com.jdec.platform.data.biz.service;
 
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.response.DataDetail;
 import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
@@ -14,14 +16,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 动态查询服务门面 (DynamicQueryService)
+ * 动态查询服务门面 (DataQueryService)
  *
  * <p>彻底基于 Plan 编译与执行模型驱动：
  *
  * <ul>
- *   <li>1. 由 QueryPlanCompiler 统一将自相似请求树编译为 QueryPlan；
+ *   <li>1. 由 QueryPlanCompiler 统一将查询请求编译为 QueryPlan；
  *   <li>2. 由 QueryPlanExecutor 执行物理扫描、批量抓取与行内树装配；
- *   <li>3. 保持与 DataEngineApi, DynamicDetailReq, DynamicOptionReq 的门面兼容。
+ *   <li>3. 返回与 DataBlock / DataPage 同构的业务数据对象。
  * </ul>
  */
 @Slf4j
@@ -32,8 +34,14 @@ public class DataQueryService {
     private final QueryPlanCompiler queryPlanCompiler;
     private final QueryPlanExecutor queryPlanExecutor;
 
-    /** 核心通用动态模块树查询 */
-    public DataPage<Map<String, Object>> query(QueryReq req) {
+    /** 核心通用动态模块树分页查询 */
+    public DataPage<DataBlock> query(PageQueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compile(req);
+        return queryPlanExecutor.execute(plan);
+    }
+
+    /** 兼容基类查询 (未指定分页时使用默认分页) */
+    public DataPage<DataBlock> query(QueryReq req) {
         QueryPlan plan = queryPlanCompiler.compile(req);
         return queryPlanExecutor.execute(plan);
     }
@@ -44,16 +52,23 @@ public class DataQueryService {
         return queryPlanExecutor.executeCount(plan);
     }
 
-    /** 动态单据详情精准查询快捷方法 (无下级展开) */
-    public DataDetail<Map<String, Object>> getDetail(Long moduleId, Long id) {
-        return getDetail(moduleId, id, (List<Long>) null);
+    /** 单据详情精准查询门面 (DetailQueryReq -> DataBlock 读写同源区块) */
+    public DataBlock getDetail(DetailQueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compileDetail(req);
+        DataPage<DataBlock> page = queryPlanExecutor.execute(plan);
+        return page != null && page.getData() != null
+                ? page.getData()
+                : DataBlock.empty(req.getModuleId());
     }
 
-    /** 动态单据详情精准查询门面 (底层以 compileDetail 驱动，返回与 DataPage 同构的 DataDetail 实体记录) */
-    public DataDetail<Map<String, Object>> getDetail(Long moduleId, Long id, List<Long> fields) {
-        QueryPlan plan = queryPlanCompiler.compileDetail(moduleId, id, fields);
-        DataPage<Map<String, Object>> page = queryPlanExecutor.execute(plan);
-        return DataDetail.of(moduleId, page != null ? page.getRecords() : Collections.emptyList());
+    /** 动态单据详情精准查询快捷方法 (无下级展开) */
+    public DataBlock getDetail(Long moduleId, Long id) {
+        return getDetail(DetailQueryReq.builder().moduleId(moduleId).id(id).build());
+    }
+
+    /** 动态单据详情精准查询快捷方法 (带投影字段) */
+    public DataBlock getDetail(Long moduleId, Long id, List<Long> fields) {
+        return getDetail(DetailQueryReq.builder().moduleId(moduleId).id(id).fields(fields).build());
     }
 
     /** 通用字段搜索下拉候选项查询 (基于 QueryPlan 统一编译与执行) */

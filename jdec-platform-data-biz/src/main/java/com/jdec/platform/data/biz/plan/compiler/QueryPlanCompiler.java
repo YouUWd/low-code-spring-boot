@@ -6,8 +6,10 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.biz.plan.model.JoinTableSpec;
@@ -77,7 +79,26 @@ public class QueryPlanCompiler {
     }
 
     /** 编译单据详情精准查询请求为 QueryPlan (自动由 ModuleTreeDTO 提取主键 id 字段，零重复 I/O) */
+    public QueryPlan compileDetail(DetailQueryReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("详情查询请求不能为空");
+        }
+        return compileDetail(
+                req.getModuleId(), req.getId(), req.getFields(), req.getFilters(), req.getSorts());
+    }
+
+    /** 编译单据详情精准查询快捷方法 */
     public QueryPlan compileDetail(Long moduleId, Long id, List<Long> fields) {
+        return compileDetail(moduleId, id, fields, null, null);
+    }
+
+    /** 编译单据详情精准查询完整方法 (带投影与组合过滤) */
+    public QueryPlan compileDetail(
+            Long moduleId,
+            Long id,
+            List<Long> fields,
+            List<FilterItem> userFilters,
+            List<SortItem> userSorts) {
         if (moduleId == null || id == null) {
             throw new IllegalArgumentException("模块 ID 和单据 ID 不能为空");
         }
@@ -105,16 +126,19 @@ public class QueryPlanCompiler {
                             rootMeta.getModuleName(), moduleId));
         }
 
-        List<FilterItem> filters =
-                List.of(FilterItem.builder().fieldId(idFieldId).operator("EQ").value(id).build());
+        List<FilterItem> mergedFilters = new ArrayList<>();
+        mergedFilters.add(FilterItem.builder().fieldId(idFieldId).operator("EQ").value(id).build());
+        if (userFilters != null && !userFilters.isEmpty()) {
+            mergedFilters.addAll(userFilters);
+        }
 
         QueryReq queryReq =
-                QueryReq.builder()
+                DetailQueryReq.builder()
                         .moduleId(moduleId)
-                        .pageNo(1)
-                        .pageSize(1)
+                        .id(id)
                         .fields(fields)
-                        .filters(filters)
+                        .filters(mergedFilters)
+                        .sorts(userSorts)
                         .build();
 
         return compile(queryReq);
@@ -196,14 +220,20 @@ public class QueryPlanCompiler {
             List<ModuleFieldDTO> fieldDTOs) {
 
         Long rootModuleId = req.getModuleId();
+        Integer pNo = (req instanceof PageQueryReq p) ? p.getPageNo() : 1;
+        Integer pSize =
+                (req instanceof PageQueryReq p)
+                        ? p.getPageSize()
+                        : (req instanceof DetailQueryReq ? 1 : 10);
+
         if (allFieldIds.isEmpty()) {
             return InternalQueryNode.builder()
                     .moduleId(rootModuleId)
                     .fields(req.getFields())
                     .filters(req.getFilters())
                     .sorts(req.getSorts())
-                    .pageNo(req.getPageNo())
-                    .pageSize(req.getPageSize())
+                    .pageNo(pNo)
+                    .pageSize(pSize)
                     .children(Collections.emptyList())
                     .build();
         }
@@ -224,8 +254,8 @@ public class QueryPlanCompiler {
                     .fields(req.getFields())
                     .filters(req.getFilters())
                     .sorts(req.getSorts())
-                    .pageNo(req.getPageNo())
-                    .pageSize(req.getPageSize())
+                    .pageNo(pNo)
+                    .pageSize(pSize)
                     .children(Collections.emptyList())
                     .build();
         }
@@ -336,8 +366,15 @@ public class QueryPlanCompiler {
             }
         }
 
-        Integer pNo = currentModuleId.equals(rootModuleId) ? originalReq.getPageNo() : null;
-        Integer pSize = currentModuleId.equals(rootModuleId) ? originalReq.getPageSize() : null;
+        Integer pNo = null;
+        Integer pSize = null;
+        if (currentModuleId.equals(rootModuleId)) {
+            pNo = (originalReq instanceof PageQueryReq p) ? p.getPageNo() : 1;
+            pSize =
+                    (originalReq instanceof PageQueryReq p)
+                            ? p.getPageSize()
+                            : (originalReq instanceof DetailQueryReq ? 1 : 10);
+        }
 
         return InternalQueryNode.builder()
                 .moduleId(currentModuleId)

@@ -16,9 +16,11 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
-import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
@@ -767,15 +769,15 @@ class DataQueryTest {
     @Test
     @DisplayName("测试单模块查询 (School 101): 返回 DataPage 结构与顶层 moduleId 规范")
     void testQuerySingleModuleSchool() {
-        QueryReq req =
-                QueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .fields(List.of(1L, 2L, 3L))
                         .build();
 
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        DataPage<DataBlock> page = dataQueryService.query(req);
 
         assertNotNull(page);
         assertEquals(101L, page.getModuleId());
@@ -785,10 +787,9 @@ class DataQueryTest {
         assertNotNull(page.getRecords());
         assertEquals(1, page.getRecords().size());
 
-        Map<String, Object> firstRow = page.getRecords().get(0);
-        assertNotNull(firstRow.get("student"));
-        @SuppressWarnings("unchecked")
-        Map<String, Object> studentMap = (Map<String, Object>) firstRow.get("student");
+        DataRow firstRow = page.getRecords().get(0);
+        assertNotNull(firstRow.getTable("student"));
+        Map<String, Object> studentMap = firstRow.getTable("student");
         assertEquals(1001L, studentMap.get("id"));
         assertEquals("张三", studentMap.get("name"));
         assertEquals("S001", studentMap.get("student_no"));
@@ -798,68 +799,57 @@ class DataQueryTest {
     @DisplayName("测试多级深层自相似树查询 (School 101 -> 105 -> 108): 学生 -> 选课 -> 成绩分项")
     void testQueryDeepCascadeTreeSchool() {
         // 请求同时包含 101(学生), 105(选课), 108(成绩分项) 的字段
-        QueryReq req =
-                QueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .fields(List.of(1L, 3L, 28L, 32L, 57L, 59L))
                         .build();
 
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        DataPage<DataBlock> page = dataQueryService.query(req);
 
         assertNotNull(page);
         assertEquals(101L, page.getModuleId());
 
-        Map<String, Object> rootRow = page.getRecords().get(0);
-        assertNotNull(rootRow.get("student"));
+        DataRow rootRow = page.getRecords().get(0);
+        assertNotNull(rootRow.getTable("student"));
 
         // 校验第一层 children 挂载 105
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rootChildren =
-                (List<Map<String, Object>>) rootRow.get("children");
+        List<DataBlock> rootChildren = rootRow.getChildren();
         assertNotNull(rootChildren);
         assertFalse(rootChildren.isEmpty());
 
-        Map<String, Object> courseNode =
+        DataBlock courseNode =
                 rootChildren.stream()
-                        .filter(c -> Long.valueOf(105L).equals(c.get("moduleId")))
+                        .filter(c -> Long.valueOf(105L).equals(c.getModuleId()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(courseNode);
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courseRecords =
-                (List<Map<String, Object>>) courseNode.get("records");
+        List<DataRow> courseRecords = courseNode.getRecords();
         assertEquals(1, courseRecords.size());
 
-        Map<String, Object> courseRecord = courseRecords.get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> courseTable = (Map<String, Object>) courseRecord.get("student_course");
+        DataRow courseRecord = courseRecords.get(0);
+        Map<String, Object> courseTable = courseRecord.getTable("student_course");
         assertEquals(301L, courseTable.get("id"));
         assertEquals("大学英语", courseTable.get("course_name"));
 
         // 校验第二层 children 递归挂载 108
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> courseChildren =
-                (List<Map<String, Object>>) courseRecord.get("children");
+        List<DataBlock> courseChildren = courseRecord.getChildren();
         assertNotNull(courseChildren);
 
-        Map<String, Object> scoreNode =
+        DataBlock scoreNode =
                 courseChildren.stream()
-                        .filter(c -> Long.valueOf(108L).equals(c.get("moduleId")))
+                        .filter(c -> Long.valueOf(108L).equals(c.getModuleId()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(scoreNode);
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> scoreRecords =
-                (List<Map<String, Object>>) scoreNode.get("records");
+        List<DataRow> scoreRecords = scoreNode.getRecords();
         assertEquals(1, scoreRecords.size());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> scoreTable =
-                (Map<String, Object>) scoreRecords.get(0).get("student_course_score_item");
+        Map<String, Object> scoreTable = scoreRecords.get(0).getTable("student_course_score_item");
         assertEquals(801L, scoreTable.get("id"));
         assertEquals("期末大作业", scoreTable.get("item_name"));
     }
@@ -867,51 +857,46 @@ class DataQueryTest {
     @Test
     @DisplayName("测试同级多分枝子树查询 (School 101 -> 104 -> 106 & 105 -> 108)")
     void testQueryMultipleBranchesSchool() {
-        QueryReq req =
-                QueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .fields(List.of(1L, 3L, 37L, 39L, 74L, 76L, 28L, 32L, 57L, 59L))
                         .build();
 
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        DataPage<DataBlock> page = dataQueryService.query(req);
         assertNotNull(page);
 
-        Map<String, Object> rootRow = page.getRecords().get(0);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> children = (List<Map<String, Object>>) rootRow.get("children");
+        DataRow rootRow = page.getRecords().get(0);
+        List<DataBlock> children = rootRow.getChildren();
         assertNotNull(children);
 
         // 验证同级包含 104 (荣誉) 与 105 (选课)
         boolean hasAward =
-                children.stream().anyMatch(c -> Long.valueOf(104L).equals(c.get("moduleId")));
+                children.stream().anyMatch(c -> Long.valueOf(104L).equals(c.getModuleId()));
         boolean hasCourse =
-                children.stream().anyMatch(c -> Long.valueOf(105L).equals(c.get("moduleId")));
+                children.stream().anyMatch(c -> Long.valueOf(105L).equals(c.getModuleId()));
         assertTrue(hasAward);
         assertTrue(hasCourse);
 
         // 验证 104 下挂载 106
-        Map<String, Object> awardNode =
+        DataBlock awardNode =
                 children.stream()
-                        .filter(c -> Long.valueOf(104L).equals(c.get("moduleId")))
+                        .filter(c -> Long.valueOf(104L).equals(c.getModuleId()))
                         .findFirst()
                         .orElseThrow();
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> awardRecords =
-                (List<Map<String, Object>>) awardNode.get("records");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> awardChildren =
-                (List<Map<String, Object>>) awardRecords.get(0).get("children");
+        List<DataRow> awardRecords = awardNode.getRecords();
+        List<DataBlock> awardChildren = awardRecords.get(0).getChildren();
         assertTrue(
-                awardChildren.stream().anyMatch(c -> Long.valueOf(106L).equals(c.get("moduleId"))));
+                awardChildren.stream().anyMatch(c -> Long.valueOf(106L).equals(c.getModuleId())));
     }
 
     @Test
     @DisplayName("测试虚拟模块与 JSON 原生解析 (Company 1001 -> 1020 -> 1005 / 1006)")
     void testQueryVirtualModuleAndJsonParsingCompany() {
-        QueryReq req =
-                QueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(1001L)
                         .pageNo(1)
                         .pageSize(10)
@@ -921,13 +906,12 @@ class DataQueryTest {
                                         10055L))
                         .build();
 
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        DataPage<DataBlock> page = dataQueryService.query(req);
         assertNotNull(page);
         assertEquals(1001L, page.getModuleId());
 
-        Map<String, Object> rootRow = page.getRecords().get(0);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> infoTable = (Map<String, Object>) rootRow.get("info");
+        DataRow rootRow = page.getRecords().get(0);
+        Map<String, Object> infoTable = rootRow.getTable("info");
         assertNotNull(infoTable);
         assertEquals("石嘴山市盛港煤焦化有限公司", infoTable.get("company_name"));
 
@@ -939,34 +923,28 @@ class DataQueryTest {
         assertEquals(List.of("客户", "供应商"), coopList);
 
         // 验证虚拟模块 1020 作为节点挂载在 children 下 (方案 A 规范)
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rootChildren =
-                (List<Map<String, Object>>) rootRow.get("children");
+        List<DataBlock> rootChildren = rootRow.getChildren();
         assertNotNull(rootChildren);
 
-        Map<String, Object> virtualNode =
+        DataBlock virtualNode =
                 rootChildren.stream()
-                        .filter(c -> Long.valueOf(1020L).equals(c.get("moduleId")))
+                        .filter(c -> Long.valueOf(1020L).equals(c.getModuleId()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(virtualNode);
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> virtualRecords =
-                (List<Map<String, Object>>) virtualNode.get("records");
+        List<DataRow> virtualRecords = virtualNode.getRecords();
         assertEquals(1, virtualRecords.size());
 
-        Map<String, Object> virtualContainer = virtualRecords.get(0);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> subChildren =
-                (List<Map<String, Object>>) virtualContainer.get("children");
+        DataRow virtualContainer = virtualRecords.get(0);
+        List<DataBlock> subChildren = virtualContainer.getChildren();
         assertNotNull(subChildren);
 
         // 虚拟容器内部挂载 1005 (地址) 和 1006 (联系方式)
         boolean hasAddr =
-                subChildren.stream().anyMatch(c -> Long.valueOf(1005L).equals(c.get("moduleId")));
+                subChildren.stream().anyMatch(c -> Long.valueOf(1005L).equals(c.getModuleId()));
         boolean hasContact =
-                subChildren.stream().anyMatch(c -> Long.valueOf(1006L).equals(c.get("moduleId")));
+                subChildren.stream().anyMatch(c -> Long.valueOf(1006L).equals(c.getModuleId()));
         assertTrue(hasAddr);
         assertTrue(hasContact);
     }
@@ -987,8 +965,8 @@ class DataQueryTest {
                                 .value(List.of(1001L, 1002L))
                                 .build());
 
-        QueryReq req =
-                QueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
@@ -996,7 +974,7 @@ class DataQueryTest {
                         .filters(filters)
                         .build();
 
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        DataPage<DataBlock> page = dataQueryService.query(req);
         assertNotNull(page);
 
         assertTrue(
@@ -1024,8 +1002,8 @@ class DataQueryTest {
                                 .value(List.of("焦化", "煤炭"))
                                 .build());
 
-        QueryReq req =
-                QueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(1001L)
                         .pageNo(1)
                         .pageSize(10)
@@ -1033,7 +1011,7 @@ class DataQueryTest {
                         .filters(filters)
                         .build();
 
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        DataPage<DataBlock> page = dataQueryService.query(req);
         assertNotNull(page);
 
         assertTrue(
@@ -1053,8 +1031,8 @@ class DataQueryTest {
                         SortItem.builder().fieldId(1L).direction("DESC").build(),
                         SortItem.builder().fieldId(2L).direction("ASC").build());
 
-        QueryReq req =
-                QueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
@@ -1062,7 +1040,7 @@ class DataQueryTest {
                         .sorts(sorts)
                         .build();
 
-        DataPage<Map<String, Object>> page = dataQueryService.query(req);
+        DataPage<DataBlock> page = dataQueryService.query(req);
         assertNotNull(page);
 
         assertTrue(

@@ -1,17 +1,18 @@
 package com.jdec.platform.data.biz.controller;
 
 import com.jdec.platform.data.api.DataApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.request.SaveReq;
-import com.jdec.platform.data.api.dto.response.DataDetail;
 import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.dto.response.SaveResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -28,9 +29,9 @@ public class DataController {
 
     @PostMapping("/query")
     @Operation(summary = "通用动态分页查询", description = "支持任意自相似模块树的分页、排序与组合过滤")
-    public ApiResponse<DataPage<Map<String, Object>>> query(@RequestBody QueryReq req) {
+    public ApiResponse<DataPage<DataBlock>> query(@RequestBody PageQueryReq req) {
         try {
-            DataPage<Map<String, Object>> result = dataApi.query(req);
+            DataPage<DataBlock> result = dataApi.query(req);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(
@@ -75,14 +76,35 @@ public class DataController {
         }
     }
 
+    @PostMapping("/detail")
+    @Operation(
+            summary = "通用单条详情查询 (POST 树形投影/过滤)",
+            description = "根据 DetailQueryReq 精准加载单条业务对象详情，返回读写同构的 DataBlock")
+    public ApiResponse<DataBlock> getDetailByReq(@RequestBody DetailQueryReq req) {
+        try {
+            DataBlock result = dataApi.getDetail(req);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Data engine getDetail failed: moduleId={}, id={}, err={}",
+                    req.getModuleId(),
+                    req.getId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
     @GetMapping("/{moduleId}/{id}")
-    @Operation(summary = "通用单条详情查询", description = "精准根据模块 ID 与单据 ID 加载单条业务对象详情，支持通过 fields 指定投影字段")
-    public ApiResponse<DataDetail<Map<String, Object>>> getDetail(
+    @Operation(
+            summary = "通用单条详情查询 (GET 快捷路径)",
+            description = "精准根据模块 ID 与单据 ID 加载单条业务对象详情，支持通过 fields 指定投影字段")
+    public ApiResponse<DataBlock> getDetail(
             @PathVariable Long moduleId,
             @PathVariable Long id,
             @RequestParam(required = false) List<Long> fields) {
         try {
-            DataDetail<Map<String, Object>> result = dataApi.getDetail(moduleId, id, fields);
+            DataBlock result = dataApi.getDetail(moduleId, id, fields);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(
@@ -99,14 +121,17 @@ public class DataController {
     @PostMapping("/save")
     @Operation(
             summary = "通用同构原子保存",
-            description = "与 detail 响应的 data 结构 100% 读写同构，直接提交 detail.data 载荷，返回各模块主键映射")
-    public ApiResponse<Map<String, Object>> save(@RequestBody Map<String, Object> data) {
+            description = "入参结构与 getDetail 响应的 DataBlock 100% 读写同构，直接提交 DataBlock，返回 SaveResp")
+    public ApiResponse<SaveResp> save(@RequestBody DataBlock block) {
         try {
-            SaveReq req = SaveReq.builder().records(List.of(data)).build();
-            Map<String, Object> ids = dataApi.saveAndCollectIds(req);
-            return ApiResponse.success(ids);
+            SaveResp resp = dataApi.save(block);
+            return ApiResponse.success(resp);
         } catch (Exception ex) {
-            log.error("Data engine save failed: data={}, err={}", data, ex.getMessage(), ex);
+            log.error(
+                    "Data engine save failed: moduleId={}, err={}",
+                    block != null ? block.getModuleId() : null,
+                    ex.getMessage(),
+                    ex);
             throw ex;
         }
     }

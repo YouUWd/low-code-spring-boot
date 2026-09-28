@@ -6,6 +6,8 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.SaveReq;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
@@ -24,7 +26,7 @@ import org.springframework.stereotype.Component;
 /**
  * 结构化保存计划编译器 (SavePlanCompiler)
  *
- * <p>职责：递归解析请求保存树，校验各模块元数据，推导父子外键传播规则，编译生成完整的 SavePlan。 支持模块级 children 与行记录内部嵌套的 children (与查询响应
+ * <p>职责：递归解析业务数据区块 (DataBlock) 保存树，校验各模块元数据，推导父子外键传播规则，编译生成完整的 SavePlan。 支持行记录内部嵌套的 children (与查询响应
  * 100% 读写同构)。
  */
 @Slf4j
@@ -35,53 +37,50 @@ public class SavePlanCompiler {
     private final ConfigApi configApi;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /** 编译顶层保存请求为 SavePlan (支持标准 SaveReq 或直接将 detail.data 作为单条记录回传) */
-    public SavePlan compile(SaveReq req) {
-        if (req == null) {
-            throw new IllegalArgumentException("保存请求不能为空");
+    /** 核心编译入口：编译 DataBlock 业务数据区块为 SavePlan */
+    public SavePlan compile(DataBlock block) {
+        if (block == null) {
+            throw new IllegalArgumentException("保存请求或数据区块不能为空");
         }
 
-        // 自适应支持方案 A：如果未显式指定 moduleId，且 records 为空但自身为单对象（或前端直接回传了 data 载荷）
-        // 尝试从单条 record 或自身直接推导根模块 ID
-        if (req.getModuleId() == null) {
-            req = normalizeTopLevelSaveReq(req);
-        }
-
-        if (req.getModuleId() == null) {
-            throw new IllegalArgumentException("保存请求或模块 ID 不能为空");
-        }
-
-        ModuleTreeDTO tree = loadModuleTree(req.getModuleId());
-        ProjectTableRelationsDTO projectRelations = getProjectRelations();
-        SaveNodePlan rootPlan = compileNode(req, null, null, projectRelations, tree);
-        return SavePlan.builder().rootNodePlan(rootPlan).build();
-    }
-
-    /** 自适应推导并规范化顶层 SaveReq (如将 {"1001": {...}} 自动识别为 moduleId=1001) */
-    private SaveReq normalizeTopLevelSaveReq(SaveReq req) {
-        if (req.getRecords() != null && !req.getRecords().isEmpty()) {
-            Map<String, Object> firstRow = req.getRecords().get(0);
-            if (firstRow != null) {
-                for (Map.Entry<String, Object> entry : firstRow.entrySet()) {
+        Long moduleId = block.getModuleId();
+        if (moduleId == null && block.getRecords() != null && !block.getRecords().isEmpty()) {
+            DataRow firstRow = block.getRecords().get(0);
+            if (firstRow != null && firstRow.getTables() != null) {
+                for (Map.Entry<String, Object> entry : firstRow.getTables().entrySet()) {
                     if (entry.getKey() != null && entry.getKey().matches("\\d+")) {
-                        Long inferredModId = Long.parseLong(entry.getKey());
-                        return req.toBuilder().moduleId(inferredModId).build();
+                        moduleId = Long.parseLong(entry.getKey());
+                        break;
                     }
                 }
             }
         }
-        return req;
+
+        if (moduleId == null) {
+            throw new IllegalArgumentException("保存请求或模块 ID 不能为空");
+        }
+
+        block = block.toBuilder().moduleId(moduleId).build();
+
+        ModuleTreeDTO tree = loadModuleTree(moduleId);
+        ProjectTableRelationsDTO projectRelations = getProjectRelations();
+        SaveNodePlan rootPlan = compileNode(block, null, null, projectRelations, tree);
+        return SavePlan.builder().rootNodePlan(rootPlan).build();
     }
 
-    /** 递归编译单节点保存计划 (对外兼容老签名) */
-    public SaveNodePlan compileNode(SaveReq node, Long parentModuleId, ModuleInfo parentMeta) {
-        ModuleTreeDTO tree = node.getModuleId() != null ? loadModuleTree(node.getModuleId()) : null;
-        return compileNode(node, parentModuleId, parentMeta, getProjectRelations(), tree);
+    /** 兼容编译入口：编译 SaveReq 为 SavePlan */
+    public SavePlan compile(SaveReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("保存请求不能为空");
+        }
+        DataBlock block =
+                DataBlock.builder().moduleId(req.getModuleId()).records(req.getRecords()).build();
+        return compile(block);
     }
 
     /** 递归编译单节点保存计划 (内部共享 projectRelations 与 ModuleTreeDTO) */
     public SaveNodePlan compileNode(
-            SaveReq node,
+            DataBlock node,
             Long parentModuleId,
             ModuleInfo parentMeta,
             ProjectTableRelationsDTO projectRelations,
@@ -99,21 +98,12 @@ public class SavePlanCompiler {
 
         List<SaveNodePlan> childPlans = new ArrayList<>();
 
-        // 1. 处理模块级 children
-        if (node.getChildren() != null && !node.getChildren().isEmpty()) {
-            for (SaveReq childNode : node.getChildren()) {
-                if (childNode != null && childNode.getModuleId() != null) {
-                    childPlans.add(compileNode(childNode, moduleId, meta, projectRelations, tree));
-                }
-            }
-        }
-
-        // 2. 规范化当前节点的 records，并提取行内嵌套的 children (读写同构)
-        List<Map<String, Object>> sourceRecords = node.getRecords();
+        // 规范化当前节点的 records，并提取行内嵌套的 children (DataBlock 读写同构)
+        List<DataRow> sourceRecords = node.getRecords();
         List<Map<String, Object>> cleanRecords = new ArrayList<>();
 
         if (sourceRecords != null && !sourceRecords.isEmpty()) {
-            for (Map<String, Object> rawRow : sourceRecords) {
+            for (DataRow rawRow : sourceRecords) {
                 if (rawRow == null) {
                     continue;
                 }
@@ -130,9 +120,7 @@ public class SavePlanCompiler {
             }
         }
 
-        boolean isMany =
-                node.getRecords() != null
-                        && (node.getRecords().size() > 1 || isRawPayloadArray(node));
+        boolean isMany = node.getRecords() != null && node.getRecords().size() > 1;
 
         return SaveNodePlan.builder()
                 .moduleId(moduleId)
@@ -145,21 +133,19 @@ public class SavePlanCompiler {
                 .build();
     }
 
-    private boolean isRawPayloadArray(SaveReq node) {
-        // 默认根据关系或调用方设置，在行内子模块中会明确传入 List
-        return false;
-    }
-
-    /** 规范化行记录，支持解包物理表对象与提取行内数字键挂载的子模块 */
+    /** 规范化行记录，支持解包物理表对象与提取行内挂载的子模块 (DataRow) */
     private Map<String, Object> normalizeRow(
-            Map<String, Object> rawRow,
+            DataRow rawRow,
             String primaryTable,
             Long moduleId,
             ModuleInfo meta,
             List<SaveNodePlan> childPlans,
             ProjectTableRelationsDTO projectRelations,
             ModuleTreeDTO tree) {
-        Map<String, Object> cleanRow = new HashMap<>(rawRow);
+        Map<String, Object> cleanRow = new HashMap<>();
+        if (rawRow.getTables() != null) {
+            cleanRow.putAll(rawRow.getTables());
+        }
         String modKey = moduleId != null ? String.valueOf(moduleId) : null;
 
         // 0. 读写同构：若整条记录被当前模块 ID 包裹（如 { "101": { student, clazz, ... } }），直接提取内层
@@ -188,13 +174,16 @@ public class SavePlanCompiler {
             if (key != null && key.matches("\\d+") && val != null) {
                 Long childModuleId = Long.parseLong(key);
                 boolean childIsMany = (val instanceof List<?>);
-                List<Map<String, Object>> childRecords = extractRecordsFromObject(val);
+                List<DataRow> childRecords = extractDataRowsFromObject(val);
                 if (!childRecords.isEmpty()) {
-                    SaveReq childReq =
-                            SaveReq.builder().moduleId(childModuleId).records(childRecords).build();
+                    DataBlock childBlock =
+                            DataBlock.builder()
+                                    .moduleId(childModuleId)
+                                    .records(childRecords)
+                                    .build();
                     try {
                         SaveNodePlan childPlan =
-                                compileNode(childReq, moduleId, meta, projectRelations, tree);
+                                compileNode(childBlock, moduleId, meta, projectRelations, tree);
                         childPlan.setMany(childIsMany);
                         childPlans.add(childPlan);
                     } catch (Exception e) {
@@ -204,11 +193,29 @@ public class SavePlanCompiler {
             }
         }
 
-        // 3. 检查兼容的 children 字段
-        Object rowChildrenObj = rawRow.get("children");
+        // 3. 检查 DataRow 自身的 children 列表 (List<DataBlock>)
+        if (rawRow.getChildren() != null && !rawRow.getChildren().isEmpty()) {
+            for (DataBlock childBlock : rawRow.getChildren()) {
+                if (childBlock != null && childBlock.getModuleId() != null) {
+                    try {
+                        SaveNodePlan childPlan =
+                                compileNode(childBlock, moduleId, meta, projectRelations, tree);
+                        childPlans.add(childPlan);
+                    } catch (Exception e) {
+                        log.warn(
+                                "编译 DataRow children 子模块 [{}] 失败: {}",
+                                childBlock.getModuleId(),
+                                e.getMessage());
+                    }
+                }
+            }
+        }
+
+        // 4. 检查兼容的 rawRow.tables 中的 children 字段 (如前端传入的原始 Map)
+        Object rowChildrenObj = cleanRow.get("children");
         if (rowChildrenObj != null) {
-            List<SaveReq> rowChildren = parseRowChildren(rowChildrenObj);
-            for (SaveReq rowChildNode : rowChildren) {
+            List<DataBlock> rowChildren = parseRowChildren(rowChildrenObj);
+            for (DataBlock rowChildNode : rowChildren) {
                 if (rowChildNode != null && rowChildNode.getModuleId() != null) {
                     childPlans.add(
                             compileNode(rowChildNode, moduleId, meta, projectRelations, tree));
@@ -219,33 +226,40 @@ public class SavePlanCompiler {
         return cleanRow;
     }
 
-    /** 从 Object 中安全提取 List<Map<String, Object>> 记录列表 */
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> extractRecordsFromObject(Object obj) {
+    /** 从 Object 中安全提取 List<DataRow> 记录列表 */
+    private List<DataRow> extractDataRowsFromObject(Object obj) {
         if (obj instanceof List<?> list) {
-            List<Map<String, Object>> records = new ArrayList<>();
+            List<DataRow> records = new ArrayList<>();
             for (Object item : list) {
-                if (item instanceof Map<?, ?> m) {
-                    records.add((Map<String, Object>) m);
+                if (item instanceof DataRow dr) {
+                    records.add(dr);
+                } else if (item instanceof Map<?, ?> m) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> casted = (Map<String, Object>) m;
+                    records.add(new DataRow(casted));
                 }
             }
             return records;
+        } else if (obj instanceof DataRow dr) {
+            return List.of(dr);
         } else if (obj instanceof Map<?, ?> m) {
-            return List.of((Map<String, Object>) m);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> casted = (Map<String, Object>) m;
+            return List.of(new DataRow(casted));
         }
         return Collections.emptyList();
     }
 
     /** 解析行记录内部挂载的自相似子模块节点 */
-    private List<SaveReq> parseRowChildren(Object rowChildrenObj) {
+    private List<DataBlock> parseRowChildren(Object rowChildrenObj) {
         if (rowChildrenObj instanceof List<?> list) {
-            List<SaveReq> nodes = new ArrayList<>();
+            List<DataBlock> nodes = new ArrayList<>();
             for (Object item : list) {
-                if (item instanceof SaveReq saveNode) {
-                    nodes.add(saveNode);
+                if (item instanceof DataBlock block) {
+                    nodes.add(block);
                 } else if (item instanceof Map) {
                     try {
-                        SaveReq converted = objectMapper.convertValue(item, SaveReq.class);
+                        DataBlock converted = objectMapper.convertValue(item, DataBlock.class);
                         nodes.add(converted);
                     } catch (Exception e) {
                         log.warn("解析行内嵌套子模块失败: {}", item, e);

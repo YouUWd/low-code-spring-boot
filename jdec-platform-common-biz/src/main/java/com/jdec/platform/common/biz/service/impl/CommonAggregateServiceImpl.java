@@ -21,10 +21,11 @@ import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
-import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.response.DataDetail;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
@@ -87,8 +88,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
         int pageSize = (req != null && req.getPageSize() != null) ? req.getPageSize() : 20;
 
-        QueryReq.QueryReqBuilder queryReqBuilder =
-                QueryReq.builder()
+        PageQueryReq.PageQueryReqBuilder<?, ?> queryReqBuilder =
+                PageQueryReq.builder()
                         .moduleId(rootModuleId)
                         .fields(checkedFieldIds)
                         .pageNo(pageNo)
@@ -153,9 +154,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         queryReqBuilder.filters(finalFilters);
 
         // 5. 调用底层低代码数据引擎进行分页查询
-        DataPage<Map<String, Object>> rawDataPage = dataApi.query(queryReqBuilder.build());
+        DataPage<DataBlock> rawDataPage = dataApi.query(queryReqBuilder.build());
 
-        // 6. 将 Map 数据集结构转换为自相似同构树节点 ModuleDataNode
+        // 6. 将 DataRow 数据集结构转换为自相似同构树节点 ModuleDataNode
         Long total =
                 (rawDataPage != null && rawDataPage.getTotal() != null)
                         ? rawDataPage.getTotal()
@@ -170,17 +171,12 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
             String rootModKey = String.valueOf(rootModuleId);
-            for (Map<String, Object> rawRecord : rawDataPage.getRecords()) {
-                if (rawRecord == null) {
+            for (DataRow rawRow : rawDataPage.getRecords()) {
+                if (rawRow == null) {
                     continue;
                 }
-                @SuppressWarnings("unchecked")
-                Map<String, Object> rootRowData =
-                        rawRecord.containsKey(rootModKey)
-                                        && rawRecord.get(rootModKey) instanceof Map<?, ?>
-                                ? (Map<String, Object>) rawRecord.get(rootModKey)
-                                : rawRecord;
-                rootNode.getRecord().add(buildDataRecordItem(rootModuleId, menuId, rootRowData));
+                rootNode.getRecord()
+                        .add(buildDataRecordItemFromDataRow(rootModuleId, menuId, rawRow));
             }
         }
 
@@ -217,10 +213,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         collectCheckedFieldIds(headerRoot, checkedFieldIds);
 
         // 2. 调用底层低代码引擎获取完整单据详情
-        DataDetail<Map<String, Object>> dataDetail =
-                dataApi.getDetail(rootModuleId, id, checkedFieldIds);
+        DataBlock dataBlock = dataApi.getDetail(rootModuleId, id, checkedFieldIds);
 
-        // 3. 将 Map 数据转换为 ModuleDataNode 树
+        // 3. 将 DataRow 数据转换为 ModuleDataNode 树
         ModuleDataNode dataTree =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
@@ -228,17 +223,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .record(new ArrayList<>())
                         .build();
 
-        if (dataDetail != null
-                && dataDetail.getRecords() != null
-                && !dataDetail.getRecords().isEmpty()) {
-            String rootModKey = String.valueOf(rootModuleId);
-            Map<String, Object> rawData = dataDetail.getRecords().get(0);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> rootRowData =
-                    rawData.containsKey(rootModKey) && rawData.get(rootModKey) instanceof Map<?, ?>
-                            ? (Map<String, Object>) rawData.get(rootModKey)
-                            : rawData;
-            dataTree.getRecord().add(buildDataRecordItem(rootModuleId, menuId, rootRowData));
+        if (dataBlock != null
+                && dataBlock.getRecords() != null
+                && !dataBlock.getRecords().isEmpty()) {
+            DataRow rawRow = dataBlock.getRecords().get(0);
+            dataTree.getRecord().add(buildDataRecordItemFromDataRow(rootModuleId, menuId, rawRow));
         }
 
         // 4. 构建模块元数据配置列表 (ModuleMetaDTO)
@@ -335,6 +324,58 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 collectCheckedFieldIds(child, result);
             }
         }
+    }
+
+    private DataRecordItem buildDataRecordItemFromDataRow(
+            Long moduleId, Long menuId, DataRow dataRow) {
+        if (dataRow == null) {
+            return DataRecordItem.builder().row(Collections.emptyMap()).build();
+        }
+
+        Map<String, Object> flatRow = new LinkedHashMap<>();
+        List<ModuleDataNode> childrenNodes = new ArrayList<>();
+
+        // 1. 展平当前数据行的物理表字段 (e.g. info.company_name)
+        if (dataRow.getTables() != null) {
+            for (Map.Entry<String, Object> entry : dataRow.getTables().entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if (value instanceof Map<?, ?> subMap) {
+                    for (Map.Entry<?, ?> colEntry : subMap.entrySet()) {
+                        String colName = Objects.toString(colEntry.getKey(), "");
+                        if (!colName.isBlank()) {
+                            flatRow.put(key + "." + colName, colEntry.getValue());
+                        }
+                    }
+                } else {
+                    flatRow.put(key, value);
+                }
+            }
+        }
+
+        // 2. 递归处理从属于当前行的子模块数据节点 DataBlock (自相似树)
+        if (dataRow.getChildren() != null) {
+            for (com.jdec.platform.data.api.dto.common.DataBlock childNode :
+                    dataRow.getChildren()) {
+                if (childNode == null) {
+                    continue;
+                }
+                Long subModId = childNode.getModuleId();
+                List<DataRecordItem> childItems = new ArrayList<>();
+                if (childNode.getRecords() != null) {
+                    for (DataRow subRow : childNode.getRecords()) {
+                        if (subRow != null) {
+                            childItems.add(buildDataRecordItemFromDataRow(subModId, null, subRow));
+                        }
+                    }
+                }
+                ModuleDataNode moduleDataNode =
+                        ModuleDataNode.builder().moduleId(subModId).record(childItems).build();
+                childrenNodes.add(moduleDataNode);
+            }
+        }
+
+        return DataRecordItem.builder().row(flatRow).children(childrenNodes).build();
     }
 
     private DataRecordItem buildDataRecordItem(
