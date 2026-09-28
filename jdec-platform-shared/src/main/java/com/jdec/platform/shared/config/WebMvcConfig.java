@@ -35,7 +35,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         // 应用上下文拦截器
         registry.addInterceptor(appContextInterceptor)
-                .addPathPatterns("/api/student/permission/check-current-user")
                 .addPathPatterns("/api/config/**")
                 .addPathPatterns("/api/data/**")
                 .addPathPatterns("/api/student/**")
@@ -43,7 +42,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/monitorlog/**")
                 .addPathPatterns("/api/data-engine/**")
                 .excludePathPatterns(
-                        "/api/config/auth/**", "/api/config/init/**") // 系统初始化：无需 X-Project-No 上下文
+                        "/api/config/auth/**",
+                        "/api/config/init/**",
+                        "/api/student/permission/check-current-user") // 系统初始化：无需 X-Project-No 上下文
                 .excludePathPatterns(
                         "/api/config/auth/**", "/api/config/init/**"); // 系统初始化：无需 X-Project-No 上下文
     }
