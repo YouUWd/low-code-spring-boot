@@ -59,6 +59,7 @@ jdec:
       primary: mysql
       config_center: config_center
       school: school
+      config_engine: config_engine
       company: company
 # ===== MyBatis-Plus 开发模式 =====
 mybatis-plus:
@@ -148,15 +149,6 @@ biz:
 config:
   center:
     base: http://119.36.78.123:5009
-
-app:
-  front-url: http://192.168.60.253:5008
-  backend-url: http://127.0.0.1:8080
-  system-name: 人力资源系统-Java
-  internal:
-    url: http://192.168.2.41:5101/home
-  project:
-    number: student_manage
 
 monitor-center:
   base-url: http://localhost:5009

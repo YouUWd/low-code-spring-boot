@@ -347,6 +347,7 @@ public class SysModuleService implements SysModuleApi {
         }
 
         // 3. 组装待批量保存/更新的字段列表
+        LocalDateTime now = LocalDateTime.now();
         List<SysModuleField> saveOrUpdateList = new ArrayList<>();
         for (int i = 0; i < fields.size(); i++) {
             ModuleFieldDTO info = fields.get(i);
@@ -356,11 +357,14 @@ public class SysModuleService implements SysModuleApi {
             } else {
                 f = new SysModuleField();
                 f.setModuleId(moduleId);
+                f.setCreatedDate(now);
             }
             f.setColumnName(info.getColumnName());
             f.setTableName(info.getTableName());
             f.setDisplayName(info.getDisplayName());
+            f.setBizKeyOrder(info.getBizKeyOrder());
             f.setSortOrder(info.getSortOrder() != null ? info.getSortOrder() : i);
+            f.setUpdatedDate(now);
             saveOrUpdateList.add(f);
         }
 

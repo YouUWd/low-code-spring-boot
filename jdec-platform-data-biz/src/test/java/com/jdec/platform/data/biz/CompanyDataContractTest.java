@@ -9,10 +9,11 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SaveReq;
-import com.jdec.platform.data.api.dto.response.DataDetail;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
@@ -453,19 +454,16 @@ class CompanyDataContractTest {
         @Test
         @DisplayName("C01 根记录不再被 moduleId 包裹，moduleId 上移到 DataPage")
         void rootRecordIsUnwrappedAndModuleIdMovesToPage() {
-            DataPage<Map<String, Object>> page =
-                    queryService.query(req(1001L, List.of(10001L, 10002L)));
+            DataPage<DataBlock> page = queryService.query(req(1001L, List.of(10001L, 10002L)));
 
             assertEquals(1001L, page.getModuleId(), "DataPage 必须携带根模块 ID");
             assertEquals(15L, page.getTotal());
             assertEquals(1, page.getRecords().size());
 
-            Map<String, Object> row = page.getRecords().get(0);
-            assertFalse(row.containsKey("1001"), "行记录不应再出现根 moduleId 数字键包裹");
-            assertTrue(row.get("info") instanceof Map, "主表字段应直接以表名为键挂在行上");
+            DataRow row = page.getRecords().get(0);
+            assertNotNull(row.getTable("info"), "主表字段应直接以表名为键挂在行上");
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> info = (Map<String, Object>) row.get("info");
+            Map<String, Object> info = row.getTable("info");
             assertEquals(1L, ((Number) info.get("id")).longValue());
             assertEquals("盛港集团", info.get("company_name"));
         }
@@ -473,38 +471,35 @@ class CompanyDataContractTest {
         @Test
         @DisplayName("C02 1:1 子模块挂到行级 children 数组，元素为 {moduleId, records}")
         void oneToOneChildMountedUnderChildrenArray() {
-            DataPage<Map<String, Object>> page =
+            DataPage<DataBlock> page =
                     queryService.query(req(1001L, List.of(10001L, 10002L, 10011L, 10012L)));
-            Map<String, Object> row = page.getRecords().get(0);
+            DataRow row = page.getRecords().get(0);
 
-            List<Map<String, Object>> children = childrenOf(row);
+            List<DataBlock> children = childrenOf(row);
             assertEquals(1, children.size(), "只涉及 1002，应恰好 1 个 children 节点");
-            Map<String, Object> node = children.get(0);
-            assertEquals(1002, ((Number) node.get("moduleId")).intValue());
-            assertTrue(node.get("records") instanceof List, "records 必须是数组");
+            DataBlock node = children.get(0);
+            assertEquals(1002, node.getModuleId().intValue());
+            assertNotNull(node.getRecords(), "records 必须是数组");
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> recs = (List<Map<String, Object>>) node.get("records");
+            List<DataRow> recs = node.getRecords();
             assertEquals(1, recs.size());
-            @SuppressWarnings("unchecked")
-            Map<String, Object> basic = (Map<String, Object>) recs.get(0).get("basic_info");
+            Map<String, Object> basic = recs.get(0).getTable("basic_info");
             assertEquals("9153312343631123J", basic.get("uscc"));
         }
 
         @Test
         @DisplayName("C03 1:N 子模块在同一 children 节点下返回多条 records")
         void oneToManyChildReturnsMultipleRecords() {
-            DataPage<Map<String, Object>> page =
+            DataPage<DataBlock> page =
                     queryService.query(req(1001L, List.of(10001L, 10034L, 10038L)));
-            Map<String, Object> row = page.getRecords().get(0);
+            DataRow row = page.getRecords().get(0);
 
-            List<Map<String, Object>> children = childrenOf(row);
+            List<DataBlock> children = childrenOf(row);
             assertEquals(1, children.size());
-            Map<String, Object> node = children.get(0);
-            assertEquals(1003, ((Number) node.get("moduleId")).intValue());
+            DataBlock node = children.get(0);
+            assertEquals(1003, node.getModuleId().intValue());
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> recs = (List<Map<String, Object>>) node.get("records");
+            List<DataRow> recs = node.getRecords();
             assertEquals(2, recs.size(), "member 有 2 行，1:N 必须全部返回");
             assertEquals("张三", table(recs.get(0), "member").get("name"));
             assertEquals("李四", table(recs.get(1), "member").get("name"));
@@ -513,25 +508,21 @@ class CompanyDataContractTest {
         @Test
         @DisplayName("C04 三层嵌套：children 递归挂在子行内部（1001 -> 1003 -> 1004）")
         void threeLevelNestingRecursesInsideChildRow() {
-            DataPage<Map<String, Object>> page =
+            DataPage<DataBlock> page =
                     queryService.query(req(1001L, List.of(10001L, 10034L, 10043L, 10046L)));
-            Map<String, Object> row = page.getRecords().get(0);
+            DataRow row = page.getRecords().get(0);
 
-            Map<String, Object> memberNode = childrenOf(row).get(0);
-            assertEquals(1003, ((Number) memberNode.get("moduleId")).intValue());
+            DataBlock memberNode = childrenOf(row).get(0);
+            assertEquals(1003, memberNode.getModuleId().intValue());
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> memberRecs =
-                    (List<Map<String, Object>>) memberNode.get("records");
-            Map<String, Object> firstMember = memberRecs.get(0);
+            List<DataRow> memberRecs = memberNode.getRecords();
+            DataRow firstMember = memberRecs.get(0);
 
-            List<Map<String, Object>> grand = childrenOf(firstMember);
+            List<DataBlock> grand = childrenOf(firstMember);
             assertEquals(1, grand.size());
-            assertEquals(1004, ((Number) grand.get(0).get("moduleId")).intValue());
+            assertEquals(1004, grand.get(0).getModuleId().intValue());
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> contactRecs =
-                    (List<Map<String, Object>>) grand.get(0).get("records");
+            List<DataRow> contactRecs = grand.get(0).getRecords();
             assertEquals(
                     "13585855898",
                     table(contactRecs.get(0), "member_contact").get("contact_value"));
@@ -540,36 +531,31 @@ class CompanyDataContractTest {
         @Test
         @DisplayName("C05 虚拟模块(primary_table IS NULL)同样挂行级 children，数字键形态已废除")
         void virtualModuleNullIsMountedAsChildNode() {
-            DataPage<Map<String, Object>> page =
+            DataPage<DataBlock> page =
                     queryService.query(req(1001L, List.of(10001L, 10048L, 10049L)));
-            Map<String, Object> row = page.getRecords().get(0);
+            DataRow row = page.getRecords().get(0);
 
-            assertFalse(row.containsKey("1020"), "虚拟模块不应再以数字 moduleId 键挂在行上");
-            assertFalse(row.containsKey("1005"), "其下物理模块同样不应是数字键");
-
-            Map<String, Object> vmNode = childNode(row, 1020L);
+            DataBlock vmNode = childNode(row, 1020L);
             assertEquals(1, recordsOf(vmNode).size(), "虚拟节点 records 恒为 1 个容器对象");
 
             // 虚拟节点的 records[0] 是"纯逻辑容器"：没有表名键，只承载 children
-            Map<String, Object> container = recordsOf(vmNode).get(0);
-            assertNull(container.get("info"), "虚拟容器不应包含任何物理表空间");
-            assertFalse(container.containsKey("1020"), "容器内部也不应再出现虚拟模块自身 ID 键");
+            DataRow container = recordsOf(vmNode).get(0);
+            assertNull(container.getTable("info"), "虚拟容器不应包含任何物理表空间");
 
-            Map<String, Object> addrNode = childNode(container, 1005L);
+            DataBlock addrNode = childNode(container, 1005L);
             assertEquals("中国", table(recordsOf(addrNode).get(0), "address").get("comm_country"));
         }
 
         @Test
         @DisplayName("C06 虚拟模块(primary_table = '')与 NULL 形态行为完全一致")
         void virtualModuleBlankBehavesLikeNull() {
-            DataPage<Map<String, Object>> page =
+            DataPage<DataBlock> page =
                     queryService.query(req(1001L, List.of(10001L, 10062L, 10063L)));
-            Map<String, Object> row = page.getRecords().get(0);
+            DataRow row = page.getRecords().get(0);
 
-            assertFalse(row.containsKey("1007"), "空主表虚拟模块同样不再用数字键");
-            Map<String, Object> vmNode = childNode(row, 1007L);
-            Map<String, Object> container = recordsOf(vmNode).get(0);
-            Map<String, Object> bankNode = childNode(container, 1008L);
+            DataBlock vmNode = childNode(row, 1007L);
+            DataRow container = recordsOf(vmNode).get(0);
+            DataBlock bankNode = childNode(container, 1008L);
             assertEquals(
                     "62220210001",
                     table(recordsOf(bankNode).get(0), "financial_account").get("account_no"));
@@ -578,23 +564,20 @@ class CompanyDataContractTest {
         @Test
         @DisplayName("C07 只涉及虚拟模块时，行级 children 同样存在（形态已统一，前端可统一遍历）")
         void virtualOnlyChildStillProducesRowLevelChildrenKey() {
-            DataPage<Map<String, Object>> page =
-                    queryService.query(req(1001L, List.of(10001L, 10048L)));
-            Map<String, Object> row = page.getRecords().get(0);
+            DataPage<DataBlock> page = queryService.query(req(1001L, List.of(10001L, 10048L)));
+            DataRow row = page.getRecords().get(0);
 
-            assertTrue(row.containsKey("children"), "虚拟模块也走行级 children");
-            assertEquals(1020, ((Number) childNode(row, 1020L).get("moduleId")).intValue());
-            assertFalse(row.containsKey("1020"), "数字键形态已废除");
+            assertNotNull(row.getChildren(), "虚拟模块也走行级 children");
+            assertEquals(1020, childNode(row, 1020L).getModuleId().intValue());
         }
 
         @Test
         @DisplayName("C08 children 与表名键同级，绝不嵌在表名键内部")
         void childrenIsSiblingOfTableKey() {
-            DataPage<Map<String, Object>> page =
-                    queryService.query(req(1001L, List.of(10001L, 10011L)));
-            Map<String, Object> row = page.getRecords().get(0);
+            DataPage<DataBlock> page = queryService.query(req(1001L, List.of(10001L, 10011L)));
+            DataRow row = page.getRecords().get(0);
 
-            assertTrue(row.containsKey("children"), "children 应在行级");
+            assertNotNull(row.getChildren(), "children 应在行级");
             assertNull(table(row, "info").get("children"), "物理表空间内部不得再出现 children 键");
         }
 
@@ -602,31 +585,29 @@ class CompanyDataContractTest {
         @DisplayName("C09 1:1 与 1:N 在响应载荷中形状完全相同（基数信息不在 data 里）")
         void oneToOneAndOneToManyAreIndistinguishableInPayload() {
             // address 是 1:1、financial_account 是 1:N，两者 mock 都只有 1 行
-            DataPage<Map<String, Object>> oneToOne =
-                    queryService.query(req(1001L, List.of(10001L, 10048L)));
-            DataPage<Map<String, Object>> oneToMany =
-                    queryService.query(req(1001L, List.of(10001L, 10062L)));
+            DataPage<DataBlock> oneToOne = queryService.query(req(1001L, List.of(10001L, 10048L)));
+            DataPage<DataBlock> oneToMany = queryService.query(req(1001L, List.of(10001L, 10062L)));
 
-            Map<String, Object> row1 = oneToOne.getRecords().get(0);
-            Map<String, Object> row2 = oneToMany.getRecords().get(0);
+            DataRow row1 = oneToOne.getRecords().get(0);
+            DataRow row2 = oneToMany.getRecords().get(0);
 
-            Map<String, Object> container1 = recordsOf(childNode(row1, 1020L)).get(0);
-            Map<String, Object> container2 = recordsOf(childNode(row2, 1007L)).get(0);
+            DataRow container1 = recordsOf(childNode(row1, 1020L)).get(0);
+            DataRow container2 = recordsOf(childNode(row2, 1007L)).get(0);
 
-            Object r1 = childNode(container1, 1005L).get("records");
-            Object r2 = childNode(container2, 1008L).get("records");
+            List<DataRow> r1 = childNode(container1, 1005L).getRecords();
+            List<DataRow> r2 = childNode(container2, 1008L).getRecords();
 
-            assertTrue(r1 instanceof List);
-            assertTrue(r2 instanceof List);
-            assertEquals(1, ((List<?>) r1).size());
-            assertEquals(1, ((List<?>) r2).size());
+            assertNotNull(r1);
+            assertNotNull(r2);
+            assertEquals(1, r1.size());
+            assertEquals(1, r2.size());
             // 结论：仅凭 data 无法区分 1:1 / 1:N —— 基数必须由 meta 提供（见族 2 · D04）
         }
 
         @Test
         @DisplayName("C10 内部技术字段 _fk_* / _row_id 不泄露到任何层级")
         void internalTechnicalFieldsAreNotLeaked() {
-            DataPage<Map<String, Object>> page =
+            DataPage<DataBlock> page =
                     queryService.query(req(1001L, List.of(10001L, 10034L, 10043L, 10046L)));
             assertNoTechnicalKey(page.getRecords().get(0), "$");
         }
@@ -635,25 +616,25 @@ class CompanyDataContractTest {
         @DisplayName("C11 getDetail 的 records[0] 与 query 的 records[0] 结构同构")
         void getDetailDataIsIsomorphicToQueryRecord() {
             List<Long> fields = List.of(10001L, 10002L, 10011L, 10012L);
-            Map<String, Object> fromQuery =
-                    queryService.query(req(1001L, fields)).getRecords().get(0);
+            DataRow fromQuery = queryService.query(req(1001L, fields)).getRecords().get(0);
 
-            DataDetail<Map<String, Object>> detail = queryService.getDetail(1001L, 1L, fields);
+            DataBlock detail = queryService.getDetail(1001L, 1L, fields);
             assertEquals(1001L, detail.getModuleId());
             assertNotNull(detail.getRecords());
             assertFalse(detail.getRecords().isEmpty());
-            Map<String, Object> fromDetail = detail.getRecords().get(0);
+            DataRow fromDetail = detail.getRecords().get(0);
 
-            assertEquals(fromQuery.keySet(), fromDetail.keySet(), "key 集合必须一致");
             assertEquals(
-                    childrenOf(fromQuery).get(0).get("moduleId"),
-                    childrenOf(fromDetail).get(0).get("moduleId"));
+                    fromQuery.getTables().keySet(), fromDetail.getTables().keySet(), "key 集合必须一致");
+            assertEquals(
+                    childrenOf(fromQuery).get(0).getModuleId(),
+                    childrenOf(fromDetail).get(0).getModuleId());
         }
 
         @Test
         @DisplayName("C12 读写同构：query 的 records[0] 可直接作为 SaveReq.records 编译")
         void queryRecordFeedsBackIntoSaveReq() {
-            Map<String, Object> row =
+            DataRow row =
                     queryService
                             .query(req(1001L, List.of(10001L, 10002L, 10011L, 10012L)))
                             .getRecords()
@@ -697,13 +678,15 @@ class CompanyDataContractTest {
         @Test
         @DisplayName("C14 不传 fields 时只查根模块，行级无 children（当前契约，属设计选择）")
         void noFieldsYieldsRootOnlyWithoutChildren() {
-            DataPage<Map<String, Object>> page =
+            DataPage<DataBlock> page =
                     queryService.query(QueryReq.builder().moduleId(1001L).build());
-            Map<String, Object> row = page.getRecords().get(0);
+            DataRow row = page.getRecords().get(0);
 
-            assertTrue(row.get("info") instanceof Map);
+            assertNotNull(row.getTable("info"));
             assertTrue(table(row, "info").containsKey("company_name"), "不传 fields 时投影全部字段");
-            assertFalse(row.containsKey("children"), "无 fields 即无子树，行级不出现 children");
+            assertTrue(
+                    row.getChildren() == null || row.getChildren().isEmpty(),
+                    "无 fields 即无子树，行级不出现 children");
         }
 
         @Test
@@ -751,7 +734,7 @@ class CompanyDataContractTest {
                     cond.split("exists", -1).length - 1,
                     "虚拟模块 1007 无物理表，必须被穿透 —— EXISTS 只应有 1 层（info -> financial_account），实际=" + cond);
 
-            DataPage<Map<String, Object>> page = queryService.query(req);
+            DataPage<DataBlock> page = queryService.query(req);
             assertNotNull(page);
             assertEquals(1, page.getRecords().size());
         }
@@ -814,10 +797,11 @@ class CompanyDataContractTest {
                                                     .build()))
                             .build();
 
-            DataPage<Map<String, Object>> page = queryService.query(req);
-            Map<String, Object> row = page.getRecords().get(0);
-            assertFalse(
-                    row.containsKey("children"), "未投影的过滤字段不应把 1003/1004 拉入响应，实际=" + row.keySet());
+            DataPage<DataBlock> page = queryService.query(req);
+            DataRow row = page.getRecords().get(0);
+            assertTrue(
+                    row.getChildren() == null || row.getChildren().isEmpty(),
+                    "未投影的过滤字段不应把 1003/1004 拉入响应");
         }
 
         @Test
@@ -837,7 +821,7 @@ class CompanyDataContractTest {
         void singleElementOneToManyShouldStillBeMany() {
             // 1008(financial_account) 相对其父 1007 是 1:N，且 ROW_COUNTS 未覆盖该表 ⇒ 只会返回 1 条记录。
             // 取 1001 的整行（含 1007 -> 1008 的 children 链）直接回灌 SaveReq，验证 isMany 判定。
-            Map<String, Object> row =
+            DataRow row =
                     queryService.query(req(1001L, List.of(10001L, 10062L))).getRecords().get(0);
 
             SaveReq saveReq = SaveReq.builder().moduleId(1001L).records(List.of(row)).build();
@@ -879,12 +863,12 @@ class CompanyDataContractTest {
             // 1091 的 primary_table = ''（虚拟），却声明了字段 10911（info.company_name）。
             // 期望：要么仍按虚拟模块处理（字段明确拒绝或忽略并给出提示），要么直接报配置错误；
             // 不允许 resolvePrimaryTable 回退到 info，把它变成对 info 表的第二次物理扫描。
-            Map<String, Object> row =
+            DataRow row =
                     queryService.query(req(1001L, List.of(10001L, 10911L))).getRecords().get(0);
-            Map<String, Object> vmNode = childNode(row, 1091L);
-            Map<String, Object> container = recordsOf(vmNode).get(0);
+            DataBlock vmNode = childNode(row, 1091L);
+            DataRow container = recordsOf(vmNode).get(0);
             assertNull(
-                    container.get("info"),
+                    container.getTable("info"),
                     "虚拟模块 1091 的 primary_table 为空，却被 resolvePrimaryTable 回退成物理表 info"
                             + "（容器="
                             + container
@@ -917,41 +901,54 @@ class CompanyDataContractTest {
         return QueryReq.builder().moduleId(moduleId).fields(fields).build();
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> childrenOf(Map<String, Object> node) {
-        Object v = node.get("children");
-        assertTrue(v instanceof List, "期望存在行级 children 数组，实际=" + node.keySet());
-        return (List<Map<String, Object>>) v;
+    private static List<DataBlock> childrenOf(DataRow row) {
+        List<DataBlock> v = row.getChildren();
+        assertNotNull(v, "期望存在行级 children 数组");
+        return v;
     }
 
     /** 在 children 中按 moduleId 取节点 —— 物理模块与虚拟模块统一走这里。 */
-    private static Map<String, Object> childNode(Map<String, Object> node, long moduleId) {
-        for (Map<String, Object> n : childrenOf(node)) {
-            Object id = n.get("moduleId");
-            if (id instanceof Number num && num.longValue() == moduleId) {
+    private static DataBlock childNode(DataRow row, long moduleId) {
+        for (DataBlock n : childrenOf(row)) {
+            if (n.getModuleId() != null && n.getModuleId().longValue() == moduleId) {
                 return n;
             }
         }
-        fail("children 中不存在 moduleId=" + moduleId + " 的节点，实际=" + childrenOf(node));
+        fail("children 中不存在 moduleId=" + moduleId + " 的节点，实际=" + childrenOf(row));
         return null;
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> recordsOf(Map<String, Object> node) {
-        Object v = node.get("records");
-        assertTrue(v instanceof List, "期望 records 数组，实际=" + node.keySet());
-        return (List<Map<String, Object>>) v;
+    private static List<DataRow> recordsOf(DataBlock node) {
+        List<DataRow> v = node.getRecords();
+        assertNotNull(v, "期望 records 数组");
+        return v;
     }
 
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> table(Map<String, Object> row, String tableName) {
-        Object v = row.get(tableName);
-        assertTrue(v instanceof Map, "期望存在表空间键 " + tableName + "，实际=" + row.keySet());
-        return (Map<String, Object>) v;
+    private static Map<String, Object> table(DataRow row, String tableName) {
+        Map<String, Object> v = row.getTable(tableName);
+        assertNotNull(v, "期望存在表空间键 " + tableName);
+        return v;
     }
 
     private static void assertNoTechnicalKey(Object node, String path) {
-        if (node instanceof Map<?, ?> m) {
+        if (node instanceof DataRow r) {
+            if (r.getTables() != null) {
+                for (Map.Entry<String, Object> e : r.getTables().entrySet()) {
+                    String k = e.getKey();
+                    assertFalse(
+                            k.startsWith("_fk_") || k.equals("_row_id"),
+                            "技术字段泄露于 " + path + " -> " + k);
+                    assertNoTechnicalKey(e.getValue(), path + "." + k);
+                }
+            }
+            if (r.getChildren() != null) {
+                assertNoTechnicalKey(r.getChildren(), path + ".children");
+            }
+        } else if (node instanceof DataBlock n) {
+            if (n.getRecords() != null) {
+                assertNoTechnicalKey(n.getRecords(), path + ".records");
+            }
+        } else if (node instanceof Map<?, ?> m) {
             for (Map.Entry<?, ?> e : m.entrySet()) {
                 String k = String.valueOf(e.getKey());
                 assertFalse(

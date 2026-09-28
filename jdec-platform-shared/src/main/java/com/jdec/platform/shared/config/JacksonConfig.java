@@ -44,6 +44,7 @@ public class JacksonConfig {
         //        objectMapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
         objectMapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
         objectMapper.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
+        objectMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
 
         //        JavaTimeModule module = new JavaTimeModule();
         //        module.addDeserializer(

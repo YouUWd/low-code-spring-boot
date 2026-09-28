@@ -1,5 +1,7 @@
 package com.jdec.platform.data.biz.plan.assembler;
 
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import java.util.*;
 import java.util.function.Function;
@@ -17,7 +19,7 @@ import org.springframework.stereotype.Component;
 public class TreeResultAssembler {
 
     /**
-     * 将各层拉取的子孙模块数据，根据各节点的 queryNodePlan 与 parentForeignKey 递归装配进父行内部
+     * 将各层拉取的子孙模块数据，根据各节点的 queryNodePlan 与 parentForeignKey 递归装配进父行内部 (DataRow / DataNode)
      *
      * @param parentRecords 当前层记录集合 (如根主表记录列表，或上级子模块记录列表)
      * @param parentModuleId 当前父节点的模块ID (如根模块101)
@@ -25,10 +27,10 @@ public class TreeResultAssembler {
      * @param rawDataByNode 按 QueryNodePlan 实例索引的原始数据 Map
      */
     public void assembleChildrenRecursively(
-            List<Map<String, Object>> parentRecords,
+            List<DataRow> parentRecords,
             Long parentModuleId,
             List<QueryNodePlan> childPlans,
-            Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
+            Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
 
         if (parentRecords == null
                 || parentRecords.isEmpty()
@@ -53,33 +55,23 @@ public class TreeResultAssembler {
         }
     }
 
-    /**
-     * 装配虚拟模块逻辑容器
-     *
-     * <p>【核心架构公理】： 1. 虚拟模块自身没有对应的物理主表，它在业务模型上充当“纯逻辑分类/业务包装容器”（如：根模块1001下的1007【财务信息】容器）； 2.
-     * 虚拟模块必须保持纯粹的同构穿透性：当挂载其下的物理子模块（如1008银行卡、1009电子账户）被查询时，
-     * 数据应当挂载到虚拟模块内部：parentRow[virtualModuleId][childModuleId] = [childRows]； 3.
-     * 【踩坑重点】：targetContainers 与 nextContainers 必须严格使用 {@link IdentityHashMap}！ 因为 Map 在作为 Key
-     * 时，如果使用普通 HashMap，当其内部挂载了子实体（Map内容被修改）后， Map.hashCode() 与 equals()
-     * 会随之发生改变，导致后续兄弟子模块查找父容器时哈希错位返回 null。 使用基于内存引用的 IdentityHashMap
-     * 才能绝对保证在数据行内容动态装配过程中查找容器的稳定性与可靠性。
-     */
+    /** 装配虚拟模块逻辑容器 */
     private void assembleVirtualPlan(
-            List<Map<String, Object>> parentRecords,
+            List<DataRow> parentRecords,
             QueryNodePlan virtualPlan,
-            Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
-        Map<Map<String, Object>, Map<String, Object>> targetContainers = new IdentityHashMap<>();
-        for (Map<String, Object> parentRow : parentRecords) {
+            Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
+        Map<DataRow, DataRow> targetContainers = new IdentityHashMap<>();
+        for (DataRow parentRow : parentRecords) {
             targetContainers.put(parentRow, parentRow);
         }
         assembleVirtualPlanInternal(parentRecords, targetContainers, virtualPlan, rawDataByNode);
     }
 
     private void assembleVirtualPlanInternal(
-            List<Map<String, Object>> parentRecords,
-            Map<Map<String, Object>, Map<String, Object>> targetContainers,
+            List<DataRow> parentRecords,
+            Map<DataRow, DataRow> targetContainers,
             QueryNodePlan virtualPlan,
-            Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
+            Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
 
         Long virtualModuleId = virtualPlan.getModuleId();
         log.debug(
@@ -89,20 +81,20 @@ public class TreeResultAssembler {
                 virtualPlan.getChildren() != null ? virtualPlan.getChildren().size() : 0);
 
         // 🌟 必须使用 IdentityHashMap 建立父行引用与当前虚拟容器的映射关系，杜绝父行内容变更导致哈希寻址失效
-        Map<Map<String, Object>, Map<String, Object>> nextContainers = new IdentityHashMap<>();
-        for (Map<String, Object> parentRow : parentRecords) {
-            Map<String, Object> parentContainer = targetContainers.get(parentRow);
-            Map<String, Object> thisVirtualContainer = new LinkedHashMap<>();
+        Map<DataRow, DataRow> nextContainers = new IdentityHashMap<>();
+        for (DataRow parentRow : parentRecords) {
+            DataRow parentContainer = targetContainers.get(parentRow);
+            DataRow thisVirtualContainer = new DataRow();
             if (parentContainer != null) {
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> childrenList =
-                        (List<Map<String, Object>>)
-                                parentContainer.computeIfAbsent("children", k -> new ArrayList<>());
-
-                Map<String, Object> virtualNode = new LinkedHashMap<>();
-                virtualNode.put("moduleId", virtualModuleId);
-                virtualNode.put("records", Collections.singletonList(thisVirtualContainer));
-                childrenList.add(virtualNode);
+                if (parentContainer.getChildren() == null) {
+                    parentContainer.setChildren(new ArrayList<>());
+                }
+                DataBlock virtualNode =
+                        DataBlock.builder()
+                                .moduleId(virtualModuleId)
+                                .records(Collections.singletonList(thisVirtualContainer))
+                                .build();
+                parentContainer.getChildren().add(virtualNode);
             } else {
                 log.warn(
                         "[TreeResultAssembler] 未能在 targetContainers 中定位到父行引用，虚拟容器无法挂载: virtualModuleId={}, parentRowId={}",
@@ -138,26 +130,20 @@ public class TreeResultAssembler {
     /**
      * 装配物理从表/子模块
      *
-     * <p>【核心设计】： 1. 内存 Hash Grouping：通过父表主键与子表外键建立 O(1) 的分组匹配，杜绝在嵌套循环中全量过滤； 2.
-     * 清洗技术字段：子表记录中的临时外键键值（_fk_xxx）和行号标记（_row_id）在内存装配阶段彻底剥离，对外绝不泄露内部技术字段； 3. 读写同构契约：1:1 关系挂载单个实体
-     * Map（无则为 null），1:N 关系挂载实体列表 List<Map>； 4.
-     * 递归自相似：若该物理子模块下仍有孙模块（如考核分项挂在选课下），以当前匹配出的子实体列表为父集，递归向下装配孙级实体。
-     *
      * @param parentRecords 当前层记录集合 (根主表记录列表或上级实体列表)
-     * @param containerResolver 当前父行与目标装配容器的解析函数 (直属挂载时为 identity，虚拟模块嵌套时为获取虚拟逻辑容器)
+     * @param containerResolver 当前父行与目标装配容器的解析函数
      * @param childPlan 当前物理子模块节点计划
      * @param rawDataByNode 按 QueryNodePlan 索引的各节点原始数据 Map
      */
     private void assemblePhysicalChild(
-            List<Map<String, Object>> parentRecords,
-            Function<Map<String, Object>, Map<String, Object>> containerResolver,
+            List<DataRow> parentRecords,
+            Function<DataRow, DataRow> containerResolver,
             QueryNodePlan childPlan,
-            Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
+            Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
 
         Long childModId = childPlan.getModuleId();
         String fkField = childPlan.getParentForeignKey();
-        List<Map<String, Object>> rawChildRows =
-                rawDataByNode.getOrDefault(childPlan, Collections.emptyList());
+        List<DataRow> rawChildRows = rawDataByNode.getOrDefault(childPlan, Collections.emptyList());
 
         log.debug(
                 "[TreeResultAssembler] 物理子模块装配开始: moduleId={}, primaryTable={}, parentFk={}, rawRowsCount={}",
@@ -180,18 +166,27 @@ public class TreeResultAssembler {
         }
 
         // 2. 深度复制子行并按外键分组 (Hash Grouping)，同时彻底移除临时技术键 _fk_xxx
-        Map<Long, List<Map<String, Object>>> groupedByFk = new HashMap<>();
-        List<Map<String, Object>> cleanChildRows = new ArrayList<>();
+        Map<Long, List<DataRow>> groupedByFk = new HashMap<>();
+        List<DataRow> cleanChildRows = new ArrayList<>();
 
-        for (Map<String, Object> crow : rawChildRows) {
-            Object fkVal = crow.get("_fk_" + fkField);
-            if (fkVal == null) {
-                fkVal = crow.get(fkField);
+        for (DataRow crow : rawChildRows) {
+            Object fkVal = null;
+            if (crow.getTables() != null) {
+                fkVal = crow.getTables().get("_fk_" + fkField);
+                if (fkVal == null) {
+                    fkVal = crow.getTables().get(fkField);
+                }
             }
 
-            Map<String, Object> cleanRow = new LinkedHashMap<>(crow);
-            cleanRow.remove("_fk_" + fkField);
-            cleanRow.remove("_row_id");
+            DataRow cleanRow = new DataRow();
+            if (crow.getTables() != null) {
+                cleanRow.getTables().putAll(crow.getTables());
+                cleanRow.getTables().remove("_fk_" + fkField);
+                cleanRow.getTables().remove("_row_id");
+            }
+            if (crow.getChildren() != null) {
+                cleanRow.setChildren(new ArrayList<>(crow.getChildren()));
+            }
 
             if (fkVal instanceof Number num) {
                 groupedByFk.computeIfAbsent(num.longValue(), k -> new ArrayList<>()).add(cleanRow);
@@ -216,8 +211,8 @@ public class TreeResultAssembler {
         }
 
         // 4. 将分组后的子模块实体挂载在目标容器的 children 列表中 (自相似读写同构)
-        for (Map<String, Object> parentRow : parentRecords) {
-            Map<String, Object> targetContainer = containerResolver.apply(parentRow);
+        for (DataRow parentRow : parentRecords) {
+            DataRow targetContainer = containerResolver.apply(parentRow);
             if (targetContainer == null) {
                 log.warn(
                         "[TreeResultAssembler] 无法获取父行对应的目标容器(targetContainer=null)，子模块挂载失败: childModuleId={}",
@@ -225,8 +220,12 @@ public class TreeResultAssembler {
                 continue;
             }
             Object pkVal = extractRowPrimaryId(parentRow);
+            if (targetContainer.getChildren() == null) {
+                targetContainer.setChildren(new ArrayList<>());
+            }
+
             if (pkVal instanceof Number pkNum) {
-                List<Map<String, Object>> matchedChildren =
+                List<DataRow> matchedChildren =
                         groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
 
                 log.debug(
@@ -235,15 +234,9 @@ public class TreeResultAssembler {
                         childModId,
                         matchedChildren.size());
 
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> childrenList =
-                        (List<Map<String, Object>>)
-                                targetContainer.computeIfAbsent("children", k -> new ArrayList<>());
-
-                Map<String, Object> childModuleNode = new LinkedHashMap<>();
-                childModuleNode.put("moduleId", childModId);
-                childModuleNode.put("records", matchedChildren);
-                childrenList.add(childModuleNode);
+                DataBlock childModuleNode =
+                        DataBlock.builder().moduleId(childModId).records(matchedChildren).build();
+                targetContainer.getChildren().add(childModuleNode);
 
                 // 5. 🌟 递归自相似：以当前匹配的子实体列表为父级，直接向下装配孙模块
                 if (!subModulePlans.isEmpty() && !matchedChildren.isEmpty()) {
@@ -255,28 +248,26 @@ public class TreeResultAssembler {
                         "[TreeResultAssembler] 父行主键 pkVal 非数值或为空，置空挂载: pkVal={}, childModuleId={}",
                         pkVal,
                         childModId);
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> childrenList =
-                        (List<Map<String, Object>>)
-                                targetContainer.computeIfAbsent("children", k -> new ArrayList<>());
-                Map<String, Object> childModuleNode = new LinkedHashMap<>();
-                childModuleNode.put("moduleId", childModId);
-                childModuleNode.put("records", Collections.emptyList());
-                childrenList.add(childModuleNode);
+                DataBlock childModuleNode =
+                        DataBlock.builder()
+                                .moduleId(childModId)
+                                .records(Collections.emptyList())
+                                .build();
+                targetContainer.getChildren().add(childModuleNode);
             }
         }
     }
 
     /** 提取数据行的物理主键 ID (支持从内部物理表 map 中读取 id) */
-    public static Object extractRowPrimaryId(Map<String, Object> row) {
-        if (row == null) {
+    public static Object extractRowPrimaryId(DataRow row) {
+        if (row == null || row.getTables() == null) {
             return null;
         }
-        Object id = row.get("id");
+        Object id = row.getTables().get("id");
         if (id != null) {
             return id;
         }
-        for (Object val : row.values()) {
+        for (Object val : row.getTables().values()) {
             if (val instanceof Map<?, ?> map) {
                 Object subId = map.get("id");
                 if (subId != null) {
@@ -294,9 +285,9 @@ public class TreeResultAssembler {
      * [cleanRow1, cleanRow2, ...]。
      */
     private void assembleSameModuleSubTablesIntoRows(
-            List<Map<String, Object>> parentChildRows,
+            List<DataRow> parentChildRows,
             List<QueryNodePlan> sameModuleSubTablePlans,
-            Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
+            Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
 
         if (parentChildRows == null
                 || parentChildRows.isEmpty()
@@ -307,8 +298,7 @@ public class TreeResultAssembler {
         for (QueryNodePlan subPlan : sameModuleSubTablePlans) {
             String subTable = subPlan.getPrimaryTable();
             String fkField = subPlan.getParentForeignKey();
-            List<Map<String, Object>> subRows =
-                    rawDataByNode.getOrDefault(subPlan, Collections.emptyList());
+            List<DataRow> subRows = rawDataByNode.getOrDefault(subPlan, Collections.emptyList());
 
             log.debug(
                     "[TreeResultAssembler] 装配同模块 1:N 从表: subTable={}, fkField={}, rawRowsCount={}",
@@ -317,20 +307,25 @@ public class TreeResultAssembler {
                     subRows.size());
 
             Map<Long, List<Map<String, Object>>> groupedByFk = new HashMap<>();
-            for (Map<String, Object> srow : subRows) {
-                Object fkVal = srow.get("_fk_" + fkField);
-                if (fkVal == null) {
-                    fkVal = srow.get(fkField);
+            for (DataRow srow : subRows) {
+                Object fkVal = null;
+                if (srow.getTables() != null) {
+                    fkVal = srow.getTables().get("_fk_" + fkField);
+                    if (fkVal == null) {
+                        fkVal = srow.getTables().get(fkField);
+                    }
                 }
 
                 // 🌟 若从表行已包含在 subTable 物理表空间内，直接提取物理列 Map，消除 subTable[0].subTable 双层同名包裹
                 Map<String, Object> cleanRow;
-                if (srow.get(subTable) instanceof Map<?, ?> tableMap) {
-                    cleanRow = new LinkedHashMap<>((Map<String, Object>) tableMap);
-                } else {
-                    cleanRow = new LinkedHashMap<>(srow);
+                if (srow.getTable(subTable) != null) {
+                    cleanRow = new LinkedHashMap<>(srow.getTable(subTable));
+                } else if (srow.getTables() != null) {
+                    cleanRow = new LinkedHashMap<>(srow.getTables());
                     cleanRow.remove("_row_id");
                     cleanRow.remove("_fk_" + fkField);
+                } else {
+                    cleanRow = new LinkedHashMap<>();
                 }
 
                 if (fkVal == null) {
@@ -344,12 +339,14 @@ public class TreeResultAssembler {
                 }
             }
 
-            for (Map<String, Object> parentRow : parentChildRows) {
+            for (DataRow parentRow : parentChildRows) {
                 Object pkVal = extractRowPrimaryId(parentRow);
                 if (pkVal instanceof Number pkNum) {
                     List<Map<String, Object>> matchedList =
                             groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
-                    parentRow.put(subTable, matchedList);
+                    if (parentRow.getTables() != null) {
+                        parentRow.getTables().put(subTable, matchedList);
+                    }
                     log.debug(
                             "[TreeResultAssembler] 同模块从表挂载完成: parentPkVal={}, subTable={}, 挂载行数={}",
                             pkNum.longValue(),
