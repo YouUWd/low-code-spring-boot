@@ -8,14 +8,18 @@ import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
+import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -34,7 +38,9 @@ import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,6 +48,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 /** 公共业务聚合服务实现 (基于菜单的数据隔离、动态列表与详情聚合) */
 @Slf4j
@@ -78,8 +85,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new BusinessException("菜单 [" + menuId + "] 对应的表头未关联有效的根模块 ID");
         }
 
-        List<Long> checkedFieldIds = new ArrayList<>();
-        collectCheckedFieldIds(headerRoot, checkedFieldIds);
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        ProjectTableRelationsDTO projectRelations =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
+
+        List<Long> checkedFieldIds =
+                collectQueryFieldIds(headerRoot, req, rootModuleId, moduleTree, projectRelations);
 
         // 2. 解析根模块核心字段 ID (id, created_by, business_status)
         RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId);
@@ -310,6 +322,214 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         return dataApi.getOptions(optionReq);
+    }
+
+    private List<Long> collectQueryFieldIds(
+            MenuHeaderColumnResp headerRoot,
+            MenuQueryReq req,
+            Long rootModuleId,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations) {
+        List<Long> result = new ArrayList<>();
+        if (headerRoot == null) {
+            return result;
+        }
+
+        // 1. 解析请求中的过滤条件，提取命中的 1:N 顶层分支
+        Set<Long> hitOneToManyBranches = new LinkedHashSet<>();
+        if (req != null && !CollectionUtils.isEmpty(req.getFilters())) {
+            for (FlatFilterItem flatFilter : req.getFilters()) {
+                if (flatFilter != null && flatFilter.getFieldId() != null) {
+                    Long fieldId = flatFilter.getFieldId();
+                    Long fieldModuleId =
+                            moduleTree != null ? moduleTree.getModuleIdByFieldId(fieldId) : null;
+                    if (fieldModuleId == null) {
+                        fieldModuleId = findModuleIdByFieldIdInHeader(headerRoot, fieldId);
+                    }
+                    Long top1NBranch =
+                            resolveTopOneToManyBranch(
+                                    fieldModuleId, rootModuleId, moduleTree, projectRelations);
+                    if (top1NBranch != null) {
+                        hitOneToManyBranches.add(top1NBranch);
+                    }
+                }
+            }
+        }
+
+        // 2. 1:N 模块校验：最多只允许 1 个 1:N 模块或菜单参与筛选
+        if (hitOneToManyBranches.size() > 1) {
+            throw new BusinessException(
+                    400,
+                    "带搜索条件查询时，最多只允许 1 个 1:N 模块参与筛选，当前搜索条件涉及 "
+                            + hitOneToManyBranches.size()
+                            + " 个 1:N 模块分支");
+        }
+
+        Long active1NBranch =
+                hitOneToManyBranches.isEmpty() ? null : hitOneToManyBranches.iterator().next();
+
+        // 3. 递归收集字段 (1:1 始终保留；1:N 仅保留命中分支或全量保留)
+        collectEligibleFieldIds(
+                headerRoot, result, rootModuleId, active1NBranch, moduleTree, projectRelations);
+
+        return result;
+    }
+
+    private void collectEligibleFieldIds(
+            MenuHeaderColumnResp node,
+            List<Long> result,
+            Long rootModuleId,
+            Long active1NBranch,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations) {
+        if (node == null) {
+            return;
+        }
+
+        Long nodeModuleId = node.getModuleId();
+        Long top1NBranch =
+                resolveTopOneToManyBranch(nodeModuleId, rootModuleId, moduleTree, projectRelations);
+
+        // 如果该节点/字段属于 1:N 模块，且当前有激活的 1:N 筛选分支，但不是当前激活分支，则跳过
+        boolean isExcluded =
+                top1NBranch != null
+                        && active1NBranch != null
+                        && !top1NBranch.equals(active1NBranch);
+
+        if (!isExcluded) {
+            if (node.getFieldId() != null) {
+                result.add(node.getFieldId());
+            }
+            if (node.getChildren() != null) {
+                for (MenuHeaderColumnResp child : node.getChildren()) {
+                    collectEligibleFieldIds(
+                            child,
+                            result,
+                            rootModuleId,
+                            active1NBranch,
+                            moduleTree,
+                            projectRelations);
+                }
+            }
+        }
+    }
+
+    private Long findModuleIdByFieldIdInHeader(MenuHeaderColumnResp node, Long fieldId) {
+        if (node == null || fieldId == null) {
+            return null;
+        }
+        if (fieldId.equals(node.getFieldId())) {
+            return node.getModuleId();
+        }
+        if (node.getChildren() != null) {
+            for (MenuHeaderColumnResp child : node.getChildren()) {
+                Long found = findModuleIdByFieldIdInHeader(child, fieldId);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Long resolveTopOneToManyBranch(
+            Long moduleId,
+            Long rootModuleId,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations) {
+        if (moduleId == null || rootModuleId == null || moduleId.equals(rootModuleId)) {
+            return null;
+        }
+        if (moduleTree == null) {
+            return null;
+        }
+
+        // 1. 沿父节点链向上查找直到根模块
+        List<Long> pathFromChildToRoot = new ArrayList<>();
+        Long curr = moduleId;
+        Set<Long> visited = new HashSet<>();
+        while (curr != null && !curr.equals(rootModuleId) && visited.add(curr)) {
+            pathFromChildToRoot.add(curr);
+            ModuleInfo m = moduleTree.getModule(curr);
+            if (m == null || m.getParentId() == null || m.getParentId() == 0) {
+                break;
+            }
+            curr = m.getParentId();
+        }
+
+        if (pathFromChildToRoot.isEmpty()) {
+            return null;
+        }
+
+        // 2. 逆转为从根向下的路径: [直接子模块, 孙模块, ..., 目标模块]
+        Collections.reverse(pathFromChildToRoot);
+
+        Long prevModuleId = rootModuleId;
+        for (Long stepModuleId : pathFromChildToRoot) {
+            ModuleInfo parentMeta = moduleTree.getModule(prevModuleId);
+            ModuleInfo childMeta = moduleTree.getModule(stepModuleId);
+            String relType =
+                    getModuleRelationType(parentMeta, childMeta, projectRelations, moduleTree);
+            if ("1:N".equalsIgnoreCase(relType)) {
+                // 命中首个 1:N 关联，返回该顶层 1:N 分支的 moduleId
+                return stepModuleId;
+            }
+            prevModuleId = stepModuleId;
+        }
+
+        // 全链路为 1:1
+        return null;
+    }
+
+    private String getModuleRelationType(
+            ModuleInfo parentMeta,
+            ModuleInfo childMeta,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
+        if (parentMeta == null || childMeta == null) {
+            return "1:1";
+        }
+        String childPrimary = childMeta.getPrimaryTable();
+        if (childPrimary == null || childPrimary.isBlank()) {
+            return "1:1";
+        }
+
+        ModuleInfo physicalParent = parentMeta;
+        String parentPrimary = physicalParent.getPrimaryTable();
+        Long curP = parentMeta.getParentId();
+        Set<Long> visited = new HashSet<>();
+        while ((parentPrimary == null || parentPrimary.isBlank())
+                && curP != null
+                && curP > 0
+                && visited.add(curP)) {
+            physicalParent = tree != null ? tree.getModule(curP) : null;
+            if (physicalParent != null) {
+                parentPrimary = physicalParent.getPrimaryTable();
+                curP = physicalParent.getParentId();
+            } else {
+                break;
+            }
+        }
+
+        if (parentPrimary == null || parentPrimary.isBlank()) {
+            return "1:N";
+        }
+
+        if (parentPrimary.equalsIgnoreCase(childPrimary)) {
+            return "1:1";
+        }
+
+        if (projectRelations != null) {
+            TableRelationDTO matchedRel =
+                    projectRelations.findDirectRelation(parentPrimary, childPrimary);
+            if (matchedRel != null
+                    && matchedRel.getRelationType() != null
+                    && !matchedRel.getRelationType().isBlank()) {
+                return matchedRel.getRelationType().trim().toUpperCase();
+            }
+        }
+
+        return "1:N";
     }
 
     private void collectCheckedFieldIds(MenuHeaderColumnResp node, List<Long> result) {
