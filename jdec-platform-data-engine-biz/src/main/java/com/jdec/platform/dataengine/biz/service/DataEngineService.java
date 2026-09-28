@@ -17,6 +17,7 @@ import com.jdec.platform.dataengine.biz.dto.FieldPermissionItem;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -115,7 +116,7 @@ public class DataEngineService implements DataEngineApi {
                 sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
                         AppContext.getProjectNo(),
                         AppContext.getSubjectId(),
-                        AppContext.getRoleId(),
+                        UserContext.getRoleId(),
                         sourceNode.getModuleId());
 
         Map<String, FieldPermissionItem> fieldPermissionMap = new HashMap<>();

@@ -16,6 +16,7 @@ import com.jdec.platform.dataengine.biz.third.api.detail.DetailModuleDataQuerySe
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.dataengine.biz.third.api.select.SelectBuilderFactory;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +54,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         ModuleFilterInfo moduleFilterInfo =
                 moduleInfoWithPermissionService.filterModuleInfo(
                         AppContext.getSubjectId(),
-                        AppContext.getRoleId(),
+                        UserContext.getRoleId(),
                         context.getModuleId(),
                         context.getBtnType(),
                         List.of());

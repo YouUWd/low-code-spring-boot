@@ -77,7 +77,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                 "【异步任务】开始发送企微消息, projectNo={}, dataId={}",
                 projectNo,
                 approvalProcessDTO.getRecordId());
-        AppContext.setContext(projectNo, approvalProcessDTO.getSubjectId(), 0L);
+        AppContext.setContext(projectNo, approvalProcessDTO.getSubjectId());
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         boolean switched = false;
         if (dataSourceKey != null && !dataSourceKey.isBlank()) {
@@ -106,7 +106,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                 "【异步任务】开始记录审计日志, projectNo={}, dataId={}",
                 projectNo,
                 approvalProcessDTO.getRecordId());
-        AppContext.setContext(projectNo, approvalProcessDTO.getSubjectId(), 0L);
+        AppContext.setContext(projectNo, approvalProcessDTO.getSubjectId());
         String dataSourceKey = projectProperties.getDataSourceKey(projectNo);
         boolean switched = false;
         if (dataSourceKey != null && !dataSourceKey.isBlank()) {

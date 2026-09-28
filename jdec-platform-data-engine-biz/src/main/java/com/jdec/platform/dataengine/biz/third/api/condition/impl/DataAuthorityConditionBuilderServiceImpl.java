@@ -5,7 +5,7 @@ import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
-import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +38,7 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
         // 查询数据权限配置
 
         List<DataRightConfigResp> dataRightconfigs =
-                sysRolePermissionApi.getRoleDataPermissionDetail(AppContext.getRoleId());
+                sysRolePermissionApi.getRoleDataPermissionDetail(UserContext.getRoleId());
 
         if (CollectionUtils.isEmpty(dataRightconfigs)) {
             log.debug("数据权限设置为空，无数据查看权限。");

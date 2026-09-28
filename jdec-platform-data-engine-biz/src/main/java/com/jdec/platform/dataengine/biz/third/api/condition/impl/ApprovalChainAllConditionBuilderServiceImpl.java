@@ -7,7 +7,7 @@ import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
-import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +45,7 @@ public class ApprovalChainAllConditionBuilderServiceImpl
 
         // 创建人
         Condition orConditions =
-                DSL.field(DSL.name(primaryTableName, "create_by")).eq(AppContext.getUserId());
+                DSL.field(DSL.name(primaryTableName, "create_by")).eq(UserContext.getUserId());
 
         // 审批链参与人
         List<Long> toDoIdList = getToDoIdList(context);
@@ -71,13 +71,13 @@ public class ApprovalChainAllConditionBuilderServiceImpl
     private List<Long> getToDoIdList(StatementContext context) {
         ApprovalListReq approvalListReq = new ApprovalListReq();
         approvalListReq.setApprovalType(3);
-        approvalListReq.setRoleId(AppContext.getRoleId());
+        approvalListReq.setRoleId(UserContext.getRoleId());
 
         // TODO 数据来源于其他主体时需要拿到对应主体的详情模块ID
         approvalListReq.setModuleIdList(Arrays.asList(context.getModuleId()));
 
-        approvalListReq.setCurrentUserId(AppContext.getUserId());
-        approvalListReq.setApplicantId(AppContext.getUserId());
+        approvalListReq.setCurrentUserId(UserContext.getUserId());
+        approvalListReq.setApplicantId(UserContext.getUserId());
 
         //        approvalListReq.setSubjectIdList(
         //                CollectionUtils.isEmpty(
@@ -113,7 +113,7 @@ public class ApprovalChainAllConditionBuilderServiceImpl
         // 查询数据权限配置
 
         List<DataRightConfigResp> dataRightconfigs =
-                sysRolePermissionApi.getRoleDataPermissionDetail(AppContext.getRoleId());
+                sysRolePermissionApi.getRoleDataPermissionDetail(UserContext.getRoleId());
 
         if (CollectionUtils.isEmpty(dataRightconfigs)) {
             log.debug("数据权限设置为空，无数据查看权限。");

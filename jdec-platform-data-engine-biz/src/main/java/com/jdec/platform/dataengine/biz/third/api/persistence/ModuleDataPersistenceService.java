@@ -28,6 +28,7 @@ import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTabl
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.dataengine.biz.util.TableRelationUtils;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -207,7 +208,7 @@ public class ModuleDataPersistenceService {
                         sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
                                 AppContext.getProjectNo(),
                                 AppContext.getSubjectId(),
-                                AppContext.getRoleId(),
+                                UserContext.getRoleId(),
                                 currentReq.getNestedModuleData().getModuleId());
                 Set<String> writeFields = new HashSet<>();
                 Set<String> updateFields = new HashSet<>();

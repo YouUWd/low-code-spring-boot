@@ -30,6 +30,7 @@ import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.util.*;
 import java.util.Comparator;
 import java.util.stream.Collectors;
@@ -76,7 +77,7 @@ public class DynamicQueryService {
         ListQueryContext.ListQueryContextBuilder listContextBuilder =
                 ListQueryContext.builder()
                         .subjectId(AppContext.getSubjectId())
-                        .roleId(AppContext.getRoleId());
+                        .roleId(UserContext.getRoleId());
 
         // TODO 通过menuId和moduleId查审批链配置获取
         boolean hasApproval = false;
@@ -709,7 +710,7 @@ public class DynamicQueryService {
             Long moduleId, QueryType queryType, DynamicQueryReq queryReq) {
 
         Long subjectId = AppContext.getSubjectId();
-        Long roleId = AppContext.getRoleId();
+        Long roleId = UserContext.getRoleId();
 
         DetailQueryContext detailQueryContext =
                 DetailQueryContext.builder()
@@ -738,7 +739,7 @@ public class DynamicQueryService {
             Map<Long, List<ModuleFieldDTO>> moduleFieldsMap) {
 
         Long subjectId = AppContext.getSubjectId();
-        Long roleId = AppContext.getRoleId();
+        Long roleId = UserContext.getRoleId();
 
         QueryType queryType = QueryType.DETAIL_APPROVAL_HISTORY;
 

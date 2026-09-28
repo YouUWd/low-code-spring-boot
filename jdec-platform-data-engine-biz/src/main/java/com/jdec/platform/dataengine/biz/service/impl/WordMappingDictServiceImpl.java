@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jdec.platform.dataengine.biz.entity.WordMappingDict;
 import com.jdec.platform.dataengine.biz.mapper.WordMappingDictMapper;
 import com.jdec.platform.dataengine.biz.service.WordMappingDictService;
-import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -53,13 +53,13 @@ public class WordMappingDictServiceImpl implements WordMappingDictService {
                 setWordMappingDictByMap(dict, entry.getValue());
                 dict.setCreateDate(LocalDateTime.now());
                 dict.setUpdateDate(LocalDateTime.now());
-                dict.setCreateBy(AppContext.getUserId());
-                dict.setUpdateBy(AppContext.getUserId());
+                dict.setCreateBy(UserContext.getUserId());
+                dict.setUpdateBy(UserContext.getUserId());
                 insertList.add(dict);
             } else {
                 setWordMappingDictByMap(mappingDict, entry.getValue());
                 mappingDict.setUpdateDate(LocalDateTime.now());
-                mappingDict.setUpdateBy(AppContext.getUserId());
+                mappingDict.setUpdateBy(UserContext.getUserId());
                 updateList.add(mappingDict);
             }
         }

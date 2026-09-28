@@ -5,7 +5,7 @@ import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
-import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.jooq.Condition;
@@ -39,7 +39,7 @@ public class ApprovalChainToDoConditionBuilderServiceImpl
         // 草稿
         condition.or(
                 DSL.field(DSL.name(primaryTableName, "create_by"))
-                        .eq(AppContext.getUserId())
+                        .eq(UserContext.getUserId())
                         .and(DSL.field(DSL.name(primaryTableName, "business_status")).eq(-88)));
 
         List<Long> toDoIdList = getToDoIdList(context);
@@ -60,13 +60,13 @@ public class ApprovalChainToDoConditionBuilderServiceImpl
     private List<Long> getToDoIdList(StatementContext context) {
         ApprovalListReq approvalListReq = new ApprovalListReq();
         approvalListReq.setApprovalType(1);
-        approvalListReq.setRoleId(AppContext.getRoleId());
+        approvalListReq.setRoleId(UserContext.getRoleId());
 
         // TODO 数据来源于其他主体时需要拿到对应主体的详情模块ID
         approvalListReq.setModuleIdList(Arrays.asList(context.getModuleId()));
 
-        approvalListReq.setCurrentUserId(AppContext.getUserId());
-        approvalListReq.setApplicantId(AppContext.getUserId());
+        approvalListReq.setCurrentUserId(UserContext.getUserId());
+        approvalListReq.setApplicantId(UserContext.getUserId());
 
         //        approvalListReq.setSubjectIdList(
         //                CollectionUtils.isEmpty(

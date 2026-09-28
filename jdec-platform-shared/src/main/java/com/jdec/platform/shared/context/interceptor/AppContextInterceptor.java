@@ -63,7 +63,7 @@ public class AppContextInterceptor implements HandlerInterceptor {
         String roleIdStr = request.getHeader(ROLE_ID_HEADER);
         Long roleId = (roleIdStr != null && !roleIdStr.isEmpty()) ? Long.valueOf(roleIdStr) : null;
 
-        AppContext.setContext(projectNo, subjectId, roleId);
+        AppContext.setContext(projectNo, subjectId);
         return true;
     }
 

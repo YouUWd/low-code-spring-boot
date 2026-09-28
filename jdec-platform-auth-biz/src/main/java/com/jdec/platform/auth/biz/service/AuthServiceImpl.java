@@ -513,12 +513,11 @@ public class AuthServiceImpl implements AuthApi {
     private <T> T withSubject(Long subjectId, Supplier<T> action) {
         String originalProjectNo = AppContext.getProjectNo();
         Long originalSubjectId = AppContext.getSubjectId();
-        Long roleId = AppContext.getRoleId();
         try {
-            AppContext.setContext(originalProjectNo, subjectId, roleId);
+            AppContext.setContext(originalProjectNo, subjectId);
             return action.get();
         } finally {
-            AppContext.setContext(originalProjectNo, originalSubjectId, roleId);
+            AppContext.setContext(originalProjectNo, originalSubjectId);
         }
     }
 
