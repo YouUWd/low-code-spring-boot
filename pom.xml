@@ -30,6 +30,12 @@
         <module>jdec-platform-common-biz</module>
         <module>jdec-platform-data-api</module>
         <module>jdec-platform-data-biz</module>
+        <module>jdec-platform-common-business-api</module>
+        <module>jdec-platform-common-business-biz</module>
+        <module>jdec-platform-data-engine-api</module>
+        <module>jdec-platform-data-engine-biz</module>
+        <module>jdec-platform-monitorlog-api</module>
+        <module>jdec-platform-monitorlog-biz</module>
         <module>jdec-platform-approval-api</module>
         <module>jdec-platform-approval-biz</module>
         <module>jdec-platform-app</module>
@@ -127,6 +133,37 @@
             <dependency>
                 <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-data-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-common-business-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-common-business-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-data-engine-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-data-engine-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-monitorlog-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-monitorlog-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

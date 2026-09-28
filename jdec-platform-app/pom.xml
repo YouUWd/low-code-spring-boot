@@ -24,9 +24,15 @@
 
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-shared</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-config-biz</artifactId>
         </dependency>
 
+        </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-hr-biz</artifactId>
@@ -47,6 +53,10 @@
             <artifactId>jdec-platform-approval-biz</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-data-engine-biz</artifactId>
+        </dependency>
 
         <!-- Spring Modulith 核心与事件持久化 -->
         <dependency>
