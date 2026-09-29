@@ -52,6 +52,9 @@ public class SysModuleInfo {
 
     @JsonIgnore private List<SysModuleInfo> children;
 
+    // 子表
+    private Set<String> subTables;
+
     private Set<String> writeFields;
 
     private Set<String> updateFields;

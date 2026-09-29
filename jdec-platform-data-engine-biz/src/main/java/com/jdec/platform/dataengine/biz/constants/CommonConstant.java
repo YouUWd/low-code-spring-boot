@@ -56,15 +56,34 @@ public interface CommonConstant {
 
     String MONITOR_LOG_OPERATOR_LOG_TYPE = "operation-log";
 
+    String TABLE_NAME_MODULE_DATA_SNAPSHOT_CONTENT = "module_data_snapshot_content";
+
+    String TABLE_NAME_MODULE_DATA_TMP_SNAPSHOT_CONTENT = "module_data_tmp_snapshot_content";
+
     String TABLE_DEFAULT_PRIMARY_KEY_FIELD = "id";
 
     String TABLE_DEFAULT_DELETED_FIELD = "deleted";
 
     String TABLE_DEFAULT_BUSINESS_STATUS_FIELD = "business_status";
 
+    String TABLE_DEFAULT_REGISTRATION_TIME_FIELD = "registration_time";
+
     String TABLE_DEFAULT_VERSION_NO_FIELD = "version_no";
 
     String TABLE_DEFAULT_MODULE_ID_FIELD = "module_id";
 
     String TABLE_DEFAULT_BUSINESS_NO_FIELD = "business_no";
+
+    Set<String> NONE_DIFF_FIELD_SET =
+            Set.of(
+                    "subject_id",
+                    "business_no",
+                    "business_status",
+                    "module_id",
+                    "version_no",
+                    "module_id",
+                    "created_by",
+                    "updated_by",
+                    "created_date",
+                    "updated_date");
 }

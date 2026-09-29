@@ -37,7 +37,7 @@ public class CommonDataEngineController {
         } catch (Exception ex) {
             log.error(
                     "Common aggregate getDetailByMenu failed: menuId={}, id={}, err={}",
-                    menuDetailQueryReq.getMenuId(),
+                    menuDetailQueryReq.getMenuIds(),
                     menuDetailQueryReq.getId(),
                     ex.getMessage(),
                     ex);

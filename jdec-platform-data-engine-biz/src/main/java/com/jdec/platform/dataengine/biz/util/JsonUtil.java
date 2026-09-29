@@ -38,6 +38,7 @@ public class JsonUtil {
                 LocalDate.class,
                 new LocalDateSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
         module.addSerializer(org.jooq.JSON.class, new JooqJSONSerializer());
+        module.addSerializer(org.jooq.JSONB.class, new JooqJSONBSerializer());
         MAPPER.registerModule(module);
         MAPPER.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
     }

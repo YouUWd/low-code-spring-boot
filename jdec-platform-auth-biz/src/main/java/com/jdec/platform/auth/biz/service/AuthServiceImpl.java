@@ -629,6 +629,7 @@ public class AuthServiceImpl implements AuthApi {
                 .docName(menu.getDocName())
                 .videoUrl(menu.getVideoUrl())
                 .videoName(menu.getVideoName())
+                .structuralType(menu.getStructuralType())
                 .build();
     }
 
