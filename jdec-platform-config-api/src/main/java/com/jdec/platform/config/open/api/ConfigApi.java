@@ -1,9 +1,11 @@
 package com.jdec.platform.config.open.api;
 
+import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,7 +37,7 @@ public interface ConfigApi {
      */
     ProjectTableRelationsDTO getProjectTableRelations(String projectNo);
 
-    // ================= 4. 角色模块字段权限 (sys_role_module_field_permission) =============
+    // ================= 3. 角色模块字段权限 (sys_role_module_field_permission) =============
 
     /**
      * 获取指定角色在指定模块列表下的权限汇总信息
@@ -48,6 +50,17 @@ public interface ConfigApi {
      * @return 按 moduleId 映射的模块权限 DTO (Map<moduleId, ModulePermissionDTO>)
      */
     Map<Long, ModulePermissionDTO> getModulePermissions(Long roleId, Collection<Long> moduleIds);
+
+    // ================= 4. 字段词云配置 (sys_field) =============
+
+    /**
+     * 查询项目及主体下配置了词云关联关系的字段列表
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体 ID
+     * @return 字段词云配置列表
+     */
+    List<FieldWordCloudDTO> getWordCloudFields(String projectNo, Long subjectId);
 
     // ================= 5. 元数据缓存管理 (Cache Eviction) =============
 

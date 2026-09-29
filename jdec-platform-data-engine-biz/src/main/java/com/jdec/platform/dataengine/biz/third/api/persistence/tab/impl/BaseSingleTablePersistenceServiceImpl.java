@@ -488,7 +488,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 }
                 changeContent.setApprovalFlag(1);
                 changeContent.setActionType(context.getIsInsert() ? 1 : 2);
-                changeContent.setCreateDate(LocalDateTime.now());
+                changeContent.setCreatedDate(LocalDateTime.now());
                 insertList.add(changeContent);
             }
 

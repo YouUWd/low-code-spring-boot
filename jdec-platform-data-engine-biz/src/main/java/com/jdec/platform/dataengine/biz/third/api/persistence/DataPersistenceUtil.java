@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
@@ -310,5 +311,57 @@ public class DataPersistenceUtil {
         String o1Value = String.valueOf(getFieldWriteValue(o1));
         String o2Value = String.valueOf(getFieldWriteValue(o2));
         return o1Value.equals(o2Value);
+    }
+
+    public static String getFieldTxtValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        // 1. 字符串直接返回
+        if (value instanceof String strVal) {
+            return strVal;
+        }
+
+        // 2. 基础包装类型，直接toString
+        if (value instanceof Number || value instanceof Boolean) {
+            return value.toString();
+        }
+
+        String txt = null;
+
+        try {
+            txt = JsonUtil.obj2Json(value);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        return txt;
+
+        //        // 2. jOOQ JSON / JSONB 特殊处理（重点适配你jOOQ场景）
+        //        if (value instanceof JSON jooqJson) {
+        //            return jooqJson.data();
+        //        }
+        //        if (value instanceof JSONB jooqJsonb) {
+        //            return jooqJsonb.data();
+        //        }
+        //
+        //        // 3. 日期时间格式化
+        //        if (value instanceof LocalDateTime localDateTime) {
+        //            return localDateTime.format(LOCAL_DATETIME_FORMATTER);
+        //        }
+        //        if (value instanceof LocalDate localDate) {
+        //            return localDate.format(LOCAL_DATE_FORMATTER);
+        //        }
+        //        if (value instanceof Date date) {
+        //            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
+        //        }
+        //
+        //        // 5. 数组、集合 → json
+        //        if (value instanceof Collection<?> || value.getClass().isArray()) {
+        //            return writeJson(value);
+        //        }
+        //
+        //        // 6. 其他POJO对象，转json字符串
+        //        return writeJson(value);
     }
 }

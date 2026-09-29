@@ -20,10 +20,12 @@ import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysModuleStatus;
 import com.jdec.platform.config.biz.entity.SysStatus;
+import com.jdec.platform.config.biz.entity.SysTableRelation;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
+import com.jdec.platform.config.biz.mapper.SysTableRelationMapper;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -59,6 +61,7 @@ public class SysModuleService implements SysModuleApi {
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysModuleStatusMapper sysModuleStatusMapper;
     private final SysStatusMapper sysStatusMapper;
+    private final SysTableRelationMapper sysTableRelationMapper;
     private final ReferenceCheckManager referenceCheckManager;
 
     @Override
@@ -194,7 +197,10 @@ public class SysModuleService implements SysModuleApi {
         // 1. 前置唯一性校验 (moduleCode 防重)
         validateSaveRequest(projectNo, subjectId, req);
 
-        // 2. 保存模块主体信息 (sys_module)
+        // 2. 校验表关联关系 (父子模块必须为 1:1 或 1:N；模块内关联表必须为 1:1 或 N:1)
+        validateModuleTableRelations(projectNo, subjectId, request);
+
+        // 3. 保存模块主体信息 (sys_module)
         SysModule module = saveOrUpdateModuleEntity(projectNo, subjectId, req);
         Long moduleId = module.getId();
 
@@ -230,6 +236,289 @@ public class SysModuleService implements SysModuleApi {
         if (exists) {
             throw new BusinessException("模块标识已存在!");
         }
+    }
+
+    /** 校验模块物理表关联关系（包括父子模块主表关系与模块内关联表关系） */
+    private void validateModuleTableRelations(
+            String projectNo, Long subjectId, SaveModuleReq request) {
+        SaveModuleReq.SaveSysModuleReq req = request.getModule();
+        if (req == null) {
+            return;
+        }
+
+        // 1. 查询当前项目下的全局表关联关系配置
+        List<SysTableRelation> relations =
+                sysTableRelationMapper.selectList(
+                        Wrappers.<SysTableRelation>lambdaQuery()
+                                .eq(
+                                        projectNo != null && !projectNo.isBlank(),
+                                        SysTableRelation::getProjectNo,
+                                        projectNo));
+
+        // 2. 确定当前模块的主表
+        String currentPrimaryTable = req.getPrimaryTable();
+        if ((currentPrimaryTable == null || currentPrimaryTable.isBlank())
+                && !CollectionUtils.isEmpty(request.getFields())) {
+            for (ModuleFieldDTO f : request.getFields()) {
+                if (f != null && f.getTableName() != null && !f.getTableName().isBlank()) {
+                    currentPrimaryTable = f.getTableName().trim();
+                    break;
+                }
+            }
+        }
+        if (currentPrimaryTable != null) {
+            currentPrimaryTable = currentPrimaryTable.trim();
+        }
+
+        // 3. 校验要求 2：模块内部的关联表要和模块主表是 1:1 或者 N:1 的关系，不能是 1:N 的关系
+        if (currentPrimaryTable != null
+                && !currentPrimaryTable.isBlank()
+                && !CollectionUtils.isEmpty(request.getFields())) {
+            Set<String> internalTables = new HashSet<>();
+            for (ModuleFieldDTO field : request.getFields()) {
+                if (field != null
+                        && field.getTableName() != null
+                        && !field.getTableName().isBlank()) {
+                    String tbl = field.getTableName().trim();
+                    if (!tbl.equalsIgnoreCase(currentPrimaryTable)) {
+                        internalTables.add(tbl);
+                    }
+                }
+            }
+
+            for (String subTable : internalTables) {
+                String relType = resolveTableRelationType(currentPrimaryTable, subTable, relations);
+                if (relType == null) {
+                    throw new BusinessException(
+                            400,
+                            String.format(
+                                    "模块内关联表关系非法：模块主表 [%s] 与关联表 [%s] 未配置关联关系",
+                                    currentPrimaryTable, subTable));
+                }
+                if ("1:N".equalsIgnoreCase(relType)) {
+                    throw new BusinessException(
+                            400,
+                            String.format(
+                                    "模块内关联表关系非法：模块主表 [%s] 与关联表 [%s] 必须为 1:1 或 N:1 关系，不能为 1:N",
+                                    currentPrimaryTable, subTable));
+                }
+                if (!"1:1".equalsIgnoreCase(relType) && !"N:1".equalsIgnoreCase(relType)) {
+                    throw new BusinessException(
+                            400,
+                            String.format(
+                                    "模块内关联表关系非法：模块主表 [%s] 与关联表 [%s] 关系类型 [%s] 非法",
+                                    currentPrimaryTable, subTable, relType));
+                }
+            }
+        }
+
+        // 4. 校验要求 1：子模块的主表要和父模块的主表有关联关系，且父子模块主表间是 1:1 或者 1:N 的关系，不能是 N:1
+        validateParentChildTableRelations(
+                projectNo, subjectId, req, currentPrimaryTable, request.getTreeNodes(), relations);
+    }
+
+    private void validateParentChildTableRelations(
+            String projectNo,
+            Long subjectId,
+            SaveModuleReq.SaveSysModuleReq req,
+            String currentPrimaryTable,
+            List<SaveModuleReq.ModuleTreeNodeDTO> treeNodes,
+            List<SysTableRelation> relations) {
+        // 查询当前项目与主体下的所有现有模块
+        List<SysModule> allModules =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(SysModule::getProjectNo, projectNo)
+                                .eq(
+                                        subjectId != null && subjectId > 0,
+                                        SysModule::getSubjectId,
+                                        subjectId));
+
+        Map<Long, SysModule> currentModuleMap = new HashMap<>();
+        if (allModules != null) {
+            for (SysModule m : allModules) {
+                if (m != null && m.getId() != null) {
+                    currentModuleMap.put(m.getId(), m);
+                }
+            }
+        }
+
+        Long currentModuleId = req.getId();
+
+        if (!CollectionUtils.isEmpty(treeNodes)) {
+            // 组装最新拓扑父子映射
+            Map<Long, Long> parentMap = new HashMap<>();
+            if (allModules != null) {
+                for (SysModule m : allModules) {
+                    parentMap.put(m.getId(), m.getParentId() != null ? m.getParentId() : 0L);
+                }
+            }
+
+            for (SaveModuleReq.ModuleTreeNodeDTO node : treeNodes) {
+                if (node == null) continue;
+                Long nid =
+                        (node.getId() == null || node.getId() == 0L)
+                                ? (currentModuleId != null ? currentModuleId : 0L)
+                                : node.getId();
+                Long npid =
+                        (node.getParentId() == null || node.getParentId() == 0L)
+                                ? 0L
+                                : node.getParentId();
+                parentMap.put(nid, npid);
+            }
+
+            // 遍历所有非根节点，校验其与其物理父模块主表的关系
+            for (Map.Entry<Long, Long> entry : parentMap.entrySet()) {
+                Long childId = entry.getKey();
+                Long parentId = entry.getValue();
+
+                if (parentId == null || parentId == 0L) {
+                    continue;
+                }
+
+                // 获取子模块主表
+                String childPrimary = null;
+                if (childId.equals(0L)
+                        || (currentModuleId != null && currentModuleId.equals(childId))) {
+                    childPrimary = currentPrimaryTable;
+                } else {
+                    SysModule childMod = currentModuleMap.get(childId);
+                    if (childMod != null) {
+                        childPrimary = childMod.getPrimaryTable();
+                    }
+                }
+
+                if (childPrimary == null || childPrimary.isBlank()) {
+                    continue; // 虚拟子模块不校验
+                }
+
+                // 向上遍历父链，获取最近的具有物理主表的父模块
+                String parentPrimary = null;
+                Long curP = parentId;
+                Set<Long> visited = new HashSet<>();
+                while (curP != null && curP > 0L && visited.add(curP)) {
+                    String pTable = null;
+                    if (curP.equals(0L)
+                            || (currentModuleId != null && currentModuleId.equals(curP))) {
+                        pTable = currentPrimaryTable;
+                    } else {
+                        SysModule pMod = currentModuleMap.get(curP);
+                        if (pMod != null) {
+                            pTable = pMod.getPrimaryTable();
+                        }
+                    }
+
+                    if (pTable != null && !pTable.isBlank()) {
+                        parentPrimary = pTable.trim();
+                        break;
+                    }
+
+                    curP = parentMap.get(curP);
+                }
+
+                if (parentPrimary == null || parentPrimary.isBlank()) {
+                    continue; // 父链全为虚拟模块跳过
+                }
+
+                validateParentChildRelation(parentPrimary, childPrimary.trim(), relations);
+            }
+        } else if (currentModuleId != null) {
+            // 未传入 treeNodes 时，根据数据库现有拓扑校验当前编辑模块
+            SysModule currentMod = currentModuleMap.get(currentModuleId);
+            if (currentMod != null
+                    && currentMod.getParentId() != null
+                    && currentMod.getParentId() > 0L) {
+                if (currentPrimaryTable != null && !currentPrimaryTable.isBlank()) {
+                    String parentPrimary = null;
+                    Long curP = currentMod.getParentId();
+                    Set<Long> visited = new HashSet<>();
+                    while (curP != null && curP > 0L && visited.add(curP)) {
+                        SysModule pMod = currentModuleMap.get(curP);
+                        if (pMod != null
+                                && pMod.getPrimaryTable() != null
+                                && !pMod.getPrimaryTable().isBlank()) {
+                            parentPrimary = pMod.getPrimaryTable().trim();
+                            break;
+                        }
+                        curP = pMod != null ? pMod.getParentId() : 0L;
+                    }
+
+                    if (parentPrimary != null && !parentPrimary.isBlank()) {
+                        validateParentChildRelation(parentPrimary, currentPrimaryTable, relations);
+                    }
+                }
+            }
+        }
+    }
+
+    private void validateParentChildRelation(
+            String parentPrimary, String childPrimary, List<SysTableRelation> relations) {
+        String relType = resolveTableRelationType(parentPrimary, childPrimary, relations);
+        if (relType == null) {
+            throw new BusinessException(
+                    400,
+                    String.format(
+                            "父子模块表关联关系非法：父模块主表 [%s] 与子模块主表 [%s] 未配置关联关系",
+                            parentPrimary, childPrimary));
+        }
+        if ("N:1".equalsIgnoreCase(relType)) {
+            throw new BusinessException(
+                    400,
+                    String.format(
+                            "父子模块表关联关系非法：父模块主表 [%s] 与子模块主表 [%s] 必须为 1:1 或 1:N 关系，不能为 N:1",
+                            parentPrimary, childPrimary));
+        }
+        if (!"1:1".equalsIgnoreCase(relType) && !"1:N".equalsIgnoreCase(relType)) {
+            throw new BusinessException(
+                    400,
+                    String.format(
+                            "父子模块表关联关系非法：父模块主表 [%s] 与子模块主表 [%s] 关系类型 [%s] 非法",
+                            parentPrimary, childPrimary, relType));
+        }
+    }
+
+    /**
+     * 推导 fromTable 到 toTable 的关联关系类型
+     *
+     * @param fromTable 源表
+     * @param toTable 目标表
+     * @param relations 项目下所有关联关系
+     * @return 1:1, 1:N, N:1，未找到返回 null
+     */
+    private String resolveTableRelationType(
+            String fromTable, String toTable, List<SysTableRelation> relations) {
+        if (fromTable == null || toTable == null) {
+            return null;
+        }
+        String from = fromTable.trim();
+        String to = toTable.trim();
+        if (from.equalsIgnoreCase(to)) {
+            return "1:1";
+        }
+        if (relations == null || relations.isEmpty()) {
+            return null;
+        }
+        for (SysTableRelation rel : relations) {
+            if (rel == null || rel.getRelationType() == null || rel.getRelationType().isBlank()) {
+                continue;
+            }
+            String main = rel.getMainTable() != null ? rel.getMainTable().trim() : "";
+            String join = rel.getJoinTable() != null ? rel.getJoinTable().trim() : "";
+            String type = rel.getRelationType().trim().toUpperCase();
+
+            if (main.equalsIgnoreCase(from) && join.equalsIgnoreCase(to)) {
+                return type;
+            } else if (main.equalsIgnoreCase(to) && join.equalsIgnoreCase(from)) {
+                if ("1:1".equals(type)) {
+                    return "1:1";
+                } else if ("1:N".equals(type)) {
+                    return "N:1";
+                } else if ("N:1".equals(type)) {
+                    return "1:N";
+                }
+            }
+        }
+        return null;
     }
 
     private SysModule saveOrUpdateModuleEntity(
