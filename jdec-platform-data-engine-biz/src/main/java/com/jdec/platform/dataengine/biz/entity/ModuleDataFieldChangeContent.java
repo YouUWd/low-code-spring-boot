@@ -16,7 +16,7 @@ import lombok.experimental.Accessors;
  * 模块数据变更记录
  *
  * @author
- * @since 2026-09-16
+ * @since 2026-09-28
  */
 @Getter
 @Setter
@@ -67,6 +67,14 @@ public class ModuleDataFieldChangeContent extends Model<ModuleDataFieldChangeCon
     @TableField("content")
     private String content;
 
+    /** 快照1 */
+    @TableField("first_snapshot")
+    private String firstSnapshot;
+
+    /** 快照2 */
+    @TableField("second_snapshot")
+    private String secondSnapshot;
+
     /** 1正常的业务2审批链业务 */
     @TableField("approval_flag")
     private Integer approvalFlag;
@@ -76,8 +84,8 @@ public class ModuleDataFieldChangeContent extends Model<ModuleDataFieldChangeCon
     private Integer actionType;
 
     /** 创建时间 */
-    @TableField("create_date")
-    private LocalDateTime createDate;
+    @TableField("created_date")
+    private LocalDateTime createdDate;
 
     public static final String ID = "id";
 
@@ -99,11 +107,15 @@ public class ModuleDataFieldChangeContent extends Model<ModuleDataFieldChangeCon
 
     public static final String CONTENT = "content";
 
+    public static final String FIRST_SNAPSHOT = "first_snapshot";
+
+    public static final String SECOND_SNAPSHOT = "second_snapshot";
+
     public static final String APPROVAL_FLAG = "approval_flag";
 
     public static final String ACTION_TYPE = "action_type";
 
-    public static final String CREATE_DATE = "create_date";
+    public static final String CREATED_DATE = "created_date";
 
     @Override
     public Serializable pkVal() {

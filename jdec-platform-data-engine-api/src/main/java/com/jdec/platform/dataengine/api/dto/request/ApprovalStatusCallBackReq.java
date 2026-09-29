@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.time.LocalDateTime;
 import lombok.Data;
 
 @Data
@@ -20,6 +21,12 @@ public class ApprovalStatusCallBackReq implements Serializable {
     @Schema(description = "业务状态")
     private Integer businessStatus;
 
+    @Schema(description = "登记时间")
+    private LocalDateTime registrationTime;
+
     @Schema(description = "是否终止状态")
     private Boolean isTermination;
+
+    @Schema(description = "是否第一次提交")
+    private Boolean isFirstSubmit;
 }

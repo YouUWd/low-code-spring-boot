@@ -56,7 +56,7 @@ public class ModuleDataSnapshotContent extends Model<ModuleDataSnapshotContent> 
     private String comparison;
 
     /** 创建时间 */
-    @TableField("create_date")
+    @TableField("created_date")
     private LocalDateTime createDate;
 
     public static final String ID = "id";
