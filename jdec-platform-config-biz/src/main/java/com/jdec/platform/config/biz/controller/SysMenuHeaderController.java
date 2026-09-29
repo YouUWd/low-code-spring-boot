@@ -43,7 +43,8 @@ public class SysMenuHeaderController {
     @Operation(
             summary = "查询菜单多级列头展示",
             description =
-                    "根据菜单ID纯读取 sys_menu_header 已保存的配置（菜单ID 先按统一规则解析出表头归属菜单ID 再读取），按多级列头展示格式返回：只输出已勾选（checked=1）的列，"
+                    "根据菜单ID读取 sys_menu_header 已保存的配置（菜单ID 先按统一规则解析出表头归属菜单ID 再读取），读取前先取模块侧最新数据（菜单及其子菜单、绑定模块下的字段）构成节点池，"
+                            + "仅返回节点池中仍存在的节点（模块侧已删除的菜单/字段不再返回）；按多级列头展示格式返回：只输出已勾选（checked=1）的列，"
                             + "其祖先菜单节点一并保留用于组装多级列头；无已勾选配置时 header 为空")
     public ApiResponse<MenuHeaderDisplayResp> display(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
