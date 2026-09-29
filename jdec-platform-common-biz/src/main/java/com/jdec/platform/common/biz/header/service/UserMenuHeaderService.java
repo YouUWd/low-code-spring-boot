@@ -108,11 +108,19 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 表头记录按详情菜单ID 归属，将前端传入的列表菜单ID 转换后再查
         Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
 
-        // 纯读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no）
-        List<UserMenuHeader> stored =
-                selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId);
+        // 模块侧最新可用节点（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
+        // 每次返回前都据此比对：user_menu_header 中模块侧已不存在的节点不返回给前端
+        Set<String> poolVirIds =
+                collectVirIds(openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId));
 
-        // 用户在该菜单下没有任何个性化配置：回退取 config 侧该菜单已保存的默认表头配置
+        // 读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no），
+        // 仅保留节点池中仍存在的节点
+        List<UserMenuHeader> stored =
+                selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId).stream()
+                        .filter(node -> poolVirIds.contains(node.getVirId()))
+                        .collect(Collectors.toList());
+
+        // 该用户在该菜单下没有任何有效个性化配置（无记录或记录指向的菜单/字段均已不存在）：回退取 config 侧默认表头配置
         if (stored.isEmpty()) {
             return openMenuHeaderApi.getMenuHeaderDisplay(menuId);
         }
@@ -177,6 +185,9 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 故改用 jOOQ 自带事务，使本次批量新增/更新共用同一连接、异常整体回滚
         AtomicInteger inserted = new AtomicInteger();
         AtomicInteger updated = new AtomicInteger();
+        AtomicInteger removed = new AtomicInteger();
+        // 本次提交命中的已保存记录主键，用于反推需删除的记录（整棵树以本次提交为准）
+        Set<Long> keptIds = new HashSet<>();
         jooqDataContextFactory
                 .getContext(projectNo)
                 .transaction(
@@ -212,6 +223,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                                             projectNo,
                                             currentUserId,
                                             now);
+                                    keptIds.add(storedNode.getId());
                                     updated.incrementAndGet();
                                 } else {
                                     insertUserNode(
@@ -226,13 +238,31 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                                     inserted.incrementAndGet();
                                 }
                             }
+
+                            // 整棵树以本次提交为准：库中已保存、但本次未提交的节点一并删除
+                            List<Long> removedIds =
+                                    stored.stream()
+                                            .map(UserMenuHeader::getId)
+                                            .filter(id -> id != null && !keptIds.contains(id))
+                                            .collect(Collectors.toList());
+                            if (!removedIds.isEmpty()) {
+                                deleteUserNodes(
+                                        tx,
+                                        removedIds,
+                                        req.getUserId(),
+                                        headerMenuId,
+                                        subjectId,
+                                        projectNo);
+                                removed.set(removedIds.size());
+                            }
                         });
         log.debug(
-                "保存用户个性化表头配置：userId={}, menuId={}, 新增={}, 更新={}",
+                "保存用户个性化表头配置：userId={}, menuId={}, 新增={}, 更新={}, 删除={}",
                 req.getUserId(),
                 headerMenuId,
                 inserted.get(),
-                updated.get());
+                updated.get(),
+                removed.get());
     }
 
     @Override
@@ -328,6 +358,27 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                 .execute();
     }
 
+    /**
+     * 批量删除用户表头节点（整棵树同步：库中多出、前端本次未提交的节点）
+     *
+     * <p>数据隔离：{@code id} 集合 + {@code user_id + menu_id + subject_id + project_no}。
+     */
+    private void deleteUserNodes(
+            DSLContext dsl,
+            Collection<Long> ids,
+            Long userId,
+            Long menuId,
+            Long subjectId,
+            String projectNo) {
+        dsl.deleteFrom(DSL.table(DSL.name(TABLE_USER_MENU_HEADER)))
+                .where(DSL.field(DSL.name("id")).in(ids))
+                .and(DSL.field(DSL.name("user_id")).eq(userId))
+                .and(DSL.field(DSL.name("menu_id")).eq(menuId))
+                .and(DSL.field(DSL.name("subject_id")).eq(subjectId))
+                .and(DSL.field(DSL.name("project_no")).eq(projectNo))
+                .execute();
+    }
+
     /** 提交节点转列值：colors 序列化为 JSON 串，父引用为空时按顶层处理 */
     private Map<Field<Object>, Object> toFieldValues(SaveUserMenuHeaderReq node) {
         Map<Field<Object>, Object> values = new LinkedHashMap<>();
@@ -402,6 +453,31 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                 .collect(Collectors.toList());
     }
     */
+
+    // ==================== 可用节点池 ====================
+
+    /**
+     * 表头树节点虚拟id 集合（模块侧可用节点池）
+     *
+     * <p>传入的树由 config 侧按「菜单/字段生成 + {@code sys_menu_header} 合并」得到，节点全部来自模块侧生成 （仅 {@code
+     * sys_menu_header} 中存在的历史节点已被丢弃），故其 {@code virId} 集合即当前模块侧真实存在的节点全集。
+     */
+    private Set<String> collectVirIds(SysMenuHeaderResp node) {
+        Set<String> virIds = new HashSet<>();
+        collectVirIds(node, virIds);
+        return virIds;
+    }
+
+    private void collectVirIds(SysMenuHeaderResp node, Set<String> virIds) {
+        virIds.add(node.getVirId());
+        List<SysMenuHeaderResp> children = node.getChildren();
+        if (children == null) {
+            return;
+        }
+        for (SysMenuHeaderResp child : children) {
+            collectVirIds(child, virIds);
+        }
+    }
 
     // ==================== 多级列头展示组装 ====================
 

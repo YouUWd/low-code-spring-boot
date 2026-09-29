@@ -251,14 +251,23 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         // 表头记录按归属菜单存放，先按统一规则解析出归属菜单ID
         Long headerMenuId = resolveHeaderMenuId(menuId);
 
-        // 纯读取该菜单已保存的表头节点（数据隔离：subject_id + project_no）
+        // 生成侧最新数据（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
+        // 每次返回前都据此比对：sys_menu_header 中模块侧已不存在的节点不返回给前端
+        Set<String> generatedVirIds = buildGeneratedVirIds(headerMenuId);
+
+        // 纯读取该菜单已保存的表头节点（数据隔离：subject_id + project_no），仅保留节点池中仍存在的节点
         List<SysMenuHeader> stored =
-                sysMenuHeaderMapper.selectList(
-                        Wrappers.<SysMenuHeader>lambdaQuery()
-                                .eq(SysMenuHeader::getMenuId, headerMenuId)
-                                .eq(SysMenuHeader::getSubjectId, AppContext.getSubjectId())
-                                .eq(SysMenuHeader::getProjectNo, AppContext.getProjectNo())
-                                .orderByAsc(SysMenuHeader::getSortValue, SysMenuHeader::getId));
+                sysMenuHeaderMapper
+                        .selectList(
+                                Wrappers.<SysMenuHeader>lambdaQuery()
+                                        .eq(SysMenuHeader::getMenuId, headerMenuId)
+                                        .eq(SysMenuHeader::getSubjectId, AppContext.getSubjectId())
+                                        .eq(SysMenuHeader::getProjectNo, AppContext.getProjectNo())
+                                        .orderByAsc(
+                                                SysMenuHeader::getSortValue, SysMenuHeader::getId))
+                        .stream()
+                        .filter(node -> generatedVirIds.contains(node.getVirId()))
+                        .collect(Collectors.toList());
         // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头
         List<SysMenuHeader> nodes = retainCheckedWithAncestors(stored);
         if (nodes.isEmpty()) {
@@ -442,6 +451,13 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     }
 
     // ==================== 生成侧：菜单 + 模块字段 ====================
+
+    /** 生成侧全部节点虚拟id 集合（可用节点池），供展示/合并时过滤模块侧已不存在的历史节点 */
+    private Set<String> buildGeneratedVirIds(Long menuId) {
+        return buildGeneratedNodes(menuId, null).stream()
+                .map(SysMenuHeaderResp::getVirId)
+                .collect(Collectors.toSet());
+    }
 
     /**
      * 生成侧节点列表（深度优先、父节点在前）
