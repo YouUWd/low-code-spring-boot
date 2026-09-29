@@ -1,7 +1,9 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
+import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.response.PermissionTableGroupResp;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
@@ -39,6 +41,8 @@ public class DataEngineService implements DataEngineApi {
     private final DataModuleConfigService dataModuleConfigService;
 
     private final SysModuleFieldPermissionApi sysModuleFieldPermissionApi;
+
+    private final ConfigApi configApi;
 
     @Override
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -100,11 +104,23 @@ public class DataEngineService implements DataEngineApi {
         if (sourceRoot == null) {
             return sourceRoot;
         }
-        return recursiveCopyAndFilter(sourceRoot, allowedFieldCodeSet);
+
+        List<FieldWordCloudDTO> wordCloudDTOList =
+                configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
+
+        Map<String, FieldWordCloudDTO> nameToConfig =
+                wordCloudDTOList.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        item -> item.getTableName() + "." + item.getColumnName(),
+                                        v -> v));
+        return recursiveCopyAndFilter(sourceRoot, allowedFieldCodeSet, nameToConfig);
     }
 
     private SysModuleInfo recursiveCopyAndFilter(
-            SysModuleInfo sourceNode, List<Long> allowedFieldCodeSet) {
+            SysModuleInfo sourceNode,
+            List<Long> allowedFieldCodeSet,
+            Map<String, FieldWordCloudDTO> fieldWordCloudConfMap) {
         SysModuleInfo targetNode = new SysModuleInfo();
         targetNode.setModuleCode(sourceNode.getModuleCode());
         targetNode.setModuleName(sourceNode.getModuleName());
@@ -244,6 +260,18 @@ public class DataEngineService implements DataEngineApi {
                         .collect(
                                 Collectors.toMap(
                                         f -> f.getTableName() + "." + f.getColumnName(), f -> f));
+
+        fieldMap.entrySet().stream()
+                .filter(ele -> fieldWordCloudConfMap.containsKey(ele.getKey()))
+                .forEach(
+                        item -> {
+                            item.getValue()
+                                    .setBusinessNo(
+                                            fieldWordCloudConfMap
+                                                    .get(item.getKey())
+                                                    .getRelationBusinessNo());
+                        });
+
         targetNode.setFileds(fieldMap);
 
         // 递归拷贝子节点
@@ -263,7 +291,10 @@ public class DataEngineService implements DataEngineApi {
                                             child.getId());
                             if (childMeta != null) {
                                 SysModuleInfo assembledChild =
-                                        recursiveCopyAndFilter(childMeta, allowedFieldCodeSet);
+                                        recursiveCopyAndFilter(
+                                                childMeta,
+                                                allowedFieldCodeSet,
+                                                fieldWordCloudConfMap);
                                 newChildren.add(assembledChild);
                             }
                         }
