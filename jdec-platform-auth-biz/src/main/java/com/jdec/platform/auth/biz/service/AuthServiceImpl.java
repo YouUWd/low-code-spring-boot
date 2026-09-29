@@ -618,6 +618,7 @@ public class AuthServiceImpl implements AuthApi {
                 .pid(menu.getPid())
                 .param(menu.getParam())
                 .menuType(menu.getMenuType())
+                .structuralType(menu.getStructuralType())
                 .category(menu.getCategory())
                 .imgDefault(menu.getImgDefault())
                 .imgActive(menu.getImgActive())
@@ -628,7 +629,6 @@ public class AuthServiceImpl implements AuthApi {
                 .docName(menu.getDocName())
                 .videoUrl(menu.getVideoUrl())
                 .videoName(menu.getVideoName())
-                .structuralType(menu.getStructuralType())
                 .build();
     }
 
