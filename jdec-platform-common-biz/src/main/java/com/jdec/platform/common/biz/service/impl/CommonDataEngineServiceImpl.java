@@ -5,6 +5,7 @@ import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysModuleApi;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
@@ -85,8 +86,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         for (Long moduleId : moduleIds) {
 
-            //            if (Objects.nonNull(menuDetailQueryReq.getFlatQuery())
-            //                    && !menuDetailQueryReq.getFlatQuery()) {
+            List<Long> fieldIds = new ArrayList<>();
+
             // 获取模块树
             ModuleTreeDTO tree =
                     configApi.getModuleTree(
@@ -96,9 +97,13 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 log.debug("模块树查询结果未空，返回空列表。");
             }
 
+            fieldIds.addAll(
+                    tree.getRootModule().getFields().stream()
+                            .map(ModuleFieldDTO::getId)
+                            .collect(Collectors.toSet()));
+
             // TODO 模块下所有字段需要进行权限过滤
-            checkedFieldIds.addAll(tree.getFieldMap().keySet());
-            //            }
+            checkedFieldIds.addAll(fieldIds);
         }
 
         moduleIds.add(rootModule.getId());
