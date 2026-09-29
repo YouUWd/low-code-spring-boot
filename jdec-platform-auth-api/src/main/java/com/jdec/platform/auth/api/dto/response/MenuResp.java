@@ -33,6 +33,9 @@ public class MenuResp implements Serializable {
     @Schema(description = "菜单类型")
     private Integer menuType;
 
+    @Schema(description = "菜单结构类型", example = "list/detail")
+    private String structuralType;
+
     @Schema(description = "菜单分类：1-业务菜单 2-系统菜单")
     private Integer category;
 
