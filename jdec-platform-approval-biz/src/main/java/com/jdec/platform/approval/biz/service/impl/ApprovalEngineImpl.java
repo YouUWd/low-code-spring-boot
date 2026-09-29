@@ -469,6 +469,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     @Override
     public Map<String, Object> getApprovalData(Long moduleId, Long recordId, String button) {
+        if (!sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId))) {
+            return null;
+        }
         LoginUser loginUserInfo = SecurityUtils.getLoginUser();
         boolean isMockLogin =
                 loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
