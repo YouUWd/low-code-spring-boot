@@ -147,17 +147,39 @@ class CompanyMenuQueryContractTest {
                         .primaryTable("financial_account")
                         .moduleName("财务账户")
                         .build());
+        moduleMap.put(
+                1020L,
+                ModuleInfo.builder()
+                        .moduleId(1020L)
+                        .parentId(1001L)
+                        .primaryTable(null)
+                        .moduleName("联系方式(虚拟)")
+                        .build());
+        moduleMap.put(
+                1006L,
+                ModuleInfo.builder()
+                        .moduleId(1006L)
+                        .parentId(1020L)
+                        .primaryTable("company_contact")
+                        .moduleName("公司联系方式")
+                        .build());
 
-        p2c.put(1001L, List.of(1002L, 1007L, 1003L, 1010L));
+        p2c.put(1001L, List.of(1002L, 1007L, 1003L, 1010L, 1020L));
         p2c.put(1003L, List.of(1004L));
+        p2c.put(1020L, List.of(1006L));
 
         addField(fieldMap, fieldToModuleMap, 10001L, 1001L, "info", "id");
         addField(fieldMap, fieldToModuleMap, 10002L, 1001L, "info", "company_name");
+        addField(fieldMap, fieldToModuleMap, 10006L, 1001L, "info", "cooperation_types");
         addField(fieldMap, fieldToModuleMap, 10021L, 1002L, "basic_info", "reg_capital");
         addField(fieldMap, fieldToModuleMap, 10071L, 1007L, "address", "detail_address");
         addField(fieldMap, fieldToModuleMap, 10031L, 1003L, "member", "member_name");
         addField(fieldMap, fieldToModuleMap, 10041L, 1004L, "member_contact", "phone");
+        addField(fieldMap, fieldToModuleMap, 10045L, 1004L, "member_contact", "contact_type");
+        addField(fieldMap, fieldToModuleMap, 10058L, 1006L, "company_contact", "contact_type");
         addField(fieldMap, fieldToModuleMap, 10101L, 1010L, "financial_account", "account_no");
+
+        allowedModuleIds.addAll(List.of(1020L, 1006L));
 
         companyModuleTree =
                 ModuleTreeDTO.builder()
@@ -209,6 +231,14 @@ class CompanyMenuQueryContractTest {
                 TableRelationDTO.builder()
                         .mainTable("info")
                         .joinTable("financial_account")
+                        .mainField("id")
+                        .joinField("company_id")
+                        .relationType("1:N")
+                        .build());
+        rs.add(
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .joinTable("company_contact")
                         .mainField("id")
                         .joinField("company_id")
                         .relationType("1:N")
@@ -421,6 +451,45 @@ class CompanyMenuQueryContractTest {
                         BusinessException.class,
                         () -> commonAggregateService.queryByMenu(100L, req),
                         "跨多个独立 1:N 模块筛选时应抛出 BusinessException");
+
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("最多只允许 1 个 1:N 模块参与筛选"));
+    }
+
+    @Test
+    @DisplayName("场景6：用户真实参数校验 10002(根)+10006(根)+10045(成员通讯录1:N)+10058(公司联系方式1:N) 必须被拦截抛出 400")
+    void testUserExactQueryFilters_mustThrowBusinessException() {
+        MenuQueryReq req =
+                MenuQueryReq.builder()
+                        .filters(
+                                List.of(
+                                        FlatFilterItem.builder()
+                                                .fieldId(10002L) // info.company_name (根模块)
+                                                .operator("IN")
+                                                .value(List.of("盛港煤焦化", "盛港集团"))
+                                                .build(),
+                                        FlatFilterItem.builder()
+                                                .fieldId(10006L) // info.cooperation_types (根模块)
+                                                .operator("LIKE")
+                                                .value("供应商")
+                                                .build(),
+                                        FlatFilterItem.builder()
+                                                .fieldId(10045L) // member_contact (1:N 顶层分支 1003)
+                                                .operator("IN")
+                                                .value(List.of("手机"))
+                                                .build(),
+                                        FlatFilterItem.builder()
+                                                .fieldId(10058L) // company_contact (1:N 顶层分支 1006)
+                                                .operator("IN")
+                                                .value(List.of("座机"))
+                                                .build()))
+                        .build();
+
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> commonAggregateService.queryByMenu(100L, req),
+                        "同时筛选 10045(成员通讯录) 与 10058(公司联系方式) 跨了 2 个独立 1:N 分支，必须被拦截抛出异常");
 
         assertEquals(400, ex.getCode());
         assertTrue(ex.getMessage().contains("最多只允许 1 个 1:N 模块参与筛选"));
