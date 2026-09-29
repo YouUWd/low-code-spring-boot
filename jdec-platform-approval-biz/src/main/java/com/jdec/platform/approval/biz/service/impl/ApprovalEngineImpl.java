@@ -680,6 +680,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
 
@@ -835,6 +836,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
         // 写入日志
