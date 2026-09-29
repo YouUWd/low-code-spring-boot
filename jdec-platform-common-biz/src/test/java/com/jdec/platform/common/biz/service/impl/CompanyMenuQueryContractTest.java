@@ -6,9 +6,15 @@ import static org.mockito.Mockito.*;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
+import com.jdec.platform.common.biz.dto.response.MenuDataResp;
+import com.jdec.platform.common.biz.dto.response.StatusSimpleResp;
+import com.jdec.platform.common.biz.dto.response.UserSimpleResp;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
+import com.jdec.platform.config.api.SysStatusApi;
+import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
@@ -16,9 +22,13 @@ import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
+import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
+import com.jdec.platform.config.api.dto.response.SysUserPageResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
@@ -39,6 +49,8 @@ class CompanyMenuQueryContractTest {
     private DataApi dataApi;
     private IApprovalEngine approvalEngine;
     private SysApprovalChainConfigApi sysApprovalChainConfigApi;
+    private SysUserApi sysUserApi;
+    private SysStatusApi sysStatusApi;
 
     private CommonAggregateServiceImpl commonAggregateService;
 
@@ -62,6 +74,8 @@ class CompanyMenuQueryContractTest {
         dataApi = mock(DataApi.class);
         approvalEngine = mock(IApprovalEngine.class);
         sysApprovalChainConfigApi = mock(SysApprovalChainConfigApi.class);
+        sysUserApi = mock(SysUserApi.class);
+        sysStatusApi = mock(SysStatusApi.class);
 
         commonAggregateService =
                 new CommonAggregateServiceImpl(
@@ -70,7 +84,9 @@ class CompanyMenuQueryContractTest {
                         configApi,
                         dataApi,
                         approvalEngine,
-                        sysApprovalChainConfigApi);
+                        sysApprovalChainConfigApi,
+                        sysUserApi,
+                        sysStatusApi);
 
         initCompanyFixture();
 
@@ -493,5 +509,91 @@ class CompanyMenuQueryContractTest {
 
         assertEquals(400, ex.getCode());
         assertTrue(ex.getMessage().contains("最多只允许 1 个 1:N 模块参与筛选"));
+    }
+
+    @Test
+    @DisplayName("测试第一层主模块记录中的 created_by 成功转换为 UserSimpleResp 对象包含 userId、头像、名字和工号")
+    void testCreatedByConversion_convertsToUserSimpleResp() {
+        Map<String, Object> tableData = new HashMap<>();
+        tableData.put("id", 1001L);
+        tableData.put("created_by", 8888L);
+        tableData.put("company_name", "测试企业");
+        DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
+
+        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
+        DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
+        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+
+        SysUserPageResp userResp = new SysUserPageResp();
+        userResp.setId(99L);
+        userResp.setUserId(8888L);
+        userResp.setUserName("张三");
+        userResp.setUserAvatar("https://avatar.com/zhangsan.png");
+        userResp.setWorkNumber("EMP8888");
+
+        when(sysUserApi.getUsersByUserIds(any())).thenReturn(List.of(userResp));
+
+        MenuDataResp resp =
+                commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().build());
+
+        assertNotNull(resp);
+        assertNotNull(resp.getData());
+        assertNotNull(resp.getData().getRecord());
+        assertEquals(1, resp.getData().getRecord().size());
+
+        DataRecordItem item = resp.getData().getRecord().get(0);
+        Object createdByObj = item.getRow().get("info.created_by");
+        assertNotNull(createdByObj);
+        assertTrue(createdByObj instanceof UserSimpleResp);
+
+        UserSimpleResp userRespObj = (UserSimpleResp) createdByObj;
+        assertEquals(8888L, userRespObj.getUserId());
+        assertEquals("张三", userRespObj.getUserName());
+        assertEquals("https://avatar.com/zhangsan.png", userRespObj.getUserAvatar());
+        assertEquals("EMP8888", userRespObj.getWorkNumber());
+    }
+
+    @Test
+    @DisplayName(
+            "测试第一层主模块记录中的 business_status 成功转换为 StatusSimpleResp 对象包含 title、statusValue、statusBackground、statusFontColor")
+    void testBusinessStatusConversion_convertsToStatusSimpleResp() {
+        Map<String, Object> tableData = new HashMap<>();
+        tableData.put("id", 1001L);
+        tableData.put("business_status", 1);
+        tableData.put("company_name", "测试企业");
+        DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
+
+        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
+        DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
+        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+
+        ModuleApprovalChainConfigResp.StatusNode statusNode =
+                new ModuleApprovalChainConfigResp.StatusNode();
+        statusNode.setId(10L);
+        statusNode.setTitle("已审核");
+        statusNode.setStatusValue(1);
+        statusNode.setStatusBackground("#e6f7ff");
+        statusNode.setStatusFontColor("#1890ff");
+
+        when(sysStatusApi.getStatusByValue(eq(1), eq(1001L))).thenReturn(statusNode);
+
+        MenuDataResp resp =
+                commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().build());
+
+        assertNotNull(resp);
+        assertNotNull(resp.getData());
+        assertNotNull(resp.getData().getRecord());
+        assertEquals(1, resp.getData().getRecord().size());
+
+        DataRecordItem item = resp.getData().getRecord().get(0);
+        Object statusObj = item.getRow().get("info.business_status");
+        assertNotNull(statusObj);
+        assertTrue(statusObj instanceof StatusSimpleResp);
+
+        StatusSimpleResp statusRespObj = (StatusSimpleResp) statusObj;
+        assertEquals("已审核", statusRespObj.getTitle());
+        assertEquals(1, statusRespObj.getStatusValue());
+        assertEquals("#e6f7ff", statusRespObj.getStatusBackground());
+        assertEquals("#1890ff", statusRespObj.getStatusFontColor());
     }
 }

@@ -1,10 +1,7 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
-import com.jdec.platform.config.api.SysFieldApi;
-import com.jdec.platform.config.api.SysMenuApi;
-import com.jdec.platform.config.api.SysModuleApi;
-import com.jdec.platform.config.api.SysRolePermissionApi;
+import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
@@ -28,7 +25,6 @@ import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
-import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import java.util.*;
@@ -60,14 +56,10 @@ public class DynamicQueryService {
     private final ListBizQueryService listBizQueryService;
     private final DetailBizQueryService detailBizQueryService;
 
-    private final SysMenuApi sysMenuApi;
-    private final SysRolePermissionApi sysRolePermissionApi;
     private final SysModuleApi sysModuleApi;
-    private final SysFieldApi sysFieldApi;
-    private final DataModuleConfigService dataModuleConfigService;
-    private final MetadataCacheService metaCacheService;
+    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
 
-    private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
+    private final DataModuleConfigService dataModuleConfigService;
 
     private final DetailDataProcessFactory detailDataProcessFactory;
 
@@ -80,7 +72,8 @@ public class DynamicQueryService {
                         .roleId(UserContext.getRoleId());
 
         // TODO 通过menuId和moduleId查审批链配置获取
-        boolean hasApproval = false;
+        Boolean hasApproval =
+                sysApprovalChainConfigApi.getApprovalStatus(List.of(req.getModuleId()));
 
         QueryType queryType;
 
@@ -250,7 +243,10 @@ public class DynamicQueryService {
         }
 
         // TODO 通过menuId和moduleId查审批链配置获取
-        boolean hasApproval = true;
+
+        Boolean hasApproval =
+                sysApprovalChainConfigApi.getApprovalStatus(
+                        List.of(dynamicDetailQueryReq.getModuleId()));
 
         QueryType queryType;
 
@@ -395,7 +391,8 @@ public class DynamicQueryService {
         }
 
         // TODO 通过menuId和moduleId查审批链配置获取
-        boolean hasApproval = true;
+        Boolean hasApproval =
+                sysApprovalChainConfigApi.getApprovalStatus(List.of(queryReq.getModuleId()));
 
         queryReq.setType(hasApproval ? 3 : 4);
 
@@ -1080,6 +1077,61 @@ public class DynamicQueryService {
         Long id = versionListQueryReq.getId();
         Long moduleId = versionListQueryReq.getModuleId();
 
+        Boolean hasApproval =
+                sysApprovalChainConfigApi.getApprovalStatus(
+                        List.of(versionListQueryReq.getModuleId()));
+
+        if (!hasApproval) {
+            return List.of();
+        }
+
+        List<VersionListResp> versionList = new ArrayList<>();
+
+        Record recordsResult = getLastVersion(moduleId, id);
+
+        if (Objects.nonNull(recordsResult)) {
+            Map<String, Object> resultMap = recordsResult.intoMap();
+
+            if (resultMap.containsKey("version_no")) {
+
+                Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
+
+                // 变更时返回虚拟版本
+                if ("change-change".equals(versionListQueryReq.getBtnType())) {
+                    Integer fakeVersionNo = versionNo + 1;
+                    versionList.add(
+                            VersionListResp.builder()
+                                    .version(fakeVersionNo)
+                                    .history(false)
+                                    .btnType("change-change")
+                                    .build());
+                }
+
+                versionList.add(
+                        VersionListResp.builder()
+                                .version(versionNo)
+                                .history(false)
+                                .btnType("view")
+                                .build());
+            }
+        }
+
+        List<VersionListResp> historyVersionList = getHistoryVersionList(moduleId, id);
+
+        if (!CollectionUtils.isEmpty(historyVersionList)) {
+            if ("change-change".equals(versionListQueryReq.getBtnType())) {
+                versionList.get(1).setPreVersion(historyVersionList.get(0).getVersion());
+            } else {
+                versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
+            }
+        }
+
+        versionList.addAll(historyVersionList);
+
+        return versionList;
+    }
+
+    private Record getLastVersion(Long moduleId, Long id) {
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
                         AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
@@ -1093,7 +1145,6 @@ public class DynamicQueryService {
         // 构造SQL 查询条件
         List<Condition> conditions = new ArrayList<>();
 
-        //        conditions.add(DSL.field(DSL.name(primaryTable, "module_id")).eq(moduleId));
         conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
 
         query.where(conditions);
@@ -1102,31 +1153,7 @@ public class DynamicQueryService {
 
         Record recordsResult = query.fetchOne();
 
-        List<VersionListResp> versionList = new ArrayList<>();
-
-        if (Objects.nonNull(recordsResult)) {
-            Map<String, Object> resultMap = recordsResult.intoMap();
-
-            if (resultMap.containsKey("version_no")) {
-                Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
-                versionList.add(
-                        VersionListResp.builder()
-                                .version(versionNo)
-                                .history(false)
-                                .btnType("view")
-                                .build());
-            }
-        }
-
-        List<VersionListResp> historyVersionList = getHistoryVersionList(moduleId, id);
-
-        if (!CollectionUtils.isEmpty(historyVersionList)) {
-            versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
-        }
-
-        versionList.addAll(historyVersionList);
-
-        return versionList;
+        return recordsResult;
     }
 
     private List<VersionListResp> getHistoryVersionList(Long moduleId, Long id) {

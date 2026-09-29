@@ -1,8 +1,8 @@
 package com.jdec.platform.dataengine.biz.controller;
 
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
-import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -31,14 +31,14 @@ public class DataEngineController {
         return ApiResponse.success(dataEngineApi.query(req));
     }
 
-    @PostMapping("/menu/detail")
+    //    @PostMapping("/menu/detail")
     @Operation(summary = "获取详情数据", description = "获取详情数据")
-    public ApiResponse<DetailDataResp> getDetail(
+    public ApiResponse<NestedModuleDataDTO> getDetail(
             @RequestBody DynamicDetailQueryReq detailQueryReq) {
         return ApiResponse.success(dataEngineApi.getDetail(detailQueryReq));
     }
 
-    @PostMapping("/menu/get-version-list")
+    //    @PostMapping("/menu/get-version-list")
     @Operation(summary = "获取版本列表数据", description = "获取版本列表数据")
     public ApiResponse<List<VersionListResp>> getVersionList(
             @RequestBody VersionListQueryReq versionListQueryReq) {

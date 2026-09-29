@@ -17,6 +17,7 @@ import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.SaveReq;
+import com.jdec.platform.data.api.dto.response.SaveResp;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.service.DataPersistenceService;
@@ -624,5 +625,51 @@ class DataPersistenceTest {
                                         sql.toLowerCase().contains("update `student`")
                                                 && sql.toLowerCase().contains("where")
                                                 && sql.toLowerCase().contains("id")));
+    }
+
+    @Test
+    void testSaveDataBlockWithBackfilledIds() {
+        DataRow addressRow = new DataRow();
+        addressRow.putValue("address", "comm_country", "唐");
+
+        DataBlock addressBlock =
+                DataBlock.builder().moduleId(1005L).records(List.of(addressRow)).build();
+
+        DataRow commTreeRow = new DataRow();
+        commTreeRow.addChild(addressBlock);
+
+        DataBlock commTreeBlock =
+                DataBlock.builder().moduleId(1020L).records(List.of(commTreeRow)).build();
+
+        DataRow companyRow = new DataRow();
+        companyRow.putValue("info", "company_name", "襄阳九鼎001");
+        companyRow.addChild(commTreeBlock);
+
+        DataBlock rootBlock =
+                DataBlock.builder().moduleId(1001L).records(List.of(companyRow)).build();
+
+        SaveResp resp = dataPersistenceService.save(rootBlock);
+
+        assertNotNull(resp);
+        assertNotNull(resp.getRootId());
+        assertNotNull(resp.getData());
+
+        // 验证 rootId 以及各级表对象 (info, address) 中生成的 id 均已回填
+        DataRow respCompanyRow = resp.getData().getFirstRecord();
+        assertNotNull(respCompanyRow);
+        assertNotNull(respCompanyRow.getValue("info", "id"));
+        assertEquals("襄阳九鼎001", respCompanyRow.getValue("info", "company_name"));
+
+        DataBlock respCommTree = respCompanyRow.getChild(1020L);
+        assertNotNull(respCommTree);
+        DataRow respCommTreeRow = respCommTree.getFirstRecord();
+        assertNotNull(respCommTreeRow);
+
+        DataBlock respAddressBlock = respCommTreeRow.getChild(1005L);
+        assertNotNull(respAddressBlock);
+        DataRow respAddressRow = respAddressBlock.getFirstRecord();
+        assertNotNull(respAddressRow);
+        assertNotNull(respAddressRow.getValue("address", "id"));
+        assertEquals("唐", respAddressRow.getValue("address", "comm_country"));
     }
 }
