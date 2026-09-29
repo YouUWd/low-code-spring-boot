@@ -18,6 +18,8 @@ import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
 import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -56,6 +58,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final SysButtonApi sysButtonApi;
     private final SysRolePermissionApi sysRolePermissionApi;
     private final ConfigChangeMessagePublisher messagePublisher;
+    private final DataEngineApi dataEngineApi;
     private final AsyncTaskService asyncTaskService; // 注入异步 Service
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
@@ -671,6 +674,15 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
+        // 回调更新业务状态
+        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
+        backReq.setVersionNo(approvalBusiness.getVersionNo());
+        backReq.setDataId(approvalBusiness.getRecordId());
+        backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setIsTermination(false);
+        dataEngineApi.processApprovalStatus(backReq);
+
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -817,6 +829,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
         approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 回调更新业务状态
+        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
+        backReq.setVersionNo(approvalBusiness.getVersionNo());
+        backReq.setDataId(approvalBusiness.getRecordId());
+        backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setIsTermination(false);
+        dataEngineApi.processApprovalStatus(backReq);
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -981,6 +1001,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
         approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 回调更新业务状态
+        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
+        backReq.setVersionNo(approvalBusiness.getVersionNo());
+        backReq.setDataId(approvalBusiness.getRecordId());
+        backReq.setModuleId(approvalBusiness.getModuleId());
+        if (approvalBusiness.getStatusValue().equals(99)) {
+            backReq.setIsTermination(true);
+        } else {
+            backReq.setIsTermination(false);
+        }
+        dataEngineApi.processApprovalStatus(backReq);
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
 
@@ -1156,6 +1188,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
         approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 回调更新业务状态
+        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
+        backReq.setVersionNo(approvalBusiness.getVersionNo());
+        backReq.setDataId(approvalBusiness.getRecordId());
+        backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setIsTermination(false);
+        dataEngineApi.processApprovalStatus(backReq);
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -1275,6 +1315,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
         approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
+        // 回调更新业务状态
+        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
+        backReq.setVersionNo(approvalBusiness.getVersionNo());
+        backReq.setDataId(approvalBusiness.getRecordId());
+        backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setIsTermination(false);
+        dataEngineApi.processApprovalStatus(backReq);
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
