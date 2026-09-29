@@ -387,7 +387,9 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
         // 系统内置参数
         switch (slug) {
             case "systemName":
-                if (AppContext.getProjectNo().contains("student")) return "学生管理系统";
+                if (AppContext.getProjectNo().contains("company")) {
+                    return "外部对象管理系统";
+                }
             case "frontUrl":
                 return "http://192.168.60.6:5008";
             case "currentTime":

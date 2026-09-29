@@ -16,6 +16,7 @@ import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,7 +26,6 @@ import org.jooq.Record;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 /** 用户自定义表头配置 Service */
@@ -89,7 +89,8 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
 
         // 用户个性化配置：该用户在此菜单下没有配置时直接返回默认表头树
         Map<String, UserMenuHeader> userNodesByVirId =
-                toMapByVirId(selectUserNodes(userId, headerMenuId));
+                toMapByVirId(
+                        selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId));
         if (userNodesByVirId.isEmpty()) {
             return tree;
         }
@@ -108,7 +109,8 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
 
         // 纯读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no）
-        List<UserMenuHeader> stored = selectUserNodes(userId, headerMenuId);
+        List<UserMenuHeader> stored =
+                selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId);
 
         // 用户在该菜单下没有任何个性化配置：回退取 config 侧该菜单已保存的默认表头配置
         if (stored.isEmpty()) {
@@ -144,7 +146,6 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void saveUserMenuHeader(SaveUserMenuHeaderReq req) {
         if (req == null || req.getUserId() == null) {
             throw new BusinessException("用户ID不能为空");
@@ -156,59 +157,104 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 用户表头记录按详情菜单ID 归属，将前端传入的列表菜单ID 转换后再落库
         Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(req.getMenuId());
 
-        // 提交的树压平为节点列表（深度优先、父节点在前）
+        // 提交的树压平为节点列表（深度优先、父节点在前），先整体校验再落库，避免开着事务才发现参数非法
         List<SaveUserMenuHeaderReq> nodes = new ArrayList<>();
         flatten(req, nodes);
-
-        // 一次性查出该用户在该菜单下已保存的节点，按主键/虚拟id 建索引，避免循环内查库
-        List<UserMenuHeader> stored = selectUserNodes(req.getUserId(), headerMenuId);
-        Map<Long, UserMenuHeader> storedById =
-                stored.stream()
-                        .filter(node -> node.getId() != null)
-                        .collect(
-                                Collectors.toMap(
-                                        UserMenuHeader::getId,
-                                        node -> node,
-                                        (first, second) -> first));
-        Map<String, UserMenuHeader> storedByVirId = toMapByVirId(stored);
+        for (SaveUserMenuHeaderReq node : nodes) {
+            if (node.getVirId() == null || node.getVirId().trim().isEmpty()) {
+                throw new BusinessException("表头节点虚拟id不能为空");
+            }
+            checkSearchTypeJson(node.getSearchType());
+        }
 
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
         Long currentUserId = UserContext.getUserId();
         LocalDateTime now = LocalDateTime.now();
 
-        // 已保存的节点按主键更新，未保存的节点新增
-        int inserted = 0;
-        int updated = 0;
-        for (SaveUserMenuHeaderReq node : nodes) {
-            if (node.getVirId() == null || node.getVirId().trim().isEmpty()) {
-                throw new BusinessException("表头节点虚拟id不能为空");
-            }
-            UserMenuHeader storedNode = node.getId() != null ? storedById.get(node.getId()) : null;
-            if (storedNode == null) {
-                storedNode = storedByVirId.get(node.getVirId());
-            }
-            if (storedNode != null) {
-                updateUserNode(storedNode.getId(), node, subjectId, projectNo, currentUserId, now);
-                updated++;
-            } else {
-                insertUserNode(
-                        node,
-                        headerMenuId,
-                        req.getUserId(),
-                        subjectId,
-                        projectNo,
-                        currentUserId,
-                        now);
-                inserted++;
-            }
-        }
+        // 用户表头在业务库：Spring 事务管理器绑定在 @Primary 的 DynamicRoutingDataSource 上，
+        // 与该 projectNo 解析出的物理库不是同一个 key，Spring 事务既无法参与也无法回滚（还会连到默认库），
+        // 故改用 jOOQ 自带事务，使本次批量新增/更新共用同一连接、异常整体回滚
+        AtomicInteger inserted = new AtomicInteger();
+        AtomicInteger updated = new AtomicInteger();
+        jooqDataContextFactory
+                .getContext(projectNo)
+                .transaction(
+                        configuration -> {
+                            DSLContext tx = DSL.using(configuration);
+
+                            // 一次性查出该用户在该菜单下已保存的节点，按主键/虚拟id 建索引，避免循环内查库
+                            List<UserMenuHeader> stored =
+                                    selectUserNodes(tx, req.getUserId(), headerMenuId);
+                            Map<Long, UserMenuHeader> storedById =
+                                    stored.stream()
+                                            .filter(node -> node.getId() != null)
+                                            .collect(
+                                                    Collectors.toMap(
+                                                            UserMenuHeader::getId,
+                                                            node -> node,
+                                                            (first, second) -> first));
+                            Map<String, UserMenuHeader> storedByVirId = toMapByVirId(stored);
+
+                            // 已保存的节点按主键更新，未保存的节点新增
+                            for (SaveUserMenuHeaderReq node : nodes) {
+                                UserMenuHeader storedNode =
+                                        node.getId() != null ? storedById.get(node.getId()) : null;
+                                if (storedNode == null) {
+                                    storedNode = storedByVirId.get(node.getVirId());
+                                }
+                                if (storedNode != null) {
+                                    updateUserNode(
+                                            tx,
+                                            storedNode.getId(),
+                                            node,
+                                            subjectId,
+                                            projectNo,
+                                            currentUserId,
+                                            now);
+                                    updated.incrementAndGet();
+                                } else {
+                                    insertUserNode(
+                                            tx,
+                                            node,
+                                            headerMenuId,
+                                            req.getUserId(),
+                                            subjectId,
+                                            projectNo,
+                                            currentUserId,
+                                            now);
+                                    inserted.incrementAndGet();
+                                }
+                            }
+                        });
         log.debug(
                 "保存用户个性化表头配置：userId={}, menuId={}, 新增={}, 更新={}",
                 req.getUserId(),
                 headerMenuId,
-                inserted,
-                updated);
+                inserted.get(),
+                updated.get());
+    }
+
+    @Override
+    public void resetUserMenuHeader(Long userId, Long menuId) {
+        if (userId == null || menuId == null) {
+            throw new BusinessException("用户ID与菜单ID不能为空");
+        }
+
+        // 用户表头记录按详情菜单ID 归属，与保存/查询保持一致
+        Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
+
+        // 单条删除语句本身即原子，无需事务（Spring 事务也覆盖不到该物理业务库）
+        int deleted =
+                jooqDataContextFactory
+                        .getContext()
+                        .deleteFrom(DSL.table(DSL.name(TABLE_USER_MENU_HEADER)))
+                        .where(DSL.field(DSL.name("user_id")).eq(userId))
+                        .and(DSL.field(DSL.name("menu_id")).eq(headerMenuId))
+                        .and(DSL.field(DSL.name("subject_id")).eq(AppContext.getSubjectId()))
+                        .and(DSL.field(DSL.name("project_no")).eq(AppContext.getProjectNo()))
+                        .execute();
+        log.debug("恢复默认用户个性化表头：userId={}, menuId={}, 删除={}", userId, headerMenuId, deleted);
     }
 
     // ==================== 用户表头读写 ====================
@@ -219,8 +265,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
      * <p>数据隔离：{@code user_id + menu_id + subject_id + project_no}，按 {@code sort_value}、{@code id}
      * 升序。
      */
-    private List<UserMenuHeader> selectUserNodes(Long userId, Long menuId) {
-        DSLContext dsl = jooqDataContextFactory.getContext();
+    private List<UserMenuHeader> selectUserNodes(DSLContext dsl, Long userId, Long menuId) {
         Table<Record> table = DSL.table(DSL.name(TABLE_USER_MENU_HEADER));
         List<UserMenuHeader> nodes =
                 dsl.select(USER_NODE_COLUMNS)
@@ -239,6 +284,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
 
     /** 新增用户表头节点（归属菜单与用户由入参决定，主体与项目取当前上下文） */
     private void insertUserNode(
+            DSLContext dsl,
             SaveUserMenuHeaderReq node,
             Long menuId,
             Long userId,
@@ -256,15 +302,12 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         values.put(DSL.field(DSL.name("updated_by")), currentUserId);
         values.put(DSL.field(DSL.name("updated_date")), now);
 
-        jooqDataContextFactory
-                .getContext()
-                .insertInto(DSL.table(DSL.name(TABLE_USER_MENU_HEADER)))
-                .set(values)
-                .execute();
+        dsl.insertInto(DSL.table(DSL.name(TABLE_USER_MENU_HEADER))).set(values).execute();
     }
 
     /** 按主键更新用户表头节点（数据隔离：id + subject_id + project_no） */
     private void updateUserNode(
+            DSLContext dsl,
             Long id,
             SaveUserMenuHeaderReq node,
             Long subjectId,
@@ -275,9 +318,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         values.put(DSL.field(DSL.name("updated_by")), currentUserId);
         values.put(DSL.field(DSL.name("updated_date")), now);
 
-        jooqDataContextFactory
-                .getContext()
-                .update(DSL.table(DSL.name(TABLE_USER_MENU_HEADER)))
+        dsl.update(DSL.table(DSL.name(TABLE_USER_MENU_HEADER)))
                 .set(values)
                 .where(
                         DSL.field(DSL.name("id"))
@@ -528,6 +569,22 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             nodesByVirId.putIfAbsent(node.getVirId(), node);
         }
         return nodesByVirId;
+    }
+
+    /**
+     * 校验 searchType 是合法 JSON（库中 {@code search_type} 为 JSON 列），空值允许（落库时归一为 null）
+     *
+     * <p>该列为 JSON 类型后，空串与非法 JSON 都会被 MySQL 直接拒绝并抛出原始 SQL 异常，故在落库前先拦下， 给出可读的提示。
+     */
+    private void checkSearchTypeJson(String searchType) {
+        if (!StringUtils.hasText(searchType)) {
+            return;
+        }
+        try {
+            objectMapper.readTree(searchType);
+        } catch (Exception e) {
+            throw new BusinessException("搜索控件类型(searchType)不是合法的 JSON：" + searchType);
+        }
     }
 
     /** 序列化 colors（入参为颜色列表，库中存 JSON 数组串），空列表或失败返回 null */

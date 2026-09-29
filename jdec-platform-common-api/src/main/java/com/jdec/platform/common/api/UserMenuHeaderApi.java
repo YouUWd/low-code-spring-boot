@@ -50,4 +50,16 @@ public interface UserMenuHeaderApi {
      * @param req 用户个性化表头配置节点树（根节点需带 userId 与 menuId）
      */
     void saveUserMenuHeader(SaveUserMenuHeaderReq req);
+
+    /**
+     * 恢复默认表头：删除该用户在指定列表菜单下的个性化表头配置
+     *
+     * <p>按 {@code user_id + menu_id + subject_id + project_no} 删除业务库 {@code user_menu_header}
+     * 中该用户的整棵表头节点树， 删除后查询接口自然回退到系统默认表头配置（{@code sys_menu_header}）。{@code menu_id} 同样先转换为表头归属菜单ID，
+     * 与保存/查询保持一致。主体与项目编码取当前上下文。
+     *
+     * @param userId 用户ID
+     * @param menuId 列表菜单ID
+     */
+    void resetUserMenuHeader(Long userId, Long menuId);
 }

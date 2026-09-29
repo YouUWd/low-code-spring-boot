@@ -37,4 +37,68 @@ public class FilterItem implements Serializable {
 
     @Schema(description = "嵌套子过滤条件列表（用于组装复合逻辑组，如 A OR (B AND C)）")
     private List<FilterItem> children;
+
+    public static FilterItem eq(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("EQ").value(value).build();
+    }
+
+    public static FilterItem neq(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("NEQ").value(value).build();
+    }
+
+    public static FilterItem like(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("LIKE").value(value).build();
+    }
+
+    public static FilterItem in(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("IN").value(value).build();
+    }
+
+    public static FilterItem between(Long fieldId, Object start, Object end) {
+        return FilterItem.builder()
+                .fieldId(fieldId)
+                .operator("BETWEEN")
+                .value(List.of(start, end))
+                .build();
+    }
+
+    public static FilterItem isNull(Long fieldId) {
+        return FilterItem.builder().fieldId(fieldId).operator("IS_NULL").build();
+    }
+
+    public static FilterItem isNotNull(Long fieldId) {
+        return FilterItem.builder().fieldId(fieldId).operator("IS_NOT_NULL").build();
+    }
+
+    public static FilterItem gt(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("GT").value(value).build();
+    }
+
+    public static FilterItem gte(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("GTE").value(value).build();
+    }
+
+    public static FilterItem lt(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("LT").value(value).build();
+    }
+
+    public static FilterItem lte(Long fieldId, Object value) {
+        return FilterItem.builder().fieldId(fieldId).operator("LTE").value(value).build();
+    }
+
+    public static FilterItem and(List<FilterItem> children) {
+        return FilterItem.builder().logic("AND").children(children).build();
+    }
+
+    public static FilterItem and(FilterItem... children) {
+        return and(List.of(children));
+    }
+
+    public static FilterItem or(List<FilterItem> children) {
+        return FilterItem.builder().logic("OR").children(children).build();
+    }
+
+    public static FilterItem or(FilterItem... children) {
+        return or(List.of(children));
+    }
 }

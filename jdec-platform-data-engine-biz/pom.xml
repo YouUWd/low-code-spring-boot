@@ -20,10 +20,6 @@
         </dependency>
         <dependency>
             <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-config-biz</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-auth-api</artifactId>
         </dependency>
         <dependency>

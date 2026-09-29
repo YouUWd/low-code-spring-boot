@@ -134,32 +134,12 @@
 
             <dependency>
                 <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-common-business-api</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-common-business-biz</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-data-engine-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-data-engine-biz</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-monitorlog-api</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jdec</groupId>
-                <artifactId>jdec-platform-monitorlog-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

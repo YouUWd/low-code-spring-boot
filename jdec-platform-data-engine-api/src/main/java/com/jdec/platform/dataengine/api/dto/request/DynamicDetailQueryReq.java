@@ -38,4 +38,6 @@ public class DynamicDetailQueryReq implements Serializable {
 
     @Schema(description = "是否历史版本", requiredMode = Schema.RequiredMode.NOT_REQUIRED, example = "V2")
     private Boolean history;
+
+    private String btnType;
 }

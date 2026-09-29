@@ -28,4 +28,12 @@ public class SortItem implements Serializable {
             example = "ASC")
     @Builder.Default
     private String direction = "ASC";
+
+    public static SortItem asc(Long fieldId) {
+        return SortItem.builder().fieldId(fieldId).direction("ASC").build();
+    }
+
+    public static SortItem desc(Long fieldId) {
+        return SortItem.builder().fieldId(fieldId).direction("DESC").build();
+    }
 }

@@ -112,7 +112,8 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
 
         query.where(conditions);
 
-        query.orderBy(DSL.field(DSL.name("module_data_field_change_content", "create_date")).asc());
+        query.orderBy(
+                DSL.field(DSL.name("module_data_field_change_content", "created_date")).asc());
 
         Result<Record> records = query.fetch();
 

@@ -1,6 +1,8 @@
 package com.jdec.platform.data.biz.plan.executor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
@@ -79,8 +81,8 @@ public class QueryPlanExecutor {
         return total != null ? total : 0L;
     }
 
-    /** 执行整树查询计划 (纯数据引擎，返回分页数据页) */
-    public DataPage<Map<String, Object>> execute(QueryPlan plan) {
+    /** 执行整树查询计划 (纯数据引擎，返回分页数据区块) */
+    public DataPage<DataBlock> execute(QueryPlan plan) {
         if (plan == null || plan.getRootNodePlan() == null) {
             return DataPage.empty(1, 20);
         }
@@ -149,9 +151,9 @@ public class QueryPlanExecutor {
                         .fetch();
 
         List<Long> primaryIds = new ArrayList<>();
-        List<Map<String, Object>> rootRows = new ArrayList<>();
+        List<DataRow> rootRows = new ArrayList<>();
         for (Record r : records) {
-            Map<String, Object> rootRow = new LinkedHashMap<>();
+            DataRow rootRow = new DataRow();
             // 1. 提取物理主键 id (作为内部临时技术锚点，供 Stage 1 批抓取与 Stage 2 装配)
             Object idVal = null;
             try {
@@ -167,7 +169,7 @@ public class QueryPlanExecutor {
             if (idVal != null) {
                 primaryTableSpace.put("id", idVal);
             }
-            rootRow.put(primaryTable, primaryTableSpace);
+            rootRow.putTable(primaryTable, primaryTableSpace);
 
             if (rootPlan.getProjectedFields() != null && !rootPlan.getProjectedFields().isEmpty()) {
                 for (PhysicalFieldSpec spec : rootPlan.getProjectedFields()) {
@@ -189,11 +191,11 @@ public class QueryPlanExecutor {
                                 }
                             }
                             val = parseIfJson(val);
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> tableMap =
-                                    (Map<String, Object>)
-                                            rootRow.computeIfAbsent(
-                                                    tbl, k -> new LinkedHashMap<>());
+                            Map<String, Object> tableMap = rootRow.getTable(tbl);
+                            if (tableMap == null) {
+                                tableMap = new LinkedHashMap<>();
+                                rootRow.putTable(tbl, tableMap);
+                            }
                             tableMap.put(spec.getColumnName(), val);
                         } catch (Exception ignored) {
                         }
@@ -207,7 +209,7 @@ public class QueryPlanExecutor {
         }
 
         // ==================== Stage 1: 批量拉取子模块数据 (Batch Fetch) ====================
-        Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode = new IdentityHashMap<>();
+        Map<QueryNodePlan, List<DataRow>> rawDataByNode = new IdentityHashMap<>();
         if (!primaryIds.isEmpty()
                 && rootPlan.getChildren() != null
                 && !rootPlan.getChildren().isEmpty()) {
@@ -222,29 +224,21 @@ public class QueryPlanExecutor {
                     rootRows, rootPlan.getModuleId(), rootPlan.getChildren(), rawDataByNode);
         }
 
-        return DataPage.<Map<String, Object>>builder()
-                .moduleId(rootPlan.getModuleId())
+        DataBlock block = DataBlock.of(rootPlan.getModuleId(), rootRows);
+        return DataPage.<DataBlock>builder()
                 .pageNo(pageNo)
                 .pageSize(pageSize)
                 .total(total)
-                .records(rootRows)
+                .data(block)
                 .build();
     }
 
-    /**
-     * 递归分批批量拉取各层子模块/子表数据 (利用 fk IN (:parentIds))
-     *
-     * <p>【核心架构设计】： 1. 批量下发 (Batch Fetch)：以上级实体的主键集合为条件执行 {@code fk IN (:parentIds)}，
-     * 单次批量捞出所有子实体，彻底杜绝 N+1 次 SQL 递归查询； 2. 虚拟模块透传 (Transparent Virtual
-     * Pass-Through)：若当前模块为无物理主表的虚拟逻辑节点， 则直接将上层物理主键集合 {@code parentIds}
-     * 原样透传给其下级所有物理子模块，实现跨越虚拟层级的直达查询； 3. 引用索引缓存 (Identity Cache)：拉取出的原始数据按 {@link QueryNodePlan}
-     * 实例精确缓存在 {@code Map<QueryNodePlan, List<Map<String, Object>>>} 中，供 Stage 2 内存装配器进行组装。
-     */
+    /** 递归分批批量拉取各层子模块/子表数据 (利用 fk IN (:parentIds)) */
     private void batchFetchChildNodesRecursively(
             DSLContext dsl,
             List<Long> parentIds,
             List<QueryNodePlan> childPlans,
-            Map<QueryNodePlan, List<Map<String, Object>>> rawDataByNode) {
+            Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
 
         if (parentIds == null
                 || parentIds.isEmpty()
@@ -335,11 +329,11 @@ public class QueryPlanExecutor {
             }
 
             Result<Record> childRecords = query.orderBy(childPlan.getOrderFields()).fetch();
-            List<Map<String, Object>> childRows = new ArrayList<>();
+            List<DataRow> childRows = new ArrayList<>();
             List<Long> childPrimaryIds = new ArrayList<>();
 
             for (Record r : childRecords) {
-                Map<String, Object> crow = new LinkedHashMap<>();
+                DataRow crow = new DataRow();
                 Object pkVal = null;
                 try {
                     pkVal = r.get("id");
@@ -351,13 +345,13 @@ public class QueryPlanExecutor {
                 if (pkVal != null) {
                     primaryTableSpace.put("id", pkVal);
                 }
-                crow.put(childTable, primaryTableSpace);
+                crow.putTable(childTable, primaryTableSpace);
 
                 // 临时注入内部技术外键（供 Stage 2 树装配器按外键分组，装配完成后自动剥离）
                 try {
                     Object fkVal = r.get(fkField);
                     if (fkVal != null) {
-                        crow.put("_fk_" + fkField, fkVal);
+                        crow.getTables().put("_fk_" + fkField, fkVal);
                     }
                 } catch (Exception ignored) {
                 }
@@ -382,10 +376,11 @@ public class QueryPlanExecutor {
                                 }
                             }
                             val = parseIfJson(val);
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> targetTableMap =
-                                    (Map<String, Object>)
-                                            crow.computeIfAbsent(tbl, k -> new LinkedHashMap<>());
+                            Map<String, Object> targetTableMap = crow.getTable(tbl);
+                            if (targetTableMap == null) {
+                                targetTableMap = new LinkedHashMap<>();
+                                crow.putTable(tbl, targetTableMap);
+                            }
                             targetTableMap.put(spec.getColumnName(), val);
                         }
                     }

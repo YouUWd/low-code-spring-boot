@@ -1,6 +1,8 @@
 package com.jdec.platform.data.biz.service;
 
+import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.request.SaveReq;
+import com.jdec.platform.data.api.dto.response.SaveResp;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
@@ -10,13 +12,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 动态持久化服务门面 (DynamicPersistenceService)
+ * 动态持久化服务门面 (DataPersistenceService)
  *
  * <p>彻底基于 SavePlan 编译与执行模型驱动：
  *
  * <ul>
  *   <li>1. 由 SavePlanCompiler 递归编译保存树并解析父子外键传播规则；
- *   <li>2. 由 SavePlanExecutor 在单事务内执行拓扑有序落库与外键自动回填。
+ *   <li>2. 由 SavePlanExecutor 在单事务内执行拓扑有序落库与外键自动回填；
+ *   <li>3. 返回强类型同构的 SaveResp。
  * </ul>
  */
 @Slf4j
@@ -27,13 +30,26 @@ public class DataPersistenceService {
     private final SavePlanCompiler savePlanCompiler;
     private final SavePlanExecutor savePlanExecutor;
 
-    /** 自相似主子表同构原子保存/更新 (返回根记录 ID) */
+    /** 自相似主子表同构原子保存/更新 (返回 SaveResp，包含根记录 ID 与回填了主键后的数据树) */
+    public SaveResp save(DataBlock block) {
+        SavePlan plan = savePlanCompiler.compile(block);
+        Long rootId = savePlanExecutor.execute(plan);
+        return SaveResp.builder().rootId(rootId).data(block).build();
+    }
+
+    /** 兼容旧版 SaveReq 保存/更新 */
     public Long save(SaveReq req) {
         SavePlan plan = savePlanCompiler.compile(req);
         return savePlanExecutor.execute(plan);
     }
 
     /** 自相似主子表同构原子保存/更新 (返回各个模块的主键映射) */
+    public Map<String, Object> saveAndCollectIds(DataBlock block) {
+        SavePlan plan = savePlanCompiler.compile(block);
+        return savePlanExecutor.executeAndCollectIds(plan);
+    }
+
+    /** 兼容旧版 SaveReq 主键映射收集 */
     public Map<String, Object> saveAndCollectIds(SaveReq req) {
         SavePlan plan = savePlanCompiler.compile(req);
         return savePlanExecutor.executeAndCollectIds(plan);

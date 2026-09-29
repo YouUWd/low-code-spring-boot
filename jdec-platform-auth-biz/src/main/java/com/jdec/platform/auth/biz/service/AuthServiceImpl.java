@@ -4,27 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.auth.api.AuthApi;
 import com.jdec.platform.auth.api.dto.request.SelectRoleReq;
-import com.jdec.platform.auth.api.dto.response.CurrentUserCheckResp;
-import com.jdec.platform.auth.api.dto.response.LoginResult;
-import com.jdec.platform.auth.api.dto.response.MenuResp;
-import com.jdec.platform.auth.api.dto.response.RoleResp;
-import com.jdec.platform.auth.api.dto.response.SelectRoleResp;
-import com.jdec.platform.auth.api.dto.response.SubjectResp;
-import com.jdec.platform.auth.api.dto.response.SysInfoDTO;
-import com.jdec.platform.auth.api.dto.response.UserInfo;
+import com.jdec.platform.auth.api.dto.response.*;
 import com.jdec.platform.auth.biz.constant.AuthConstant;
 import com.jdec.platform.auth.biz.dto.SubjectRoleDTO;
-import com.jdec.platform.config.api.SysProjectSubjectApi;
-import com.jdec.platform.config.api.SysRoleApi;
-import com.jdec.platform.config.api.SysRolePermissionApi;
-import com.jdec.platform.config.api.SysSpecialPermissionApi;
-import com.jdec.platform.config.api.SysUserApi;
+import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.request.CheckUserSpecialPermissionReq;
-import com.jdec.platform.config.api.dto.response.CheckUserPermissionByPhoneResp;
-import com.jdec.platform.config.api.dto.response.CheckUserSpecialPermissionResp;
-import com.jdec.platform.config.api.dto.response.RoleMenuResp;
-import com.jdec.platform.config.api.dto.response.SysProjectSubjectResp;
-import com.jdec.platform.config.api.dto.response.UserRoleListResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -34,12 +19,7 @@ import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.security.JwtTokenProvider;
 import com.jdec.platform.shared.security.model.LoginUser;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -258,7 +238,7 @@ public class AuthServiceImpl implements AuthApi {
     /** 登录页展示的系统信息（沿用源项目的固定值，后续可外部化为配置）。 */
     private SysInfoDTO buildSysInfo() {
         SysInfoDTO sysInfo = new SysInfoDTO();
-        sysInfo.setTitle("九鼎昊天学生管理系统");
+        sysInfo.setTitle("外部对象管理系统");
         sysInfo.setLogo(
                 "http://119.36.78.123:9077/storage/upload/LIdqTCsyOZIqYJ4fsxeBhntUy860blvL8ZSbN7ic.svg");
         sysInfo.setIcon(
@@ -267,7 +247,7 @@ public class AuthServiceImpl implements AuthApi {
         sysInfo.setSubjectColor("rgb(29, 120, 250)");
         sysInfo.setLoginBgImg(
                 "http://119.36.78.123:9077/storage/upload/CB5c5JVPOEIBoK6LKBL5PzZEll5dE27tD2AFU3uR.png");
-        sysInfo.setInternalUrl(internalUrl);
+        sysInfo.setInternalUrl("http://192.168.60.253:5008");
         return sysInfo;
     }
 

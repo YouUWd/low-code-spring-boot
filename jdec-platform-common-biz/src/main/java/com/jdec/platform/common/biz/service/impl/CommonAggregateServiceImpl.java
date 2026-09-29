@@ -8,23 +8,28 @@ import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
+import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
-import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.response.DataDetail;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
@@ -33,7 +38,9 @@ import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -41,6 +48,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 /** 公共业务聚合服务实现 (基于菜单的数据隔离、动态列表与详情聚合) */
 @Slf4j
@@ -77,8 +85,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new BusinessException("菜单 [" + menuId + "] 对应的表头未关联有效的根模块 ID");
         }
 
-        List<Long> checkedFieldIds = new ArrayList<>();
-        collectCheckedFieldIds(headerRoot, checkedFieldIds);
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        ProjectTableRelationsDTO projectRelations =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
+
+        List<Long> checkedFieldIds =
+                collectQueryFieldIds(headerRoot, req, rootModuleId, moduleTree, projectRelations);
 
         // 2. 解析根模块核心字段 ID (id, created_by, business_status)
         RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId);
@@ -87,8 +100,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
         int pageSize = (req != null && req.getPageSize() != null) ? req.getPageSize() : 20;
 
-        QueryReq.QueryReqBuilder queryReqBuilder =
-                QueryReq.builder()
+        PageQueryReq.PageQueryReqBuilder<?, ?> queryReqBuilder =
+                PageQueryReq.builder()
                         .moduleId(rootModuleId)
                         .fields(checkedFieldIds)
                         .pageNo(pageNo)
@@ -131,7 +144,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             allBtnsMap = approvalGroup.allBtns();
 
             ApprovalFilterResult approvalFilterResult =
-                    buildApprovalFilters(approvalType, rootModuleId, rootFieldIds, approvalBtnMap);
+                    buildApprovalFilters(approvalType, rootFieldIds, approvalBtnMap);
             if (approvalFilterResult.shortCircuitEmpty()) {
                 // 短路直接返回空数据
                 ModuleDataNode emptyNode =
@@ -153,9 +166,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         queryReqBuilder.filters(finalFilters);
 
         // 5. 调用底层低代码数据引擎进行分页查询
-        DataPage<Map<String, Object>> rawDataPage = dataApi.query(queryReqBuilder.build());
+        DataPage<DataBlock> rawDataPage = dataApi.query(queryReqBuilder.build());
 
-        // 6. 将 Map 数据集结构转换为自相似同构树节点 ModuleDataNode
+        // 6. 将 DataRow 数据集结构转换为自相似同构树节点 ModuleDataNode
         Long total =
                 (rawDataPage != null && rawDataPage.getTotal() != null)
                         ? rawDataPage.getTotal()
@@ -170,17 +183,12 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
             String rootModKey = String.valueOf(rootModuleId);
-            for (Map<String, Object> rawRecord : rawDataPage.getRecords()) {
-                if (rawRecord == null) {
+            for (DataRow rawRow : rawDataPage.getRecords()) {
+                if (rawRow == null) {
                     continue;
                 }
-                @SuppressWarnings("unchecked")
-                Map<String, Object> rootRowData =
-                        rawRecord.containsKey(rootModKey)
-                                        && rawRecord.get(rootModKey) instanceof Map<?, ?>
-                                ? (Map<String, Object>) rawRecord.get(rootModKey)
-                                : rawRecord;
-                rootNode.getRecord().add(buildDataRecordItem(rootModuleId, menuId, rootRowData));
+                rootNode.getRecord()
+                        .add(buildDataRecordItemFromDataRow(rootModuleId, menuId, rawRow));
             }
         }
 
@@ -217,10 +225,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         collectCheckedFieldIds(headerRoot, checkedFieldIds);
 
         // 2. 调用底层低代码引擎获取完整单据详情
-        DataDetail<Map<String, Object>> dataDetail =
-                dataApi.getDetail(rootModuleId, id, checkedFieldIds);
+        DataBlock dataBlock = dataApi.getDetail(rootModuleId, id, checkedFieldIds);
 
-        // 3. 将 Map 数据转换为 ModuleDataNode 树
+        // 3. 将 DataRow 数据转换为 ModuleDataNode 树
         ModuleDataNode dataTree =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
@@ -228,17 +235,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .record(new ArrayList<>())
                         .build();
 
-        if (dataDetail != null
-                && dataDetail.getRecords() != null
-                && !dataDetail.getRecords().isEmpty()) {
-            String rootModKey = String.valueOf(rootModuleId);
-            Map<String, Object> rawData = dataDetail.getRecords().get(0);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> rootRowData =
-                    rawData.containsKey(rootModKey) && rawData.get(rootModKey) instanceof Map<?, ?>
-                            ? (Map<String, Object>) rawData.get(rootModKey)
-                            : rawData;
-            dataTree.getRecord().add(buildDataRecordItem(rootModuleId, menuId, rootRowData));
+        if (dataBlock != null
+                && dataBlock.getRecords() != null
+                && !dataBlock.getRecords().isEmpty()) {
+            DataRow rawRow = dataBlock.getRecords().get(0);
+            dataTree.getRecord().add(buildDataRecordItemFromDataRow(rootModuleId, menuId, rawRow));
         }
 
         // 4. 构建模块元数据配置列表 (ModuleMetaDTO)
@@ -300,7 +301,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             Map<Long, List<Map<String, Object>>> approvalBtnMap = approvalGroup.relevantBtns();
 
             ApprovalFilterResult approvalFilterResult =
-                    buildApprovalFilters(approvalType, rootModuleId, rootFieldIds, approvalBtnMap);
+                    buildApprovalFilters(approvalType, rootFieldIds, approvalBtnMap);
             if (approvalFilterResult.shortCircuitEmpty()) {
                 // 审批过滤无候选匹配时短路直接返回空候选项列表
                 return Collections.emptyList();
@@ -323,6 +324,214 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return dataApi.getOptions(optionReq);
     }
 
+    private List<Long> collectQueryFieldIds(
+            MenuHeaderColumnResp headerRoot,
+            MenuQueryReq req,
+            Long rootModuleId,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations) {
+        List<Long> result = new ArrayList<>();
+        if (headerRoot == null) {
+            return result;
+        }
+
+        // 1. 解析请求中的过滤条件，提取命中的 1:N 顶层分支
+        Set<Long> hitOneToManyBranches = new LinkedHashSet<>();
+        if (req != null && !CollectionUtils.isEmpty(req.getFilters())) {
+            for (FlatFilterItem flatFilter : req.getFilters()) {
+                if (flatFilter != null && flatFilter.getFieldId() != null) {
+                    Long fieldId = flatFilter.getFieldId();
+                    Long fieldModuleId =
+                            moduleTree != null ? moduleTree.getModuleIdByFieldId(fieldId) : null;
+                    if (fieldModuleId == null) {
+                        fieldModuleId = findModuleIdByFieldIdInHeader(headerRoot, fieldId);
+                    }
+                    Long top1NBranch =
+                            resolveTopOneToManyBranch(
+                                    fieldModuleId, rootModuleId, moduleTree, projectRelations);
+                    if (top1NBranch != null) {
+                        hitOneToManyBranches.add(top1NBranch);
+                    }
+                }
+            }
+        }
+
+        // 2. 1:N 模块校验：最多只允许 1 个 1:N 模块或菜单参与筛选
+        if (hitOneToManyBranches.size() > 1) {
+            throw new BusinessException(
+                    400,
+                    "带搜索条件查询时，最多只允许 1 个 1:N 模块参与筛选，当前搜索条件涉及 "
+                            + hitOneToManyBranches.size()
+                            + " 个 1:N 模块分支");
+        }
+
+        Long active1NBranch =
+                hitOneToManyBranches.isEmpty() ? null : hitOneToManyBranches.iterator().next();
+
+        // 3. 递归收集字段 (1:1 始终保留；1:N 仅保留命中分支或全量保留)
+        collectEligibleFieldIds(
+                headerRoot, result, rootModuleId, active1NBranch, moduleTree, projectRelations);
+
+        return result;
+    }
+
+    private void collectEligibleFieldIds(
+            MenuHeaderColumnResp node,
+            List<Long> result,
+            Long rootModuleId,
+            Long active1NBranch,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations) {
+        if (node == null) {
+            return;
+        }
+
+        Long nodeModuleId = node.getModuleId();
+        Long top1NBranch =
+                resolveTopOneToManyBranch(nodeModuleId, rootModuleId, moduleTree, projectRelations);
+
+        // 如果该节点/字段属于 1:N 模块，且当前有激活的 1:N 筛选分支，但不是当前激活分支，则跳过
+        boolean isExcluded =
+                top1NBranch != null
+                        && active1NBranch != null
+                        && !top1NBranch.equals(active1NBranch);
+
+        if (!isExcluded) {
+            if (node.getFieldId() != null) {
+                result.add(node.getFieldId());
+            }
+            if (node.getChildren() != null) {
+                for (MenuHeaderColumnResp child : node.getChildren()) {
+                    collectEligibleFieldIds(
+                            child,
+                            result,
+                            rootModuleId,
+                            active1NBranch,
+                            moduleTree,
+                            projectRelations);
+                }
+            }
+        }
+    }
+
+    private Long findModuleIdByFieldIdInHeader(MenuHeaderColumnResp node, Long fieldId) {
+        if (node == null || fieldId == null) {
+            return null;
+        }
+        if (fieldId.equals(node.getFieldId())) {
+            return node.getModuleId();
+        }
+        if (node.getChildren() != null) {
+            for (MenuHeaderColumnResp child : node.getChildren()) {
+                Long found = findModuleIdByFieldIdInHeader(child, fieldId);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Long resolveTopOneToManyBranch(
+            Long moduleId,
+            Long rootModuleId,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations) {
+        if (moduleId == null || rootModuleId == null || moduleId.equals(rootModuleId)) {
+            return null;
+        }
+        if (moduleTree == null) {
+            return null;
+        }
+
+        // 1. 沿父节点链向上查找直到根模块
+        List<Long> pathFromChildToRoot = new ArrayList<>();
+        Long curr = moduleId;
+        Set<Long> visited = new HashSet<>();
+        while (curr != null && !curr.equals(rootModuleId) && visited.add(curr)) {
+            pathFromChildToRoot.add(curr);
+            ModuleInfo m = moduleTree.getModule(curr);
+            if (m == null || m.getParentId() == null || m.getParentId() == 0) {
+                break;
+            }
+            curr = m.getParentId();
+        }
+
+        if (pathFromChildToRoot.isEmpty()) {
+            return null;
+        }
+
+        // 2. 逆转为从根向下的路径: [直接子模块, 孙模块, ..., 目标模块]
+        Collections.reverse(pathFromChildToRoot);
+
+        Long prevModuleId = rootModuleId;
+        for (Long stepModuleId : pathFromChildToRoot) {
+            ModuleInfo parentMeta = moduleTree.getModule(prevModuleId);
+            ModuleInfo childMeta = moduleTree.getModule(stepModuleId);
+            String relType =
+                    getModuleRelationType(parentMeta, childMeta, projectRelations, moduleTree);
+            if ("1:N".equalsIgnoreCase(relType)) {
+                // 命中首个 1:N 关联，返回该顶层 1:N 分支的 moduleId
+                return stepModuleId;
+            }
+            prevModuleId = stepModuleId;
+        }
+
+        // 全链路为 1:1
+        return null;
+    }
+
+    private String getModuleRelationType(
+            ModuleInfo parentMeta,
+            ModuleInfo childMeta,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
+        if (parentMeta == null || childMeta == null) {
+            return "1:1";
+        }
+        String childPrimary = childMeta.getPrimaryTable();
+        if (childPrimary == null || childPrimary.isBlank()) {
+            return "1:1";
+        }
+
+        ModuleInfo physicalParent = parentMeta;
+        String parentPrimary = physicalParent.getPrimaryTable();
+        Long curP = parentMeta.getParentId();
+        Set<Long> visited = new HashSet<>();
+        while ((parentPrimary == null || parentPrimary.isBlank())
+                && curP != null
+                && curP > 0
+                && visited.add(curP)) {
+            physicalParent = tree != null ? tree.getModule(curP) : null;
+            if (physicalParent != null) {
+                parentPrimary = physicalParent.getPrimaryTable();
+                curP = physicalParent.getParentId();
+            } else {
+                break;
+            }
+        }
+
+        if (parentPrimary == null || parentPrimary.isBlank()) {
+            return "1:N";
+        }
+
+        if (parentPrimary.equalsIgnoreCase(childPrimary)) {
+            return "1:1";
+        }
+
+        if (projectRelations != null) {
+            TableRelationDTO matchedRel =
+                    projectRelations.findDirectRelation(parentPrimary, childPrimary);
+            if (matchedRel != null
+                    && matchedRel.getRelationType() != null
+                    && !matchedRel.getRelationType().isBlank()) {
+                return matchedRel.getRelationType().trim().toUpperCase();
+            }
+        }
+
+        return "1:N";
+    }
+
     private void collectCheckedFieldIds(MenuHeaderColumnResp node, List<Long> result) {
         if (node == null) {
             return;
@@ -337,106 +546,52 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
     }
 
-    private DataRecordItem buildDataRecordItem(
-            Long moduleId, Long menuId, Map<String, Object> rowMap) {
-        if (rowMap == null) {
+    private DataRecordItem buildDataRecordItemFromDataRow(
+            Long moduleId, Long menuId, DataRow dataRow) {
+        if (dataRow == null) {
             return DataRecordItem.builder().row(Collections.emptyMap()).build();
         }
 
         Map<String, Object> flatRow = new LinkedHashMap<>();
         List<ModuleDataNode> childrenNodes = new ArrayList<>();
 
-        for (Map.Entry<String, Object> entry : rowMap.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-
-            // 1. 标准 children 树解析
-            if ("children".equals(key) && value instanceof List<?> childrenList) {
-                for (Object childObj : childrenList) {
-                    if (childObj instanceof Map<?, ?> childMap) {
-                        Long subModId = null;
-                        Object modIdObj = childMap.get("moduleId");
-                        if (modIdObj instanceof Number num) {
-                            subModId = num.longValue();
-                        } else if (modIdObj != null) {
-                            try {
-                                subModId = Long.valueOf(modIdObj.toString());
-                            } catch (Exception ignored) {
-                            }
-                        }
-
-                        List<DataRecordItem> childItems = new ArrayList<>();
-                        Object recordsObj = childMap.get("records");
-                        if (recordsObj instanceof List<?> recList) {
-                            for (Object recItem : recList) {
-                                if (recItem instanceof Map<?, ?> castedMap) {
-                                    @SuppressWarnings("unchecked")
-                                    Map<String, Object> mapItem = (Map<String, Object>) castedMap;
-                                    childItems.add(buildDataRecordItem(subModId, null, mapItem));
-                                }
-                            }
-                        } else if (recordsObj instanceof Map<?, ?> singleMap) {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> mapItem = (Map<String, Object>) singleMap;
-                            childItems.add(buildDataRecordItem(subModId, null, mapItem));
-                        }
-
-                        ModuleDataNode childNode =
-                                ModuleDataNode.builder()
-                                        .moduleId(subModId)
-                                        .record(childItems)
-                                        .build();
-                        childrenNodes.add(childNode);
-                    }
-                }
-            } else if (value instanceof Map<?, ?> subMap) {
-                // 判断是否为历史数字 key 子模块或物理表空间 map (如 key=info)
-                boolean isModuleIdKey = false;
-                Long subModId = null;
-                try {
-                    subModId = Long.valueOf(key);
-                    isModuleIdKey = true;
-                } catch (Exception ignored) {
-                }
-
-                if (isModuleIdKey) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> castedSubMap = (Map<String, Object>) subMap;
-                    DataRecordItem childItem = buildDataRecordItem(subModId, null, castedSubMap);
-                    ModuleDataNode childNode =
-                            ModuleDataNode.builder()
-                                    .moduleId(subModId)
-                                    .record(Collections.singletonList(childItem))
-                                    .build();
-                    childrenNodes.add(childNode);
-                } else {
+        // 1. 展平当前数据行的物理表字段 (e.g. info.company_name)
+        if (dataRow.getTables() != null) {
+            for (Map.Entry<String, Object> entry : dataRow.getTables().entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if (value instanceof Map<?, ?> subMap) {
                     for (Map.Entry<?, ?> colEntry : subMap.entrySet()) {
                         String colName = Objects.toString(colEntry.getKey(), "");
                         if (!colName.isBlank()) {
                             flatRow.put(key + "." + colName, colEntry.getValue());
                         }
                     }
+                } else {
+                    flatRow.put(key, value);
                 }
-            } else if (value instanceof List<?> listVal) {
-                Long subModId = null;
-                try {
-                    subModId = Long.valueOf(key);
-                } catch (Exception ignored) {
-                }
+            }
+        }
 
+        // 2. 递归处理从属于当前行的子模块数据节点 DataBlock (自相似树)
+        if (dataRow.getChildren() != null) {
+            for (com.jdec.platform.data.api.dto.common.DataBlock childNode :
+                    dataRow.getChildren()) {
+                if (childNode == null) {
+                    continue;
+                }
+                Long subModId = childNode.getModuleId();
                 List<DataRecordItem> childItems = new ArrayList<>();
-                for (Object item : listVal) {
-                    if (item instanceof Map<?, ?> castedMap) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> mapItem = (Map<String, Object>) castedMap;
-                        childItems.add(buildDataRecordItem(subModId, null, mapItem));
+                if (childNode.getRecords() != null) {
+                    for (DataRow subRow : childNode.getRecords()) {
+                        if (subRow != null) {
+                            childItems.add(buildDataRecordItemFromDataRow(subModId, null, subRow));
+                        }
                     }
                 }
-                ModuleDataNode childNode =
+                ModuleDataNode moduleDataNode =
                         ModuleDataNode.builder().moduleId(subModId).record(childItems).build();
-                childrenNodes.add(childNode);
-            } else {
-                flatRow.put(key, value);
+                childrenNodes.add(moduleDataNode);
             }
         }
 
@@ -621,7 +776,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private ApprovalFilterResult buildApprovalFilters(
             Integer approvalType,
-            Long rootModuleId,
             RootModuleFieldIds rootFieldIds,
             Map<Long, List<Map<String, Object>>> btnGroupMap) {
 

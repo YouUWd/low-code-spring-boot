@@ -14,6 +14,8 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.SaveReq;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
@@ -165,12 +167,10 @@ class DataPersistenceTest {
         Map<String, List<TableRelationDTO>> reverseMap = new HashMap<>();
         for (TableRelationDTO r : allKnownRelations) {
             forwardMap
-                    .computeIfAbsent(
-                            r.getMainTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .computeIfAbsent(r.getMainTable().toLowerCase(), k -> new ArrayList<>())
                     .add(r);
             reverseMap
-                    .computeIfAbsent(
-                            r.getJoinTable().toLowerCase(), k -> new java.util.ArrayList<>())
+                    .computeIfAbsent(r.getJoinTable().toLowerCase(), k -> new ArrayList<>())
                     .add(r);
         }
         ProjectTableRelationsDTO mockProjectRelations =
@@ -466,11 +466,10 @@ class DataPersistenceTest {
         studentRow.put("student_no", "S001");
         studentRow.put("gender", "男");
 
-        SaveReq saveReq =
-                SaveReq.builder()
-                        .moduleId(101L)
-                        .records(List.of(Map.of("student", studentRow)))
-                        .build();
+        DataRow row = new DataRow();
+        row.putTable("student", studentRow);
+
+        SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(row)).build();
 
         Long savedId = dataPersistenceService.save(saveReq);
 
@@ -489,31 +488,28 @@ class DataPersistenceTest {
         scoreItem.put("item_name", "期末大作业");
         scoreItem.put("score", 95.0);
 
+        DataRow scoreItemRow = new DataRow();
+        scoreItemRow.putTable("student_course_score_item", scoreItem);
+
         // 子记录: 选课 105 行对象 (包含 student_course 与 children)
         Map<String, Object> courseRow = new HashMap<>();
         courseRow.put("course_name", "大学英语");
         courseRow.put("score", 90.0);
 
-        Map<String, Object> courseRecord = new HashMap<>();
-        courseRecord.put("student_course", courseRow);
-        courseRecord.put(
-                "children",
-                List.of(
-                        Map.of(
-                                "moduleId",
-                                108L,
-                                "records",
-                                List.of(Map.of("student_course_score_item", scoreItem)))));
+        DataRow courseRecord = new DataRow();
+        courseRecord.putTable("student_course", courseRow);
+        courseRecord.setChildren(
+                List.of(DataBlock.builder().moduleId(108L).records(List.of(scoreItemRow)).build()));
 
         // 根记录: 学生 101 行对象 (包含 student 与 children)
         Map<String, Object> studentRow = new HashMap<>();
         studentRow.put("name", "李四");
         studentRow.put("student_no", "S002");
 
-        Map<String, Object> rootRecord = new HashMap<>();
-        rootRecord.put("student", studentRow);
-        rootRecord.put(
-                "children", List.of(Map.of("moduleId", 105L, "records", List.of(courseRecord))));
+        DataRow rootRecord = new DataRow();
+        rootRecord.putTable("student", studentRow);
+        rootRecord.setChildren(
+                List.of(DataBlock.builder().moduleId(105L).records(List.of(courseRecord)).build()));
 
         SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(rootRecord)).build();
 
@@ -545,39 +541,45 @@ class DataPersistenceTest {
         addrRow.put("comm_region", "宁夏回族自治区/石嘴山市");
         addrRow.put("comm_detail", "大武口区高新技术产业园8号");
 
+        DataRow addrDataRow = new DataRow();
+        addrDataRow.putTable("address", addrRow);
+
         // 联系方式 1006 (多条)
         Map<String, Object> contact1 = new HashMap<>();
         contact1.put("contact_type", "PHONE");
         contact1.put("contact_value", "0710-3255895");
+        DataRow contactRow1 = new DataRow();
+        contactRow1.putTable("company_contact", contact1);
 
         Map<String, Object> contact2 = new HashMap<>();
         contact2.put("contact_type", "MOBILE");
         contact2.put("contact_value", "13585855898");
+        DataRow contactRow2 = new DataRow();
+        contactRow2.putTable("company_contact", contact2);
 
         // 虚拟容器 1020 行对象
-        Map<String, Object> virtualContainer = new HashMap<>();
-        virtualContainer.put(
-                "children",
+        DataRow virtualContainer = new DataRow();
+        virtualContainer.setChildren(
                 List.of(
-                        Map.of("moduleId", 1005L, "records", List.of(Map.of("address", addrRow))),
-                        Map.of(
-                                "moduleId",
-                                1006L,
-                                "records",
-                                List.of(
-                                        Map.of("company_contact", contact1),
-                                        Map.of("company_contact", contact2)))));
+                        DataBlock.builder().moduleId(1005L).records(List.of(addrDataRow)).build(),
+                        DataBlock.builder()
+                                .moduleId(1006L)
+                                .records(List.of(contactRow1, contactRow2))
+                                .build()));
 
         // 根记录 1001 行对象
         Map<String, Object> infoRow = new HashMap<>();
         infoRow.put("company_name", "盛港焦化有限公司");
         infoRow.put("cooperation_types", "[\"供应商\"]");
 
-        Map<String, Object> rootRecord = new HashMap<>();
-        rootRecord.put("info", infoRow);
-        rootRecord.put(
-                "children",
-                List.of(Map.of("moduleId", 1020L, "records", List.of(virtualContainer))));
+        DataRow rootRecord = new DataRow();
+        rootRecord.putTable("info", infoRow);
+        rootRecord.setChildren(
+                List.of(
+                        DataBlock.builder()
+                                .moduleId(1020L)
+                                .records(List.of(virtualContainer))
+                                .build()));
 
         SaveReq saveReq = SaveReq.builder().moduleId(1001L).records(List.of(rootRecord)).build();
 
@@ -607,11 +609,10 @@ class DataPersistenceTest {
         studentRow.put("name", "张三(已更新)");
         studentRow.put("student_no", "S001");
 
-        SaveReq saveReq =
-                SaveReq.builder()
-                        .moduleId(101L)
-                        .records(List.of(Map.of("student", studentRow)))
-                        .build();
+        DataRow row = new DataRow();
+        row.putTable("student", studentRow);
+
+        SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(row)).build();
 
         Long savedId = dataPersistenceService.save(saveReq);
         assertEquals(1001L, savedId);
