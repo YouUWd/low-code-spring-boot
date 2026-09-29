@@ -6,6 +6,7 @@ import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
+import com.jdec.platform.dataengine.biz.dto.VersionSnapShot;
 import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessService;
 import java.util.*;
@@ -34,7 +35,7 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
     public void processAssembleData(
             List<NestedModuleDataDTO> records, DataIntegrationContext context) {
         List<NestedModuleDataDTO> preVersionData = getPreVersionData(context);
-        Map<Long, Map<Long, Map<String, Object>>> currentVersionMap =
+        Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap =
                 buildCurrentModuleChangeIndex(context.getModuleId(), context.getId());
         if (CollectionUtils.isEmpty(records)) {
             return;
@@ -92,7 +93,7 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
         return TYPE_SET.contains(queryType);
     }
 
-    private Map<Long, Map<Long, Map<String, Object>>> buildCurrentModuleChangeIndex(
+    private Map<Long, Map<Long, Map<String, VersionSnapShot>>> buildCurrentModuleChangeIndex(
             Long moduleId, Long id) {
         DSLContext dslContext = jooqContextFactory.getContext();
 
@@ -117,7 +118,7 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
 
         Result<Record> records = query.fetch();
 
-        Map<Long, Map<Long, Map<String, Object>>> returnMap = new HashMap<>();
+        Map<Long, Map<Long, Map<String, VersionSnapShot>>> returnMap = new HashMap<>();
 
         for (Record r : records) {
             Map<String, Object> rMap = r.intoMap();
@@ -126,7 +127,18 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
             returnMap
                     .computeIfAbsent(itemModuleId, k -> new HashMap<>())
                     .computeIfAbsent(dataId, m -> new HashMap<>())
-                    .put(String.valueOf(rMap.get("field_id")), rMap.get("content"));
+                    .put(
+                            String.valueOf(rMap.get("field_id")),
+                            VersionSnapShot.builder()
+                                    .firstSnapshot(
+                                            rMap.get("first_snapshot") == null
+                                                    ? null
+                                                    : String.valueOf(rMap.get("first_snapshot")))
+                                    .secondSnapshot(
+                                            rMap.get("second_snapshot") == null
+                                                    ? null
+                                                    : String.valueOf(rMap.get("second_snapshot")))
+                                    .build());
         }
 
         return returnMap;
