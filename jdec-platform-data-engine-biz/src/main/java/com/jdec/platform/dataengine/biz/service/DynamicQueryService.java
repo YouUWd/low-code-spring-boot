@@ -1085,6 +1085,53 @@ public class DynamicQueryService {
             return List.of();
         }
 
+        List<VersionListResp> versionList = new ArrayList<>();
+
+        Record recordsResult = getLastVersion(moduleId, id);
+
+        if (Objects.nonNull(recordsResult)) {
+            Map<String, Object> resultMap = recordsResult.intoMap();
+
+            if (resultMap.containsKey("version_no")) {
+
+                Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
+
+                // 变更时返回虚拟版本
+                if ("change-change".equals(versionListQueryReq.getBtnType())) {
+                    Integer fakeVersionNo = versionNo + 1;
+                    versionList.add(
+                            VersionListResp.builder()
+                                    .version(fakeVersionNo)
+                                    .history(false)
+                                    .btnType("change-change")
+                                    .build());
+                }
+
+                versionList.add(
+                        VersionListResp.builder()
+                                .version(versionNo)
+                                .history(false)
+                                .btnType("view")
+                                .build());
+            }
+        }
+
+        List<VersionListResp> historyVersionList = getHistoryVersionList(moduleId, id);
+
+        if (!CollectionUtils.isEmpty(historyVersionList)) {
+            if ("change-change".equals(versionListQueryReq.getBtnType())) {
+                versionList.get(1).setPreVersion(historyVersionList.get(0).getVersion());
+            } else {
+                versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
+            }
+        }
+
+        versionList.addAll(historyVersionList);
+
+        return versionList;
+    }
+
+    private Record getLastVersion(Long moduleId, Long id) {
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
                         AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
@@ -1098,7 +1145,6 @@ public class DynamicQueryService {
         // 构造SQL 查询条件
         List<Condition> conditions = new ArrayList<>();
 
-        //        conditions.add(DSL.field(DSL.name(primaryTable, "module_id")).eq(moduleId));
         conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
 
         query.where(conditions);
@@ -1107,31 +1153,7 @@ public class DynamicQueryService {
 
         Record recordsResult = query.fetchOne();
 
-        List<VersionListResp> versionList = new ArrayList<>();
-
-        if (Objects.nonNull(recordsResult)) {
-            Map<String, Object> resultMap = recordsResult.intoMap();
-
-            if (resultMap.containsKey("version_no")) {
-                Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
-                versionList.add(
-                        VersionListResp.builder()
-                                .version(versionNo)
-                                .history(false)
-                                .btnType("view")
-                                .build());
-            }
-        }
-
-        List<VersionListResp> historyVersionList = getHistoryVersionList(moduleId, id);
-
-        if (!CollectionUtils.isEmpty(historyVersionList)) {
-            versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
-        }
-
-        versionList.addAll(historyVersionList);
-
-        return versionList;
+        return recordsResult;
     }
 
     private List<VersionListResp> getHistoryVersionList(Long moduleId, Long id) {

@@ -3,6 +3,7 @@ package com.jdec.platform.common.biz.service.impl;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
+import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
 import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.config.api.SysMenuApi;
@@ -17,6 +18,8 @@ import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
+import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
+import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -126,6 +129,42 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         List<ModuleMetaDTO> metaList = buildModuleMetaList(rootModule.getId(), null, roleId);
 
         return DetailDataResp.of(metaList, detailData);
+    }
+
+    @Override
+    public List<VersionListResp> getVersionList(MenuVersionListQueryReq menuDetailQueryReq) {
+
+        if (menuDetailQueryReq.getMenuId() == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+        if (menuDetailQueryReq.getId() == null) {
+            throw new IllegalArgumentException("单据 ID 不能为空");
+        }
+
+        List<SysMenuResp> menuList = sysMenuApi.list(1);
+
+        if (CollectionUtils.isEmpty(menuList)) {
+            return null;
+        }
+
+        SysMenuResp targetMenus =
+                menuList.stream()
+                        .filter(ele -> menuDetailQueryReq.getMenuId().equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        if (Objects.isNull(targetMenus)) {
+            return null;
+        }
+
+        VersionListQueryReq versionListQueryReq =
+                VersionListQueryReq.builder()
+                        .moduleId(targetMenus.getModuleId())
+                        .id(menuDetailQueryReq.getId())
+                        .btnType(menuDetailQueryReq.getBtnType())
+                        .build();
+
+        return dataEngineApi.getVersionList(versionListQueryReq);
     }
 
     private List<ModuleMetaDTO> buildModuleMetaList(Long rootModuleId, Long menuId, Long roleId) {

@@ -55,28 +55,6 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
         ModuleFilterInfo moduleFilterInfo =
                 ModuleFilterInfo.builder().moduleInfo(ModuleInfo.builder().build()).build();
 
-        //        if (!hasApproval) {
-        //            moduleFilterInfo =
-        //                    moduleInfoWithPermissionService.filterModuleInfo(
-        //                            context.getSubjectId(),
-        //                            context.getRoleId(),
-        //                            context.getModuleId(),
-        //                            context.getBtnType(),
-        //                            List.of());
-        //        } else {
-        //            moduleFilterInfo =
-        //                    moduleInfoWithPermissionService.filterModuleInfoWithApproval(
-        //                            context.getSubjectId(),
-        //                            context.getRoleId(),
-        //                            context.getModuleId(),
-        //                            context.getBtnType(),
-        //                            List.of());
-        //        }
-
-        //        ModuleType moduleType =
-        //
-        // ModuleType.getModuleType(moduleFilterInfo.getModuleInfo().getModuleType());
-
         ModuleType moduleType = ModuleType.DETAIL;
 
         if (moduleType == null) {

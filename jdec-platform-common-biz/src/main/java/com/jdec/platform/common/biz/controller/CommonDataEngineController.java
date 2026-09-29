@@ -1,12 +1,15 @@
 package com.jdec.platform.common.biz.controller;
 
 import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
+import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
 import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,8 +39,29 @@ public class CommonDataEngineController {
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(
-                    "Common aggregate getDetailByMenu failed: menuId={}, id={}, err={}",
+                    "Common DataEngine getDetailByMenu failed: menuId={}, id={}, err={}",
                     menuDetailQueryReq.getMenuIds(),
+                    menuDetailQueryReq.getId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/menu/get-version-list")
+    @Operation(
+            summary = "基于菜单 ID 的单据版本列表查询",
+            description = "传入 menuId 和单据 id，返回该条数据的版本列表，模块无审批链时返回空。")
+    public ApiResponse<List<VersionListResp>> getVersionListByMenu(
+            @RequestBody MenuVersionListQueryReq menuDetailQueryReq) {
+        try {
+            List<VersionListResp> result =
+                    commonDataEngineService.getVersionList(menuDetailQueryReq);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common DataEngine getVersionListByMenu failed: menuId={}, id={}, err={}",
+                    menuDetailQueryReq.getMenuId(),
                     menuDetailQueryReq.getId(),
                     ex.getMessage(),
                     ex);
