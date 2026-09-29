@@ -29,4 +29,7 @@ public class FieldMetaDTO implements Serializable {
 
     @Schema(description = "是否可编辑", example = "true")
     private Boolean edit;
+
+    @Schema(description = "词云关系ID", example = "true")
+    private String businessNo;
 }
