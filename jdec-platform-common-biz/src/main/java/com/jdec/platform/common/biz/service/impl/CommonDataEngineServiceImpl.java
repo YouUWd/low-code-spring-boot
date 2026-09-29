@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
@@ -12,6 +13,8 @@ import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
+import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -43,6 +46,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
     private final SysMenuApi sysMenuApi;
 
     private final SysModuleApi sysModuleApi;
+
+    private final UserMenuHeaderApi userMenuHeaderApi;
 
     @Override
     public DetailDataResp<NestedModuleDataDTO> getDetailByMenu(
@@ -88,14 +93,26 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         List<Long> checkedFieldIds = new ArrayList<>();
 
-        for (Long moduleId : moduleIds) {
+        Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap = new HashMap<>();
+
+        for (SysMenuResp targetMenu : targetMenus) {
 
             List<Long> fieldIds = new ArrayList<>();
 
             // 获取模块树
             ModuleTreeDTO tree =
                     configApi.getModuleTree(
-                            AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+                            AppContext.getProjectNo(),
+                            AppContext.getSubjectId(),
+                            targetMenu.getModuleId());
+
+            MenuHeaderDisplayResp menuHeaderDisplayResp =
+                    userMenuHeaderApi.getUserMenuHeaderDisplay(
+                            UserContext.getUserId(), targetMenu.getId(), UserContext.getRoleId());
+
+            if (Objects.nonNull(menuHeaderDisplayResp)) {
+                moduleIdHeaderMap.put(targetMenu.getModuleId(), menuHeaderDisplayResp.getHeader());
+            }
 
             if (Objects.isNull(tree)) {
                 log.debug("模块树查询结果未空，返回空列表。");
@@ -126,7 +143,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         NestedModuleDataDTO detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
 
         // 构建模块元数据配置列表 (ModuleMetaDTO)
-        List<ModuleMetaDTO> metaList = buildModuleMetaList(rootModule.getId(), null, roleId);
+        List<ModuleMetaDTO> metaList =
+                buildModuleMetaList(rootModule.getId(), null, roleId, moduleIdHeaderMap);
 
         return DetailDataResp.of(metaList, detailData);
     }
@@ -167,7 +185,11 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         return dataEngineApi.getVersionList(versionListQueryReq);
     }
 
-    private List<ModuleMetaDTO> buildModuleMetaList(Long rootModuleId, Long menuId, Long roleId) {
+    private List<ModuleMetaDTO> buildModuleMetaList(
+            Long rootModuleId,
+            Long menuId,
+            Long roleId,
+            Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap) {
         List<ModuleMetaDTO> metaList = new ArrayList<>();
         ModuleTreeDTO moduleTree =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
@@ -243,6 +265,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                             .moduleId(modId)
                             .menuId(Objects.equals(modId, rootModuleId) ? menuId : null)
                             .fields(fieldMetaMap)
+                            .header(moduleIdHeaderMap.get(modId))
                             .build());
         }
 

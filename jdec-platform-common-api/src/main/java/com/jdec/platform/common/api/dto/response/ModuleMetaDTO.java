@@ -1,5 +1,6 @@
 package com.jdec.platform.common.api.dto.response;
 
+import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.Map;
@@ -24,4 +25,6 @@ public class ModuleMetaDTO implements Serializable {
 
     @Schema(description = "字段字典 (键为 tableName.columnName 格式)")
     private Map<String, FieldMetaDTO> fields;
+
+    private MenuHeaderColumnResp header;
 }
