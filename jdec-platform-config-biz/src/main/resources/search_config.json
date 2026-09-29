@@ -215,6 +215,13 @@
     ]
   },
   {
+    "dataType": "varchar",
+    "businessType": "IMAGE",
+    "businessTypeName": "图片",
+    "searchConfig": [
+    ]
+  },
+  {
     "dataType": "text",
     "businessType": "TEXT",
     "businessTypeName": "文本",

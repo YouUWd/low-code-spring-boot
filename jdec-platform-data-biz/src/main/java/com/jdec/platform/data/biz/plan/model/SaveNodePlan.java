@@ -1,6 +1,7 @@
 package com.jdec.platform.data.biz.plan.model;
 
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,9 @@ public class SaveNodePlan {
 
     /** 当前模块待落库的行记录列表 */
     @Builder.Default private List<Map<String, Object>> records = new ArrayList<>();
+
+    /** 原始源数据行引用列表 (用于落库后回填生成的主键与外键) */
+    @Builder.Default private List<DataRow> sourceDataRows = new ArrayList<>();
 
     /** 是否为 1:N 集合模式 (true: 返回 List<Long>, false: 1:1 单实体返回 Long) */
     @Builder.Default private boolean isMany = false;
