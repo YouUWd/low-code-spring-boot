@@ -1,6 +1,7 @@
 package com.jdec.platform.data.api.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -21,7 +22,7 @@ import lombok.NoArgsConstructor;
  *   <li>单条保存即为长度为 1 的 records 列表；
  *   <li>子模块既可以在 records 各行内部通过 children 挂载 (行内自相似嵌套，严密对齐 query response)，也可以在节点级通过 children 挂载。
  *
- * @deprecated 请使用 100% 读写同构的 {@link com.jdec.platform.data.api.dto.common.DataBlock} 代替
+ * @deprecated 请使用 100% 读写同构的 {@link DataBlock} 代替
  */
 @Deprecated
 @Data

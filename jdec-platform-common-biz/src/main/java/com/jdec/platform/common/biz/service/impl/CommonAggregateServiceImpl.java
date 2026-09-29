@@ -448,7 +448,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<Long> pathFromChildToRoot = new ArrayList<>();
         Long curr = moduleId;
         Set<Long> visited = new HashSet<>();
-        while (curr != null && !curr.equals(rootModuleId) && visited.add(curr)) {
+        while (!curr.equals(rootModuleId) && visited.add(curr)) {
             pathFromChildToRoot.add(curr);
             ModuleInfo m = moduleTree.getModule(curr);
             if (m == null || m.getParentId() == null || m.getParentId() == 0) {

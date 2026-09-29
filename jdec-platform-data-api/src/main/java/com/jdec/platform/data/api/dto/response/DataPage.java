@@ -102,6 +102,7 @@ public class DataPage<T> implements Serializable {
     }
 
     /** 是否无数据 */
+    @JsonIgnore
     public boolean isEmpty() {
         if (data == null) {
             return true;
@@ -116,6 +117,7 @@ public class DataPage<T> implements Serializable {
     }
 
     /** 是否包含数据 */
+    @JsonIgnore
     public boolean hasRecords() {
         return !isEmpty();
     }
