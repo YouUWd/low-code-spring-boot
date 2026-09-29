@@ -43,6 +43,19 @@ public class DataPersistenceUtil {
         return rowMap;
     }
 
+    public static Set<String> getTableNameFromWideRow(Map<String, Object> wideRowMap) {
+        return wideRowMap.keySet().stream()
+                .filter(x -> x.indexOf(".") > 0)
+                .map(x -> x.substring(0, x.indexOf(".")))
+                .collect(Collectors.toSet());
+    }
+
+    public static Map<String, Object> putTableRowDeletedField(
+            Map<String, Object> record, String fullFieldName) {
+        record.put(fullFieldName, Integer.valueOf(1));
+        return record;
+    }
+
     public static List<Map<String, Object>> getTableRecordListMap(
             Map<String, Object> recordMap, String tableName) {
         return (List<Map<String, Object>>) recordMap.get(tableName);

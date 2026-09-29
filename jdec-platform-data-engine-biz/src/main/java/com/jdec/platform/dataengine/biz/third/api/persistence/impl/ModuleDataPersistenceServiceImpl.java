@@ -1,10 +1,9 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
-import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
-import com.jdec.platform.dataengine.api.dto.model.TableRelationDTO;
+import com.jdec.platform.dataengine.api.dto.model.*;
+import com.jdec.platform.dataengine.api.dto.request.DynamicDeleteReq;
+import com.jdec.platform.dataengine.api.dto.request.DynamicInsertReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
@@ -186,6 +185,44 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         return rootModuleMainTableDataId.get();
     }
 
+    @Override
+    public Long insertAndGetId(DynamicInsertReq req) {
+        DynamicSaveReq saveReq = new DynamicSaveReq();
+        saveReq.setBtnType(SaveButtonType.INSERT_AND_GET_ID.getKey());
+        NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
+        nestedModuleDataDTO.setModuleId(req.getModuleId());
+        RecordDataDTO recordDataDTO = new RecordDataDTO();
+        recordDataDTO.setRow(req.getRow());
+        nestedModuleDataDTO.setRecord(Collections.singletonList(recordDataDTO));
+        saveReq.setNestedModuleData(nestedModuleDataDTO);
+        return save(saveReq);
+    }
+
+    @Override
+    public Long deleteById(DynamicDeleteReq req) {
+        Set<String> tableNames = DataPersistenceUtil.getTableNameFromWideRow(req.getRow());
+        if (CollectionUtil.isEmpty(tableNames)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                    ApiResponseCodeEnum.BAD_REQUEST.getMessage());
+        }
+        for (String table : tableNames) {
+            DataPersistenceUtil.putTableRowDeletedField(
+                    req.getRow(),
+                    DataPersistenceUtil.getFullFieldName(
+                            table, CommonConstant.TABLE_DEFAULT_DELETED_FIELD));
+        }
+        DynamicSaveReq saveReq = new DynamicSaveReq();
+        saveReq.setBtnType(SaveButtonType.DELETE_BY_ID.getKey());
+        NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
+        nestedModuleDataDTO.setModuleId(req.getModuleId());
+        RecordDataDTO recordDataDTO = new RecordDataDTO();
+        recordDataDTO.setRow(req.getRow());
+        nestedModuleDataDTO.setRecord(Collections.singletonList(recordDataDTO));
+        saveReq.setNestedModuleData(nestedModuleDataDTO);
+        return save(saveReq);
+    }
+
     private Long saveModuleData(
             RecordDataDTO recordDataDTO,
             DynamicSaveReqContext currentReq,
@@ -291,6 +328,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         .rootModuleId(currentReq.getRootModuleId())
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
+                        .userId(UserContext.getUserId())
+                        .subjectId(AppContext.getSubjectId())
                         .saveType(currentReq.getSaveType())
                         .build();
         // moduleDataSaveNecessaryFieldFillFactoryService.fillData(recordSaveContext);
@@ -488,6 +527,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
                         .saveType(currentReq.getSaveType())
+                        .userId(UserContext.getUserId())
+                        .subjectId(AppContext.getSubjectId())
                         .build();
         // moduleDataSaveNecessaryFieldFillFactoryService.fillData(subRecordSaveContext);
         //// 首先 写入子表数据
@@ -541,9 +582,31 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                 case REAL_TIME_CHANGE -> {
                     saveType = SaveType.APPROVAL_REALTIME;
                 }
+                case INSERT_AND_GET_ID -> {
+                    saveType = SaveType.APPROVAL_INSERT_AND_GET_ID;
+                }
+                case DELETE_BY_ID -> {
+                    saveType = SaveType.APPROVAL_DELETE_BY_ID;
+                }
             }
         } else {
-            saveType = SaveType.NORMAL_SAVE;
+            switch (saveButtonType) {
+                case SAVE -> {
+                    // 保存
+                    saveType = SaveType.NORMAL_SAVE;
+                }
+                case INSERT_AND_GET_ID -> {
+                    saveType = SaveType.INSERT_AND_GET_ID;
+                }
+                case DELETE_BY_ID -> {
+                    saveType = SaveType.DELETE_BY_ID;
+                }
+            }
+        }
+        if (saveType == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                    ApiResponseCodeEnum.BAD_REQUEST.getMessage());
         }
         return saveType;
     }

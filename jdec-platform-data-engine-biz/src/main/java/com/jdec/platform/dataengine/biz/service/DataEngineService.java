@@ -93,6 +93,16 @@ public class DataEngineService implements DataEngineApi {
         return dynamicQueryService.getVersionList(versionListQueryReq);
     }
 
+    @Override
+    public Long insertAndGetId(DynamicInsertReq req) {
+        return moduleDataPersistenceService.insertAndGetId(req);
+    }
+
+    @Override
+    public Long deleteById(DynamicDeleteReq req) {
+        return moduleDataPersistenceService.deleteById(req);
+    }
+
     // ======================  深拷贝版本（不修改原始树，返回新树，推荐业务使用） ======================
     /** 深拷贝+字段过滤，不会改动原始模块树对象 */
     public SysModuleInfo copyAndFilterModuleTree(

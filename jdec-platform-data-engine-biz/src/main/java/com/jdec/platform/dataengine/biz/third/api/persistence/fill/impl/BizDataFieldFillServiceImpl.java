@@ -19,14 +19,20 @@ public class BizDataFieldFillServiceImpl implements BaseDataSaveNecessaryFieldFi
         Map<String, Object> fMap = new HashMap<>();
         // 插入时,根模块才会填充这些字段
         if (recordSaveContext.getIsInsert() && recordSaveContext.getIsRootModuleMainTable()) {
-            fMap.put("business_no", ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
-            fMap.put("version_no", 1);
-            fMap.put("module_id", recordSaveContext.getSysModuleCompleteResp().getModuleId());
+
             switch (recordSaveContext.getSaveType()) {
                 case APPROVAL_SAVE, APPROVAL_CHANGE, APPROVAL_REALTIME -> {
+                    fMap.put(
+                            "business_no",
+                            ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
+                    fMap.put("version_no", 1);
                     fMap.put("business_status", 1);
                 }
                 case NORMAL_SAVE -> {
+                    fMap.put(
+                            "business_no",
+                            ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
+                    fMap.put("version_no", 1);
                     fMap.put("business_status", 99);
                 }
             }

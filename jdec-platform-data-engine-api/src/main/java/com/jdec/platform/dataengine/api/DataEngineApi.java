@@ -20,4 +20,8 @@ public interface DataEngineApi {
 
     // 查询版本列表
     List<VersionListResp> getVersionList(VersionListQueryReq versionListQueryReq);
+
+    Long insertAndGetId(DynamicInsertReq req);
+
+    Long deleteById(DynamicDeleteReq req);
 }

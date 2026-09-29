@@ -246,7 +246,13 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 continue;
             }
             switch (context.getSaveType()) {
-                case NORMAL_SAVE, APPROVAL_SAVE, APPROVAL_REALTIME -> {
+                case NORMAL_SAVE,
+                        APPROVAL_SAVE,
+                        APPROVAL_REALTIME,
+                        INSERT_AND_GET_ID,
+                        DELETE_BY_ID,
+                        APPROVAL_INSERT_AND_GET_ID,
+                        APPROVAL_DELETE_BY_ID -> {
                     if (CollectionUtil.isNotEmpty(fieldMap)
                             && !fieldMap.containsKey(entry.getKey())) {
                         log.info(
@@ -314,7 +320,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isNotEmpty(context.getDefaultUserContextDataMap())) {
             for (Map.Entry<String, Object> entry :
                     context.getDefaultUserContextDataMap().entrySet()) {
-                if (CollectionUtil.isNotEmpty(fieldMap) && !fieldMap.containsKey(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(allFields) && !allFields.contains(entry.getKey())) {
                     log.info(
                             "fill user context table={} has no field={}",
                             context.getTableName(),

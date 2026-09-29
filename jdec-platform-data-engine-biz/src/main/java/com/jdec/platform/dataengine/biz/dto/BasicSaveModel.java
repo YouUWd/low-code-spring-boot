@@ -16,5 +16,9 @@ public class BasicSaveModel implements Serializable {
 
     private Long roleId;
 
+    private Long userId;
+
+    private String projectNo;
+
     private SaveType saveType;
 }
