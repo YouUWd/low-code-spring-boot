@@ -1,9 +1,9 @@
 package com.jdec.platform.common.biz.controller;
 
 import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
+import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
