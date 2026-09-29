@@ -1,6 +1,7 @@
 package com.jdec.platform.common.biz.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +15,7 @@ import lombok.NoArgsConstructor;
 public class MenuDetailQueryReq {
 
     @Schema(description = "菜单ID", example = "20")
-    private Long menuId;
+    private List<Long> menuIds;
 
     @Schema(description = "详情数据ID", example = "20")
     private Long id;
