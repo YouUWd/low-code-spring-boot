@@ -139,6 +139,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                             resp.setPid(menu.getPid());
                             resp.setParam(menu.getParam());
                             resp.setMenuType(menu.getMenuType());
+                            resp.setStructuralType(menu.getStructuralType());
                             resp.setCategory(menu.getCategory());
                             resp.setImgDefault(menu.getImgDefault());
                             resp.setImgActive(menu.getImgActive());
