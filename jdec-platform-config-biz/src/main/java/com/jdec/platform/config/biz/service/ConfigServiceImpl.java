@@ -1,6 +1,8 @@
 package com.jdec.platform.config.biz.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleNodeDTO;
@@ -9,10 +11,12 @@ import com.jdec.platform.config.api.dto.common.ModulePermissionDTO.FieldPermissi
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.entity.SysTableRelation;
+import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
@@ -45,6 +49,7 @@ public class ConfigServiceImpl implements ConfigApi {
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysTableRelationMapper sysTableRelationMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
+    private final SysFieldMapper sysFieldMapper;
 
     @Override
     @Cacheable(cacheNames = "config:module_tree", key = "#rootModuleId", unless = "#result == null")
@@ -478,6 +483,44 @@ public class ConfigServiceImpl implements ConfigApi {
                 .relationType(r.getRelationType())
                 .description(r.getDescription())
                 .build();
+    }
+
+    @Override
+    public List<FieldWordCloudDTO> getWordCloudFields(String projectNo, Long subjectId) {
+        log.debug("查询项目 {} 主体 {} 的词云配置字段列表", projectNo, subjectId);
+
+        // 仅查询配置了 relationBusinessNo 的字段，且只查询关注的列
+        List<SysField> fields =
+                sysFieldMapper.selectList(
+                        new LambdaQueryWrapper<SysField>()
+                                .select(
+                                        SysField::getTableName,
+                                        SysField::getColumnName,
+                                        SysField::getRelationBusinessNo,
+                                        SysField::getRelationName)
+                                .eq(
+                                        projectNo != null && !projectNo.isBlank(),
+                                        SysField::getProjectNo,
+                                        projectNo)
+                                .eq(subjectId != null, SysField::getSubjectId, subjectId)
+                                .isNotNull(SysField::getRelationBusinessNo)
+                                .ne(SysField::getRelationBusinessNo, "")
+                                .eq(SysField::getDeleted, 0));
+
+        if (fields == null || fields.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return fields.stream()
+                .map(
+                        field ->
+                                FieldWordCloudDTO.builder()
+                                        .tableName(field.getTableName())
+                                        .columnName(field.getColumnName())
+                                        .relationBusinessNo(field.getRelationBusinessNo())
+                                        .relationName(field.getRelationName())
+                                        .build())
+                .toList();
     }
 
     @Override

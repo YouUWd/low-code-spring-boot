@@ -144,7 +144,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             allBtnsMap = approvalGroup.allBtns();
 
             ApprovalFilterResult approvalFilterResult =
-                    buildApprovalFilters(approvalType, rootModuleId, rootFieldIds, approvalBtnMap);
+                    buildApprovalFilters(approvalType, rootFieldIds, approvalBtnMap);
             if (approvalFilterResult.shortCircuitEmpty()) {
                 // 短路直接返回空数据
                 ModuleDataNode emptyNode =
@@ -301,7 +301,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             Map<Long, List<Map<String, Object>>> approvalBtnMap = approvalGroup.relevantBtns();
 
             ApprovalFilterResult approvalFilterResult =
-                    buildApprovalFilters(approvalType, rootModuleId, rootFieldIds, approvalBtnMap);
+                    buildApprovalFilters(approvalType, rootFieldIds, approvalBtnMap);
             if (approvalFilterResult.shortCircuitEmpty()) {
                 // 审批过滤无候选匹配时短路直接返回空候选项列表
                 return Collections.emptyList();
@@ -598,112 +598,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return DataRecordItem.builder().row(flatRow).children(childrenNodes).build();
     }
 
-    private DataRecordItem buildDataRecordItem(
-            Long moduleId, Long menuId, Map<String, Object> rowMap) {
-        if (rowMap == null) {
-            return DataRecordItem.builder().row(Collections.emptyMap()).build();
-        }
-
-        Map<String, Object> flatRow = new LinkedHashMap<>();
-        List<ModuleDataNode> childrenNodes = new ArrayList<>();
-
-        for (Map.Entry<String, Object> entry : rowMap.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-
-            // 1. 标准 children 树解析
-            if ("children".equals(key) && value instanceof List<?> childrenList) {
-                for (Object childObj : childrenList) {
-                    if (childObj instanceof Map<?, ?> childMap) {
-                        Long subModId = null;
-                        Object modIdObj = childMap.get("moduleId");
-                        if (modIdObj instanceof Number num) {
-                            subModId = num.longValue();
-                        } else if (modIdObj != null) {
-                            try {
-                                subModId = Long.valueOf(modIdObj.toString());
-                            } catch (Exception ignored) {
-                            }
-                        }
-
-                        List<DataRecordItem> childItems = new ArrayList<>();
-                        Object recordsObj = childMap.get("records");
-                        if (recordsObj instanceof List<?> recList) {
-                            for (Object recItem : recList) {
-                                if (recItem instanceof Map<?, ?> castedMap) {
-                                    @SuppressWarnings("unchecked")
-                                    Map<String, Object> mapItem = (Map<String, Object>) castedMap;
-                                    childItems.add(buildDataRecordItem(subModId, null, mapItem));
-                                }
-                            }
-                        } else if (recordsObj instanceof Map<?, ?> singleMap) {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> mapItem = (Map<String, Object>) singleMap;
-                            childItems.add(buildDataRecordItem(subModId, null, mapItem));
-                        }
-
-                        ModuleDataNode childNode =
-                                ModuleDataNode.builder()
-                                        .moduleId(subModId)
-                                        .record(childItems)
-                                        .build();
-                        childrenNodes.add(childNode);
-                    }
-                }
-            } else if (value instanceof Map<?, ?> subMap) {
-                // 判断是否为历史数字 key 子模块或物理表空间 map (如 key=info)
-                boolean isModuleIdKey = false;
-                Long subModId = null;
-                try {
-                    subModId = Long.valueOf(key);
-                    isModuleIdKey = true;
-                } catch (Exception ignored) {
-                }
-
-                if (isModuleIdKey) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> castedSubMap = (Map<String, Object>) subMap;
-                    DataRecordItem childItem = buildDataRecordItem(subModId, null, castedSubMap);
-                    ModuleDataNode childNode =
-                            ModuleDataNode.builder()
-                                    .moduleId(subModId)
-                                    .record(Collections.singletonList(childItem))
-                                    .build();
-                    childrenNodes.add(childNode);
-                } else {
-                    for (Map.Entry<?, ?> colEntry : subMap.entrySet()) {
-                        String colName = Objects.toString(colEntry.getKey(), "");
-                        if (!colName.isBlank()) {
-                            flatRow.put(key + "." + colName, colEntry.getValue());
-                        }
-                    }
-                }
-            } else if (value instanceof List<?> listVal) {
-                Long subModId = null;
-                try {
-                    subModId = Long.valueOf(key);
-                } catch (Exception ignored) {
-                }
-
-                List<DataRecordItem> childItems = new ArrayList<>();
-                for (Object item : listVal) {
-                    if (item instanceof Map<?, ?> castedMap) {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> mapItem = (Map<String, Object>) castedMap;
-                        childItems.add(buildDataRecordItem(subModId, null, mapItem));
-                    }
-                }
-                ModuleDataNode childNode =
-                        ModuleDataNode.builder().moduleId(subModId).record(childItems).build();
-                childrenNodes.add(childNode);
-            } else {
-                flatRow.put(key, value);
-            }
-        }
-
-        return DataRecordItem.builder().row(flatRow).children(childrenNodes).build();
-    }
-
     private List<ModuleMetaDTO> buildModuleMetaList(Long rootModuleId, Long menuId, Long roleId) {
         List<ModuleMetaDTO> metaList = new ArrayList<>();
         ModuleTreeDTO moduleTree =
@@ -882,7 +776,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private ApprovalFilterResult buildApprovalFilters(
             Integer approvalType,
-            Long rootModuleId,
             RootModuleFieldIds rootFieldIds,
             Map<Long, List<Map<String, Object>>> btnGroupMap) {
 
