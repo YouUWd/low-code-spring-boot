@@ -19,6 +19,9 @@ public class ApprovalEvent { // 审批事件消息
     // 业务记录ID
     private Long recordId;
 
+    // 变更时来源版本记录ID
+    private Long OldRecordId;
+
     // 业务单据编号
     private String businessNumber;
 

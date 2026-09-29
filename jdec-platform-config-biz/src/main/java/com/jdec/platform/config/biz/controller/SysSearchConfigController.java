@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysSearchConfigApi;
+import com.jdec.platform.config.api.dto.response.SearchBusinessTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SearchConfigItemResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,5 +37,15 @@ public class SysSearchConfigController {
                     String dataIndex) {
         log.info("查询字段索引 {} 的搜索配置", dataIndex);
         return ApiResponse.success(sysSearchConfigApi.listSearchConfig(dataIndex));
+    }
+
+    @Operation(
+            summary = "查询业务类型下拉选项",
+            description =
+                    "返回 search_config.json 中的 businessType / businessTypeName，已按 businessType 去重，供前端下拉框展示")
+    @GetMapping("/business-type")
+    public ApiResponse<List<SearchBusinessTypeOptionResp>> listBusinessTypeOptions() {
+        log.info("查询业务类型下拉选项");
+        return ApiResponse.success(sysSearchConfigApi.listBusinessTypeOptions());
     }
 }

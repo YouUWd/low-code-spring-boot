@@ -1,5 +1,6 @@
 package com.jdec.platform.data.api.dto.common;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -56,6 +57,7 @@ public class DataBlock implements Serializable {
     }
 
     /** 获取首条单据主记录 (单据详情场景便捷访问) */
+    @JsonIgnore
     public DataRow getFirstRecord() {
         return (records != null && !records.isEmpty()) ? records.get(0) : null;
     }
@@ -66,11 +68,13 @@ public class DataBlock implements Serializable {
     }
 
     /** 是否无数据行 */
+    @JsonIgnore
     public boolean isEmpty() {
         return records == null || records.isEmpty();
     }
 
     /** 是否包含数据行 */
+    @JsonIgnore
     public boolean hasRecords() {
         return !isEmpty();
     }

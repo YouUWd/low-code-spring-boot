@@ -1,30 +1,15 @@
 package com.jdec.platform.dataengine.biz.service;
 
-import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
-import com.jdec.platform.config.api.dto.response.PermissionTableGroupResp;
 import com.jdec.platform.dataengine.api.DataEngineApi;
-import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
-import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
 import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
-import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
-import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
-import com.jdec.platform.dataengine.biz.dto.FieldPermissionItem;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
-import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.UserContext;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -36,46 +21,19 @@ public class DataEngineService implements DataEngineApi {
     private final ModuleDataPersistenceService moduleDataPersistenceService;
     private final ModuleDataApprovalBizService moduleDataApprovalBizService;
 
-    private final DataModuleConfigService dataModuleConfigService;
-
-    private final SysModuleFieldPermissionApi sysModuleFieldPermissionApi;
-
     @Override
     public DynamicQueryResp query(DynamicQueryReq req) {
         return dynamicQueryService.query(req);
     }
 
     @Override
-    public DetailDataResp<NestedModuleDataDTO> getDetail(
-            DynamicDetailQueryReq dynamicDetailQueryReq) {
-
-        SysModuleInfo sysModuleInfo =
-                dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(),
-                        AppContext.getSubjectId(),
-                        dynamicDetailQueryReq.getModuleId());
-
-        SysModuleInfo meta = copyAndFilterModuleTree(sysModuleInfo, List.of());
-
-        List<SysModuleInfo> metaList = getListStructure(meta);
+    public NestedModuleDataDTO getDetail(DynamicDetailQueryReq dynamicDetailQueryReq) {
 
         List<NestedModuleDataDTO> detailDatas =
                 dynamicQueryService.getDetail(
                         dynamicDetailQueryReq, dynamicDetailQueryReq.getBtnType());
 
-        return DetailDataResp.of(
-                metaList, CollectionUtils.isEmpty(detailDatas) ? null : detailDatas.get(0));
-    }
-
-    private List<SysModuleInfo> getListStructure(SysModuleInfo meta) {
-        List<SysModuleInfo> list = new ArrayList<>();
-        list.add(meta);
-        if (!CollectionUtils.isEmpty(meta.getChildren())) {
-            for (SysModuleInfo sysModuleInfo : meta.getChildren()) {
-                list.addAll(getListStructure(sysModuleInfo));
-            }
-        }
-        return list;
+        return CollectionUtils.isEmpty(detailDatas) ? null : detailDatas.get(0);
     }
 
     @Override

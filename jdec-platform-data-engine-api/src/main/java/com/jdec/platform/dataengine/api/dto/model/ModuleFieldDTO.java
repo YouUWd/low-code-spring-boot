@@ -45,4 +45,6 @@ public class ModuleFieldDTO {
     private Boolean view = false;
 
     private Boolean edit = false;
+
+    private String businessNo;
 }

@@ -3,7 +3,6 @@ package com.jdec.platform.dataengine.api;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
-import com.jdec.platform.dataengine.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import java.util.List;
@@ -11,7 +10,7 @@ import java.util.List;
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
 
-    DetailDataResp<NestedModuleDataDTO> getDetail(DynamicDetailQueryReq dynamicDetailQueryReq);
+    NestedModuleDataDTO getDetail(DynamicDetailQueryReq dynamicDetailQueryReq);
 
     Long save(DynamicSaveReq req);
 

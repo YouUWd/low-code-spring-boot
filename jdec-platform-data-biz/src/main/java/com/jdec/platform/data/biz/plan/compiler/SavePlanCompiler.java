@@ -101,6 +101,7 @@ public class SavePlanCompiler {
         // 规范化当前节点的 records，并提取行内嵌套的 children (DataBlock 读写同构)
         List<DataRow> sourceRecords = node.getRecords();
         List<Map<String, Object>> cleanRecords = new ArrayList<>();
+        List<DataRow> cleanSourceRows = new ArrayList<>();
 
         if (sourceRecords != null && !sourceRecords.isEmpty()) {
             for (DataRow rawRow : sourceRecords) {
@@ -117,6 +118,7 @@ public class SavePlanCompiler {
                                 projectRelations,
                                 tree);
                 cleanRecords.add(cleanRow);
+                cleanSourceRows.add(rawRow);
             }
         }
 
@@ -129,6 +131,7 @@ public class SavePlanCompiler {
                 .parentForeignKey(parentFk)
                 .isMany(isMany)
                 .records(cleanRecords)
+                .sourceDataRows(cleanSourceRows)
                 .children(childPlans)
                 .build();
     }

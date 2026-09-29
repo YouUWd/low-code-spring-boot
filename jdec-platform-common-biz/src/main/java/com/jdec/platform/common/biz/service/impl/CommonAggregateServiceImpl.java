@@ -12,16 +12,23 @@ import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
+import com.jdec.platform.common.biz.dto.response.StatusSimpleResp;
+import com.jdec.platform.common.biz.dto.response.UserSimpleResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
+import com.jdec.platform.config.api.SysStatusApi;
+import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
+import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
+import com.jdec.platform.config.api.dto.response.SysUserPageResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
@@ -38,6 +45,7 @@ import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -62,6 +70,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private final DataApi dataApi;
     private final IApprovalEngine approvalEngine;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+    private final SysUserApi sysUserApi;
+    private final SysStatusApi sysStatusApi;
 
     @Override
     public MenuDataResp queryByMenu(Long menuId, MenuQueryReq req) {
@@ -182,7 +192,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
-            String rootModKey = String.valueOf(rootModuleId);
+            String primaryTable =
+                    (moduleTree != null && moduleTree.getRootModule() != null)
+                            ? moduleTree.getRootModule().getPrimaryTable()
+                            : null;
+            enhanceDataRows(rawDataPage.getRecords(), rootModuleId, primaryTable);
             for (DataRow rawRow : rawDataPage.getRecords()) {
                 if (rawRow == null) {
                     continue;
@@ -238,6 +252,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         if (dataBlock != null
                 && dataBlock.getRecords() != null
                 && !dataBlock.getRecords().isEmpty()) {
+            String primaryTable = extractPrimaryTable(rootModuleId);
+            enhanceDataRows(dataBlock.getRecords(), rootModuleId, primaryTable);
             DataRow rawRow = dataBlock.getRecords().get(0);
             dataTree.getRecord().add(buildDataRecordItemFromDataRow(rootModuleId, menuId, rawRow));
         }
@@ -448,7 +464,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<Long> pathFromChildToRoot = new ArrayList<>();
         Long curr = moduleId;
         Set<Long> visited = new HashSet<>();
-        while (curr != null && !curr.equals(rootModuleId) && visited.add(curr)) {
+        while (!curr.equals(rootModuleId) && visited.add(curr)) {
             pathFromChildToRoot.add(curr);
             ModuleInfo m = moduleTree.getModule(curr);
             if (m == null || m.getParentId() == null || m.getParentId() == 0) {
@@ -941,6 +957,132 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         return new RootModuleFieldIds(idFieldId, createdByFieldId, businessStatusFieldId);
+    }
+
+    /**
+     * 在 DataRow 阶段对主表数据进行元数据增强（created_by 转换为 UserSimpleResp，business_status 转换为 StatusSimpleResp）
+     */
+    private void enhanceDataRows(List<DataRow> records, Long rootModuleId, String primaryTable) {
+        if (CollectionUtils.isEmpty(records) || primaryTable == null || primaryTable.isBlank()) {
+            return;
+        }
+
+        // 1. 批量收集主表记录中的 created_by 与 business_status
+        Set<Long> userIds = new HashSet<>();
+        Set<Integer> statusValues = new HashSet<>();
+        for (DataRow row : records) {
+            if (row == null) {
+                continue;
+            }
+            Long uid = row.getLong(primaryTable, "created_by");
+            if (uid != null) {
+                userIds.add(uid);
+            }
+            Integer sv = row.getInteger(primaryTable, "business_status");
+            if (sv != null) {
+                statusValues.add(sv);
+            }
+        }
+
+        // 2. 批量查询用户信息
+        Map<Long, UserSimpleResp> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            try {
+                QueryUsersByIdsReq queryReq = new QueryUsersByIdsReq();
+                queryReq.setUserIds(new ArrayList<>(userIds));
+                List<SysUserPageResp> userList = sysUserApi.getUsersByUserIds(queryReq);
+                if (userList != null) {
+                    for (SysUserPageResp u : userList) {
+                        if (u == null) {
+                            continue;
+                        }
+                        UserSimpleResp resp =
+                                UserSimpleResp.builder()
+                                        .userId(u.getUserId())
+                                        .userName(u.getUserName())
+                                        .userAvatar(u.getUserAvatar())
+                                        .workNumber(u.getWorkNumber())
+                                        .build();
+                        if (u.getUserId() != null) {
+                            userMap.put(u.getUserId(), resp);
+                        }
+                        if (u.getId() != null) {
+                            userMap.putIfAbsent(u.getId(), resp);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("批量查询用户信息失败: userIds={}, err={}", userIds, ex.getMessage());
+            }
+        }
+
+        // 3. 批量查询状态信息
+        Map<Integer, StatusSimpleResp> statusMap = new HashMap<>();
+        if (!statusValues.isEmpty() && rootModuleId != null) {
+            for (Integer sv : statusValues) {
+                try {
+                    ModuleApprovalChainConfigResp.StatusNode node =
+                            sysStatusApi.getStatusByValue(sv, rootModuleId);
+                    if (node != null) {
+                        statusMap.put(
+                                sv,
+                                StatusSimpleResp.builder()
+                                        .title(node.getTitle())
+                                        .statusValue(node.getStatusValue())
+                                        .statusBackground(node.getStatusBackground())
+                                        .statusFontColor(node.getStatusFontColor())
+                                        .build());
+                    }
+                } catch (Exception ex) {
+                    log.warn(
+                            "获取模块状态信息失败: moduleId={}, statusValue={}, err={}",
+                            rootModuleId,
+                            sv,
+                            ex.getMessage());
+                }
+            }
+        }
+
+        // 4. 将转换后的对象写回 DataRow 主表
+        for (DataRow row : records) {
+            if (row == null) {
+                continue;
+            }
+            Long uid = row.getLong(primaryTable, "created_by");
+            if (uid != null) {
+                UserSimpleResp userResp = userMap.get(uid);
+                row.putValue(
+                        primaryTable,
+                        "created_by",
+                        userResp != null ? userResp : UserSimpleResp.builder().userId(uid).build());
+            }
+            Integer sv = row.getInteger(primaryTable, "business_status");
+            if (sv != null) {
+                StatusSimpleResp statusResp = statusMap.get(sv);
+                row.putValue(
+                        primaryTable,
+                        "business_status",
+                        statusResp != null
+                                ? statusResp
+                                : StatusSimpleResp.builder().statusValue(sv).build());
+            }
+        }
+    }
+
+    private String extractPrimaryTable(Long rootModuleId) {
+        if (rootModuleId == null) {
+            return null;
+        }
+        try {
+            ModuleTreeDTO moduleTree =
+                    configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+            if (moduleTree != null && moduleTree.getRootModule() != null) {
+                return moduleTree.getRootModule().getPrimaryTable();
+            }
+        } catch (Exception ex) {
+            log.warn("获取主模块主表名失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
+        }
+        return null;
     }
 
     private Long parseRecordIdFromRaw(Object rIdObj) {

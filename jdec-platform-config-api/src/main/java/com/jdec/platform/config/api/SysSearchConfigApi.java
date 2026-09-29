@@ -1,5 +1,6 @@
 package com.jdec.platform.config.api;
 
+import com.jdec.platform.config.api.dto.response.SearchBusinessTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SearchConfigItemResp;
 import java.util.List;
 
@@ -16,4 +17,13 @@ public interface SysSearchConfigApi {
      * @return 匹配到的搜索配置列表，字段不存在或未匹配到类型时返回空列表
      */
     List<SearchConfigItemResp> listSearchConfig(String dataIndex);
+
+    /**
+     * 查询全部业务类型下拉选项
+     *
+     * <p>取 search_config.json 中的 businessType / businessTypeName，按 businessType 去重后返回，供前端下拉框展示。
+     *
+     * @return 去重后的业务类型选项列表
+     */
+    List<SearchBusinessTypeOptionResp> listBusinessTypeOptions();
 }

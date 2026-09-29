@@ -1,6 +1,6 @@
 package com.jdec.platform.data.biz.plan.executor;
 
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
 import com.jdec.platform.shared.context.AppContext;
@@ -27,16 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class SavePlanExecutor {
 
     private final JooqDataContextFactory jooqDataContextFactory;
-
-    /** 平台级核心维护列集合（严格对应《数据库规范》核心标准） */
-    private static final Set<String> PLATFORM_COLUMNS =
-            Set.of(
-                    "subject_id",
-                    "created_by",
-                    "created_date",
-                    "updated_by",
-                    "updated_date",
-                    "deleted");
 
     /** 在单事务内执行整树落库并返回根记录 ID */
     @Transactional(rollbackFor = Exception.class)
@@ -98,9 +88,14 @@ public class SavePlanExecutor {
         Long masterId = null;
 
         if (rootRecords != null && !rootRecords.isEmpty()) {
-            for (Map<String, Object> rootRecord : rootRecords) {
+            List<DataRow> sourceRows = rootPlan.getSourceDataRows();
+            for (int i = 0; i < rootRecords.size(); i++) {
+                Map<String, Object> rootRecord = rootRecords.get(i);
+                DataRow sourceRow =
+                        (sourceRows != null && i < sourceRows.size()) ? sourceRows.get(i) : null;
                 Map<String, Object> rootRowMap = new LinkedHashMap<>();
-                Long generatedId = upsertSingleRow(dsl, primaryTable, rootPlan, rootRecord);
+                Long generatedId =
+                        upsertSingleRow(dsl, primaryTable, rootPlan, rootRecord, sourceRow, null);
                 if (generatedId != null) {
                     if (masterId == null) {
                         masterId = generatedId;
@@ -182,13 +177,18 @@ public class SavePlanExecutor {
 
         List<Map<String, Object>> rowResults = new ArrayList<>();
         if (rows != null) {
-            for (Map<String, Object> row : rows) {
+            List<DataRow> sourceRows = nodePlan.getSourceDataRows();
+            for (int i = 0; i < rows.size(); i++) {
+                Map<String, Object> row = rows.get(i);
+                DataRow sourceRow =
+                        (sourceRows != null && i < sourceRows.size()) ? sourceRows.get(i) : null;
                 Map<String, Object> childRowMap = new LinkedHashMap<>();
                 // 强制自动回填外键
                 if (fkField != null && !fkField.isBlank() && parentId != null) {
                     row.put(fkField, parentId);
+                    backfillForeignKey(sourceRow, table, fkField, parentId);
                 }
-                Long rowId = upsertSingleRow(dsl, table, nodePlan, row);
+                Long rowId = upsertSingleRow(dsl, table, nodePlan, row, sourceRow, parentId);
                 if (rowId != null) {
                     childRowMap.put(table, Map.of("id", rowId));
                 }
@@ -215,14 +215,43 @@ public class SavePlanExecutor {
         }
     }
 
+    /** 回填主键到 DataRow 对应的表对象中 */
+    private void backfillId(DataRow sourceRow, String table, Long id) {
+        if (sourceRow == null || id == null) {
+            return;
+        }
+        if (table != null && !table.isBlank()) {
+            sourceRow.putValue(table, "id", id);
+        } else {
+            sourceRow.setTable("id", id);
+        }
+    }
+
+    /** 回填外键到 DataRow 对应的表对象中 */
+    private void backfillForeignKey(
+            DataRow sourceRow, String table, String fkField, Long parentId) {
+        if (sourceRow == null || fkField == null || fkField.isBlank() || parentId == null) {
+            return;
+        }
+        if (table != null && !table.isBlank()) {
+            sourceRow.putValue(table, fkField, parentId);
+        } else {
+            sourceRow.setTable(fkField, parentId);
+        }
+    }
+
     /** 单行 Upsert 落库 */
     private Long upsertSingleRow(
-            DSLContext dsl, String table, SaveNodePlan nodePlan, Map<String, Object> row) {
+            DSLContext dsl,
+            String table,
+            SaveNodePlan nodePlan,
+            Map<String, Object> row,
+            DataRow sourceRow,
+            Long parentId) {
         if (row == null || row.isEmpty()) {
             return null;
         }
 
-        Set<String> validColumns = getModuleValidColumns(nodePlan, table);
         Map<Field<Object>, Object> fieldValues = new LinkedHashMap<>();
 
         Object idObj = row.get("id");
@@ -236,13 +265,18 @@ public class SavePlanExecutor {
 
         for (Map.Entry<String, Object> entry : row.entrySet()) {
             String col = entry.getKey();
-            if ("children".equals(col) || (col != null && col.matches("\\d+"))) {
-                continue; // 忽略嵌套子节点数据与子模块数字键
+            Object val = entry.getValue();
+            if (col == null
+                    || "children".equals(col)
+                    || col.matches("\\d+")
+                    || val instanceof Map<?, ?>
+                    || val instanceof List<?>) {
+                continue; // 忽略嵌套子节点数据、子模块数字键与对象结构
             }
-            if (!validColumns.contains(col.toLowerCase())) {
-                continue; // 过滤非当前表物理列
+            if (id != null && "id".equalsIgnoreCase(col)) {
+                continue; // 更新模式下不重复 SET 主键 id
             }
-            fieldValues.put(DSL.field(DSL.name(table, col)), entry.getValue());
+            fieldValues.put(DSL.field(DSL.name(table, col)), val);
         }
 
         Long currentUserId = UserContext.getUserId();
@@ -250,7 +284,7 @@ public class SavePlanExecutor {
         LocalDateTime now = LocalDateTime.now();
 
         if (id != null) {
-            // Update
+            // Update 模式
             fieldValues.put(DSL.field(DSL.name(table, "updated_by")), currentUserId);
             fieldValues.put(DSL.field(DSL.name(table, "updated_date")), now);
 
@@ -261,14 +295,12 @@ public class SavePlanExecutor {
                                     .eq(id)
                                     .and(DSL.field(DSL.name(table, "deleted")).eq((byte) 0)))
                     .execute();
+            backfillId(sourceRow, table, id);
             return id;
         } else {
-            // Insert
-            if (validColumns.contains("subject_id") || subjectId != null) {
-                fieldValues.put(
-                        DSL.field(DSL.name(table, "subject_id")),
-                        subjectId != null ? subjectId : 0L);
-            }
+            // Insert 模式
+            fieldValues.put(
+                    DSL.field(DSL.name(table, "subject_id")), subjectId != null ? subjectId : 0L);
             fieldValues.put(DSL.field(DSL.name(table, "created_by")), currentUserId);
             fieldValues.put(DSL.field(DSL.name(table, "created_date")), now);
             fieldValues.put(DSL.field(DSL.name(table, "updated_by")), currentUserId);
@@ -302,26 +334,14 @@ public class SavePlanExecutor {
                 }
             }
 
-            return generatedId != null && generatedId > 0 ? generatedId : 1L;
-        }
-    }
-
-    /** 获取模块某张物理表的合法列集合 */
-    private Set<String> getModuleValidColumns(SaveNodePlan nodePlan, String table) {
-        Set<String> set = new HashSet<>(PLATFORM_COLUMNS);
-        set.add("id");
-        if (nodePlan.getParentForeignKey() != null) {
-            set.add(nodePlan.getParentForeignKey().toLowerCase());
-        }
-        if (nodePlan.getModuleMeta() != null && nodePlan.getModuleMeta().getFields() != null) {
-            for (ModuleFieldDTO f : nodePlan.getModuleMeta().getFields()) {
-                if (f.getTableName() != null && f.getTableName().equalsIgnoreCase(table)) {
-                    if (f.getColumnName() != null) {
-                        set.add(f.getColumnName().toLowerCase());
-                    }
-                }
+            if (generatedId == null || generatedId <= 0) {
+                throw new IllegalStateException(
+                        String.format("物理表 [%s] 新增数据落库失败：未能获取到生成的有效主键 ID", table));
             }
+
+            row.put("id", generatedId);
+            backfillId(sourceRow, table, generatedId);
+            return generatedId;
         }
-        return set;
     }
 }
