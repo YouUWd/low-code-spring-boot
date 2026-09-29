@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysSearchConfigApi;
+import com.jdec.platform.config.api.dto.response.SearchBusinessTypeOptionResp;
 import com.jdec.platform.config.api.dto.response.SearchConfigItemResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
@@ -11,8 +12,9 @@ import com.jdec.platform.shared.exception.BusinessException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.Data;
@@ -43,10 +45,15 @@ public class SysSearchConfigService implements SysSearchConfigApi {
     /** dataType（小写）→ 搜索配置列表 */
     private final Map<String, List<SearchConfigItemResp>> configMap;
 
+    /** 业务类型下拉选项（按 businessType 去重，保持配置文件顺序） */
+    private final List<SearchBusinessTypeOptionResp> businessTypeOptions;
+
     public SysSearchConfigService(
             ObjectMapper objectMapper, DataSourceResolver dataSourceResolver) {
         this.dataSourceResolver = dataSourceResolver;
-        this.configMap = loadConfig(objectMapper);
+        List<SearchConfigEntry> entries = loadEntries(objectMapper);
+        this.configMap = buildConfigMap(entries);
+        this.businessTypeOptions = buildBusinessTypeOptions(entries);
     }
 
     @Override
@@ -58,6 +65,11 @@ public class SysSearchConfigService implements SysSearchConfigApi {
             return Collections.emptyList();
         }
         return configMap.getOrDefault(key, Collections.emptyList());
+    }
+
+    @Override
+    public List<SearchBusinessTypeOptionResp> listBusinessTypeOptions() {
+        return businessTypeOptions;
     }
 
     /** 拆分字段索引「模块ID.表名.字段名」，返回 [表名, 字段名] */
@@ -101,30 +113,50 @@ public class SysSearchConfigService implements SysSearchConfigApi {
         }
     }
 
-    /** 读取 search_config.json 并建立 dataType（小写）索引 */
-    private Map<String, List<SearchConfigItemResp>> loadConfig(ObjectMapper objectMapper) {
+    /** 读取 search_config.json */
+    private List<SearchConfigEntry> loadEntries(ObjectMapper objectMapper) {
         ClassPathResource resource = new ClassPathResource(CONFIG_PATH);
         if (!resource.exists()) {
             throw new BusinessException("搜索配置文件不存在: " + CONFIG_PATH);
         }
         try (InputStream inputStream = resource.getInputStream()) {
-            List<SearchConfigEntry> entries =
-                    objectMapper.readValue(inputStream, new TypeReference<>() {});
-            Map<String, List<SearchConfigItemResp>> map = new HashMap<>();
-            for (SearchConfigEntry entry : entries) {
-                if (entry.getDataType() != null) {
-                    map.put(
-                            entry.getDataType().toLowerCase(),
-                            entry.getSearchConfig() != null
-                                    ? entry.getSearchConfig()
-                                    : Collections.emptyList());
-                }
-            }
-            log.info("已加载 {} 条字段搜索配置", map.size());
-            return map;
+            return objectMapper.readValue(inputStream, new TypeReference<>() {});
         } catch (IOException e) {
             throw new BusinessException("读取搜索配置失败: " + CONFIG_PATH + "，原因: " + e.getMessage());
         }
+    }
+
+    /** 建立 dataType（小写）索引 */
+    private Map<String, List<SearchConfigItemResp>> buildConfigMap(
+            List<SearchConfigEntry> entries) {
+        Map<String, List<SearchConfigItemResp>> map = new LinkedHashMap<>();
+        for (SearchConfigEntry entry : entries) {
+            if (entry.getDataType() != null) {
+                map.put(
+                        entry.getDataType().toLowerCase(),
+                        entry.getSearchConfig() != null
+                                ? entry.getSearchConfig()
+                                : Collections.emptyList());
+            }
+        }
+        log.info("已加载 {} 条字段搜索配置", map.size());
+        return map;
+    }
+
+    /** 提取 businessType / businessTypeName，按 businessType 去重 */
+    private List<SearchBusinessTypeOptionResp> buildBusinessTypeOptions(
+            List<SearchConfigEntry> entries) {
+        Map<String, SearchBusinessTypeOptionResp> options = new LinkedHashMap<>();
+        for (SearchConfigEntry entry : entries) {
+            if (entry.getBusinessType() == null || entry.getBusinessType().isBlank()) {
+                continue;
+            }
+            options.putIfAbsent(
+                    entry.getBusinessType(),
+                    new SearchBusinessTypeOptionResp(
+                            entry.getBusinessType(), entry.getBusinessTypeName()));
+        }
+        return new ArrayList<>(options.values());
     }
 
     /** 字段类型归一化：转小写并截掉长度/精度声明，如 VARCHAR(64) → varchar、int unsigned → int */
@@ -149,6 +181,12 @@ public class SysSearchConfigService implements SysSearchConfigApi {
 
         /** 数据库字段类型，如 varchar、datetime */
         private String dataType;
+
+        /** 业务类型编码，如 TEXT、INT */
+        private String businessType;
+
+        /** 业务类型名称，如 文本、整数 */
+        private String businessTypeName;
 
         /** 该字段类型下可用的搜索配置 */
         private List<SearchConfigItemResp> searchConfig;
