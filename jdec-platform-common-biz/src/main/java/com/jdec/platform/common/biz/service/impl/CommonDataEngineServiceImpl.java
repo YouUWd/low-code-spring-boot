@@ -1,6 +1,5 @@
 package com.jdec.platform.common.biz.service.impl;
 
-import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
@@ -35,8 +34,6 @@ import org.springframework.util.CollectionUtils;
 public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
     private final DataEngineApi dataEngineApi;
-
-    private final UserMenuHeaderApi userMenuHeaderApi;
 
     private final ConfigApi configApi;
 

@@ -1,11 +1,10 @@
 package com.jdec.platform.dataengine.biz.dsl;
 
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
+import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
+import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -130,26 +129,15 @@ public class JooqSqlBuilder {
 
     /** 构建包含主表与 1:1/N:1 关联从表的 SelectJoinStep */
     public SelectJoinStep<Record> buildSelectFrom(StatementContext context) {
-        //        List<Field<?>> fields =
-        //                moduleFilterInfo.getSimpleModuleFields().stream()
-        //                        .filter(ele -> tableName.equals(ele.getTableName()))
-        //                        .map(
-        //                                item ->
-        //                                        DSL.field(
-        //                                                /*item.getTableName() + "." + */ item
-        //                                                        .getFieldCode()))
-        //                        .collect(Collectors.toList());
-        //
-        //        SelectJoinStep<Record> query = dsl.select(fields).from(tableName);
 
         List<Field<?>> fields =
                 context.getFields().stream()
-                        .filter(ele -> context.getTableName().equals(ele.getTableName()))
                         .map(
                                 item ->
                                         DSL.field(
-                                                        /*item.getTableName() + "." + */ item
-                                                                .getColumnName())
+                                                        DSL.name(
+                                                                item.getTableName(),
+                                                                item.getColumnName()))
                                                 .as(
                                                         item.getTableName()
                                                                 + "."
@@ -160,6 +148,31 @@ public class JooqSqlBuilder {
             query = context.getDsl().select(DSL.asterisk()).from(context.getTableName());
         } else {
             query = context.getDsl().select(fields).from(context.getTableName());
+        }
+
+        Set<String> moduleTables =
+                context.getFields().stream()
+                        .map(ModuleFieldDTO::getTableName)
+                        .collect(Collectors.toSet());
+        moduleTables.remove(context.getTableName());
+
+        TabTreeNodeDTO tableTreeNode = TabTreeNodeDTO.buildCompanyRoot();
+
+        for (String tableName : moduleTables) {
+            TabTreeNodeDTO targetNode = TabTreeNodeDTO.findSubTreeByValue(tableTreeNode, tableName);
+            query.leftJoin(DSL.table(DSL.name(targetNode.getNode().getTableName())))
+                    .on(
+                            DSL.field(
+                                            DSL.name(
+                                                    targetNode.getNode().getParentTableName(),
+                                                    targetNode.getNode().getParentTableField()))
+                                    .eq(
+                                            DSL.field(
+                                                    DSL.name(
+                                                            targetNode.getNode().getTableName(),
+                                                            targetNode
+                                                                    .getNode()
+                                                                    .getSubTableField()))));
         }
 
         return query;

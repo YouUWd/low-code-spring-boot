@@ -1080,6 +1080,12 @@ public class DynamicQueryService {
         Long id = versionListQueryReq.getId();
         Long moduleId = versionListQueryReq.getModuleId();
 
+        boolean hasApproval = true;
+
+        if (!hasApproval) {
+            return List.of();
+        }
+
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
                         AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
