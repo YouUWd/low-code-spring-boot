@@ -10,11 +10,13 @@ import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderSearchTypeResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
+import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.entity.SysMenuHeader;
 import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysRoleMenu;
 import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
+import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysMenuHeaderMapper;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
@@ -73,6 +75,15 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 字段索引分隔符 */
     private static final String DATA_INDEX_SEPARATOR = ".";
 
+    /** 关联字段标记：是（sys_field.relation_business_no 有值） */
+    private static final Integer RELATION_WORD_YES = 1;
+
+    /** 关联字段标记：否 */
+    private static final Integer RELATION_WORD_NO = 0;
+
+    /** sys_field 未删除标记 */
+    private static final Integer FIELD_DELETED_NO = 0;
+
     /** 变更标记：菜单关联的详情菜单已切换（表头配置尚未更新入库），0 表示未变化 */
     private static final Integer CHANGE_DETAIL_SWITCHED = 1;
 
@@ -88,6 +99,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     private final SysMenuHeaderMapper sysMenuHeaderMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
+    private final SysFieldMapper sysFieldMapper;
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final ObjectMapper objectMapper;
@@ -277,8 +289,10 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         Long headerMenuId = resolveHeaderMenuId(menuId);
 
         // 生成侧最新数据（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
-        // 每次返回前都据此比对：sys_menu_header 中模块侧已不存在的节点不返回给前端
-        Set<String> generatedVirIds = buildGeneratedVirIds(headerMenuId);
+        // 每次返回前都据此比对：sys_menu_header 中模块侧已不存在的节点不返回给前端；
+        // 展示名与关联字段标记一律取生成侧（源头），不取库中存储值
+        Map<String, SysMenuHeaderResp> generatedByVirId =
+                indexByVirId(buildGeneratedNodes(headerMenuId, null));
 
         // 纯读取该菜单已保存的表头节点（数据隔离：subject_id + project_no），仅保留节点池中仍存在的节点
         List<SysMenuHeader> stored =
@@ -291,7 +305,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                                         .orderByAsc(
                                                 SysMenuHeader::getSortValue, SysMenuHeader::getId))
                         .stream()
-                        .filter(node -> generatedVirIds.contains(node.getVirId()))
+                        .filter(node -> generatedByVirId.containsKey(node.getVirId()))
                         .collect(Collectors.toList());
         // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头
         List<SysMenuHeader> nodes = retainCheckedWithAncestors(stored);
@@ -315,7 +329,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         if (root == null) {
             return new MenuHeaderDisplayResp();
         }
-        return MenuHeaderDisplayResp.builder().header(toColumnResp(root, childrenByParent)).build();
+        return MenuHeaderDisplayResp.builder()
+                .header(toColumnResp(root, childrenByParent, generatedByVirId))
+                .build();
     }
 
     /** 深度优先压平提交的表头节点树（父节点在前） */
@@ -405,11 +421,18 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         return topNodes.getFirst();
     }
 
-    /** 递归组装多级列头展示节点：菜单节点输出 sourceId/colors，字段节点输出字段展示配置 */
+    /**
+     * 递归组装多级列头展示节点：菜单节点输出 sourceId/colors，字段节点输出字段展示配置
+     *
+     * <p>展示名与关联字段标记取生成侧（源头：菜单标题 / 模块字段显示名、sys_field 关联配置），不取库中存储值。
+     */
     private MenuHeaderColumnResp toColumnResp(
-            SysMenuHeader node, Map<String, List<SysMenuHeader>> childrenByParent) {
+            SysMenuHeader node,
+            Map<String, List<SysMenuHeader>> childrenByParent,
+            Map<String, SysMenuHeaderResp> generatedByVirId) {
+        SysMenuHeaderResp generated = generatedByVirId.get(node.getVirId());
         MenuHeaderColumnResp resp = new MenuHeaderColumnResp();
-        resp.setLabel(node.getLabel());
+        resp.setLabel(generated != null ? generated.getLabel() : node.getLabel());
         resp.setModuleId(node.getModuleId());
         if (isMenuNode(node)) {
             resp.setSourceId(node.getSourceId());
@@ -417,6 +440,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         } else {
             resp.setFieldId(node.getSourceId());
             resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
+            resp.setRelationWord(generated != null ? generated.getRelationWord() : null);
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -430,7 +454,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         if (!children.isEmpty()) {
             resp.setChildren(
                     children.stream()
-                            .map(child -> toColumnResp(child, childrenByParent))
+                            .map(child -> toColumnResp(child, childrenByParent, generatedByVirId))
                             .collect(Collectors.toList()));
         }
         return resp;
@@ -477,11 +501,15 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     // ==================== 生成侧：菜单 + 模块字段 ====================
 
-    /** 生成侧全部节点虚拟id 集合（可用节点池），供展示/合并时过滤模块侧已不存在的历史节点 */
-    private Set<String> buildGeneratedVirIds(Long menuId) {
-        return buildGeneratedNodes(menuId, null).stream()
-                .map(SysMenuHeaderResp::getVirId)
-                .collect(Collectors.toSet());
+    /** 生成侧节点按虚拟id 建索引（可用节点池），供展示/合并时过滤模块侧已不存在的历史节点并取源头展示字段 */
+    private Map<String, SysMenuHeaderResp> indexByVirId(List<SysMenuHeaderResp> nodes) {
+        return nodes.stream()
+                .collect(
+                        Collectors.toMap(
+                                SysMenuHeaderResp::getVirId,
+                                node -> node,
+                                (first, second) -> first,
+                                LinkedHashMap::new));
     }
 
     /**
@@ -521,6 +549,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         Map<Long, List<SysModuleField>> fieldsByModule =
                 selectFieldsGroupByModule(moduleIds, roleId);
 
+        // 生成侧节点已带齐展示所需的源头数据：菜单标题、模块字段显示名、是否关联字段（sys_field）
+        Set<String> relationFieldIndexes = selectRelationFieldIndexes(fieldsByModule);
+
         // 先按树形生成，再压平为节点列表
         SysMenuHeaderResp root =
                 toGeneratedNode(
@@ -529,6 +560,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                         ROOT_PARENT_ID,
                         childrenByPid,
                         fieldsByModule,
+                        relationFieldIndexes,
                         SORT_VALUE_FIRST);
         List<SysMenuHeaderResp> nodes = new ArrayList<>();
         flatten(root, nodes);
@@ -541,6 +573,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * @param menu 当前菜单
      * @param rootMenuId 最顶层菜单ID（所有节点的 menu_id 均取该值）
      * @param parentVirId 父节点虚拟id（顶层为 {@code 0}）
+     * @param relationFieldIndexes 关联字段索引集合（sys_field 中配置了 relation_business_no 的 表名.字段名）
      * @param sortValue 当前节点在同级中的排序值
      */
     private SysMenuHeaderResp toGeneratedNode(
@@ -549,6 +582,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             String parentVirId,
             Map<Long, List<SysMenu>> childrenByPid,
             Map<Long, List<SysModuleField>> fieldsByModule,
+            Set<String> relationFieldIndexes,
             Integer sortValue) {
         String currentVirId = menuVirId(menu.getId());
 
@@ -572,6 +606,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         List<SysModuleField> fields =
                 fieldsByModule.getOrDefault(menu.getModuleId(), Collections.emptyList());
         for (SysModuleField field : fields) {
+            String dataIndex = buildDataIndex(field);
             SysMenuHeaderResp fieldResp = new SysMenuHeaderResp();
             fieldResp.setMenuId(rootMenuId);
             fieldResp.setNodeType(NODE_TYPE_FIELD);
@@ -579,8 +614,12 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             fieldResp.setParentId(currentVirId);
             fieldResp.setSourceId(field.getId());
             fieldResp.setModuleId(field.getModuleId());
-            fieldResp.setDataIndex(buildDataIndex(field));
+            fieldResp.setDataIndex(dataIndex);
             fieldResp.setLabel(firstNotBlank(field.getDisplayName(), field.getColumnName()));
+            fieldResp.setRelationWord(
+                    relationFieldIndexes.contains(dataIndex)
+                            ? RELATION_WORD_YES
+                            : RELATION_WORD_NO);
             fieldResp.setSorted(SORTED_YES);
             fieldResp.setEllipsis(ELLIPSIS_NO);
             fieldResp.setChecked(CHECKED_NO);
@@ -598,6 +637,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                             currentVirId,
                             childrenByPid,
                             fieldsByModule,
+                            relationFieldIndexes,
                             childSortValue++));
         }
         resp.setChildren(children);
@@ -647,7 +687,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                 stored.getSourceId() != null ? stored.getSourceId() : generated.getSourceId());
         resp.setModuleId(
                 stored.getModuleId() != null ? stored.getModuleId() : generated.getModuleId());
-        resp.setLabel(stored.getLabel() != null ? stored.getLabel() : generated.getLabel());
+        // 展示名与关联字段标记一律取生成侧（源头），不取库中存储值
+        resp.setLabel(generated.getLabel());
+        resp.setRelationWord(generated.getRelationWord());
         resp.setDataIndex(
                 stripModulePrefix(
                         stored.getDataIndex() != null
@@ -849,6 +891,44 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     }
 
     // ==================== 小工具 ====================
+
+    /**
+     * 查询「已配置关联业务编号」的字段索引集合（{@code 表名.字段名}）
+     *
+     * <p>用模块字段的物理表名/列名到 {@code sys_field} 匹配（数据隔离：{@code subject_id + project_no}，仅未删除）， {@code
+     * relation_business_no} 有值即为关联字段。
+     */
+    private Set<String> selectRelationFieldIndexes(Map<Long, List<SysModuleField>> fieldsByModule) {
+        Set<String> tableNames = new HashSet<>();
+        for (List<SysModuleField> fields : fieldsByModule.values()) {
+            for (SysModuleField field : fields) {
+                if (field.getTableName() != null) {
+                    tableNames.add(field.getTableName());
+                }
+            }
+        }
+        if (tableNames.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
+        List<SysField> fields =
+                sysFieldMapper.selectList(
+                        Wrappers.<SysField>lambdaQuery()
+                                .in(SysField::getTableName, tableNames)
+                                .eq(SysField::getDeleted, FIELD_DELETED_NO)
+                                .eq(subjectId != null, SysField::getSubjectId, subjectId)
+                                .eq(projectNo != null, SysField::getProjectNo, projectNo));
+        Set<String> indexes = new HashSet<>();
+        for (SysField field : fields) {
+            if (StringUtils.hasText(field.getRelationBusinessNo())
+                    && field.getTableName() != null
+                    && field.getColumnName() != null) {
+                indexes.add(field.getTableName() + DATA_INDEX_SEPARATOR + field.getColumnName());
+            }
+        }
+        return indexes;
+    }
 
     /** 菜单节点虚拟id：MENU_{菜单ID} */
     private String menuVirId(Long menuId) {
