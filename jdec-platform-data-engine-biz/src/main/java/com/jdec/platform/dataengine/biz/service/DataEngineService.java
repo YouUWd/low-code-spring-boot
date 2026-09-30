@@ -53,4 +53,14 @@ public class DataEngineService implements DataEngineApi {
     public List<VersionListResp> getVersionList(VersionListQueryReq versionListQueryReq) {
         return dynamicQueryService.getVersionList(versionListQueryReq);
     }
+
+    @Override
+    public Long insertAndGetId(DynamicInsertReq req) {
+        return moduleDataPersistenceService.insertAndGetId(req);
+    }
+
+    @Override
+    public Long deleteById(DynamicDeleteReq req) {
+        return moduleDataPersistenceService.deleteById(req);
+    }
 }
