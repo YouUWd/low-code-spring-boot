@@ -3,9 +3,6 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.fill.impl;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.BaseDataSaveNecessaryFieldFillService;
-import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.UserContext;
-import com.jdec.platform.shared.security.SecurityUtils;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -21,26 +18,15 @@ public class UserContextDataFieldFillServiceImpl implements BaseDataSaveNecessar
     public Map<String, Object> fillData(RecordSaveContext recordSaveContext) {
         Map<String, Object> fMap = new HashMap<>();
         if (recordSaveContext.getIsInsert()) {
-            fMap.put("subject_id", AppContext.getSubjectId());
-            fMap.put(
-                    "created_by",
-                    SecurityUtils.isMockLogin()
-                            ? SecurityUtils.getMockUserId()
-                            : SecurityUtils.getRealUserId());
-            fMap.put(
-                    "updated_by",
-                    SecurityUtils.isMockLogin()
-                            ? SecurityUtils.getMockUserId()
-                            : SecurityUtils.getRealUserId());
+            fMap.put("subject_id", recordSaveContext.getSubjectId());
+            fMap.put("created_by", recordSaveContext.getUserId());
+            fMap.put("updated_by", recordSaveContext.getUserId());
             fMap.put("created_date", LocalDateTime.now());
             fMap.put("updated_date", LocalDateTime.now());
+            fMap.put("deleted", 0);
             recordSaveContext.setDefaultUserContextDataMap(fMap);
         } else {
-            fMap.put(
-                    "updated_by",
-                    SecurityUtils.isMockLogin()
-                            ? SecurityUtils.getMockUserId()
-                            : UserContext.getUserId());
+            fMap.put("updated_by", recordSaveContext.getUserId());
             fMap.put("updated_date", LocalDateTime.now());
         }
         return fMap;
