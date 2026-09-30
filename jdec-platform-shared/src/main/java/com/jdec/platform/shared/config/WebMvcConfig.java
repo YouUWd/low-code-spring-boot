@@ -25,8 +25,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         //                                                "/api/**",
                         "/api/config/sys/user/check-permission",
                         "/api/config/init/**", // 系统初始化：无需登录
-                        "/api/student/login", // 学生端登录：无需登录
-                        "/api/student/permission/check-current-user",
+                        "/api/common/auth/login", // 登录：无需登录
+                        "/api/permission/*/check-current-user",
                         "/doc.html", // API 文档
                         "/webjars/**",
                         "/v3/api-docs/**",
@@ -37,16 +37,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(appContextInterceptor)
                 .addPathPatterns("/api/config/**")
                 .addPathPatterns("/api/data/**")
-                .addPathPatterns("/api/student/**")
                 .addPathPatterns("/api/common/**")
+                .addPathPatterns("/api/permission/**")
                 .addPathPatterns("/api/monitorlog/**")
                 .addPathPatterns("/api/data-engine/**")
                 .excludePathPatterns(
                         "/api/config/auth/**",
                         "/api/config/init/**",
-                        "/api/student/permission/check-current-user") // 系统初始化：无需 X-Project-No 上下文
-                .excludePathPatterns(
-                        "/api/config/auth/**", "/api/config/init/**"); // 系统初始化：无需 X-Project-No 上下文
+                        "/api/permission/*/check-current-user"); // 系统初始化：无需 X-Project-No 上下文
     }
 
     @Override

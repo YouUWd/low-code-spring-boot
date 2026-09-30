@@ -16,6 +16,11 @@ public class AppContext {
         return context != null ? context : new AppRequestContext();
     }
 
+    /** 设置上下文（仅设置项目编号） */
+    public static void setContext(String projectNo) {
+        setContext(projectNo, null);
+    }
+
     /** 设置上下文 */
     public static void setContext(String projectNo, Long subjectId) {
         CONTEXT_HOLDER.set(new AppRequestContext(projectNo, subjectId));
