@@ -267,8 +267,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
             ModuleSimplePermissionDTO permission = null;
 
-            if (permMap != null && permMap.get(rootModuleId) != null) {
-                ModulePermissionDTO p = permMap.get(rootModuleId);
+            if (permMap != null && permMap.get(modId) != null) {
+                ModulePermissionDTO p = permMap.get(modId);
                 permission =
                         ModuleSimplePermissionDTO.builder()
                                 .apply(Boolean.TRUE.equals(p.getApply()) ? 1 : 0)
