@@ -1,5 +1,5 @@
 /** 数据引擎业务模块 (Data Engine BIZ) */
-@org.springframework.modulith.ApplicationModule(
+@ApplicationModule(
         displayName = "Data Engine BIZ",
         allowedDependencies = {
             "dataengine.api",
@@ -9,3 +9,5 @@
             "shared"
         })
 package com.jdec.platform.dataengine.biz;
+
+import org.springframework.modulith.ApplicationModule;

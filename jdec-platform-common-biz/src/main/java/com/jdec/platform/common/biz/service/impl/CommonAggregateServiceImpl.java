@@ -9,6 +9,7 @@ import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
 import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
+import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
@@ -53,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -83,17 +85,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Long roleId = UserContext.getRoleId();
 
         // 1. 获取用户在该菜单下的个性化表头展示配置 (用于提取已勾选字段与多级表头)
-        MenuHeaderDisplayResp headerDisplay =
-                userMenuHeaderApi.getUserMenuHeaderDisplay(userId, menuId, roleId);
-        if (headerDisplay == null || headerDisplay.getHeader() == null) {
-            throw new BusinessException("菜单 [" + menuId + "] 未配置有效的表头展示信息");
-        }
-
-        MenuHeaderColumnResp headerRoot = headerDisplay.getHeader();
+        MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
         Long rootModuleId = headerRoot.getModuleId();
-        if (rootModuleId == null) {
-            throw new BusinessException("菜单 [" + menuId + "] 对应的表头未关联有效的根模块 ID");
-        }
 
         ModuleTreeDTO moduleTree =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
@@ -103,10 +96,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<Long> checkedFieldIds =
                 collectQueryFieldIds(headerRoot, req, rootModuleId, moduleTree, projectRelations);
 
-        // 2. 解析根模块核心字段 ID (id, created_by, business_status)
-        RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId);
-
-        // 3. 构建底层通用 QueryReq 并组装通用过滤/排序/分页
+        // 2. 构建底层通用 QueryReq 并组装通用过滤/排序/分页
         int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
         int pageSize = (req != null && req.getPageSize() != null) ? req.getPageSize() : 20;
 
@@ -118,67 +108,49 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .pageSize(pageSize)
                         .sorts(req != null ? req.getSorts() : null);
 
-        List<FilterItem> finalFilters = new ArrayList<>();
-        if (req != null && req.getFilters() != null && !req.getFilters().isEmpty()) {
-            for (var flatFilter : req.getFilters()) {
-                if (flatFilter != null && flatFilter.getFieldId() != null) {
-                    finalFilters.add(
-                            FilterItem.builder()
-                                    .fieldId(flatFilter.getFieldId())
-                                    .operator(
-                                            flatFilter.getOperator() != null
-                                                    ? flatFilter.getOperator()
-                                                    : "EQ")
-                                    .value(flatFilter.getValue())
-                                    .build());
-                }
-            }
-        }
+        List<FilterItem> finalFilters =
+                (req != null && !CollectionUtils.isEmpty(req.getFilters()))
+                        ? req.getFilters().stream()
+                                .filter(Objects::nonNull)
+                                .map(FlatFilterItem::toFilterItem)
+                                .collect(Collectors.toCollection(ArrayList::new))
+                        : new ArrayList<>();
 
-        // 4. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
+        String primaryTable =
+                (moduleTree != null && moduleTree.getRootModule() != null)
+                        ? moduleTree.getRootModule().getPrimaryTable()
+                        : null;
+
+        // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req != null ? req.getApprovalType() : null;
-        boolean hasApprovalChain = false;
-        try {
-            hasApprovalChain =
-                    Boolean.TRUE.equals(
-                            sysApprovalChainConfigApi.getApprovalStatus(
-                                    Collections.singletonList(rootModuleId)));
-        } catch (Exception ex) {
-            log.warn("查询模块审批链状态失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
+        ApprovalFilterOutcome approvalOutcome =
+                resolveApprovalFilters(rootModuleId, approvalType, moduleTree);
+
+        if (approvalOutcome.filterResult().shortCircuitEmpty()) {
+            ModuleDataNode emptyNode =
+                    ModuleDataNode.builder()
+                            .moduleId(rootModuleId)
+                            .menuId(menuId)
+                            .total(0L)
+                            .record(Collections.emptyList())
+                            .build();
+
+            List<ApprovalRowItem> emptyApprovalRows =
+                    approvalOutcome.allBtnsMap() != null ? Collections.emptyList() : null;
+
+            return assembleMenuDataResp(
+                    headerRoot, menuId, rootModuleId, roleId, emptyNode, emptyApprovalRows);
         }
 
-        Map<Long, List<Map<String, Object>>> allBtnsMap = null;
-        if (hasApprovalChain) {
-            ApprovalButtonsGroup approvalGroup = queryApprovalButtons(rootModuleId, approvalType);
-            Map<Long, List<Map<String, Object>>> approvalBtnMap = approvalGroup.relevantBtns();
-            allBtnsMap = approvalGroup.allBtns();
-
-            ApprovalFilterResult approvalFilterResult =
-                    buildApprovalFilters(approvalType, rootFieldIds, approvalBtnMap);
-            if (approvalFilterResult.shortCircuitEmpty()) {
-                // 短路直接返回空数据
-                ModuleDataNode emptyNode =
-                        ModuleDataNode.builder()
-                                .moduleId(rootModuleId)
-                                .menuId(menuId)
-                                .total(0L)
-                                .record(Collections.emptyList())
-                                .build();
-
-                return assembleMenuDataResp(
-                        headerRoot, menuId, rootModuleId, roleId, emptyNode, allBtnsMap);
-            }
-
-            if (!approvalFilterResult.filters().isEmpty()) {
-                finalFilters.addAll(approvalFilterResult.filters());
-            }
+        if (!approvalOutcome.filterResult().filters().isEmpty()) {
+            finalFilters.addAll(approvalOutcome.filterResult().filters());
         }
         queryReqBuilder.filters(finalFilters);
 
-        // 5. 调用底层低代码数据引擎进行分页查询
+        // 4. 调用底层低代码数据引擎进行分页查询
         DataPage<DataBlock> rawDataPage = dataApi.query(queryReqBuilder.build());
 
-        // 6. 将 DataRow 数据集结构转换为自相似同构树节点 ModuleDataNode
+        // 5. 将 DataRow 数据集结构转换为自相似同构树节点 ModuleDataNode 与 ApprovalRowItem 列表
         Long total =
                 (rawDataPage != null && rawDataPage.getTotal() != null)
                         ? rawDataPage.getTotal()
@@ -191,11 +163,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .record(new ArrayList<>())
                         .build();
 
+        List<ApprovalRowItem> approvalRows =
+                approvalOutcome.allBtnsMap() != null ? new ArrayList<>() : null;
+
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
-            String primaryTable =
-                    (moduleTree != null && moduleTree.getRootModule() != null)
-                            ? moduleTree.getRootModule().getPrimaryTable()
-                            : null;
             enhanceDataRows(rawDataPage.getRecords(), rootModuleId, primaryTable);
             for (DataRow rawRow : rawDataPage.getRecords()) {
                 if (rawRow == null) {
@@ -203,11 +174,34 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 }
                 rootNode.getRecord()
                         .add(buildDataRecordItemFromDataRow(rootModuleId, menuId, rawRow));
+
+                if (approvalRows != null) {
+                    Long recordId = rawRow.getLong(primaryTable, "id");
+                    if (recordId != null) {
+                        List<Map<String, Object>> btns = approvalOutcome.allBtnsMap().get(recordId);
+                        if (CollectionUtils.isEmpty(btns)) {
+                            boolean isHandle =
+                                    approvalType != null
+                                            && (approvalType == 1 || approvalType == 3);
+                            String buttonKey = isHandle ? "handle" : "view";
+                            String buttonName = isHandle ? "办理" : "查阅";
+                            Map<String, Object> defaultBtn = new LinkedHashMap<>();
+                            defaultBtn.put("buttonKey", buttonKey);
+                            defaultBtn.put("buttonName", buttonName);
+                            btns = Collections.singletonList(defaultBtn);
+                        }
+                        Map<String, Object> rowPayload = new LinkedHashMap<>();
+                        rowPayload.put("id", recordId);
+                        rowPayload.put("btnList", btns);
+                        approvalRows.add(ApprovalRowItem.builder().row(rowPayload).build());
+                    }
+                }
             }
         }
 
-        // 7. 组装并返回复合响应
-        return assembleMenuDataResp(headerRoot, menuId, rootModuleId, roleId, rootNode, allBtnsMap);
+        // 6. 组装并返回复合响应
+        return assembleMenuDataResp(
+                headerRoot, menuId, rootModuleId, roleId, rootNode, approvalRows);
     }
 
     @Override
@@ -223,17 +217,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Long roleId = UserContext.getRoleId();
 
         // 1. 获取表头展示配置提取 rootModuleId
-        MenuHeaderDisplayResp headerDisplay =
-                userMenuHeaderApi.getUserMenuHeaderDisplay(userId, menuId, roleId);
-        if (headerDisplay == null || headerDisplay.getHeader() == null) {
-            throw new BusinessException("菜单 [" + menuId + "] 未配置有效的表头展示信息");
-        }
-
-        MenuHeaderColumnResp headerRoot = headerDisplay.getHeader();
+        MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
         Long rootModuleId = headerRoot.getModuleId();
-        if (rootModuleId == null) {
-            throw new BusinessException("菜单 [" + menuId + "] 对应的表头未关联有效的根模块 ID");
-        }
 
         List<Long> checkedFieldIds = new ArrayList<>();
         collectCheckedFieldIds(headerRoot, checkedFieldIds);
@@ -266,8 +251,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     }
 
     @Override
-    public List<DataOption> getOptionsByMenu(
-            Long menuId, com.jdec.platform.common.biz.dto.request.MenuOptionReq req) {
+    public List<DataOption> getOptionsByMenu(Long menuId, MenuOptionReq req) {
         if (menuId == null) {
             throw new IllegalArgumentException("菜单 ID 不能为空");
         }
@@ -282,50 +266,26 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         // 2. 组装单层 AND 组合过滤条件
-        List<FilterItem> finalFilters = new ArrayList<>();
-        if (req.getFilters() != null && !req.getFilters().isEmpty()) {
-            for (var flatFilter : req.getFilters()) {
-                if (flatFilter != null && flatFilter.getFieldId() != null) {
-                    finalFilters.add(
-                            FilterItem.builder()
-                                    .fieldId(flatFilter.getFieldId())
-                                    .operator(
-                                            flatFilter.getOperator() != null
-                                                    ? flatFilter.getOperator()
-                                                    : "EQ")
-                                    .value(flatFilter.getValue())
-                                    .build());
-                }
-            }
-        }
+        List<FilterItem> finalFilters =
+                (req.getFilters() != null && !CollectionUtils.isEmpty(req.getFilters()))
+                        ? req.getFilters().stream()
+                                .filter(Objects::nonNull)
+                                .map(FlatFilterItem::toFilterItem)
+                                .collect(Collectors.toCollection(ArrayList::new))
+                        : new ArrayList<>();
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req.getApprovalType();
-        boolean hasApprovalChain = false;
-        try {
-            hasApprovalChain =
-                    Boolean.TRUE.equals(
-                            sysApprovalChainConfigApi.getApprovalStatus(
-                                    Collections.singletonList(rootModuleId)));
-        } catch (Exception ex) {
-            log.warn("查询模块审批链状态失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
+        ApprovalFilterOutcome approvalOutcome =
+                resolveApprovalFilters(rootModuleId, approvalType, null);
+
+        if (approvalOutcome.filterResult().shortCircuitEmpty()) {
+            // 审批过滤无候选匹配时短路直接返回空候选项列表
+            return Collections.emptyList();
         }
 
-        if (hasApprovalChain && approvalType != null) {
-            RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId);
-            ApprovalButtonsGroup approvalGroup = queryApprovalButtons(rootModuleId, approvalType);
-            Map<Long, List<Map<String, Object>>> approvalBtnMap = approvalGroup.relevantBtns();
-
-            ApprovalFilterResult approvalFilterResult =
-                    buildApprovalFilters(approvalType, rootFieldIds, approvalBtnMap);
-            if (approvalFilterResult.shortCircuitEmpty()) {
-                // 审批过滤无候选匹配时短路直接返回空候选项列表
-                return Collections.emptyList();
-            }
-
-            if (!approvalFilterResult.filters().isEmpty()) {
-                finalFilters.addAll(approvalFilterResult.filters());
-            }
+        if (!approvalOutcome.filterResult().filters().isEmpty()) {
+            finalFilters.addAll(approvalOutcome.filterResult().filters());
         }
 
         // 4. 构建 OptionReq 并调用底层低代码数据引擎
@@ -571,28 +531,23 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Map<String, Object> flatRow = new LinkedHashMap<>();
         List<ModuleDataNode> childrenNodes = new ArrayList<>();
 
-        // 1. 展平当前数据行的物理表字段 (e.g. info.company_name)
+        // 1. 展平当前数据行的物理表字段 (通过 DataRow.getTable 获取表结构化映射)
         if (dataRow.getTables() != null) {
-            for (Map.Entry<String, Object> entry : dataRow.getTables().entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
-                if (value instanceof Map<?, ?> subMap) {
-                    for (Map.Entry<?, ?> colEntry : subMap.entrySet()) {
-                        String colName = Objects.toString(colEntry.getKey(), "");
-                        if (!colName.isBlank()) {
-                            flatRow.put(key + "." + colName, colEntry.getValue());
+            for (String tableName : dataRow.getTables().keySet()) {
+                Map<String, Object> tableData = dataRow.getTable(tableName);
+                if (tableData != null) {
+                    for (Map.Entry<String, Object> colEntry : tableData.entrySet()) {
+                        if (colEntry.getKey() != null && !colEntry.getKey().isBlank()) {
+                            flatRow.put(tableName + "." + colEntry.getKey(), colEntry.getValue());
                         }
                     }
-                } else {
-                    flatRow.put(key, value);
                 }
             }
         }
 
         // 2. 递归处理从属于当前行的子模块数据节点 DataBlock (自相似树)
         if (dataRow.getChildren() != null) {
-            for (com.jdec.platform.data.api.dto.common.DataBlock childNode :
-                    dataRow.getChildren()) {
+            for (DataBlock childNode : dataRow.getChildren()) {
                 if (childNode == null) {
                     continue;
                 }
@@ -631,10 +586,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             }
         }
 
-        for (Map.Entry<Long, com.jdec.platform.config.api.dto.common.ModuleInfo> e :
-                moduleTree.getModuleMap().entrySet()) {
+        for (Map.Entry<Long, ModuleInfo> e : moduleTree.getModuleMap().entrySet()) {
             Long modId = e.getKey();
-            com.jdec.platform.config.api.dto.common.ModuleInfo modInfo = e.getValue();
+            ModuleInfo modInfo = e.getValue();
             if (modInfo == null) {
                 continue;
             }
@@ -664,7 +618,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                     .view(fp != null ? fp.getView() : true)
                                     .edit(fp != null ? fp.getEdit() : true)
                                     .build();
-
                     fieldMetaMap.put(fullKey, fMeta);
                 }
             }
@@ -686,7 +639,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             Long rootModuleId,
             Long roleId,
             ModuleDataNode dataNode,
-            Map<Long, List<Map<String, Object>>> allBtnsMap) {
+            List<ApprovalRowItem> approvalRows) {
 
         // 1. 获取模块权限汇总
         ModuleSimplePermissionDTO permission =
@@ -710,36 +663,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             }
         }
 
-        // 2. 组装每条记录的审批链行信息 (ApprovalRowItem)
-        List<ApprovalRowItem> approvalRows = null;
-        if (allBtnsMap != null && dataNode != null && dataNode.getRecord() != null) {
-            approvalRows = new ArrayList<>();
-            for (DataRecordItem item : dataNode.getRecord()) {
-                if (item != null && item.getRow() != null) {
-                    Object idObj = item.getRow().get("id");
-                    if (idObj == null) {
-                        for (Map.Entry<String, Object> entry : item.getRow().entrySet()) {
-                            if ("id".equalsIgnoreCase(entry.getKey())
-                                    || entry.getKey().endsWith(".id")
-                                    || entry.getKey().endsWith(".ID")) {
-                                idObj = entry.getValue();
-                                break;
-                            }
-                        }
-                    }
-                    if (idObj instanceof Number num) {
-                        Long recordId = num.longValue();
-                        List<Map<String, Object>> btns =
-                                allBtnsMap.getOrDefault(recordId, Collections.emptyList());
-                        Map<String, Object> rowPayload = new LinkedHashMap<>();
-                        rowPayload.put("id", recordId);
-                        rowPayload.put("btnList", btns);
-                        approvalRows.add(ApprovalRowItem.builder().row(rowPayload).build());
-                    }
-                }
-            }
-        }
-
         return MenuDataResp.builder()
                 .header(headerRoot)
                 .permission(permission)
@@ -759,7 +682,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         try {
             List<Map<String, Object>> approvalRawList =
                     approvalEngine.getListButton(rootModuleId, approvalType);
-            if (approvalRawList != null && !approvalRawList.isEmpty()) {
+            if (!CollectionUtils.isEmpty(approvalRawList)) {
                 for (Map<String, Object> rawBtn : approvalRawList) {
                     if (rawBtn == null) {
                         continue;
@@ -769,12 +692,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         continue;
                     }
 
+                    Object buttonKey = rawBtn.get("buttonKey");
+                    Object buttonName = rawBtn.get("buttonName");
                     Map<String, Object> btnInfo = new LinkedHashMap<>();
-                    for (Map.Entry<String, Object> e : rawBtn.entrySet()) {
-                        if (!"recordId".equals(e.getKey())) {
-                            btnInfo.put(e.getKey(), e.getValue());
-                        }
-                    }
+                    btnInfo.put("buttonKey", buttonKey != null ? buttonKey.toString() : "view");
+                    btnInfo.put("buttonName", buttonName != null ? buttonName.toString() : "查阅");
 
                     relevantBtns.computeIfAbsent(recordId, k -> new ArrayList<>()).add(btnInfo);
                     allBtns.computeIfAbsent(recordId, k -> new ArrayList<>()).add(btnInfo);
@@ -802,58 +724,29 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         Long currentUserId = UserContext.getUserId();
 
-        if (approvalType == 1) {
-            // 【待办】: (id IN recordIds) OR (created_by == currentUserId && business_status ==
-            // 1)
-            Set<Long> todoRecordIds = btnGroupMap.keySet();
-            boolean hasApprovalIds = !todoRecordIds.isEmpty() && rootFieldIds.idFieldId() != null;
-            boolean canQueryDraft =
-                    currentUserId != null
-                            && rootFieldIds.createdByFieldId() != null
-                            && rootFieldIds.businessStatusFieldId() != null;
+        if (approvalType == 1 || approvalType == 3) {
+            // 【待办】与【全部】：(id IN recordIds) OR (created_by == currentUserId &&
+            // business_status == 1)
+            Set<Long> recordIds = btnGroupMap.keySet();
+            boolean hasApprovalIds = !recordIds.isEmpty() && rootFieldIds.idFieldId() != null;
+            FilterItem draftBranch = buildDraftFilterBranch(currentUserId, rootFieldIds);
 
-            if (!hasApprovalIds && !canQueryDraft) {
+            if (!hasApprovalIds && draftBranch == null) {
                 return new ApprovalFilterResult(filters, true);
             }
 
-            FilterItem approvalBranch = null;
-            if (hasApprovalIds) {
-                approvalBranch =
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.idFieldId())
-                                .operator("IN")
-                                .value(new ArrayList<>(todoRecordIds))
-                                .build();
-            }
+            FilterItem approvalBranch =
+                    hasApprovalIds
+                            ? FilterItem.builder()
+                                    .fieldId(rootFieldIds.idFieldId())
+                                    .operator("IN")
+                                    .value(new ArrayList<>(recordIds))
+                                    .build()
+                            : null;
 
-            FilterItem draftBranch = null;
-            if (canQueryDraft) {
-                List<FilterItem> draftItems = new ArrayList<>();
-                draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.createdByFieldId())
-                                .operator("EQ")
-                                .value(currentUserId)
-                                .build());
-                draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.businessStatusFieldId())
-                                .operator("EQ")
-                                .value(1)
-                                .build());
-                draftBranch = FilterItem.builder().logic("AND").children(draftItems).build();
-            }
-
-            if (approvalBranch != null && draftBranch != null) {
-                filters.add(
-                        FilterItem.builder()
-                                .logic("OR")
-                                .children(Arrays.asList(approvalBranch, draftBranch))
-                                .build());
-            } else if (approvalBranch != null) {
-                filters.add(approvalBranch);
-            } else {
-                filters.add(draftBranch);
+            FilterItem combined = combineBranches(approvalBranch, draftBranch);
+            if (combined != null) {
+                filters.add(combined);
             }
         } else if (approvalType == 2) {
             // 【已办】: id IN doneRecordIds
@@ -867,73 +760,53 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             .operator("IN")
                             .value(new ArrayList<>(doneRecordIds))
                             .build());
-        } else if (approvalType == 3) {
-            // 【全部】: (id IN allApprovalRecordIds) OR (created_by == currentUserId &&
-            // business_status
-            // == 1)
-            Set<Long> allApprovalRecordIds = btnGroupMap.keySet();
-            boolean hasApprovalIds =
-                    !allApprovalRecordIds.isEmpty() && rootFieldIds.idFieldId() != null;
-            boolean canQueryDraft =
-                    currentUserId != null
-                            && rootFieldIds.createdByFieldId() != null
-                            && rootFieldIds.businessStatusFieldId() != null;
-
-            if (!hasApprovalIds && !canQueryDraft) {
-                return new ApprovalFilterResult(filters, true);
-            }
-
-            FilterItem approvalBranch = null;
-            if (hasApprovalIds) {
-                approvalBranch =
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.idFieldId())
-                                .operator("IN")
-                                .value(new ArrayList<>(allApprovalRecordIds))
-                                .build();
-            }
-
-            FilterItem draftBranch = null;
-            if (canQueryDraft) {
-                List<FilterItem> draftItems = new ArrayList<>();
-                draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.createdByFieldId())
-                                .operator("EQ")
-                                .value(currentUserId)
-                                .build());
-                draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.businessStatusFieldId())
-                                .operator("EQ")
-                                .value(1)
-                                .build());
-                draftBranch = FilterItem.builder().logic("AND").children(draftItems).build();
-            }
-
-            if (approvalBranch != null && draftBranch != null) {
-                filters.add(
-                        FilterItem.builder()
-                                .logic("OR")
-                                .children(Arrays.asList(approvalBranch, draftBranch))
-                                .build());
-            } else if (approvalBranch != null) {
-                filters.add(approvalBranch);
-            } else {
-                filters.add(draftBranch);
-            }
         }
 
         return new ApprovalFilterResult(filters, false);
     }
 
-    private RootModuleFieldIds extractRootModuleFieldIds(Long rootModuleId) {
+    private FilterItem buildDraftFilterBranch(Long currentUserId, RootModuleFieldIds rootFieldIds) {
+        if (currentUserId == null
+                || rootFieldIds.createdByFieldId() == null
+                || rootFieldIds.businessStatusFieldId() == null) {
+            return null;
+        }
+        List<FilterItem> draftItems = new ArrayList<>();
+        draftItems.add(
+                FilterItem.builder()
+                        .fieldId(rootFieldIds.createdByFieldId())
+                        .operator("EQ")
+                        .value(currentUserId)
+                        .build());
+        draftItems.add(
+                FilterItem.builder()
+                        .fieldId(rootFieldIds.businessStatusFieldId())
+                        .operator("EQ")
+                        .value(1)
+                        .build());
+        return FilterItem.builder().logic("AND").children(draftItems).build();
+    }
+
+    private FilterItem combineBranches(FilterItem approvalBranch, FilterItem draftBranch) {
+        if (approvalBranch != null && draftBranch != null) {
+            return FilterItem.builder()
+                    .logic("OR")
+                    .children(Arrays.asList(approvalBranch, draftBranch))
+                    .build();
+        }
+        return approvalBranch != null ? approvalBranch : draftBranch;
+    }
+
+    private RootModuleFieldIds extractRootModuleFieldIds(
+            Long rootModuleId, ModuleTreeDTO inMemoryModuleTree) {
         if (rootModuleId == null) {
             return new RootModuleFieldIds(null, null, null);
         }
 
         ModuleTreeDTO moduleTree =
-                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+                inMemoryModuleTree != null
+                        ? inMemoryModuleTree
+                        : configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
         Long idFieldId = null;
         Long createdByFieldId = null;
         Long businessStatusFieldId = null;
@@ -1096,6 +969,49 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
         return null;
     }
+
+    private MenuHeaderColumnResp getHeaderDisplayOrThrow(Long userId, Long menuId, Long roleId) {
+        MenuHeaderDisplayResp headerDisplay =
+                userMenuHeaderApi.getUserMenuHeaderDisplay(userId, menuId, roleId);
+        if (headerDisplay == null || headerDisplay.getHeader() == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 未配置有效的表头展示信息");
+        }
+        MenuHeaderColumnResp headerRoot = headerDisplay.getHeader();
+        if (headerRoot.getModuleId() == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 对应的表头未关联有效的根模块 ID");
+        }
+        return headerRoot;
+    }
+
+    private boolean isApprovalChainEnabled(Long rootModuleId) {
+        if (rootModuleId == null) {
+            return false;
+        }
+        try {
+            return Boolean.TRUE.equals(
+                    sysApprovalChainConfigApi.getApprovalStatus(
+                            Collections.singletonList(rootModuleId)));
+        } catch (Exception ex) {
+            log.warn("查询模块审批链状态失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
+            return false;
+        }
+    }
+
+    private ApprovalFilterOutcome resolveApprovalFilters(
+            Long rootModuleId, Integer approvalType, ModuleTreeDTO moduleTree) {
+        if (rootModuleId == null || approvalType == null || !isApprovalChainEnabled(rootModuleId)) {
+            return new ApprovalFilterOutcome(
+                    new ApprovalFilterResult(Collections.emptyList(), false), null);
+        }
+        RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId, moduleTree);
+        ApprovalButtonsGroup approvalGroup = queryApprovalButtons(rootModuleId, approvalType);
+        ApprovalFilterResult filterResult =
+                buildApprovalFilters(approvalType, rootFieldIds, approvalGroup.relevantBtns());
+        return new ApprovalFilterOutcome(filterResult, approvalGroup.allBtns());
+    }
+
+    private record ApprovalFilterOutcome(
+            ApprovalFilterResult filterResult, Map<Long, List<Map<String, Object>>> allBtnsMap) {}
 
     private record ApprovalButtonsGroup(
             Map<Long, List<Map<String, Object>>> relevantBtns,

@@ -538,7 +538,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             resp.setColors(parseColors(node.getColors()));
         } else {
             resp.setFieldId(node.getSourceId());
-            resp.setDataIndex(node.getDataIndex());
+            resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -620,7 +620,10 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         merged.setColors(resolveColors(userNode.getColors(), merged.getColors()));
         merged.setWidth(userNode.getWidth() != null ? userNode.getWidth() : merged.getWidth());
         merged.setDataIndex(
-                userNode.getDataIndex() != null ? userNode.getDataIndex() : merged.getDataIndex());
+                stripModulePrefix(
+                        userNode.getDataIndex() != null
+                                ? userNode.getDataIndex()
+                                : merged.getDataIndex()));
         merged.setSorted(userNode.getSorted() != null ? userNode.getSorted() : merged.getSorted());
         merged.setSearchType(
                 userNode.getSearchType() != null
@@ -661,6 +664,18 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         } catch (Exception e) {
             throw new BusinessException("搜索控件类型(searchType)不是合法的 JSON：" + searchType);
         }
+    }
+
+    /** 字段索引去掉前缀模块ID：1006.company_contact.id → company_contact.id（无数字前缀时原样返回） */
+    private static String stripModulePrefix(String dataIndex) {
+        if (dataIndex == null) {
+            return null;
+        }
+        int dot = dataIndex.indexOf('.');
+        if (dot > 0 && dataIndex.substring(0, dot).chars().allMatch(Character::isDigit)) {
+            return dataIndex.substring(dot + 1);
+        }
+        return dataIndex;
     }
 
     /** 序列化 colors（入参为颜色列表，库中存 JSON 数组串），空列表或失败返回 null */
