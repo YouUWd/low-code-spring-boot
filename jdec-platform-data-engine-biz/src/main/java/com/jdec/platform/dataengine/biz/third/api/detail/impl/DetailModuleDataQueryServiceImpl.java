@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
@@ -31,6 +32,8 @@ import org.springframework.util.CollectionUtils;
 @Service
 @RequiredArgsConstructor
 public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQueryService {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final JooqContextFactory jooqContextFactory;
 
@@ -112,7 +115,9 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
             Map<String, Object> mainRow = new HashMap<>();
             if (Objects.nonNull(recordsResult)) {
-                mainRow.putAll(recordsResult.intoMap());
+                Map<String, Object> resultMap = recordsResult.intoMap();
+                dealJsonField(resultMap);
+                mainRow.putAll(resultMap);
                 mainTableIdMap.put(statementContext.getId(), mainRow);
             }
 
@@ -148,6 +153,9 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                     }
                 }
                 Map<String, Object> rowData = r.intoMap();
+
+                dealJsonField(rowData);
+
                 mainTableIdMap.put(
                         Long.parseLong(
                                 String.valueOf(
@@ -205,6 +213,43 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
         return recordDataDTOList;
     }
 
+    private void dealJsonField(Map<String, Object> resultMap) {
+        for (Map.Entry<String, Object> entry : resultMap.entrySet()) {
+            Object val = parseIfJson(entry.getValue());
+            resultMap.put(entry.getKey(), val);
+        }
+    }
+
+    /** 自动将 JSON 字符串或 jOOQ JSON 对象转换为结构化的 List/Map，保持返回值纯净 */
+    private Object parseIfJson(Object val) {
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof JSON jooqJson) {
+            String jsonStr = jooqJson.data();
+            if (jsonStr == null || jsonStr.isBlank()) {
+                return null;
+            }
+            try {
+                return objectMapper.readValue(jsonStr, Object.class);
+            } catch (Exception e) {
+                return jsonStr;
+            }
+        }
+        if (val instanceof String str) {
+            String trimmed = str.trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
+                    || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                try {
+                    return objectMapper.readValue(trimmed, Object.class);
+                } catch (Exception ignored) {
+                    return val;
+                }
+            }
+        }
+        return val;
+    }
+
     /** 批量抓取当前页主表 ID 集合关联的 1:N 从表记录 (从表同样应用主体作用域与行级数据权限) */
     private Map<String, Map<Long, List<Map<String, Object>>>> fetchOneToManyTables(
             DetailModuleQueryContext context,
@@ -254,6 +299,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                 Map<Long, List<Map<String, Object>>> grouped = new HashMap<>();
                 for (Record r : subRecords) {
                     Map<String, Object> rMap = r.intoMap();
+                    dealJsonField(rMap);
                     Object fkVal = rMap.get(leftJoinField);
                     if (fkVal instanceof Number fkNum) {
                         grouped.computeIfAbsent(fkNum.longValue(), k -> new ArrayList<>())
