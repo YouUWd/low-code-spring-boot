@@ -27,4 +27,6 @@ public class ModuleMetaDTO implements Serializable {
     private Map<String, FieldMetaDTO> fields;
 
     private MenuHeaderColumnResp header;
+
+    private ModuleSimplePermissionDTO permission;
 }
