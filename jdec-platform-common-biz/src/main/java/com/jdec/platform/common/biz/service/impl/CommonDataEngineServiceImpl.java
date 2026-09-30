@@ -135,7 +135,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                     fieldPermissionItem = ele.getValue();
                                             // 返回有权限的字段
                                             return fieldPermissionItem.getEdit()
-                                                    && fieldPermissionItem.getApply();
+                                                    || fieldPermissionItem.getView();
                                         })
                                 .map(item -> item.getKey())
                                 .collect(Collectors.toSet());

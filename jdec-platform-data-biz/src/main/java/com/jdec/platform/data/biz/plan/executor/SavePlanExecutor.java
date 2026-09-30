@@ -175,6 +175,84 @@ public class SavePlanExecutor {
             return virtualMap;
         }
 
+        // ==================== 1:N 孤儿差集自动软删除 (Orphan Removal) ====================
+        if (nodePlan.isMany()
+                && fkField != null
+                && !fkField.isBlank()
+                && parentId != null
+                && !"id".equalsIgnoreCase(fkField)) {
+            // 1. 提取当前请求中该子模块提交的有效已有 ID 集合（不包括显式标记为 deleted=1 的记录）
+            Set<Long> incomingValidIds = new HashSet<>();
+            if (rows != null) {
+                for (Map<String, Object> r : rows) {
+                    if (r == null) {
+                        continue;
+                    }
+                    Object deletedObj = r.get("deleted");
+                    if (deletedObj == null && r.get(table) instanceof Map<?, ?> tm) {
+                        deletedObj = tm.get("deleted");
+                    }
+                    if (isDeletedFlag(deletedObj)) {
+                        continue;
+                    }
+                    Object idObj = r.get("id");
+                    if (idObj == null && r.get(table) instanceof Map<?, ?> tm) {
+                        idObj = tm.get("id");
+                    }
+                    if (idObj instanceof Number num && num.longValue() > 0) {
+                        incomingValidIds.add(num.longValue());
+                    }
+                }
+            }
+
+            // 2. 查询数据库中该父记录 (parentId) 下当前存活的所有有效子记录 ID (deleted = 0)
+            List<Long> dbLiveIds = Collections.emptyList();
+            try {
+                dbLiveIds =
+                        dsl.select(DSL.field(DSL.name(table, "id"), Long.class))
+                                .from(DSL.table(DSL.name(table)))
+                                .where(
+                                        DSL.field(DSL.name(table, fkField))
+                                                .eq(parentId)
+                                                .and(
+                                                        DSL.field(DSL.name(table, "deleted"))
+                                                                .eq((byte) 0)))
+                                .fetch(0, Long.class);
+            } catch (Exception ex) {
+                log.warn("查询物理表 [{}] 关联父外键 [{}] 存活记录失败: {}", table, fkField, ex.getMessage());
+            }
+
+            // 3. 计算差集：在数据库中存活，但在前端提交的最新数组中被移除的孤儿记录
+            if (dbLiveIds != null && !dbLiveIds.isEmpty()) {
+                List<Long> orphanIds =
+                        dbLiveIds.stream()
+                                .filter(id -> id != null && !incomingValidIds.contains(id))
+                                .toList();
+
+                if (!orphanIds.isEmpty()) {
+                    Long currentUserId = UserContext.getUserId();
+                    LocalDateTime now = LocalDateTime.now();
+                    log.info(
+                            "1:N 子表 [{}] 自动执行孤儿记录软删除: parentId={}, fkField={}, orphanIds={}",
+                            table,
+                            parentId,
+                            fkField,
+                            orphanIds);
+                    dsl.update(DSL.table(DSL.name(table)))
+                            .set(DSL.field(DSL.name(table, "deleted")), (byte) 1)
+                            .set(DSL.field(DSL.name(table, "updated_by")), currentUserId)
+                            .set(DSL.field(DSL.name(table, "updated_date")), now)
+                            .where(
+                                    DSL.field(DSL.name(table, "id"))
+                                            .in(orphanIds)
+                                            .and(
+                                                    DSL.field(DSL.name(table, "deleted"))
+                                                            .eq((byte) 0)))
+                            .execute();
+                }
+            }
+        }
+
         List<Map<String, Object>> rowResults = new ArrayList<>();
         if (rows != null) {
             List<DataRow> sourceRows = nodePlan.getSourceDataRows();
@@ -240,7 +318,7 @@ public class SavePlanExecutor {
         }
     }
 
-    /** 单行 Upsert 落库 */
+    /** 单行 Upsert / Soft-Delete 落库 */
     private Long upsertSingleRow(
             DSLContext dsl,
             String table,
@@ -252,8 +330,6 @@ public class SavePlanExecutor {
             return null;
         }
 
-        Map<Field<Object>, Object> fieldValues = new LinkedHashMap<>();
-
         Object idObj = row.get("id");
         if (idObj == null && table != null && row.get(table) instanceof Map<?, ?> tm) {
             idObj = tm.get("id");
@@ -262,6 +338,41 @@ public class SavePlanExecutor {
         if (idObj instanceof Number num && num.longValue() > 0) {
             id = num.longValue();
         }
+
+        // 提取是否标记删除
+        Object deletedObj = row.get("deleted");
+        if (deletedObj == null && table != null && row.get(table) instanceof Map<?, ?> tm) {
+            deletedObj = tm.get("deleted");
+        }
+        boolean isDeleted = isDeletedFlag(deletedObj);
+
+        Long currentUserId = UserContext.getUserId();
+        Long subjectId = AppContext.getSubjectId();
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. 如果显式标记为删除
+        if (isDeleted) {
+            if (id != null) {
+                // 针对数据库中已存在的记录执行逻辑软删除 (deleted = 1)
+                dsl.update(DSL.table(DSL.name(table)))
+                        .set(DSL.field(DSL.name(table, "deleted")), (byte) 1)
+                        .set(DSL.field(DSL.name(table, "updated_by")), currentUserId)
+                        .set(DSL.field(DSL.name(table, "updated_date")), now)
+                        .where(
+                                DSL.field(DSL.name(table, "id"))
+                                        .eq(id)
+                                        .and(DSL.field(DSL.name(table, "deleted")).eq((byte) 0)))
+                        .execute();
+                backfillId(sourceRow, table, id);
+                return id;
+            } else {
+                // 纯前端临时新建、未入库前即删除的草稿记录，直接丢弃无需入库
+                return null;
+            }
+        }
+
+        // 2. 组装正常新增/更新字段
+        Map<Field<Object>, Object> fieldValues = new LinkedHashMap<>();
 
         for (Map.Entry<String, Object> entry : row.entrySet()) {
             String col = entry.getKey();
@@ -276,12 +387,11 @@ public class SavePlanExecutor {
             if (id != null && "id".equalsIgnoreCase(col)) {
                 continue; // 更新模式下不重复 SET 主键 id
             }
+            if ("deleted".equalsIgnoreCase(col)) {
+                continue; // deleted 状态由引擎统一维护，避免外部非法覆盖
+            }
             fieldValues.put(DSL.field(DSL.name(table, col)), val);
         }
-
-        Long currentUserId = UserContext.getUserId();
-        Long subjectId = AppContext.getSubjectId();
-        LocalDateTime now = LocalDateTime.now();
 
         if (id != null) {
             // Update 模式
@@ -343,5 +453,21 @@ public class SavePlanExecutor {
             backfillId(sourceRow, table, generatedId);
             return generatedId;
         }
+    }
+
+    private boolean isDeletedFlag(Object deletedObj) {
+        if (deletedObj == null) {
+            return false;
+        }
+        if (deletedObj instanceof Number num) {
+            return num.intValue() == 1;
+        }
+        if (deletedObj instanceof Boolean bool) {
+            return bool;
+        }
+        if (deletedObj instanceof String str) {
+            return "1".equals(str) || "true".equalsIgnoreCase(str);
+        }
+        return false;
     }
 }
