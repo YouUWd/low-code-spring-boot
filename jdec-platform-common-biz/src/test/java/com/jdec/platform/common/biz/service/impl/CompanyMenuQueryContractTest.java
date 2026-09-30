@@ -34,6 +34,7 @@ import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.security.model.LoginUser;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,11 +63,7 @@ class CompanyMenuQueryContractTest {
     void setUp() {
         AppContext.setContext("company", null);
         UserContext.setLoginUser(
-                com.jdec.platform.shared.security.model.LoginUser.builder()
-                        .userId(1L)
-                        .roleId(1L)
-                        .username("admin")
-                        .build());
+                LoginUser.builder().userId(1L).roleId(1L).username("admin").build());
 
         userMenuHeaderApi = mock(UserMenuHeaderApi.class);
         openMenuApi = mock(OpenMenuApi.class);
@@ -184,16 +181,39 @@ class CompanyMenuQueryContractTest {
         p2c.put(1003L, List.of(1004L));
         p2c.put(1020L, List.of(1006L));
 
-        addField(fieldMap, fieldToModuleMap, 10001L, 1001L, "info", "id");
-        addField(fieldMap, fieldToModuleMap, 10002L, 1001L, "info", "company_name");
-        addField(fieldMap, fieldToModuleMap, 10006L, 1001L, "info", "cooperation_types");
-        addField(fieldMap, fieldToModuleMap, 10021L, 1002L, "basic_info", "reg_capital");
-        addField(fieldMap, fieldToModuleMap, 10071L, 1007L, "address", "detail_address");
-        addField(fieldMap, fieldToModuleMap, 10031L, 1003L, "member", "member_name");
-        addField(fieldMap, fieldToModuleMap, 10041L, 1004L, "member_contact", "phone");
-        addField(fieldMap, fieldToModuleMap, 10045L, 1004L, "member_contact", "contact_type");
-        addField(fieldMap, fieldToModuleMap, 10058L, 1006L, "company_contact", "contact_type");
-        addField(fieldMap, fieldToModuleMap, 10101L, 1010L, "financial_account", "account_no");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10001L, 1001L, "info", "id");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10002L, 1001L, "info", "company_name");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10003L, 1001L, "info", "created_by");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10004L, 1001L, "info", "business_status");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10006L, 1001L, "info", "cooperation_types");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10021L, 1002L, "basic_info", "reg_capital");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10071L, 1007L, "address", "detail_address");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10031L, 1003L, "member", "member_name");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10041L, 1004L, "member_contact", "phone");
+        addField(
+                moduleMap,
+                fieldMap,
+                fieldToModuleMap,
+                10045L,
+                1004L,
+                "member_contact",
+                "contact_type");
+        addField(
+                moduleMap,
+                fieldMap,
+                fieldToModuleMap,
+                10058L,
+                1006L,
+                "company_contact",
+                "contact_type");
+        addField(
+                moduleMap,
+                fieldMap,
+                fieldToModuleMap,
+                10101L,
+                1010L,
+                "financial_account",
+                "account_no");
 
         allowedModuleIds.addAll(List.of(1020L, 1006L));
 
@@ -317,6 +337,7 @@ class CompanyMenuQueryContractTest {
     }
 
     private static void addField(
+            Map<Long, ModuleInfo> moduleMap,
             Map<Long, ModuleFieldDTO> fieldMap,
             Map<Long, Long> fieldToModuleMap,
             Long fid,
@@ -332,6 +353,13 @@ class CompanyMenuQueryContractTest {
                         .build();
         fieldMap.put(fid, f);
         fieldToModuleMap.put(fid, mid);
+        ModuleInfo m = moduleMap.get(mid);
+        if (m != null) {
+            if (m.getFields() == null) {
+                m.setFields(new ArrayList<>());
+            }
+            m.getFields().add(f);
+        }
     }
 
     private static MenuHeaderColumnResp col(Long moduleId, Long fieldId, String label) {
@@ -595,5 +623,113 @@ class CompanyMenuQueryContractTest {
         assertEquals(1, statusRespObj.getStatusValue());
         assertEquals("#e6f7ff", statusRespObj.getStatusBackground());
         assertEquals("#1890ff", statusRespObj.getStatusFontColor());
+    }
+
+    @Test
+    @DisplayName("测试待办(approvalType=1)中非审批引擎返回的自建草稿记录，btnList 成功补齐为办理(handle)")
+    void testApprovalButtons_fallbackForNonEngineTodoRecords() {
+        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
+        when(approvalEngine.getListButton(eq(1001L), eq(1))).thenReturn(Collections.emptyList());
+
+        Map<String, Object> tableData = new HashMap<>();
+        tableData.put("id", 999L);
+        tableData.put("created_by", 1L); // 与当前登录用户 UserContext.getUserId() 一致
+        tableData.put("business_status", 1);
+        tableData.put("company_name", "自建草稿企业");
+        DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
+
+        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
+        DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
+        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+
+        MenuDataResp resp =
+                commonAggregateService.queryByMenu(
+                        100L, MenuQueryReq.builder().approvalType(1).build());
+
+        assertNotNull(resp);
+        assertNotNull(resp.getApproval());
+        assertEquals(1, resp.getApproval().size());
+
+        var approvalRow = resp.getApproval().get(0);
+        assertNotNull(approvalRow.getRow());
+        assertEquals(999L, approvalRow.getRow().get("id"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> btnList =
+                (List<Map<String, Object>>) approvalRow.getRow().get("btnList");
+        assertNotNull(btnList);
+        assertEquals(1, btnList.size());
+        assertEquals("handle", btnList.get(0).get("buttonKey"));
+        assertEquals("办理", btnList.get(0).get("buttonName"));
+    }
+
+    @Test
+    @DisplayName("测试全部(approvalType=3)中，自建草稿补齐为办理(handle)，审批引擎返回的记录保持对应按钮(办理/查阅)")
+    void testApprovalButtons_allTypeCorrectButtons() {
+        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
+
+        // 模拟审批引擎返回：记录 101 为办理(handle)，记录 102 为查阅(view)
+        Map<String, Object> btn101 = new HashMap<>();
+        btn101.put("recordId", 101L);
+        btn101.put("buttonKey", "handle");
+        btn101.put("buttonName", "办理");
+
+        Map<String, Object> btn102 = new HashMap<>();
+        btn102.put("recordId", 102L);
+        btn102.put("buttonKey", "view");
+        btn102.put("buttonName", "查阅");
+
+        when(approvalEngine.getListButton(eq(1001L), eq(3))).thenReturn(List.of(btn101, btn102));
+
+        // 模拟底层数据返回 3 条记录：101(审批中待办), 102(已办), 999(非审批引擎自建草稿)
+        Map<String, Object> row101 = new HashMap<>();
+        row101.put("id", 101L);
+        row101.put("created_by", 2L);
+        row101.put("business_status", 2);
+        row101.put("company_name", "审批中待办企业");
+
+        Map<String, Object> row102 = new HashMap<>();
+        row102.put("id", 102L);
+        row102.put("created_by", 2L);
+        row102.put("business_status", 3);
+        row102.put("company_name", "已归档企业");
+
+        Map<String, Object> row999 = new HashMap<>();
+        row999.put("id", 999L);
+        row999.put("created_by", 1L); // 当前用户自建草稿
+        row999.put("business_status", 1);
+        row999.put("company_name", "自建草稿企业");
+
+        DataRow dr101 = DataRow.builder().tables(Map.of("info", row101)).build();
+        DataRow dr102 = DataRow.builder().tables(Map.of("info", row102)).build();
+        DataRow dr999 = DataRow.builder().tables(Map.of("info", row999)).build();
+
+        DataBlock block =
+                DataBlock.builder().moduleId(1001L).records(List.of(dr101, dr102, dr999)).build();
+        DataPage<DataBlock> page = DataPage.of(block, 1, 20, 3L);
+        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+
+        MenuDataResp resp =
+                commonAggregateService.queryByMenu(
+                        100L, MenuQueryReq.builder().approvalType(3).build());
+
+        assertNotNull(resp);
+        assertNotNull(resp.getApproval());
+        assertEquals(3, resp.getApproval().size());
+
+        Map<Long, String> btnKeyMap = new HashMap<>();
+        for (var approvalItem : resp.getApproval()) {
+            Long id = ((Number) approvalItem.getRow().get("id")).longValue();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> btns =
+                    (List<Map<String, Object>>) approvalItem.getRow().get("btnList");
+            assertNotNull(btns);
+            assertFalse(btns.isEmpty());
+            btnKeyMap.put(id, (String) btns.get(0).get("buttonKey"));
+        }
+
+        assertEquals("handle", btnKeyMap.get(101L), "审批待办记录应为办理(handle)");
+        assertEquals("view", btnKeyMap.get(102L), "已审批记录应为查阅(view)");
+        assertEquals("handle", btnKeyMap.get(999L), "自建草稿记录应为办理(handle)");
     }
 }

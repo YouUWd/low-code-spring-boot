@@ -3,6 +3,7 @@ package com.jdec.platform.common.api.dto.response;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,4 +30,6 @@ public class ModuleMetaDTO implements Serializable {
     private MenuHeaderColumnResp header;
 
     private ModuleSimplePermissionDTO permission;
+
+    private List<ModuleMetaDTO> children;
 }

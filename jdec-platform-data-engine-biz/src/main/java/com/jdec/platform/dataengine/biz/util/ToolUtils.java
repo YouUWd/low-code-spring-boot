@@ -7,6 +7,7 @@ import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
+import com.jdec.platform.shared.utils.SpringBeanUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -1024,9 +1025,7 @@ public class ToolUtils {
         long total = 0;
         if (cache == 1) {
             String applyTotalKey = prefix + date;
-            StringRedisTemplate redisTemplate =
-                    com.jdec.platform.shared.utils.SpringBeanUtil.getBean(
-                            StringRedisTemplate.class);
+            StringRedisTemplate redisTemplate = SpringBeanUtil.getBean(StringRedisTemplate.class);
             if (!redisTemplate.hasKey(applyTotalKey)) {
                 total = redisTemplate.opsForValue().increment(applyTotalKey);
                 long expire = 0;
