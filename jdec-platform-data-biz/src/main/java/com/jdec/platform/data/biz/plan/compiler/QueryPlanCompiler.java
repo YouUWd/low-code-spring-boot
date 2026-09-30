@@ -1,5 +1,6 @@
 package com.jdec.platform.data.biz.plan.compiler;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
@@ -1168,6 +1169,8 @@ public class QueryPlanCompiler {
         };
     }
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
     /** 辅助将 Java 值格式化为适合 JSON_CONTAINS 匹配的目标 JSON 标量字符串 (如 "客户" -> "\"客户\"", 123 -> "123") */
     private String formatJsonValue(Object val) {
         if (val == null) {
@@ -1176,15 +1179,22 @@ public class QueryPlanCompiler {
         if (val instanceof Number || val instanceof Boolean) {
             return String.valueOf(val);
         }
-        String str = String.valueOf(val).trim();
-        if ((str.startsWith("{") && str.endsWith("}"))
-                || (str.startsWith("[") && str.endsWith("]"))) {
-            return str;
+        if (val instanceof String str) {
+            str = str.trim();
+            if ((str.startsWith("{") && str.endsWith("}"))
+                    || (str.startsWith("[") && str.endsWith("]"))) {
+                return str;
+            }
+            if (str.startsWith("\"") && str.endsWith("\"")) {
+                return str;
+            }
+            return "\"" + str + "\"";
         }
-        if (str.startsWith("\"") && str.endsWith("\"")) {
-            return str;
+        try {
+            return objectMapper.writeValueAsString(val);
+        } catch (Exception e) {
+            return "\"" + String.valueOf(val) + "\"";
         }
-        return "\"" + str + "\"";
     }
 
     /** 编译排序规则列表 (以 fieldId 为唯一依据) */

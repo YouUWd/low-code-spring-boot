@@ -74,12 +74,12 @@ public class DataQueryService {
     /** 通用字段搜索下拉候选项查询 (基于 QueryPlan 统一编译与执行) */
     public List<DataOption> getOptions(OptionReq req) {
         QueryPlan plan = queryPlanCompiler.compile(req);
-        List<String> values =
+        List<Object> values =
                 queryPlanExecutor.executeDistinctOptions(
                         plan, req.getFieldId(), req.getDirection());
 
         List<DataOption> options = new ArrayList<>();
-        for (String val : values) {
+        for (Object val : values) {
             if (val != null) {
                 options.add(DataOption.builder().label(val).value(val).build());
             }

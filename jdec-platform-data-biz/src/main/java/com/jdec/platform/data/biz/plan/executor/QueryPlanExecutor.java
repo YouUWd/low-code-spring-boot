@@ -450,7 +450,7 @@ public class QueryPlanExecutor {
     }
 
     /** 执行字段候选值去重查询 (保证选项严格属于符合当前分页过滤条件的候选集) */
-    public List<String> executeDistinctOptions(
+    public List<Object> executeDistinctOptions(
             QueryPlan plan, Long targetFieldId, String direction) {
         if (plan == null || plan.getRootNodePlan() == null) {
             return Collections.emptyList();
@@ -639,16 +639,16 @@ public class QueryPlanExecutor {
     }
 
     /** 兼容无 direction 参数的重载方法 */
-    public List<String> executeDistinctOptions(QueryPlan plan, Long targetFieldId) {
+    public List<Object> executeDistinctOptions(QueryPlan plan, Long targetFieldId) {
         return executeDistinctOptions(plan, targetFieldId, null);
     }
 
     /** 从 SELECT DISTINCT 结果集中提取候选值，自动解析与展平 JSON 数组并进行内存去重（支持按需可选排序） */
-    private List<String> extractDistinctOptionValues(Result<?> records, String direction) {
+    private List<Object> extractDistinctOptionValues(Result<?> records, String direction) {
         if (records == null || records.isEmpty()) {
             return Collections.emptyList();
         }
-        Set<String> uniqueValues = new LinkedHashSet<>();
+        Set<Object> uniqueValues = new LinkedHashSet<>();
         for (Record r : records) {
             Object rawVal = r.get(0);
             if (rawVal == null) {
@@ -658,26 +658,32 @@ public class QueryPlanExecutor {
             if (parsed instanceof Iterable<?> iterable) {
                 for (Object item : iterable) {
                     if (item != null) {
-                        String s = String.valueOf(item).trim();
-                        if (!s.isEmpty()) {
-                            uniqueValues.add(s);
-                        }
+                        uniqueValues.add(item);
                     }
                 }
             } else {
-                String s = String.valueOf(parsed).trim();
-                if (!s.isEmpty()) {
-                    uniqueValues.add(s);
-                }
+                uniqueValues.add(parsed);
             }
         }
 
-        List<String> result = new ArrayList<>(uniqueValues);
+        List<Object> result = new ArrayList<>(uniqueValues);
         if (direction != null && !direction.isBlank()) {
+            Comparator<Object> comparator =
+                    (a, b) -> {
+                        String sa =
+                                (a instanceof Map || a instanceof Collection)
+                                        ? a.toString()
+                                        : String.valueOf(a);
+                        String sb =
+                                (b instanceof Map || b instanceof Collection)
+                                        ? b.toString()
+                                        : String.valueOf(b);
+                        return sa.compareTo(sb);
+                    };
             if ("DESC".equalsIgnoreCase(direction.trim())) {
-                result.sort(Collections.reverseOrder());
+                result.sort(comparator.reversed());
             } else {
-                Collections.sort(result);
+                result.sort(comparator);
             }
         }
         return result;
