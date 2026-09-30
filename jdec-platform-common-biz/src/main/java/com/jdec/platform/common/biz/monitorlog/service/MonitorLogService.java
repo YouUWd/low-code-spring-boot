@@ -14,11 +14,13 @@ import com.jdec.platform.common.api.dto.response.MonitorOperateIndexResp;
 import com.jdec.platform.common.biz.monitorindex.service.MonitorOperateIndexService;
 import com.jdec.platform.common.biz.monitorlog.entity.MonitorLog;
 import com.jdec.platform.common.biz.monitorlog.handler.MonitorLogSaveHandler;
+import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.shared.constant.MonitorLogConstant;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
+import com.jdec.platform.shared.security.SecurityUtils;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -26,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -82,6 +85,8 @@ public class MonitorLogService implements MonitorLogApi {
     private final ObjectMapper objectMapper;
     private final MonitorOperateIndexService monitorOperateIndexService;
     private final MonitorLogEnrichService monitorLogEnrichService;
+    private final MonitorLogFieldPermissionService monitorLogFieldPermissionService;
+    private final OpenMenuApi openMenuApi;
     private final Map<Integer, MonitorLogSaveHandler> saveHandlers;
 
     public MonitorLogService(
@@ -89,11 +94,15 @@ public class MonitorLogService implements MonitorLogApi {
             ObjectMapper objectMapper,
             MonitorOperateIndexService monitorOperateIndexService,
             MonitorLogEnrichService monitorLogEnrichService,
+            MonitorLogFieldPermissionService monitorLogFieldPermissionService,
+            OpenMenuApi openMenuApi,
             List<MonitorLogSaveHandler> handlers) {
         this.jooqDataContextFactory = jooqDataContextFactory;
         this.objectMapper = objectMapper;
         this.monitorOperateIndexService = monitorOperateIndexService;
         this.monitorLogEnrichService = monitorLogEnrichService;
+        this.monitorLogFieldPermissionService = monitorLogFieldPermissionService;
+        this.openMenuApi = openMenuApi;
         this.saveHandlers =
                 handlers.stream()
                         .collect(
@@ -274,15 +283,22 @@ public class MonitorLogService implements MonitorLogApi {
     }
 
     /**
-     * 按模块 + 单据查询操作日志
+     * 按菜单 + 单据查询操作日志
      *
-     * <p>两步查询：先按 {@code module_id + data_id} 从索引表 {@code monitor_operate_index} 取出日志 id，再去 {@code
-     * monitor_log} 查明细汇总返回。索引表只有操作日志（type=0）才会写入，故无需再按类型过滤。
+     * <p>两步查询：先由菜单ID 反查其关联的模块ID，再按 {@code module_id + data_id} 从索引表 {@code monitor_operate_index}
+     * 取出日志 id，去 {@code monitor_log} 查明细（按记录时间倒序）。索引表只有操作日志（type=0）才会写入， 故无需再按类型过滤。
+     *
+     * <p>返回前按当前登录角色的字段权限过滤每条日志 {@code remark} 中的字段明细：非可查阅（view≠1）的字段从 {@code columns} 中剔除。
      */
     @Override
-    public List<MonitorLogResp> queryOperateLog(Long moduleId, Long dataId) {
-        if (moduleId == null || dataId == null) {
-            throw new BusinessException("模块id与单据id不能为空");
+    public List<MonitorLogResp> queryOperateLog(Long menuId, Long dataId) {
+        if (menuId == null || dataId == null) {
+            throw new BusinessException("菜单id与单据id不能为空");
+        }
+        Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (moduleId == null) {
+            log.warn("菜单未关联模块，操作日志查询返回空: menuId={}", menuId);
+            return List.of();
         }
         List<Long> logIds =
                 monitorOperateIndexService.listByData(moduleId, dataId).stream()
@@ -293,17 +309,32 @@ public class MonitorLogService implements MonitorLogApi {
         if (logIds.isEmpty()) {
             return List.of();
         }
-        return jooqDataContextFactory
-                .getContext()
-                .select(LOG_COLUMNS)
-                .from(DSL.table(DSL.name(TABLE_MONITOR_LOG)))
-                .where(DSL.field(DSL.name("id"), Long.class).in(logIds))
-                .orderBy(
-                        DSL.field(DSL.name("record_time")).desc(), DSL.field(DSL.name("id")).desc())
-                .fetchInto(MonitorLog.class)
-                .stream()
-                .map(this::toResp)
-                .collect(Collectors.toList());
+        List<MonitorLogResp> records =
+                jooqDataContextFactory
+                        .getContext()
+                        .select(LOG_COLUMNS)
+                        .from(DSL.table(DSL.name(TABLE_MONITOR_LOG)))
+                        .where(DSL.field(DSL.name("id"), Long.class).in(logIds))
+                        .orderBy(
+                                DSL.field(DSL.name("record_time")).desc(),
+                                DSL.field(DSL.name("id")).desc())
+                        .fetchInto(MonitorLog.class)
+                        .stream()
+                        .map(this::toResp)
+                        .collect(Collectors.toList());
+
+        // 字段权限过滤：按当前角色 + 菜单子树模块的 view=1 字段，剔除 remark 中无权限的字段明细
+        Set<String> readableFieldIndexes =
+                monitorLogFieldPermissionService.readableFieldIndexes(
+                        menuId, SecurityUtils.getRoleId());
+        if (readableFieldIndexes != null) {
+            records.forEach(
+                    resp ->
+                            resp.setRemark(
+                                    monitorLogFieldPermissionService.filterRemark(
+                                            resp.getRemark(), readableFieldIndexes)));
+        }
+        return records;
     }
 
     // ==================== 查询条件 ====================

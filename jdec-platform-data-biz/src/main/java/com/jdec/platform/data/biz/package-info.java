@@ -1,5 +1,5 @@
 /** 数据引擎业务模块 (Data BIZ) */
-@org.springframework.modulith.ApplicationModule(
+@ApplicationModule(
         displayName = "Data BIZ",
         allowedDependencies = {
             "data.api",
@@ -10,3 +10,5 @@
             "shared"
         })
 package com.jdec.platform.data.biz;
+
+import org.springframework.modulith.ApplicationModule;

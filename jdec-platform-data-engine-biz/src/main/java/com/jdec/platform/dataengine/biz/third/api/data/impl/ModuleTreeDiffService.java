@@ -1,13 +1,11 @@
 package com.jdec.platform.dataengine.biz.third.api.data.impl;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
 import com.jdec.platform.dataengine.api.dto.model.VersionCompareItem;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
-import com.jdec.platform.dataengine.biz.dto.InterFieldCompareItem;
-import com.jdec.platform.dataengine.biz.util.JsonUtil;
+import com.jdec.platform.dataengine.biz.dto.VersionSnapShot;
 import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,7 +31,7 @@ public class ModuleTreeDiffService {
     public void diffModuleTree(
             NestedModuleDataDTO oldTree,
             NestedModuleDataDTO newTree,
-            Map<Long, Map<Long, Map<String, Object>>> currentVersionMap) {
+            Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap) {
         // 构建旧树 moduleId -> recordMap(业务id -> recordNode)
         Map<Long, Map<Long, RecordDataDTO>> oldModuleRecordMap = buildOldModuleRecordIndex(oldTree);
         recursiveDiff(oldTree, newTree, oldModuleRecordMap, currentVersionMap);
@@ -44,7 +42,7 @@ public class ModuleTreeDiffService {
             NestedModuleDataDTO oldNode,
             NestedModuleDataDTO newNode,
             Map<Long, Map<Long, RecordDataDTO>> oldModuleRecordMap,
-            Map<Long, Map<Long, Map<String, Object>>> currentVersionMap) {
+            Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap) {
         if (Objects.isNull(newNode)) {
             return;
         }
@@ -74,7 +72,7 @@ public class ModuleTreeDiffService {
                 RecordDataDTO oldRecordItem = oldRecordMap.get(rowPk);
                 Map<String, Object> oldRow = oldRecordItem != null ? oldRecordItem.getRow() : null;
 
-                Map<String, Object> currentChangeMap = new HashMap<>();
+                Map<String, VersionSnapShot> currentChangeMap = new HashMap<>();
                 if (currentVersionMap.containsKey(moduleId)
                         && currentVersionMap.get(moduleId).containsKey(rowPk)) {
                     currentChangeMap = currentVersionMap.get(moduleId).get(rowPk);
@@ -162,7 +160,7 @@ public class ModuleTreeDiffService {
     private static Map<String, VersionCompareItem> buildRowChangeList(
             Map<String, Object> oldRow,
             Map<String, Object> newRow,
-            Map<String, Object> currentChangeMap) {
+            Map<String, VersionSnapShot> currentChangeMap) {
         Map<String, VersionCompareItem> changeList = new HashMap<>();
         if (Objects.isNull(newRow)) {
             return changeList;
@@ -186,15 +184,34 @@ public class ModuleTreeDiffService {
                 //                    continue;
             }
             if (Objects.nonNull(currentChangeMap.get(fieldKey))) {
-                String changeStr = String.valueOf(currentChangeMap.get(fieldKey));
+                VersionSnapShot changeObj = currentChangeMap.get(fieldKey);
 
                 try {
-                    addVersionItem = true;
-                    InterFieldCompareItem interFieldCompareItem =
-                            JsonUtil.json2Obj(changeStr, InterFieldCompareItem.class);
-                    versionCompareItem.current(newVal).currentOld(interFieldCompareItem.getOld());
-                } catch (JsonProcessingException e) {
-                    log.debug("json字符串{}反序列化失败。", changeStr);
+                    if (Objects.nonNull(changeObj)) {
+                        addVersionItem = true;
+
+                        if (Objects.nonNull(changeObj.getSecondSnapshot())) {
+                            if (Objects.equals(newVal, changeObj.getSecondSnapshot())) {
+                                if (!Objects.equals(newVal, changeObj.getFirstSnapshot())) {
+                                    versionCompareItem
+                                            .currentOld(changeObj.getFirstSnapshot())
+                                            .current(newVal);
+                                }
+                            } else {
+                                versionCompareItem
+                                        .currentOld(changeObj.getSecondSnapshot())
+                                        .current(newVal);
+                            }
+                        } else {
+                            if (!Objects.equals(newVal, changeObj.getFirstSnapshot())) {
+                                versionCompareItem
+                                        .currentOld(changeObj.getFirstSnapshot())
+                                        .current(newVal);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("版本内对比构造数据失败");
                 }
             }
 

@@ -25,7 +25,7 @@
  *   <li>把 {@code "hr.api"} 加进下面的 {@code allowedDependencies}。
  * </ol>
  */
-@org.springframework.modulith.ApplicationModule(
+@ApplicationModule(
         displayName = "Common BIZ",
         allowedDependencies = {
             "common.api",
@@ -38,3 +38,5 @@
             "shared"
         })
 package com.jdec.platform.common.biz;
+
+import org.springframework.modulith.ApplicationModule;

@@ -2,7 +2,6 @@ package com.jdec.platform.auth.biz.controller;
 
 import com.jdec.platform.auth.api.AuthApi;
 import com.jdec.platform.auth.api.dto.request.SelectRoleReq;
-import com.jdec.platform.auth.api.dto.response.CurrentUserCheckResp;
 import com.jdec.platform.auth.api.dto.response.LoginResult;
 import com.jdec.platform.auth.api.dto.response.SelectRoleResp;
 import com.jdec.platform.shared.context.AppContext;
@@ -16,11 +15,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/student")
+@RequestMapping("/api/common/auth")
 @RequiredArgsConstructor
 @Tag(
-        name = "用户登录相关", // 分组名称（文档中显示的分组标签）
-        description = "处理用户登录请求、判断用户是否有当前登录系统的权限" // 分组描述
+        name = "公共认证与授权", // 分组名称（文档中显示的分组标签）
+        description = "处理用户登录请求、注销、角色切换及权限检查" // 分组描述
         )
 public class AuthController {
 
@@ -43,19 +42,6 @@ public class AuthController {
         return ApiResponse.success(authService.login(token));
     }
 
-    @PostMapping("/permission/check-current-user")
-    @Operation(summary = "检查当前用户在本系统是否有角色", description = "检查当前用户在本系统是否有角色")
-    public ApiResponse<CurrentUserCheckResp> checkCurrentUser(
-            @RequestHeader("JWT-TOKEN") String token) {
-        try {
-            TokenContext.setToken(token);
-            AppContext.setContext("company", 0L);
-            return ApiResponse.success(authService.getCurrentUserCheckInfo(token));
-        } finally {
-            TokenContext.clear();
-        }
-    }
-
     @PostMapping("/logout")
     @Operation(summary = "用户退出登录", description = "用户退出登录")
     public ApiResponse<Boolean> logout(
@@ -72,7 +58,7 @@ public class AuthController {
      * 允许为空，为空时分别回落到请求头携带的当前主体（{@link AppContext}）与当前角色（{@link UserContext}）。 注意服务层已返回 {@link
      * ApiResponse}，此处<b>不要</b>再包一层 {@code ApiResponse.success(...)}。
      */
-    @PostMapping("/config/select/role")
+    @PostMapping("/role/select")
     @Operation(summary = "切换角色列表", description = "切换角色列表")
     public ApiResponse<SelectRoleResp> selectRole(
             @RequestBody(required = false) SelectRoleReq req) {

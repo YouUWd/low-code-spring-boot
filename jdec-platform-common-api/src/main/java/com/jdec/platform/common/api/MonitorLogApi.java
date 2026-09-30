@@ -36,14 +36,14 @@ public interface MonitorLogApi {
     PageResult<MonitorLogResp> queryLogPage(MonitorLogQueryReq req);
 
     /**
-     * 按模块 + 单据查询操作日志
+     * 按菜单 + 单据查询操作日志
      *
-     * <p>先按 {@code module_id + data_id} 查询操作日志索引表 {@code monitor_operate_index} 得到日志 id，再据此回 {@code
-     * monitor_log} 查询日志明细汇总返回；索引无记录时返回空列表。
+     * <p>先由菜单ID 反查其关联的模块ID，再按 {@code module_id + data_id} 查询操作日志索引表 {@code monitor_operate_index}
+     * 得到日志 id，据此回 {@code monitor_log} 查询日志明细；随后按当前登录角色的字段权限过滤 {@code remark} 中的字段明细，索引无记录时返回空列表。
      *
-     * @param moduleId 模块id
+     * @param menuId 菜单id
      * @param dataId 单据id
      * @return 该单据的操作日志列表（按记录时间倒序）
      */
-    List<MonitorLogResp> queryOperateLog(Long moduleId, Long dataId);
+    List<MonitorLogResp> queryOperateLog(Long menuId, Long dataId);
 }
