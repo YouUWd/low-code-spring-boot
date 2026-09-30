@@ -187,7 +187,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         NestedModuleDataDTO detailData;
 
         if (dynamicDetailQueryReq.getId() > 0) {
-
             detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
         } else {
             detailData = buildTemplateTree(metaDTO);
@@ -393,7 +392,18 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             }
         }
         recordDataDTOBuilder.children(childTemplateList);
-        recordDataDTOBuilder.row(new HashMap<>());
+
+        Map<String, Object> rowMap = new HashMap<>();
+
+        // 过滤掉没有创建权限的字段，将有权限字段填充空值返回
+        metaData.getFields().entrySet().stream()
+                .filter(ele -> ele.getValue().getApply())
+                .forEach(
+                        ele -> {
+                            rowMap.put(ele.getKey(), null);
+                        });
+
+        recordDataDTOBuilder.row(rowMap);
 
         nestedModuleDataDTOBuilder.record(Collections.singletonList(recordDataDTOBuilder.build()));
         return nestedModuleDataDTOBuilder.build();
