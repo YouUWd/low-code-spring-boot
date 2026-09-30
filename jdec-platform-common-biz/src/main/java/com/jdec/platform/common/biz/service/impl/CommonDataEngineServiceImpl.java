@@ -89,13 +89,19 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             throw new BusinessException("菜单 [" + menuDetailQueryReq.getMenuIds() + "] 没有共同的父模块");
         }
 
-        List<Long> checkedFieldIds = new ArrayList<>();
-
-        Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap = new HashMap<>();
-
         ModuleTreeDTO rootNode =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModule.getId());
 
+        // 字段权限
+        Map<Long, ModulePermissionDTO> permMap =
+                configApi.getModulePermissions(
+                        roleId, new ArrayList<>(rootNode.getAllowedModuleIds()));
+
+        Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap = new HashMap<>();
+
+        List<Long> checkedFieldIds = new ArrayList<>();
+
+        // 设置待查看模块表头及模块可查看字段
         for (SysMenuResp targetMenu : targetMenus) {
 
             List<Long> fieldIds = new ArrayList<>();
@@ -112,10 +118,29 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 log.debug("模块树查询结果未空，返回空列表。");
             }
 
-            fieldIds.addAll(
-                    rootNode.getModuleMap().get(targetMenu.getModuleId()).getFields().stream()
-                            .map(ModuleFieldDTO::getId)
-                            .collect(Collectors.toSet()));
+            if (permMap.containsKey(targetMenu.getModuleId())) {
+                Set<Long> modulePermissionFields =
+                        permMap
+                                .get(targetMenu.getModuleId())
+                                .getFieldPermissions()
+                                .entrySet()
+                                .stream()
+                                .filter(
+                                        ele -> {
+                                            ModulePermissionDTO.FieldPermissionItem
+                                                    fieldPermissionItem = ele.getValue();
+                                            // 返回有权限的字段
+                                            return fieldPermissionItem.getEdit()
+                                                    && fieldPermissionItem.getApply();
+                                        })
+                                .map(item -> item.getKey())
+                                .collect(Collectors.toSet());
+                fieldIds.addAll(
+                        rootNode.getModule(targetMenu.getModuleId()).getFields().stream()
+                                .filter(ele -> modulePermissionFields.contains(ele.getId()))
+                                .map(ModuleFieldDTO::getId)
+                                .collect(Collectors.toSet()));
+            }
 
             // TODO 模块下所有字段需要进行权限过滤
             checkedFieldIds.addAll(fieldIds);
@@ -135,10 +160,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .build();
 
         NestedModuleDataDTO detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
-
-        Map<Long, ModulePermissionDTO> permMap =
-                configApi.getModulePermissions(
-                        roleId, new ArrayList<>(rootNode.getAllowedModuleIds()));
 
         List<FieldWordCloudDTO> worldCloudConfigs =
                 configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
