@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.dto.request;
 
+import com.jdec.platform.data.api.dto.request.FilterItem;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
@@ -36,4 +37,13 @@ public class FlatFilterItem implements Serializable {
 
     @Schema(description = "检索值 (单值如 \"高等数学\"，区间如 [90, 100]，多选如 [\"A\", \"B\"])")
     private Object value;
+
+    /** 转换为内部权威 FilterItem 模型 */
+    public FilterItem toFilterItem() {
+        return FilterItem.builder()
+                .fieldId(this.fieldId)
+                .operator(this.operator != null ? this.operator : "EQ")
+                .value(this.value)
+                .build();
+    }
 }
