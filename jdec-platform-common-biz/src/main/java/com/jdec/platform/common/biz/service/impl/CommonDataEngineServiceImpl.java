@@ -3,6 +3,7 @@ package com.jdec.platform.common.biz.service.impl;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
+import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
 import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
 import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
 import com.jdec.platform.common.biz.dto.response.DetailDataResp;
@@ -197,15 +198,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             return metaList;
         }
 
-        Map<Long, ModulePermissionDTO> permMap = null;
-        if (roleId != null && moduleTree.getAllowedModuleIds() != null) {
-            try {
-                permMap = configApi.getModulePermissions(roleId, moduleTree.getAllowedModuleIds());
-            } catch (Exception ex) {
-                log.warn("获取模块字段权限映射失败: roleId={}, err={}", roleId, ex.getMessage());
-            }
-        }
-
         List<FieldWordCloudDTO> worldCloudConfigs =
                 configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
 
@@ -215,6 +207,19 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 Collectors.toMap(
                                         ele -> ele.getTableName() + "." + ele.getColumnName(),
                                         v -> v));
+
+        Map<Long, ModulePermissionDTO> permMap = null;
+
+        // 1. 获取模块权限汇总
+        if (roleId != null && rootModuleId != null) {
+            try {
+                permMap =
+                        configApi.getModulePermissions(
+                                roleId, Collections.singletonList(rootModuleId));
+            } catch (Exception ex) {
+                log.warn("获取模块权限汇总失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
+            }
+        }
 
         for (Map.Entry<Long, com.jdec.platform.config.api.dto.common.ModuleInfo> e :
                 moduleTree.getModuleMap().entrySet()) {
@@ -260,12 +265,25 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 }
             }
 
+            ModuleSimplePermissionDTO permission = null;
+
+            if (permMap != null && permMap.get(rootModuleId) != null) {
+                ModulePermissionDTO p = permMap.get(rootModuleId);
+                permission =
+                        ModuleSimplePermissionDTO.builder()
+                                .apply(Boolean.TRUE.equals(p.getApply()) ? 1 : 0)
+                                .view(Boolean.TRUE.equals(p.getView()) ? 1 : 0)
+                                .edit(Boolean.TRUE.equals(p.getEdit()) ? 1 : 0)
+                                .build();
+            }
+
             metaList.add(
                     ModuleMetaDTO.builder()
                             .moduleId(modId)
                             .menuId(Objects.equals(modId, rootModuleId) ? menuId : null)
                             .fields(fieldMetaMap)
                             .header(moduleIdHeaderMap.get(modId))
+                            .permission(permission)
                             .build());
         }
 
