@@ -29,7 +29,7 @@ public class SysMenuHeaderResp {
     @Schema(description = "所属菜单ID（首次生成时统一为最顶层菜单ID）", example = "1")
     private Long menuId;
 
-    @Schema(description = "显示名（覆盖值或默认取菜单名/字段显示名）", example = "外部对象列表")
+    @Schema(description = "显示名（按 sourceId 取源头：菜单节点取菜单标题，字段节点取模块字段显示名）", example = "外部对象列表")
     private String label;
 
     @Schema(description = "节点类型：0-菜单，1-字段", example = "0")
@@ -43,6 +43,11 @@ public class SysMenuHeaderResp {
 
     @Schema(description = "字段索引（模块id.表名.字段名）", example = "1001.info.company_name")
     private String dataIndex;
+
+    @Schema(
+            description = "是否关联字段（仅字段节点输出）：0-否，1-是（sys_field 中该表名+列名配置了 relation_business_no）",
+            example = "1")
+    private Integer relationWord;
 
     @Schema(description = "菜单显示颜色")
     private List<String> colors;

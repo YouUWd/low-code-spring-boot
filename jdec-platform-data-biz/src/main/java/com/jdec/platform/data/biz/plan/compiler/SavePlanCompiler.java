@@ -95,6 +95,8 @@ public class SavePlanCompiler {
         String primaryTable = resolvePrimaryTable(meta);
         String parentFk =
                 resolveParentForeignKey(primaryTable, meta, parentMeta, projectRelations, tree);
+        TableRelationDTO relation =
+                resolveTableRelation(primaryTable, parentMeta, projectRelations, tree);
 
         List<SaveNodePlan> childPlans = new ArrayList<>();
 
@@ -122,7 +124,9 @@ public class SavePlanCompiler {
             }
         }
 
-        boolean isMany = node.getRecords() != null && node.getRecords().size() > 1;
+        boolean isMany =
+                (relation != null && "1:N".equalsIgnoreCase(relation.getRelationType()))
+                        || (node.getRecords() != null && node.getRecords().size() > 1);
 
         return SaveNodePlan.builder()
                 .moduleId(moduleId)
@@ -284,9 +288,8 @@ public class SavePlanCompiler {
         return "";
     }
 
-    private String resolveParentForeignKey(
+    private TableRelationDTO resolveTableRelation(
             String childPrimaryTable,
-            ModuleInfo childMeta,
             ModuleInfo parentMeta,
             ProjectTableRelationsDTO projectRelations,
             ModuleTreeDTO tree) {
@@ -310,23 +313,50 @@ public class SavePlanCompiler {
             return null;
         }
 
-        // 第一性原理特殊情况：当子模块物理主表与父模块物理主表为同一物理表时 (同一实体的业务视图拆分)，外键即自身主键 id
+        // 同一物理表自身主键关联
         if (parentPrimary.equalsIgnoreCase(childPrimaryTable)) {
-            return "id";
+            return TableRelationDTO.builder()
+                    .mainTable(parentPrimary)
+                    .joinTable(childPrimaryTable)
+                    .joinField("id")
+                    .relationType("1:1")
+                    .build();
         }
 
-        TableRelationDTO matchedRel = null;
         if (projectRelations != null) {
-            matchedRel = projectRelations.findDirectRelation(parentPrimary, childPrimaryTable);
+            return projectRelations.findDirectRelation(parentPrimary, childPrimaryTable);
+        }
+        return null;
+    }
+
+    private String resolveParentForeignKey(
+            String childPrimaryTable,
+            ModuleInfo childMeta,
+            ModuleInfo parentMeta,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
+        if (childPrimaryTable == null || childPrimaryTable.isBlank() || parentMeta == null) {
+            return null;
         }
 
-        if (matchedRel != null) {
-            if (matchedRel.getJoinField() != null && !matchedRel.getJoinField().isBlank()) {
-                return matchedRel.getJoinField().trim();
+        TableRelationDTO matchedRel =
+                resolveTableRelation(childPrimaryTable, parentMeta, projectRelations, tree);
+        if (matchedRel != null
+                && matchedRel.getJoinField() != null
+                && !matchedRel.getJoinField().isBlank()) {
+            return matchedRel.getJoinField().trim();
+        }
+
+        ModuleInfo physicalParentMeta = parentMeta;
+        String parentPrimary = resolvePrimaryTable(physicalParentMeta);
+        if (parentPrimary == null || parentPrimary.isBlank()) {
+            physicalParentMeta = findNearestPhysicalParentMeta(parentMeta, new ArrayList<>(), tree);
+            if (physicalParentMeta != null) {
+                parentPrimary = resolvePrimaryTable(physicalParentMeta);
             }
         }
 
-        Long parentModId = physicalParentMeta.getModuleId();
+        Long parentModId = physicalParentMeta != null ? physicalParentMeta.getModuleId() : null;
         Long childModId = childMeta != null ? childMeta.getModuleId() : null;
         throw new IllegalStateException(
                 String.format(
