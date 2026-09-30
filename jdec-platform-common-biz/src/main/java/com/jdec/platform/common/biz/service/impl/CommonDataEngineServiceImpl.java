@@ -10,10 +10,7 @@ import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysModuleApi;
-import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
-import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
@@ -96,16 +93,12 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap = new HashMap<>();
 
+        ModuleTreeDTO rootNode =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModule.getId());
+
         for (SysMenuResp targetMenu : targetMenus) {
 
             List<Long> fieldIds = new ArrayList<>();
-
-            // 获取模块树
-            ModuleTreeDTO tree =
-                    configApi.getModuleTree(
-                            AppContext.getProjectNo(),
-                            AppContext.getSubjectId(),
-                            targetMenu.getModuleId());
 
             MenuHeaderDisplayResp menuHeaderDisplayResp =
                     userMenuHeaderApi.getUserMenuHeaderDisplay(
@@ -115,12 +108,12 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 moduleIdHeaderMap.put(targetMenu.getModuleId(), menuHeaderDisplayResp.getHeader());
             }
 
-            if (Objects.isNull(tree)) {
+            if (Objects.isNull(rootNode)) {
                 log.debug("模块树查询结果未空，返回空列表。");
             }
 
             fieldIds.addAll(
-                    tree.getRootModule().getFields().stream()
+                    rootNode.getModuleMap().get(targetMenu.getModuleId()).getFields().stream()
                             .map(ModuleFieldDTO::getId)
                             .collect(Collectors.toSet()));
 
@@ -143,11 +136,32 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         NestedModuleDataDTO detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
 
-        // 构建模块元数据配置列表 (ModuleMetaDTO)
-        List<ModuleMetaDTO> metaList =
-                buildModuleMetaList(rootModule.getId(), null, roleId, moduleIdHeaderMap);
+        Map<Long, ModulePermissionDTO> permMap =
+                configApi.getModulePermissions(
+                        roleId, new ArrayList<>(rootNode.getAllowedModuleIds()));
 
-        return DetailDataResp.of(metaList, detailData);
+        List<FieldWordCloudDTO> worldCloudConfigs =
+                configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
+
+        Map<String, FieldWordCloudDTO> nameToWorldConfMap =
+                worldCloudConfigs.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        ele -> ele.getTableName() + "." + ele.getColumnName(),
+                                        v -> v));
+
+        // 构建模块元数据配置列表 (ModuleMetaDTO)
+        ModuleMetaDTO metaDTO =
+                buildModuleMetaList(
+                        rootModule.getId(),
+                        null,
+                        roleId,
+                        permMap,
+                        moduleIdHeaderMap,
+                        nameToWorldConfMap,
+                        rootNode);
+
+        return DetailDataResp.of(metaDTO, detailData);
     }
 
     @Override
@@ -186,108 +200,100 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         return dataEngineApi.getVersionList(versionListQueryReq);
     }
 
-    private List<ModuleMetaDTO> buildModuleMetaList(
+    private ModuleMetaDTO buildModuleMetaList(
             Long rootModuleId,
             Long menuId,
             Long roleId,
-            Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap) {
-        List<ModuleMetaDTO> metaList = new ArrayList<>();
-        ModuleTreeDTO moduleTree =
-                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
-        if (moduleTree == null || moduleTree.getModuleMap() == null) {
-            return metaList;
+            Map<Long, ModulePermissionDTO> permMap,
+            Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap,
+            Map<String, FieldWordCloudDTO> worldCloudConfigMap,
+            ModuleTreeDTO moduleTreeDTO) {
+        if (moduleTreeDTO == null || moduleTreeDTO.getModuleMap() == null) {
+            return null;
         }
 
-        List<FieldWordCloudDTO> worldCloudConfigs =
-                configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
+        ModuleMetaDTO.ModuleMetaDTOBuilder parentModuleMeta = ModuleMetaDTO.builder();
+        parentModuleMeta.moduleId(rootModuleId).menuId(menuId);
 
-        Map<String, FieldWordCloudDTO> nameToWorldConfMap =
-                worldCloudConfigs.stream()
-                        .collect(
-                                Collectors.toMap(
-                                        ele -> ele.getTableName() + "." + ele.getColumnName(),
-                                        v -> v));
+        ModuleInfo parentModuleInfo = moduleTreeDTO.getModuleMap().get(rootModuleId);
+        Map<String, FieldMetaDTO> fieldMetaMap = new LinkedHashMap<>();
+        ModulePermissionDTO modPerm = permMap != null ? permMap.get(rootModuleId) : null;
 
-        Map<Long, ModulePermissionDTO> permMap = null;
+        if (parentModuleInfo.getFields() != null) {
+            String primaryTable = parentModuleInfo.getPrimaryTable();
+            for (ModuleFieldDTO f : parentModuleInfo.getFields()) {
+                String col = f.getColumnName();
+                String fullKey =
+                        (primaryTable != null && !primaryTable.isBlank())
+                                ? primaryTable + "." + col
+                                : col;
 
-        // 1. 获取模块权限汇总
-        if (roleId != null && rootModuleId != null) {
-            try {
-                permMap =
-                        configApi.getModulePermissions(
-                                roleId, Collections.singletonList(rootModuleId));
-            } catch (Exception ex) {
-                log.warn("获取模块权限汇总失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
-            }
-        }
+                ModulePermissionDTO.FieldPermissionItem fp =
+                        (modPerm != null && modPerm.getFieldPermissions() != null)
+                                ? modPerm.getFieldPermissions().get(f.getId())
+                                : null;
 
-        for (Map.Entry<Long, com.jdec.platform.config.api.dto.common.ModuleInfo> e :
-                moduleTree.getModuleMap().entrySet()) {
-            Long modId = e.getKey();
-            com.jdec.platform.config.api.dto.common.ModuleInfo modInfo = e.getValue();
-            if (modInfo == null) {
-                continue;
-            }
-
-            Map<String, FieldMetaDTO> fieldMetaMap = new LinkedHashMap<>();
-            ModulePermissionDTO modPerm = permMap != null ? permMap.get(modId) : null;
-
-            if (modInfo.getFields() != null) {
-                String primaryTable = modInfo.getPrimaryTable();
-                for (ModuleFieldDTO f : modInfo.getFields()) {
-                    String col = f.getColumnName();
-                    String fullKey =
-                            (primaryTable != null && !primaryTable.isBlank())
-                                    ? primaryTable + "." + col
-                                    : col;
-
-                    ModulePermissionDTO.FieldPermissionItem fp =
-                            (modPerm != null && modPerm.getFieldPermissions() != null)
-                                    ? modPerm.getFieldPermissions().get(f.getId())
-                                    : null;
-
-                    FieldMetaDTO fMeta =
-                            FieldMetaDTO.builder()
-                                    .id(f.getId())
-                                    .displayName(f.getDisplayName())
-                                    .apply(fp != null ? fp.getApply() : true)
-                                    .view(fp != null ? fp.getView() : true)
-                                    .edit(fp != null ? fp.getEdit() : true)
-                                    .businessNo(
-                                            nameToWorldConfMap.containsKey(fullKey)
-                                                    ? nameToWorldConfMap
-                                                            .get(fullKey)
-                                                            .getRelationBusinessNo()
-                                                    : null)
-                                    .build();
-
-                    fieldMetaMap.put(fullKey, fMeta);
-                }
-            }
-
-            ModuleSimplePermissionDTO permission = null;
-
-            if (permMap != null && permMap.get(modId) != null) {
-                ModulePermissionDTO p = permMap.get(modId);
-                permission =
-                        ModuleSimplePermissionDTO.builder()
-                                .apply(Boolean.TRUE.equals(p.getApply()) ? 1 : 0)
-                                .view(Boolean.TRUE.equals(p.getView()) ? 1 : 0)
-                                .edit(Boolean.TRUE.equals(p.getEdit()) ? 1 : 0)
+                FieldMetaDTO fMeta =
+                        FieldMetaDTO.builder()
+                                .id(f.getId())
+                                .displayName(f.getDisplayName())
+                                .apply(fp != null ? fp.getApply() : true)
+                                .view(fp != null ? fp.getView() : true)
+                                .edit(fp != null ? fp.getEdit() : true)
+                                .businessNo(
+                                        worldCloudConfigMap.containsKey(fullKey)
+                                                ? worldCloudConfigMap
+                                                        .get(fullKey)
+                                                        .getRelationBusinessNo()
+                                                : null)
                                 .build();
-            }
 
-            metaList.add(
-                    ModuleMetaDTO.builder()
-                            .moduleId(modId)
-                            .menuId(Objects.equals(modId, rootModuleId) ? menuId : null)
-                            .fields(fieldMetaMap)
-                            .header(moduleIdHeaderMap.get(modId))
-                            .permission(permission)
-                            .build());
+                fieldMetaMap.put(fullKey, fMeta);
+            }
         }
 
-        return metaList;
+        parentModuleMeta.fields(fieldMetaMap);
+
+        ModuleSimplePermissionDTO permission = null;
+
+        if (permMap != null && permMap.get(rootModuleId) != null) {
+            ModulePermissionDTO p = permMap.get(rootModuleId);
+            permission =
+                    ModuleSimplePermissionDTO.builder()
+                            .apply(Boolean.TRUE.equals(p.getApply()) ? 1 : 0)
+                            .view(Boolean.TRUE.equals(p.getView()) ? 1 : 0)
+                            .edit(Boolean.TRUE.equals(p.getEdit()) ? 1 : 0)
+                            .build();
+        }
+
+        parentModuleMeta.permission(permission);
+
+        List<ModuleMetaDTO> childrenMeta = new ArrayList<>();
+
+        if (!CollectionUtils.isEmpty(moduleTreeDTO.getParentToChildren().get(rootModuleId))) {
+            for (Long modId : moduleTreeDTO.getParentToChildren().get(rootModuleId)) {
+                ModuleInfo childModInfo = moduleTreeDTO.getModuleMap().get(modId);
+                ;
+                if (childModInfo == null) {
+                    continue;
+                }
+                childrenMeta.add(
+                        buildModuleMetaList(
+                                modId,
+                                null,
+                                roleId,
+                                permMap,
+                                moduleIdHeaderMap,
+                                worldCloudConfigMap,
+                                moduleTreeDTO));
+            }
+        }
+
+        parentModuleMeta.children(childrenMeta);
+
+        parentModuleMeta.header(moduleIdHeaderMap.get(rootModuleId));
+
+        return parentModuleMeta.build();
     }
 
     /**

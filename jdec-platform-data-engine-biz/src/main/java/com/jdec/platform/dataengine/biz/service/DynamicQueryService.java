@@ -373,7 +373,10 @@ public class DynamicQueryService {
 
         NestedModuleDataDTO moduleData =
                 queryModule(singleQueryDTO, rootNode, true, topQuery, moduleIdToFieldMap);
-        resultList.add(moduleData);
+
+        if (Objects.nonNull(moduleData)) {
+            resultList.add(moduleData);
+        }
     }
 
     private NestedModuleDataDTO queryModule(
@@ -401,10 +404,7 @@ public class DynamicQueryService {
         currentModuleData = querySingleModule(rootNode, queryReq, queryReq.getQueryType());
 
         if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
-            return builder.moduleId(rootNode.getId())
-                    .menuId(rootNode.getId())
-                    .record(currentModuleData)
-                    .build();
+            return null;
         }
 
         Set<Long> primaryIds = getPrimaryIdSet(currentModuleData, rootNode.getId());
@@ -492,10 +492,14 @@ public class DynamicQueryService {
             }
         }
 
-        return builder.moduleId(rootNode.getId())
-                .menuId(rootNode.getId())
-                .record(currentModuleData)
-                .build();
+        if (CollectionUtils.isEmpty(currentModuleData)) {
+            return null;
+        } else {
+            return builder.moduleId(rootNode.getId())
+                    .menuId(rootNode.getId())
+                    .record(currentModuleData)
+                    .build();
+        }
     }
 
     private List<ModuleFieldDTO> getIdAndRelateIdField(Long id) {
@@ -759,13 +763,16 @@ public class DynamicQueryService {
         List<RecordDataDTO> recordDataDTOList =
                 detailBizQueryService.queryDetailBiz(detailQueryContext);
 
-        NestedModuleDataDTO.NestedModuleDataDTOBuilder nestedModuleDataDTOBuilder =
-                NestedModuleDataDTO.builder();
+        if (!CollectionUtils.isEmpty(recordDataDTOList)) {
 
-        nestedModuleDataDTOBuilder.moduleId(moduleTree.getId());
-        nestedModuleDataDTOBuilder.record(recordDataDTOList);
+            NestedModuleDataDTO.NestedModuleDataDTOBuilder nestedModuleDataDTOBuilder =
+                    NestedModuleDataDTO.builder();
 
-        resultList.add(nestedModuleDataDTOBuilder.build());
+            nestedModuleDataDTOBuilder.moduleId(moduleTree.getId());
+            nestedModuleDataDTOBuilder.record(recordDataDTOList);
+
+            resultList.add(nestedModuleDataDTOBuilder.build());
+        }
     }
 
     private void recursiveFillModuleFields(
