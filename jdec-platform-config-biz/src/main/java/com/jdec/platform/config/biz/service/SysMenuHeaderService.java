@@ -172,6 +172,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      *       比对，已存在的节点按主键批量更新，未存在的节点批量新增。
      * </ul>
      *
+     * <p>两种情形都以本次提交的整棵树为准：{@code menuId} 下已保存、但 {@code header} 中未提交的节点一并删除（一条 SQL）。
+     *
      * <p>{@code header} 为空时只做上述清理、不做落库。数据隔离按 {@code subject_id} + {@code project_no}，所有写操作均为批量执行。
      *
      * @param menuId 本次表头记录的归属菜单ID（由 {@code SysMenuService} 按归属规则解析后传入）
@@ -209,14 +211,16 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         flatten(header, nodes);
 
         // 一次性查出该菜单已保存的节点并按虚拟id 建索引，避免循环内查库
+        List<SysMenuHeader> storedNodes = selectStoredNodes(menuId);
         Map<String, Long> storedIdByVirId = new HashMap<>();
-        for (SysMenuHeader stored : selectStoredNodes(menuId)) {
-            storedIdByVirId.putIfAbsent(stored.getVirId(), stored.getId());
+        for (SysMenuHeader storedNode : storedNodes) {
+            storedIdByVirId.putIfAbsent(storedNode.getVirId(), storedNode.getId());
         }
 
-        // 已保存的节点按主键批量更新，未保存的节点批量新增
+        // 已保存的节点按主键批量更新，未保存的节点批量新增；命中的已存记录主键收集起来用于反推需删除的记录
         List<SysMenuHeader> insertList = new ArrayList<>();
         List<SysMenuHeader> updateList = new ArrayList<>();
+        Set<Long> keptIds = new HashSet<>();
         for (SaveMenuReq.MenuHeaderNode node : nodes) {
             if (node.getVirId() == null || node.getVirId().trim().isEmpty()) {
                 throw new BusinessException("表头节点虚拟id不能为空");
@@ -226,11 +230,27 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             if (storedId != null) {
                 entity.setId(storedId);
                 updateList.add(entity);
+                keptIds.add(storedId);
             } else {
                 entity.setSubjectId(subjectId);
                 entity.setProjectNo(projectNo);
                 insertList.add(entity);
             }
+        }
+
+        // 整棵树以本次提交为准：库中已保存、但本次未提交的节点一并删除（一条 SQL）
+        List<Long> removedIds =
+                storedNodes.stream()
+                        .map(SysMenuHeader::getId)
+                        .filter(id -> id != null && !keptIds.contains(id))
+                        .collect(Collectors.toList());
+        if (!removedIds.isEmpty()) {
+            sysMenuHeaderMapper.delete(
+                    Wrappers.<SysMenuHeader>lambdaQuery()
+                            .eq(SysMenuHeader::getMenuId, menuId)
+                            .eq(SysMenuHeader::getSubjectId, subjectId)
+                            .eq(SysMenuHeader::getProjectNo, projectNo)
+                            .in(SysMenuHeader::getId, removedIds));
         }
 
         if (!insertList.isEmpty()) {
@@ -239,7 +259,12 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         if (!updateList.isEmpty()) {
             sysMenuHeaderMapper.updateById(updateList);
         }
-        log.debug("保存菜单表头配置：menuId={}, 新增={}, 更新={}", menuId, insertList.size(), updateList.size());
+        log.debug(
+                "保存菜单表头配置：menuId={}, 新增={}, 更新={}, 删除={}",
+                menuId,
+                insertList.size(),
+                updateList.size(),
+                removedIds.size());
     }
 
     @Override
