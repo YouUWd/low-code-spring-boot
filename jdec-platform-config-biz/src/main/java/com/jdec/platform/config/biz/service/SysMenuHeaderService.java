@@ -391,7 +391,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             resp.setColors(parseColors(node.getColors()));
         } else {
             resp.setFieldId(node.getSourceId());
-            resp.setDataIndex(node.getDataIndex());
+            resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -624,7 +624,10 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                 stored.getModuleId() != null ? stored.getModuleId() : generated.getModuleId());
         resp.setLabel(stored.getLabel() != null ? stored.getLabel() : generated.getLabel());
         resp.setDataIndex(
-                stored.getDataIndex() != null ? stored.getDataIndex() : generated.getDataIndex());
+                stripModulePrefix(
+                        stored.getDataIndex() != null
+                                ? stored.getDataIndex()
+                                : generated.getDataIndex()));
         resp.setSorted(stored.getSorted() != null ? stored.getSorted() : generated.getSorted());
         resp.setEllipsis(
                 stored.getEllipsis() != null ? stored.getEllipsis() : generated.getEllipsis());
@@ -832,13 +835,21 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         return VIR_ID_PREFIX_FIELD + "_" + fieldId;
     }
 
-    /** 字段索引：模块id.表名.字段名，如 1001.info.company_name */
+    /** 字段索引：表名.字段名，如 info.company_name（不带模块ID） */
     private String buildDataIndex(SysModuleField field) {
-        return field.getModuleId()
-                + DATA_INDEX_SEPARATOR
-                + field.getTableName()
-                + DATA_INDEX_SEPARATOR
-                + field.getColumnName();
+        return field.getTableName() + DATA_INDEX_SEPARATOR + field.getColumnName();
+    }
+
+    /** 字段索引去掉前缀模块ID：1006.company_contact.id → company_contact.id（无数字前缀时原样返回） */
+    private static String stripModulePrefix(String dataIndex) {
+        if (dataIndex == null) {
+            return null;
+        }
+        int dot = dataIndex.indexOf(DATA_INDEX_SEPARATOR);
+        if (dot > 0 && dataIndex.substring(0, dot).chars().allMatch(Character::isDigit)) {
+            return dataIndex.substring(dot + 1);
+        }
+        return dataIndex;
     }
 
     private boolean isMenuNode(SysMenuHeader node) {
