@@ -17,26 +17,41 @@ public class BizDataFieldFillServiceImpl implements BaseDataSaveNecessaryFieldFi
     @Override
     public Map<String, Object> fillData(RecordSaveContext recordSaveContext) {
         Map<String, Object> fMap = new HashMap<>();
-        // 插入时,根模块才会填充这些字段
-        if (recordSaveContext.getIsInsert() && recordSaveContext.getIsRootModuleMainTable()) {
-
-            switch (recordSaveContext.getSaveType()) {
-                case APPROVAL_SAVE, APPROVAL_CHANGE, APPROVAL_REALTIME -> {
-                    fMap.put(
-                            "business_no",
-                            ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
-                    fMap.put("version_no", 1);
-                    fMap.put("business_status", 1);
+        // 模块定义 根模块才会填充这些字段
+        if (recordSaveContext.getIsRootModuleMainTable()) {
+            // 插入时
+            if (recordSaveContext.getIsInsert()) {
+                switch (recordSaveContext.getSaveType()) {
+                    case APPROVAL_SAVE -> {
+                        fMap.put(
+                                "business_no",
+                                ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
+                        fMap.put("version_no", 1);
+                        fMap.put("business_status", 1);
+                    }
+                    case NORMAL_SAVE -> {
+                        fMap.put(
+                                "business_no",
+                                ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
+                        fMap.put("version_no", 1);
+                        fMap.put("business_status", 99);
+                    }
                 }
-                case NORMAL_SAVE -> {
-                    fMap.put(
-                            "business_no",
-                            ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
-                    fMap.put("version_no", 1);
-                    fMap.put("business_status", 99);
+                recordSaveContext.setBizDataMap(fMap);
+            } else {
+                // 更新时候，只有变更保存才会 重置 version_no business_status,registration_time
+
+                switch (recordSaveContext.getSaveType()) {
+                    case APPROVAL_CHANGE -> {
+                        Number versionNo =
+                                (Number) recordSaveContext.getReadOutRecord().get("version_no");
+                        Integer v = versionNo.intValue() + 1;
+                        fMap.put("version_no", v);
+                        fMap.put("business_status", 1);
+                        fMap.put("registration_time", null);
+                    }
                 }
             }
-            recordSaveContext.setBizDataMap(fMap);
         }
         return fMap;
     }

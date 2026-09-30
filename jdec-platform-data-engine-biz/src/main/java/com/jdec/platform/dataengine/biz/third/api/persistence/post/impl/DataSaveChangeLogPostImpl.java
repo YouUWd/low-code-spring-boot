@@ -19,7 +19,7 @@ public class DataSaveChangeLogPostImpl implements BaseDataSavePost {
     @Override
     public Boolean postProcess(ModuleDataPostContext context) {
         ModuleDataChangeEvent event = new ModuleDataChangeEvent(context);
-        event.setActionId(context.getActionId());
+        event.setModuleDataPostContext(context);
         moduleDataSavePublisher.publishModuleDataChangeEvent(event);
         return true;
     }

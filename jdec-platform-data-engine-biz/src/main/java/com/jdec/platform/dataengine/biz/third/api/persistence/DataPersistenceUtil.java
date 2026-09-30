@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.jooq.JSON;
+import org.jooq.JSONB;
 import org.jooq.Record;
 
 public class DataPersistenceUtil {
@@ -140,6 +141,9 @@ public class DataPersistenceUtil {
                     if (val instanceof JSON v) {
                         val = JsonUtil.json2Obj(v.data(), Object.class);
                         map.put(field.getName(), val);
+                    } else if (val instanceof JSONB vb) {
+                        val = JsonUtil.json2Obj(vb.data(), Object.class);
+                        map.put(field.getName(), val);
                     } else {
                         map.put(field.getName(), val);
                     }
@@ -164,6 +168,9 @@ public class DataPersistenceUtil {
         }
         List<FieldChangeDTO> fieldChangeDTOList = new ArrayList<>();
         for (String field : recordMap.keySet()) {
+            if (CommonConstant.NONE_DIFF_FIELD_SET.contains(field)) {
+                continue;
+            }
             Object old = r.get(field);
             Object newer = recordMap.get(field);
             String displayName =
@@ -195,6 +202,10 @@ public class DataPersistenceUtil {
         }
         List<FieldChangeDTO> fieldChangeDTOList = new ArrayList<>();
         for (String field : recordMap.keySet()) {
+            // 过滤不需要的对比字段
+            if (CommonConstant.NONE_DIFF_FIELD_SET.contains(field)) {
+                continue;
+            }
             Object newer = recordMap.get(field);
             String displayName =
                     fieldMap.get(field) != null ? fieldMap.get(field).getDisplayName() : null;
@@ -215,11 +226,10 @@ public class DataPersistenceUtil {
     }
 
     public static String getUniqueName(Map<String, Object> recordMap, List<String> uniqueFields) {
-
         StringBuilder stringBuilder = new StringBuilder();
         for (String uniqueField : uniqueFields) {
             if (recordMap.containsKey(uniqueField)) {
-                Object value = getFieldWriteValue(recordMap.get(uniqueField));
+                String value = getFieldTxtValue(recordMap.get(uniqueField));
                 if (value != null) {
                     if (stringBuilder.length() > 0) {
                         stringBuilder.append(" ").append(String.valueOf(value));
@@ -234,9 +244,9 @@ public class DataPersistenceUtil {
             String field, String displayName, Object old, Object newer) {
 
         try {
-            String oldValue = String.valueOf(getFieldWriteValue(old));
+            String oldValue = String.valueOf(getFieldTxtValue(old));
 
-            String newValue = String.valueOf(getFieldWriteValue(newer));
+            String newValue = String.valueOf(getFieldTxtValue(newer));
 
             if (!oldValue.equals(newValue)) {
                 if (oldValue.equals("null")) {
@@ -376,5 +386,18 @@ public class DataPersistenceUtil {
         //
         //        // 6. 其他POJO对象，转json字符串
         //        return writeJson(value);
+    }
+
+    public static RowChangeDTO combineRowChanges(RowChangeDTO primary, RowChangeDTO secondary) {
+        List<FieldChangeDTO> columns = new ArrayList<>();
+        if (primary != null && CollectionUtil.isNotEmpty(primary.getColumns())) {
+            columns.addAll(primary.getColumns());
+        }
+        if (secondary != null && CollectionUtil.isNotEmpty(secondary.getColumns())) {
+            columns.addAll(secondary.getColumns());
+        }
+        String name = primary != null ? primary.getName() : null;
+        String action = primary != null ? primary.getAction() : null;
+        return RowChangeDTO.builder().columns(columns).name(name).action(action).build();
     }
 }

@@ -549,24 +549,24 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         for (RecordDataDTO recordDataDTO : nestedModuleDataDTO.getRecord()) {
 
             // 这一行没有变更日志
-            if (CollectionUtil.isEmpty(recordDataDTO.getRowChanges())) {
+            //            if (CollectionUtil.isEmpty(recordDataDTO.getRowChanges())) {
+            //
+            //                ActionChangeDTO Action = new ActionChangeDTO();
+            //
+            //                RowChangeDTO r = new RowChangeDTO();
+            //
+            //                if (CollectionUtil.isEmpty(recordDataDTO.getChildren())) {
+            //                    r.setChildren(new ArrayList<>());
+            //                    List<RowChangeDTO> child = new ArrayList<>();
+            //                    child.add(r);
+            //                    Action.setU(child);
+            //                    moduleChangeDTO.setActions(Action);
+            //                    result.add(moduleChangeDTO);
+            //                    return result;
+            //                }
+            //            }
 
-                ActionChangeDTO Action = new ActionChangeDTO();
-
-                RowChangeDTO r = new RowChangeDTO();
-
-                if (CollectionUtil.isEmpty(recordDataDTO.getChildren())) {
-                    r.setChildren(new ArrayList<>());
-                    List<RowChangeDTO> child = new ArrayList<>();
-                    child.add(r);
-                    Action.setU(child);
-                    moduleChangeDTO.setActions(Action);
-                    result.add(moduleChangeDTO);
-                    return result;
-                }
-            }
-
-            RowChangeDTO rowChangeDTO = recordDataDTO.getRowChanges().get(0);
+            // RowChangeDTO rowChangeDTO = recordDataDTO.getRowChanges().get(0);
         }
         result.add(moduleChangeDTO);
 
