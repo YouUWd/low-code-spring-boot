@@ -268,9 +268,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         FieldMetaDTO.builder()
                                 .id(f.getId())
                                 .displayName(f.getDisplayName())
-                                .apply(fp != null ? fp.getApply() : true)
-                                .view(fp != null ? fp.getView() : true)
-                                .edit(fp != null ? fp.getEdit() : true)
+                                .apply(fp != null ? fp.getApply() : false)
+                                .view(fp != null ? fp.getView() : false)
+                                .edit(fp != null ? fp.getEdit() : false)
                                 .businessNo(
                                         worldCloudConfigMap.containsKey(fullKey)
                                                 ? worldCloudConfigMap
