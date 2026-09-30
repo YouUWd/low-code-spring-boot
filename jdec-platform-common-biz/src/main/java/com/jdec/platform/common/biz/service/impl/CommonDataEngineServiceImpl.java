@@ -18,6 +18,7 @@ import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
@@ -76,6 +77,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             return null;
         }
 
+        // 菜单对应的模块集合
         Set<Long> moduleIds =
                 targetMenus.stream().map(SysMenuResp::getModuleId).collect(Collectors.toSet());
 
@@ -83,6 +85,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 sysModuleApi.getAvailableModuleTree(
                         1, AppContext.getProjectNo(), AppContext.getSubjectId());
 
+        // 模块树上寻找根节点
         SysModuleSimpleTreeResp rootModule = findRootNodesByTargetIds(moduleTree, moduleIds);
 
         if (Objects.isNull(rootModule)) {
@@ -92,7 +95,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         ModuleTreeDTO rootNode =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModule.getId());
 
-        // 字段权限
+        // 字段权限映射Map获取
         Map<Long, ModulePermissionDTO> permMap =
                 configApi.getModulePermissions(
                         roleId, new ArrayList<>(rootNode.getAllowedModuleIds()));
@@ -118,6 +121,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 log.debug("模块树查询结果未空，返回空列表。");
             }
 
+            // 对模块下字段进行权限过滤
             if (permMap.containsKey(targetMenu.getModuleId())) {
                 Set<Long> modulePermissionFields =
                         permMap
@@ -142,10 +146,10 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 .collect(Collectors.toSet()));
             }
 
-            // TODO 模块下所有字段需要进行权限过滤
             checkedFieldIds.addAll(fieldIds);
         }
 
+        // 根模块加入
         moduleIds.add(rootModule.getId());
 
         DynamicDetailQueryReq dynamicDetailQueryReq =
@@ -158,8 +162,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .showVersionCompare(menuDetailQueryReq.getShowVersionCompare())
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
-
-        NestedModuleDataDTO detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
 
         List<FieldWordCloudDTO> worldCloudConfigs =
                 configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
@@ -181,6 +183,15 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         moduleIdHeaderMap,
                         nameToWorldConfMap,
                         rootNode);
+
+        NestedModuleDataDTO detailData;
+
+        if (dynamicDetailQueryReq.getId() > 0) {
+
+            detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
+        } else {
+            detailData = buildTemplateTree(metaDTO);
+        }
 
         return DetailDataResp.of(metaDTO, detailData);
     }
@@ -360,5 +371,31 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 dfsCollectId(child, idSet);
             }
         }
+    }
+
+    public NestedModuleDataDTO buildTemplateTree(ModuleMetaDTO metaData) {
+        return convertMetaToTemplateData(metaData);
+    }
+
+    private NestedModuleDataDTO convertMetaToTemplateData(ModuleMetaDTO metaData) {
+        NestedModuleDataDTO.NestedModuleDataDTOBuilder nestedModuleDataDTOBuilder =
+                NestedModuleDataDTO.builder();
+        nestedModuleDataDTOBuilder.moduleId(metaData.getModuleId());
+
+        RecordDataDTO.RecordDataDTOBuilder recordDataDTOBuilder = RecordDataDTO.builder();
+
+        // 递归子模块
+        List<NestedModuleDataDTO> childTemplateList = new ArrayList<>();
+        if (metaData.getChildren() != null) {
+            for (ModuleMetaDTO childConfig : metaData.getChildren()) {
+                NestedModuleDataDTO childVo = convertMetaToTemplateData(childConfig);
+                childTemplateList.add(childVo);
+            }
+        }
+        recordDataDTOBuilder.children(childTemplateList);
+        recordDataDTOBuilder.row(new HashMap<>());
+
+        nestedModuleDataDTOBuilder.record(Collections.singletonList(recordDataDTOBuilder.build()));
+        return nestedModuleDataDTOBuilder.build();
     }
 }
