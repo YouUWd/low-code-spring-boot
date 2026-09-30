@@ -96,6 +96,18 @@ class DataPersistenceTest {
                             return new MockResult[] {new MockResult(1, result)};
                         }
 
+                        if (sql.toLowerCase().contains("select")
+                                && sql.toLowerCase().contains("student_course")
+                                && sql.toLowerCase().contains("student_id")) {
+                            var result = create.newResult(DSL.field("id", Long.class));
+                            for (Long existingId : List.of(301L, 302L, 303L)) {
+                                var record = create.newRecord(DSL.field("id", Long.class));
+                                record.setValue(DSL.field("id", Long.class), existingId);
+                                result.add(record);
+                            }
+                            return new MockResult[] {new MockResult(3, result)};
+                        }
+
                         return new MockResult[] {new MockResult(1, create.newResult())};
                     }
                 };
@@ -671,5 +683,142 @@ class DataPersistenceTest {
         assertNotNull(respAddressRow);
         assertNotNull(respAddressRow.getValue("address", "id"));
         assertEquals("唐", respAddressRow.getValue("address", "comm_country"));
+    }
+
+    @Test
+    @DisplayName("测试显式 deleted=1 标记软删除已存在记录与忽略未入库记录")
+    void testSaveWithExplicitDeletedFlag() {
+        // 构造 1:N 子模块 (105 - student_course) 记录：
+        // 1. 已存在记录 (id=301)，标记 deleted=1 -> 触发 update ... set deleted=1
+        DataRow deletedExistingCourse = new DataRow();
+        deletedExistingCourse.putValue("student_course", "id", 301L);
+        deletedExistingCourse.putValue("student_course", "deleted", 1);
+        deletedExistingCourse.putValue("student_course", "course_name", "已退选课程");
+
+        // 2. 正常更新记录 (id=302) -> 触发 normal update
+        DataRow normalExistingCourse = new DataRow();
+        normalExistingCourse.putValue("student_course", "id", 302L);
+        normalExistingCourse.putValue("student_course", "course_name", "高等数学修改");
+
+        // 3. 纯前端临时新建又删除的记录 (无 id，deleted=1) -> 直接忽略
+        DataRow deletedNewCourse = new DataRow();
+        deletedNewCourse.putValue("student_course", "deleted", 1);
+        deletedNewCourse.putValue("student_course", "course_name", "临时误加课程");
+
+        // 4. 新增记录 (无 id) -> 触发 insert
+        DataRow newCourse = new DataRow();
+        newCourse.putValue("student_course", "course_name", "大学物理");
+
+        DataBlock courseBlock =
+                DataBlock.builder()
+                        .moduleId(105L)
+                        .records(
+                                List.of(
+                                        deletedExistingCourse,
+                                        normalExistingCourse,
+                                        deletedNewCourse,
+                                        newCourse))
+                        .build();
+
+        DataRow studentRow = new DataRow();
+        studentRow.putValue("student", "id", 100L);
+        studentRow.putValue("student", "name", "张三");
+        studentRow.addChild(courseBlock);
+
+        DataBlock rootBlock =
+                DataBlock.builder().moduleId(101L).records(List.of(studentRow)).build();
+
+        SaveResp resp = dataPersistenceService.save(rootBlock);
+
+        assertNotNull(resp);
+        assertNotNull(resp.getRootId());
+
+        // 验证执行的 SQL
+        // 1. 应包含针对 student_course 的 deleted=1 软删除 SQL
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("update `student_course`")
+                                                && sql.toLowerCase().contains("`deleted` =")
+                                                && sql.toLowerCase().contains("where")),
+                "未找到针对 student_course 的软删除 SQL: " + executedSqlList);
+
+        // 2. 应包含针对 student_course 的正常更新 SQL
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("update `student_course`")
+                                                && sql.toLowerCase().contains("`course_name` =")
+                                                && sql.toLowerCase().contains("where")),
+                "未找到针对 student_course 的更新 SQL: " + executedSqlList);
+
+        // 3. 应包含针对新记录的插入 SQL
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("insert into `student_course`")
+                                                && sql.toLowerCase().contains("`course_name`")),
+                "未找到针对新课程的插入 SQL: " + executedSqlList);
+    }
+
+    @Test
+    @DisplayName("测试无需前端 deleted 标识：1:N 子表减少时，后端自动通过外键范围 Diff 计算差集并执行批量软删除 (Orphan Removal)")
+    void testOrphanRemoval_automaticallySoftDeletesMissingChildRecords() {
+        // 场景说明：
+        // 数据库中已有 3 条有效选课记录：id = [301, 302, 303]
+        // 前端用户在 UI 上直接删除了 302 和 303（纯 array.splice，不传 deleted 标识），只提交保留的 301
+        DataRow remainingCourse = new DataRow();
+        remainingCourse.putValue("student_course", "id", 301L);
+        remainingCourse.putValue("student_course", "course_name", "高等数学(修改后)");
+
+        DataBlock courseBlock =
+                DataBlock.builder().moduleId(105L).records(List.of(remainingCourse)).build();
+
+        DataRow studentRow = new DataRow();
+        studentRow.putValue("student", "id", 100L);
+        studentRow.putValue("student", "name", "李四");
+        studentRow.addChild(courseBlock);
+
+        DataBlock rootBlock =
+                DataBlock.builder().moduleId(101L).records(List.of(studentRow)).build();
+
+        SaveResp resp = dataPersistenceService.save(rootBlock);
+
+        assertNotNull(resp);
+        assertNotNull(resp.getRootId());
+
+        // 验证执行的 SQL
+        // 1. 应包含针对 student_course 的 select 存活记录查询
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("select")
+                                                && sql.toLowerCase().contains("`student_course`")
+                                                && sql.toLowerCase().contains("student_id")),
+                "未找到查询 1:N 存活记录的 SQL: " + executedSqlList);
+
+        // 2. 应自动触发针对 [302, 303] 的批量软删除 UPDATE 语句
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("update `student_course`")
+                                                && sql.toLowerCase().contains("`deleted` =")
+                                                && sql.toLowerCase().contains("in")),
+                "未找到针对差集 [302, 303] 的自动软删除 SQL: " + executedSqlList);
+
+        // 3. 应包含针对 301 的正常更新 SQL
+        assertTrue(
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.toLowerCase().contains("update `student_course`")
+                                                && sql.toLowerCase().contains("`course_name` =")
+                                                && sql.toLowerCase().contains("where")),
+                "未找到针对记录 301 的更新 SQL: " + executedSqlList);
     }
 }
