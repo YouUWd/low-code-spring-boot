@@ -32,7 +32,20 @@ public class ModulePermissionDTO implements Serializable {
     @Schema(description = "模块是否具有编辑权限 (自身及子模块存在 edit=1 的字段)")
     private Boolean edit;
 
-    @Schema(description = "字段级权限映射表 (包含自身及子模块的全部字段，fieldId -> FieldPermissionItem)")
+    @Schema(description = "当前模块自身的字段级权限映射表 (仅本模块直属字段，fieldId -> FieldPermissionItem)")
+    private Map<Long, FieldPermissionItem> moduleFieldPermissions;
+
+    @Schema(description = "整棵模块树的字段级权限映射表 (包含自身及全部子孙模块字段，fieldId -> FieldPermissionItem)")
+    private Map<Long, FieldPermissionItem> moduleTreeFieldPermissions;
+
+    /**
+     * @deprecated 已废弃，请使用语义更明确的 {@link #getModuleTreeFieldPermissions()} (树全量字段) 或 {@link
+     *     #getModuleFieldPermissions()} (本模块直属字段)。后续版本将移除。
+     */
+    @Deprecated
+    @Schema(
+            description =
+                    "字段级权限映射表 (已废弃: 等同于 moduleTreeFieldPermissions，fieldId -> FieldPermissionItem)")
     private Map<Long, FieldPermissionItem> fieldPermissions;
 
     /** 单个字段的权限明细 */
