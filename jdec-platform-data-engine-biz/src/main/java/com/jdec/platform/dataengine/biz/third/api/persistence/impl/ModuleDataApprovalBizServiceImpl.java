@@ -10,6 +10,7 @@ import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
+import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataSnapshotContent;
@@ -53,17 +54,15 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
      */
     public ApprovalProcessResultResp processApprovalStatus(ApprovalStatusCallBackReq req) {
 
-        Map<Long, SysModuleInfo> moduleCacheMap =
+        Map<Long, SysModuleCombineInfo> moduleCacheMap =
                 moduleMetaDataService.getModuleMetaDataMap(
                         ModuleQueryContext.builder()
                                 .moduleId(req.getModuleId())
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
                                 .roleId(UserContext.getRoleId())
-                                .isPermission(false)
-                                .isField(false)
                                 .build());
-        SysModuleInfo rootModule = moduleCacheMap.get(req.getModuleId());
+        SysModuleCombineInfo rootModule = moduleCacheMap.get(req.getModuleId());
         if (rootModule == null) {
             throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
@@ -102,16 +101,17 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         return resp;
     }
 
-    private Long saveModuleApprovalData(ApprovalStatusCallBackReq req, SysModuleInfo rootModule) {
+    private Long saveModuleApprovalData(
+            ApprovalStatusCallBackReq req, SysModuleCombineInfo rootModule) {
         Map<String, Object> row = new HashMap<>();
         row.put(
                 DataPersistenceUtil.getFullFieldName(
-                        rootModule.getPrimaryTable(),
+                        rootModule.getModuleInfo().getPrimaryTable(),
                         CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD),
                 req.getDataId());
         row.put(
                 DataPersistenceUtil.getFullFieldName(
-                        rootModule.getPrimaryTable(),
+                        rootModule.getModuleInfo().getPrimaryTable(),
                         CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD),
                 req.getBusinessStatus());
 
@@ -119,7 +119,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         if (req.getIsFirstSubmit() != null && req.getIsFirstSubmit()) {
             row.put(
                     DataPersistenceUtil.getFullFieldName(
-                            rootModule.getPrimaryTable(),
+                            rootModule.getModuleInfo().getPrimaryTable(),
                             CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD),
                     req.getRegistrationTime());
         }
@@ -129,7 +129,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         List<RecordDataDTO> recordDataDTOList = new ArrayList<>();
         recordDataDTOList.add(recordDataDTO);
         NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
-        nestedModuleDataDTO.setModuleId(rootModule.getModuleId());
+        nestedModuleDataDTO.setModuleId(rootModule.getModuleInfo().getModuleId());
         nestedModuleDataDTO.setRecord(recordDataDTOList);
         DynamicSaveReq saveReq = new DynamicSaveReq();
         saveReq.setNestedModuleData(nestedModuleDataDTO);
@@ -140,19 +140,21 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
     private NestedModuleDataDTO getCurrentModuleDataSnapshot(
             ApprovalStatusCallBackReq req,
-            SysModuleInfo rootModule,
-            Map<Long, SysModuleInfo> moduleCacheMap) {
+            SysModuleCombineInfo rootModule,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         // 查询 根模块及其子模的 信息
         Set<Long> filterField = new HashSet<>();
         // 把所有模块的字段加进去
         for (Long mId : moduleCacheMap.keySet()) {
-            SysModuleInfo sysModuleInfo = moduleCacheMap.get(mId);
-            sysModuleInfo.getFieldList().stream().map(x -> x.getId()).forEach(filterField::add);
+            SysModuleCombineInfo sysModuleInfo = moduleCacheMap.get(mId);
+            sysModuleInfo.getModuleInfo().getFields().stream()
+                    .map(x -> x.getId())
+                    .forEach(filterField::add);
         }
         // 终态需要切 快照保存
         NestedModuleDataDTO result = null;
         DynamicDetailQueryReq queryReq = new DynamicDetailQueryReq();
-        queryReq.setModuleId(rootModule.getModuleId());
+        queryReq.setModuleId(rootModule.getModuleInfo().getModuleId());
         queryReq.setId(req.getDataId());
         queryReq.setVersion(req.getVersionNo());
         queryReq.setFilterFields(new ArrayList<>(filterField));
@@ -174,25 +176,25 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
      */
     private Object saveModuleDataPermanentSnapshot(
             ApprovalStatusCallBackReq req,
-            SysModuleInfo rootModule,
+            SysModuleCombineInfo rootModule,
             NestedModuleDataDTO nestedModuleDataDTO,
             DSLContext context) {
         Object versionNo =
                 DataPersistenceUtil.getTableRowFieldValue(
                         nestedModuleDataDTO.getRecord().get(0).getRow(),
                         DataPersistenceUtil.getFullFieldName(
-                                rootModule.getPrimaryTable(),
+                                rootModule.getModuleInfo().getPrimaryTable(),
                                 CommonConstant.TABLE_DEFAULT_VERSION_NO_FIELD));
         Object businessStatus =
                 DataPersistenceUtil.getTableRowFieldValue(
                         nestedModuleDataDTO.getRecord().get(0).getRow(),
                         DataPersistenceUtil.getFullFieldName(
-                                rootModule.getPrimaryTable(),
+                                rootModule.getModuleInfo().getPrimaryTable(),
                                 CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD));
 
         ModuleDataSnapshotContent moduleDataSnapshotContent = new ModuleDataSnapshotContent();
         try {
-            moduleDataSnapshotContent.setRootModuleId(rootModule.getModuleId());
+            moduleDataSnapshotContent.setRootModuleId(rootModule.getModuleInfo().getModuleId());
             moduleDataSnapshotContent.setRootTableDataId(req.getDataId());
             moduleDataSnapshotContent.setRootTableDataVersion((Integer) versionNo); // Changed from
             moduleDataSnapshotContent.setBusinessStatus((Integer) businessStatus);
@@ -233,25 +235,25 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
      */
     private Object saveModuleDataTempSnapshot(
             ApprovalStatusCallBackReq req,
-            SysModuleInfo rootModule,
+            SysModuleCombineInfo rootModule,
             NestedModuleDataDTO nestedModuleDataDTO,
             DSLContext context) {
         Object versionNo =
                 DataPersistenceUtil.getTableRowFieldValue(
                         nestedModuleDataDTO.getRecord().get(0).getRow(),
                         DataPersistenceUtil.getFullFieldName(
-                                rootModule.getPrimaryTable(),
+                                rootModule.getModuleInfo().getPrimaryTable(),
                                 CommonConstant.TABLE_DEFAULT_VERSION_NO_FIELD));
         Object businessStatus =
                 DataPersistenceUtil.getTableRowFieldValue(
                         nestedModuleDataDTO.getRecord().get(0).getRow(),
                         DataPersistenceUtil.getFullFieldName(
-                                rootModule.getPrimaryTable(),
+                                rootModule.getModuleInfo().getPrimaryTable(),
                                 CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD));
 
         ModuleDataSnapshotContent moduleDataSnapshotContent = new ModuleDataSnapshotContent();
         try {
-            moduleDataSnapshotContent.setRootModuleId(rootModule.getModuleId());
+            moduleDataSnapshotContent.setRootModuleId(rootModule.getModuleInfo().getModuleId());
             moduleDataSnapshotContent.setRootTableDataId(req.getDataId());
             moduleDataSnapshotContent.setRootTableDataVersion((Integer) versionNo); // Changed from
             moduleDataSnapshotContent.setBusinessStatus((Integer) businessStatus);
@@ -318,13 +320,15 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
     // 获取模块 状态的 快照数据
     private NestedModuleDataDTO getModuleDataTempSnapshot(
-            ApprovalStatusCallBackReq req, SysModuleInfo rootModule, DSLContext context) {
+            ApprovalStatusCallBackReq req, SysModuleCombineInfo rootModule, DSLContext context) {
 
         String tableName = CommonConstant.TABLE_NAME_MODULE_DATA_TMP_SNAPSHOT_CONTENT;
         Record oldRecord =
                 context.select(DSL.asterisk())
                         .from(DSL.table(tableName))
-                        .where(DSL.field(DSL.name("root_module_id")).eq(rootModule.getModuleId()))
+                        .where(
+                                DSL.field(DSL.name("root_module_id"))
+                                        .eq(rootModule.getModuleInfo().getModuleId()))
                         .and(DSL.field(DSL.name("root_table_data_id")).eq(req.getDataId()))
                         .and(DSL.field(DSL.name("root_table_data_version")).eq(req.getVersionNo()))
                         .fetchOne();
@@ -349,10 +353,10 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
     private Object saveModuleFieldDataSnapshot(
             ApprovalStatusCallBackReq req,
-            SysModuleInfo rootModule,
+            SysModuleCombineInfo rootModule,
             NestedModuleDataDTO nestedModuleDataDTO,
             DSLContext context,
-            Map<Long, SysModuleInfo> moduleCacheMap) {
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
 
         if (nestedModuleDataDTO == null
                 || CollectionUtil.isEmpty(nestedModuleDataDTO.getRecord())) {
@@ -418,14 +422,14 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
     private Object saveModuleFieldValueSnapshot(
             RecordDataDTO recordDataDTO,
             DynamicSaveReqContext currentReq,
-            Map<Long, SysModuleInfo> moduleCacheMap,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
             DSLContext context) {
 
         Long currentModuleId = currentReq.getNestedModuleData().getModuleId();
 
-        SysModuleInfo currentModule = moduleCacheMap.get(currentModuleId);
+        SysModuleCombineInfo currentModule = moduleCacheMap.get(currentModuleId);
 
-        String primaryTable = currentModule.getPrimaryTable();
+        String primaryTable = currentModule.getModuleInfo().getPrimaryTable();
 
         Map<String, Object> rowMap =
                 DataPersistenceUtil.getTableRowMapFromWideRow(recordDataDTO.getRow(), primaryTable);

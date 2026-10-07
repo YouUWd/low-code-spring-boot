@@ -2,11 +2,14 @@ package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
-import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
@@ -16,8 +19,19 @@ import org.jooq.Record;
 
 public class DataPersistenceUtil {
 
+    public static final String LOCAL_DATETIME_FORMATTER = "yyyy-MM-dd HH:mm:ss";
+    public static final String LOCAL_DATE_FORMATTER = "yyyy-MM-dd";
+
     public static Long getTableRowId(Map<String, Object> record) {
         Object idObj = record.get(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
+        Long id = idObj instanceof Number num ? num.longValue() : null;
+        return id;
+    }
+
+    public static Long getTableRowIdWithTabName(Map<String, Object> record, String tabName) {
+        Object idObj =
+                record.get(
+                        getFullFieldName(tabName, CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD));
         Long id = idObj instanceof Number num ? num.longValue() : null;
         return id;
     }
@@ -351,6 +365,22 @@ public class DataPersistenceUtil {
             return value.toString();
         }
 
+        // 3. 日期时间格式化
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.format(DateTimeFormatter.ofPattern(LOCAL_DATETIME_FORMATTER));
+        }
+        if (value instanceof LocalDate localDate) {
+            return localDate.format(DateTimeFormatter.ofPattern(LOCAL_DATE_FORMATTER));
+        }
+        if (value instanceof Date date) {
+            return new java.text.SimpleDateFormat(LOCAL_DATE_FORMATTER).format(date);
+        }
+
+        //        // 5. 数组、集合 → json
+        //        if (value instanceof Collection<?> || value.getClass().isArray()) {
+        //            return writeJson(value);
+        //        }
+
         String txt = null;
 
         try {
@@ -368,21 +398,7 @@ public class DataPersistenceUtil {
         //            return jooqJsonb.data();
         //        }
         //
-        //        // 3. 日期时间格式化
-        //        if (value instanceof LocalDateTime localDateTime) {
-        //            return localDateTime.format(LOCAL_DATETIME_FORMATTER);
-        //        }
-        //        if (value instanceof LocalDate localDate) {
-        //            return localDate.format(LOCAL_DATE_FORMATTER);
-        //        }
-        //        if (value instanceof Date date) {
-        //            return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date);
-        //        }
-        //
-        //        // 5. 数组、集合 → json
-        //        if (value instanceof Collection<?> || value.getClass().isArray()) {
-        //            return writeJson(value);
-        //        }
+
         //
         //        // 6. 其他POJO对象，转json字符串
         //        return writeJson(value);

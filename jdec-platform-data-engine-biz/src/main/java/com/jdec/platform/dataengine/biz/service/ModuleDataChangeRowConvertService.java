@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.dataengine.api.dto.model.*;
+import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,22 +19,24 @@ public class ModuleDataChangeRowConvertService {
     public ModuleChangeDTO covertByModuleDataChangeRow(
             NestedModuleDataDTO nestedModuleDataDTO,
             Map<Long, Map<Long, RowChangeDTO>> changeMap,
-            Map<Long, SysModuleInfo> moduleCacheMap) {
-        return null;
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+
+        return buildModuleChangeDTO(nestedModuleDataDTO, changeMap, moduleCacheMap);
     }
 
-    private ModuleChangeDTO buildModuleChangeDTOList(
+    private ModuleChangeDTO buildModuleChangeDTO(
             NestedModuleDataDTO nestedModuleDataDTO,
             Map<Long, Map<Long, RowChangeDTO>> changeMap,
-            Map<Long, SysModuleInfo> moduleCacheMap) {
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
 
         if (nestedModuleDataDTO == null || nestedModuleDataDTO.getModuleId() == null) {
             return null;
         }
-        SysModuleInfo sysModuleInfo = moduleCacheMap.get(nestedModuleDataDTO.getModuleId());
+        SysModuleCombineInfo sysModuleInfo = moduleCacheMap.get(nestedModuleDataDTO.getModuleId());
         ModuleChangeDTO moduleChangeDTO = ModuleChangeDTO.builder().build();
         moduleChangeDTO.setMId(nestedModuleDataDTO.getModuleId());
-        moduleChangeDTO.setName(sysModuleInfo != null ? sysModuleInfo.getModuleName() : null);
+        moduleChangeDTO.setName(
+                sysModuleInfo != null ? sysModuleInfo.getModuleInfo().getModuleName() : null);
 
         // 模块没有数据 直接返回结构
         if (CollectionUtil.isEmpty(nestedModuleDataDTO.getRecord())) {
@@ -44,7 +47,10 @@ public class ModuleDataChangeRowConvertService {
 
         // 模块的多行数据
         for (RecordDataDTO recordDataDTO : nestedModuleDataDTO.getRecord()) {
-            Long dataId = DataPersistenceUtil.getTableRowId(recordDataDTO.getRow());
+            Long dataId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            recordDataDTO.getRow(),
+                            sysModuleInfo.getModuleInfo().getPrimaryTable());
             RowChangeDTO rowChange =
                     changeMap.getOrDefault(nestedModuleDataDTO.getModuleId(), Map.of()).get(dataId);
 
@@ -59,6 +65,7 @@ public class ModuleDataChangeRowConvertService {
 
             } else {
                 // 当前行 变更数据
+                rowChangeDTO.setName(rowChange.getName());
                 rowChangeDTO.setColumns(rowChange.getColumns());
                 switch (rowChange.getAction()) {
                     case "i" -> {
@@ -95,12 +102,12 @@ public class ModuleDataChangeRowConvertService {
     private List<ModuleChangeDTO> buildModuleChangeDTOList(
             List<NestedModuleDataDTO> nestedModuleDataDTOList,
             Map<Long, Map<Long, RowChangeDTO>> changeMap,
-            Map<Long, SysModuleInfo> moduleCacheMap) {
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
 
         List<ModuleChangeDTO> moduleChangeDTOList = new ArrayList<>();
         for (NestedModuleDataDTO nestedModuleDataDTO : nestedModuleDataDTOList) {
             ModuleChangeDTO moduleChangeDTO =
-                    buildModuleChangeDTOList(nestedModuleDataDTO, changeMap, moduleCacheMap);
+                    buildModuleChangeDTO(nestedModuleDataDTO, changeMap, moduleCacheMap);
             if (moduleChangeDTO != null) {
                 moduleChangeDTOList.add(moduleChangeDTO);
             }

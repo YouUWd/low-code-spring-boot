@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
-import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
 import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
+import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import java.util.Map;
 import java.util.Set;
 import lombok.Data;
@@ -24,7 +24,7 @@ public class RecordSaveContext extends BasicSaveModel {
     private Integer rootModuleMainTableDataVersion;
 
     // 当前模块的完整信息
-    private SysModuleInfo sysModuleCompleteResp;
+    private SysModuleCombineInfo sysModuleCompleteResp;
 
     // 表名
     private String tableName;
@@ -55,5 +55,11 @@ public class RecordSaveContext extends BasicSaveModel {
 
     private Boolean isInsert;
 
+    // 模块定义上 跟模块主表
     private Boolean isRootModuleMainTable;
+
+    // 结构上的  根模块主表
+    private Boolean isTreeRoot;
+
+    private Boolean isApproval;
 }

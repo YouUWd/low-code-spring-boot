@@ -74,14 +74,12 @@ public interface CommonConstant {
 
     String TABLE_DEFAULT_BUSINESS_NO_FIELD = "business_no";
 
-    Set<String> NONE_DIFF_FIELD_SET =
+    public static final Set<String> NONE_DIFF_FIELD_SET =
             Set.of(
                     "subject_id",
                     "business_no",
                     "business_status",
-                    "module_id",
                     "version_no",
-                    "module_id",
                     "created_by",
                     "updated_by",
                     "created_date",

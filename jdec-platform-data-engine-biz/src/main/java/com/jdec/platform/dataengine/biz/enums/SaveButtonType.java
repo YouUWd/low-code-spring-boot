@@ -5,8 +5,8 @@ import lombok.Getter;
 @Getter
 public enum SaveButtonType {
     SAVE("save", "保存"),
-    CHANGE("change", "变更"),
-    REAL_TIME_CHANGE("realTime", "实时保存"),
+    CHANGE("change_save", "变更"),
+    REAL_TIME_CHANGE("realTime_save", "实时保存"),
     INSERT_AND_GET_ID("insertAndGetId", "获取插入ID"),
     DELETE_BY_ID("deleteById", "单行删除"),
     ;

@@ -4,6 +4,7 @@ import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.BaseDataSaveNecessaryFieldFillService;
 import com.jdec.platform.dataengine.biz.util.ToolUtils;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -22,19 +23,21 @@ public class BizDataFieldFillServiceImpl implements BaseDataSaveNecessaryFieldFi
             // 插入时
             if (recordSaveContext.getIsInsert()) {
                 switch (recordSaveContext.getSaveType()) {
-                    case APPROVAL_SAVE -> {
-                        fMap.put(
-                                "business_no",
-                                ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
-                        fMap.put("version_no", 1);
-                        fMap.put("business_status", 1);
-                    }
-                    case NORMAL_SAVE -> {
-                        fMap.put(
-                                "business_no",
-                                ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
-                        fMap.put("version_no", 1);
-                        fMap.put("business_status", 99);
+                    case SAVE -> {
+                        if (recordSaveContext.getIsApproval()) {
+                            fMap.put(
+                                    "business_no",
+                                    ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
+                            fMap.put("version_no", 1);
+                            fMap.put("business_status", 1);
+                        } else {
+                            fMap.put(
+                                    "business_no",
+                                    ToolUtils.nextNoWithFixedLen(recordSaveContext.getTableName()));
+                            fMap.put("version_no", 1);
+                            fMap.put("business_status", 99);
+                            fMap.put("registration_time", LocalDateTime.now());
+                        }
                     }
                 }
                 recordSaveContext.setBizDataMap(fMap);
@@ -51,6 +54,7 @@ public class BizDataFieldFillServiceImpl implements BaseDataSaveNecessaryFieldFi
                         fMap.put("registration_time", null);
                     }
                 }
+                recordSaveContext.setBizDataMap(fMap);
             }
         }
         return fMap;

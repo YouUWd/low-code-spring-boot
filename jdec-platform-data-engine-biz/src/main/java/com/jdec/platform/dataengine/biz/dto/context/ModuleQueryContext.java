@@ -13,7 +13,7 @@ public class ModuleQueryContext extends ReqParamData implements Serializable {
 
     private Long moduleId;
 
-    private Boolean isPermission;
+    private Boolean isBuildFieldPermission;
 
-    private Boolean isField;
+    private Boolean isBuildFieldPro;
 }

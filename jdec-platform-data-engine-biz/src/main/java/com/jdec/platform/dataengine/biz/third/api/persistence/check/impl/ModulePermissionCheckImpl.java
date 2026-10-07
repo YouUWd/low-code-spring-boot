@@ -6,6 +6,7 @@ import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.check.BaseDataSaveCheck;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.util.HashSet;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,9 +22,8 @@ public class ModulePermissionCheckImpl implements BaseDataSaveCheck {
             for (String key : context.getRecord().keySet()) {
                 if (!context.getSysModuleCompleteResp()
                         .getWriteFields()
-                        .contains(
-                                DataPersistenceUtil.getFullFieldName(
-                                        context.getTableName(), key))) {
+                        .getOrDefault(context.getTableName(), new HashSet<>())
+                        .contains(key)) {
                     if (sb.length() > 0) {
                         sb.append(";");
                         sb.append("您没有表【")
@@ -50,9 +50,8 @@ public class ModulePermissionCheckImpl implements BaseDataSaveCheck {
                 if (!isEqual
                         && !context.getSysModuleCompleteResp()
                                 .getUpdateFields()
-                                .contains(
-                                        DataPersistenceUtil.getFullFieldName(
-                                                context.getTableName(), key))) {
+                                .getOrDefault(context.getTableName(), new HashSet<>())
+                                .contains(key)) {
                     if (sb.length() > 0) {
                         sb.append(";");
                         sb.append("您没有表【")

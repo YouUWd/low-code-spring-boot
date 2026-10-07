@@ -24,6 +24,7 @@ public class JsonUtil {
         MAPPER.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
         MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         MAPPER.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
+        MAPPER.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
         SimpleModule module = new SimpleModule();
         module.addDeserializer(
                 LocalDateTime.class,

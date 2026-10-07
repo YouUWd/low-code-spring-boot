@@ -2,8 +2,9 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.tab.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.StrUtil;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
-import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
@@ -13,7 +14,6 @@ import com.jdec.platform.dataengine.biz.entity.ModuleDataChangeContent;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataFieldChangeContent;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
-import com.jdec.platform.dataengine.biz.mapper.ModuleDataChangeContentMapper;
 import com.jdec.platform.dataengine.biz.service.IModuleDataFieldChangeContentService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSaveCheckFactoryService;
@@ -23,7 +23,6 @@ import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.*;
@@ -36,8 +35,6 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @RequiredArgsConstructor
 public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePersistenceService {
-
-    private final ModuleDataChangeContentMapper moduleDataChangeContentMapper;
 
     private final IModuleDataFieldChangeContentService iModuleDataFieldChangeContentService;
 
@@ -117,21 +114,18 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         }
 
         RowChangeDTO rowChange = null;
-        switch (context.getSaveType()) {
-
-                // 非审批链业务 正常保存 记录下变更日志
-            case NORMAL_SAVE -> {
-                rowChange =
-                        DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
-                                context.getRecord(),
-                                context.getTableName(),
-                                DataPersistenceUtil.getModuleTableFieldMap(
-                                        context.getSysModuleCompleteResp().getFieldList(),
-                                        context.getTableName()),
-                                DataPersistenceUtil.getModuleTableUniqueNameField(
-                                        context.getSysModuleCompleteResp().getFieldList(),
-                                        context.getTableName()));
-            }
+        // 非审批链业务 正常保存 记录下变更日志
+        if (!context.getIsApproval()) {
+            rowChange =
+                    DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
+                            context.getRecord(),
+                            context.getTableName(),
+                            context.getSysModuleCompleteResp()
+                                    .getFieldMap()
+                                    .get(context.getTableName()),
+                            DataPersistenceUtil.getModuleTableUniqueNameField(
+                                    context.getSysModuleCompleteResp().getModuleInfo().getFields(),
+                                    context.getTableName()));
         }
         return DataSaveResult.builder().dataId(num.longValue()).rowChange(rowChange).build();
     }
@@ -196,24 +190,21 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
             context.setRootModuleMainTableDataId(id);
         }
         RowChangeDTO rowChange = null;
-        switch (context.getSaveType()) {
-                // 非审批链业务 正常保存 记录下变更日志
-            case NORMAL_SAVE -> {
-                rowChange =
-                        DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
-                                DataPersistenceUtil.convertRecordToMap(oldMap),
-                                context.getRecord(),
-                                context.getTableName(),
-                                DataPersistenceUtil.getModuleTableFieldMap(
-                                        context.getSysModuleCompleteResp().getFieldList(),
-                                        context.getTableName()),
-                                DataPersistenceUtil.getModuleTableUniqueNameField(
-                                        context.getSysModuleCompleteResp().getFieldList(),
-                                        context.getTableName()),
-                                deletedFalg);
-            }
+        // 非审批链业务 正常保存 记录下变更日志
+        if (!context.getIsApproval()) {
+            rowChange =
+                    DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
+                            DataPersistenceUtil.convertRecordToMap(oldMap),
+                            context.getRecord(),
+                            context.getTableName(),
+                            context.getSysModuleCompleteResp()
+                                    .getFieldMap()
+                                    .get(context.getTableName()),
+                            DataPersistenceUtil.getModuleTableUniqueNameField(
+                                    context.getSysModuleCompleteResp().getModuleInfo().getFields(),
+                                    context.getTableName()),
+                            deletedFalg);
         }
-
         return DataSaveResult.builder().dataId(id).rowChange(rowChange).build();
     }
 
@@ -232,12 +223,9 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {
 
         Map<String, ModuleFieldDTO> fieldMap =
-                DataPersistenceUtil.getModuleTableFieldMap(
-                        context.getSysModuleCompleteResp().getFieldList(), context.getTableName());
-        Set<String> allFields =
-                context.getSysModuleCompleteResp().getAllFields().stream()
-                        .map(x -> x.substring(context.getTableName().length() + 1))
-                        .collect(Collectors.toSet());
+                context.getSysModuleCompleteResp().getFieldMap().get(context.getTableName());
+        Map<String, SysFieldResp> allFields =
+                context.getSysModuleCompleteResp().getAllFields().get(context.getTableName());
         Map<Field<Object>, Object> fieldValues = new HashMap<>();
         // Insert时候 表单数据都要 写入
         for (Map.Entry<String, Object> entry : context.getRecord().entrySet()) {
@@ -251,7 +239,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
             }
 
             // 非表结构定义字段 不写入
-            if (CollectionUtil.isNotEmpty(allFields) && !allFields.contains(entry.getKey())) {
+            if (CollectionUtil.isNotEmpty(allFields) && !allFields.containsKey(entry.getKey())) {
                 continue;
             }
             fieldValues.put(
@@ -266,7 +254,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     continue;
                 }
                 // 非表结构定义字段 不写入
-                if (CollectionUtil.isNotEmpty(allFields) && !allFields.contains(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
                     continue;
                 }
                 log.info("fill biz data field {}={}", entry.getKey(), entry.getValue());
@@ -284,7 +273,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     continue;
                 }
                 // 非表结构定义字段 不写入
-                if (CollectionUtil.isNotEmpty(allFields) && !allFields.contains(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
                     continue;
                 }
                 log.info("fill parent module field {}={}", entry.getKey(), entry.getValue());
@@ -303,7 +293,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     continue;
                 }
                 // 非表结构定义字段 不写入
-                if (CollectionUtil.isNotEmpty(allFields) && !allFields.contains(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
                     continue;
                 }
                 log.info("fill user context field {}={}", entry.getKey(), entry.getValue());
@@ -318,12 +309,9 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     private Map<Field<Object>, Object> getUpdateRecordFieldValues(RecordSaveContext context) {
 
         Map<String, ModuleFieldDTO> fieldMap =
-                DataPersistenceUtil.getModuleTableFieldMap(
-                        context.getSysModuleCompleteResp().getFieldList(), context.getTableName());
-        Set<String> allFields =
-                context.getSysModuleCompleteResp().getAllFields().stream()
-                        .map(x -> x.substring(context.getTableName().length() + 1))
-                        .collect(Collectors.toSet());
+                context.getSysModuleCompleteResp().getFieldMap().get(context.getTableName());
+        Map<String, SysFieldResp> allFields =
+                context.getSysModuleCompleteResp().getAllFields().get(context.getTableName());
         Map<Field<Object>, Object> fieldValues = new HashMap<>();
 
         Set<String> setFields = new HashSet<>();
@@ -335,7 +323,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 continue;
             }
             // 非表结构定义字段 不写入
-            if (CollectionUtil.isNotEmpty(allFields) && !allFields.contains(entry.getKey())) {
+            if (CollectionUtil.isNotEmpty(allFields) && !allFields.containsKey(entry.getKey())) {
                 continue;
             }
 
@@ -422,7 +410,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isNotEmpty(context.getDefaultUserContextDataMap())) {
             for (Map.Entry<String, Object> entry :
                     context.getDefaultUserContextDataMap().entrySet()) {
-                if (CollectionUtil.isNotEmpty(allFields) && !allFields.contains(entry.getKey())) {
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
                     log.info(
                             "fill user context table={} has no field={}",
                             context.getTableName(),
@@ -443,7 +432,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
         // 对于变更保存的 要吧一些 非勾选的字段 表单中没有的字段 set null
         if (context.getSaveType() == SaveType.APPROVAL_CHANGE) {
-            for (String field : allFields) {
+            for (String field : allFields.keySet()) {
                 // 这些字段是 不能 set null || 上面已经设置了字段 不能 set null
                 if (CHANGE_DEFAULT_SET_NULL_EXCLUDE_FIELD.contains(field)
                         || setFields.contains(field)) {
@@ -466,7 +455,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         changeContent.setRootModuleId(context.getRootModuleId());
         changeContent.setMainTableDataId(context.getRootModuleMainTableDataId());
         changeContent.setMainTableDataVersion(context.getRootModuleMainTableDataVersion());
-        changeContent.setModuleId(context.getSysModuleCompleteResp().getModuleId());
+        changeContent.setModuleId(context.getSysModuleCompleteResp().getModuleInfo().getModuleId());
         changeContent.setTableName(context.getTableName());
         changeContent.setDataId(dataId);
         changeContent.setParentDataId(context.getParentLevelTableId());
@@ -592,7 +581,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                 changeContent.setRootModuleId(context.getRootModuleId());
                 changeContent.setRootTableDataId(context.getRootModuleMainTableDataId());
                 changeContent.setRootTableDataVersion(context.getRootModuleMainTableDataVersion());
-                changeContent.setModuleId(context.getSysModuleCompleteResp().getModuleId());
+                changeContent.setModuleId(
+                        context.getSysModuleCompleteResp().getModuleInfo().getModuleId());
                 changeContent.setTableName(context.getTableName());
                 changeContent.setDataId(dataId);
                 changeContent.setFieldId(fieldChangeDTO.getField());
