@@ -384,7 +384,8 @@ public class ConfigServiceImpl implements ConfigApi {
             boolean modView = false;
             boolean modEdit = false;
 
-            Map<Long, FieldPermissionItem> fieldPermMap = new LinkedHashMap<>();
+            Map<Long, FieldPermissionItem> moduleTreeFieldPermMap = new LinkedHashMap<>();
+            Map<Long, FieldPermissionItem> moduleFieldPermMap = new LinkedHashMap<>();
 
             for (Long subModId : familyModuleIds) {
                 List<SysRoleModuleFieldPermission> subPerms =
@@ -417,7 +418,10 @@ public class ConfigServiceImpl implements ConfigApi {
                                     .edit(itemEdit)
                                     .build();
 
-                    fieldPermMap.put(p.getModuleFieldId(), item);
+                    moduleTreeFieldPermMap.put(p.getModuleFieldId(), item);
+                    if (Objects.equals(subModId, targetModuleId)) {
+                        moduleFieldPermMap.put(p.getModuleFieldId(), item);
+                    }
                 }
             }
 
@@ -427,7 +431,9 @@ public class ConfigServiceImpl implements ConfigApi {
                             .apply(modApply)
                             .view(modView)
                             .edit(modEdit)
-                            .fieldPermissions(fieldPermMap)
+                            .moduleFieldPermissions(moduleFieldPermMap)
+                            .moduleTreeFieldPermissions(moduleTreeFieldPermMap)
+                            .fieldPermissions(moduleTreeFieldPermMap)
                             .build();
 
             result.put(targetModuleId, dto);

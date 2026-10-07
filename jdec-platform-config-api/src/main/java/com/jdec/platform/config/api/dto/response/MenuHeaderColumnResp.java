@@ -12,8 +12,8 @@ import lombok.NoArgsConstructor;
  * 多级列头展示节点
  *
  * <p>菜单节点（nodeType=0）输出 sourceId/moduleId/label/colors/children；字段节点（nodeType=1）输出
- * label/fieldId/moduleId/dataIndex/width/sorted/searchType/ellipsis/fixed/sortValue。未涉及的字段为 null
- * 时不输出。
+ * label/fieldId/moduleId/dataIndex/relationWord/width/sorted/searchType/ellipsis/fixed/sortValue。未涉及的字段为
+ * null 时不输出（label 按 sourceId 取源头，不取库中存储值）。
  */
 @Data
 @Builder
@@ -40,6 +40,11 @@ public class MenuHeaderColumnResp {
 
     @Schema(description = "字段索引（模块id.表名.字段名）", example = "1001.info.company_name")
     private String dataIndex;
+
+    @Schema(
+            description = "是否关联字段（仅字段节点输出）：0-否，1-是（sys_field 中该表名+列名配置了 relation_business_no）",
+            example = "1")
+    private Integer relationWord;
 
     @Schema(description = "列宽(px)")
     private Integer width;

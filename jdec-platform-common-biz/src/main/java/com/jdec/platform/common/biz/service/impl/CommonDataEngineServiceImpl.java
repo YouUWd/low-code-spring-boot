@@ -135,7 +135,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                     fieldPermissionItem = ele.getValue();
                                             // 返回有权限的字段
                                             return fieldPermissionItem.getEdit()
-                                                    && fieldPermissionItem.getApply();
+                                                    || fieldPermissionItem.getView();
                                         })
                                 .map(item -> item.getKey())
                                 .collect(Collectors.toSet());
@@ -187,7 +187,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         NestedModuleDataDTO detailData;
 
         if (dynamicDetailQueryReq.getId() > 0) {
-
             detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
         } else {
             detailData = buildTemplateTree(metaDTO);
@@ -269,9 +268,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         FieldMetaDTO.builder()
                                 .id(f.getId())
                                 .displayName(f.getDisplayName())
-                                .apply(fp != null ? fp.getApply() : true)
-                                .view(fp != null ? fp.getView() : true)
-                                .edit(fp != null ? fp.getEdit() : true)
+                                .apply(fp != null ? fp.getApply() : false)
+                                .view(fp != null ? fp.getView() : false)
+                                .edit(fp != null ? fp.getEdit() : false)
                                 .businessNo(
                                         worldCloudConfigMap.containsKey(fullKey)
                                                 ? worldCloudConfigMap
@@ -393,7 +392,18 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             }
         }
         recordDataDTOBuilder.children(childTemplateList);
-        recordDataDTOBuilder.row(new HashMap<>());
+
+        Map<String, Object> rowMap = new HashMap<>();
+
+        // 过滤掉没有创建权限的字段，将有权限字段填充空值返回
+        metaData.getFields().entrySet().stream()
+                .filter(ele -> ele.getValue().getApply())
+                .forEach(
+                        ele -> {
+                            rowMap.put(ele.getKey(), null);
+                        });
+
+        recordDataDTOBuilder.row(rowMap);
 
         nestedModuleDataDTOBuilder.record(Collections.singletonList(recordDataDTOBuilder.build()));
         return nestedModuleDataDTOBuilder.build();

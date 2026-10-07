@@ -109,15 +109,16 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
 
         // 模块侧最新可用节点（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
-        // 每次返回前都据此比对：user_menu_header 中模块侧已不存在的节点不返回给前端
-        Set<String> poolVirIds =
-                collectVirIds(openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId));
+        // 每次返回前都据此比对：user_menu_header 中模块侧已不存在的节点不返回给前端；
+        // 展示名与关联字段标记一律取该默认树（源头），不取用户表中存储值
+        Map<String, SysMenuHeaderResp> sourceByVirId =
+                indexByVirId(openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId));
 
         // 读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no），
         // 仅保留节点池中仍存在的节点
         List<UserMenuHeader> stored =
                 selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId).stream()
-                        .filter(node -> poolVirIds.contains(node.getVirId()))
+                        .filter(node -> sourceByVirId.containsKey(node.getVirId()))
                         .collect(Collectors.toList());
 
         // 该用户在该菜单下没有任何有效个性化配置（无记录或记录指向的菜单/字段均已不存在）：回退取 config 侧默认表头配置
@@ -150,7 +151,9 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         if (root == null) {
             return new MenuHeaderDisplayResp();
         }
-        return MenuHeaderDisplayResp.builder().header(toColumnResp(root, childrenByParent)).build();
+        return MenuHeaderDisplayResp.builder()
+                .header(toColumnResp(root, childrenByParent, sourceByVirId))
+                .build();
     }
 
     @Override
@@ -457,25 +460,26 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
     // ==================== 可用节点池 ====================
 
     /**
-     * 表头树节点虚拟id 集合（模块侧可用节点池）
+     * 默认表头树按虚拟id 建索引（模块侧可用节点池）
      *
      * <p>传入的树由 config 侧按「菜单/字段生成 + {@code sys_menu_header} 合并」得到，节点全部来自模块侧生成 （仅 {@code
-     * sys_menu_header} 中存在的历史节点已被丢弃），故其 {@code virId} 集合即当前模块侧真实存在的节点全集。
+     * sys_menu_header} 中存在的历史节点已被丢弃），故其 {@code virId} 集合即当前模块侧真实存在的节点全集，
+     * 且每个节点的展示名与关联字段标记已按源头解析，可直接作为用户表头节点的展示字段来源。
      */
-    private Set<String> collectVirIds(SysMenuHeaderResp node) {
-        Set<String> virIds = new HashSet<>();
-        collectVirIds(node, virIds);
-        return virIds;
+    private Map<String, SysMenuHeaderResp> indexByVirId(SysMenuHeaderResp node) {
+        Map<String, SysMenuHeaderResp> nodeByVirId = new LinkedHashMap<>();
+        indexByVirId(node, nodeByVirId);
+        return nodeByVirId;
     }
 
-    private void collectVirIds(SysMenuHeaderResp node, Set<String> virIds) {
-        virIds.add(node.getVirId());
+    private void indexByVirId(SysMenuHeaderResp node, Map<String, SysMenuHeaderResp> nodeByVirId) {
+        nodeByVirId.putIfAbsent(node.getVirId(), node);
         List<SysMenuHeaderResp> children = node.getChildren();
         if (children == null) {
             return;
         }
         for (SysMenuHeaderResp child : children) {
-            collectVirIds(child, virIds);
+            indexByVirId(child, nodeByVirId);
         }
     }
 
@@ -527,11 +531,18 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         return topNodes.getFirst();
     }
 
-    /** 递归组装多级列头展示节点：菜单节点输出 sourceId/colors，字段节点输出字段展示配置 */
+    /**
+     * 递归组装多级列头展示节点：菜单节点输出 sourceId/colors，字段节点输出字段展示配置
+     *
+     * <p>展示名与关联字段标记取默认树（源头：菜单标题 / 模块字段显示名、sys_field 关联配置），不取用户表存储值。
+     */
     private MenuHeaderColumnResp toColumnResp(
-            UserMenuHeader node, Map<String, List<UserMenuHeader>> childrenByParent) {
+            UserMenuHeader node,
+            Map<String, List<UserMenuHeader>> childrenByParent,
+            Map<String, SysMenuHeaderResp> sourceByVirId) {
+        SysMenuHeaderResp source = sourceByVirId.get(node.getVirId());
         MenuHeaderColumnResp resp = new MenuHeaderColumnResp();
-        resp.setLabel(node.getLabel());
+        resp.setLabel(source != null ? source.getLabel() : node.getLabel());
         resp.setModuleId(node.getModuleId());
         if (isMenuNode(node)) {
             resp.setSourceId(node.getSourceId());
@@ -539,6 +550,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         } else {
             resp.setFieldId(node.getSourceId());
             resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
+            resp.setRelationWord(source != null ? source.getRelationWord() : null);
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -552,7 +564,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         if (!children.isEmpty()) {
             resp.setChildren(
                     children.stream()
-                            .map(child -> toColumnResp(child, childrenByParent))
+                            .map(child -> toColumnResp(child, childrenByParent, sourceByVirId))
                             .collect(Collectors.toList()));
         }
         return resp;
@@ -601,6 +613,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         merged.setSourceId(node.getSourceId());
         merged.setModuleId(node.getModuleId());
         merged.setLabel(node.getLabel());
+        merged.setRelationWord(node.getRelationWord());
         merged.setColors(node.getColors());
         merged.setWidth(node.getWidth());
         merged.setDataIndex(node.getDataIndex());
@@ -616,7 +629,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             return merged;
         }
         merged.setId(userNode.getId());
-        merged.setLabel(userNode.getLabel() != null ? userNode.getLabel() : merged.getLabel());
+        // 展示名与关联字段标记仍取默认树（源头），用户表不参与覆盖
         merged.setColors(resolveColors(userNode.getColors(), merged.getColors()));
         merged.setWidth(userNode.getWidth() != null ? userNode.getWidth() : merged.getWidth());
         merged.setDataIndex(
