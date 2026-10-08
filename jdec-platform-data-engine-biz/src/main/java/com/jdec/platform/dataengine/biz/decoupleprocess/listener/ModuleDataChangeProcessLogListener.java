@@ -9,6 +9,8 @@ import com.jdec.platform.dataengine.api.dto.model.ModuleChangeDTO;
 import com.jdec.platform.dataengine.biz.decoupleprocess.event.ModuleDataChangeEvent;
 import com.jdec.platform.dataengine.biz.service.ModuleDataChangeRowConvertService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
+import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -35,6 +37,11 @@ public class ModuleDataChangeProcessLogListener {
                         changeEvent.getModuleDataPostContext().getNestedModuleDataDTO(),
                         changeEvent.getModuleDataPostContext().getChangeMap(),
                         changeEvent.getModuleDataPostContext().getModuleCacheMap());
+
+        AppContext.setContext(
+                changeEvent.getModuleDataPostContext().getProjectNo(),
+                changeEvent.getModuleDataPostContext().getSubjectId());
+        UserContext.setLoginUser(changeEvent.getModuleDataPostContext().getLoginUser());
 
         MonitorLogSaveReq req = new MonitorLogSaveReq();
         req.setType(Integer.valueOf(0));
@@ -72,7 +79,12 @@ public class ModuleDataChangeProcessLogListener {
         req.setDataId(null);
         req.setContent(null);
         req.setRemark(moduleChangeDTO);
-        monitorLogApi.saveLog(req);
+        try {
+            monitorLogApi.saveLog(req);
+        } finally {
+            AppContext.remove();
+            UserContext.remove();
+        }
 
         try {
             log.info("处理数据变更日志，moduleChangeDTO：{}", JsonUtil.obj2Json(moduleChangeDTO));

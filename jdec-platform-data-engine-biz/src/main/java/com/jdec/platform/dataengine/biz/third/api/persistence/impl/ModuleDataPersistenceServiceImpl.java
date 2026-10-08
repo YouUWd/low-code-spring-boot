@@ -186,6 +186,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                             .changeMap(ModuleDataSaveContextHolder.getRowChange())
                             .moduleCacheMap(moduleCacheMap)
                             .requestContextSnapshot(RequestContextSnapshotHolder.get())
+                            .loginUser(UserContext.getLoginUser())
                             .build());
 
         } catch (Exception e) {

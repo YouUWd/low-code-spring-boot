@@ -60,6 +60,8 @@ public interface CommonConstant {
 
     String TABLE_NAME_MODULE_DATA_TMP_SNAPSHOT_CONTENT = "module_data_tmp_snapshot_content";
 
+    String TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT = "module_data_field_change_content";
+
     String TABLE_DEFAULT_PRIMARY_KEY_FIELD = "id";
 
     String TABLE_DEFAULT_DELETED_FIELD = "deleted";
@@ -74,8 +76,13 @@ public interface CommonConstant {
 
     String TABLE_DEFAULT_BUSINESS_NO_FIELD = "business_no";
 
+    String TABLE_DEFAULT_UPDATE_BY_FIELD = "updated_by";
+
+    String TABLE_DEFAULT_UPDATED_DATE_FIELD = "updated_date";
+
     public static final Set<String> NONE_DIFF_FIELD_SET =
             Set.of(
+                    "id",
                     "subject_id",
                     "business_no",
                     "business_status",

@@ -116,7 +116,9 @@ public class ModuleDataChangeRowConvertService {
     }
 
     public ModuleChangeDTO covertByModuleDataDiff(
-            NestedModuleDataDTO oldData, NestedModuleDataDTO newData) {
+            NestedModuleDataDTO oldData,
+            NestedModuleDataDTO newData,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         return null;
     }
 }

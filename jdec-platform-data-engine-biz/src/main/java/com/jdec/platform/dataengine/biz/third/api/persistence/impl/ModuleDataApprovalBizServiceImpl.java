@@ -6,7 +6,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
@@ -27,6 +26,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jooq.*;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
@@ -52,6 +52,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
      * @param req
      * @return
      */
+    // @Transactional(rollbackFor = Exception.class)
     public ApprovalProcessResultResp processApprovalStatus(ApprovalStatusCallBackReq req) {
 
         Map<Long, SysModuleCombineInfo> moduleCacheMap =
@@ -70,7 +71,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         }
         DSLContext context = jooqContextFactory.getContext();
 
-        Long rootModuleMainTableId = saveModuleApprovalData(req, rootModule);
+        Long rootModuleMainTableId = saveModuleApprovalData(req, rootModule, context);
         if (rootModuleMainTableId == null || rootModuleMainTableId.equals(0L)) {
             throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
@@ -102,40 +103,63 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
     }
 
     private Long saveModuleApprovalData(
-            ApprovalStatusCallBackReq req, SysModuleCombineInfo rootModule) {
-        Map<String, Object> row = new HashMap<>();
-        row.put(
-                DataPersistenceUtil.getFullFieldName(
-                        rootModule.getModuleInfo().getPrimaryTable(),
-                        CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD),
-                req.getDataId());
-        row.put(
-                DataPersistenceUtil.getFullFieldName(
-                        rootModule.getModuleInfo().getPrimaryTable(),
-                        CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD),
-                req.getBusinessStatus());
+            ApprovalStatusCallBackReq req, SysModuleCombineInfo rootModule, DSLContext dslContext) {
+        //        Map<String, Object> row = new HashMap<>();
+        //        row.put(
+        //                DataPersistenceUtil.getFullFieldName(
+        //                        rootModule.getModuleInfo().getPrimaryTable(),
+        //                        CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD),
+        //                req.getDataId());
+        //        row.put(
+        //                DataPersistenceUtil.getFullFieldName(
+        //                        rootModule.getModuleInfo().getPrimaryTable(),
+        //                        CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD),
+        //                req.getBusinessStatus());
+        //
+        //        // 第一次提交，要更新 登记时间
+        //        if (req.getIsFirstSubmit() != null && req.getIsFirstSubmit()) {
+        //            row.put(
+        //                    DataPersistenceUtil.getFullFieldName(
+        //                            rootModule.getModuleInfo().getPrimaryTable(),
+        //                            CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD),
+        //                    req.getRegistrationTime());
+        //        }
 
-        // 第一次提交，要更新 登记时间
-        if (req.getIsFirstSubmit() != null && req.getIsFirstSubmit()) {
-            row.put(
-                    DataPersistenceUtil.getFullFieldName(
-                            rootModule.getModuleInfo().getPrimaryTable(),
-                            CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD),
+        //        RecordDataDTO recordDataDTO = new RecordDataDTO();
+        //        recordDataDTO.setRow(row);
+        //        List<RecordDataDTO> recordDataDTOList = new ArrayList<>();
+        //        recordDataDTOList.add(recordDataDTO);
+        //        NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
+        //        nestedModuleDataDTO.setModuleId(rootModule.getModuleInfo().getModuleId());
+        //        nestedModuleDataDTO.setRecord(recordDataDTOList);
+        //        DynamicSaveReq saveReq = new DynamicSaveReq();
+        //        saveReq.setNestedModuleData(nestedModuleDataDTO);
+        //        // 更更新 业务数据的 审批状态
+        //        Long rootModuleMainTableId = moduleDataPersistenceService.save(saveReq);
+
+        Map<Field<Object>, Object> fieldValues = new HashMap<>();
+        fieldValues.put(
+                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD)),
+                req.getBusinessStatus());
+        fieldValues.put(
+                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+                UserContext.getUserId());
+        fieldValues.put(
+                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+                LocalDateTime.now());
+        if (req.getIsFirstSubmit() != null
+                && req.getIsFirstSubmit()
+                && req.getRegistrationTime() != null) {
+            fieldValues.put(
+                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
                     req.getRegistrationTime());
         }
-
-        RecordDataDTO recordDataDTO = new RecordDataDTO();
-        recordDataDTO.setRow(row);
-        List<RecordDataDTO> recordDataDTOList = new ArrayList<>();
-        recordDataDTOList.add(recordDataDTO);
-        NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
-        nestedModuleDataDTO.setModuleId(rootModule.getModuleInfo().getModuleId());
-        nestedModuleDataDTO.setRecord(recordDataDTOList);
-        DynamicSaveReq saveReq = new DynamicSaveReq();
-        saveReq.setNestedModuleData(nestedModuleDataDTO);
-        // 更更新 业务数据的 审批状态
-        Long rootModuleMainTableId = moduleDataPersistenceService.save(saveReq);
-        return rootModuleMainTableId;
+        dslContext
+                .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
+                .set(fieldValues)
+                .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
+                .execute();
+        return req.getDataId();
     }
 
     private NestedModuleDataDTO getCurrentModuleDataSnapshot(
@@ -430,6 +454,9 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         SysModuleCombineInfo currentModule = moduleCacheMap.get(currentModuleId);
 
         String primaryTable = currentModule.getModuleInfo().getPrimaryTable();
+        if (StringUtils.isEmpty(primaryTable)) {
+            return null;
+        }
 
         Map<String, Object> rowMap =
                 DataPersistenceUtil.getTableRowMapFromWideRow(recordDataDTO.getRow(), primaryTable);
@@ -446,7 +473,10 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
             Record oldRecord =
                     context.select(DSL.asterisk())
-                            .from(DSL.table(primaryTable))
+                            .from(
+                                    DSL.table(
+                                            CommonConstant
+                                                    .TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT))
                             .where(
                                     DSL.field(DSL.name("root_module_id"))
                                             .eq(currentReq.getRootModuleId()))
@@ -458,19 +488,19 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                             .eq(currentReq.getRootModuleMainTableDataVersion()))
                             .and(DSL.field(DSL.name("module_id")).eq(currentModuleId))
                             .and(DSL.field(DSL.name("table_name")).eq(primaryTable))
-                            .and(DSL.field(DSL.name("id")).eq(id))
+                            .and(DSL.field(DSL.name("data_id")).eq(id))
                             .and(DSL.field(DSL.name("field_id")).eq(field))
                             .fetchOne();
-
-            Long recordId =
-                    oldRecord.getValue(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, Long.class);
 
             // 如果没有 s1 快照 直接保存 s1快照
             if (oldRecord == null) {
 
                 // 如果没有值，不保存
                 if (currentValue != null) {
-                    context.insertInto(DSL.table(primaryTable))
+                    context.insertInto(
+                                    DSL.table(
+                                            CommonConstant
+                                                    .TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT))
                             .set(
                                     DSL.field(DSL.name("root_module_id")),
                                     currentReq.getRootModuleId())
@@ -482,14 +512,19 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                     currentReq.getRootModuleMainTableDataVersion())
                             .set(DSL.field(DSL.name("module_id")), currentModuleId)
                             .set(DSL.field(DSL.name("table_name")), primaryTable)
-                            .set(DSL.field(DSL.name("id")), id)
+                            .set(DSL.field(DSL.name("data_id")), id)
                             .set(DSL.field(DSL.name("field_id")), field)
                             .set(
                                     DSL.field(DSL.name("first_snapshot")),
-                                    DataPersistenceUtil.getFieldWriteValue(rowMap.get(field)))
+                                    DataPersistenceUtil.getFieldTxtValue(rowMap.get(field)))
+                            .set(DSL.field(DSL.name("created_date")), LocalDateTime.now())
                             .execute();
                 }
             } else {
+
+                Long recordId =
+                        oldRecord.getValue(
+                                CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, Long.class);
 
                 // S2 是否为空
                 String firstSnapShot =
@@ -499,16 +534,24 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                 if (secondSnapShot == null) {
                     // 当前值 与 S1 快照 不相等, 保存 S2 快照
                     if (!DataPersistenceUtil.isEqualValue(currentValue, firstSnapShot)) {
-                        context.update(DSL.table(primaryTable))
+                        context.update(
+                                        DSL.table(
+                                                CommonConstant
+                                                        .TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT))
                                 .set(DSL.field(DSL.name("second_snapshot")), currentValue)
+                                .set(DSL.field(DSL.name("created_date")), LocalDateTime.now())
                                 .where(DSL.field(DSL.name("id")).eq(recordId))
                                 .execute();
                     }
                 } else {
                     if (!DataPersistenceUtil.isEqualValue(currentValue, secondSnapShot)) {
-                        context.update(DSL.table(primaryTable))
+                        context.update(
+                                        DSL.table(
+                                                CommonConstant
+                                                        .TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT))
                                 .set(DSL.field(DSL.name("first_snapshot")), secondSnapShot)
                                 .set(DSL.field(DSL.name("second_snapshot")), currentValue)
+                                .set(DSL.field(DSL.name("created_date")), LocalDateTime.now())
                                 .where(DSL.field(DSL.name("id")).eq(recordId))
                                 .execute();
                     }

@@ -5,6 +5,7 @@ import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.shared.context.RequestContextSnapshot;
+import com.jdec.platform.shared.security.model.LoginUser;
 import java.util.Map;
 import lombok.Data;
 import lombok.experimental.SuperBuilder;
@@ -22,4 +23,6 @@ public class ModuleDataPostContext extends BasicSaveModel {
     private Map<Long, SysModuleCombineInfo> moduleCacheMap;
 
     private RequestContextSnapshot requestContextSnapshot;
+
+    private LoginUser loginUser;
 }
