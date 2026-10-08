@@ -58,7 +58,17 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     "created_date",
                     "updated_date");
 
-    private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD = Set.of("id");
+    private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
+            Set.of(
+                    "id",
+                    "subject_id",
+                    "business_no",
+                    "business_status",
+                    "version_no",
+                    "created_by",
+                    "updated_by",
+                    "created_date",
+                    "updated_date");
 
     @Override
     public DataSaveResult insertRecord(RecordSaveContext context) {
@@ -115,7 +125,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
         RowChangeDTO rowChange = null;
         // 非审批链业务 正常保存 记录下变更日志
-        if (!context.getIsApproval()) {
+        if (!context.getIsApproval() && SaveType.SAVE.equals(context.getSaveType())) {
             rowChange =
                     DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
                             context.getRecord(),
@@ -191,7 +201,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         }
         RowChangeDTO rowChange = null;
         // 非审批链业务 正常保存 记录下变更日志
-        if (!context.getIsApproval()) {
+        if (!context.getIsApproval() && SaveType.SAVE.equals(context.getSaveType())) {
             rowChange =
                     DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
                             DataPersistenceUtil.convertRecordToMap(oldMap),

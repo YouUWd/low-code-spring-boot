@@ -173,23 +173,25 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                     throw new RuntimeException(e);
                                 }
                             });
-            moduleDataSavePostFactoryService.postProcess(
-                    ModuleDataPostContext.builder()
-                            .actionId(actionId)
-                            .subjectId(AppContext.getSubjectId())
-                            .projectNo(AppContext.getProjectNo())
-                            .realUserId(UserContext.getRealUserId())
-                            .userId(UserContext.getUserId())
-                            .mockUserId(UserContext.getMockUserId())
-                            .roleId(UserContext.getRoleId())
-                            .saveType(finalSaveType)
-                            .nestedModuleDataDTO(req.getNestedModuleData())
-                            .changeMap(ModuleDataSaveContextHolder.getRowChange())
-                            .moduleCacheMap(moduleCacheMap)
-                            .requestContextSnapshot(RequestContextSnapshotHolder.get())
-                            .loginUser(UserContext.getLoginUser())
-                            .build());
 
+            if (!isRelatedApproval && SaveType.SAVE.equals(finalSaveType)) {
+                moduleDataSavePostFactoryService.postProcess(
+                        ModuleDataPostContext.builder()
+                                .actionId(actionId)
+                                .subjectId(AppContext.getSubjectId())
+                                .projectNo(AppContext.getProjectNo())
+                                .realUserId(UserContext.getRealUserId())
+                                .userId(UserContext.getUserId())
+                                .mockUserId(UserContext.getMockUserId())
+                                .roleId(UserContext.getRoleId())
+                                .saveType(finalSaveType)
+                                .nestedModuleDataDTO(req.getNestedModuleData())
+                                .changeMap(ModuleDataSaveContextHolder.getRowChange())
+                                .moduleCacheMap(moduleCacheMap)
+                                .requestContextSnapshot(RequestContextSnapshotHolder.get())
+                                .loginUser(UserContext.getLoginUser())
+                                .build());
+            }
         } catch (Exception e) {
             throw e;
         } finally {
@@ -288,7 +290,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         recordDataDTO, sysModuleCompleteResp, primaryTableId, currentReq);
 
         // 合并两张表的变更记录
-        if (!currentReq.isApproval()) {
+        if (!currentReq.isApproval() && SaveType.SAVE.equals(currentReq.getSaveType())) {
             RowChangeDTO combinedRowChange =
                     DataPersistenceUtil.combineRowChanges(
                             primaryDataSaveResult.getRowChange(),
