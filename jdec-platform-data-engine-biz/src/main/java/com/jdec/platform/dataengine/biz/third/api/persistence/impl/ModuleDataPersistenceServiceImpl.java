@@ -58,7 +58,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
     public Long save(DynamicSaveReq req) {
 
         boolean isRelatedApproval =
-                false; // sysApprovalChainConfigApi.getApprovalStatus(List.of(req.getNestedModuleData().getModuleId()));
+                sysApprovalChainConfigApi.getApprovalStatus(
+                        List.of(req.getNestedModuleData().getModuleId()));
         // 模块是否关联审批链 保存类型
         SaveType finalSaveType = getSaveType(req);
         Map<Long, SysModuleCombineInfo> moduleCacheMap =
