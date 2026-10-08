@@ -373,9 +373,30 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
     }
 
     public NestedModuleDataDTO buildTemplateTree(ModuleMetaDTO metaData) {
-        return convertMetaToTemplateData(metaData);
+        return convertRootModuleMetaToTemplateData(metaData);
     }
 
+    /**
+     * 构造顶层模块的data数据模板
+     *
+     * @param metaData
+     * @return
+     */
+    private NestedModuleDataDTO convertRootModuleMetaToTemplateData(ModuleMetaDTO metaData) {
+        NestedModuleDataDTO.NestedModuleDataDTOBuilder nestedModuleDataDTOBuilder =
+                NestedModuleDataDTO.builder();
+        nestedModuleDataDTOBuilder.moduleId(metaData.getModuleId());
+
+        nestedModuleDataDTOBuilder.record(new ArrayList<>());
+        return nestedModuleDataDTOBuilder.build();
+    }
+
+    /**
+     * 构造顶层模块到子模块的嵌套层级data数据模板
+     *
+     * @param metaData
+     * @return
+     */
     private NestedModuleDataDTO convertMetaToTemplateData(ModuleMetaDTO metaData) {
         NestedModuleDataDTO.NestedModuleDataDTOBuilder nestedModuleDataDTOBuilder =
                 NestedModuleDataDTO.builder();
