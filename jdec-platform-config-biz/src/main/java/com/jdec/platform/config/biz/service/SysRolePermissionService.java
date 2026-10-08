@@ -7,17 +7,12 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckResult;
-import com.jdec.platform.config.biz.check.ReferenceChecker;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.enums.EffectiveTypeEnum;
 import java.time.LocalDate;
@@ -32,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysRolePermissionService implements SysRolePermissionApi, ReferenceChecker {
+public class SysRolePermissionService implements SysRolePermissionApi {
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
@@ -44,11 +39,6 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
-    private final SysModuleMapper sysModuleMapper;
-    private final SysModuleFieldMapper sysModuleFieldMapper;
-
-    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
-    private final DataSourceResolver dataSourceResolver;
     private final com.jdec.platform.config.biz.util.AuditLogHelper auditLogHelper;
     private final SysRoleMapper sysRoleMapper;
 
@@ -1202,186 +1192,6 @@ public class SysRolePermissionService implements SysRolePermissionApi, Reference
                         .distinct()
                         .toList();
         ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, affectedModuleIds);
-    }
-
-    @Override
-    public List<String> targetType() {
-        return List.of(
-                CheckConstant.SYS_ROLE,
-                CheckConstant.SYS_INTERACTION_PERMISSION,
-                CheckConstant.SYS_SPECIAL_PERMISSION,
-                CheckConstant.SYS_DATA_PERMISSION);
-    }
-
-    @Override
-    public ReferenceCheckResult check(ReferenceContext referenceContext) {
-        switch (referenceContext.getTargetType()) {
-            case CheckConstant.SYS_ROLE -> {
-                return checkRole(referenceContext);
-            }
-            case CheckConstant.SYS_INTERACTION_PERMISSION -> {
-                return checkInteractionPermission(referenceContext);
-            }
-            case CheckConstant.SYS_SPECIAL_PERMISSION -> {
-                return checkSpecialPermission(referenceContext);
-            }
-            case CheckConstant.SYS_DATA_PERMISSION -> {
-                return checkDataPermission(referenceContext);
-            }
-            case CheckConstant.SYS_MENU -> {
-                return checkMenu(referenceContext);
-            }
-            default -> {
-                return ReferenceCheckResult.empty();
-            }
-        }
-    }
-
-    private ReferenceCheckResult checkMenu(ReferenceContext referenceContext) {
-        Long count =
-                sysRoleMenuMapper.selectCount(
-                        Wrappers.<SysRoleMenu>lambdaQuery()
-                                .eq(SysRoleMenu::getMenuId, referenceContext.getTargetId()));
-        if (count == 0) {
-            return ReferenceCheckResult.empty();
-        }
-        return ReferenceCheckResult.builder()
-                .referenced(true)
-                .count(count)
-                .message("菜单【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色菜单权限")
-                .build();
-    }
-
-    private ReferenceCheckResult checkDataPermission(ReferenceContext referenceContext) {
-        Long count =
-                sysRoleDataPermissionMapper.selectCount(
-                        Wrappers.<SysRoleDataPermission>lambdaQuery()
-                                .eq(
-                                        SysRoleDataPermission::getDataPermissionId,
-                                        referenceContext.getTargetId()));
-        if (count == 0) {
-            return ReferenceCheckResult.empty();
-        }
-        return ReferenceCheckResult.builder()
-                .referenced(true)
-                .count(count)
-                .message("数据权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色数据权限")
-                .build();
-    }
-
-    private ReferenceCheckResult checkSpecialPermission(ReferenceContext referenceContext) {
-        Long count =
-                sysRoleSpecialPermissionMapper.selectCount(
-                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
-                                .eq(
-                                        SysRoleSpecialPermission::getSpecialPermissionId,
-                                        referenceContext.getTargetId()));
-        if (count == 0) {
-            return ReferenceCheckResult.empty();
-        }
-        return ReferenceCheckResult.builder()
-                .referenced(true)
-                .count(count)
-                .message("其它权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色其它权限")
-                .build();
-    }
-
-    private ReferenceCheckResult checkInteractionPermission(ReferenceContext referenceContext) {
-        Long count =
-                sysRoleInteractionPermissionMapper.selectCount(
-                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
-                                .eq(
-                                        SysRoleInteractionPermission::getPermissionId,
-                                        referenceContext.getTargetId()));
-        if (count == 0) {
-            return ReferenceCheckResult.empty();
-        }
-        return ReferenceCheckResult.builder()
-                .referenced(true)
-                .count(count)
-                .message("交互权限节点【" + referenceContext.getTargetName() + "】绑定了" + count + "个角色交互权限")
-                .build();
-    }
-
-    private ReferenceCheckResult checkRole(ReferenceContext referenceContext) {
-        StringBuilder sb = new StringBuilder();
-        Long countSum = 0L;
-        Long count =
-                sysRoleMenuMapper.selectCount(
-                        Wrappers.<SysRoleMenu>lambdaQuery()
-                                .eq(SysRoleMenu::getRoleId, referenceContext.getTargetId()));
-        if (count > 0) {
-            countSum += count;
-            sb.append("角色【")
-                    .append(referenceContext.getTargetName())
-                    .append("】绑定了")
-                    .append(count)
-                    .append("个菜单权限\n");
-        }
-        count =
-                sysRoleModuleFieldPermissionMapper.selectCount(
-                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(
-                                        SysRoleModuleFieldPermission::getRoleId,
-                                        referenceContext.getTargetId()));
-        if (count > 0) {
-            countSum += count;
-            sb.append("角色【")
-                    .append(referenceContext.getTargetName())
-                    .append("】绑定了")
-                    .append(count)
-                    .append("个字段权限\n");
-        }
-        count =
-                sysRoleInteractionPermissionMapper.selectCount(
-                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
-                                .eq(
-                                        SysRoleInteractionPermission::getRoleId,
-                                        referenceContext.getTargetId()));
-        if (count > 0) {
-            countSum += count;
-            sb.append("角色【")
-                    .append(referenceContext.getTargetName())
-                    .append("】绑定了")
-                    .append(count)
-                    .append("个交互权限\n");
-        }
-        count =
-                sysRoleDataPermissionMapper.selectCount(
-                        Wrappers.<SysRoleDataPermission>lambdaQuery()
-                                .eq(
-                                        SysRoleDataPermission::getRoleId,
-                                        referenceContext.getTargetId()));
-        if (count > 0) {
-            countSum += count;
-            sb.append("角色【")
-                    .append(referenceContext.getTargetName())
-                    .append("】绑定了")
-                    .append(count)
-                    .append("个数据权限\n");
-        }
-        count =
-                sysRoleSpecialPermissionMapper.selectCount(
-                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
-                                .eq(
-                                        SysRoleSpecialPermission::getRoleId,
-                                        referenceContext.getTargetId()));
-        if (count > 0) {
-            countSum += count;
-            sb.append("角色【")
-                    .append(referenceContext.getTargetName())
-                    .append("】绑定了")
-                    .append(count)
-                    .append("个其它权限");
-        }
-        if (countSum == 0) {
-            return ReferenceCheckResult.empty();
-        }
-        return ReferenceCheckResult.builder()
-                .referenced(true)
-                .count(countSum)
-                .message(sb.toString())
-                .build();
     }
 
     @Override

@@ -8,11 +8,10 @@ import com.jdec.platform.config.api.SysButtonApi;
 import com.jdec.platform.config.api.dto.request.SysButtonPageReq;
 import com.jdec.platform.config.api.dto.request.SysButtonSaveReq;
 import com.jdec.platform.config.api.dto.response.SysButtonResp;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysButton;
 import com.jdec.platform.config.biz.mapper.SysButtonMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -37,7 +36,7 @@ import org.springframework.util.StringUtils;
 public class SysButtonService implements SysButtonApi {
 
     private final SysButtonMapper sysButtonMapper;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
 
     @Override
     public PageResult<SysButtonResp> page(SysButtonPageReq req) {
@@ -170,15 +169,11 @@ public class SysButtonService implements SysButtonApi {
             throw new BusinessException("按钮不存在");
         }
         // 引用检查
-        ReferenceContext context =
-                ReferenceContext.builder()
-                        .targetType(CheckConstant.SYS_BUTTON)
-                        .targetId(id)
-                        .targetName(button.getTitle())
-                        .build();
-        List<String> check = referenceCheckManager.check(context);
-        if (!check.isEmpty()) {
-            throw new PopException(String.join("\n", check));
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(SysButton.class, List.of(button.getId()));
+        if (!violations.isEmpty()) {
+            throw new PopException(
+                    referenceCheckService.buildMessage(button.getTitle(), violations));
         }
         sysButtonMapper.deleteById(id);
     }

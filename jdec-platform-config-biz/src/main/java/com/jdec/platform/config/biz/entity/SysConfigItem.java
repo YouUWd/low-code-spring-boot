@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -18,6 +19,12 @@ public class SysConfigItem implements Serializable {
     private Long id;
 
     @AuditField(name = "所属分类")
+    @Reference(
+            target = SysConfigCategory.class,
+            targetField = "categoryAlias",
+            sourceField = "category_alias",
+            displayField = "label",
+            name = "配置项")
     @Schema(description = "冗余分类alias，方便直接按alias查询")
     private String categoryAlias;
 

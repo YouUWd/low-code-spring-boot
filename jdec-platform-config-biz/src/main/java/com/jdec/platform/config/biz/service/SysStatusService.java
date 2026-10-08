@@ -10,15 +10,14 @@ import com.jdec.platform.config.api.dto.request.SysStatusSaveReq;
 import com.jdec.platform.config.api.dto.request.SysStatusToggleReq;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.entity.SysModuleStatus;
 import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.mapper.SysDataSnapshotMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -45,7 +44,7 @@ import org.springframework.util.CollectionUtils;
 public class SysStatusService implements SysStatusApi {
 
     private final SysStatusMapper sysStatusMapper;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
     private final SysDataSnapshotMapper sysDataSnapshotMapper;
     private final SysModuleStatusMapper sysModuleStatusMapper;
 
@@ -247,15 +246,11 @@ public class SysStatusService implements SysStatusApi {
             throw new BusinessException("状态不存在");
         }
         // 引用检查
-        ReferenceContext context =
-                ReferenceContext.builder()
-                        .targetType(CheckConstant.SYS_STATUS)
-                        .targetId(status.getId())
-                        .targetName(status.getTitle())
-                        .build();
-        List<String> check = referenceCheckManager.check(context);
-        if (!check.isEmpty()) {
-            throw new PopException(String.join("\n", check));
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(SysStatus.class, List.of(status.getId()));
+        if (!violations.isEmpty()) {
+            throw new PopException(
+                    referenceCheckService.buildMessage(status.getTitle(), violations));
         }
         sysStatusMapper.deleteById(id);
         // 删除后重排同级节点的排序值

@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -22,6 +23,7 @@ public class SysApprovalChainType implements Serializable {
     private String title;
 
     @Schema(description = "模块ID")
+    @Reference(target = SysModule.class, name = "审批链类型", displayField = "title")
     private Long moduleId;
 
     @Schema(description = "是否默认审批链分类（1：是，0：否）")

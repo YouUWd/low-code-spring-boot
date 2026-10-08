@@ -7,7 +7,6 @@ import static org.mockito.Mockito.*;
 import com.baomidou.mybatisplus.extension.toolkit.Db;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.request.SaveModuleReq;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysTableRelation;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
@@ -15,6 +14,7 @@ import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysTableRelationMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -42,7 +42,7 @@ class SysModuleServiceTest {
 
     @Mock private SysTableRelationMapper sysTableRelationMapper;
 
-    @Mock private ReferenceCheckManager referenceCheckManager;
+    @Mock private ReferenceCheckService referenceCheckService;
 
     @InjectMocks private SysModuleService sysModuleService;
 

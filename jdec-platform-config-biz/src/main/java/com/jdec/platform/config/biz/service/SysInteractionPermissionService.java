@@ -6,13 +6,12 @@ import com.jdec.platform.config.api.SysInteractionPermissionApi;
 import com.jdec.platform.config.api.dto.request.QuerySysInteractionPermissionReq;
 import com.jdec.platform.config.api.dto.request.SysInteractionPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.*;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysInteractionPermission;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.mapper.SysInteractionPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -38,7 +37,7 @@ public class SysInteractionPermissionService implements SysInteractionPermission
 
     private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
     private final SysModuleMapper sysModuleMapper;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
 
     @Transactional
     @Override
@@ -165,15 +164,13 @@ public class SysInteractionPermissionService implements SysInteractionPermission
             throw new BusinessException("交互权限不存在");
         }
         // 引用检查
-        ReferenceContext context =
-                ReferenceContext.builder()
-                        .targetType(CheckConstant.SYS_INTERACTION_PERMISSION)
-                        .targetId(id)
-                        .targetName(sysInteractionPermission.getName())
-                        .build();
-        List<String> check = referenceCheckManager.check(context);
-        if (!check.isEmpty()) {
-            throw new PopException(String.join("\n", check));
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(
+                        SysInteractionPermission.class, List.of(sysInteractionPermission.getId()));
+        if (!violations.isEmpty()) {
+            throw new PopException(
+                    referenceCheckService.buildMessage(
+                            sysInteractionPermission.getName(), violations));
         }
         sysInteractionPermissionMapper.deleteById(id);
     }

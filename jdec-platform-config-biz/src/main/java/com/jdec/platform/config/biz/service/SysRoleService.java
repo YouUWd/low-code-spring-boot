@@ -13,9 +13,6 @@ import com.jdec.platform.config.api.dto.request.RoleUserReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.audit.service.RoleApprovalLogService;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysRole;
 import com.jdec.platform.config.biz.entity.SysRoleSubject;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
@@ -25,6 +22,8 @@ import com.jdec.platform.config.biz.mapper.SysRoleMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysUserMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -55,7 +54,7 @@ public class SysRoleService implements SysRoleApi {
     private final SysUserMapper sysUserMapper;
     private final HrQueryService hrQueryService;
     private final ConfigChangeMessagePublisher messagePublisher;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
     private final SysDataSnapshotService sysDataSnapshotService;
     private final RoleApprovalLogService roleApprovalLogService;
 
@@ -1067,15 +1066,11 @@ public class SysRoleService implements SysRoleApi {
     public void deleteRole(Long roleId) {
         // 检查关联
         SysRole sysRole = sysRoleMapper.selectById(roleId);
-        ReferenceContext context =
-                ReferenceContext.builder()
-                        .targetType(CheckConstant.SYS_ROLE)
-                        .targetId(roleId)
-                        .targetName(sysRole.getRoleName())
-                        .build();
-        List<String> check = referenceCheckManager.check(context);
-        if (CollUtil.isNotEmpty(check)) {
-            throw new PopException(String.join("\n", check));
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(SysRole.class, List.of(roleId));
+        if (!violations.isEmpty()) {
+            throw new PopException(
+                    referenceCheckService.buildMessage(sysRole.getRoleName(), violations));
         }
 
         // === 审批日志：记录删除角色 ===

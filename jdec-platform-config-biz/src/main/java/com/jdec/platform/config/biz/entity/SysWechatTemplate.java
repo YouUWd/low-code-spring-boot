@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.jdec.platform.config.biz.reference.Reference;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -52,6 +53,7 @@ public class SysWechatTemplate {
     private String configParamIds;
 
     /** 模块 ID */
+    @Reference(target = SysModule.class, name = "微信模板", displayField = "templateTitle")
     private Long moduleId;
 
     /** 模块名称 */

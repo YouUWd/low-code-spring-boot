@@ -14,11 +14,10 @@ import com.jdec.platform.config.api.dto.response.SysFieldSourceMappingResp;
 import com.jdec.platform.config.api.dto.response.SysFieldValueResp;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import com.jdec.platform.config.biz.audit.service.SysFieldLogService;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.config.biz.util.AuditLogHelper;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -55,7 +54,7 @@ public class SysFieldService implements SysFieldApi {
     private final JdbcTemplate jdbcTemplate;
     private final WordApiClient wordApiClient;
     private final SysDataPermissionMapper sysDataPermissionMapper;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
     private final AuditLogHelper auditLogHelper;
     private final SysDataSnapshotService snapshotService;
     private final ObjectMapper objectMapper;
@@ -651,15 +650,13 @@ public class SysFieldService implements SysFieldApi {
                                                 AppContext.getProjectNo()));
                 if (dataPermission != null) {
                     // 数据权限节点引用检查
-                    ReferenceContext context =
-                            ReferenceContext.builder()
-                                    .targetType(CheckConstant.SYS_DATA_PERMISSION)
-                                    .targetId(dataPermission.getId())
-                                    .targetName(dataPermission.getName())
-                                    .build();
-                    List<String> check = referenceCheckManager.check(context);
-                    if (!check.isEmpty()) {
-                        throw new PopException(String.join("\n", check));
+                    List<ReferenceViolation> violations =
+                            referenceCheckService.check(
+                                    SysDataPermission.class, List.of(dataPermission.getId()));
+                    if (!violations.isEmpty()) {
+                        throw new PopException(
+                                referenceCheckService.buildMessage(
+                                        dataPermission.getName(), violations));
                     }
 
                     // 删除前确保快照存在（用于审计日志）

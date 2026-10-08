@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -41,6 +42,7 @@ public class SysApprovalChainConfig implements Serializable {
     private Integer roleApprovalPercent;
 
     @Schema(description = "审批角色组 sys_role表的id 审批角色组 approval_rule为1 2 3时")
+    @Reference(target = SysRole.class, name = "审批链配置", displayField = "roleName")
     private Long approveRoleId;
 
     @Schema(description = "审批人 sys_user表的id approval_rule为0时")

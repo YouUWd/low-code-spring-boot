@@ -9,12 +9,11 @@ import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.api.enums.MenuCategoryEnum;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysMenu;
 import com.jdec.platform.config.biz.mapper.SysMenuMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleMenuMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -42,7 +41,7 @@ public class SysMenuService implements SysMenuApi {
 
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleMenuMapper sysRoleMenuMapper;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
     private final SysMenuHeaderService sysMenuHeaderService;
 
     /** 菜单类型：导航 */
@@ -441,15 +440,10 @@ public class SysMenuService implements SysMenuApi {
             throw new BusinessException("菜单不存在");
         }
         // 引用检查
-        ReferenceContext context =
-                ReferenceContext.builder()
-                        .targetType(CheckConstant.SYS_MENU)
-                        .targetId(menu.getId())
-                        .targetName(menu.getTitle())
-                        .build();
-        List<String> check = referenceCheckManager.check(context);
-        if (!check.isEmpty()) {
-            throw new PopException(String.join("\n", check));
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(SysMenu.class, List.of(menu.getId()));
+        if (!violations.isEmpty()) {
+            throw new PopException(referenceCheckService.buildMessage(menu.getTitle(), violations));
         }
         // 删除菜单
         sysMenuMapper.deleteById(id);

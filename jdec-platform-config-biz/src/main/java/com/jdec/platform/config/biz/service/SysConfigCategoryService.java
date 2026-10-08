@@ -9,12 +9,15 @@ import com.jdec.platform.config.biz.entity.SysConfigCategory;
 import com.jdec.platform.config.biz.entity.SysConfigItem;
 import com.jdec.platform.config.biz.mapper.SysConfigCategoryMapper;
 import com.jdec.platform.config.biz.mapper.SysConfigItemMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.exception.PopException;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +45,7 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
     private final SysConfigCategoryMapper categoryMapper;
     private final SysConfigItemMapper itemMapper;
     private final SysConfigItemService itemService;
+    private final ReferenceCheckService referenceCheckService;
 
     /**
      * 延迟获取自身代理，避免构造循环依赖。
@@ -415,22 +419,16 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
         if (category == null) {
             throw new BusinessException("配置分类不存在");
         }
-        // 查询关联的配置项数量（通过 categoryAlias）
-        long itemCount =
-                itemMapper.selectCount(
-                        Wrappers.<SysConfigItem>lambdaQuery()
-                                .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
-                                .eq(SysConfigItem::getProjectNo, projectNo)
-                                .eq(SysConfigItem::getSubjectId, subjectId));
-        if (!force && itemCount > 0) {
-            throw new BusinessException("删除确认：该分类下有 " + itemCount + " 个配置项将被同步删除；请确认后重新请求");
+        // 引用检查：分类通过 categoryAlias 被配置项引用，存在引用则禁止删除
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(
+                        SysConfigCategory.class,
+                        "categoryAlias",
+                        List.of(category.getCategoryAlias()));
+        if (!violations.isEmpty()) {
+            throw new PopException(
+                    referenceCheckService.buildMessage(category.getLabel(), violations));
         }
-        // 级联删除配置项（通过 categoryAlias）
-        itemMapper.delete(
-                Wrappers.<SysConfigItem>lambdaQuery()
-                        .eq(SysConfigItem::getCategoryAlias, category.getCategoryAlias())
-                        .eq(SysConfigItem::getProjectNo, projectNo)
-                        .eq(SysConfigItem::getSubjectId, subjectId));
         // 删除分类
         categoryMapper.delete(
                 Wrappers.<SysConfigCategory>lambdaQuery()
