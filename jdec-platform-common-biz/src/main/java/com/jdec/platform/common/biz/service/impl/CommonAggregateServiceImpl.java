@@ -38,6 +38,7 @@ import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.response.DataOption;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
@@ -93,8 +94,21 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         ProjectTableRelationsDTO projectRelations =
                 configApi.getProjectTableRelations(AppContext.getProjectNo());
 
-        List<Long> checkedFieldIds =
-                collectQueryFieldIds(headerRoot, req, rootModuleId, moduleTree, projectRelations);
+        // 2. 识别并校验请求中的 1:N 模块分支，单次递归遍历表头同时完成表头修饰与字段收集
+        Map<Long, Long> branchCache = new HashMap<>();
+        Long active1NBranch =
+                resolveActiveOneToManyBranch(
+                        headerRoot, req, rootModuleId, moduleTree, projectRelations, branchCache);
+
+        List<Long> checkedFieldIds = new ArrayList<>();
+        processHeaderAndCollectFieldIds(
+                headerRoot,
+                checkedFieldIds,
+                rootModuleId,
+                active1NBranch,
+                moduleTree,
+                projectRelations,
+                branchCache);
 
         // 2. 构建底层通用 QueryReq 并组装通用过滤/排序/分页
         int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
@@ -300,94 +314,155 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return dataApi.getOptions(optionReq);
     }
 
-    private List<Long> collectQueryFieldIds(
+    private Long resolveActiveOneToManyBranch(
             MenuHeaderColumnResp headerRoot,
             MenuQueryReq req,
             Long rootModuleId,
             ModuleTreeDTO moduleTree,
-            ProjectTableRelationsDTO projectRelations) {
-        List<Long> result = new ArrayList<>();
+            ProjectTableRelationsDTO projectRelations,
+            Map<Long, Long> branchCache) {
         if (headerRoot == null) {
-            return result;
+            return null;
         }
 
-        // 1. 解析请求中的过滤条件，提取命中的 1:N 顶层分支
+        // 1. 解析请求中的过滤条件与排序规则，提取命中的 1:N 顶层分支
         Set<Long> hitOneToManyBranches = new LinkedHashSet<>();
-        if (req != null && !CollectionUtils.isEmpty(req.getFilters())) {
-            for (FlatFilterItem flatFilter : req.getFilters()) {
-                if (flatFilter != null && flatFilter.getFieldId() != null) {
-                    Long fieldId = flatFilter.getFieldId();
-                    Long fieldModuleId =
-                            moduleTree != null ? moduleTree.getModuleIdByFieldId(fieldId) : null;
-                    if (fieldModuleId == null) {
-                        fieldModuleId = findModuleIdByFieldIdInHeader(headerRoot, fieldId);
+        if (req != null) {
+            if (!CollectionUtils.isEmpty(req.getFilters())) {
+                for (FlatFilterItem flatFilter : req.getFilters()) {
+                    if (flatFilter != null && flatFilter.getFieldId() != null) {
+                        Long branch =
+                                resolveBranchByFieldId(
+                                        flatFilter.getFieldId(),
+                                        headerRoot,
+                                        rootModuleId,
+                                        moduleTree,
+                                        projectRelations,
+                                        branchCache);
+                        if (branch != null) {
+                            hitOneToManyBranches.add(branch);
+                        }
                     }
-                    Long top1NBranch =
-                            resolveTopOneToManyBranch(
-                                    fieldModuleId, rootModuleId, moduleTree, projectRelations);
-                    if (top1NBranch != null) {
-                        hitOneToManyBranches.add(top1NBranch);
+                }
+            }
+            if (!CollectionUtils.isEmpty(req.getSorts())) {
+                for (SortItem sortItem : req.getSorts()) {
+                    if (sortItem != null && sortItem.getFieldId() != null) {
+                        Long branch =
+                                resolveBranchByFieldId(
+                                        sortItem.getFieldId(),
+                                        headerRoot,
+                                        rootModuleId,
+                                        moduleTree,
+                                        projectRelations,
+                                        branchCache);
+                        if (branch != null) {
+                            hitOneToManyBranches.add(branch);
+                        }
                     }
                 }
             }
         }
 
-        // 2. 1:N 模块校验：最多只允许 1 个 1:N 模块或菜单参与筛选
+        // 2. 1:N 模块校验：最多只允许 1 个 1:N 模块或菜单参与筛选与排序
         if (hitOneToManyBranches.size() > 1) {
             throw new BusinessException(
                     400,
-                    "带搜索条件查询时，最多只允许 1 个 1:N 模块参与筛选，当前搜索条件涉及 "
+                    "带搜索或排序条件查询时，最多只允许 1 个 1:N 模块参与筛选，当前搜索条件涉及 "
                             + hitOneToManyBranches.size()
                             + " 个 1:N 模块分支");
         }
 
-        Long active1NBranch =
-                hitOneToManyBranches.isEmpty() ? null : hitOneToManyBranches.iterator().next();
-
-        // 3. 递归收集字段 (1:1 始终保留；1:N 仅保留命中分支或全量保留)
-        collectEligibleFieldIds(
-                headerRoot, result, rootModuleId, active1NBranch, moduleTree, projectRelations);
-
-        return result;
+        return hitOneToManyBranches.isEmpty() ? null : hitOneToManyBranches.iterator().next();
     }
 
-    private void collectEligibleFieldIds(
+    private Long resolveBranchByFieldId(
+            Long fieldId,
+            MenuHeaderColumnResp headerRoot,
+            Long rootModuleId,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations,
+            Map<Long, Long> branchCache) {
+        if (fieldId == null) {
+            return null;
+        }
+        Long fieldModuleId = moduleTree != null ? moduleTree.getModuleIdByFieldId(fieldId) : null;
+        if (fieldModuleId == null) {
+            fieldModuleId = findModuleIdByFieldIdInHeader(headerRoot, fieldId);
+        }
+        return resolveTopOneToManyBranchWithCache(
+                fieldModuleId, rootModuleId, moduleTree, projectRelations, branchCache);
+    }
+
+    private void processHeaderAndCollectFieldIds(
             MenuHeaderColumnResp node,
-            List<Long> result,
+            List<Long> checkedFieldIds,
             Long rootModuleId,
             Long active1NBranch,
             ModuleTreeDTO moduleTree,
-            ProjectTableRelationsDTO projectRelations) {
+            ProjectTableRelationsDTO projectRelations,
+            Map<Long, Long> branchCache) {
         if (node == null) {
             return;
         }
 
         Long nodeModuleId = node.getModuleId();
+        if (nodeModuleId == null && node.getFieldId() != null && moduleTree != null) {
+            nodeModuleId = moduleTree.getModuleIdByFieldId(node.getFieldId());
+        }
         Long top1NBranch =
-                resolveTopOneToManyBranch(nodeModuleId, rootModuleId, moduleTree, projectRelations);
+                resolveTopOneToManyBranchWithCache(
+                        nodeModuleId, rootModuleId, moduleTree, projectRelations, branchCache);
 
-        // 如果该节点/字段属于 1:N 模块，且当前有激活的 1:N 筛选分支，但不是当前激活分支，则跳过
-        boolean isExcluded =
-                top1NBranch != null
-                        && active1NBranch != null
+        // 如果该节点/字段属于 1:N 模块，且当前有激活的 1:N 筛选分支，但不是当前激活分支
+        boolean isOther1NBranch =
+                active1NBranch != null
+                        && top1NBranch != null
                         && !top1NBranch.equals(active1NBranch);
 
-        if (!isExcluded) {
+        if (isOther1NBranch) {
+            // 对其他未命中的 1:N 分支：置为不可搜索、不可排序，且不收集字段
+            node.setSearchType(null);
+            node.setSorted(0);
+        } else {
+            // 对根模块、1:1 模块以及当前激活的 1:N 分支：保留原表头配置，并收集字段
             if (node.getFieldId() != null) {
-                result.add(node.getFieldId());
-            }
-            if (node.getChildren() != null) {
-                for (MenuHeaderColumnResp child : node.getChildren()) {
-                    collectEligibleFieldIds(
-                            child,
-                            result,
-                            rootModuleId,
-                            active1NBranch,
-                            moduleTree,
-                            projectRelations);
-                }
+                checkedFieldIds.add(node.getFieldId());
             }
         }
+
+        if (node.getChildren() != null) {
+            for (MenuHeaderColumnResp child : node.getChildren()) {
+                processHeaderAndCollectFieldIds(
+                        child,
+                        checkedFieldIds,
+                        rootModuleId,
+                        active1NBranch,
+                        moduleTree,
+                        projectRelations,
+                        branchCache);
+            }
+        }
+    }
+
+    private Long resolveTopOneToManyBranchWithCache(
+            Long moduleId,
+            Long rootModuleId,
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations,
+            Map<Long, Long> branchCache) {
+        if (moduleId == null || rootModuleId == null || moduleId.equals(rootModuleId)) {
+            return null;
+        }
+        if (branchCache != null && branchCache.containsKey(moduleId)) {
+            return branchCache.get(moduleId);
+        }
+        Long branch =
+                resolveTopOneToManyBranch(moduleId, rootModuleId, moduleTree, projectRelations);
+        if (branchCache != null) {
+            branchCache.put(moduleId, branch);
+        }
+        return branch;
     }
 
     private Long findModuleIdByFieldIdInHeader(MenuHeaderColumnResp node, Long fieldId) {

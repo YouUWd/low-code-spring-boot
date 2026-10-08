@@ -22,6 +22,7 @@ import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
+import com.jdec.platform.config.api.dto.response.MenuHeaderSearchTypeResp;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.api.dto.response.SysUserPageResp;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -30,6 +31,7 @@ import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -367,7 +369,33 @@ class CompanyMenuQueryContractTest {
                 .moduleId(moduleId)
                 .fieldId(fieldId)
                 .label(label)
+                .sorted(1)
+                .searchType(
+                        MenuHeaderSearchTypeResp.builder()
+                                .code("input")
+                                .name("文本输入")
+                                .component("Input")
+                                .build())
                 .build();
+    }
+
+    private static MenuHeaderColumnResp findColumnByFieldId(
+            MenuHeaderColumnResp node, Long fieldId) {
+        if (node == null || fieldId == null) {
+            return null;
+        }
+        if (fieldId.equals(node.getFieldId())) {
+            return node;
+        }
+        if (node.getChildren() != null) {
+            for (MenuHeaderColumnResp child : node.getChildren()) {
+                MenuHeaderColumnResp found = findColumnByFieldId(child, fieldId);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     @Test
@@ -731,5 +759,105 @@ class CompanyMenuQueryContractTest {
         assertEquals("handle", btnKeyMap.get(101L), "审批待办记录应为办理(handle)");
         assertEquals("view", btnKeyMap.get(102L), "已审批记录应为查阅(view)");
         assertEquals("handle", btnKeyMap.get(999L), "自建草稿记录应为办理(handle)");
+    }
+
+    @Test
+    @DisplayName("场景7：筛选单一 1:N 模块（财务账户 1010）时，返回表头中其他 1:N 模块（高管 1003/联系电话 1004）被禁用搜索与排序")
+    void testFilter1ToN_maskOther1ToNSearchAndSort() {
+        MenuQueryReq req =
+                MenuQueryReq.builder()
+                        .filters(
+                                List.of(
+                                        FlatFilterItem.builder()
+                                                .fieldId(10101L) // financial_account.account_no
+                                                // (1:N)
+                                                .operator("eq")
+                                                .value("6222020202")
+                                                .build()))
+                        .build();
+
+        MenuDataResp resp = commonAggregateService.queryByMenu(100L, req);
+
+        assertNotNull(resp);
+        assertNotNull(resp.getHeader());
+
+        // 1. 根模块与 1:1 模块字段：保留可搜索与可排序
+        MenuHeaderColumnResp idCol = findColumnByFieldId(resp.getHeader(), 10001L);
+        assertNotNull(idCol);
+        assertEquals(1, idCol.getSorted());
+        assertNotNull(idCol.getSearchType());
+
+        MenuHeaderColumnResp regCapitalCol = findColumnByFieldId(resp.getHeader(), 10021L);
+        assertNotNull(regCapitalCol);
+        assertEquals(1, regCapitalCol.getSorted());
+        assertNotNull(regCapitalCol.getSearchType());
+
+        // 2. 命中的 1010 财务账户模块字段：保留可搜索与可排序
+        MenuHeaderColumnResp accountNoCol = findColumnByFieldId(resp.getHeader(), 10101L);
+        assertNotNull(accountNoCol);
+        assertEquals(1, accountNoCol.getSorted());
+        assertNotNull(accountNoCol.getSearchType());
+
+        // 3. 其他未命中的 1:N 模块字段（1003 高管、1004 电话）：被设置为不可搜索且不可排序
+        MenuHeaderColumnResp memberNameCol = findColumnByFieldId(resp.getHeader(), 10031L);
+        assertNotNull(memberNameCol);
+        assertEquals(0, memberNameCol.getSorted(), "未命中的 1:N 字段应置为不可排序 (sorted=0)");
+        assertNull(memberNameCol.getSearchType(), "未命中的 1:N 字段应置为不可搜索 (searchType=null)");
+
+        MenuHeaderColumnResp phoneCol = findColumnByFieldId(resp.getHeader(), 10041L);
+        assertNotNull(phoneCol);
+        assertEquals(0, phoneCol.getSorted(), "未命中的 1:N:M 字段应置为不可排序 (sorted=0)");
+        assertNull(phoneCol.getSearchType(), "未命中的 1:N:M 字段应置为不可搜索 (searchType=null)");
+    }
+
+    @Test
+    @DisplayName("场景8：仅排序单一 1:N 模块（财务账户 1010）时，正常允许排序并禁用其他 1:N 模块搜索与排序")
+    void testSort1ToN_maskOther1ToNSearchAndSort() {
+        MenuQueryReq req =
+                MenuQueryReq.builder()
+                        .sorts(List.of(SortItem.asc(10101L))) // financial_account (1:N)
+                        .build();
+
+        MenuDataResp resp = commonAggregateService.queryByMenu(100L, req);
+
+        assertNotNull(resp);
+        assertNotNull(resp.getHeader());
+
+        // 命中的 1010 财务账户保持可搜索与排序
+        MenuHeaderColumnResp accountNoCol = findColumnByFieldId(resp.getHeader(), 10101L);
+        assertNotNull(accountNoCol);
+        assertEquals(1, accountNoCol.getSorted());
+        assertNotNull(accountNoCol.getSearchType());
+
+        // 其他 1:N 分支字段被禁用
+        MenuHeaderColumnResp memberNameCol = findColumnByFieldId(resp.getHeader(), 10031L);
+        assertNotNull(memberNameCol);
+        assertEquals(0, memberNameCol.getSorted());
+        assertNull(memberNameCol.getSearchType());
+    }
+
+    @Test
+    @DisplayName("场景9：筛选 1:N 模块（高管 1003）但排序另一个 1:N 模块（财务 1010）时，严格抛出 400 业务异常")
+    void testFilter1ToN_AndSortAnother1ToN_throwsBusinessException() {
+        MenuQueryReq req =
+                MenuQueryReq.builder()
+                        .filters(
+                                List.of(
+                                        FlatFilterItem.builder()
+                                                .fieldId(10031L) // member (1:N 分支1)
+                                                .operator("eq")
+                                                .value("张三")
+                                                .build()))
+                        .sorts(List.of(SortItem.asc(10101L))) // financial_account (1:N 分支2)
+                        .build();
+
+        BusinessException ex =
+                assertThrows(
+                        BusinessException.class,
+                        () -> commonAggregateService.queryByMenu(100L, req),
+                        "筛选分支1且排序分支2时跨了 2 个独立 1:N 分支，必须被拦截抛出异常");
+
+        assertEquals(400, ex.getCode());
+        assertTrue(ex.getMessage().contains("最多只允许 1 个 1:N 模块"));
     }
 }
