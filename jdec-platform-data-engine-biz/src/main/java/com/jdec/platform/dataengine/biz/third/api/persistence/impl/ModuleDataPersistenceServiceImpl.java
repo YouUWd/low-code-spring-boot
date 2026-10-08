@@ -271,9 +271,10 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                     "模块id={},name={}记录数据为空",
                     sysModuleCompleteResp.getModuleInfo().getModuleId(),
                     sysModuleCompleteResp.getModuleInfo().getModuleName());
-            throw new BusinessException(
-                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
-                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
+            //            throw new BusinessException(
+            //                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
+            //                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
+            return 0L;
         }
         // 首先 写入当前 模块 主表的数据,主表数据 只有一行
         DataSaveResult primaryDataSaveResult =
