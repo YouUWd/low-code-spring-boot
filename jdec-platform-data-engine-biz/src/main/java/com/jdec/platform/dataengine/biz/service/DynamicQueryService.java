@@ -1092,7 +1092,8 @@ public class DynamicQueryService {
         if (Objects.nonNull(recordsResult)) {
             Map<String, Object> resultMap = recordsResult.intoMap();
 
-            if (resultMap.containsKey("version_no")) {
+            if (resultMap.containsKey("version_no")
+                    && Objects.nonNull(resultMap.get("version_no"))) {
 
                 Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
 
