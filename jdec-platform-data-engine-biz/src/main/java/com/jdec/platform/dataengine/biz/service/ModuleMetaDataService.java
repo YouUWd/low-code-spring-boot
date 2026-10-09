@@ -6,4 +6,7 @@ import java.util.Map;
 
 public interface ModuleMetaDataService {
     Map<Long, SysModuleCombineInfo> getModuleMetaDataMap(ModuleQueryContext moduleQueryContext);
+
+    Map<Long, SysModuleCombineInfo> getModuleMetaDataMapAsync(
+            ModuleQueryContext moduleQueryContext);
 }
