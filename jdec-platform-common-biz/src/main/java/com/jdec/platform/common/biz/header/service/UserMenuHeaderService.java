@@ -86,6 +86,10 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
 
         // 默认表头树：菜单/字段生成 + sys_menu_header 已保存配置 + 角色权限过滤（config 侧实现）
         SysMenuHeaderResp tree = openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId);
+        // 角色对该菜单无任何权限：整树丢弃，不返回任何节点
+        if (tree == null) {
+            return null;
+        }
 
         // 用户个性化配置：该用户在此菜单下没有配置时直接返回默认表头树
         Map<String, UserMenuHeader> userNodesByVirId =
@@ -111,8 +115,11 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 模块侧最新可用节点（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
         // 每次返回前都据此比对：user_menu_header 中模块侧已不存在的节点不返回给前端；
         // 展示名与关联字段标记一律取该默认树（源头），不取用户表中存储值
+        // 角色对该菜单无任何权限时该树为 null，节点池为空
+        SysMenuHeaderResp sourceTree =
+                openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId);
         Map<String, SysMenuHeaderResp> sourceByVirId =
-                indexByVirId(openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId));
+                sourceTree == null ? Collections.emptyMap() : indexByVirId(sourceTree);
 
         // 读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no），
         // 仅保留节点池中仍存在的节点
@@ -121,15 +128,18 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                         .filter(node -> sourceByVirId.containsKey(node.getVirId()))
                         .collect(Collectors.toList());
 
-        // 该用户在该菜单下没有任何有效个性化配置（无记录或记录指向的菜单/字段均已不存在）：回退取 config 侧默认表头配置
+        // 该用户在该菜单下没有任何有效个性化配置（无记录或记录指向的菜单/字段均已不存在）
         if (stored.isEmpty()) {
-            return openMenuHeaderApi.getMenuHeaderDisplay(menuId);
+            // 节点池为空说明角色对该菜单无权限：整树丢弃，不回退默认表头
+            if (sourceByVirId.isEmpty()) {
+                return new MenuHeaderDisplayResp();
+            }
+            // 否则回退取 config 侧默认表头配置（同样按角色权限过滤）
+            return openMenuHeaderApi.getMenuHeaderDisplay(menuId, roleId);
         }
 
-        // 角色权限过滤（角色权限数据尚未配置完成，先注释；权限就绪后去掉注释即可按角色过滤菜单与字段）
-        // stored = filterByRolePermission(stored, headerMenuId, roleId);
-
         // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头
+        // （角色权限过滤已在上方通过可用节点池完成：无权限的菜单/字段不在池内，stored 已被剔除）
         List<UserMenuHeader> nodes = retainCheckedWithAncestors(stored);
         if (nodes.isEmpty()) {
             return new MenuHeaderDisplayResp();
@@ -419,43 +429,6 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             flatten(child, nodes);
         }
     }
-
-    // ==================== 角色权限过滤（暂未启用） ====================
-
-    /*
-     * 按角色权限过滤用户个性化表头节点：菜单节点按 sys_role_menu 过滤（本菜单自身的根节点始终保留），
-     * 字段节点按 sys_role_module_field_permission 仅保留 view=1 的字段（无记录即丢弃）。
-     * 角色权限数据尚未配置完成，先整体注释；权限数据就绪后去掉注释并放开调用即可。
-     *
-    private List<UserMenuHeader> filterByRolePermission(
-            List<UserMenuHeader> nodes, Long menuId, Long roleId) {
-        if (roleId == null) {
-            return nodes;
-        }
-        Set<Long> permittedMenuIds = openMenuHeaderApi.selectPermittedMenuIds(roleId);
-        Set<Long> readableFieldIds =
-                openMenuHeaderApi.selectReadableFieldIds(
-                        roleId,
-                        nodes.stream()
-                                .filter(node -> !isMenuNode(node))
-                                .map(UserMenuHeader::getSourceId)
-                                .collect(Collectors.toList()));
-        return nodes.stream()
-                .filter(
-                        node -> {
-                            if (menuId.equals(node.getSourceId())) {
-                                return true;
-                            }
-                            if (isMenuNode(node)) {
-                                return permittedMenuIds != null
-                                        && permittedMenuIds.contains(node.getSourceId());
-                            }
-                            return readableFieldIds != null
-                                    && readableFieldIds.contains(node.getSourceId());
-                        })
-                .collect(Collectors.toList());
-    }
-    */
 
     // ==================== 可用节点池 ====================
 

@@ -31,15 +31,17 @@ public interface OpenMenuHeaderApi {
      * <ul>
      *   <li>入参 {@code menuId} 为「列表菜单ID」，内部按 {@link #resolveHeaderMenuId(Long)} 解析出表头归属菜单ID
      *       后再组树（「页面」类型 取关联的详情菜单ID，「表」等其它类型取菜单ID 自身）；
-     *   <li>入参 {@code roleId} 非空时额外做角色权限过滤：按 {@code sys_role_menu} 过滤无权限的子级菜单，按 {@code
-     *       sys_role_module_field_permission} 仅保留 {@code view=1} 的字段；{@code roleId} 为空时与 {@code
+     *   <li>入参 {@code roleId} 非空时额外做角色权限过滤：<b>根菜单自身无权限时整树丢弃（返回 {@code null}）</b>；按 {@code
+     *       sys_role_menu} 过滤无权限的子级菜单（其子级一并丢弃，不因下级有权限而保留），按 {@code
+     *       sys_role_module_field_permission} 仅保留 {@code view=1}
+     *       的字段；<b>既无字段节点也无子级菜单节点的空菜单节点一并丢弃</b>； {@code roleId} 为空时与 {@code
      *       SysMenuHeaderApi#getMenuHeaderTree} 完全一致。
      * </ul>
      *
      * @param menuId 列表菜单ID
      * @param change 变更标记：0-菜单关联的详情菜单未变化，1-详情菜单已切换
      * @param roleId 角色ID，为空时不做角色权限过滤
-     * @return 菜单表头树的根节点
+     * @return 菜单表头树的根节点；角色过滤后整树为空时返回 {@code null}
      */
     SysMenuHeaderResp getMenuHeaderTree(Long menuId, Integer change, Long roleId);
 
@@ -76,4 +78,17 @@ public interface OpenMenuHeaderApi {
      * @return 多级列头展示结构
      */
     MenuHeaderDisplayResp getMenuHeaderDisplay(Long menuId);
+
+    /**
+     * 按角色权限查询菜单默认多级列头展示结构（供数据引擎在用户未个性化时回退使用）
+     *
+     * <p>与 {@link #getMenuHeaderDisplay(Long)} 同一套逻辑，区别是可用节点池额外按 {@code roleId} 做角色权限过滤：
+     * 无权限的菜单节点（及其子级）、非 {@code view=1} 的字段节点均不返回；{@code roleId} 为空时等价于 {@link
+     * #getMenuHeaderDisplay(Long)}。
+     *
+     * @param menuId 列表菜单ID，内部按 {@link #resolveHeaderMenuId(Long)} 解析出表头归属菜单ID 后读取
+     * @param roleId 角色ID，为空时不做角色权限过滤
+     * @return 多级列头展示结构
+     */
+    MenuHeaderDisplayResp getMenuHeaderDisplay(Long menuId, Long roleId);
 }
