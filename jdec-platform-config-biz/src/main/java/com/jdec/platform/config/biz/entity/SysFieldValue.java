@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.jdec.platform.config.biz.reference.Reference;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,6 +26,7 @@ public class SysFieldValue {
     private Long fieldId;
 
     /** 所属模块ID */
+    @Reference(target = SysModule.class, name = "字段值配置")
     private Long moduleId;
 
     /** 模块名称（冗余） */

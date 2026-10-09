@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
@@ -21,9 +22,11 @@ public class SysRoleModuleFieldPermission implements Serializable {
     private Long id;
 
     /** 角色ID */
+    @Reference(target = SysRole.class, name = "字段权限")
     private Long roleId;
 
     /** 模块ID */
+    @Reference(target = SysModule.class, name = "角色字段权限")
     private Long moduleId;
 
     private Long moduleFieldId;

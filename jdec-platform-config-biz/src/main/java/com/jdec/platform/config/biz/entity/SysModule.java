@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.jdec.platform.config.biz.reference.Reference;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -47,6 +48,7 @@ public class SysModule {
     private List<Long> sourceSubjects;
 
     /** 父模块 ID (0 表示根模块) */
+    @Reference(target = SysModule.class, name = "子模块", displayField = "moduleName")
     private Long parentId;
 
     /** 排序顺序 */

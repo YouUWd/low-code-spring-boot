@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -52,6 +53,7 @@ public class SysMenu implements Serializable {
     private String imgActive;
 
     @Schema(description = "关联模块id")
+    @Reference(target = SysModule.class, name = "菜单", displayField = "title")
     private Long moduleId;
 
     @Schema(description = "应用编码")

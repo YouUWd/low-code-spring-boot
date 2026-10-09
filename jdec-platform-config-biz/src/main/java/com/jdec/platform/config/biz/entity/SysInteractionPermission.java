@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import com.jdec.platform.shared.audit.annotation.AuditField;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -18,6 +19,7 @@ public class SysInteractionPermission implements Serializable {
     private Long id;
 
     @Schema(description = "模块id")
+    @Reference(target = SysModule.class, name = "交互权限", displayField = "name")
     private Long moduleId;
 
     @Schema(description = "模块标识")

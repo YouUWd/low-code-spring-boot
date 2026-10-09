@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -17,9 +18,11 @@ public class SysRoleDataPermission implements Serializable {
     private Long id;
 
     @Schema(description = "角色ID")
+    @Reference(target = SysRole.class, name = "数据权限关联")
     private Long roleId;
 
     @Schema(description = "数据权限类型ID")
+    @Reference(target = SysDataPermission.class, name = "角色数据权限")
     private Long dataPermissionId;
 
     @Schema(description = "数据权限全选：1=全选，0=非全选")

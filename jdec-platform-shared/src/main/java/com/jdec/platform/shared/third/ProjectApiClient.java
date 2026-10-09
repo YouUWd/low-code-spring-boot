@@ -41,8 +41,7 @@ public class ProjectApiClient extends BaseApiClient {
         params.put("columns[1]", "logo");
         params.put("columns[2]", "icon");
         // business_no 自动从配置中读取 (apiKey)
-        return invokeAndUnwrap(
-                "getProjectInfo", params, new TypeReference<Map<String, Object>>() {});
+        return invokeAndUnwrap("getProjectInfo", params, new TypeReference<>() {});
     }
 
     /** 通用方法：调用接口并自动剥离 InnerApiResponse 包装 */

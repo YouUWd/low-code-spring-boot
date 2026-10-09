@@ -13,9 +13,6 @@ import com.jdec.platform.config.api.dto.response.SysModuleListResp;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysModuleStatus;
@@ -26,6 +23,8 @@ import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysTableRelationMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -62,7 +61,7 @@ public class SysModuleService implements SysModuleApi {
     private final SysModuleStatusMapper sysModuleStatusMapper;
     private final SysStatusMapper sysStatusMapper;
     private final SysTableRelationMapper sysTableRelationMapper;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
 
     @Override
     public List<SysModuleListResp> listModules(String projectNo, Long subjectId, Integer category) {
@@ -546,16 +545,12 @@ public class SysModuleService implements SysModuleApi {
             throw new BusinessException(404, "模块不存在");
         }
 
-        // ========== 前置校验：通过统一引用检查管理器进行外部依赖与子模块校验 ==========
-        ReferenceContext context =
-                ReferenceContext.builder()
-                        .targetType(CheckConstant.SYS_MODULE)
-                        .targetId(moduleId)
-                        .targetName(module.getModuleName())
-                        .build();
-        List<String> checkResults = referenceCheckManager.check(context);
-        if (!checkResults.isEmpty()) {
-            throw new BusinessException(400, String.join("\n", checkResults));
+        // ========== 前置校验：引用检查（外部依赖与子模块） ==========
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(SysModule.class, List.of(moduleId));
+        if (!violations.isEmpty()) {
+            throw new BusinessException(
+                    400, referenceCheckService.buildMessage(module.getModuleName(), violations));
         }
 
         // ========== 级联删除：模块内部附属配置 ==========

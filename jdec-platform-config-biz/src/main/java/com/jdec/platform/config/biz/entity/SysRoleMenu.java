@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -17,6 +18,7 @@ public class SysRoleMenu implements Serializable {
     private Long id;
 
     @Schema(description = "角色id")
+    @Reference(target = SysRole.class, name = "菜单权限")
     private Long roleId;
 
     @Schema(description = "菜单id")

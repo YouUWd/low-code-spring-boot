@@ -10,10 +10,6 @@ import com.jdec.platform.config.api.dto.request.ApprovalChainConfigPageReq;
 import com.jdec.platform.config.api.dto.request.ApprovalChainConfigSaveReq;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.audit.service.SysApprovalChainLogService;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckResult;
-import com.jdec.platform.config.biz.check.ReferenceChecker;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.shared.context.AppContext;
@@ -34,7 +30,7 @@ import org.springframework.util.CollectionUtils;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysApprovalChainConfigService implements SysApprovalChainConfigApi, ReferenceChecker {
+public class SysApprovalChainConfigService implements SysApprovalChainConfigApi {
 
     private final SysApprovalChainConfigMapper sysApprovalChainConfigMapper;
     private final SysApprovalChainTypeMapper sysApprovalChainTypeMapper;
@@ -1455,40 +1451,5 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi,
                 sysApprovalChainConfigMapper.updateById(item);
             }
         }
-    }
-
-    @Override
-    public List<String> targetType() {
-        return List.of(CheckConstant.SYS_ROLE);
-    }
-
-    @Override
-    public ReferenceCheckResult check(ReferenceContext referenceContext) {
-        switch (referenceContext.getTargetType()) {
-            case CheckConstant.SYS_ROLE -> {
-                return checkRole(referenceContext);
-            }
-            default -> {
-                return ReferenceCheckResult.empty();
-            }
-        }
-    }
-
-    private ReferenceCheckResult checkRole(ReferenceContext referenceContext) {
-        StringBuilder sb = new StringBuilder();
-        Long count =
-                sysApprovalChainConfigMapper.selectCount(
-                        Wrappers.<SysApprovalChainConfig>lambdaQuery()
-                                .eq(
-                                        SysApprovalChainConfig::getApproveRoleId,
-                                        referenceContext.getTargetId()));
-        if (count == 0) {
-            return ReferenceCheckResult.empty();
-        }
-        return ReferenceCheckResult.builder()
-                .referenced(true)
-                .count(count)
-                .message("角色【" + referenceContext.getTargetName() + "】绑定了" + count + "个审批链配置")
-                .build();
     }
 }

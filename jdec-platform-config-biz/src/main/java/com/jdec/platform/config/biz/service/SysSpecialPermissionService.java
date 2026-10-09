@@ -10,9 +10,6 @@ import com.jdec.platform.config.api.dto.response.CheckUserSpecialPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionOptionResp;
 import com.jdec.platform.config.api.dto.response.SysSpecialPermissionResp;
-import com.jdec.platform.config.biz.check.CheckConstant;
-import com.jdec.platform.config.biz.check.ReferenceCheckManager;
-import com.jdec.platform.config.biz.check.ReferenceContext;
 import com.jdec.platform.config.biz.entity.SysRoleSpecialPermission;
 import com.jdec.platform.config.biz.entity.SysRoleSubject;
 import com.jdec.platform.config.biz.entity.SysRoleUser;
@@ -21,6 +18,8 @@ import com.jdec.platform.config.biz.mapper.SysRoleSpecialPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleSubjectMapper;
 import com.jdec.platform.config.biz.mapper.SysRoleUserMapper;
 import com.jdec.platform.config.biz.mapper.SysSpecialPermissionMapper;
+import com.jdec.platform.config.biz.reference.ReferenceCheckService;
+import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -48,7 +47,7 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
     private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
     private final SysRoleUserMapper sysRoleUserMapper;
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
-    private final ReferenceCheckManager referenceCheckManager;
+    private final ReferenceCheckService referenceCheckService;
 
     @Transactional
     @Override
@@ -163,15 +162,12 @@ public class SysSpecialPermissionService implements SysSpecialPermissionApi {
             throw new BusinessException("特殊权限不存在");
         }
         // 引用检查
-        ReferenceContext context =
-                ReferenceContext.builder()
-                        .targetType(CheckConstant.SYS_SPECIAL_PERMISSION)
-                        .targetId(sysSpecialPermission.getId())
-                        .targetName(sysSpecialPermission.getName())
-                        .build();
-        List<String> check = referenceCheckManager.check(context);
-        if (!check.isEmpty()) {
-            throw new PopException(String.join("\n", check));
+        List<ReferenceViolation> violations =
+                referenceCheckService.check(
+                        SysSpecialPermission.class, List.of(sysSpecialPermission.getId()));
+        if (!violations.isEmpty()) {
+            throw new PopException(
+                    referenceCheckService.buildMessage(sysSpecialPermission.getName(), violations));
         }
         sysSpecialPermissionMapper.deleteById(id);
     }
