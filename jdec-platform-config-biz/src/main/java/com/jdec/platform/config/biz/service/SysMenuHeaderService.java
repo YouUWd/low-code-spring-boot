@@ -83,14 +83,13 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 菜单类型：页面（仅该类型且关联详情菜单时，表头归属其详情菜单） */
     private static final Integer MENU_TYPE_PAGE = 2;
 
-    /** 角色权限过滤开关：角色菜单/字段权限数据尚未配置完成，暂时关闭（按最大权限返回），配置就绪后置为 true 即可恢复 */
+    /** 字段权限过滤开关：为 true 时按 sys_role_module_field_permission.view=1 过滤字段；菜单不做权限过滤，一律按最大权限返回 */
     private static final boolean ROLE_PERMISSION_FILTER_ENABLED = true;
 
     private final SysMenuHeaderMapper sysMenuHeaderMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
     private final SysFieldMapper sysFieldMapper;
-    private final SysRoleMenuMapper sysRoleMenuMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final ObjectMapper objectMapper;
 
@@ -105,16 +104,16 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             throw new BusinessException("菜单ID不能为空");
         }
 
-        // 角色权限过滤暂时关闭：一律按最大权限返回，角色权限数据配置就绪后打开开关即可
+        // 菜单不做权限过滤；仅字段按角色权限过滤（effectiveRoleId 非空时生效）
         Long effectiveRoleId = ROLE_PERMISSION_FILTER_ENABLED ? roleId : null;
 
         // 入参为列表菜单ID，表头记录归属其绑定的详情菜单
         Long headerMenuId = resolveHeaderMenuId(menuId);
 
-        // 生成侧：以表头归属菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段（effectiveRoleId 非空时按角色过滤）
+        // 生成侧：以表头归属菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段（effectiveRoleId 非空时按字段权限过滤）
         List<SysMenuHeaderResp> generatedNodes = buildGeneratedNodes(headerMenuId, effectiveRoleId);
 
-        // 根菜单无权限（或整树裁剪后为空）：整树丢弃，返回 null
+        // 整树裁剪后为空（菜单下面没挂任何东西）：整树丢弃，返回 null
         if (generatedNodes.isEmpty()) {
             return null;
         }
@@ -288,13 +287,13 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         // 表头记录按归属菜单存放，先按统一规则解析出归属菜单ID
         Long headerMenuId = resolveHeaderMenuId(menuId);
 
-        // 角色权限过滤开关统一在此收敛（与 getMenuHeaderTree 一致）
+        // 字段权限过滤开关统一在此收敛（与 getMenuHeaderTree 一致）；菜单不做权限过滤
         Long effectiveRoleId = ROLE_PERMISSION_FILTER_ENABLED ? roleId : null;
 
         // 生成侧最新数据（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
         // 每次返回前都据此比对：sys_menu_header 中模块侧已不存在的节点不返回给前端；
         // 展示名与关联字段标记一律取生成侧（源头），不取库中存储值
-        // effectiveRoleId 非空时节点池按角色权限过滤：无权限的菜单及其子级、非 view=1 的字段均不在池内
+        // effectiveRoleId 非空时节点池按字段权限过滤：非 view=1 的字段不在池内，无字段的菜单节点一并被裁剪
         Map<String, SysMenuHeaderResp> generatedByVirId =
                 indexByVirId(buildGeneratedNodes(headerMenuId, effectiveRoleId));
 
@@ -523,14 +522,14 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * {@code Field_{字段id}}；所有节点的 menu_id 统一取最顶层菜单ID， 顶层节点 parent_id 为 {@code 0}，同级节点从 {@code 1}
      * 起维护排序值。
      *
-     * <p>{@code roleId} 非空时按角色权限过滤：
+     * <p>不做角色菜单权限过滤（一律按最大权限返回全部菜单）。{@code roleId} 非空（数据引擎侧调用、字段权限过滤生效）时：
      *
      * <ul>
-     *   <li>根菜单自身无权限时整树丢弃，返回空列表；
-     *   <li>无权限的子级菜单不参与遍历（其子级一并丢弃，不因下级有权限而保留）；
-     *   <li>非 {@code view=1} 的字段不生成节点；
-     *   <li>菜单节点若既无字段节点也无子级菜单节点，则连同该节点一起丢弃（有权限但没子级也不保留）。
+     *   <li>非 {@code view=1}（或角色无字段权限记录）的字段不生成节点；
+     *   <li>菜单节点若既无字段节点也无子级菜单节点，则连同该节点一起丢弃（菜单下面没挂任何东西 → 不返回）。
      * </ul>
+     *
+     * <p>{@code roleId} 为空（config 管理端调用）时不做任何过滤，返回完整菜单树（空菜单也保留）。
      */
     private List<SysMenuHeaderResp> buildGeneratedNodes(Long menuId, Long roleId) {
         SysMenu menu = selectMenuById(menuId);
@@ -538,17 +537,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             throw new BusinessException("菜单不存在");
         }
 
-        // 角色有权限的菜单ID集合（roleId 为空则不过滤）
-        Set<Long> permittedMenuIds = selectPermittedMenuIds(roleId);
-
-        // 根菜单自身无权限：整树丢弃，无权限的菜单连同其全部子级都不返回
-        if (permittedMenuIds != null && !permittedMenuIds.contains(menuId)) {
-            return Collections.emptyList();
-        }
-
-        // 收集菜单及其全部子级菜单（树形）
+        // 收集菜单及其全部子级菜单（树形）；不做菜单权限过滤，一律按最大权限返回
         Map<Long, List<SysMenu>> childrenByPid = new LinkedHashMap<>();
-        collectChildren(childrenByPid, menuId, permittedMenuIds);
+        collectChildren(childrenByPid, menuId);
 
         // 收集所有菜单绑定到的模块ID，一次性查询模块字段
         Set<Long> moduleIds = new HashSet<>();
@@ -568,9 +559,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         // 生成侧节点已带齐展示所需的源头数据：菜单标题、模块字段显示名、是否关联字段（sys_field）
         Set<String> relationFieldIndexes = selectRelationFieldIndexes(fieldsByModule);
 
-        // 先按树形生成，再压平为节点列表；
-        // 角色过滤时同步裁剪「既无字段节点也无子级菜单」的空菜单节点（有权限但没子级 → 不返回）
-        boolean pruneEmptyMenus = permittedMenuIds != null;
+        // 仅在按字段权限过滤（roleId 非空，即数据引擎侧调用）时裁剪「既无字段节点也无子级菜单」的空菜单：
+        // config 管理端不传 roleId，保持不裁剪、返回完整菜单树
+        boolean pruneEmptyMenus = roleId != null;
         SysMenuHeaderResp root =
                 toGeneratedNode(
                         menu,
@@ -597,7 +588,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * @param parentVirId 父节点虚拟id（顶层为 {@code 0}）
      * @param relationFieldIndexes 关联字段索引集合（sys_field 中配置了 relation_business_no 的 表名.字段名）
      * @param sortValue 当前节点在同级中的排序值
-     * @param pruneEmptyMenus 是否丢弃「既无字段也无子级菜单」的空菜单节点（角色过滤时为 {@code true}）
+     * @param pruneEmptyMenus 是否裁剪「既无字段也无子级菜单」的空菜单节点（仅字段权限过滤时 {@code true}）
      * @return 生成的菜单节点；{@code pruneEmptyMenus=true} 且该菜单无任何子节点时返回 {@code null}
      */
     private SysMenuHeaderResp toGeneratedNode(
@@ -670,7 +661,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             }
         }
 
-        // 该菜单既无字段节点也无子级菜单节点：角色过滤时整节点丢弃（有权限但没子级也不需要留下）
+        // 该菜单既无字段节点也无子级菜单节点：字段权限过滤时整节点丢弃（菜单下面没挂任何东西 → 不返回）
         if (pruneEmptyMenus && children.isEmpty()) {
             return null;
         }
@@ -818,36 +809,16 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     // ==================== 通用查询工具 ====================
 
-    private void collectChildren(
-            Map<Long, List<SysMenu>> childrenByPid, Long parentId, Set<Long> permittedMenuIds) {
+    /** 递归收集该菜单下的全部子级菜单（树形，pid → children），不做菜单权限过滤 */
+    private void collectChildren(Map<Long, List<SysMenu>> childrenByPid, Long parentId) {
         List<SysMenu> children = selectChildrenByPid(parentId);
-        // 按角色权限过滤无权限的子级菜单（permittedMenuIds 为空表示不过滤）
-        if (permittedMenuIds != null) {
-            children =
-                    children.stream()
-                            .filter(child -> permittedMenuIds.contains(child.getId()))
-                            .collect(Collectors.toList());
-        }
         if (children.isEmpty()) {
             return;
         }
         childrenByPid.put(parentId, children);
         for (SysMenu child : children) {
-            collectChildren(childrenByPid, child.getId(), permittedMenuIds);
+            collectChildren(childrenByPid, child.getId());
         }
-    }
-
-    /** 角色有权限的菜单ID集合；roleId 为空返回 null 表示不做菜单权限过滤 */
-    @Override
-    public Set<Long> selectPermittedMenuIds(Long roleId) {
-        if (roleId == null) {
-            return null;
-        }
-        return sysRoleMenuMapper
-                .selectList(Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId))
-                .stream()
-                .map(SysRoleMenu::getMenuId)
-                .collect(Collectors.toSet());
     }
 
     /** 角色可查阅（view=1）的字段ID集合；roleId 为空返回 null 表示不做字段权限过滤 */
