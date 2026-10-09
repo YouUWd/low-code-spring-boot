@@ -5,10 +5,12 @@ import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
 import com.jdec.platform.config.api.SysRolePermissionApi;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
-import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dto.*;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
@@ -31,6 +33,8 @@ import org.springframework.util.StringUtils;
 public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermissionService {
 
     private final SysModuleApi sysModuleApi;
+
+    private final ConfigApi configApi;
 
     private final DataModuleConfigService dataModuleConfigService;
 
@@ -658,10 +662,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildCompanyRoot();
-
-            TabTreeNodeDTO targetNode =
-                    TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());
+            ProjectTableRelationsDTO projectTableRelationsDTO =
+                    configApi.getProjectTableRelations(AppContext.getProjectNo());
 
             Set<String> subTableNames =
                     moduleInfoResp.getFieldList().stream()
@@ -677,29 +679,17 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     subTableNames.stream()
                             .map(
                                     ele -> {
-                                        TabTreeNodeDTO matchedNode =
-                                                targetNode.getChildren().stream()
-                                                        .filter(
-                                                                item ->
-                                                                        ele.equals(
-                                                                                item.getNode()
-                                                                                        .getTableName()))
-                                                        .findFirst()
-                                                        .orElse(null);
-                                        if (Objects.nonNull(matchedNode)) {
+                                        TableRelationDTO tableRelationDTO =
+                                                projectTableRelationsDTO.findDirectRelation(
+                                                        moduleInfoResp.getPrimaryTable(), ele);
+                                        if (Objects.nonNull(tableRelationDTO)) {
                                             return ModuleTable.builder()
                                                     .moduleId(moduleId)
                                                     .tableName(ele)
-                                                    .joinLeftField(
-                                                            matchedNode
-                                                                    .getNode()
-                                                                    .getSubTableField())
-                                                    .joinRightField(
-                                                            matchedNode
-                                                                    .getNode()
-                                                                    .getParentTableField())
+                                                    .joinLeftField(tableRelationDTO.getJoinField())
+                                                    .joinRightField(tableRelationDTO.getMainField())
                                                     .relationType(
-                                                            matchedNode.getNode().getJoinType())
+                                                            tableRelationDTO.getRelationType())
                                                     .build();
                                         } else {
                                             return null;
@@ -1072,10 +1062,8 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
             // moduleInfo数据填充完毕，写入到ModuleFilterInfo
             moduleFilterInfoBuilder.moduleInfo(moduleInfoBuilder.build());
 
-            TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildCompanyRoot();
-
-            TabTreeNodeDTO targetNode =
-                    TabTreeNodeDTO.findSubTreeByValue(tableTree, moduleInfoResp.getPrimaryTable());
+            ProjectTableRelationsDTO projectTableRelationsDTO =
+                    configApi.getProjectTableRelations(AppContext.getProjectNo());
 
             Set<String> subTableNames =
                     moduleInfoResp.getFieldList().stream()
@@ -1091,29 +1079,18 @@ public class ModuleInfoWithPermissionServiceImpl implements ModuleInfoWithPermis
                     subTableNames.stream()
                             .map(
                                     ele -> {
-                                        TabTreeNodeDTO matchedNode =
-                                                targetNode.getChildren().stream()
-                                                        .filter(
-                                                                item ->
-                                                                        ele.equals(
-                                                                                item.getNode()
-                                                                                        .getTableName()))
-                                                        .findFirst()
-                                                        .orElse(null);
-                                        if (Objects.nonNull(matchedNode)) {
+                                        TableRelationDTO tableRelationDTO =
+                                                projectTableRelationsDTO.findDirectRelation(
+                                                        moduleInfoResp.getPrimaryTable(), ele);
+
+                                        if (Objects.nonNull(tableRelationDTO)) {
                                             return ModuleTable.builder()
                                                     .moduleId(moduleId)
                                                     .tableName(ele)
-                                                    .joinLeftField(
-                                                            matchedNode
-                                                                    .getNode()
-                                                                    .getSubTableField())
-                                                    .joinRightField(
-                                                            matchedNode
-                                                                    .getNode()
-                                                                    .getParentTableField())
+                                                    .joinLeftField(tableRelationDTO.getJoinField())
+                                                    .joinRightField(tableRelationDTO.getMainField())
                                                     .relationType(
-                                                            matchedNode.getNode().getJoinType())
+                                                            tableRelationDTO.getRelationType())
                                                     .build();
                                         } else {
                                             return null;

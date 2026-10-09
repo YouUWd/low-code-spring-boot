@@ -2,8 +2,10 @@ package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.*;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
@@ -62,6 +64,8 @@ public class DynamicQueryService {
     private final DataModuleConfigService dataModuleConfigService;
 
     private final DetailDataProcessFactory detailDataProcessFactory;
+
+    private final ConfigApi configApi;
 
     /** 一体化列表分页查询 */
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -461,6 +465,9 @@ public class DynamicQueryService {
             NestedModuleDataDTO childResultList =
                     queryModule(singleQueryDTO, childNode, true, false, moduleIdToFieldMap);
 
+            ProjectTableRelationsDTO projectTableRelationsDTO =
+                    configApi.getProjectTableRelations(AppContext.getProjectNo());
+
             if (virtualModule) {
                 currentModuleData
                         .get(0)
@@ -469,8 +476,16 @@ public class DynamicQueryService {
                                 filterSubModuleList(
                                         List.of(childResultList),
                                         primaryIds,
-                                        TabTreeNodeDTO.buildCompanyRoot()));
+                                        sysModuleInfo,
+                                        projectTableRelationsDTO));
             } else {
+                if (CollectionUtils.isEmpty(currentModuleData)) {
+                    currentModuleData.add(
+                            RecordDataDTO.builder()
+                                    .row(new HashMap<>())
+                                    .children(new ArrayList<>())
+                                    .build());
+                }
                 for (RecordDataDTO vo : currentModuleData) {
                     Long primaryId =
                             extractFieldValue(vo.getRow(), "id", sysModuleInfo.getPrimaryTable());
@@ -486,7 +501,8 @@ public class DynamicQueryService {
                                         filterSubModuleList(
                                                 List.of(childResultList),
                                                 Set.of(primaryId),
-                                                TabTreeNodeDTO.buildCompanyRoot()));
+                                                sysModuleInfo,
+                                                projectTableRelationsDTO));
                     }
                 }
             }
@@ -508,24 +524,31 @@ public class DynamicQueryService {
                         .map(ModuleFieldDTO::getTableName)
                         .collect(Collectors.toSet());
 
-        TabTreeNodeDTO tableTreeNode = TabTreeNodeDTO.buildCompanyRoot();
+        ProjectTableRelationsDTO projectTableRelationsDTO =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
 
         List<ModuleFieldDTO> moduleFields = new ArrayList<>();
 
         for (String tableName : moduleTables) {
-            TabTreeNodeDTO targetNode = TabTreeNodeDTO.findSubTreeByValue(tableTreeNode, tableName);
 
-            if (Objects.isNull(targetNode)) {
-                continue;
-            }
+            if (projectTableRelationsDTO.getReverseRelations() != null
+                    && projectTableRelationsDTO.getReverseRelations().containsKey(tableName)) {
 
-            if (StringUtils.isNotBlank(targetNode.getNode().getSubTableField())) {
-                moduleFields.add(
-                        ModuleFieldDTO.builder()
-                                .moduleId(id)
-                                .tableName(tableName)
-                                .columnName(targetNode.getNode().getSubTableField())
-                                .build());
+                List<com.jdec.platform.config.api.dto.common.TableRelationDTO> relationList =
+                        projectTableRelationsDTO.getReverseRelations().get(tableName);
+
+                if (CollectionUtils.isEmpty(relationList)) {
+                    continue;
+                }
+
+                if (StringUtils.isNotBlank(relationList.get(0).getJoinField())) {
+                    moduleFields.add(
+                            ModuleFieldDTO.builder()
+                                    .moduleId(id)
+                                    .tableName(tableName)
+                                    .columnName(relationList.get(0).getJoinField())
+                                    .build());
+                }
             }
 
             moduleFields.add(
@@ -546,7 +569,8 @@ public class DynamicQueryService {
     public List<NestedModuleDataDTO> filterSubModuleList(
             List<NestedModuleDataDTO> subModuleList,
             Set<Long> parentPkSet,
-            TabTreeNodeDTO tableTree) {
+            SysModuleInfo parentModuleInfo,
+            ProjectTableRelationsDTO tableRelationsDTO) {
         if (subModuleList == null
                 || subModuleList.isEmpty()
                 || parentPkSet == null
@@ -566,10 +590,11 @@ public class DynamicQueryService {
                             AppContext.getSubjectId(),
                             subModule.getModuleId());
 
-            TabTreeNodeDTO targetNode =
-                    TabTreeNodeDTO.findSubTreeByValue(tableTree, sysModuleInfo.getPrimaryTable());
+            com.jdec.platform.config.api.dto.common.TableRelationDTO tableRelationDTO =
+                    tableRelationsDTO.findDirectRelation(
+                            parentModuleInfo.getPrimaryTable(), sysModuleInfo.getPrimaryTable());
 
-            if (Objects.isNull(targetNode)) {
+            if (Objects.isNull(tableRelationDTO)) {
                 newSubModule.setRecord(subModule.getRecord());
                 resultList.add(newSubModule);
             } else {
@@ -581,7 +606,7 @@ public class DynamicQueryService {
                                             Long fkVal =
                                                     extractFieldValue(
                                                             record.getRow(),
-                                                            targetNode.getNode().getSubTableField(),
+                                                            tableRelationDTO.getJoinField(),
                                                             sysModuleInfo.getPrimaryTable());
                                             if (fkVal == null) {
                                                 return false;
@@ -605,7 +630,8 @@ public class DynamicQueryService {
                                                     filterSubModuleList(
                                                             record.getChildren(),
                                                             childPkSet,
-                                                            tableTree);
+                                                            sysModuleInfo,
+                                                            tableRelationsDTO);
                                             newRecord.setChildren(childSub);
                                             return newRecord;
                                         })
