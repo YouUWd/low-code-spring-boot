@@ -683,7 +683,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
-
+        approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -839,6 +839,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -1015,6 +1016,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             backReq.setIsTermination(false);
         }
         dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
 
@@ -1198,6 +1200,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
@@ -1325,6 +1328,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息

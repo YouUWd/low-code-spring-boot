@@ -13,6 +13,7 @@ import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -183,5 +184,20 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
             moduleCacheMap.put(entry.getKey(), moduleCombineInfo);
         }
         return moduleCacheMap;
+    }
+
+    @Override
+    public Map<Long, SysModuleCombineInfo> getModuleMetaDataMapAsync(
+            ModuleQueryContext moduleQueryContext) {
+        CompletableFuture<Map<Long, SysModuleCombineInfo>> moduleMapCacheFuture =
+                CompletableFuture.supplyAsync(
+                        () -> {
+                            return getModuleMetaDataMap(moduleQueryContext);
+                        });
+        try {
+            return moduleMapCacheFuture.get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

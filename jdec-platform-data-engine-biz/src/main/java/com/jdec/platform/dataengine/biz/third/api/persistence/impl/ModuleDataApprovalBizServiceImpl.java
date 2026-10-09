@@ -8,19 +8,20 @@ import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
-import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
+import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
+import com.jdec.platform.dataengine.biz.dto.context.ModuleSnapShotDataContext;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataSnapshotContent;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.service.*;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
-import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -32,6 +33,7 @@ import org.jooq.Record;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -40,11 +42,15 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
     private final ModuleMetaDataService moduleMetaDataService;
 
-    private final ModuleDataPersistenceService moduleDataPersistenceService;
+    private final ModuleBizDataService moduleBizDataService;
 
     private final DynamicQueryService dynamicQueryService;
 
-    private final JooqContextFactory jooqContextFactory;
+    private final JooqDataContextFactory jooqDataContextFactory;
+
+    private final ModuleSnapShotDataService moduleSnapShotDataService;
+
+    private final ModuleDataChangeRowConvertService moduleDataChangeRowConvertService;
 
     /**
      * 审批链状态 回调处理
@@ -52,11 +58,10 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
      * @param req
      * @return
      */
-    // @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class)
     public ApprovalProcessResultResp processApprovalStatus(ApprovalStatusCallBackReq req) {
-
         Map<Long, SysModuleCombineInfo> moduleCacheMap =
-                moduleMetaDataService.getModuleMetaDataMap(
+                moduleMetaDataService.getModuleMetaDataMapAsync(
                         ModuleQueryContext.builder()
                                 .moduleId(req.getModuleId())
                                 .projectNo(AppContext.getProjectNo())
@@ -69,7 +74,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
         }
-        DSLContext context = jooqContextFactory.getContext();
+        DSLContext context = jooqDataContextFactory.getContext();
 
         Long rootModuleMainTableId = saveModuleApprovalData(req, rootModule, context);
         if (rootModuleMainTableId == null || rootModuleMainTableId.equals(0L)) {
@@ -79,26 +84,72 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         }
 
         // 获取当前模块数据的快照
-        NestedModuleDataDTO result = getCurrentModuleDataSnapshot(req, rootModule, moduleCacheMap);
-
-        // 获取上一个状态的 快照数据
-        NestedModuleDataDTO tmpSnapshot = getModuleDataTempSnapshot(req, rootModule, context);
-
-        // 保存字段快照
-        //
-        saveModuleFieldDataSnapshot(req, rootModule, result, context, moduleCacheMap);
-
-        // 保存每个状态的快照，用于计算 审批的 操作日志
-        saveModuleDataTempSnapshot(req, rootModule, result, context);
+        NestedModuleDataDTO result =
+                moduleBizDataService.getModuleDetailDataAsync(
+                        ModuleDetailQueryContext.builder()
+                                .moduleId(req.getModuleId())
+                                .dataId(req.getDataId())
+                                .moduleCacheMap(moduleCacheMap)
+                                .projectNo(AppContext.getProjectNo())
+                                .subjectId(AppContext.getSubjectId())
+                                .loginUser(UserContext.getLoginUser())
+                                .build());
 
         // 如果是终态 保存模块数据的 版本快照
         if (req.getIsTermination() != null && req.getIsTermination()) {
-            saveModuleDataPermanentSnapshot(req, rootModule, result, context);
+            moduleSnapShotDataService.saveModuleDataPermanentSnapshot(
+                    ModuleSnapShotDataContext.builder()
+                            .dataId(req.getDataId())
+                            .dslContext(context)
+                            .moduleDataDTO(result)
+                            .rootModuleInfo(rootModule)
+                            .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                            .build());
         }
+        // 获取上一个状态的 快照数据
+        NestedModuleDataDTO tmpSnapshot =
+                moduleSnapShotDataService.getLastStatusModuleDataTempSnapshot(
+                        ModuleSnapShotDataContext.builder()
+                                .dataId(req.getDataId())
+                                .versionNo(req.getVersionNo())
+                                .dslContext(context)
+                                .rootModuleInfo(rootModule)
+                                .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                                .build());
+
+        // 保存每个状态的快照，用于计算 审批的 操作日志
+        moduleSnapShotDataService.saveModuleDataTempSnapshot(
+                ModuleSnapShotDataContext.builder()
+                        .dataId(req.getDataId())
+                        .versionNo(req.getVersionNo())
+                        .dslContext(context)
+                        .moduleDataDTO(result)
+                        .rootModuleInfo(rootModule)
+                        .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                        .build());
+
+        // 保存字段快照
+        //
+        moduleSnapShotDataService.saveModuleFieldDataSnapshot(
+                ModuleSnapShotDataContext.builder()
+                        .dataId(req.getDataId())
+                        .versionNo(req.getVersionNo())
+                        .dslContext(context)
+                        .moduleDataDTO(result)
+                        .rootModuleInfo(rootModule)
+                        .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                        .moudleCacheMap(moduleCacheMap)
+                        .build());
 
         // todo  result   tmpSnapshot 要构建 版本间的字段 对比 返回给审批链
+        ModuleChangeDTO moduleChangeDTO =
+                moduleDataChangeRowConvertService.covertByModuleDataDiff(
+                        tmpSnapshot, result, moduleCacheMap);
         ApprovalProcessResultResp resp =
-                ApprovalProcessResultResp.builder().nestedModuleData(result).build();
+                ApprovalProcessResultResp.builder()
+                        .nestedModuleData(result)
+                        .moduleChange(moduleChangeDTO)
+                        .build();
         return resp;
     }
 
@@ -573,54 +624,5 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         result.put(DSL.field(DSL.name("comparison")), content.getComparison());
         result.put(DSL.field(DSL.name("created_date")), content.getCreateDate());
         return result;
-    }
-
-    private List<ModuleChangeDTO> buildModuleChangeDTO(
-            NestedModuleDataDTO nestedModuleDataDTO, Map<Long, SysModuleInfo> moduleCacheMap) {
-
-        Long moduleId = nestedModuleDataDTO.getModuleId();
-        SysModuleInfo sysModule = null;
-        if (moduleCacheMap.containsKey(moduleId)) {
-            sysModule = moduleCacheMap.get(moduleId);
-        }
-        List<ModuleChangeDTO> result = new ArrayList<>();
-        ModuleChangeDTO moduleChangeDTO = ModuleChangeDTO.builder().build();
-        moduleChangeDTO.setMId(sysModule.getModuleId());
-        moduleChangeDTO.setName(sysModule.getModuleName());
-
-        if (CollectionUtil.isEmpty(nestedModuleDataDTO.getRecord())) {
-            result.add(moduleChangeDTO);
-            return result;
-        }
-
-        for (RecordDataDTO recordDataDTO : nestedModuleDataDTO.getRecord()) {
-
-            // 这一行没有变更日志
-            //            if (CollectionUtil.isEmpty(recordDataDTO.getRowChanges())) {
-            //
-            //                ActionChangeDTO Action = new ActionChangeDTO();
-            //
-            //                RowChangeDTO r = new RowChangeDTO();
-            //
-            //                if (CollectionUtil.isEmpty(recordDataDTO.getChildren())) {
-            //                    r.setChildren(new ArrayList<>());
-            //                    List<RowChangeDTO> child = new ArrayList<>();
-            //                    child.add(r);
-            //                    Action.setU(child);
-            //                    moduleChangeDTO.setActions(Action);
-            //                    result.add(moduleChangeDTO);
-            //                    return result;
-            //                }
-            //            }
-
-            // RowChangeDTO rowChangeDTO = recordDataDTO.getRowChanges().get(0);
-        }
-        result.add(moduleChangeDTO);
-
-        return result;
-
-        ////
-        // moduleChangeDTO.setActions(buildActionChangeDTO(nestedModuleDataDTO,sysModule,moduleCacheMap));
-
     }
 }

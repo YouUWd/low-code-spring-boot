@@ -25,9 +25,6 @@ public class ApprovalEvent { // 审批事件消息
     // 业务单据编号
     private String businessNumber;
 
-    // 业务单据版本号
-    private Integer versionNo;
-
     // 操作角色ID
     private Long roleId;
 

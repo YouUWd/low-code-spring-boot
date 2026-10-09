@@ -184,10 +184,12 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         nameToWorldConfMap,
                         rootNode);
 
-        NestedModuleDataDTO detailData;
+        NestedModuleDataDTO detailData = null;
 
         if (dynamicDetailQueryReq.getId() > 0) {
-            detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
+            if (!CollectionUtils.isEmpty(checkedFieldIds)) {
+                detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
+            }
         } else {
             detailData = buildTemplateTree(metaDTO);
         }
