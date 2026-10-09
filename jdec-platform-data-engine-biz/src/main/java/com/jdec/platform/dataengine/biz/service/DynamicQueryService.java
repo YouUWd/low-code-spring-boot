@@ -1148,7 +1148,7 @@ public class DynamicQueryService {
         if (!CollectionUtils.isEmpty(historyVersionList)) {
             if ("change-change".equals(versionListQueryReq.getBtnType())) {
                 versionList.get(1).setPreVersion(historyVersionList.get(0).getVersion());
-            } else {
+            } else if (!CollectionUtils.isEmpty(versionList)) {
                 versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
             }
         }
@@ -1173,6 +1173,8 @@ public class DynamicQueryService {
         List<Condition> conditions = new ArrayList<>();
 
         conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
+
+        conditions.add(DSL.field(DSL.name(primaryTable, "business_status")).notEqual(99));
 
         query.where(conditions);
 
