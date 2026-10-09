@@ -116,6 +116,7 @@ public class ConfigServiceImpl implements ConfigApi {
                     sysModuleFieldMapper.selectList(
                             Wrappers.<SysModuleField>lambdaQuery()
                                     .in(SysModuleField::getModuleId, allowedModuleIds)
+                                    .eq(SysModuleField::getStatus, 1)
                                     .orderByAsc(SysModuleField::getSortOrder));
             if (allFields != null && !allFields.isEmpty()) {
                 moduleFieldsMap =
@@ -476,6 +477,7 @@ public class ConfigServiceImpl implements ConfigApi {
                 .columnName(f.getColumnName())
                 .displayName(f.getDisplayName())
                 .sortOrder(f.getSortOrder())
+                .status(f.getStatus())
                 .build();
     }
 
