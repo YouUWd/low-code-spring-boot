@@ -41,9 +41,7 @@ public class CommonApprovalController {
     }
 
     @PostMapping("/menu/{menuId}/approval")
-    @Operation(
-            summary = "基于菜单 ID 一次性统计待办、已办和全部的记录数量",
-            description = "仅需传入 menuId，一次性返回 Map 映射：1(待办)、2(已办)、3(全部) 的全量数量")
+    @Operation(summary = "基于菜单 ID 调用审批事件", description = "仅需传入 menuId 调用审批事件")
     public ApiResponse<List<Map<String, Object>>> approvalBusiness(
             @PathVariable Long menuId, @RequestBody ApprovalReq req) {
         try {
