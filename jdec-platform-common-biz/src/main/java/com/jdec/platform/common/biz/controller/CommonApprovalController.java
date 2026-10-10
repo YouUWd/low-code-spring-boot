@@ -72,4 +72,21 @@ public class CommonApprovalController {
             throw ex;
         }
     }
+
+    @GetMapping("/menu/{menuId}/{id}/step")
+    @Operation(summary = "基于菜单 ID 查询已经审批的步骤状态", description = "基于 menuId 查询已经审批的步骤状态")
+    public ApiResponse<List<Map<String, Object>>> getApprovalStep(
+            @PathVariable Long menuId, @PathVariable Long id) {
+        try {
+            List<Map<String, Object>> result = commonApprovalService.getApprovalStep(menuId, id);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common approval getApprovalCountByMenu failed: menuId={}, err={}",
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
 }

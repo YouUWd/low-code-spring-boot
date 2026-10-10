@@ -1,6 +1,5 @@
 package com.jdec.platform.approval.api;
 
-import com.jdec.platform.approval.api.req.ApprovalDataReq;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import java.util.List;
@@ -29,5 +28,5 @@ public interface IApprovalEngine {
     Map<String, Object> getApprovalData(Long moduleId, Long recordId, String button);
 
     // 查询已经审批的步骤
-    List<Map<String, Object>> getApprovalStep(ApprovalDataReq req);
+    List<Map<String, Object>> getApprovalStep(Long moduleId, Long recordId);
 }

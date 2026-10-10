@@ -537,13 +537,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     @Override
-    public List<Map<String, Object>> getApprovalStep(ApprovalDataReq req) {
+    public List<Map<String, Object>> getApprovalStep(Long moduleId, Long recordId) {
         List<Map<String, Object>> result = new ArrayList<>();
         // 查询当前单据记录
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
-        businessWrapper.eq(ApprovalVersionRecord::getModuleId, req.getModuleId());
+        businessWrapper.eq(ApprovalVersionRecord::getModuleId, moduleId);
         businessWrapper
-                .eq(ApprovalVersionRecord::getRecordId, req.getRecordId())
+                .eq(ApprovalVersionRecord::getRecordId, recordId)
                 .orderByDesc(ApprovalVersionRecord::getId)
                 .last("LIMIT 1");
         ApprovalVersionRecord approvalVersionRecord =
