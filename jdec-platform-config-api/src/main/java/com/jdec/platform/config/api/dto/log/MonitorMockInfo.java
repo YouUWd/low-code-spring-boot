@@ -27,4 +27,16 @@ public class MonitorMockInfo implements Serializable {
 
     @Schema(description = "被模拟用户员工号（日志侧补全，调用方无需传）")
     private String userNumber;
+
+    @Schema(description = "部门id（日志侧补全，调用方无需传；人力库为多值，取首个）")
+    private Long deptId;
+
+    @Schema(description = "部门名称（日志侧补全，调用方无需传）")
+    private String deptName;
+
+    @Schema(description = "岗位id（日志侧补全，调用方无需传；人力库为多值，取首个）")
+    private Long jobId;
+
+    @Schema(description = "岗位名称（日志侧补全，调用方无需传）")
+    private String jobName;
 }

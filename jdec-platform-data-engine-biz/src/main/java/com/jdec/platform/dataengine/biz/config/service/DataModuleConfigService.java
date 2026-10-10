@@ -53,11 +53,12 @@ public class DataModuleConfigService {
             return null;
         }
 
-        // 1. 获取模块字段配置 (sys_module_field)
+        // 1. 获取模块字段配置 (sys_module_field: 仅取启用字段)
         List<DataSysModuleField> allFields =
                 moduleFieldMapper.selectList(
                         Wrappers.<DataSysModuleField>lambdaQuery()
                                 .eq(DataSysModuleField::getModuleId, moduleId)
+                                .eq(DataSysModuleField::getStatus, 1)
                                 .orderByAsc(DataSysModuleField::getSortOrder));
 
         List<ModuleFieldDTO> fieldInfos =

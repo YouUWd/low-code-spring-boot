@@ -38,6 +38,9 @@ public class MonitorApproveBase implements Serializable {
     @Schema(description = "审批动作图标", example = "icon-submit")
     private String path;
 
+    @Schema(description = "审批类型，前端根据类型决定审批结果字体颜色", example = "cancel")
+    private String type;
+
     @Schema(description = "审批结果", example = "通过")
     private String result;
 }

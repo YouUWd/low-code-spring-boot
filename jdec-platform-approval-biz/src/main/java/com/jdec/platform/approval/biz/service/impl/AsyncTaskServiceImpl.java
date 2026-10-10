@@ -156,7 +156,8 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             approveBase.setPath(modelConfig.getExtra());
             approveBase.setName(modelConfig.getLabel());
             approveBase.setResult(modelConfig.getDescription());
-            approveBase.setType(approvalProcessDTO.getCurrentUserId().equals(9999999L) ? 0 : 1);
+            approveBase.setApprovalType(
+                    approvalProcessDTO.getCurrentUserId().equals(9999999L) ? 0 : 1);
             monitorControlLogReq.setApprove(approveBase);
 
             RequestContextSnapshot requestContext = RequestContextSnapshotHolder.get();

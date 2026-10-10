@@ -92,11 +92,12 @@ public class MetadataCacheService {
 
         Long moduleId = module.getId();
 
-        // 2. 获取模块字段配置
+        // 2. 获取模块字段配置 (仅取启用状态)
         List<SysModuleField> allFields =
                 mySysModuleFieldMapper.selectList(
                         Wrappers.<SysModuleField>lambdaQuery()
                                 .eq(SysModuleField::getModuleId, moduleId)
+                                .eq(SysModuleField::getStatus, 1)
                                 .orderByAsc(SysModuleField::getSortOrder));
 
         List<ModuleFieldDTO> fieldInfos =
@@ -110,6 +111,7 @@ public class MetadataCacheService {
                                     info.setDisplayName(f.getDisplayName());
                                     // info.setBizKeyOrder(f.getBizKeyOrder());
                                     info.setSortOrder(f.getSortOrder());
+                                    info.setStatus(f.getStatus());
                                     return info;
                                 })
                         .collect(Collectors.toList());
@@ -121,6 +123,7 @@ public class MetadataCacheService {
     public Set<String> getModuleTables(Long moduleId) {
         LambdaQueryWrapper<SysModuleField> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(SysModuleField::getModuleId, moduleId);
+        queryWrapper.eq(SysModuleField::getStatus, 1);
         List<SysModuleField> ss = mySysModuleFieldMapper.selectList(queryWrapper);
         if (CollectionUtils.isEmpty(ss)) {
             return null;

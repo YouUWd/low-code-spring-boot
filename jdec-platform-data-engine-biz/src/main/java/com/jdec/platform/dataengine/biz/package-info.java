@@ -3,7 +3,9 @@
         displayName = "Data Engine BIZ",
         allowedDependencies = {
             "dataengine.api",
+            "common.api",
             "config.api",
+            "config.open",
             "auth.api",
             "approval.api",
             "shared"
