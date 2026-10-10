@@ -15,16 +15,8 @@ import com.jdec.platform.common.biz.dto.response.UserSimpleResp;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.config.api.dto.common.ModuleInfo;
-import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
-import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
-import com.jdec.platform.config.api.dto.common.TableRelationDTO;
-import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
-import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
-import com.jdec.platform.config.api.dto.response.MenuHeaderSearchTypeResp;
-import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
-import com.jdec.platform.config.api.dto.response.SysUserPageResp;
+import com.jdec.platform.config.api.dto.common.*;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
@@ -91,7 +83,8 @@ class CompanyMenuQueryContractTest {
 
         MenuHeaderDisplayResp displayResp =
                 MenuHeaderDisplayResp.builder().header(companyHeader).build();
-        when(userMenuHeaderApi.getUserMenuHeaderDisplay(anyLong(), anyLong(), anyLong()))
+        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
+                        anyLong(), anyLong(), anyLong(), null, null, null, null))
                 .thenReturn(displayResp);
         when(configApi.getModuleTree(eq("company"), any(), eq(1001L)))
                 .thenReturn(companyModuleTree);

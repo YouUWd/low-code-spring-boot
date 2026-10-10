@@ -10,6 +10,7 @@ import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderSearchTypeResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
+import com.jdec.platform.config.api.enums.MenuFieldPermissionScope;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.config.open.api.OpenMenuHeaderApi;
@@ -80,6 +81,12 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 字段可查阅标记：sys_role_module_field_permission.view = 1 */
     private static final Integer VIEW_YES = 1;
 
+    /** 字段可申请/填报标记：sys_role_module_field_permission.apply = 1 */
+    private static final Integer APPLY_YES = 1;
+
+    /** 字段可编辑标记：sys_role_module_field_permission.edit = 1 */
+    private static final Integer EDIT_YES = 1;
+
     /** 菜单类型：页面（仅该类型且关联详情菜单时，表头归属其详情菜单） */
     private static final Integer MENU_TYPE_PAGE = 2;
 
@@ -100,6 +107,12 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     @Override
     public SysMenuHeaderResp getMenuHeaderTree(Long menuId, Integer change, Long roleId) {
+        return getMenuHeaderTree(menuId, change, roleId, null);
+    }
+
+    @Override
+    public SysMenuHeaderResp getMenuHeaderTree(
+            Long menuId, Integer change, Long roleId, MenuFieldPermissionScope scope) {
         if (menuId == null) {
             throw new BusinessException("菜单ID不能为空");
         }
@@ -111,7 +124,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         Long headerMenuId = resolveHeaderMenuId(menuId);
 
         // 生成侧：以表头归属菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段（effectiveRoleId 非空时按字段权限过滤）
-        List<SysMenuHeaderResp> generatedNodes = buildGeneratedNodes(headerMenuId, effectiveRoleId);
+        List<SysMenuHeaderResp> generatedNodes =
+                buildGeneratedNodes(headerMenuId, effectiveRoleId, scope);
 
         // 整树裁剪后为空（菜单下面没挂任何东西）：整树丢弃，返回 null
         if (generatedNodes.isEmpty()) {
@@ -280,6 +294,12 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     @Override
     public MenuHeaderDisplayResp getMenuHeaderDisplay(Long menuId, Long roleId) {
+        return getMenuHeaderDisplay(menuId, roleId, null);
+    }
+
+    @Override
+    public MenuHeaderDisplayResp getMenuHeaderDisplay(
+            Long menuId, Long roleId, MenuFieldPermissionScope scope) {
         if (menuId == null) {
             throw new BusinessException("菜单ID不能为空");
         }
@@ -293,9 +313,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         // 生成侧最新数据（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
         // 每次返回前都据此比对：sys_menu_header 中模块侧已不存在的节点不返回给前端；
         // 展示名与关联字段标记一律取生成侧（源头），不取库中存储值
-        // effectiveRoleId 非空时节点池按字段权限过滤：非 view=1 的字段不在池内，无字段的菜单节点一并被裁剪
+        // effectiveRoleId 非空时节点池按字段权限过滤：不满足 scope 权限的字段不在池内，无字段的菜单节点一并被裁剪
         Map<String, SysMenuHeaderResp> generatedByVirId =
-                indexByVirId(buildGeneratedNodes(headerMenuId, effectiveRoleId));
+                indexByVirId(buildGeneratedNodes(headerMenuId, effectiveRoleId, scope));
 
         // 纯读取该菜单已保存的表头节点（数据隔离：subject_id + project_no），仅保留节点池中仍存在的节点
         List<SysMenuHeader> stored =
@@ -525,13 +545,15 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * <p>不做角色菜单权限过滤（一律按最大权限返回全部菜单）。{@code roleId} 非空（数据引擎侧调用、字段权限过滤生效）时：
      *
      * <ul>
-     *   <li>非 {@code view=1}（或角色无字段权限记录）的字段不生成节点；
+     *   <li>不满足 {@code scope}（见 {@link MenuFieldPermissionScope}，默认 {@code
+     *       view=1}）或角色无字段权限记录的字段不生成节点；
      *   <li>菜单节点若既无字段节点也无子级菜单节点，则连同该节点一起丢弃（菜单下面没挂任何东西 → 不返回）。
      * </ul>
      *
      * <p>{@code roleId} 为空（config 管理端调用）时不做任何过滤，返回完整菜单树（空菜单也保留）。
      */
-    private List<SysMenuHeaderResp> buildGeneratedNodes(Long menuId, Long roleId) {
+    private List<SysMenuHeaderResp> buildGeneratedNodes(
+            Long menuId, Long roleId, MenuFieldPermissionScope scope) {
         SysMenu menu = selectMenuById(menuId);
         if (menu == null) {
             throw new BusinessException("菜单不存在");
@@ -554,7 +576,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             }
         }
         Map<Long, List<SysModuleField>> fieldsByModule =
-                selectFieldsGroupByModule(moduleIds, roleId);
+                selectFieldsGroupByModule(moduleIds, roleId, scope);
 
         // 生成侧节点已带齐展示所需的源头数据：菜单标题、模块字段显示名、是否关联字段（sys_field）
         Set<String> relationFieldIndexes = selectRelationFieldIndexes(fieldsByModule);
@@ -824,21 +846,62 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 角色可查阅（view=1）的字段ID集合；roleId 为空返回 null 表示不做字段权限过滤 */
     @Override
     public Set<Long> selectReadableFieldIds(Long roleId, Collection<Long> fieldIds) {
+        return selectReadableFieldIds(roleId, fieldIds, MenuFieldPermissionScope.VIEW_ONLY);
+    }
+
+    /**
+     * 按指定权限范围查询角色可用的字段ID集合
+     *
+     * <p>{@code scope} 决定满足哪些权限（{@code view}/{@code apply}/{@code edit} 的任意组合）才保留该字段；{@code scope}
+     * 为空时回退 {@link MenuFieldPermissionScope#VIEW_ONLY}。roleId 为空返回 {@code null} 表示不做字段权限过滤。
+     */
+    private Set<Long> selectReadableFieldIds(
+            Long roleId, Collection<Long> fieldIds, MenuFieldPermissionScope scope) {
         if (roleId == null) {
             return null;
         }
         if (fieldIds.isEmpty()) {
             return Collections.emptySet();
         }
-        return sysRoleModuleFieldPermissionMapper
-                .selectList(
-                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
-                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
-                                .in(SysRoleModuleFieldPermission::getModuleFieldId, fieldIds)
-                                .eq(SysRoleModuleFieldPermission::getView, VIEW_YES))
-                .stream()
+        MenuFieldPermissionScope effectiveScope =
+                scope != null ? scope : MenuFieldPermissionScope.VIEW_ONLY;
+        LambdaQueryWrapper<SysRoleModuleFieldPermission> wrapper =
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                        .in(SysRoleModuleFieldPermission::getModuleFieldId, fieldIds);
+        applyPermissionScope(wrapper, effectiveScope);
+        return sysRoleModuleFieldPermissionMapper.selectList(wrapper).stream()
                 .map(SysRoleModuleFieldPermission::getModuleFieldId)
                 .collect(Collectors.toSet());
+    }
+
+    /** 按权限范围追加字段权限过滤条件（view/apply/edit 的任意组合，任一为 1 即可见） */
+    private void applyPermissionScope(
+            LambdaQueryWrapper<SysRoleModuleFieldPermission> wrapper,
+            MenuFieldPermissionScope scope) {
+        switch (scope) {
+            case ANY ->
+                    wrapper.and(
+                            w ->
+                                    w.eq(SysRoleModuleFieldPermission::getView, VIEW_YES)
+                                            .or()
+                                            .eq(SysRoleModuleFieldPermission::getApply, APPLY_YES)
+                                            .or()
+                                            .eq(SysRoleModuleFieldPermission::getEdit, EDIT_YES));
+            case VIEW_OR_APPLY ->
+                    wrapper.and(
+                            w ->
+                                    w.eq(SysRoleModuleFieldPermission::getView, VIEW_YES)
+                                            .or()
+                                            .eq(SysRoleModuleFieldPermission::getApply, APPLY_YES));
+            case VIEW_OR_EDIT ->
+                    wrapper.and(
+                            w ->
+                                    w.eq(SysRoleModuleFieldPermission::getView, VIEW_YES)
+                                            .or()
+                                            .eq(SysRoleModuleFieldPermission::getEdit, EDIT_YES));
+            case VIEW_ONLY -> wrapper.eq(SysRoleModuleFieldPermission::getView, VIEW_YES);
+        }
     }
 
     private List<SysMenu> selectChildrenByPid(Long pid) {
@@ -864,9 +927,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                         .last("LIMIT 1"));
     }
 
-    /** 按模块查询字段并按模块分组；roleId 非空时仅保留角色 view=1 的字段 */
+    /** 按模块查询字段并按模块分组；roleId 非空时仅保留角色满足 {@code scope} 权限的字段 */
     private Map<Long, List<SysModuleField>> selectFieldsGroupByModule(
-            Set<Long> moduleIds, Long roleId) {
+            Set<Long> moduleIds, Long roleId, MenuFieldPermissionScope scope) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             return Collections.emptyMap();
         }
@@ -880,7 +943,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         Set<Long> readableFieldIds =
                 selectReadableFieldIds(
                         roleId,
-                        fields.stream().map(SysModuleField::getId).collect(Collectors.toList()));
+                        fields.stream().map(SysModuleField::getId).collect(Collectors.toList()),
+                        scope);
         if (readableFieldIds != null) {
             fields =
                     fields.stream()

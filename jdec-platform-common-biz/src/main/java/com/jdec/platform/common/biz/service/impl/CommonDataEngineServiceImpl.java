@@ -111,7 +111,13 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
             MenuHeaderDisplayResp menuHeaderDisplayResp =
                     userMenuHeaderApi.getUserMenuHeaderDisplay(
-                            UserContext.getUserId(), targetMenu.getId(), UserContext.getRoleId());
+                            UserContext.getUserId(),
+                            targetMenu.getId(),
+                            UserContext.getRoleId(),
+                            null,
+                            null,
+                            null,
+                            null);
 
             if (Objects.nonNull(menuHeaderDisplayResp)) {
                 moduleIdHeaderMap.put(targetMenu.getModuleId(), menuHeaderDisplayResp.getHeader());

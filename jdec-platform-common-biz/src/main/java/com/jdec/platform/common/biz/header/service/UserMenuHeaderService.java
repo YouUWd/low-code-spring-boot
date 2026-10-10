@@ -9,6 +9,7 @@ import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderSearchTypeResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
+import com.jdec.platform.config.api.enums.MenuFieldPermissionScope;
 import com.jdec.platform.config.open.api.OpenMenuHeaderApi;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -48,6 +49,21 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
 
     /** 已勾选 */
     private static final Integer CHECKED_YES = 1;
+
+    /** 查询场景：列表 */
+    private static final String TYPE_LIST = "list";
+
+    /** 查询场景：详情 */
+    private static final String TYPE_DETAIL = "detail";
+
+    /** 操作场景：申请 */
+    private static final String OPERATE_APPLY = "apply";
+
+    /** 操作场景：编辑 */
+    private static final String OPERATE_EDIT = "edit";
+
+    /** 有审批链标记 */
+    private static final Integer HAS_APPROVE_YES = 1;
 
     /** 表头节点列（别名与行模型属性同名，保证记录精准映射到 {@link UserMenuHeader}） */
     private static final List<Field<?>> USER_NODE_COLUMNS =
@@ -104,7 +120,14 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
     }
 
     @Override
-    public MenuHeaderDisplayResp getUserMenuHeaderDisplay(Long userId, Long menuId, Long roleId) {
+    public MenuHeaderDisplayResp getUserMenuHeaderDisplay(
+            Long userId,
+            Long menuId,
+            Long roleId,
+            String type,
+            String operate,
+            Integer hasApprove,
+            Long currentRoleId) {
         if (userId == null || menuId == null) {
             throw new BusinessException("用户ID与菜单ID不能为空");
         }
@@ -112,12 +135,16 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 表头记录按详情菜单ID 归属，将前端传入的列表菜单ID 转换后再查
         Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
 
+        // 按入参解析本次的字段权限过滤范围（查看/申请/编辑的任意组合），config 侧据此过滤字段节点
+        MenuFieldPermissionScope scope =
+                resolvePermissionScope(type, operate, hasApprove, roleId, currentRoleId);
+
         // 模块侧最新可用节点（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
         // 每次返回前都据此比对：user_menu_header 中模块侧已不存在的节点不返回给前端；
         // 展示名与关联字段标记一律取该默认树（源头），不取用户表中存储值
         // 角色对该菜单无任何权限时该树为 null，节点池为空
         SysMenuHeaderResp sourceTree =
-                openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId);
+                openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId, scope);
         Map<String, SysMenuHeaderResp> sourceByVirId =
                 sourceTree == null ? Collections.emptyMap() : indexByVirId(sourceTree);
 
@@ -135,7 +162,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                 return new MenuHeaderDisplayResp();
             }
             // 否则回退取 config 侧默认表头配置（同样按角色权限过滤）
-            return openMenuHeaderApi.getMenuHeaderDisplay(menuId, roleId);
+            return openMenuHeaderApi.getMenuHeaderDisplay(menuId, roleId, scope);
         }
 
         // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头
@@ -164,6 +191,40 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         return MenuHeaderDisplayResp.builder()
                 .header(toColumnResp(root, childrenByParent, sourceByVirId))
                 .build();
+    }
+
+    /**
+     * 解析字段权限过滤范围（查看/申请/编辑的任意组合）
+     *
+     * <ul>
+     *   <li>列表（{@code type=list}）：查看、申请、编辑任一为 1 即可见；
+     *   <li>详情-申请（{@code type=detail, operate=apply}）：查看、申请任一为 1 即可见；
+     *   <li>详情-编辑（{@code type=detail, operate=edit}）：无审批链（{@code hasApprove != 1}）或 {@code roleId}
+     *       与 {@code currentRoleId} 相等时查看、编辑任一为 1 即可见，不相等时仅查看为 1 可见。
+     * </ul>
+     *
+     * <p>未知的 {@code type}/{@code operate} 一律回退为「仅查看」。
+     */
+    private static MenuFieldPermissionScope resolvePermissionScope(
+            String type, String operate, Integer hasApprove, Long roleId, Long currentRoleId) {
+        if (TYPE_LIST.equals(type)) {
+            return MenuFieldPermissionScope.ANY;
+        }
+        if (!TYPE_DETAIL.equals(type)) {
+            return MenuFieldPermissionScope.VIEW_ONLY;
+        }
+        if (OPERATE_APPLY.equals(operate)) {
+            return MenuFieldPermissionScope.VIEW_OR_APPLY;
+        }
+        if (OPERATE_EDIT.equals(operate)) {
+            if (!HAS_APPROVE_YES.equals(hasApprove)) {
+                return MenuFieldPermissionScope.VIEW_OR_EDIT;
+            }
+            return Objects.equals(roleId, currentRoleId)
+                    ? MenuFieldPermissionScope.VIEW_OR_EDIT
+                    : MenuFieldPermissionScope.VIEW_ONLY;
+        }
+        return MenuFieldPermissionScope.VIEW_ONLY;
     }
 
     @Override

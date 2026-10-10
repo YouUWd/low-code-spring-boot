@@ -33,12 +33,38 @@ public interface UserMenuHeaderApi {
      * user_menu_header}：按用户 + 菜单（详情菜单ID）+ {@code subject_id} + {@code project_no} 纯读取该用户已保存的个性化表头
      * 节点，只输出已勾选（{@code checked=1}）的列并保留其祖先菜单节点，无配置时返回空（header 为 null）。
      *
+     * <p>字段可见性按角色权限过滤，满足哪些权限由入参共同决定（{@code roleId} 为空时不做任何权限过滤）：
+     *
+     * <ul>
+     *   <li>{@code type=list}（列表）：查看、申请、编辑任一权限为 1 即可见；
+     *   <li>{@code type=detail} 且 {@code operate=apply}（申请阶段）：查看、申请任一权限为 1 即可见；
+     *   <li>{@code type=detail} 且 {@code operate=edit}（编辑阶段）：
+     *       <ul>
+     *         <li>{@code hasApprove=0}（无审批链）：查看、编辑任一权限为 1 即可见；
+     *         <li>{@code hasApprove=1}（有审批链）：{@code roleId} 与 {@code currentRoleId} 相等时查看、编辑任一权限为 1
+     *             即可见，不相等时仅查看为 1 才可见。
+     *       </ul>
+     * </ul>
+     *
+     * <p>未知的 {@code type}/{@code operate} 一律回退为「仅查看」过滤范围。
+     *
      * @param userId 用户ID
      * @param menuId 列表菜单ID
-     * @param roleId 角色ID，为空时不做角色权限过滤
+     * @param roleId 登录角色ID，为空时不做角色权限过滤
+     * @param type 查询场景：{@code list}-列表 / {@code detail}-详情
+     * @param operate 操作场景（仅 {@code detail} 有效）：{@code edit}-编辑 / {@code apply}-申请
+     * @param hasApprove 是否有审批链：0-否 / 1-是
+     * @param currentRoleId 前端当前角色ID（与 {@code roleId} 比对决定编辑阶段的过滤范围）
      * @return 多级列头展示结构
      */
-    MenuHeaderDisplayResp getUserMenuHeaderDisplay(Long userId, Long menuId, Long roleId);
+    MenuHeaderDisplayResp getUserMenuHeaderDisplay(
+            Long userId,
+            Long menuId,
+            Long roleId,
+            String type,
+            String operate,
+            Integer hasApprove,
+            Long currentRoleId);
 
     /**
      * 保存用户个性化表头配置（整棵树提交）
