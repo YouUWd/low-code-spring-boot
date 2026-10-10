@@ -11,5 +11,5 @@ import lombok.EqualsAndHashCode;
 public class MonitorApproveOperation extends MonitorApproveBase {
 
     @Schema(description = "审批类型：0-自动审批，1-手动审批", example = "1")
-    private Integer type;
+    private Integer approvalType;
 }
