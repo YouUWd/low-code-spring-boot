@@ -225,8 +225,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         VersionListQueryReq versionListQueryReq =
                 VersionListQueryReq.builder()
-                        .moduleId(targetMenus.getModuleId())
                         .id(menuDetailQueryReq.getId())
+                        .moduleId(targetMenus.getModuleId())
+                        .businessNo(menuDetailQueryReq.getBusinessNo())
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
 

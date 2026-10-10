@@ -1100,7 +1100,7 @@ public class DynamicQueryService {
     }
 
     public List<VersionListResp> getVersionList(VersionListQueryReq versionListQueryReq) {
-        Long id = versionListQueryReq.getId();
+        String businessNo = versionListQueryReq.getBusinessNo();
         Long moduleId = versionListQueryReq.getModuleId();
 
         Boolean hasApproval =
@@ -1113,52 +1113,64 @@ public class DynamicQueryService {
 
         List<VersionListResp> versionList = new ArrayList<>();
 
-        Record recordsResult = getLastVersion(moduleId, id);
+        Result<Record> recordsResult =
+                getVersions(moduleId, businessNo, versionListQueryReq.getId());
 
-        if (Objects.nonNull(recordsResult)) {
-            Map<String, Object> resultMap = recordsResult.intoMap();
+        if (!CollectionUtils.isEmpty(recordsResult)) {
 
-            if (resultMap.containsKey("version_no")
-                    && Objects.nonNull(resultMap.get("version_no"))) {
+            // 变更时返回虚拟版本
+            if ("change".equals(versionListQueryReq.getBtnType())) {
 
-                Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
-
-                // 变更时返回虚拟版本
-                if ("change-change".equals(versionListQueryReq.getBtnType())) {
-                    Integer fakeVersionNo = versionNo + 1;
-                    versionList.add(
-                            VersionListResp.builder()
-                                    .version(fakeVersionNo)
-                                    .history(false)
-                                    .btnType("change-change")
-                                    .build());
-                }
-
+                Integer lastVersion = getMaxVersion(moduleId, businessNo);
+                Integer fakeVersionNo = lastVersion == null ? 0 : lastVersion + 1;
                 versionList.add(
                         VersionListResp.builder()
-                                .version(versionNo)
+                                .version(fakeVersionNo)
+                                .id(versionListQueryReq.getId())
                                 .history(false)
-                                .btnType("view")
+                                .btnType("change-change")
                                 .build());
             }
-        }
 
-        List<VersionListResp> historyVersionList = getHistoryVersionList(moduleId, id);
+            int resultLength = recordsResult.size();
 
-        if (!CollectionUtils.isEmpty(historyVersionList)) {
-            if ("change-change".equals(versionListQueryReq.getBtnType())) {
-                versionList.get(1).setPreVersion(historyVersionList.get(0).getVersion());
-            } else if (!CollectionUtils.isEmpty(versionList)) {
-                versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
+            for (int i = 0; i < recordsResult.size(); i++) {
+
+                Map<String, Object> resultMap = recordsResult.get(i).intoMap();
+
+                if (resultMap.containsKey("version_no")
+                        && Objects.nonNull(resultMap.get("version_no"))) {
+
+                    Integer versionNo =
+                            Integer.parseInt(String.valueOf(resultMap.get("version_no")));
+
+                    Long id = Long.parseLong(String.valueOf(resultMap.get("id")));
+
+                    VersionListResp.VersionListRespBuilder versionBuilder =
+                            VersionListResp.builder()
+                                    .version(versionNo)
+                                    .id(id)
+                                    .history(true)
+                                    .btnType("view");
+
+                    // 除了第一版，其他版本设置preVersion为上一版本号
+                    if (resultLength > 1 && i != (resultLength - 1)) {
+                        versionBuilder.preVersion(versionList.get(i - 1).getVersion());
+                    }
+
+                    if (i == 0) {
+                        versionBuilder.history(false);
+                    }
+
+                    versionList.add(versionBuilder.build());
+                }
             }
         }
-
-        versionList.addAll(historyVersionList);
 
         return versionList;
     }
 
-    private Record getLastVersion(Long moduleId, Long id) {
+    private Result<Record> getVersions(Long moduleId, String businessNo, Long id) {
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
                         AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
@@ -1172,17 +1184,58 @@ public class DynamicQueryService {
         // 构造SQL 查询条件
         List<Condition> conditions = new ArrayList<>();
 
-        conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
+        conditions.add(
+                DSL.field(DSL.name(primaryTable, "business_no"))
+                        .eq(businessNo)
+                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
 
-        conditions.add(DSL.field(DSL.name(primaryTable, "business_status")).notEqual(99));
+        //        conditions.add(DSL.field(DSL.name(primaryTable, "business_status")).eq(99));
 
         query.where(conditions);
 
-        query.stream().limit(1);
+        query.orderBy(DSL.field(DSL.name("version_no")).desc());
 
-        Record recordsResult = query.fetchOne();
+        Result<Record> recordsResult = query.fetch();
 
         return recordsResult;
+    }
+
+    private Integer getMaxVersion(Long moduleId, String businessNo) {
+        SysModuleInfo sysModuleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+
+        String primaryTable = sysModuleInfo.getPrimaryTable();
+
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        List<Field<?>> fields = new ArrayList<>();
+        fields.add(DSL.max(DSL.field(DSL.name(primaryTable, "version_no"))).as("max_version"));
+
+        SelectJoinStep<Record> query = dslContext.select(fields).from(DSL.name(primaryTable));
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+
+        conditions.add(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo));
+
+        query.where(conditions);
+
+        query.groupBy(DSL.field(DSL.name("business_no")));
+
+        Record maxVersionResult = query.fetchOne();
+
+        if (Objects.isNull(maxVersionResult)) {
+            return null;
+        } else {
+            Map<String, Object> resultMap = maxVersionResult.intoMap();
+            if (resultMap.containsKey("max_version")
+                    && Objects.nonNull(resultMap.get("max_version"))) {
+                Integer maxVersion = Integer.parseInt(String.valueOf(resultMap.get("max_version")));
+                return maxVersion;
+            } else {
+                return null;
+            }
+        }
     }
 
     private List<VersionListResp> getHistoryVersionList(Long moduleId, Long id) {
