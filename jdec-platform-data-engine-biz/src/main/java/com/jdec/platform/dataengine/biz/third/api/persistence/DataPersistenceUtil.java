@@ -190,7 +190,11 @@ public class DataPersistenceUtil {
             String displayName =
                     fieldMap.get(field) != null ? fieldMap.get(field).getDisplayName() : null;
             FieldChangeDTO fieldChangeDTO =
-                    getFieldChangeDTO(getFullFieldName(table, field), displayName, old, newer);
+                    getFieldChangeDTO(
+                            getFullFieldName(table, field),
+                            displayName,
+                            old,
+                            isDelete ? null : newer);
             if (fieldChangeDTO != null) {
                 fieldChangeDTOList.add(fieldChangeDTO);
             }
@@ -241,12 +245,14 @@ public class DataPersistenceUtil {
 
     public static String getUniqueName(Map<String, Object> recordMap, List<String> uniqueFields) {
         StringBuilder stringBuilder = new StringBuilder();
-        for (String uniqueField : uniqueFields) {
-            if (recordMap.containsKey(uniqueField)) {
-                String value = getFieldTxtValue(recordMap.get(uniqueField));
-                if (value != null) {
-                    if (stringBuilder.length() > 0) {
-                        stringBuilder.append(" ").append(String.valueOf(value));
+        if (CollectionUtil.isNotEmpty(uniqueFields)) {
+            for (String uniqueField : uniqueFields) {
+                if (recordMap.containsKey(uniqueField)) {
+                    String value = getFieldTxtValue(recordMap.get(uniqueField));
+                    if (value != null) {
+                        if (stringBuilder.length() > 0) {
+                            stringBuilder.append(" ").append(String.valueOf(value));
+                        }
                     }
                 }
             }
@@ -404,13 +410,18 @@ public class DataPersistenceUtil {
         //        return writeJson(value);
     }
 
-    public static RowChangeDTO combineRowChanges(RowChangeDTO primary, RowChangeDTO secondary) {
+    public static RowChangeDTO combineRowChanges(
+            RowChangeDTO primary, List<RowChangeDTO> secondary) {
         List<FieldChangeDTO> columns = new ArrayList<>();
         if (primary != null && CollectionUtil.isNotEmpty(primary.getColumns())) {
             columns.addAll(primary.getColumns());
         }
-        if (secondary != null && CollectionUtil.isNotEmpty(secondary.getColumns())) {
-            columns.addAll(secondary.getColumns());
+        if (secondary != null && CollectionUtil.isNotEmpty(secondary)) {
+            for (RowChangeDTO rowChangeDTO : secondary) {
+                if (rowChangeDTO != null && CollectionUtil.isNotEmpty(rowChangeDTO.getColumns())) {
+                    columns.addAll(rowChangeDTO.getColumns());
+                }
+            }
         }
         String name = primary != null ? primary.getName() : null;
         String action = primary != null ? primary.getAction() : null;

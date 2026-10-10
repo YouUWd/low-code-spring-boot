@@ -4,9 +4,7 @@ import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import lombok.Data;
 
 @Data
@@ -21,8 +19,11 @@ public class SysModuleCombineInfo implements Serializable {
     // 模块子表
     private Set<String> subTables;
 
+    // 模块字段信息 按表名称分组
+    private Map<String, Map<String, ModuleFieldDTO>> fieldMapByTable = new HashMap<>();
+
     // 模块字段信息
-    private Map<String, Map<String, ModuleFieldDTO>> fieldMap = new HashMap<>();
+    private Map<String, ModuleFieldDTO> fieldAllMap = new HashMap<>();
 
     // 模块写权限字段
     private Map<String, Set<String>> writeFields = new HashMap<>();
@@ -33,8 +34,14 @@ public class SysModuleCombineInfo implements Serializable {
     // 读权限字段
     private Map<String, Set<String>> readFields = new HashMap<>();
 
+    // 所有字段 按表名分组
+    private Map<String, Map<String, SysFieldResp>> allFieldsByTable = new HashMap<>();
+
     // 所有字段
-    private Map<String, Map<String, SysFieldResp>> allFields = new HashMap<>();
+    private Map<String, SysFieldResp> allFields = new HashMap<>();
+
+    // 唯一名称字段
+    private List<String> uniqueNameFields = new ArrayList();
 
     // 模块相关的表关系
     private ProjectTableRelationsDTO projectTableRelations;

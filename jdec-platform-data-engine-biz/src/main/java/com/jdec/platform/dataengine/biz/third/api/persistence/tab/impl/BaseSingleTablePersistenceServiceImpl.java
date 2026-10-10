@@ -131,7 +131,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                             context.getRecord(),
                             context.getTableName(),
                             context.getSysModuleCompleteResp()
-                                    .getFieldMap()
+                                    .getFieldMapByTable()
                                     .get(context.getTableName()),
                             DataPersistenceUtil.getModuleTableUniqueNameField(
                                     context.getSysModuleCompleteResp().getModuleInfo().getFields(),
@@ -208,7 +208,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                             context.getRecord(),
                             context.getTableName(),
                             context.getSysModuleCompleteResp()
-                                    .getFieldMap()
+                                    .getFieldMapByTable()
                                     .get(context.getTableName()),
                             DataPersistenceUtil.getModuleTableUniqueNameField(
                                     context.getSysModuleCompleteResp().getModuleInfo().getFields(),
@@ -233,9 +233,11 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {
 
         Map<String, ModuleFieldDTO> fieldMap =
-                context.getSysModuleCompleteResp().getFieldMap().get(context.getTableName());
+                context.getSysModuleCompleteResp().getFieldMapByTable().get(context.getTableName());
         Map<String, SysFieldResp> allFields =
-                context.getSysModuleCompleteResp().getAllFields().get(context.getTableName());
+                context.getSysModuleCompleteResp()
+                        .getAllFieldsByTable()
+                        .get(context.getTableName());
         Map<Field<Object>, Object> fieldValues = new HashMap<>();
         // Insert时候 表单数据都要 写入
         for (Map.Entry<String, Object> entry : context.getRecord().entrySet()) {
@@ -319,9 +321,11 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     private Map<Field<Object>, Object> getUpdateRecordFieldValues(RecordSaveContext context) {
 
         Map<String, ModuleFieldDTO> fieldMap =
-                context.getSysModuleCompleteResp().getFieldMap().get(context.getTableName());
+                context.getSysModuleCompleteResp().getFieldMapByTable().get(context.getTableName());
         Map<String, SysFieldResp> allFields =
-                context.getSysModuleCompleteResp().getAllFields().get(context.getTableName());
+                context.getSysModuleCompleteResp()
+                        .getAllFieldsByTable()
+                        .get(context.getTableName());
         Map<Field<Object>, Object> fieldValues = new HashMap<>();
 
         Set<String> setFields = new HashSet<>();

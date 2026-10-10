@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.service.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
@@ -59,24 +60,45 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
             ModuleInfo moduleInfo = entry.getValue();
             moduleCombineInfo.setModuleInfo(moduleInfo);
 
-            Set<String> subTables =
-                    moduleInfo.getFields().stream()
-                            .filter(
-                                    x ->
-                                            !StringUtils.equals(
-                                                    x.getTableName(), moduleInfo.getPrimaryTable()))
-                            .map(x -> x.getTableName())
-                            .collect(Collectors.toSet());
-            moduleCombineInfo.setSubTables(subTables);
-            moduleInfo.getFields().stream()
-                    .forEach(
-                            x -> {
-                                moduleCombineInfo
-                                        .getFieldMap()
-                                        .computeIfAbsent(x.getTableName(), k -> new HashMap<>())
-                                        .put(x.getColumnName(), x);
-                            });
+            if (CollectionUtil.isNotEmpty(moduleInfo.getFields())) {
+                Set<String> subTables =
+                        moduleInfo.getFields().stream()
+                                .filter(
+                                        x ->
+                                                !StringUtils.equals(
+                                                        x.getTableName(),
+                                                        moduleInfo.getPrimaryTable()))
+                                .map(x -> x.getTableName())
+                                .collect(Collectors.toSet());
+                moduleCombineInfo.setSubTables(subTables);
+                moduleInfo.getFields().stream()
+                        .forEach(
+                                x -> {
+                                    moduleCombineInfo
+                                            .getFieldMapByTable()
+                                            .computeIfAbsent(x.getTableName(), k -> new HashMap<>())
+                                            .put(x.getColumnName(), x);
+                                });
+                moduleInfo.getFields().stream()
+                        .forEach(
+                                x ->
+                                        moduleCombineInfo
+                                                .getFieldAllMap()
+                                                .put(
+                                                        x.getTableName() + "." + x.getColumnName(),
+                                                        x));
 
+                // 配置唯一名称字段
+                List<String> bizKeyColumns =
+                        moduleInfo.getFields().stream()
+                                .filter(x -> x.getBizKeyOrder() != null)
+                                .sorted(Comparator.comparingInt(ModuleFieldDTO::getBizKeyOrder))
+                                .map(x -> x.getColumnName())
+                                .collect(Collectors.toList());
+                if (CollectionUtil.isNotEmpty(bizKeyColumns)) {
+                    moduleCombineInfo.setUniqueNameFields(bizKeyColumns);
+                }
+            }
             // 构建主表关联 关系
             moduleCombineInfo.setProjectTableRelations(projectTableRelationsDTO);
             moduleCombineInfo.setMainTableRelationDTO(
@@ -87,8 +109,8 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                                                     x.getJoinTable(), moduleInfo.getPrimaryTable()))
                             .findFirst()
                             .orElse(null));
-            if (CollectionUtil.isNotEmpty(subTables)) {
-                for (String subTable : subTables) {
+            if (CollectionUtil.isNotEmpty(moduleCombineInfo.getSubTables())) {
+                for (String subTable : moduleCombineInfo.getSubTables()) {
                     moduleCombineInfo
                             .getSubTableRelationMap()
                             .put(
@@ -154,7 +176,7 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                 }
             }
 
-            // 构建模块 字段数据
+            // 构建模块 字段属性
             if (moduleQueryContext.getIsBuildFieldPro() != null
                     && moduleQueryContext.getIsBuildFieldPro()) {
                 Set<String> tables =
@@ -173,10 +195,21 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                                 .forEach(
                                         x -> {
                                             moduleCombineInfo
-                                                    .getAllFields()
+                                                    .getAllFieldsByTable()
                                                     .computeIfAbsent(
                                                             x.getTableName(), k -> new HashMap<>())
                                                     .put(x.getColumnName(), x);
+                                        });
+                        columnInfoRespList.stream()
+                                .forEach(
+                                        x -> {
+                                            moduleCombineInfo
+                                                    .getAllFields()
+                                                    .put(
+                                                            x.getTableName()
+                                                                    + "."
+                                                                    + x.getColumnName(),
+                                                            x);
                                         });
                     }
                 }

@@ -286,16 +286,23 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         }
 
         // 在写入当前模块 关联的表数据
-        DataSaveResult relatedDataSaveResult =
+        List<DataSaveResult> relatedDataSaveResult =
                 saveModuleRelatedTableData(
                         recordDataDTO, sysModuleCompleteResp, primaryTableId, currentReq);
 
         // 合并两张表的变更记录
         if (!currentReq.isApproval() && SaveType.SAVE.equals(currentReq.getSaveType())) {
+            List<RowChangeDTO> rowChangeDTOList = new ArrayList<>();
+            if (CollectionUtil.isNotEmpty(relatedDataSaveResult)) {
+                for (DataSaveResult dataSaveResult : relatedDataSaveResult) {
+                    if (dataSaveResult.getRowChange() != null) {
+                        rowChangeDTOList.add(dataSaveResult.getRowChange());
+                    }
+                }
+            }
             RowChangeDTO combinedRowChange =
                     DataPersistenceUtil.combineRowChanges(
-                            primaryDataSaveResult.getRowChange(),
-                            relatedDataSaveResult.getRowChange());
+                            primaryDataSaveResult.getRowChange(), rowChangeDTOList);
             // recordDataDTO.setRowChanges(combinedRowChange);
             ModuleDataSaveContextHolder.addRowChange(
                     sysModuleCompleteResp.getModuleInfo().getModuleId(),
@@ -439,14 +446,16 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
      * @param modulePrimaryTableId 主表行记录id
      * @return
      */
-    private DataSaveResult saveModuleRelatedTableData(
+    private List<DataSaveResult> saveModuleRelatedTableData(
             RecordDataDTO recordDataDTO,
             SysModuleCombineInfo sysModuleCompleteResp,
             Long modulePrimaryTableId,
             DynamicSaveReqContext currentReq) {
         Set<String> tables = sysModuleCompleteResp.getSubTables();
+        List<DataSaveResult> dataSaveResultList = new ArrayList<>();
         if (CollectionUtil.isEmpty(tables)) {
-            return DataSaveResult.builder().dataId(0L).build();
+            dataSaveResultList.add(DataSaveResult.builder().dataId(0L).build());
+            return dataSaveResultList;
         }
 
         for (String moduleTable : tables) {
@@ -467,7 +476,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                     modulePrimaryTableId,
                                     currentReq.getTxDsl(),
                                     currentReq);
-                    return dataSaveResult;
+                    dataSaveResultList.add(dataSaveResult);
                     //                    if (dataSaveResult.getRowChange() != null) {
                     //                        if (recordDataDTO.getRowChanges() == null) {
                     //                            recordDataDTO.setRowChanges(new ArrayList<>());
@@ -508,7 +517,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                 }
             }
         }
-        return null;
+        return dataSaveResultList;
     }
 
     /**
