@@ -121,6 +121,10 @@ public class MonitorLogEnrichService {
             mockInfo.setName(user.userName());
             mockInfo.setAvatar(user.avatar());
             mockInfo.setUserNumber(user.userNumber());
+            mockInfo.setDeptId(user.deptId());
+            mockInfo.setDeptName(user.deptName());
+            mockInfo.setJobId(user.jobId());
+            mockInfo.setJobName(user.jobName());
         }
     }
 
