@@ -37,6 +37,29 @@ public class DataService implements DataApi {
     }
 
     @Override
+    public DataPage<DataBlock> queryByTable(
+            com.jdec.platform.data.api.dto.request.TablePageQueryReq req) {
+        return dataQueryService.queryByTable(req);
+    }
+
+    @Override
+    public Long countByTable(com.jdec.platform.data.api.dto.request.TableQueryReq req) {
+        return dataQueryService.countByTable(req);
+    }
+
+    @Override
+    public DataBlock getDetailByTable(
+            com.jdec.platform.data.api.dto.request.TableDetailQueryReq req) {
+        return dataQueryService.getDetailByTable(req);
+    }
+
+    @Override
+    public List<DataOption> getOptionsByTable(
+            com.jdec.platform.data.api.dto.request.TableOptionReq req) {
+        return dataQueryService.getOptionsByTable(req);
+    }
+
+    @Override
     public List<DataOption> getOptions(OptionReq req) {
         return dataQueryService.getOptions(req);
     }

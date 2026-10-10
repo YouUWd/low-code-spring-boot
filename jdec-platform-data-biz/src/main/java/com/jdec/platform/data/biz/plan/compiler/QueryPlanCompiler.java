@@ -13,6 +13,12 @@ import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
+import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
+import com.jdec.platform.data.api.dto.request.TableFilterItem;
+import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
+import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.TableSortItem;
+import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.biz.plan.model.JoinTableSpec;
 import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
@@ -61,7 +67,41 @@ public class QueryPlanCompiler {
         private List<InternalQueryNode> children;
     }
 
-    /** 编译候选项查询请求为单字段投影与全量过滤上下文的 QueryPlan */
+    /** 编译物理表候选项查询请求为单列投影与物理过滤上下文的 QueryPlan */
+    public QueryPlan compile(com.jdec.platform.data.api.dto.request.TableOptionReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("候选项请求不能为空");
+        }
+        if (req.getModuleId() == null
+                || req.getColumnName() == null
+                || req.getColumnName().isBlank()) {
+            throw new IllegalArgumentException("候选项请求的模块 ID 与列名均不能为空");
+        }
+
+        String table = req.getTableName();
+        if (table == null || table.isBlank()) {
+            ModuleTreeDTO tree = loadModuleTree(req.getModuleId());
+            if (tree != null && tree.getRootModule() != null) {
+                table = resolvePrimaryTable(tree.getRootModule());
+            }
+        }
+
+        List<TableSpec> tables = new ArrayList<>();
+        if (table != null && !table.isBlank()) {
+            tables.add(TableSpec.of(table, req.getColumnName().trim()));
+        }
+
+        TableQueryReq queryReq =
+                TableQueryReq.builder()
+                        .moduleId(req.getModuleId())
+                        .tables(tables)
+                        .filters(req.getFilters())
+                        .build();
+        return compile(queryReq);
+    }
+
+    /** 编译候选项查询请求为单字段投影与全量过滤上下文的 QueryPlan (旧版将废弃) */
+    @Deprecated(since = "1.0.0", forRemoval = true)
     public QueryPlan compile(OptionReq req) {
         if (req == null) {
             throw new IllegalArgumentException("候选项请求不能为空");
@@ -143,6 +183,60 @@ public class QueryPlanCompiler {
                         .build();
 
         return compile(queryReq);
+    }
+
+    /** 编译物理表单据详情精准查询请求为 QueryPlan */
+    public QueryPlan compileDetail(TableDetailQueryReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("物理表详情查询请求不能为空");
+        }
+        if (req.getModuleId() == null || req.getId() == null) {
+            throw new IllegalArgumentException("模块 ID 和单据 ID 不能为空");
+        }
+
+        ModuleTreeDTO tree = loadModuleTree(req.getModuleId());
+        if (tree == null || tree.getRootModule() == null) {
+            throw new IllegalArgumentException("模块 ID [" + req.getModuleId() + "] 不存在或未配置元数据");
+        }
+
+        String primaryTable = resolvePrimaryTable(tree.getRootModule());
+        List<TableFilterItem> mergedFilters = new ArrayList<>();
+        mergedFilters.add(TableFilterItem.eq(primaryTable, "id", req.getId()));
+        if (req.getFilters() != null && !req.getFilters().isEmpty()) {
+            mergedFilters.addAll(req.getFilters());
+        }
+
+        TableQueryReq queryReq =
+                TableDetailQueryReq.builder()
+                        .moduleId(req.getModuleId())
+                        .id(req.getId())
+                        .tables(req.getTables())
+                        .filters(mergedFilters)
+                        .sorts(req.getSorts())
+                        .build();
+
+        return compile(queryReq);
+    }
+
+    /** 编译基于物理表与字段的查询请求为 QueryPlan */
+    public QueryPlan compile(TableQueryReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("物理表查询请求不能为空");
+        }
+        Long rootModuleId = req.getModuleId();
+        if (rootModuleId == null) {
+            throw new IllegalArgumentException("查询主模块 ID 不能为空");
+        }
+
+        ModuleTreeDTO tree = loadModuleTree(rootModuleId);
+        if (tree == null || tree.getRootModule() == null) {
+            throw new IllegalArgumentException("模块 ID [" + rootModuleId + "] 不存在或未配置元数据");
+        }
+
+        ProjectTableRelationsDTO projectRelations = getProjectRelations();
+        QueryNodePlan rootPlan =
+                compileTableNode(rootModuleId, null, null, req, projectRelations, tree);
+        return QueryPlan.builder().rootNodePlan(rootPlan).build();
     }
 
     /** 编译顶层查询请求为完整的 QueryPlan (以根 moduleId 与 fields 驱动，自动校验子树范围并推导执行树) */
@@ -418,7 +512,8 @@ public class QueryPlanCompiler {
                                 meta, primaryTable, node.getFields(), isGlobalWhitelistMode);
 
         // 识别 1:N 关系从表字段并自动拆分至子节点计划
-        // TODO: 引入开关配置项（如 jdec.data.query.allow-module-internal-one-to-many 或 Config Center 系统参数），
+        // TODO: 引入开关配置项（如 jdec.data.query.allow-module-internal-one-to-many 或 Config
+        // Center 系统参数），
         // 控制是否允许模块内配置 1:N 从表字段。若关闭则严格校验并抛出异常，引导开发者在元数据中将 1:N 抽象为独立子模块。
         List<PhysicalFieldSpec> primaryProjectedFields = new ArrayList<>();
         Map<String, List<PhysicalFieldSpec>> oneToManyFieldsByTable = new LinkedHashMap<>();
@@ -1007,48 +1102,65 @@ public class QueryPlanCompiler {
             return null;
         }
 
-        // 1. 如果包含 children，作为条件组处理 (AND / OR)
+        // 1. 尝试编译当前节点自身的字段条件 (selfCond)
+        Condition selfCond = null;
+        if (item.getFieldId() != null) {
+            boolean hasValidValue =
+                    (item.getValue() != null && !"".equals(item.getValue()))
+                            || "IS_NULL".equalsIgnoreCase(item.getOperator())
+                            || "IS_NOT_NULL".equalsIgnoreCase(item.getOperator());
+            if (hasValidValue) {
+                ModuleFieldDTO targetField = fieldIdMap.get(item.getFieldId());
+                if (targetField != null) {
+                    String tbl =
+                            (targetField.getTableName() != null
+                                            && !targetField.getTableName().isBlank())
+                                    ? targetField.getTableName()
+                                    : primaryTable;
+                    String col = targetField.getColumnName();
+                    if (col != null && !col.isBlank()) {
+                        selfCond = buildSqlCondition(tbl, col, item.getOperator(), item.getValue());
+                    }
+                }
+            }
+        }
+
+        // 2. 递归编译子条件列表 (children)
+        List<Condition> subConditions = new ArrayList<>();
         if (item.getChildren() != null && !item.getChildren().isEmpty()) {
-            List<Condition> subConditions = new ArrayList<>();
             for (FilterItem child : item.getChildren()) {
                 Condition subCond = compileSingleFilterItem(child, fieldIdMap, primaryTable);
                 if (subCond != null && !DSL.noCondition().equals(subCond)) {
                     subConditions.add(subCond);
                 }
             }
-            if (subConditions.isEmpty()) {
-                return null;
-            }
-            String logic =
-                    (item.getLogic() != null && !item.getLogic().isBlank())
-                            ? item.getLogic().toUpperCase().trim()
-                            : "AND";
+        }
+
+        // 3. 组合逻辑：Filter 与其 children 的逻辑组合
+        String logic =
+                (item.getLogic() != null && !item.getLogic().isBlank())
+                        ? item.getLogic().toUpperCase().trim()
+                        : "AND";
+
+        // 自身与子条件并存 -> 组合 (OR / AND)
+        if (selfCond != null && !subConditions.isEmpty()) {
+            List<Condition> allConds = new ArrayList<>();
+            allConds.add(selfCond);
+            allConds.addAll(subConditions);
+            return "OR".equals(logic) ? DSL.or(allConds) : DSL.and(allConds);
+        }
+
+        // 只有自身条件
+        if (selfCond != null) {
+            return selfCond;
+        }
+
+        // 只有子条件 (纯组容器)
+        if (!subConditions.isEmpty()) {
             return "OR".equals(logic) ? DSL.or(subConditions) : DSL.and(subConditions);
         }
 
-        // 2. 单字段条件处理
-        if (item.getValue() == null || "".equals(item.getValue())) {
-            return null;
-        }
-        if (item.getFieldId() == null) {
-            return null;
-        }
-
-        ModuleFieldDTO targetField = fieldIdMap.get(item.getFieldId());
-        if (targetField == null) {
-            return null;
-        }
-
-        String tbl =
-                (targetField.getTableName() != null && !targetField.getTableName().isBlank())
-                        ? targetField.getTableName()
-                        : primaryTable;
-        String col = targetField.getColumnName();
-        if (col == null || col.isBlank()) {
-            return null;
-        }
-
-        return buildSqlCondition(tbl, col, item.getOperator(), item.getValue());
+        return null;
     }
 
     /** 递归收集过滤条件树中引用的所有 fieldId */
@@ -1253,5 +1365,482 @@ public class QueryPlanCompiler {
     private ProjectTableRelationsDTO getProjectRelations() {
         String projectNo = AppContext.getProjectNo();
         return configApi.getProjectTableRelations(projectNo);
+    }
+
+    // ==================== 物理表/字段直接编译内核 (TableSpec 驱动) ====================
+
+    private QueryNodePlan compileTableNode(
+            Long currentModuleId,
+            Long parentModuleId,
+            ModuleInfo parentMeta,
+            TableQueryReq req,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree) {
+        ModuleInfo meta = tree.getModule(currentModuleId);
+        if (meta == null) {
+            throw new IllegalArgumentException("模块 ID [" + currentModuleId + "] 不存在或未在当前模块树中配置元数据");
+        }
+
+        String primaryTable = resolvePrimaryTable(meta);
+        ParentRelationInfo parentRel =
+                resolveParentRelation(primaryTable, meta, parentMeta, projectRelations, tree);
+        String parentFk = parentRel.childForeignKey();
+        String parentKey = parentRel.parentKey();
+        boolean isVirtual = primaryTable == null || primaryTable.isBlank();
+
+        // 1. 查找当前模块及伴生表的 TableSpec 投影规格
+        Map<String, TableSpec> tableSpecMap = new LinkedHashMap<>();
+        if (req.getTables() != null && !req.getTables().isEmpty()) {
+            for (TableSpec ts : req.getTables()) {
+                if (ts != null && ts.getTableName() != null && !ts.getTableName().isBlank()) {
+                    tableSpecMap.put(ts.getTableName().trim().toLowerCase(), ts);
+                }
+            }
+        }
+        boolean isFullTreeMode = tableSpecMap.isEmpty();
+
+        // 2. 编译投影字段 (PhysicalFieldSpec)
+        List<PhysicalFieldSpec> primaryProjectedFields = new ArrayList<>();
+        if (!isVirtual) {
+            // 主表投影
+            TableSpec mainSpec = tableSpecMap.get(primaryTable.toLowerCase());
+            if (isFullTreeMode || mainSpec != null) {
+                List<String> requestedCols = mainSpec != null ? mainSpec.getColumns() : null;
+                primaryProjectedFields.addAll(
+                        compilePhysicalTableProjection(meta, primaryTable, requestedCols));
+            }
+
+            // 伴生表投影 (如果 projectRelations 中有 1:1/COMPANION 伴生表)
+            if (projectRelations != null && projectRelations.getForwardRelations() != null) {
+                List<TableRelationDTO> fwdRels =
+                        projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
+                if (fwdRels != null) {
+                    for (TableRelationDTO rel : fwdRels) {
+                        if ("ONE_TO_ONE".equalsIgnoreCase(rel.getRelationType())
+                                || "COMPANION".equalsIgnoreCase(rel.getRelationType())) {
+                            String compTable = rel.getJoinTable();
+                            if (compTable != null && !compTable.isBlank()) {
+                                TableSpec compSpec =
+                                        tableSpecMap.get(compTable.trim().toLowerCase());
+                                if (isFullTreeMode || compSpec != null) {
+                                    List<String> compCols =
+                                            compSpec != null ? compSpec.getColumns() : null;
+                                    primaryProjectedFields.addAll(
+                                            compilePhysicalTableProjection(
+                                                    meta, compTable.trim(), compCols));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. 过滤条件编译 (将归属于当前模块/主表/伴生表的 TableFilterItem 编译为 Condition)
+        Condition userFilterCondition =
+                isVirtual
+                        ? null
+                        : compileTableFilters(
+                                primaryTable, meta, req.getFilters(), projectRelations);
+
+        // 4. 排序编译
+        List<OrderField<?>> orderFields =
+                isVirtual
+                        ? Collections.emptyList()
+                        : compileTableSorts(primaryTable, req.getSorts());
+
+        // 5. 递归编译子节点
+        List<QueryNodePlan> childPlans = new ArrayList<>();
+        List<Long> childModuleIds = tree.getChildModuleIds(currentModuleId);
+        if (childModuleIds != null && !childModuleIds.isEmpty()) {
+            for (Long childMid : childModuleIds) {
+                ModuleInfo childMeta = tree.getModule(childMid);
+                if (childMeta != null) {
+                    String childTable = resolvePrimaryTable(childMeta);
+                    boolean shouldIncludeChild = isFullTreeMode;
+                    if (!isFullTreeMode && childTable != null) {
+                        shouldIncludeChild =
+                                isTableOrDescendantInSpecs(childMid, tableSpecMap, tree);
+                    }
+                    if (shouldIncludeChild) {
+                        QueryNodePlan cp =
+                                compileTableNode(
+                                        childMid,
+                                        currentModuleId,
+                                        meta,
+                                        req,
+                                        projectRelations,
+                                        tree);
+                        childPlans.add(cp);
+                    }
+                }
+            }
+        }
+
+        // 6. 伴生表 Join 规格
+        List<JoinTableSpec> companionJoins =
+                isVirtual
+                        ? Collections.emptyList()
+                        : resolveCompanionJoinsForTable(
+                                primaryTable, primaryProjectedFields, projectRelations);
+
+        // 7. 自底向上子孙节点过滤条件上卷 (Semi-Join / EXISTS)
+        List<Condition> rollupConditions = new ArrayList<>();
+        if (!isVirtual) {
+            List<QueryNodePlan> physicalChildren = new ArrayList<>();
+            for (QueryNodePlan cp : childPlans) {
+                physicalChildren.addAll(collectPhysicalDescendantPlans(cp));
+            }
+
+            for (QueryNodePlan childPlan : physicalChildren) {
+                if (childPlan.getEffectiveFilterCondition() != null) {
+                    String childTable = childPlan.getPrimaryTable();
+                    if (childTable != null && childTable.equalsIgnoreCase(primaryTable)) {
+                        rollupConditions.add(childPlan.getEffectiveFilterCondition());
+                    } else if (childTable != null && childPlan.getParentForeignKey() != null) {
+                        String pK =
+                                childPlan.getParentKey() != null ? childPlan.getParentKey() : "id";
+                        String cFk = childPlan.getParentForeignKey();
+                        Condition existsCondition =
+                                DSL.exists(
+                                        DSL.selectOne()
+                                                .from(DSL.table(DSL.name(childTable)))
+                                                .where(
+                                                        DSL.field(DSL.name(childTable, cFk))
+                                                                .eq(
+                                                                        DSL.field(
+                                                                                DSL.name(
+                                                                                        primaryTable,
+                                                                                        pK)))
+                                                                .and(
+                                                                        DSL.field(
+                                                                                        DSL.name(
+                                                                                                childTable,
+                                                                                                "deleted"))
+                                                                                .eq((byte) 0))
+                                                                .and(
+                                                                        childPlan
+                                                                                .getEffectiveFilterCondition())));
+                        rollupConditions.add(existsCondition);
+                    }
+                }
+            }
+        }
+
+        Condition effectiveFilterCondition = null;
+        if (userFilterCondition != null && !rollupConditions.isEmpty()) {
+            effectiveFilterCondition = userFilterCondition.and(DSL.and(rollupConditions));
+        } else if (userFilterCondition != null) {
+            effectiveFilterCondition = userFilterCondition;
+        } else if (!rollupConditions.isEmpty()) {
+            effectiveFilterCondition = DSL.and(rollupConditions);
+        }
+
+        Condition baseCondition = isVirtual ? null : compileBaseConditions(meta, primaryTable);
+        Condition finalCombinedCondition;
+        if (baseCondition != null && effectiveFilterCondition != null) {
+            finalCombinedCondition = baseCondition.and(effectiveFilterCondition);
+        } else if (baseCondition != null) {
+            finalCombinedCondition = baseCondition;
+        } else {
+            finalCombinedCondition = effectiveFilterCondition;
+        }
+
+        Integer pNo =
+                (currentModuleId.equals(req.getModuleId()) && req instanceof TablePageQueryReq p)
+                        ? p.getPageNo()
+                        : 1;
+        Integer pSize =
+                (currentModuleId.equals(req.getModuleId()) && req instanceof TablePageQueryReq p)
+                        ? p.getPageSize()
+                        : (req instanceof TableDetailQueryReq ? 1 : 20);
+
+        return QueryNodePlan.builder()
+                .moduleId(currentModuleId)
+                .moduleMeta(meta)
+                .primaryTable(primaryTable)
+                .parentForeignKey(parentFk)
+                .parentKey(parentKey)
+                .parentRelationType(parentRel.relationType())
+                .effectiveFilterCondition(effectiveFilterCondition)
+                .pageNo(pNo)
+                .pageSize(pSize)
+                .projectedFields(primaryProjectedFields)
+                .condition(finalCombinedCondition)
+                .orderFields(orderFields)
+                .companionJoins(companionJoins)
+                .children(childPlans)
+                .build();
+    }
+
+    private List<PhysicalFieldSpec> compilePhysicalTableProjection(
+            ModuleInfo meta, String table, List<String> requestedColumns) {
+        List<PhysicalFieldSpec> specs = new ArrayList<>();
+        boolean isAllCols =
+                requestedColumns == null
+                        || requestedColumns.isEmpty()
+                        || requestedColumns.contains("*");
+
+        Map<String, ModuleFieldDTO> colMap = new LinkedHashMap<>();
+        if (meta != null && meta.getFields() != null) {
+            for (ModuleFieldDTO f : meta.getFields()) {
+                String tbl =
+                        (f.getTableName() != null && !f.getTableName().isBlank())
+                                ? f.getTableName()
+                                : resolvePrimaryTable(meta);
+                if (table.equalsIgnoreCase(tbl) && f.getColumnName() != null) {
+                    colMap.put(f.getColumnName().toLowerCase(), f);
+                }
+            }
+        }
+
+        if (isAllCols) {
+            // 全列查询模式 (未指定列或指定了 *)：返回空列表，由底层执行器直接生成并下发 SELECT * FROM table
+            return Collections.emptyList();
+        }
+
+        for (String col : requestedColumns) {
+            if (col != null && !col.isBlank() && !"*".equals(col.trim())) {
+                String cleanCol =
+                        col.contains(".")
+                                ? col.substring(col.lastIndexOf('.') + 1).trim()
+                                : col.trim();
+                ModuleFieldDTO f = colMap.get(cleanCol.toLowerCase());
+                if (f != null) {
+                    specs.add(toPhysicalFieldSpec(f, table));
+                } else {
+                    specs.add(
+                            PhysicalFieldSpec.builder()
+                                    .tableName(table)
+                                    .columnName(cleanCol)
+                                    .build());
+                }
+            }
+        }
+        return specs;
+    }
+
+    private Condition compileTableFilters(
+            String primaryTable,
+            ModuleInfo meta,
+            List<TableFilterItem> filters,
+            ProjectTableRelationsDTO projectRelations) {
+        if (filters == null || filters.isEmpty()) {
+            return null;
+        }
+
+        Set<String> applicableTables = new HashSet<>();
+        applicableTables.add(primaryTable.toLowerCase());
+        if (projectRelations != null && projectRelations.getForwardRelations() != null) {
+            List<TableRelationDTO> fwdRels =
+                    projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
+            if (fwdRels != null) {
+                for (TableRelationDTO rel : fwdRels) {
+                    if (rel.getJoinTable() != null) {
+                        applicableTables.add(rel.getJoinTable().trim().toLowerCase());
+                    }
+                }
+            }
+        }
+
+        List<Condition> conditions = new ArrayList<>();
+        for (TableFilterItem item : filters) {
+            Condition cond = compileSingleTableFilterItem(item, primaryTable, applicableTables);
+            if (cond != null && !DSL.noCondition().equals(cond)) {
+                conditions.add(cond);
+            }
+        }
+        return conditions.isEmpty() ? null : DSL.and(conditions);
+    }
+
+    private Condition compileSingleTableFilterItem(
+            TableFilterItem item, String defaultTable, Set<String> applicableTables) {
+        if (item == null) return null;
+
+        // 1. 尝试编译当前节点自身承载的物理字段条件 (selfCond)
+        Condition selfCond = null;
+        if (item.getColumnName() != null && !item.getColumnName().isBlank()) {
+            boolean hasValidValue =
+                    item.getValue() != null
+                            || "IS_NULL".equalsIgnoreCase(item.getOperator())
+                            || "IS_NOT_NULL".equalsIgnoreCase(item.getOperator());
+            if (hasValidValue) {
+                String tbl =
+                        (item.getTableName() != null && !item.getTableName().isBlank())
+                                ? item.getTableName().trim()
+                                : defaultTable;
+                if (applicableTables.contains(tbl.toLowerCase())) {
+                    String cleanCol =
+                            item.getColumnName()
+                                    .replace("`", "")
+                                    .replace("\"", "")
+                                    .replace("'", "")
+                                    .trim();
+                    if (!cleanCol.isBlank()) {
+                        selfCond =
+                                buildSqlCondition(
+                                        tbl, cleanCol, item.getOperator(), item.getValue());
+                    }
+                }
+            }
+        }
+
+        // 2. 递归编译子条件列表 (children 内部固定为同级 AND 结合)
+        List<Condition> subConditions = new ArrayList<>();
+        if (item.getChildren() != null && !item.getChildren().isEmpty()) {
+            for (TableFilterItem child : item.getChildren()) {
+                Condition subCond =
+                        compileSingleTableFilterItem(child, defaultTable, applicableTables);
+                if (subCond != null && !DSL.noCondition().equals(subCond)) {
+                    subConditions.add(subCond);
+                }
+            }
+        }
+
+        Condition childrenCond =
+                subConditions.isEmpty()
+                        ? null
+                        : (subConditions.size() == 1
+                                ? subConditions.get(0)
+                                : DSL.and(subConditions));
+
+        // 3. 组合逻辑：TableFilterItem 自身 (selfCond) 与其 children (childrenCond) 之间使用当前节点的 logic 拼接
+        String logic =
+                (item.getLogic() != null && !item.getLogic().isBlank())
+                        ? item.getLogic().toUpperCase().trim()
+                        : "AND";
+
+        // 情况 A: 既有自身条件，又有子条件 -> selfCond 与 childrenCond 按照 logic (OR/AND) 组合
+        if (selfCond != null && childrenCond != null) {
+            return "OR".equals(logic) ? selfCond.or(childrenCond) : selfCond.and(childrenCond);
+        }
+
+        // 情况 B: 只有自身条件
+        if (selfCond != null) {
+            return selfCond;
+        }
+
+        // 情况 C: 只有子条件 (此时 children 内部已按同级 AND 组合)
+        if (childrenCond != null) {
+            return childrenCond;
+        }
+
+        return null;
+    }
+
+    private List<JoinTableSpec> resolveCompanionJoinsForTable(
+            String primaryTable,
+            List<PhysicalFieldSpec> projectedFields,
+            ProjectTableRelationsDTO projectRelations) {
+        if (primaryTable == null
+                || primaryTable.isBlank()
+                || projectRelations == null
+                || projectRelations.getForwardRelations() == null) {
+            return Collections.emptyList();
+        }
+
+        List<TableRelationDTO> relations =
+                projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
+        if (relations == null || relations.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Set<String> neededCompanionTables = new HashSet<>();
+        if (projectFieldsNeedCompanion(projectedFields, primaryTable)) {
+            for (PhysicalFieldSpec spec : projectedFields) {
+                if (spec.getTableName() != null
+                        && !spec.getTableName().equalsIgnoreCase(primaryTable)) {
+                    neededCompanionTables.add(spec.getTableName().toLowerCase());
+                }
+            }
+        }
+
+        List<JoinTableSpec> joins = new ArrayList<>();
+        for (TableRelationDTO rel : relations) {
+            if ("ONE_TO_ONE".equalsIgnoreCase(rel.getRelationType())
+                    || "COMPANION".equalsIgnoreCase(rel.getRelationType())) {
+                String compTable = rel.getJoinTable();
+                if (compTable != null && !compTable.isBlank()) {
+                    if (neededCompanionTables.isEmpty()
+                            || neededCompanionTables.contains(compTable.toLowerCase())) {
+                        String fk =
+                                (rel.getJoinField() != null && !rel.getJoinField().isBlank())
+                                        ? rel.getJoinField().trim()
+                                        : "id";
+                        String pk =
+                                (rel.getMainField() != null && !rel.getMainField().isBlank())
+                                        ? rel.getMainField().trim()
+                                        : "id";
+                        joins.add(
+                                JoinTableSpec.builder()
+                                        .sourceTable(primaryTable)
+                                        .sourceField(pk)
+                                        .targetTable(compTable)
+                                        .targetField(fk)
+                                        .relationType("ONE_TO_ONE")
+                                        .build());
+                    }
+                }
+            }
+        }
+        return joins;
+    }
+
+    private boolean projectFieldsNeedCompanion(
+            List<PhysicalFieldSpec> projectedFields, String primaryTable) {
+        if (projectedFields == null) return false;
+        for (PhysicalFieldSpec spec : projectedFields) {
+            if (spec.getTableName() != null
+                    && !spec.getTableName().equalsIgnoreCase(primaryTable)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isTableOrDescendantInSpecs(
+            Long moduleId, Map<String, TableSpec> tableSpecMap, ModuleTreeDTO tree) {
+        if (moduleId == null || tree == null) return false;
+        ModuleInfo meta = tree.getModule(moduleId);
+        if (meta != null) {
+            String pt = resolvePrimaryTable(meta);
+            if (pt != null && tableSpecMap.containsKey(pt.toLowerCase())) {
+                return true;
+            }
+        }
+        List<Long> children = tree.getChildModuleIds(moduleId);
+        if (children != null) {
+            for (Long cid : children) {
+                if (isTableOrDescendantInSpecs(cid, tableSpecMap, tree)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private List<OrderField<?>> compileTableSorts(String primaryTable, List<TableSortItem> sorts) {
+        if (sorts == null || sorts.isEmpty()) {
+            return List.of(DSL.field(DSL.name(primaryTable, "id")).desc());
+        }
+        List<OrderField<?>> orderFields = new ArrayList<>();
+        for (TableSortItem s : sorts) {
+            if (s != null && s.getColumnName() != null && !s.getColumnName().isBlank()) {
+                String tbl =
+                        (s.getTableName() != null && !s.getTableName().isBlank())
+                                ? s.getTableName().trim()
+                                : primaryTable;
+                Field<Object> field = DSL.field(DSL.name(tbl, s.getColumnName().trim()));
+                if ("ASC".equalsIgnoreCase(s.getDirection())) {
+                    orderFields.add(field.asc());
+                } else {
+                    orderFields.add(field.desc());
+                }
+            }
+        }
+        if (orderFields.isEmpty()) {
+            orderFields.add(DSL.field(DSL.name(primaryTable, "id")).desc());
+        }
+        return orderFields;
     }
 }

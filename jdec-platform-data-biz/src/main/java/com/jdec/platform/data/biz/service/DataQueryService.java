@@ -61,6 +61,36 @@ public class DataQueryService {
                 : DataBlock.empty(req.getModuleId());
     }
 
+    /** 物理表分页查询门面 (TablePageQueryReq -> DataPage<DataBlock>) */
+    public DataPage<DataBlock> queryByTable(
+            com.jdec.platform.data.api.dto.request.TablePageQueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compile(req);
+        return queryPlanExecutor.execute(plan);
+    }
+
+    /** 物理表通用查询门面 (TableQueryReq -> DataPage<DataBlock>) */
+    public DataPage<DataBlock> queryByTable(
+            com.jdec.platform.data.api.dto.request.TableQueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compile(req);
+        return queryPlanExecutor.execute(plan);
+    }
+
+    /** 物理表动态数据集数量统计 (TableQueryReq -> Long) */
+    public Long countByTable(com.jdec.platform.data.api.dto.request.TableQueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compile(req);
+        return queryPlanExecutor.executeCount(plan);
+    }
+
+    /** 物理表详情精准查询门面 (TableDetailQueryReq -> DataBlock 读写同源区块) */
+    public DataBlock getDetailByTable(
+            com.jdec.platform.data.api.dto.request.TableDetailQueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compileDetail(req);
+        DataPage<DataBlock> page = queryPlanExecutor.execute(plan);
+        return page != null && page.getData() != null
+                ? page.getData()
+                : DataBlock.empty(req.getModuleId());
+    }
+
     /** 动态单据详情精准查询快捷方法 (无下级展开) */
     public DataBlock getDetail(Long moduleId, Long id) {
         return getDetail(DetailQueryReq.builder().moduleId(moduleId).id(id).build());
@@ -71,7 +101,29 @@ public class DataQueryService {
         return getDetail(DetailQueryReq.builder().moduleId(moduleId).id(id).fields(fields).build());
     }
 
-    /** 通用字段搜索下拉候选项查询 (基于 QueryPlan 统一编译与执行) */
+    /** 物理表字段搜索下拉候选项查询 (TableOptionReq -> List<DataOption>) */
+    public List<DataOption> getOptionsByTable(
+            com.jdec.platform.data.api.dto.request.TableOptionReq req) {
+        QueryPlan plan = queryPlanCompiler.compile(req);
+        List<Object> values =
+                queryPlanExecutor.executeDistinctOptions(
+                        plan,
+                        req.getTableName(),
+                        req.getColumnName(),
+                        req.getDirection(),
+                        req.getLimit());
+
+        List<DataOption> options = new ArrayList<>();
+        for (Object val : values) {
+            if (val != null) {
+                options.add(DataOption.builder().label(val).value(val).build());
+            }
+        }
+        return options;
+    }
+
+    /** 通用字段搜索下拉候选项查询 (基于 QueryPlan 统一编译与执行，旧版将废弃) */
+    @Deprecated(since = "1.0.0", forRemoval = true)
     public List<DataOption> getOptions(OptionReq req) {
         QueryPlan plan = queryPlanCompiler.compile(req);
         List<Object> values =
