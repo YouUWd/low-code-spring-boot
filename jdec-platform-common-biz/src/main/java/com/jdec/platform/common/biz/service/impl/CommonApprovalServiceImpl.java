@@ -201,6 +201,21 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         return approvalEngine.getBusinessNextId(rootModuleId);
     }
 
+    @Override
+    public List<Map<String, Object>> getApprovalStep(Long menuId, Long id) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+
+        // 1. 直接通过 OpenMenuApi 解析菜单绑定的根模块 ID
+        Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (rootModuleId == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
+        }
+
+        return approvalEngine.getApprovalStep(rootModuleId, id);
+    }
+
     private ApprovalButtonsGroup queryAllApprovalButtons(Long rootModuleId) {
         Map<Long, List<Map<String, Object>>> todoBtns = new LinkedHashMap<>();
         Map<Long, List<Map<String, Object>>> doneBtns = new LinkedHashMap<>();

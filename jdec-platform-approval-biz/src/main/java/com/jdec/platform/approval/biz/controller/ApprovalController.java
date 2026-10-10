@@ -41,7 +41,7 @@ public class ApprovalController {
     @Operation(summary = "查询待办下一个单据ID", description = "查询待办下一个单据ID")
     public ApiResponse<Long> BusinessNextId(@RequestBody ApprovalProcessReq req) {
         return ApiResponse.success(approvalService.getBusinessNextId(req));
-    }*/
+    }
 
     //    @PostMapping("/detail")
     //    @Operation(summary = "查询单据数据", description = "查询单据数据")
@@ -54,7 +54,7 @@ public class ApprovalController {
     public ApiResponse<List<Map<String, Object>>> getApprovalStep(
             @RequestBody ApprovalDataReq req) {
         return ApiResponse.success(approvalService.getApprovalStep(req));
-    }
+    }*/
 
     @PostMapping("/ApprovalEvent")
     @Operation(summary = "测试审批事件", description = "测试审批事件")
