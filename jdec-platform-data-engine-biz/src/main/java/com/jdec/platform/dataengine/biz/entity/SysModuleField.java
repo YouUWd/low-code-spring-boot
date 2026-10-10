@@ -51,6 +51,10 @@ public class SysModuleField extends Model<SysModuleField> {
     @TableField("sort_order")
     private Integer sortOrder;
 
+    /** 状态: 1-启用, 0-停用 */
+    @TableField("status")
+    private Integer status;
+
     /** 创建人ID */
     @TableField("created_by")
     private Long createdBy;

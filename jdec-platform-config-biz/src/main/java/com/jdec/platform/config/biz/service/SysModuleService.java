@@ -16,11 +16,13 @@ import com.jdec.platform.config.api.dto.response.SysStatusTreeResp;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysModuleStatus;
+import com.jdec.platform.config.biz.entity.SysRoleModuleFieldPermission;
 import com.jdec.platform.config.biz.entity.SysStatus;
 import com.jdec.platform.config.biz.entity.SysTableRelation;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysTableRelationMapper;
 import com.jdec.platform.config.biz.reference.ReferenceCheckService;
@@ -61,6 +63,7 @@ public class SysModuleService implements SysModuleApi {
     private final SysModuleStatusMapper sysModuleStatusMapper;
     private final SysStatusMapper sysStatusMapper;
     private final SysTableRelationMapper sysTableRelationMapper;
+    private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final ReferenceCheckService referenceCheckService;
 
     @Override
@@ -139,11 +142,12 @@ public class SysModuleService implements SysModuleApi {
 
         Long moduleId = module.getId();
 
-        // 2. 获取模块字段配置
+        // 2. 获取模块已启用的字段配置
         List<SysModuleField> allFields =
                 sysModuleFieldMapper.selectList(
                         Wrappers.<SysModuleField>lambdaQuery()
                                 .eq(SysModuleField::getModuleId, moduleId)
+                                .eq(SysModuleField::getStatus, 1)
                                 .orderByAsc(SysModuleField::getSortOrder));
 
         List<ModuleFieldDTO> fieldInfos =
@@ -157,6 +161,7 @@ public class SysModuleService implements SysModuleApi {
                                     info.setDisplayName(f.getDisplayName());
                                     info.setBizKeyOrder(f.getBizKeyOrder());
                                     info.setSortOrder(f.getSortOrder());
+                                    info.setStatus(f.getStatus());
                                     return info;
                                 })
                         .collect(Collectors.toList());
@@ -561,6 +566,10 @@ public class SysModuleService implements SysModuleApi {
 
         sysModuleStatusMapper.delete(
                 Wrappers.<SysModuleStatus>lambdaQuery().eq(SysModuleStatus::getModuleId, moduleId));
+
+        sysRoleModuleFieldPermissionMapper.delete(
+                Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .eq(SysRoleModuleFieldPermission::getModuleId, moduleId));
     }
 
     private SysModule createModule(String projectNo, Long subjectId, SaveSysModuleReq request) {
@@ -599,57 +608,79 @@ public class SysModuleService implements SysModuleApi {
         module.setUpdatedDate(LocalDateTime.now());
     }
 
-    /** 差量保存模块物理字段配置 (sys_module_field) */
+    /** 差量维护模块物理字段配置 (sys_module_field: 采用 status 软启用/停用方案，复用原有 ID 保持权限及引用稳定) */
     private void saveFields(Long moduleId, List<ModuleFieldDTO> fields) {
         if (fields == null) {
             fields = Collections.emptyList();
         }
 
-        // 1. 查询已有字段配置
+        // 1. 查询该模块在数据库中现存的所有物理字段配置（包含启用与已停用的）
         List<SysModuleField> existFields =
                 sysModuleFieldMapper.selectList(
                         Wrappers.<SysModuleField>lambdaQuery()
                                 .eq(SysModuleField::getModuleId, moduleId));
-        Map<Long, SysModuleField> existFieldMap =
-                existFields.stream().collect(Collectors.toMap(SysModuleField::getId, f -> f));
-
-        // 2. 收集请求中提交的有效 ID，识别并删除被移除的孤儿字段
-        Set<Long> keepIds =
-                fields.stream()
-                        .map(ModuleFieldDTO::getId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-
-        List<Long> deleteIds =
+        Map<Long, SysModuleField> existFieldByIdMap =
                 existFields.stream()
-                        .map(SysModuleField::getId)
-                        .filter(id -> !keepIds.contains(id))
-                        .collect(Collectors.toList());
+                        .filter(f -> f.getId() != null)
+                        .collect(Collectors.toMap(SysModuleField::getId, f -> f, (k1, k2) -> k1));
+        Map<String, SysModuleField> existFieldByColMap =
+                existFields.stream()
+                        .filter(f -> f.getColumnName() != null)
+                        .collect(
+                                Collectors.toMap(
+                                        SysModuleField::getColumnName, f -> f, (k1, k2) -> k1));
 
-        if (!deleteIds.isEmpty()) {
-            sysModuleFieldMapper.deleteByIds(deleteIds);
-        }
-
-        // 3. 组装待批量保存/更新的字段列表
         LocalDateTime now = LocalDateTime.now();
         List<SysModuleField> saveOrUpdateList = new ArrayList<>();
+        Set<Long> processedFieldIds = new HashSet<>();
+
+        // 2. 处理本次前端选中的有效字段（激活启用 status = 1）
         for (int i = 0; i < fields.size(); i++) {
             ModuleFieldDTO info = fields.get(i);
-            SysModuleField f;
-            if (info.getId() != null && existFieldMap.containsKey(info.getId())) {
-                f = existFieldMap.get(info.getId());
-            } else {
+            if (info == null || info.getColumnName() == null || info.getColumnName().isBlank()) {
+                continue;
+            }
+
+            SysModuleField f = null;
+            // 优先根据 ID 匹配已存字段
+            if (info.getId() != null && existFieldByIdMap.containsKey(info.getId())) {
+                f = existFieldByIdMap.get(info.getId());
+            }
+            // 若前端未传入 ID 或 ID 不匹配，则按 columnName 在该模块内自动查找复用已有字段记录
+            if (f == null && existFieldByColMap.containsKey(info.getColumnName())) {
+                f = existFieldByColMap.get(info.getColumnName());
+            }
+
+            if (f == null) {
+                // 确实为全新物理字段，执行新增
                 f = new SysModuleField();
                 f.setModuleId(moduleId);
+                f.setColumnName(info.getColumnName().trim());
                 f.setCreatedDate(now);
             }
-            f.setColumnName(info.getColumnName());
+
+            f.setStatus(1); // 激活启用
             f.setTableName(info.getTableName());
             f.setDisplayName(info.getDisplayName());
             f.setBizKeyOrder(info.getBizKeyOrder());
             f.setSortOrder(info.getSortOrder() != null ? info.getSortOrder() : i);
             f.setUpdatedDate(now);
+
             saveOrUpdateList.add(f);
+            if (f.getId() != null) {
+                processedFieldIds.add(f.getId());
+            }
+        }
+
+        // 3. 识别在库中存在但本次未被勾选的字段：软停用 (status = 0)，绝不物理删除以保护权限及关联数据
+        for (SysModuleField f : existFields) {
+            if (f.getId() != null
+                    && !processedFieldIds.contains(f.getId())
+                    && (f.getStatus() == null || f.getStatus() == 1)) {
+                f.setStatus(0); // 停用
+                f.setUpdatedDate(now);
+                saveOrUpdateList.add(f);
+            }
         }
 
         if (!saveOrUpdateList.isEmpty()) {
