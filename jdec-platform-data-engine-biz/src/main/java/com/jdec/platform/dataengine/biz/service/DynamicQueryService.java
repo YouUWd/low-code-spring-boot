@@ -246,8 +246,6 @@ public class DynamicQueryService {
             history = dynamicDetailQueryReq.getHistory();
         }
 
-        // TODO 通过menuId和moduleId查审批链配置获取
-
         Boolean hasApproval =
                 sysApprovalChainConfigApi.getApprovalStatus(
                         List.of(dynamicDetailQueryReq.getModuleId()));
