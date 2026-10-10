@@ -2,7 +2,6 @@ package com.jdec.platform.common.biz.controller;
 
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderReq;
-import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -92,35 +91,6 @@ public class CommonMenuHeaderController {
                     "Common menu-header resetUserMenuHeader failed: userId={}, menuId={}, err={}",
                     userId,
                     menuId,
-                    ex.getMessage(),
-                    ex);
-            throw ex;
-        }
-    }
-
-    @GetMapping("/display")
-    @Operation(
-            summary = "用户个性化表头展示",
-            description =
-                    "按用户 + 列表菜单读取 user_menu_header 已保存的个性化配置（菜单类型为「页面」且关联详情菜单时按详情菜单ID 查询，否则按 menuId 本身），"
-                            + "读取前先取模块侧最新数据（菜单及其子菜单、绑定模块下的字段）构成节点池，仅返回节点池中仍存在的节点"
-                            + "（模块侧已删除的菜单/字段不再返回，全部失效时回退系统默认表头）；"
-                            + "按多级列头展示格式返回：只输出已勾选（checked=1）的列，"
-                            + "其祖先菜单节点一并保留用于组装多级列头；无已勾选配置时 header 为空")
-    public ApiResponse<MenuHeaderDisplayResp> getUserMenuHeaderDisplay(
-            @RequestParam Long userId,
-            @RequestParam Long menuId,
-            @RequestParam(required = false) Long roleId) {
-        try {
-            MenuHeaderDisplayResp result =
-                    userMenuHeaderApi.getUserMenuHeaderDisplay(userId, menuId, roleId);
-            return ApiResponse.success(result);
-        } catch (Exception ex) {
-            log.error(
-                    "Common menu-header getUserMenuHeaderDisplay failed: userId={}, menuId={}, roleId={}, err={}",
-                    userId,
-                    menuId,
-                    roleId,
                     ex.getMessage(),
                     ex);
             throw ex;

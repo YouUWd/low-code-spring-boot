@@ -9,6 +9,9 @@ import lombok.Data;
 @Schema(description = "详情版本列表返回数据")
 public class VersionListResp {
 
+    @Schema(description = "数据ID", example = "100")
+    private Long id;
+
     @Schema(description = "版本号", example = "版本号")
     private Integer version;
 

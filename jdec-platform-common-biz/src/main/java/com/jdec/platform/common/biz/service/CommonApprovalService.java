@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.service;
 
+import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import java.util.List;
 import java.util.Map;
 
@@ -13,4 +14,10 @@ public interface CommonApprovalService {
      * @return 映射字典：1 -> 待办数量(todo), 2 -> 已办数量(done), 3 -> 全部数量(total)
      */
     List<Map<String, Object>> getApprovalCountByMenu(Long menuId);
+
+    void approvalBusiness(Long menuId, ApprovalReq req);
+
+    Long BusinessNextId(Long menuId);
+
+    List<Map<String, Object>> getApprovalStep(Long menuId, Long id);
 }

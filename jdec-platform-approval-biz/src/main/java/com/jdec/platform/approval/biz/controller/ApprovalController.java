@@ -35,7 +35,7 @@ public class ApprovalController {
     public ApiResponse<List<Map<String, Object>>> getBusinessList(
             @RequestBody ApprovalListReq req) {
         return ApiResponse.success(approvalService.getBusinessList(req));
-    }*/
+    }
 
     @PostMapping("/BusinessNextId")
     @Operation(summary = "查询待办下一个单据ID", description = "查询待办下一个单据ID")
@@ -49,13 +49,12 @@ public class ApprovalController {
     // req) {
     //        return ApiResponse.success(approvalService.getApprovalDetail(req));
     //    }
-
     @PostMapping("/ApprovalStep")
     @Operation(summary = "查询已经审批的步骤状态", description = "查询已经审批的步骤状态")
     public ApiResponse<List<Map<String, Object>>> getApprovalStep(
             @RequestBody ApprovalDataReq req) {
         return ApiResponse.success(approvalService.getApprovalStep(req));
-    }
+    }*/
 
     @PostMapping("/ApprovalEvent")
     @Operation(summary = "测试审批事件", description = "测试审批事件")

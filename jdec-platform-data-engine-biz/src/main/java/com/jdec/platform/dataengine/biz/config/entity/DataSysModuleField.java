@@ -36,6 +36,9 @@ public class DataSysModuleField {
     /** 显示排序 */
     private Integer sortOrder;
 
+    /** 状态: 1-启用, 0-停用 */
+    private Integer status;
+
     /** 创建人 ID */
     private Long createdBy;
 

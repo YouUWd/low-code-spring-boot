@@ -33,4 +33,7 @@ public class ModuleFieldDTO {
 
     @Schema(description = "排序顺序", example = "1")
     private Integer sortOrder;
+
+    @Schema(description = "状态: 1-启用, 0-停用", example = "1")
+    private Integer status;
 }

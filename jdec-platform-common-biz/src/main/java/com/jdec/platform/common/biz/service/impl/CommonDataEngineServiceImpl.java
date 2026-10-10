@@ -8,6 +8,7 @@ import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
 import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
 import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
+import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.dto.common.*;
@@ -47,6 +48,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
     private final SysModuleApi sysModuleApi;
 
     private final UserMenuHeaderApi userMenuHeaderApi;
+
+    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
 
     @Override
     public DetailDataResp<NestedModuleDataDTO> getDetailByMenu(
@@ -104,6 +107,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         List<Long> checkedFieldIds = new ArrayList<>();
 
+        Boolean hasApproval =
+                sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModule.getId()));
+
         // 设置待查看模块表头及模块可查看字段
         for (SysMenuResp targetMenu : targetMenus) {
 
@@ -111,7 +117,13 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
             MenuHeaderDisplayResp menuHeaderDisplayResp =
                     userMenuHeaderApi.getUserMenuHeaderDisplay(
-                            UserContext.getUserId(), targetMenu.getId(), UserContext.getRoleId());
+                            UserContext.getUserId(),
+                            targetMenu.getId(),
+                            UserContext.getRoleId(),
+                            "detail",
+                            menuDetailQueryReq.getId() > 0 ? "edit" : "apply",
+                            Objects.nonNull(hasApproval) ? (hasApproval ? 1 : 0) : 0,
+                            roleId);
 
             if (Objects.nonNull(menuHeaderDisplayResp)) {
                 moduleIdHeaderMap.put(targetMenu.getModuleId(), menuHeaderDisplayResp.getHeader());
@@ -184,10 +196,12 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         nameToWorldConfMap,
                         rootNode);
 
-        NestedModuleDataDTO detailData;
+        NestedModuleDataDTO detailData = null;
 
         if (dynamicDetailQueryReq.getId() > 0) {
-            detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
+            if (!CollectionUtils.isEmpty(checkedFieldIds)) {
+                detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
+            }
         } else {
             detailData = buildTemplateTree(metaDTO);
         }
@@ -223,8 +237,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         VersionListQueryReq versionListQueryReq =
                 VersionListQueryReq.builder()
-                        .moduleId(targetMenus.getModuleId())
                         .id(menuDetailQueryReq.getId())
+                        .moduleId(targetMenus.getModuleId())
+                        .businessNo(menuDetailQueryReq.getBusinessNo())
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
 

@@ -2,12 +2,7 @@ package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
-import com.jdec.platform.common.api.dto.response.DataRecordItem;
-import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
-import com.jdec.platform.common.api.dto.response.ModuleDataNode;
-import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
-import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
+import com.jdec.platform.common.api.dto.response.*;
 import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
 import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
@@ -19,12 +14,7 @@ import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.config.api.dto.common.ModuleInfo;
-import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
-import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
-import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
-import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
@@ -44,17 +34,7 @@ import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -1047,7 +1027,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private MenuHeaderColumnResp getHeaderDisplayOrThrow(Long userId, Long menuId, Long roleId) {
         MenuHeaderDisplayResp headerDisplay =
-                userMenuHeaderApi.getUserMenuHeaderDisplay(userId, menuId, roleId);
+                userMenuHeaderApi.getUserMenuHeaderDisplay(
+                        userId, menuId, roleId, null, null, null, null);
         if (headerDisplay == null || headerDisplay.getHeader() == null) {
             throw new BusinessException("菜单 [" + menuId + "] 未配置有效的表头展示信息");
         }

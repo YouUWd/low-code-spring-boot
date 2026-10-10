@@ -2,8 +2,10 @@ package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.*;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
@@ -62,6 +64,8 @@ public class DynamicQueryService {
     private final DataModuleConfigService dataModuleConfigService;
 
     private final DetailDataProcessFactory detailDataProcessFactory;
+
+    private final ConfigApi configApi;
 
     /** 一体化列表分页查询 */
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -241,8 +245,6 @@ public class DynamicQueryService {
         if (Objects.nonNull(dynamicDetailQueryReq.getHistory())) {
             history = dynamicDetailQueryReq.getHistory();
         }
-
-        // TODO 通过menuId和moduleId查审批链配置获取
 
         Boolean hasApproval =
                 sysApprovalChainConfigApi.getApprovalStatus(
@@ -461,6 +463,9 @@ public class DynamicQueryService {
             NestedModuleDataDTO childResultList =
                     queryModule(singleQueryDTO, childNode, true, false, moduleIdToFieldMap);
 
+            ProjectTableRelationsDTO projectTableRelationsDTO =
+                    configApi.getProjectTableRelations(AppContext.getProjectNo());
+
             if (virtualModule) {
                 currentModuleData
                         .get(0)
@@ -469,8 +474,16 @@ public class DynamicQueryService {
                                 filterSubModuleList(
                                         List.of(childResultList),
                                         primaryIds,
-                                        TabTreeNodeDTO.buildCompanyRoot()));
+                                        sysModuleInfo,
+                                        projectTableRelationsDTO));
             } else {
+                if (CollectionUtils.isEmpty(currentModuleData)) {
+                    currentModuleData.add(
+                            RecordDataDTO.builder()
+                                    .row(new HashMap<>())
+                                    .children(new ArrayList<>())
+                                    .build());
+                }
                 for (RecordDataDTO vo : currentModuleData) {
                     Long primaryId =
                             extractFieldValue(vo.getRow(), "id", sysModuleInfo.getPrimaryTable());
@@ -486,7 +499,8 @@ public class DynamicQueryService {
                                         filterSubModuleList(
                                                 List.of(childResultList),
                                                 Set.of(primaryId),
-                                                TabTreeNodeDTO.buildCompanyRoot()));
+                                                sysModuleInfo,
+                                                projectTableRelationsDTO));
                     }
                 }
             }
@@ -508,24 +522,31 @@ public class DynamicQueryService {
                         .map(ModuleFieldDTO::getTableName)
                         .collect(Collectors.toSet());
 
-        TabTreeNodeDTO tableTreeNode = TabTreeNodeDTO.buildCompanyRoot();
+        ProjectTableRelationsDTO projectTableRelationsDTO =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
 
         List<ModuleFieldDTO> moduleFields = new ArrayList<>();
 
         for (String tableName : moduleTables) {
-            TabTreeNodeDTO targetNode = TabTreeNodeDTO.findSubTreeByValue(tableTreeNode, tableName);
 
-            if (Objects.isNull(targetNode)) {
-                continue;
-            }
+            if (projectTableRelationsDTO.getReverseRelations() != null
+                    && projectTableRelationsDTO.getReverseRelations().containsKey(tableName)) {
 
-            if (StringUtils.isNotBlank(targetNode.getNode().getSubTableField())) {
-                moduleFields.add(
-                        ModuleFieldDTO.builder()
-                                .moduleId(id)
-                                .tableName(tableName)
-                                .columnName(targetNode.getNode().getSubTableField())
-                                .build());
+                List<com.jdec.platform.config.api.dto.common.TableRelationDTO> relationList =
+                        projectTableRelationsDTO.getReverseRelations().get(tableName);
+
+                if (CollectionUtils.isEmpty(relationList)) {
+                    continue;
+                }
+
+                if (StringUtils.isNotBlank(relationList.get(0).getJoinField())) {
+                    moduleFields.add(
+                            ModuleFieldDTO.builder()
+                                    .moduleId(id)
+                                    .tableName(tableName)
+                                    .columnName(relationList.get(0).getJoinField())
+                                    .build());
+                }
             }
 
             moduleFields.add(
@@ -546,7 +567,8 @@ public class DynamicQueryService {
     public List<NestedModuleDataDTO> filterSubModuleList(
             List<NestedModuleDataDTO> subModuleList,
             Set<Long> parentPkSet,
-            TabTreeNodeDTO tableTree) {
+            SysModuleInfo parentModuleInfo,
+            ProjectTableRelationsDTO tableRelationsDTO) {
         if (subModuleList == null
                 || subModuleList.isEmpty()
                 || parentPkSet == null
@@ -566,10 +588,11 @@ public class DynamicQueryService {
                             AppContext.getSubjectId(),
                             subModule.getModuleId());
 
-            TabTreeNodeDTO targetNode =
-                    TabTreeNodeDTO.findSubTreeByValue(tableTree, sysModuleInfo.getPrimaryTable());
+            com.jdec.platform.config.api.dto.common.TableRelationDTO tableRelationDTO =
+                    tableRelationsDTO.findDirectRelation(
+                            parentModuleInfo.getPrimaryTable(), sysModuleInfo.getPrimaryTable());
 
-            if (Objects.isNull(targetNode)) {
+            if (Objects.isNull(tableRelationDTO)) {
                 newSubModule.setRecord(subModule.getRecord());
                 resultList.add(newSubModule);
             } else {
@@ -581,7 +604,7 @@ public class DynamicQueryService {
                                             Long fkVal =
                                                     extractFieldValue(
                                                             record.getRow(),
-                                                            targetNode.getNode().getSubTableField(),
+                                                            tableRelationDTO.getJoinField(),
                                                             sysModuleInfo.getPrimaryTable());
                                             if (fkVal == null) {
                                                 return false;
@@ -605,7 +628,8 @@ public class DynamicQueryService {
                                                     filterSubModuleList(
                                                             record.getChildren(),
                                                             childPkSet,
-                                                            tableTree);
+                                                            sysModuleInfo,
+                                                            tableRelationsDTO);
                                             newRecord.setChildren(childSub);
                                             return newRecord;
                                         })
@@ -1074,7 +1098,7 @@ public class DynamicQueryService {
     }
 
     public List<VersionListResp> getVersionList(VersionListQueryReq versionListQueryReq) {
-        Long id = versionListQueryReq.getId();
+        String businessNo = versionListQueryReq.getBusinessNo();
         Long moduleId = versionListQueryReq.getModuleId();
 
         Boolean hasApproval =
@@ -1087,52 +1111,64 @@ public class DynamicQueryService {
 
         List<VersionListResp> versionList = new ArrayList<>();
 
-        Record recordsResult = getLastVersion(moduleId, id);
+        Result<Record> recordsResult =
+                getVersions(moduleId, businessNo, versionListQueryReq.getId());
 
-        if (Objects.nonNull(recordsResult)) {
-            Map<String, Object> resultMap = recordsResult.intoMap();
+        if (!CollectionUtils.isEmpty(recordsResult)) {
 
-            if (resultMap.containsKey("version_no")
-                    && Objects.nonNull(resultMap.get("version_no"))) {
+            // 变更时返回虚拟版本
+            if ("change".equals(versionListQueryReq.getBtnType())) {
 
-                Integer versionNo = Integer.parseInt(String.valueOf(resultMap.get("version_no")));
-
-                // 变更时返回虚拟版本
-                if ("change-change".equals(versionListQueryReq.getBtnType())) {
-                    Integer fakeVersionNo = versionNo + 1;
-                    versionList.add(
-                            VersionListResp.builder()
-                                    .version(fakeVersionNo)
-                                    .history(false)
-                                    .btnType("change-change")
-                                    .build());
-                }
-
+                Integer lastVersion = getMaxVersion(moduleId, businessNo);
+                Integer fakeVersionNo = lastVersion == null ? 0 : lastVersion + 1;
                 versionList.add(
                         VersionListResp.builder()
-                                .version(versionNo)
+                                .version(fakeVersionNo)
+                                .id(versionListQueryReq.getId())
                                 .history(false)
-                                .btnType("view")
+                                .btnType("change-change")
                                 .build());
             }
-        }
 
-        List<VersionListResp> historyVersionList = getHistoryVersionList(moduleId, id);
+            int resultLength = recordsResult.size();
 
-        if (!CollectionUtils.isEmpty(historyVersionList)) {
-            if ("change-change".equals(versionListQueryReq.getBtnType())) {
-                versionList.get(1).setPreVersion(historyVersionList.get(0).getVersion());
-            } else {
-                versionList.get(0).setPreVersion(historyVersionList.get(0).getVersion());
+            for (int i = 0; i < recordsResult.size(); i++) {
+
+                Map<String, Object> resultMap = recordsResult.get(i).intoMap();
+
+                if (resultMap.containsKey("version_no")
+                        && Objects.nonNull(resultMap.get("version_no"))) {
+
+                    Integer versionNo =
+                            Integer.parseInt(String.valueOf(resultMap.get("version_no")));
+
+                    Long id = Long.parseLong(String.valueOf(resultMap.get("id")));
+
+                    VersionListResp.VersionListRespBuilder versionBuilder =
+                            VersionListResp.builder()
+                                    .version(versionNo)
+                                    .id(id)
+                                    .history(true)
+                                    .btnType("view");
+
+                    // 除了第一版，其他版本设置preVersion为上一版本号
+                    if (resultLength > 1 && i != (resultLength - 1)) {
+                        versionBuilder.preVersion(versionList.get(i - 1).getVersion());
+                    }
+
+                    if (i == 0) {
+                        versionBuilder.history(false);
+                    }
+
+                    versionList.add(versionBuilder.build());
+                }
             }
         }
-
-        versionList.addAll(historyVersionList);
 
         return versionList;
     }
 
-    private Record getLastVersion(Long moduleId, Long id) {
+    private Result<Record> getVersions(Long moduleId, String businessNo, Long id) {
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
                         AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
@@ -1146,15 +1182,58 @@ public class DynamicQueryService {
         // 构造SQL 查询条件
         List<Condition> conditions = new ArrayList<>();
 
-        conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
+        conditions.add(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo));
+
+        conditions.add(
+                DSL.field(DSL.name(primaryTable, "business_status"))
+                        .eq(99)
+                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
 
         query.where(conditions);
 
-        query.stream().limit(1);
+        query.orderBy(DSL.field(DSL.name("version_no")).desc());
 
-        Record recordsResult = query.fetchOne();
+        Result<Record> recordsResult = query.fetch();
 
         return recordsResult;
+    }
+
+    private Integer getMaxVersion(Long moduleId, String businessNo) {
+        SysModuleInfo sysModuleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+
+        String primaryTable = sysModuleInfo.getPrimaryTable();
+
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        List<Field<?>> fields = new ArrayList<>();
+        fields.add(DSL.max(DSL.field(DSL.name(primaryTable, "version_no"))).as("max_version"));
+
+        SelectJoinStep<Record> query = dslContext.select(fields).from(DSL.name(primaryTable));
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+
+        conditions.add(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo));
+
+        query.where(conditions);
+
+        query.groupBy(DSL.field(DSL.name("business_no")));
+
+        Record maxVersionResult = query.fetchOne();
+
+        if (Objects.isNull(maxVersionResult)) {
+            return null;
+        } else {
+            Map<String, Object> resultMap = maxVersionResult.intoMap();
+            if (resultMap.containsKey("max_version")
+                    && Objects.nonNull(resultMap.get("max_version"))) {
+                Integer maxVersion = Integer.parseInt(String.valueOf(resultMap.get("max_version")));
+                return maxVersion;
+            } else {
+                return null;
+            }
+        }
     }
 
     private List<VersionListResp> getHistoryVersionList(Long moduleId, Long id) {

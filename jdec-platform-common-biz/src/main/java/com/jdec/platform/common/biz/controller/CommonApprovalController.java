@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.controller;
 
+import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -8,10 +9,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 /** 公共审批业务聚合控制器 */
 @Slf4j
@@ -31,6 +29,56 @@ public class CommonApprovalController {
             @PathVariable Long menuId) {
         try {
             List<Map<String, Object>> result = commonApprovalService.getApprovalCountByMenu(menuId);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common approval getApprovalCountByMenu failed: menuId={}, err={}",
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/menu/{menuId}/nextId")
+    @Operation(summary = "基于菜单 ID 查询待办下一个单据ID", description = "基于 menuId 查询待办下一个单据ID")
+    public ApiResponse<Long> BusinessNextId(@PathVariable Long menuId) {
+        try {
+            Long result = commonApprovalService.BusinessNextId(menuId);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common approval getApprovalCountByMenu failed: menuId={}, err={}",
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/menu/{menuId}/approval")
+    @Operation(summary = "基于菜单 ID 调用审批事件", description = "仅需传入 menuId 调用审批事件")
+    public ApiResponse<List<Map<String, Object>>> approvalBusiness(
+            @PathVariable Long menuId, @RequestBody ApprovalReq req) {
+        try {
+            commonApprovalService.approvalBusiness(menuId, req);
+            return ApiResponse.success();
+        } catch (Exception ex) {
+            log.error(
+                    "Common approval getApprovalCountByMenu failed: menuId={}, err={}",
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/menu/{menuId}/{id}/step")
+    @Operation(summary = "基于菜单 ID 查询已经审批的步骤状态", description = "基于 menuId 查询已经审批的步骤状态")
+    public ApiResponse<List<Map<String, Object>>> getApprovalStep(
+            @PathVariable Long menuId, @PathVariable Long id) {
+        try {
+            List<Map<String, Object>> result = commonApprovalService.getApprovalStep(menuId, id);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(

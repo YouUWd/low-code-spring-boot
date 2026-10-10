@@ -1,6 +1,8 @@
 package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.event.ApprovalEvent;
+import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -16,6 +18,8 @@ import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /** 审批与流程公共聚合服务实现 */
@@ -29,6 +33,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     private final ConfigApi configApi;
     private final DataApi dataApi;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public List<Map<String, Object>> getApprovalCountByMenu(Long menuId) {
@@ -154,6 +159,61 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         resultMap.add(done);
         resultMap.add(all);
         return resultMap;
+    }
+
+    @Override
+    public void approvalBusiness(Long menuId, ApprovalReq req) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+
+        // 1. 直接通过 OpenMenuApi 解析菜单绑定的根模块 ID
+        Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (rootModuleId == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
+        }
+
+        ApprovalEvent approvalEvent = new ApprovalEvent();
+        BeanUtils.copyProperties(req, approvalEvent);
+        approvalEvent.setApplicantId(UserContext.getMockUserId());
+        approvalEvent.setCurrentUserId(UserContext.getRealUserId());
+        approvalEvent.setRoleId(UserContext.getRoleId());
+        approvalEvent.setSubjectId(UserContext.getSubjectId());
+        approvalEvent.setMenuId(menuId);
+        approvalEvent.setModuleId(rootModuleId);
+        approvalEvent.setOldRecordId(req.getRecordId());
+
+        eventPublisher.publishEvent(approvalEvent);
+    }
+
+    @Override
+    public Long BusinessNextId(Long menuId) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+
+        // 1. 直接通过 OpenMenuApi 解析菜单绑定的根模块 ID
+        Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (rootModuleId == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
+        }
+
+        return approvalEngine.getBusinessNextId(rootModuleId);
+    }
+
+    @Override
+    public List<Map<String, Object>> getApprovalStep(Long menuId, Long id) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+
+        // 1. 直接通过 OpenMenuApi 解析菜单绑定的根模块 ID
+        Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (rootModuleId == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
+        }
+
+        return approvalEngine.getApprovalStep(rootModuleId, id);
     }
 
     private ApprovalButtonsGroup queryAllApprovalButtons(Long rootModuleId) {

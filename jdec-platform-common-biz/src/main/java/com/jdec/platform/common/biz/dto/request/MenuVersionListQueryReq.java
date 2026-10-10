@@ -17,4 +17,10 @@ public class MenuVersionListQueryReq {
 
     @Schema(description = "详情模式", requiredMode = Schema.RequiredMode.REQUIRED, example = "view")
     private String btnType;
+
+    @Schema(
+            description = "数据业务编号",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            example = "INFO2026092117293310001")
+    private String businessNo;
 }

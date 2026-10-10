@@ -1,9 +1,12 @@
 package com.jdec.platform.dataengine.biz.dsl;
 
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
-import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
+import com.jdec.platform.shared.context.AppContext;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.Data;
@@ -23,6 +26,8 @@ public class JooqSqlBuilder {
 
     /** 缓存：表别名 -> Jooq Table对象 */
     private final Map<String, Table<?>> aliasTableMap = new HashMap<>();
+
+    private final ConfigApi configApi;
 
     /**
      * 入口方法：根据树形元数据构建带JOIN的查询对象
@@ -156,23 +161,23 @@ public class JooqSqlBuilder {
                         .collect(Collectors.toSet());
         moduleTables.remove(context.getTableName());
 
-        TabTreeNodeDTO tableTreeNode = TabTreeNodeDTO.buildCompanyRoot();
+        ProjectTableRelationsDTO projectTableRelationsDTO =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
 
         for (String tableName : moduleTables) {
-            TabTreeNodeDTO targetNode = TabTreeNodeDTO.findSubTreeByValue(tableTreeNode, tableName);
-            query.leftJoin(DSL.table(DSL.name(targetNode.getNode().getTableName())))
+            TableRelationDTO tableRelationDTO =
+                    projectTableRelationsDTO.findDirectRelation(context.getTableName(), tableName);
+            query.leftJoin(DSL.table(DSL.name(tableRelationDTO.getJoinTable())))
                     .on(
                             DSL.field(
                                             DSL.name(
-                                                    targetNode.getNode().getParentTableName(),
-                                                    targetNode.getNode().getParentTableField()))
+                                                    tableRelationDTO.getMainTable(),
+                                                    tableRelationDTO.getMainField()))
                                     .eq(
                                             DSL.field(
                                                     DSL.name(
-                                                            targetNode.getNode().getTableName(),
-                                                            targetNode
-                                                                    .getNode()
-                                                                    .getSubTableField()))));
+                                                            tableRelationDTO.getJoinTable(),
+                                                            tableRelationDTO.getJoinField()))));
         }
 
         return query;

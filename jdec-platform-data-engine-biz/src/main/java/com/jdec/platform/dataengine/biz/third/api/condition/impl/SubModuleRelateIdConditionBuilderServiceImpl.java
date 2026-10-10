@@ -1,10 +1,13 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
-import com.jdec.platform.dataengine.api.dto.model.TabTreeNodeDTO;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
-import java.util.Objects;
+import com.jdec.platform.shared.context.AppContext;
+import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.jooq.Condition;
@@ -17,23 +20,23 @@ import org.springframework.util.CollectionUtils;
 public class SubModuleRelateIdConditionBuilderServiceImpl
         implements SingleBizConditionBuilderService {
 
+    private final ConfigApi configApi;
+
     private final Set<QueryType> TYPE_SET = Set.of(QueryType.DETAIL_SUBMODULE_QUERY);
 
     @Override
     public Condition buildCondition(StatementContext context) {
-        TabTreeNodeDTO tableTree = TabTreeNodeDTO.buildCompanyRoot();
+        ProjectTableRelationsDTO projectTableRelationsDTO =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
 
-        TabTreeNodeDTO targetNode =
-                TabTreeNodeDTO.findSubTreeByValue(
-                        tableTree, context.getModuleFilterInfo().getModuleInfo().getPrimaryTable());
+        List<TableRelationDTO> relationList =
+                projectTableRelationsDTO.getReverseRelations().get(context.getTableName());
 
-        if (Objects.isNull(targetNode) || CollectionUtils.isEmpty(context.getRelateIds())) {
+        if (CollectionUtils.isEmpty(relationList)
+                || CollectionUtils.isEmpty(context.getRelateIds())) {
             return DSL.trueCondition();
         } else {
-            return DSL.field(
-                            DSL.name(
-                                    context.getTableName(),
-                                    targetNode.getNode().getSubTableField()))
+            return DSL.field(DSL.name(context.getTableName(), relationList.get(0).getJoinField()))
                     .in(context.getRelateIds());
         }
     }
