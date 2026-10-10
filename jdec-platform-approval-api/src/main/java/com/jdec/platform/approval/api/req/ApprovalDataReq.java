@@ -7,11 +7,6 @@ import lombok.Data;
 @Data
 @Schema(description = "审批数据查询请求")
 public class ApprovalDataReq {
-    // 所属主体ID
-    @Schema(description = "主体ID", requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "主体ID不能为空")
-    private Long subjectId;
-
     // "模块ID"
     @Schema(description = "模块ID", requiredMode = Schema.RequiredMode.REQUIRED)
     @NotBlank(message = "模块ID不能为空")

@@ -21,6 +21,7 @@ import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.SecurityUtils;
@@ -490,10 +491,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
     @Override
-    public Long getBusinessNextId(ApprovalProcessReq approvalProcessReq) {
-        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(approvalProcessReq);
+    public Long getBusinessNextId(Long moduleId) {
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
-        todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
+        todoWrapper.eq(ApprovalBusiness::getModuleId, moduleId);
         todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
         todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
         todoWrapper.ne(ApprovalBusiness::getCurrentStep, 0);
@@ -503,30 +503,32 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                         wp1 ->
                                                 wp1.eq(
                                                                 ApprovalBusiness::getApproverId,
-                                                                approvalProcessReq.getApplicantId())
+                                                                UserContext.getMockUserId())
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
-                                                                approvalProcessReq.getRoleId()))
+                                                                UserContext.getRoleId()))
                                 .or()
                                 .nested(
                                         wp2 ->
                                                 wp2.isNull(ApprovalBusiness::getApproverId)
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
-                                                                approvalProcessReq.getRoleId())
+                                                                UserContext.getRoleId())
                                                         .apply(
                                                                 "NOT FIND_IN_SET({0}, IFNULL(approver_id_list, ''))",
-                                                                approvalProcessReq
-                                                                        .getApplicantId())));
+                                                                UserContext.getMockUserId())));
         List<ApprovalBusiness> todoList = approvalBusinessMapper.selectList(todoWrapper);
         List<ApprovalBusiness> submitList = new ArrayList<>();
+        ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
+        approvalProcessDTO.setRoleId(UserContext.getRoleId());
+        approvalProcessDTO.setModuleId(moduleId);
         if (checkRight(approvalProcessDTO)) {
             todoWrapper = new LambdaQueryWrapper<>();
-            todoWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleId());
+            todoWrapper.eq(ApprovalBusiness::getModuleId, moduleId);
             todoWrapper.eq(ApprovalBusiness::getSubjectId, AppContext.getSubjectId());
             todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
             todoWrapper.isNull(ApprovalBusiness::getApproverId);
-            todoWrapper.eq(ApprovalBusiness::getCreatedBy, approvalProcessReq.getApplicantId());
+            todoWrapper.eq(ApprovalBusiness::getCreatedBy, UserContext.getMockUserId());
             todoWrapper.eq(ApprovalBusiness::getCurrentStep, 0);
             submitList = approvalBusinessMapper.selectList(todoWrapper);
         }

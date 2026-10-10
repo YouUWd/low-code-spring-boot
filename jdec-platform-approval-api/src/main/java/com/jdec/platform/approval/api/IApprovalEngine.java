@@ -20,7 +20,7 @@ public interface IApprovalEngine {
     List<Map<String, Object>> getListButton(Long moduleId, Integer approvalType);
 
     // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
-    Long getBusinessNextId(ApprovalProcessReq approvalProcessDTO);
+    Long getBusinessNextId(Long moduleId);
 
     // 查询单据审批详细数据-旧---------------------------------------------------------------------------
     Map<String, Object> getApprovalDetail(ApprovalProcessReq req);

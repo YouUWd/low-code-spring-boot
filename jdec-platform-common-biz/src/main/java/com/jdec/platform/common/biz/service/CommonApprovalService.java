@@ -16,4 +16,6 @@ public interface CommonApprovalService {
     List<Map<String, Object>> getApprovalCountByMenu(Long menuId);
 
     void approvalBusiness(Long menuId, ApprovalReq req);
+
+    Long BusinessNextId(Long menuId);
 }
