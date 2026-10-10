@@ -1184,12 +1184,12 @@ public class DynamicQueryService {
         // 构造SQL 查询条件
         List<Condition> conditions = new ArrayList<>();
 
-        conditions.add(
-                DSL.field(DSL.name(primaryTable, "business_no"))
-                        .eq(businessNo)
-                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
+        conditions.add(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo));
 
-        //        conditions.add(DSL.field(DSL.name(primaryTable, "business_status")).eq(99));
+        conditions.add(
+                DSL.field(DSL.name(primaryTable, "business_status"))
+                        .eq(99)
+                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
 
         query.where(conditions);
 
