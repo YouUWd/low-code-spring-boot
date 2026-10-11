@@ -108,4 +108,12 @@ public interface DataApi {
      * @return 包含新生成主键与最新数据树的同构响应
      */
     SaveResp save(DataBlock block);
+
+    /**
+     * 基于基准单据派生/融合生成新版本单据
+     *
+     * @param req 版本派生请求 (包含基准ID与局部增量数据)
+     * @return 新生成的单据根物理 ID
+     */
+    Long forkNewVersion(com.jdec.platform.data.api.dto.request.ForkVersionReq req);
 }

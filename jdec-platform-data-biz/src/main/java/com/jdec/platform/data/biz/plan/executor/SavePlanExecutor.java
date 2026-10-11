@@ -1,5 +1,6 @@
 package com.jdec.platform.data.biz.plan.executor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SavePlanExecutor {
 
     private final JooqDataContextFactory jooqDataContextFactory;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /** 在单事务内执行整树落库并返回根记录 ID */
     @Transactional(rollbackFor = Exception.class)
@@ -108,12 +110,16 @@ public class SavePlanExecutor {
                 }
 
                 // 递归级联保存各子孙模块节点并挂载到当前根行对象
-                if (rootPlan.getChildren() != null && !rootPlan.getChildren().isEmpty()) {
+                List<SaveNodePlan> rootRowChildren =
+                        (rootPlan.getRowChildren() != null && i < rootPlan.getRowChildren().size())
+                                ? rootPlan.getRowChildren().get(i)
+                                : rootPlan.getChildren();
+                if (rootRowChildren != null && !rootRowChildren.isEmpty()) {
                     Long currentParentId = generatedId != null ? generatedId : masterId;
                     if (currentParentId == null) {
                         throw new IllegalStateException("主记录 ID 未生成，无法级联保存子模块数据");
                     }
-                    for (SaveNodePlan childPlan : rootPlan.getChildren()) {
+                    for (SaveNodePlan childPlan : rootRowChildren) {
                         Object childResult =
                                 saveChildPlanRecursively(dsl, childPlan, currentParentId);
                         if (childPlan.getModuleId() != null && childResult != null) {
@@ -271,10 +277,14 @@ public class SavePlanExecutor {
                     childRowMap.put(table, Map.of("id", rowId));
                 }
 
-                // 递归向下传播孙节点
-                if (nodePlan.getChildren() != null && !nodePlan.getChildren().isEmpty()) {
+                // 递归向下传播孙节点 (仅针对当前行拥有的子计划，避免 1:N 孙表交叉污染)
+                List<SaveNodePlan> rowChildren =
+                        (nodePlan.getRowChildren() != null && i < nodePlan.getRowChildren().size())
+                                ? nodePlan.getRowChildren().get(i)
+                                : nodePlan.getChildren();
+                if (rowChildren != null && !rowChildren.isEmpty()) {
                     Long currentId = rowId != null ? rowId : parentId;
-                    for (SaveNodePlan grandChild : nodePlan.getChildren()) {
+                    for (SaveNodePlan grandChild : rowChildren) {
                         Object grandChildRes = saveChildPlanRecursively(dsl, grandChild, currentId);
                         if (grandChild.getModuleId() != null && grandChildRes != null) {
                             childRowMap.put(
@@ -380,9 +390,8 @@ public class SavePlanExecutor {
             if (col == null
                     || "children".equals(col)
                     || col.matches("\\d+")
-                    || val instanceof Map<?, ?>
-                    || val instanceof List<?>) {
-                continue; // 忽略嵌套子节点数据、子模块数字键与对象结构
+                    || (table != null && col.equalsIgnoreCase(table))) {
+                continue; // 忽略嵌套子节点数据、子模块数字键及当前主表名自身
             }
             if (id != null && "id".equalsIgnoreCase(col)) {
                 continue; // 更新模式下不重复 SET 主键 id
@@ -390,6 +399,16 @@ public class SavePlanExecutor {
             if ("deleted".equalsIgnoreCase(col)) {
                 continue; // deleted 状态由引擎统一维护，避免外部非法覆盖
             }
+
+            // 支持实体中配置的 JSON/JSON 数组字段 (如 nature, cooperation_types 等 List/Map 结构)
+            if (val instanceof Map<?, ?> || val instanceof List<?>) {
+                try {
+                    val = objectMapper.writeValueAsString(val);
+                } catch (Exception ex) {
+                    log.warn("序列化物理表 [{}] 字段 [{}] 为 JSON 失败: {}", table, col, ex.getMessage());
+                }
+            }
+
             fieldValues.put(DSL.field(DSL.name(table, col)), val);
         }
 

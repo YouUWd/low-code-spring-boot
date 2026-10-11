@@ -239,4 +239,24 @@ public class DataController {
             throw ex;
         }
     }
+
+    @PostMapping("/table/fork-version")
+    @Operation(
+            summary = "单据版本派生与局部增量融合保存",
+            description = "基于基准单据ID(如156)自动抓取完整数据树，并与前端提交的局部增量修改(patchData)深度合并，生成全新的独立单据版本并返回新根ID")
+    public ApiResponse<Long> forkNewVersion(
+            @RequestBody com.jdec.platform.data.api.dto.request.ForkVersionReq req) {
+        try {
+            Long newId = dataApi.forkNewVersion(req);
+            return ApiResponse.success(newId);
+        } catch (Exception ex) {
+            log.error(
+                    "Data engine forkNewVersion failed: moduleId={}, baseId={}, err={}",
+                    req != null ? req.getModuleId() : null,
+                    req != null ? req.getBaseId() : null,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
 }

@@ -98,7 +98,8 @@ public class SavePlanCompiler {
         TableRelationDTO relation =
                 resolveTableRelation(primaryTable, parentMeta, projectRelations, tree);
 
-        List<SaveNodePlan> childPlans = new ArrayList<>();
+        List<SaveNodePlan> allChildPlans = new ArrayList<>();
+        List<List<SaveNodePlan>> rowChildrenList = new ArrayList<>();
 
         // 规范化当前节点的 records，并提取行内嵌套的 children (DataBlock 读写同构)
         List<DataRow> sourceRecords = node.getRecords();
@@ -110,17 +111,20 @@ public class SavePlanCompiler {
                 if (rawRow == null) {
                     continue;
                 }
+                List<SaveNodePlan> thisRowChildPlans = new ArrayList<>();
                 Map<String, Object> cleanRow =
                         normalizeRow(
                                 rawRow,
                                 primaryTable,
                                 moduleId,
                                 meta,
-                                childPlans,
+                                thisRowChildPlans,
                                 projectRelations,
                                 tree);
                 cleanRecords.add(cleanRow);
                 cleanSourceRows.add(rawRow);
+                rowChildrenList.add(thisRowChildPlans);
+                allChildPlans.addAll(thisRowChildPlans);
             }
         }
 
@@ -136,7 +140,8 @@ public class SavePlanCompiler {
                 .isMany(isMany)
                 .records(cleanRecords)
                 .sourceDataRows(cleanSourceRows)
-                .children(childPlans)
+                .children(allChildPlans)
+                .rowChildren(rowChildrenList)
                 .build();
     }
 
@@ -165,13 +170,14 @@ public class SavePlanCompiler {
             }
         }
 
-        // 1. 如果包含主表名子对象，展平合并到当前行
+        // 1. 如果包含主表名子对象，展平合并到当前行并移除主表嵌套对象
         if (primaryTable != null && cleanRow.get(primaryTable) instanceof Map<?, ?> tableMap) {
             for (Map.Entry<?, ?> entry : tableMap.entrySet()) {
                 if (entry.getKey() != null) {
                     cleanRow.putIfAbsent(String.valueOf(entry.getKey()), entry.getValue());
                 }
             }
+            cleanRow.remove(primaryTable);
         }
 
         // 2. 检查数字键子模块 (例如 "103", "104", "106")
