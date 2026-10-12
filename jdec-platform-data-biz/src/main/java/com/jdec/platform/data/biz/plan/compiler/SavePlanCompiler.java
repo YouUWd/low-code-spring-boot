@@ -5,22 +5,16 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
-import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.SaveReq;
+import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
-import com.jdec.platform.shared.context.AppContext;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
@@ -28,54 +22,60 @@ import org.springframework.stereotype.Component;
  *
  * <p>职责：递归解析业务数据区块 (DataBlock) 保存树，校验各模块元数据，推导父子外键传播规则，编译生成完整的 SavePlan。 支持行记录内部嵌套的 children (与查询响应
  * 100% 读写同构)。
+ *
+ * <p>本类不依赖 fieldId，也**不自行读取元数据**：模块树与项目表关系由调用方以 {@link PlanMeta} 快照
+ * 传入，保证读侧与写侧由同一份快照编译出来（否则会出现「读得出、写不进」）。主表与表间关系的判定统一走 {@link ModuleRelationResolver}， 与 {@link
+ * QueryPlanCompiler} 共享同一口径。
+ *
+ * <p>行内子模块编译采用**快速失败**：任何子模块元数据缺失或关联未自洽都会直接抛出，绝不静默丢弃子节点数据。
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
 public class SavePlanCompiler {
 
-    private final ConfigApi configApi;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** 核心编译入口：编译 DataBlock 业务数据区块为 SavePlan */
-    public SavePlan compile(DataBlock block) {
+    /**
+     * 从 DataBlock 解析根模块 ID：优先取 {@code block.moduleId}；缺失时回退扫描首行记录里的数字键 （兼容旧前端形态）。
+     *
+     * @return 解析结果；无法解析时返回 {@code null}
+     */
+    public static Long resolveRootModuleId(DataBlock block) {
         if (block == null) {
-            throw new IllegalArgumentException("保存请求或数据区块不能为空");
+            return null;
         }
-
-        Long moduleId = block.getModuleId();
-        if (moduleId == null && block.getRecords() != null && !block.getRecords().isEmpty()) {
+        if (block.getModuleId() != null) {
+            return block.getModuleId();
+        }
+        if (block.getRecords() != null && !block.getRecords().isEmpty()) {
             DataRow firstRow = block.getRecords().get(0);
             if (firstRow != null && firstRow.getTables() != null) {
                 for (Map.Entry<String, Object> entry : firstRow.getTables().entrySet()) {
                     if (entry.getKey() != null && entry.getKey().matches("\\d+")) {
-                        moduleId = Long.parseLong(entry.getKey());
-                        break;
+                        return Long.parseLong(entry.getKey());
                     }
                 }
             }
         }
+        return null;
+    }
 
+    /** 核心编译入口：编译 DataBlock 业务数据区块为 SavePlan（元数据快照由调用方传入） */
+    public SavePlan compile(DataBlock block, PlanMeta meta) {
+        if (block == null) {
+            throw new IllegalArgumentException("保存请求或数据区块不能为空");
+        }
+
+        Long moduleId = resolveRootModuleId(block);
         if (moduleId == null) {
             throw new IllegalArgumentException("保存请求或模块 ID 不能为空");
         }
 
-        block = block.toBuilder().moduleId(moduleId).build();
+        DataBlock normalized = block.toBuilder().moduleId(moduleId).build();
 
-        ModuleTreeDTO tree = loadModuleTree(moduleId);
-        ProjectTableRelationsDTO projectRelations = getProjectRelations();
-        SaveNodePlan rootPlan = compileNode(block, null, null, projectRelations, tree);
+        ModuleTreeDTO tree = meta != null ? meta.moduleTree() : null;
+        ProjectTableRelationsDTO projectRelations = meta != null ? meta.projectRelations() : null;
+        SaveNodePlan rootPlan = compileNode(normalized, null, null, projectRelations, tree);
         return SavePlan.builder().rootNodePlan(rootPlan).build();
-    }
-
-    /** 兼容编译入口：编译 SaveReq 为 SavePlan */
-    public SavePlan compile(SaveReq req) {
-        if (req == null) {
-            throw new IllegalArgumentException("保存请求不能为空");
-        }
-        DataBlock block =
-                DataBlock.builder().moduleId(req.getModuleId()).records(req.getRecords()).build();
-        return compile(block);
     }
 
     /** 递归编译单节点保存计划 (内部共享 projectRelations 与 ModuleTreeDTO) */
@@ -92,13 +92,15 @@ public class SavePlanCompiler {
             throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未在当前模块树中配置元数据");
         }
 
-        String primaryTable = resolvePrimaryTable(meta);
+        String primaryTable = ModuleRelationResolver.resolvePrimaryTable(meta);
         String parentFk =
                 resolveParentForeignKey(primaryTable, meta, parentMeta, projectRelations, tree);
         TableRelationDTO relation =
                 resolveTableRelation(primaryTable, parentMeta, projectRelations, tree);
 
-        List<SaveNodePlan> childPlans = new ArrayList<>();
+        List<SaveNodePlan> allChildPlans = new ArrayList<>();
+        List<List<SaveNodePlan>> rowChildrenList = new ArrayList<>();
+        List<List<SaveNodePlan>> rowCompanionList = new ArrayList<>();
 
         // 规范化当前节点的 records，并提取行内嵌套的 children (DataBlock 读写同构)
         List<DataRow> sourceRecords = node.getRecords();
@@ -110,17 +112,23 @@ public class SavePlanCompiler {
                 if (rawRow == null) {
                     continue;
                 }
+                List<SaveNodePlan> thisRowChildPlans = new ArrayList<>();
+                List<SaveNodePlan> thisRowCompanionPlans = new ArrayList<>();
                 Map<String, Object> cleanRow =
                         normalizeRow(
                                 rawRow,
                                 primaryTable,
                                 moduleId,
                                 meta,
-                                childPlans,
+                                thisRowChildPlans,
+                                thisRowCompanionPlans,
                                 projectRelations,
                                 tree);
                 cleanRecords.add(cleanRow);
                 cleanSourceRows.add(rawRow);
+                rowChildrenList.add(thisRowChildPlans);
+                rowCompanionList.add(thisRowCompanionPlans);
+                allChildPlans.addAll(thisRowChildPlans);
             }
         }
 
@@ -136,17 +144,20 @@ public class SavePlanCompiler {
                 .isMany(isMany)
                 .records(cleanRecords)
                 .sourceDataRows(cleanSourceRows)
-                .children(childPlans)
+                .children(allChildPlans)
+                .rowChildren(rowChildrenList)
+                .companionPlans(rowCompanionList)
                 .build();
     }
 
-    /** 规范化行记录，支持解包物理表对象与提取行内挂载的子模块 (DataRow) */
+    /** 规范化行记录，支持解包物理表对象与提取行内挂载的子模块 (DataRow) 及 1:1 伴生表 */
     private Map<String, Object> normalizeRow(
             DataRow rawRow,
             String primaryTable,
             Long moduleId,
             ModuleInfo meta,
             List<SaveNodePlan> childPlans,
+            List<SaveNodePlan> companionPlans,
             ProjectTableRelationsDTO projectRelations,
             ModuleTreeDTO tree) {
         Map<String, Object> cleanRow = new HashMap<>();
@@ -165,11 +176,66 @@ public class SavePlanCompiler {
             }
         }
 
-        // 1. 如果包含主表名子对象，展平合并到当前行
+        // 1. 如果包含主表名子对象，展平合并到当前行并移除主表嵌套对象
         if (primaryTable != null && cleanRow.get(primaryTable) instanceof Map<?, ?> tableMap) {
             for (Map.Entry<?, ?> entry : tableMap.entrySet()) {
                 if (entry.getKey() != null) {
                     cleanRow.putIfAbsent(String.valueOf(entry.getKey()), entry.getValue());
+                }
+            }
+            cleanRow.remove(primaryTable);
+        }
+
+        // 1.1 提取同一模块下的 1:1 伴生表 (垂直拆分表，未被模块树单独认领为模块主表)
+        if (primaryTable != null
+                && !primaryTable.isBlank()
+                && projectRelations != null
+                && projectRelations.getForwardRelations() != null) {
+            List<TableRelationDTO> fwdRels =
+                    projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
+            if (fwdRels != null) {
+                for (TableRelationDTO rel : fwdRels) {
+                    if (ModuleRelationResolver.isCompanionRelation(rel, tree)) {
+                        String compTable = rel.getJoinTable();
+                        if (compTable != null && !compTable.isBlank()) {
+                            String trimmedCompTable = compTable.trim();
+                            Object compVal = cleanRow.get(trimmedCompTable);
+                            if (compVal == null) {
+                                // 尝试忽略大小写查找
+                                for (Map.Entry<String, Object> e : cleanRow.entrySet()) {
+                                    if (trimmedCompTable.equalsIgnoreCase(e.getKey())) {
+                                        compVal = e.getValue();
+                                        break;
+                                    }
+                                }
+                            }
+                            if (compVal instanceof Map<?, ?> compMap) {
+                                cleanRow.remove(trimmedCompTable);
+                                Map<String, Object> compRecord = new HashMap<>();
+                                for (Map.Entry<?, ?> e : compMap.entrySet()) {
+                                    if (e.getKey() != null) {
+                                        compRecord.put(String.valueOf(e.getKey()), e.getValue());
+                                    }
+                                }
+                                String fk =
+                                        (rel.getJoinField() != null
+                                                        && !rel.getJoinField().isBlank())
+                                                ? rel.getJoinField().trim()
+                                                : "id";
+                                SaveNodePlan compPlan =
+                                        SaveNodePlan.builder()
+                                                .moduleId(moduleId)
+                                                .moduleMeta(meta)
+                                                .primaryTable(trimmedCompTable)
+                                                .parentForeignKey(fk)
+                                                .isMany(false)
+                                                .records(List.of(compRecord))
+                                                .sourceDataRows(List.of(rawRow))
+                                                .build();
+                                companionPlans.add(compPlan);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -188,14 +254,10 @@ public class SavePlanCompiler {
                                     .moduleId(childModuleId)
                                     .records(childRecords)
                                     .build();
-                    try {
-                        SaveNodePlan childPlan =
-                                compileNode(childBlock, moduleId, meta, projectRelations, tree);
-                        childPlan.setMany(childIsMany);
-                        childPlans.add(childPlan);
-                    } catch (Exception e) {
-                        log.warn("编译行内子模块 [{}] 失败: {}", childModuleId, e.getMessage());
-                    }
+                    SaveNodePlan childPlan =
+                            compileNode(childBlock, moduleId, meta, projectRelations, tree);
+                    childPlan.setMany(childIsMany);
+                    childPlans.add(childPlan);
                 }
             }
         }
@@ -204,16 +266,7 @@ public class SavePlanCompiler {
         if (rawRow.getChildren() != null && !rawRow.getChildren().isEmpty()) {
             for (DataBlock childBlock : rawRow.getChildren()) {
                 if (childBlock != null && childBlock.getModuleId() != null) {
-                    try {
-                        SaveNodePlan childPlan =
-                                compileNode(childBlock, moduleId, meta, projectRelations, tree);
-                        childPlans.add(childPlan);
-                    } catch (Exception e) {
-                        log.warn(
-                                "编译 DataRow children 子模块 [{}] 失败: {}",
-                                childBlock.getModuleId(),
-                                e.getMessage());
-                    }
+                    childPlans.add(compileNode(childBlock, moduleId, meta, projectRelations, tree));
                 }
             }
         }
@@ -265,12 +318,7 @@ public class SavePlanCompiler {
                 if (item instanceof DataBlock block) {
                     nodes.add(block);
                 } else if (item instanceof Map) {
-                    try {
-                        DataBlock converted = objectMapper.convertValue(item, DataBlock.class);
-                        nodes.add(converted);
-                    } catch (Exception e) {
-                        log.warn("解析行内嵌套子模块失败: {}", item, e);
-                    }
+                    nodes.add(MAPPER.convertValue(item, DataBlock.class));
                 }
             }
             return nodes;
@@ -278,16 +326,7 @@ public class SavePlanCompiler {
         return List.of();
     }
 
-    private String resolvePrimaryTable(ModuleInfo meta) {
-        if (meta == null) {
-            return "";
-        }
-        if (meta.getPrimaryTable() != null && !meta.getPrimaryTable().isBlank()) {
-            return meta.getPrimaryTable().trim();
-        }
-        return "";
-    }
-
+    /** 解析当前子模块与物理父模块之间的单向关联关系 (无有效父表时返回 {@code null})。 */
     private TableRelationDTO resolveTableRelation(
             String childPrimaryTable,
             ModuleInfo parentMeta,
@@ -297,38 +336,24 @@ public class SavePlanCompiler {
             return null;
         }
 
-        List<ModuleInfo> intermediateVms = new ArrayList<>();
         ModuleInfo physicalParentMeta = parentMeta;
-        String parentPrimary = resolvePrimaryTable(physicalParentMeta);
-
-        if (parentPrimary == null || parentPrimary.isBlank()) {
-            intermediateVms.add(parentMeta);
-            physicalParentMeta = findNearestPhysicalParentMeta(parentMeta, intermediateVms, tree);
+        String parentPrimary = ModuleRelationResolver.resolvePrimaryTable(physicalParentMeta);
+        if (parentPrimary.isBlank()) {
+            physicalParentMeta =
+                    ModuleRelationResolver.findNearestPhysicalParentMeta(
+                            parentMeta, new ArrayList<>(), tree);
             if (physicalParentMeta != null) {
-                parentPrimary = resolvePrimaryTable(physicalParentMeta);
+                parentPrimary = ModuleRelationResolver.resolvePrimaryTable(physicalParentMeta);
             }
         }
-
-        if (physicalParentMeta == null || parentPrimary == null || parentPrimary.isBlank()) {
+        if (physicalParentMeta == null || parentPrimary.isBlank()) {
             return null;
         }
-
-        // 同一物理表自身主键关联
-        if (parentPrimary.equalsIgnoreCase(childPrimaryTable)) {
-            return TableRelationDTO.builder()
-                    .mainTable(parentPrimary)
-                    .joinTable(childPrimaryTable)
-                    .joinField("id")
-                    .relationType("1:1")
-                    .build();
-        }
-
-        if (projectRelations != null) {
-            return projectRelations.findDirectRelation(parentPrimary, childPrimaryTable);
-        }
-        return null;
+        return ModuleRelationResolver.resolveDirectRelation(
+                parentPrimary, childPrimaryTable, projectRelations);
     }
 
+    /** 推导子模块落库时必须回填的父级外键列；缺失关联定义时显式失败，杜绝「读得出、写不进」。 */
     private String resolveParentForeignKey(
             String childPrimaryTable,
             ModuleInfo childMeta,
@@ -348,11 +373,13 @@ public class SavePlanCompiler {
         }
 
         ModuleInfo physicalParentMeta = parentMeta;
-        String parentPrimary = resolvePrimaryTable(physicalParentMeta);
-        if (parentPrimary == null || parentPrimary.isBlank()) {
-            physicalParentMeta = findNearestPhysicalParentMeta(parentMeta, new ArrayList<>(), tree);
+        String parentPrimary = ModuleRelationResolver.resolvePrimaryTable(physicalParentMeta);
+        if (parentPrimary.isBlank()) {
+            physicalParentMeta =
+                    ModuleRelationResolver.findNearestPhysicalParentMeta(
+                            parentMeta, new ArrayList<>(), tree);
             if (physicalParentMeta != null) {
-                parentPrimary = resolvePrimaryTable(physicalParentMeta);
+                parentPrimary = ModuleRelationResolver.resolvePrimaryTable(physicalParentMeta);
             }
         }
 
@@ -362,40 +389,5 @@ public class SavePlanCompiler {
                 String.format(
                         "元数据关联关系未自洽：未在 sys_table_relation 中找到父表 [%s](模块 %s) 到从表 [%s](模块 %s) 的单向关联定义(main_table -> join_table)",
                         parentPrimary, parentModId, childPrimaryTable, childModId));
-    }
-
-    private ModuleInfo findNearestPhysicalParentMeta(
-            ModuleInfo currentMeta, List<ModuleInfo> intermediateCollector, ModuleTreeDTO tree) {
-        if (currentMeta == null) {
-            return null;
-        }
-        Long curParentId = currentMeta.getParentId();
-        Set<Long> visited = new HashSet<>();
-        while (curParentId != null && curParentId > 0 && visited.add(curParentId)) {
-            ModuleInfo pMeta = tree != null ? tree.getModule(curParentId) : null;
-            if (pMeta == null) {
-                break;
-            }
-            String pTable = resolvePrimaryTable(pMeta);
-            if (pTable != null && !pTable.isBlank()) {
-                return pMeta;
-            }
-            if (intermediateCollector != null) {
-                intermediateCollector.add(pMeta);
-            }
-            curParentId = pMeta.getParentId();
-        }
-        return null;
-    }
-
-    private ModuleTreeDTO loadModuleTree(Long rootModuleId) {
-        String projectNo = AppContext.getProjectNo();
-        Long subjectId = AppContext.getSubjectId();
-        return configApi.getModuleTree(projectNo, subjectId, rootModuleId);
-    }
-
-    private ProjectTableRelationsDTO getProjectRelations() {
-        String projectNo = AppContext.getProjectNo();
-        return configApi.getProjectTableRelations(projectNo);
     }
 }

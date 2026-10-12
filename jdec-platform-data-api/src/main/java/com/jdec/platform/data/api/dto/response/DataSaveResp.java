@@ -12,7 +12,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 保存/更新同构响应模型 (SaveResp)
+ * 保存/更新同构响应模型 (DataSaveResp)
  *
  * <p>包含根模块生成的主键 ID 以及回填了各级新生成主键后的完整业务数据区块 (与 DataBlock 100% 同构)。
  */
@@ -22,7 +22,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @Schema(description = "保存/更新同构响应模型")
-public class SaveResp implements Serializable {
+public class DataSaveResp implements Serializable {
 
     @Schema(description = "根模块生成/更新的主键 ID", example = "1001")
     private Long rootId;
@@ -30,8 +30,8 @@ public class SaveResp implements Serializable {
     @Schema(description = "写入成功后回填了各级新生成主键 ID 的完整数据区块 (与 DataBlock 100% 同构)")
     private DataBlock data;
 
-    public static SaveResp of(Long rootId, DataBlock data) {
-        return SaveResp.builder().rootId(rootId).data(data).build();
+    public static DataSaveResp of(Long rootId, DataBlock data) {
+        return DataSaveResp.builder().rootId(rootId).data(data).build();
     }
 
     /** 快捷获取根实体主记录首行 */

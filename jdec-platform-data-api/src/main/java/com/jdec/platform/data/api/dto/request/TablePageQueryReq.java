@@ -8,23 +8,19 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
-/**
- * 动态列表分页查询请求模型 (PageQueryReq)
- *
- * <p>继承自通用 QueryReq，扩充分页参数 (pageNo, pageSize)。
- */
+/** 物理表动态分页查询请求模型 */
 @Data
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
-@Schema(description = "动态列表分页查询请求模型")
-public class PageQueryReq extends QueryReq {
+@Schema(description = "物理表动态分页查询请求模型")
+public class TablePageQueryReq extends TableQueryReq {
 
-    @Schema(description = "页码 (从 1 开始，针对当前模块列表)", example = "1")
+    @Schema(description = "当前页码 (从 1 开始，默认 1)", example = "1")
     private Integer pageNo;
 
-    @Schema(description = "每页条数 / 明细上限条数", example = "20")
+    @Schema(description = "每页大小 (默认 20)", example = "20")
     private Integer pageSize;
 }

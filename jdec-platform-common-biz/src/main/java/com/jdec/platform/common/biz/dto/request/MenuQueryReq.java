@@ -1,6 +1,6 @@
 package com.jdec.platform.common.biz.dto.request;
 
-import com.jdec.platform.data.api.dto.request.SortItem;
+import com.jdec.platform.common.api.dto.request.SortItem;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;

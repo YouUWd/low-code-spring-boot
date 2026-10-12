@@ -1,4 +1,4 @@
-package com.jdec.platform.data.api.dto.request;
+package com.jdec.platform.common.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -9,10 +9,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 结构化查询过滤条件项
+ * 结构化查询过滤条件项（菜单级契约）
  *
- * <p>核心以 fieldId (sys_module_field.id) 作为权威物理凭据，100% 严密自洽，杜绝歧义与 SQL 注入。 支持嵌套条件组 (logic: AND / OR,
- * children)。
+ * <p>以 fieldId (sys_module_field.id) 作为权威物理凭据，支持嵌套条件组 (logic: AND / OR, children)。
+ *
+ * <p>本类原属 data-api，但实际只被菜单聚合链路使用，故归位到 common-api。
  */
 @Data
 @Builder

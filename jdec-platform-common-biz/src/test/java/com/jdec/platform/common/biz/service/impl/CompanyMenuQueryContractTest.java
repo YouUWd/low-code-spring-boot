@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.request.SortItem;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
@@ -22,8 +23,8 @@ import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.PageQueryReq;
-import com.jdec.platform.data.api.dto.request.SortItem;
+import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
+import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -84,13 +85,13 @@ class CompanyMenuQueryContractTest {
         MenuHeaderDisplayResp displayResp =
                 MenuHeaderDisplayResp.builder().header(companyHeader).build();
         when(userMenuHeaderApi.getUserMenuHeaderDisplay(
-                        anyLong(), anyLong(), anyLong(), null, null, null, null))
+                        anyLong(), anyLong(), anyLong(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(displayResp);
         when(configApi.getModuleTree(eq("company"), any(), eq(1001L)))
                 .thenReturn(companyModuleTree);
         when(configApi.getProjectTableRelations(eq("company"))).thenReturn(companyRelations);
 
-        when(dataApi.query(any(PageQueryReq.class))).thenReturn(DataPage.empty());
+        when(dataApi.queryByTable(any(TablePageQueryReq.class))).thenReturn(DataPage.empty());
     }
 
     private void initCompanyFixture() {
@@ -398,12 +399,19 @@ class CompanyMenuQueryContractTest {
 
         commonAggregateService.queryByMenu(100L, req);
 
-        ArgumentCaptor<PageQueryReq> captor = ArgumentCaptor.forClass(PageQueryReq.class);
-        verify(dataApi).query(captor.capture());
+        ArgumentCaptor<TablePageQueryReq> captor = ArgumentCaptor.forClass(TablePageQueryReq.class);
+        verify(dataApi).queryByTable(captor.capture());
 
-        List<Long> actualFields = captor.getValue().getFields();
+        List<String> actualFields = flattenPhysicalFields(captor.getValue());
         assertEquals(
-                List.of(10001L, 10002L, 10021L, 10071L, 10031L, 10041L, 10101L),
+                List.of(
+                        "info.id",
+                        "info.company_name",
+                        "basic_info.reg_capital",
+                        "address.detail_address",
+                        "member.member_name",
+                        "member_contact.phone",
+                        "financial_account.account_no"),
                 actualFields,
                 "无筛选时应收集全部已勾选字段");
     }
@@ -424,12 +432,19 @@ class CompanyMenuQueryContractTest {
 
         commonAggregateService.queryByMenu(100L, req);
 
-        ArgumentCaptor<PageQueryReq> captor = ArgumentCaptor.forClass(PageQueryReq.class);
-        verify(dataApi).query(captor.capture());
+        ArgumentCaptor<TablePageQueryReq> captor = ArgumentCaptor.forClass(TablePageQueryReq.class);
+        verify(dataApi).queryByTable(captor.capture());
 
-        List<Long> actualFields = captor.getValue().getFields();
+        List<String> actualFields = flattenPhysicalFields(captor.getValue());
         assertEquals(
-                List.of(10001L, 10002L, 10021L, 10071L, 10031L, 10041L, 10101L),
+                List.of(
+                        "info.id",
+                        "info.company_name",
+                        "basic_info.reg_capital",
+                        "address.detail_address",
+                        "member.member_name",
+                        "member_contact.phone",
+                        "financial_account.account_no"),
                 actualFields,
                 "仅筛选 1:1 模块字段时不应剔除任何 1:N 模块");
     }
@@ -451,14 +466,22 @@ class CompanyMenuQueryContractTest {
 
         commonAggregateService.queryByMenu(100L, req);
 
-        ArgumentCaptor<PageQueryReq> captor = ArgumentCaptor.forClass(PageQueryReq.class);
-        verify(dataApi).query(captor.capture());
+        ArgumentCaptor<TablePageQueryReq> captor = ArgumentCaptor.forClass(TablePageQueryReq.class);
+        verify(dataApi).queryByTable(captor.capture());
 
-        List<Long> actualFields = captor.getValue().getFields();
+        List<String> actualFields = flattenPhysicalFields(captor.getValue());
         assertEquals(
-                List.of(10001L, 10002L, 10021L, 10071L, 10101L),
+                List.of(
+                        "info.id",
+                        "info.company_name",
+                        "basic_info.reg_capital",
+                        "address.detail_address",
+                        "financial_account.account_no"),
                 actualFields,
                 "应收集根模块 + 1:1 模块 + 命中的 1010 财务账户，剔除 1003/1004 高管成员");
+        assertEquals(1, captor.getValue().getFilters().size());
+        assertEquals("financial_account", captor.getValue().getFilters().get(0).getTableName());
+        assertEquals("account_no", captor.getValue().getFilters().get(0).getColumnName());
     }
 
     @Test
@@ -482,12 +505,18 @@ class CompanyMenuQueryContractTest {
 
         commonAggregateService.queryByMenu(100L, req);
 
-        ArgumentCaptor<PageQueryReq> captor = ArgumentCaptor.forClass(PageQueryReq.class);
-        verify(dataApi).query(captor.capture());
+        ArgumentCaptor<TablePageQueryReq> captor = ArgumentCaptor.forClass(TablePageQueryReq.class);
+        verify(dataApi).queryByTable(captor.capture());
 
-        List<Long> actualFields = captor.getValue().getFields();
+        List<String> actualFields = flattenPhysicalFields(captor.getValue());
         assertEquals(
-                List.of(10001L, 10002L, 10021L, 10071L, 10031L, 10041L),
+                List.of(
+                        "info.id",
+                        "info.company_name",
+                        "basic_info.reg_capital",
+                        "address.detail_address",
+                        "member.member_name",
+                        "member_contact.phone"),
                 actualFields,
                 "1:N 与 1:N:M 同属 1003 分支，应允许同时筛选并收集 1003 与 1004 字段");
     }
@@ -571,7 +600,7 @@ class CompanyMenuQueryContractTest {
 
         DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
-        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+        when(dataApi.queryByTable(any(TablePageQueryReq.class))).thenReturn(page);
 
         SysUserPageResp userResp = new SysUserPageResp();
         userResp.setId(99L);
@@ -614,7 +643,7 @@ class CompanyMenuQueryContractTest {
 
         DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
-        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+        when(dataApi.queryByTable(any(TablePageQueryReq.class))).thenReturn(page);
 
         ModuleApprovalChainConfigResp.StatusNode statusNode =
                 new ModuleApprovalChainConfigResp.StatusNode();
@@ -661,7 +690,7 @@ class CompanyMenuQueryContractTest {
 
         DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
-        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+        when(dataApi.queryByTable(any(TablePageQueryReq.class))).thenReturn(page);
 
         MenuDataResp resp =
                 commonAggregateService.queryByMenu(
@@ -728,7 +757,7 @@ class CompanyMenuQueryContractTest {
         DataBlock block =
                 DataBlock.builder().moduleId(1001L).records(List.of(dr101, dr102, dr999)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 3L);
-        when(dataApi.query(any(PageQueryReq.class))).thenReturn(page);
+        when(dataApi.queryByTable(any(TablePageQueryReq.class))).thenReturn(page);
 
         MenuDataResp resp =
                 commonAggregateService.queryByMenu(
@@ -827,6 +856,27 @@ class CompanyMenuQueryContractTest {
         assertNotNull(memberNameCol);
         assertEquals(0, memberNameCol.getSorted());
         assertNull(memberNameCol.getSearchType());
+
+        ArgumentCaptor<TablePageQueryReq> captor = ArgumentCaptor.forClass(TablePageQueryReq.class);
+        verify(dataApi).queryByTable(captor.capture());
+        assertEquals(1, captor.getValue().getSorts().size());
+        assertEquals("financial_account", captor.getValue().getSorts().get(0).getTableName());
+        assertEquals("account_no", captor.getValue().getSorts().get(0).getColumnName());
+    }
+
+    private static List<String> flattenPhysicalFields(TablePageQueryReq req) {
+        List<String> fields = new ArrayList<>();
+        if (req != null && req.getTables() != null) {
+            for (TableSpec spec : req.getTables()) {
+                if (spec == null || spec.getTableName() == null || spec.getColumns() == null) {
+                    continue;
+                }
+                for (String column : spec.getColumns()) {
+                    fields.add(spec.getTableName() + "." + column);
+                }
+            }
+        }
+        return fields;
     }
 
     @Test

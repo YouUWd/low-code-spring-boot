@@ -261,10 +261,6 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         // 表单数据 共有的 一些业务字段数据 business_no ,business_status等
         if (CollectionUtil.isNotEmpty(context.getBizDataMap())) {
             for (Map.Entry<String, Object> entry : context.getBizDataMap().entrySet()) {
-                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
-                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
-                    continue;
-                }
                 // 非表结构定义字段 不写入
                 if (CollectionUtil.isNotEmpty(allFields)
                         && !allFields.containsKey(entry.getKey())) {
@@ -280,10 +276,6 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isNotEmpty(context.getParentLevelTableAssociationDataMap())) {
             for (Map.Entry<String, Object> entry :
                     context.getParentLevelTableAssociationDataMap().entrySet()) {
-                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
-                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
-                    continue;
-                }
                 // 非表结构定义字段 不写入
                 if (CollectionUtil.isNotEmpty(allFields)
                         && !allFields.containsKey(entry.getKey())) {
@@ -299,11 +291,6 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (CollectionUtil.isNotEmpty(context.getDefaultUserContextDataMap())) {
             for (Map.Entry<String, Object> entry :
                     context.getDefaultUserContextDataMap().entrySet()) {
-
-                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
-                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
-                    continue;
-                }
                 // 非表结构定义字段 不写入
                 if (CollectionUtil.isNotEmpty(allFields)
                         && !allFields.containsKey(entry.getKey())) {

@@ -34,7 +34,7 @@ public class SubModuleRelateIdConditionBuilderServiceImpl
 
         if (CollectionUtils.isEmpty(relationList)
                 || CollectionUtils.isEmpty(context.getRelateIds())) {
-            return DSL.trueCondition();
+            return DSL.falseCondition();
         } else {
             return DSL.field(DSL.name(context.getTableName(), relationList.get(0).getJoinField()))
                     .in(context.getRelateIds());

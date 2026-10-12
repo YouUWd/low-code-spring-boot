@@ -1,8 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.jdec.platform.config.api.SysApprovalChainConfigApi;
-import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDeleteReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicInsertReq;
@@ -51,19 +49,15 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
 
     private final ModuleMetaDataService moduleMetaDataService;
 
-    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
-
-    private final ConfigApi configApi;
-
     public Long save(DynamicSaveReq req) {
 
         boolean isRelatedApproval =
-                sysApprovalChainConfigApi.getApprovalStatus(
-                        List.of(req.getNestedModuleData().getModuleId()));
+                moduleMetaDataService.getApprovalStatusByModuleIdAsync(
+                        req.getNestedModuleData().getModuleId());
         // 模块是否关联审批链 保存类型
         SaveType finalSaveType = getSaveType(req);
         Map<Long, SysModuleCombineInfo> moduleCacheMap =
-                moduleMetaDataService.getModuleMetaDataMap(
+                moduleMetaDataService.getModuleMetaDataMapAsync(
                         ModuleQueryContext.builder()
                                 .moduleId(req.getNestedModuleData().getModuleId())
                                 .projectNo(AppContext.getProjectNo())

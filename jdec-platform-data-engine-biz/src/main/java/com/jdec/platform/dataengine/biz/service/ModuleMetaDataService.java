@@ -9,4 +9,8 @@ public interface ModuleMetaDataService {
 
     Map<Long, SysModuleCombineInfo> getModuleMetaDataMapAsync(
             ModuleQueryContext moduleQueryContext);
+
+    Boolean getApprovalStatusByModuleId(Long moduleId);
+
+    Boolean getApprovalStatusByModuleIdAsync(Long moduleId);
 }
