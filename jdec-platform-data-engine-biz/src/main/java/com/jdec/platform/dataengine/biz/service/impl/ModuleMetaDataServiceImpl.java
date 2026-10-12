@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.SysModuleFieldPermissionApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -31,6 +32,8 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
     private final SysModuleFieldPermissionApi sysModuleFieldPermissionApi;
 
     private final SysFieldApi sysFieldApi;
+
+    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
 
     @Override
     public Map<Long, SysModuleCombineInfo> getModuleMetaDataMap(
@@ -229,6 +232,25 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                         });
         try {
             return moduleMapCacheFuture.get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Boolean getApprovalStatusByModuleId(Long moduleId) {
+        return sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId));
+    }
+
+    @Override
+    public Boolean getApprovalStatusByModuleIdAsync(Long moduleId) {
+        CompletableFuture<Boolean> future =
+                CompletableFuture.supplyAsync(
+                        () -> {
+                            return getApprovalStatusByModuleId(moduleId);
+                        });
+        try {
+            return future.get();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

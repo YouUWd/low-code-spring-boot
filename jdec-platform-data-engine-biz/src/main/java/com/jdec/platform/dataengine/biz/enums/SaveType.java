@@ -16,4 +16,33 @@ public enum SaveType {
     private SaveType(String btn) {
         this.btn = btn;
     }
+
+    public static SaveType getSaveType(String btn) {
+
+        SaveButtonType saveButtonType = SaveButtonType.getSaveButtonTypeByKey(btn);
+        if (saveButtonType == null) {
+            saveButtonType = SaveButtonType.SAVE;
+        }
+        SaveType saveType = null;
+        switch (saveButtonType) {
+            case SAVE -> {
+                // 保存
+                saveType = SaveType.SAVE;
+            }
+            case CHANGE -> {
+                // 提交
+                saveType = SaveType.APPROVAL_CHANGE;
+            }
+            case REAL_TIME_CHANGE -> {
+                saveType = SaveType.APPROVAL_REALTIME;
+            }
+            case INSERT_AND_GET_ID -> {
+                saveType = SaveType.INSERT_AND_GET_ID;
+            }
+            case DELETE_BY_ID -> {
+                saveType = SaveType.DELETE_BY_ID;
+            }
+        }
+        return saveType;
+    }
 }
