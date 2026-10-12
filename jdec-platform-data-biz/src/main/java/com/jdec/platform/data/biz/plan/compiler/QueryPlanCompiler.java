@@ -68,7 +68,18 @@ public class QueryPlanCompiler {
 
         List<TableSpec> tables = new ArrayList<>();
         if (table != null && !table.isBlank()) {
-            tables.add(TableSpec.of(req.getModuleId(), table, req.getColumnName().trim()));
+            Long targetModuleId = req.getModuleId();
+            if (tree != null && tree.getModuleMap() != null) {
+                for (ModuleInfo m : tree.getModuleMap().values()) {
+                    if (m != null
+                            && m.getPrimaryTable() != null
+                            && m.getPrimaryTable().equalsIgnoreCase(table.trim())) {
+                        targetModuleId = m.getModuleId();
+                        break;
+                    }
+                }
+            }
+            tables.add(TableSpec.of(targetModuleId, table, req.getColumnName().trim()));
         }
 
         TableQueryReq queryReq =
@@ -387,7 +398,10 @@ public class QueryPlanCompiler {
                     String childTable = ModuleRelationResolver.resolvePrimaryTable(childMeta);
                     boolean shouldIncludeChild = isFullTreeMode;
                     if (!isFullTreeMode) {
-                        shouldIncludeChild = isTableOrDescendantInSpecs(childMid, tableSpecs, tree);
+                        shouldIncludeChild =
+                                isTableOrDescendantInSpecs(childMid, tableSpecs, tree)
+                                        || isModuleOrDescendantInFilters(
+                                                childMid, req.getFilters(), tree);
                     }
                     if (shouldIncludeChild) {
                         QueryNodePlan cp =
@@ -810,6 +824,40 @@ public class QueryPlanCompiler {
         if (children != null) {
             for (Long cid : children) {
                 if (isTableOrDescendantInSpecs(cid, tableSpecs, tree)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isModuleOrDescendantInFilters(
+            Long moduleId, List<PhysicalFilterItem> filters, ModuleTreeDTO tree) {
+        if (moduleId == null || tree == null || filters == null || filters.isEmpty()) {
+            return false;
+        }
+        ModuleInfo meta = tree.getModule(moduleId);
+        if (meta != null) {
+            String pt = ModuleRelationResolver.resolvePrimaryTable(meta);
+            for (PhysicalFilterItem f : filters) {
+                if (f == null) {
+                    continue;
+                }
+                if (f.getModuleId() != null && f.getModuleId().equals(moduleId)) {
+                    return true;
+                }
+                if (pt != null
+                        && !pt.isBlank()
+                        && f.getTableName() != null
+                        && pt.equalsIgnoreCase(f.getTableName().trim())) {
+                    return true;
+                }
+            }
+        }
+        List<Long> children = tree.getChildModuleIds(moduleId);
+        if (children != null) {
+            for (Long cid : children) {
+                if (isModuleOrDescendantInFilters(cid, filters, tree)) {
                     return true;
                 }
             }

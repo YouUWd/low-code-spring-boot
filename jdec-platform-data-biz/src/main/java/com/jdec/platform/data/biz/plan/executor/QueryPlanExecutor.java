@@ -335,20 +335,77 @@ public class QueryPlanExecutor {
 
         int maxLimit = (limit != null && limit > 0) ? Math.min(limit, 500) : 100;
 
-        // 目标节点即根节点时 (pathResult 为空或仅含根) targetNode == rootPlan，根/子两路查询完全同构，故合并为一段
+        // 目标节点即根节点时 (pathResult 为空或仅含根) targetNode == rootPlan
         SelectJoinStep<?> selectStep =
                 applyAttachedJoins(
                         dsl.selectDistinct(distinctField)
                                 .from(DSL.table(DSL.name(targetPrimaryTable))),
                         targetNode.getAttachedJoins());
 
-        Condition cond = targetNode.getCondition();
-        if (cond == null) {
-            cond = DSL.noCondition();
-        }
-        cond = cond.and(distinctField.isNotNull());
+        Condition combinedCond = DSL.noCondition();
 
-        SelectConditionStep<?> conditionStep = selectStep.where(cond);
+        if (pathResult.size() > 1) {
+            Set<String> joinedTables = new HashSet<>();
+            joinedTables.add(targetPrimaryTable.toLowerCase());
+
+            // 目标表属于从属/子孙模块节点：沿路径向上反向 INNER JOIN 到根节点（如 member_contact -> member -> info）
+            // 注意：中间节点可能是虚拟模块（primaryTable 为空），此时子节点已直接跨越虚拟层级关联到上层物理父表 (child.parentPrimaryTable)
+            for (int i = pathResult.size() - 1; i >= 0; i--) {
+                QueryNodePlan child = pathResult.get(i);
+                String childTable = child.getPrimaryTable();
+                String parentTable = child.getParentPrimaryTable();
+                if (childTable == null || childTable.isBlank()) {
+                    continue;
+                }
+                if (parentTable != null
+                        && !parentTable.isBlank()
+                        && joinedTables.add(parentTable.toLowerCase())) {
+                    String cFk =
+                            child.getParentForeignKey() != null
+                                    ? child.getParentForeignKey()
+                                    : "id";
+                    String pKey = child.getParentKey() != null ? child.getParentKey() : "id";
+                    selectStep =
+                            (SelectJoinStep<?>)
+                                    selectStep
+                                            .innerJoin(DSL.table(DSL.name(parentTable)))
+                                            .on(
+                                                    DSL.field(DSL.name(childTable, cFk))
+                                                            .eq(
+                                                                    DSL.field(
+                                                                            DSL.name(
+                                                                                    parentTable,
+                                                                                    pKey))))
+                                            .and(
+                                                    DSL.field(DSL.name(parentTable, "deleted"))
+                                                            .eq((byte) 0));
+                }
+            }
+
+            // 对路径上所有已引入的物理表节点补充其 attachedJoins (如伴生表/上游表)
+            for (QueryNodePlan nodeOnPath : pathResult) {
+                if (nodeOnPath.getPrimaryTable() != null
+                        && joinedTables.contains(nodeOnPath.getPrimaryTable().toLowerCase())
+                        && nodeOnPath.getAttachedJoins() != null) {
+                    selectStep = applyAttachedJoins(selectStep, nodeOnPath.getAttachedJoins());
+                }
+            }
+
+            // 收集从目标节点到祖先节点路径上的所有过滤条件
+            for (QueryNodePlan nodeOnPath : pathResult) {
+                if (nodeOnPath.getCondition() != null) {
+                    combinedCond = combinedCond.and(nodeOnPath.getCondition());
+                }
+            }
+        } else {
+            if (targetNode.getCondition() != null) {
+                combinedCond = combinedCond.and(targetNode.getCondition());
+            }
+        }
+
+        combinedCond = combinedCond.and(distinctField.isNotNull());
+
+        SelectConditionStep<?> conditionStep = selectStep.where(combinedCond);
         Result<?> records;
         if (direction != null && !direction.isBlank()) {
             records =

@@ -75,8 +75,8 @@ class CompanyMenuQueryContractTest {
                         openMenuApi,
                         configApi,
                         dataApi,
-                        approvalEngine,
-                        sysApprovalChainConfigApi,
+                        new CommonApprovalFilterResolver(
+                                approvalEngine, sysApprovalChainConfigApi, configApi),
                         sysUserApi,
                         sysStatusApi);
 

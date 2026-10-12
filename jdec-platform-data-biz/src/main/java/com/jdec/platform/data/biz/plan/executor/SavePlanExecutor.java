@@ -433,9 +433,11 @@ public class SavePlanExecutor {
         Map<Field<Object>, Object> fieldValues = new LinkedHashMap<>();
 
         Set<String> validColumns = null;
+        String parentFkColumn = null;
         if (nodePlan != null
                 && nodePlan.getModuleMeta() != null
                 && nodePlan.getModuleMeta().getFields() != null) {
+            parentFkColumn = nodePlan.getParentForeignKey();
             validColumns = new HashSet<>();
             for (var f : nodePlan.getModuleMeta().getFields()) {
                 if (f != null && f.getColumnName() != null) {
@@ -464,11 +466,7 @@ public class SavePlanExecutor {
             // 若模块元数据定义了字段集合，过滤掉不属于该模块/表的冗余下发字段（如版本派生时从根节点向下传播但子表并不存在的 version_no）
             if (validColumns != null && !validColumns.isEmpty()) {
                 if (!validColumns.contains(col.toLowerCase())
-                        && !"subject_id".equalsIgnoreCase(col)
-                        && !"created_by".equalsIgnoreCase(col)
-                        && !"created_date".equalsIgnoreCase(col)
-                        && !"updated_by".equalsIgnoreCase(col)
-                        && !"updated_date".equalsIgnoreCase(col)) {
+                        && !isEngineManagedColumn(col, parentFkColumn)) {
                     continue;
                 }
             }
@@ -513,6 +511,7 @@ public class SavePlanExecutor {
 
             Long generatedId = null;
             try {
+                // 优先使用 jOOQ 标准 returningResult (在支持 RETURNING 的方言/驱动如 PostgreSQL 或 MySQL 驱动支持时生效)
                 generatedId =
                         insertQuery
                                 .returningResult(DSL.field(DSL.name(table, "id"), Long.class))
@@ -521,27 +520,9 @@ public class SavePlanExecutor {
                 log.debug("returningResult 获取自增主键未成功 [table={}]: {}", table, ex.getMessage());
             }
 
+            // 多级回退机制：当 RETURNING 不受底层 RDBMS/JDBC 驱动支持时，按优先级尝试抓取自增 ID
             if (generatedId == null || generatedId <= 0) {
-                try {
-                    if (dsl.lastID() != null && dsl.lastID().longValue() > 0) {
-                        generatedId = dsl.lastID().longValue();
-                    }
-                } catch (Exception ignored) {
-                }
-                if (generatedId == null || generatedId <= 0) {
-                    try {
-                        generatedId =
-                                dsl.resultQuery("SELECT LAST_INSERT_ID()").fetchOne(0, Long.class);
-                    } catch (Exception ignored) {
-                    }
-                }
-                if (generatedId == null || generatedId <= 0) {
-                    try {
-                        generatedId =
-                                dsl.resultQuery("SELECT SCOPE_IDENTITY()").fetchOne(0, Long.class);
-                    } catch (Exception ignored) {
-                    }
-                }
+                generatedId = fetchLastInsertedId(dsl);
             }
 
             if (generatedId == null || generatedId <= 0) {
@@ -553,6 +534,61 @@ public class SavePlanExecutor {
             backfillId(sourceRow, table, generatedId);
             return generatedId;
         }
+    }
+
+    /**
+     * 多方言自增主键安全回退抓取策略。
+     *
+     * <ol>
+     *   <li>{@code dsl.lastID()}: jOOQ 内置会话级最近生成主键；
+     *   <li>{@code SELECT LAST_INSERT_ID()}: MySQL 标准方言函数；
+     *   <li>{@code SELECT SCOPE_IDENTITY()}: H2 / SQL Server 标准函数。
+     * </ol>
+     */
+    private Long fetchLastInsertedId(DSLContext dsl) {
+        Long generatedId = null;
+        try {
+            if (dsl.lastID() != null && dsl.lastID().longValue() > 0) {
+                generatedId = dsl.lastID().longValue();
+            }
+        } catch (Exception ignored) {
+        }
+
+        if (generatedId == null || generatedId <= 0) {
+            try {
+                generatedId = dsl.resultQuery("SELECT LAST_INSERT_ID()").fetchOne(0, Long.class);
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (generatedId == null || generatedId <= 0) {
+            try {
+                generatedId = dsl.resultQuery("SELECT SCOPE_IDENTITY()").fetchOne(0, Long.class);
+            } catch (Exception ignored) {
+            }
+        }
+        return (generatedId != null && generatedId > 0) ? generatedId : null;
+    }
+
+    /**
+     * 引擎自管列：审计列 + 租户列 + **父外键列**。
+     *
+     * <p>真实 {@code sys_module_field} 普遍**不声明**从表的技术外键列（如 {@code basic_info.company_id} / {@code
+     * member.company_id} / {@code credit_rating.company_id}），而 {@link #saveChildPlanRecursively}
+     * 已按模块树把父主键回填进该列。 若此处再按字段字典把它过滤掉，回填的外键会被静默丢弃、整树父子关系断裂（NOT NULL 列还会直接插入失败）。
+     */
+    private static boolean isEngineManagedColumn(String col, String parentFkColumn) {
+        if ("subject_id".equalsIgnoreCase(col)
+                || "created_by".equalsIgnoreCase(col)
+                || "created_date".equalsIgnoreCase(col)
+                || "updated_by".equalsIgnoreCase(col)
+                || "updated_date".equalsIgnoreCase(col)) {
+            return true;
+        }
+        return parentFkColumn != null
+                && !parentFkColumn.isBlank()
+                && !"id".equalsIgnoreCase(parentFkColumn)
+                && parentFkColumn.equalsIgnoreCase(col);
     }
 
     private boolean isDeletedFlag(Object deletedObj) {

@@ -1,6 +1,5 @@
 package com.jdec.platform.common.biz.service.impl;
 
-import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.SortItem;
 import com.jdec.platform.common.api.dto.response.*;
@@ -12,7 +11,6 @@ import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.dto.response.StatusSimpleResp;
 import com.jdec.platform.common.biz.dto.response.UserSimpleResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
-import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.common.*;
@@ -53,8 +51,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private final OpenMenuApi openMenuApi;
     private final ConfigApi configApi;
     private final DataApi dataApi;
-    private final IApprovalEngine approvalEngine;
-    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+    private final CommonApprovalFilterResolver approvalFilterResolver;
     private final SysUserApi sysUserApi;
     private final SysStatusApi sysStatusApi;
 
@@ -112,8 +109,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req != null ? req.getApprovalType() : null;
-        ApprovalFilterOutcome approvalOutcome =
-                resolveApprovalFilters(rootModuleId, approvalType, moduleTree);
+        CommonApprovalFilterResolver.ApprovalFilterOutcome approvalOutcome =
+                approvalFilterResolver.resolveApprovalFilters(
+                        rootModuleId, approvalType, moduleTree);
 
         if (approvalOutcome.filterResult().shortCircuitEmpty()) {
             ModuleDataNode emptyNode =
@@ -282,8 +280,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req.getApprovalType();
-        ApprovalFilterOutcome approvalOutcome =
-                resolveApprovalFilters(rootModuleId, approvalType, moduleTree);
+        CommonApprovalFilterResolver.ApprovalFilterOutcome approvalOutcome =
+                approvalFilterResolver.resolveApprovalFilters(
+                        rootModuleId, approvalType, moduleTree);
 
         if (approvalOutcome.filterResult().shortCircuitEmpty()) {
             // 审批过滤无候选匹配时短路直接返回空候选项列表
@@ -739,175 +738,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 .build();
     }
 
-    private ApprovalButtonsGroup queryApprovalButtons(Long rootModuleId, Integer approvalType) {
-        Map<Long, List<Map<String, Object>>> relevantBtns = new LinkedHashMap<>();
-        Map<Long, List<Map<String, Object>>> allBtns = new LinkedHashMap<>();
-
-        if (approvalType == null) {
-            return new ApprovalButtonsGroup(relevantBtns, allBtns);
-        }
-
-        try {
-            List<Map<String, Object>> approvalRawList =
-                    approvalEngine.getListButton(rootModuleId, approvalType);
-            if (!CollectionUtils.isEmpty(approvalRawList)) {
-                for (Map<String, Object> rawBtn : approvalRawList) {
-                    if (rawBtn == null) {
-                        continue;
-                    }
-                    Long recordId = parseRecordIdFromRaw(rawBtn.get("recordId"));
-                    if (recordId == null) {
-                        continue;
-                    }
-
-                    Object buttonKey = rawBtn.get("buttonKey");
-                    Object buttonName = rawBtn.get("buttonName");
-                    Map<String, Object> btnInfo = new LinkedHashMap<>();
-                    btnInfo.put("buttonKey", buttonKey != null ? buttonKey.toString() : "view");
-                    btnInfo.put("buttonName", buttonName != null ? buttonName.toString() : "查阅");
-
-                    relevantBtns.computeIfAbsent(recordId, k -> new ArrayList<>()).add(btnInfo);
-                    allBtns.computeIfAbsent(recordId, k -> new ArrayList<>()).add(btnInfo);
-                }
-            }
-        } catch (Exception ex) {
-            log.warn(
-                    "获取审批链按钮数据失败或当前模块未配置审批流: moduleId={}, approvalType={}, err={}",
-                    rootModuleId,
-                    approvalType,
-                    ex.getMessage());
-        }
-        return new ApprovalButtonsGroup(relevantBtns, allBtns);
-    }
-
-    private ApprovalFilterResult buildApprovalFilters(
-            Integer approvalType,
-            RootModuleFieldIds rootFieldIds,
-            Map<Long, List<Map<String, Object>>> btnGroupMap) {
-
-        List<PhysicalFilterItem> filters = new ArrayList<>();
-        if (approvalType == null) {
-            return new ApprovalFilterResult(filters, false);
-        }
-
-        Long currentUserId = UserContext.getUserId();
-
-        if (approvalType == 1 || approvalType == 3) {
-            // 【待办】与【全部】：(id IN recordIds) OR (created_by == currentUserId &&
-            // business_status == 1)
-            Set<Long> recordIds = btnGroupMap.keySet();
-            boolean hasApprovalIds = !recordIds.isEmpty() && rootFieldIds.idField() != null;
-            List<PhysicalFilterItem> draftItems =
-                    buildDraftFilterItems(currentUserId, rootFieldIds);
-
-            if (!hasApprovalIds && (draftItems == null || draftItems.isEmpty())) {
-                return new ApprovalFilterResult(filters, true);
-            }
-
-            PhysicalFilterItem approvalBranch =
-                    hasApprovalIds
-                            ? PhysicalQueryMapper.filter(
-                                    rootFieldIds.tree(),
-                                    rootFieldIds.idField().fieldId(),
-                                    "IN",
-                                    new ArrayList<>(recordIds))
-                            : null;
-
-            List<PhysicalFilterItem> combined = combineBranches(approvalBranch, draftItems);
-            if (combined != null && !combined.isEmpty()) {
-                filters.addAll(combined);
-            }
-        } else if (approvalType == 2) {
-            // 【已办】: id IN doneRecordIds
-            Set<Long> doneRecordIds = btnGroupMap.keySet();
-            if (doneRecordIds.isEmpty() || rootFieldIds.idField() == null) {
-                return new ApprovalFilterResult(filters, true);
-            }
-            filters.add(
-                    PhysicalQueryMapper.filter(
-                            rootFieldIds.tree(),
-                            rootFieldIds.idField().fieldId(),
-                            "IN",
-                            new ArrayList<>(doneRecordIds)));
-        }
-
-        return new ApprovalFilterResult(filters, false);
-    }
-
-    private List<PhysicalFilterItem> buildDraftFilterItems(
-            Long currentUserId, RootModuleFieldIds rootFieldIds) {
-        if (currentUserId == null
-                || rootFieldIds.createdByField() == null
-                || rootFieldIds.businessStatusField() == null) {
-            return Collections.emptyList();
-        }
-        List<PhysicalFilterItem> draftItems = new ArrayList<>();
-        draftItems.add(
-                PhysicalQueryMapper.filter(
-                        rootFieldIds.tree(),
-                        rootFieldIds.createdByField().fieldId(),
-                        "EQ",
-                        currentUserId));
-        draftItems.add(
-                PhysicalQueryMapper.filter(
-                        rootFieldIds.tree(),
-                        rootFieldIds.businessStatusField().fieldId(),
-                        "EQ",
-                        1));
-        return draftItems;
-    }
-
-    private List<PhysicalFilterItem> combineBranches(
-            PhysicalFilterItem approvalBranch, List<PhysicalFilterItem> draftItems) {
-        if (approvalBranch != null && draftItems != null && !draftItems.isEmpty()) {
-            approvalBranch.setLogic("OR");
-            approvalBranch.setChildren(draftItems);
-            return Collections.singletonList(approvalBranch);
-        }
-        if (approvalBranch != null) {
-            return Collections.singletonList(approvalBranch);
-        }
-        if (draftItems != null && !draftItems.isEmpty()) {
-            return draftItems;
-        }
-        return Collections.emptyList();
-    }
-
-    private RootModuleFieldIds extractRootModuleFieldIds(
-            Long rootModuleId, ModuleTreeDTO inMemoryModuleTree) {
-        if (rootModuleId == null) {
-            return new RootModuleFieldIds(null, null, null, null);
-        }
-
-        ModuleTreeDTO moduleTree =
-                inMemoryModuleTree != null
-                        ? inMemoryModuleTree
-                        : configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
-        PhysicalQueryMapper.PhysicalFieldRef idField = null;
-        PhysicalQueryMapper.PhysicalFieldRef createdByField = null;
-        PhysicalQueryMapper.PhysicalFieldRef businessStatusField = null;
-
-        if (moduleTree != null && moduleTree.getRootModule() != null) {
-            List<ModuleFieldDTO> fields = moduleTree.getRootModule().getFields();
-            if (fields != null) {
-                for (ModuleFieldDTO f : fields) {
-                    String col = f.getColumnName();
-                    if ("id".equalsIgnoreCase(col)) {
-                        idField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
-                    } else if ("created_by".equalsIgnoreCase(col)
-                            || "createdBy".equalsIgnoreCase(col)) {
-                        createdByField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
-                    } else if ("business_status".equalsIgnoreCase(col)
-                            || "businessStatus".equalsIgnoreCase(col)) {
-                        businessStatusField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
-                    }
-                }
-            }
-        }
-
-        return new RootModuleFieldIds(moduleTree, idField, createdByField, businessStatusField);
-    }
-
     /**
      * 在 DataRow 阶段对主表数据进行元数据增强（created_by 转换为 UserSimpleResp，business_status 转换为 StatusSimpleResp）
      */
@@ -1034,18 +864,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return null;
     }
 
-    private Long parseRecordIdFromRaw(Object rIdObj) {
-        if (rIdObj instanceof Number num) {
-            return num.longValue();
-        } else if (rIdObj != null) {
-            try {
-                return Long.valueOf(rIdObj.toString());
-            } catch (Exception ignored) {
-            }
-        }
-        return null;
-    }
-
     private MenuHeaderColumnResp getHeaderDisplayOrThrow(Long userId, Long menuId, Long roleId) {
         MenuHeaderDisplayResp headerDisplay =
                 userMenuHeaderApi.getUserMenuHeaderDisplay(
@@ -1059,47 +877,4 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
         return headerRoot;
     }
-
-    private boolean isApprovalChainEnabled(Long rootModuleId) {
-        if (rootModuleId == null) {
-            return false;
-        }
-        try {
-            return Boolean.TRUE.equals(
-                    sysApprovalChainConfigApi.getApprovalStatus(
-                            Collections.singletonList(rootModuleId)));
-        } catch (Exception ex) {
-            log.warn("查询模块审批链状态失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
-            return false;
-        }
-    }
-
-    private ApprovalFilterOutcome resolveApprovalFilters(
-            Long rootModuleId, Integer approvalType, ModuleTreeDTO moduleTree) {
-        if (rootModuleId == null || approvalType == null || !isApprovalChainEnabled(rootModuleId)) {
-            return new ApprovalFilterOutcome(
-                    new ApprovalFilterResult(Collections.emptyList(), false), null);
-        }
-        RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId, moduleTree);
-        ApprovalButtonsGroup approvalGroup = queryApprovalButtons(rootModuleId, approvalType);
-        ApprovalFilterResult filterResult =
-                buildApprovalFilters(approvalType, rootFieldIds, approvalGroup.relevantBtns());
-        return new ApprovalFilterOutcome(filterResult, approvalGroup.allBtns());
-    }
-
-    private record ApprovalFilterOutcome(
-            ApprovalFilterResult filterResult, Map<Long, List<Map<String, Object>>> allBtnsMap) {}
-
-    private record ApprovalButtonsGroup(
-            Map<Long, List<Map<String, Object>>> relevantBtns,
-            Map<Long, List<Map<String, Object>>> allBtns) {}
-
-    private record RootModuleFieldIds(
-            ModuleTreeDTO tree,
-            PhysicalQueryMapper.PhysicalFieldRef idField,
-            PhysicalQueryMapper.PhysicalFieldRef createdByField,
-            PhysicalQueryMapper.PhysicalFieldRef businessStatusField) {}
-
-    private record ApprovalFilterResult(
-            List<PhysicalFilterItem> filters, boolean shortCircuitEmpty) {}
 }
