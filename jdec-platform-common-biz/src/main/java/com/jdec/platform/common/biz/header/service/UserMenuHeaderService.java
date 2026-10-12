@@ -576,6 +576,10 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             Map<String, SysMenuHeaderResp> sourceByVirId) {
         SysMenuHeaderResp source = sourceByVirId.get(node.getVirId());
         MenuHeaderColumnResp resp = new MenuHeaderColumnResp();
+        resp.setNodeType(
+                source != null && source.getNodeType() != null
+                        ? source.getNodeType()
+                        : node.getNodeType());
         resp.setLabel(source != null ? source.getLabel() : node.getLabel());
         resp.setModuleId(node.getModuleId());
         if (isMenuNode(node)) {

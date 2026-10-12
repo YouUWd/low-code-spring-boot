@@ -458,6 +458,10 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             Map<String, SysMenuHeaderResp> generatedByVirId) {
         SysMenuHeaderResp generated = generatedByVirId.get(node.getVirId());
         MenuHeaderColumnResp resp = new MenuHeaderColumnResp();
+        resp.setNodeType(
+                generated != null && generated.getNodeType() != null
+                        ? generated.getNodeType()
+                        : node.getNodeType());
         resp.setLabel(generated != null ? generated.getLabel() : node.getLabel());
         resp.setModuleId(node.getModuleId());
         if (isMenuNode(node)) {

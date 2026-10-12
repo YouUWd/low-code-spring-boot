@@ -46,6 +46,9 @@ public class MenuHeaderColumnResp {
             example = "1")
     private Integer relationWord;
 
+    @Schema(description = "节点类型：0-菜单 / 1-字段")
+    private Integer nodeType;
+
     @Schema(description = "列宽(px)")
     private Integer width;
 
