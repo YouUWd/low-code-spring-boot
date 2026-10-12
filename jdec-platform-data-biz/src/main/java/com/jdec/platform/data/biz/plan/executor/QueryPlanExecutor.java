@@ -5,6 +5,7 @@ import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
+import com.jdec.platform.data.biz.plan.model.AttachedTableSpec;
 import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
 import com.jdec.platform.data.biz.plan.model.QueryPlan;
@@ -55,27 +56,10 @@ public class QueryPlanExecutor {
         }
 
         DSLContext dsl = jooqDataContextFactory.getContext();
-        SelectJoinStep<?> countStep = dsl.selectCount().from(DSL.table(DSL.name(primaryTable)));
-        if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
-            for (var joinSpec : rootPlan.getCompanionJoins()) {
-                String tgtTable = joinSpec.getTargetTable();
-                String tgtField = joinSpec.getTargetField();
-                String srcTable = joinSpec.getSourceTable();
-                String srcField = joinSpec.getSourceField();
-                countStep =
-                        (SelectJoinStep<?>)
-                                countStep
-                                        .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                        .on(
-                                                DSL.field(DSL.name(srcTable, srcField))
-                                                        .eq(
-                                                                DSL.field(
-                                                                        DSL.name(
-                                                                                tgtTable,
-                                                                                tgtField))))
-                                        .and(DSL.field(DSL.name(tgtTable, "deleted")).eq((byte) 0));
-            }
-        }
+        SelectJoinStep<?> countStep =
+                applyAttachedJoins(
+                        dsl.selectCount().from(DSL.table(DSL.name(primaryTable))),
+                        rootPlan.getAttachedJoins());
 
         Long total = countStep.where(rootPlan.getCondition()).fetchOne(0, Long.class);
         return total != null ? total : 0L;
@@ -119,27 +103,8 @@ public class QueryPlanExecutor {
                         ? dsl.select(DSL.asterisk()).from(DSL.table(DSL.name(primaryTable)))
                         : dsl.select(selectFields).from(DSL.table(DSL.name(primaryTable)));
 
-        // 2.1 若根节点配置有伴生表 (1:1 或 N:1)，执行安全 LEFT JOIN
-        if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
-            for (var joinSpec : rootPlan.getCompanionJoins()) {
-                String tgtTable = joinSpec.getTargetTable();
-                String tgtField = joinSpec.getTargetField();
-                String srcTable = joinSpec.getSourceTable();
-                String srcField = joinSpec.getSourceField();
-                selectStep =
-                        (SelectJoinStep<Record>)
-                                selectStep
-                                        .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                        .on(
-                                                DSL.field(DSL.name(srcTable, srcField))
-                                                        .eq(
-                                                                DSL.field(
-                                                                        DSL.name(
-                                                                                tgtTable,
-                                                                                tgtField))))
-                                        .and(DSL.field(DSL.name(tgtTable, "deleted")).eq((byte) 0));
-            }
-        }
+        // 2.1 若根节点配置有附加表 (伴生 1:1 / 上游 N:1)，执行安全 LEFT JOIN
+        selectStep = applyAttachedJoins(selectStep, rootPlan.getAttachedJoins());
 
         // 3. 执行主表分页查询
         Result<Record> records =
@@ -153,65 +118,10 @@ public class QueryPlanExecutor {
         List<Long> primaryIds = new ArrayList<>();
         List<DataRow> rootRows = new ArrayList<>();
         for (Record r : records) {
-            DataRow rootRow = new DataRow();
-            // 1. 提取物理主键 id (作为内部临时技术锚点，供 Stage 1 批抓取与 Stage 2 装配)
-            Object idVal = null;
-            try {
-                idVal = r.get(DSL.field(DSL.name(primaryTable, "id")));
-                if (idVal == null) {
-                    idVal = r.get("id");
-                }
-            } catch (Exception ignored) {
-            }
-
-            // 2. 主表物理表容器
-            Map<String, Object> primaryTableSpace = new LinkedHashMap<>();
-            if (idVal != null) {
-                primaryTableSpace.put("id", idVal);
-            }
-            rootRow.putTable(primaryTable, primaryTableSpace);
-
-            if (rootPlan.getProjectedFields() != null && !rootPlan.getProjectedFields().isEmpty()) {
-                for (PhysicalFieldSpec spec : rootPlan.getProjectedFields()) {
-                    if (spec.getColumnName() != null) {
-                        String tbl =
-                                spec.getTableName() != null ? spec.getTableName() : primaryTable;
-                        try {
-                            String alias =
-                                    tbl.equalsIgnoreCase(primaryTable)
-                                            ? spec.getColumnName()
-                                            : tbl + "_" + spec.getColumnName();
-                            Object val = null;
-                            try {
-                                val = r.get(alias);
-                            } catch (Exception e) {
-                                try {
-                                    val = r.get(spec.getColumnName());
-                                } catch (Exception ignored) {
-                                }
-                            }
-                            val = parseIfJson(val);
-                            Map<String, Object> tableMap = rootRow.getTable(tbl);
-                            if (tableMap == null) {
-                                tableMap = new LinkedHashMap<>();
-                                rootRow.putTable(tbl, tableMap);
-                            }
-                            tableMap.put(spec.getColumnName(), val);
-                        } catch (Exception ignored) {
-                        }
-                    }
-                }
-            } else {
-                // 无字段元数据回退：读取记录中全部可用列并注入主表空间
-                for (Field<?> f : r.fields()) {
-                    String col = f.getName();
-                    if ("id".equalsIgnoreCase(col)) continue; // id 已在上方单独注入
-                    Object val = parseIfJson(r.get(f));
-                    primaryTableSpace.put(col, val);
-                }
-            }
+            DataRow rootRow = extractRow(r, primaryTable, rootPlan.getProjectedFields(), null);
             rootRows.add(rootRow);
-            if (idVal instanceof Number num) {
+            Object pk = TreeResultAssembler.extractRowPrimaryId(rootRow, primaryTable);
+            if (pk instanceof Number num) {
                 primaryIds.add(num.longValue());
             }
         }
@@ -301,113 +211,34 @@ public class QueryPlanExecutor {
                             ? dsl.select(DSL.asterisk()).from(DSL.table(DSL.name(childTable)))
                             : dsl.select(selectFields).from(DSL.table(DSL.name(childTable)));
 
-            // 2. 若子节点有伴生表 (1:1 或 N:1)，执行安全 LEFT JOIN
-            if (childPlan.getCompanionJoins() != null && !childPlan.getCompanionJoins().isEmpty()) {
-                for (var joinSpec : childPlan.getCompanionJoins()) {
-                    String tgtTable = joinSpec.getTargetTable();
-                    String tgtField = joinSpec.getTargetField();
-                    String srcTable = joinSpec.getSourceTable();
-                    String srcField = joinSpec.getSourceField();
-                    queryStep =
-                            (SelectJoinStep<Record>)
-                                    queryStep
-                                            .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                            .on(
-                                                    DSL.field(DSL.name(srcTable, srcField))
-                                                            .eq(
-                                                                    DSL.field(
-                                                                            DSL.name(
-                                                                                    tgtTable,
-                                                                                    tgtField))))
-                                            .and(
-                                                    DSL.field(DSL.name(tgtTable, "deleted"))
-                                                            .eq((byte) 0));
-                }
-            }
+            // 2. 若子节点有附加表 (伴生 1:1 / 上游 N:1)，执行安全 LEFT JOIN
+            queryStep = applyAttachedJoins(queryStep, childPlan.getAttachedJoins());
 
-            // 构建从表查询 (fk IN (:parentIds) 与子节点编译好的 condition 组合，避免重复拼接 deleted = 0)
-            var query = queryStep.where(DSL.field(DSL.name(childTable, fkField)).in(parentIds));
-
-            if (childPlan.getCondition() != null
-                    && !DSL.noCondition().equals(childPlan.getCondition())) {
-                query = query.and(childPlan.getCondition());
-            } else {
-                query = query.and(DSL.field(DSL.name(childTable, "deleted")).eq((byte) 0));
-            }
-
-            Result<Record> childRecords = query.orderBy(childPlan.getOrderFields()).fetch();
+            // 3. 分批拉取 (Batch Partitioning, 每批最多 500 个 parentId, 防止超长 IN 参数导致数据库异常或性能下降)
             List<DataRow> childRows = new ArrayList<>();
             List<Long> childPrimaryIds = new ArrayList<>();
+            int batchSize = 500;
+            for (int i = 0; i < parentIds.size(); i += batchSize) {
+                List<Long> batchIds =
+                        parentIds.subList(i, Math.min(i + batchSize, parentIds.size()));
+                var query = queryStep.where(DSL.field(DSL.name(childTable, fkField)).in(batchIds));
 
-            for (Record r : childRecords) {
-                DataRow crow = new DataRow();
-                Object pkVal = null;
-                try {
-                    pkVal = r.get("id");
-                } catch (Exception ignored) {
-                }
-
-                // 主从表物理表空间
-                Map<String, Object> primaryTableSpace = new LinkedHashMap<>();
-                if (pkVal != null) {
-                    primaryTableSpace.put("id", pkVal);
-                }
-                crow.putTable(childTable, primaryTableSpace);
-
-                // 临时注入内部技术外键（供 Stage 2 树装配器按外键分组，装配完成后自动剥离）
-                try {
-                    Object fkVal = r.get(fkField);
-                    if (fkVal != null) {
-                        crow.getTables().put("_fk_" + fkField, fkVal);
-                    }
-                } catch (Exception ignored) {
-                }
-
-                if (childPlan.getProjectedFields() != null
-                        && !childPlan.getProjectedFields().isEmpty()) {
-                    for (PhysicalFieldSpec spec : childPlan.getProjectedFields()) {
-                        if (spec.getColumnName() != null) {
-                            String tbl =
-                                    spec.getTableName() != null ? spec.getTableName() : childTable;
-                            String alias =
-                                    tbl.equalsIgnoreCase(childTable)
-                                            ? spec.getColumnName()
-                                            : tbl + "_" + spec.getColumnName();
-                            Object val = null;
-                            try {
-                                val = r.get(alias);
-                            } catch (Exception e) {
-                                try {
-                                    val = r.get(spec.getColumnName());
-                                } catch (Exception ignored) {
-                                }
-                            }
-                            val = parseIfJson(val);
-                            Map<String, Object> targetTableMap = crow.getTable(tbl);
-                            if (targetTableMap == null) {
-                                targetTableMap = new LinkedHashMap<>();
-                                crow.putTable(tbl, targetTableMap);
-                            }
-                            targetTableMap.put(spec.getColumnName(), val);
-                        }
-                    }
+                if (childPlan.getCondition() != null
+                        && !DSL.noCondition().equals(childPlan.getCondition())) {
+                    query = query.and(childPlan.getCondition());
                 } else {
-                    // 无字段元数据回退：读取记录中全部可用列并注入从表空间
-                    Map<String, Object> childTableMap = crow.getTable(childTable);
-                    if (childTableMap == null) {
-                        childTableMap = new LinkedHashMap<>();
-                        crow.putTable(childTable, childTableMap);
-                    }
-                    for (Field<?> f : r.fields()) {
-                        String col = f.getName();
-                        if ("id".equalsIgnoreCase(col) || col.startsWith("_fk_")) continue;
-                        Object val = parseIfJson(r.get(f));
-                        childTableMap.put(col, val);
-                    }
+                    query = query.and(DSL.field(DSL.name(childTable, "deleted")).eq((byte) 0));
                 }
-                childRows.add(crow);
-                if (pkVal instanceof Number pkNum) {
-                    childPrimaryIds.add(pkNum.longValue());
+
+                Result<Record> childRecords = query.orderBy(childPlan.getOrderFields()).fetch();
+                for (Record r : childRecords) {
+                    DataRow crow =
+                            extractRow(r, childTable, childPlan.getProjectedFields(), fkField);
+                    childRows.add(crow);
+                    Object pk = TreeResultAssembler.extractRowPrimaryId(crow, childTable);
+                    if (pk instanceof Number pkNum) {
+                        childPrimaryIds.add(pkNum.longValue());
+                    }
                 }
             }
 
@@ -471,195 +302,6 @@ public class QueryPlanExecutor {
         return fields;
     }
 
-    /** 执行字段候选值去重查询 (保证选项严格属于符合当前分页过滤条件的候选集) */
-    public List<Object> executeDistinctOptions(
-            QueryPlan plan, Long targetFieldId, String direction) {
-        if (plan == null || plan.getRootNodePlan() == null) {
-            return Collections.emptyList();
-        }
-
-        QueryNodePlan rootPlan = plan.getRootNodePlan();
-        String rootPrimaryTable = rootPlan.getPrimaryTable();
-        if (rootPrimaryTable == null || rootPrimaryTable.isBlank()) {
-            return Collections.emptyList();
-        }
-
-        // 递归从节点树中寻找目标字段所属的 QueryNodePlan 及物理字段定义
-        List<QueryNodePlan> pathToTarget = new ArrayList<>();
-        findPathToField(rootPlan, targetFieldId, pathToTarget);
-
-        QueryNodePlan targetNode =
-                pathToTarget.isEmpty() ? rootPlan : pathToTarget.get(pathToTarget.size() - 1);
-        PhysicalFieldSpec targetSpec = null;
-        if (targetNode.getProjectedFields() != null) {
-            for (PhysicalFieldSpec spec : targetNode.getProjectedFields()) {
-                if (Objects.equals(spec.getFieldId(), targetFieldId)) {
-                    targetSpec = spec;
-                    break;
-                }
-            }
-        }
-
-        if (targetSpec == null || targetSpec.getColumnName() == null) {
-            return Collections.emptyList();
-        }
-
-        String targetPrimaryTable = targetNode.getPrimaryTable();
-        String targetTable =
-                (targetSpec.getTableName() != null && !targetSpec.getTableName().isBlank())
-                        ? targetSpec.getTableName()
-                        : targetPrimaryTable;
-        String column = targetSpec.getColumnName();
-
-        if (targetTable == null || targetTable.isBlank() || column == null || column.isBlank()) {
-            return Collections.emptyList();
-        }
-
-        DSLContext dsl = jooqDataContextFactory.getContext();
-        Field<Object> distinctField = DSL.field(DSL.name(targetTable, column));
-
-        // 1. 如果目标字段属于根节点 (根主表或根伴生表)，查询逻辑与主表分页 COUNT 逻辑完全对齐
-        if (pathToTarget.size() <= 1) {
-            SelectJoinStep<?> selectStep =
-                    dsl.selectDistinct(distinctField).from(DSL.table(DSL.name(rootPrimaryTable)));
-
-            // 根伴生表 LEFT JOIN
-            if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
-                for (var joinSpec : rootPlan.getCompanionJoins()) {
-                    String tgtTable = joinSpec.getTargetTable();
-                    String tgtField = joinSpec.getTargetField();
-                    String srcTable = joinSpec.getSourceTable();
-                    String srcField = joinSpec.getSourceField();
-                    selectStep =
-                            (SelectJoinStep<?>)
-                                    selectStep
-                                            .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                            .on(
-                                                    DSL.field(DSL.name(srcTable, srcField))
-                                                            .eq(
-                                                                    DSL.field(
-                                                                            DSL.name(
-                                                                                    tgtTable,
-                                                                                    tgtField))))
-                                            .and(
-                                                    DSL.field(DSL.name(tgtTable, "deleted"))
-                                                            .eq((byte) 0));
-                }
-            }
-
-            Condition cond = rootPlan.getCondition();
-            if (cond == null) {
-                cond = DSL.noCondition();
-            }
-            cond = cond.and(distinctField.isNotNull());
-
-            SelectConditionStep<?> conditionStep = selectStep.where(cond);
-            Result<?> records;
-            if (direction != null && !direction.isBlank()) {
-                records =
-                        "DESC".equalsIgnoreCase(direction.trim())
-                                ? conditionStep.orderBy(distinctField.desc()).fetch()
-                                : conditionStep.orderBy(distinctField.asc()).fetch();
-            } else {
-                records = conditionStep.fetch();
-            }
-            return extractDistinctOptionValues(records, direction);
-        }
-
-        // 2. 如果目标字段属于子节点 (1:N 从表或子模块)，从子表出发 SELECT DISTINCT targetField，
-        // 并通过 Semi-Join (EXISTS) 关联符合 rootPlan 全部约束的根实体记录
-        SelectJoinStep<?> selectStep =
-                dsl.selectDistinct(distinctField).from(DSL.table(DSL.name(targetPrimaryTable)));
-
-        // 目标子节点的伴生表 LEFT JOIN
-        if (targetNode.getCompanionJoins() != null && !targetNode.getCompanionJoins().isEmpty()) {
-            for (var joinSpec : targetNode.getCompanionJoins()) {
-                String tgtTable = joinSpec.getTargetTable();
-                String tgtField = joinSpec.getTargetField();
-                String srcTable = joinSpec.getSourceTable();
-                String srcField = joinSpec.getSourceField();
-                selectStep =
-                        (SelectJoinStep<?>)
-                                selectStep
-                                        .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                        .on(
-                                                DSL.field(DSL.name(srcTable, srcField))
-                                                        .eq(
-                                                                DSL.field(
-                                                                        DSL.name(
-                                                                                tgtTable,
-                                                                                tgtField))))
-                                        .and(DSL.field(DSL.name(tgtTable, "deleted")).eq((byte) 0));
-            }
-        }
-
-        Condition childCond = targetNode.getCondition();
-        if (childCond == null) {
-            childCond = DSL.noCondition();
-        }
-        childCond = childCond.and(distinctField.isNotNull());
-
-        // 向上逐跳回溯构建递归 EXISTS 链，穿透虚拟模块并正确关联到符合 root 过滤条件的主数据
-        List<QueryNodePlan> physicalPath = new ArrayList<>();
-        for (QueryNodePlan pNode : pathToTarget) {
-            if (pNode != null
-                    && pNode.getPrimaryTable() != null
-                    && !pNode.getPrimaryTable().isBlank()) {
-                physicalPath.add(pNode);
-            }
-        }
-
-        if (physicalPath.size() > 1) {
-            SelectJoinStep<?> rootMatchStep =
-                    dsl.selectOne().from(DSL.table(DSL.name(rootPrimaryTable)));
-            if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
-                for (var joinSpec : rootPlan.getCompanionJoins()) {
-                    String tgtTable = joinSpec.getTargetTable();
-                    String tgtField = joinSpec.getTargetField();
-                    String srcTable = joinSpec.getSourceTable();
-                    String srcField = joinSpec.getSourceField();
-                    rootMatchStep =
-                            (SelectJoinStep<?>)
-                                    rootMatchStep
-                                            .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                            .on(
-                                                    DSL.field(DSL.name(srcTable, srcField))
-                                                            .eq(
-                                                                    DSL.field(
-                                                                            DSL.name(
-                                                                                    tgtTable,
-                                                                                    tgtField))))
-                                            .and(
-                                                    DSL.field(DSL.name(tgtTable, "deleted"))
-                                                            .eq((byte) 0));
-                }
-            }
-
-            Condition rootCond =
-                    rootPlan.getCondition() != null ? rootPlan.getCondition() : DSL.noCondition();
-
-            // 递归链构建
-            Condition existsChain =
-                    buildRecursiveExistsChain(
-                            dsl, physicalPath, 0, physicalPath.size() - 1, rootMatchStep, rootCond);
-            if (existsChain != null) {
-                childCond = childCond.and(existsChain);
-            }
-        }
-
-        SelectConditionStep<?> childConditionStep = selectStep.where(childCond);
-        Result<?> records;
-        if (direction != null && !direction.isBlank()) {
-            records =
-                    "DESC".equalsIgnoreCase(direction.trim())
-                            ? childConditionStep.orderBy(distinctField.desc()).fetch()
-                            : childConditionStep.orderBy(distinctField.asc()).fetch();
-        } else {
-            records = childConditionStep.fetch();
-        }
-        return extractDistinctOptionValues(records, direction);
-    }
-
     /** 物理表驱动的字段候选值去重查询 (直接基于物理表名与列名，脱离 fieldId) */
     public List<Object> executeDistinctOptions(
             QueryPlan plan, String tableName, String columnName, String direction, Integer limit) {
@@ -693,105 +335,28 @@ public class QueryPlanExecutor {
 
         int maxLimit = (limit != null && limit > 0) ? Math.min(limit, 500) : 100;
 
-        // 1. 如果目标字段属于根节点 (根主表或根伴生表)
-        if (pathResult.size() <= 1) {
-            SelectJoinStep<?> selectStep =
-                    dsl.selectDistinct(distinctField).from(DSL.table(DSL.name(rootPrimaryTable)));
-
-            if (rootPlan.getCompanionJoins() != null && !rootPlan.getCompanionJoins().isEmpty()) {
-                for (var joinSpec : rootPlan.getCompanionJoins()) {
-                    String tgtTable = joinSpec.getTargetTable();
-                    String tgtField = joinSpec.getTargetField();
-                    String srcTable = joinSpec.getSourceTable();
-                    String srcField = joinSpec.getSourceField();
-                    selectStep =
-                            (SelectJoinStep<?>)
-                                    selectStep
-                                            .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                            .on(
-                                                    DSL.field(DSL.name(srcTable, srcField))
-                                                            .eq(
-                                                                    DSL.field(
-                                                                            DSL.name(
-                                                                                    tgtTable,
-                                                                                    tgtField))))
-                                            .and(
-                                                    DSL.field(DSL.name(tgtTable, "deleted"))
-                                                            .eq((byte) 0));
-                }
-            }
-
-            Condition cond = rootPlan.getCondition();
-            if (cond == null) {
-                cond = DSL.noCondition();
-            }
-            cond = cond.and(distinctField.isNotNull());
-
-            SelectConditionStep<?> conditionStep = selectStep.where(cond);
-            Result<?> records;
-            if (direction != null && !direction.isBlank()) {
-                records =
-                        "DESC".equalsIgnoreCase(direction.trim())
-                                ? conditionStep
-                                        .orderBy(distinctField.desc())
-                                        .limit(maxLimit)
-                                        .fetch()
-                                : conditionStep
-                                        .orderBy(distinctField.asc())
-                                        .limit(maxLimit)
-                                        .fetch();
-            } else {
-                records = conditionStep.limit(maxLimit).fetch();
-            }
-            return extractDistinctOptionValues(records, direction);
-        }
-
-        // 2. 如果属于子节点
+        // 目标节点即根节点时 (pathResult 为空或仅含根) targetNode == rootPlan，根/子两路查询完全同构，故合并为一段
         SelectJoinStep<?> selectStep =
-                dsl.selectDistinct(distinctField).from(DSL.table(DSL.name(targetPrimaryTable)));
+                applyAttachedJoins(
+                        dsl.selectDistinct(distinctField)
+                                .from(DSL.table(DSL.name(targetPrimaryTable))),
+                        targetNode.getAttachedJoins());
 
-        if (targetNode.getCompanionJoins() != null && !targetNode.getCompanionJoins().isEmpty()) {
-            for (var joinSpec : targetNode.getCompanionJoins()) {
-                String tgtTable = joinSpec.getTargetTable();
-                String tgtField = joinSpec.getTargetField();
-                String srcTable = joinSpec.getSourceTable();
-                String srcField = joinSpec.getSourceField();
-                selectStep =
-                        (SelectJoinStep<?>)
-                                selectStep
-                                        .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                        .on(
-                                                DSL.field(DSL.name(srcTable, srcField))
-                                                        .eq(
-                                                                DSL.field(
-                                                                        DSL.name(
-                                                                                tgtTable,
-                                                                                tgtField))))
-                                        .and(DSL.field(DSL.name(tgtTable, "deleted")).eq((byte) 0));
-            }
+        Condition cond = targetNode.getCondition();
+        if (cond == null) {
+            cond = DSL.noCondition();
         }
+        cond = cond.and(distinctField.isNotNull());
 
-        Condition childCond = targetNode.getCondition();
-        if (childCond == null) {
-            childCond = DSL.noCondition();
-        }
-        childCond = childCond.and(distinctField.isNotNull());
-
-        SelectConditionStep<?> childConditionStep = selectStep.where(childCond);
+        SelectConditionStep<?> conditionStep = selectStep.where(cond);
         Result<?> records;
         if (direction != null && !direction.isBlank()) {
             records =
                     "DESC".equalsIgnoreCase(direction.trim())
-                            ? childConditionStep
-                                    .orderBy(distinctField.desc())
-                                    .limit(maxLimit)
-                                    .fetch()
-                            : childConditionStep
-                                    .orderBy(distinctField.asc())
-                                    .limit(maxLimit)
-                                    .fetch();
+                            ? conditionStep.orderBy(distinctField.desc()).limit(maxLimit).fetch()
+                            : conditionStep.orderBy(distinctField.asc()).limit(maxLimit).fetch();
         } else {
-            records = childConditionStep.limit(maxLimit).fetch();
+            records = conditionStep.limit(maxLimit).fetch();
         }
         return extractDistinctOptionValues(records, direction);
     }
@@ -810,8 +375,8 @@ public class QueryPlanExecutor {
             result.addAll(currentPath);
             return;
         }
-        if (current.getCompanionJoins() != null) {
-            for (var cj : current.getCompanionJoins()) {
+        if (current.getAttachedJoins() != null) {
+            for (var cj : current.getAttachedJoins()) {
                 if (cj.getTargetTable() != null
                         && cj.getTargetTable().equalsIgnoreCase(targetTable)) {
                     result.addAll(currentPath);
@@ -824,11 +389,6 @@ public class QueryPlanExecutor {
                 findPathToTable(child, targetTable, new ArrayList<>(currentPath), result);
             }
         }
-    }
-
-    /** 兼容无 direction 参数的重载方法 */
-    public List<Object> executeDistinctOptions(QueryPlan plan, Long targetFieldId) {
-        return executeDistinctOptions(plan, targetFieldId, null);
     }
 
     /** 从 SELECT DISTINCT 结果集中提取候选值，自动解析与展平 JSON 数组并进行内存去重（支持按需可选排序） */
@@ -878,126 +438,109 @@ public class QueryPlanExecutor {
     }
 
     /**
-     * 递归构建从根物理节点逐跳向下到目标物理节点的 EXISTS 关联链
+     * 为查询步骤叠加附加表 (伴生垂直拆分 1:1 / 上游多对一 N:1) 的安全 LEFT JOIN，统一附加 deleted = 0 约束。
      *
-     * <p>例如路径为 [101(student), 105(student_course), 108(score_item)]: 生成: EXISTS (SELECT 1 FROM
-     * student LEFT JOIN ... WHERE rootCond AND EXISTS (SELECT 1 FROM student_course WHERE
-     * student.id = student_course.student_id AND student_course.id = score_item.course_id))
+     * <p>两种方向共用 {@code source.sourceField = target.targetField} 这一通用形式：伴生表是本表出主键、
+     * 目标表出外键；上游表是本表出外键、目标表出主键。
      */
-    private Condition buildRecursiveExistsChain(
-            DSLContext dsl,
-            List<QueryNodePlan> physicalPath,
-            int currentIndex,
-            int targetIndex,
-            SelectJoinStep<?> rootMatchStep,
-            Condition rootCond) {
-        if (currentIndex < 0 || currentIndex >= targetIndex) {
-            return null;
+    @SuppressWarnings("unchecked")
+    private static <R extends Record> SelectJoinStep<R> applyAttachedJoins(
+            SelectJoinStep<R> step, List<AttachedTableSpec> attachedJoins) {
+        if (attachedJoins == null || attachedJoins.isEmpty()) {
+            return step;
         }
-
-        QueryNodePlan currentPhysicalNode = physicalPath.get(currentIndex);
-        QueryNodePlan nextPhysicalNode = physicalPath.get(currentIndex + 1);
-
-        String currentTable = currentPhysicalNode.getPrimaryTable();
-        String nextTable = nextPhysicalNode.getPrimaryTable();
-
-        String parentKey =
-                nextPhysicalNode.getParentKey() != null ? nextPhysicalNode.getParentKey() : "id";
-        String childFk = nextPhysicalNode.getParentForeignKey();
-
-        if (childFk == null || childFk.isBlank() || currentTable == null || nextTable == null) {
-            return null;
+        SelectJoinStep<R> result = step;
+        for (AttachedTableSpec joinSpec : attachedJoins) {
+            String tgtTable = joinSpec.getTargetTable();
+            String tgtField = joinSpec.getTargetField();
+            String srcTable = joinSpec.getSourceTable();
+            String srcField = joinSpec.getSourceField();
+            result =
+                    (SelectJoinStep<R>)
+                            result.leftJoin(DSL.table(DSL.name(tgtTable)))
+                                    .on(
+                                            DSL.field(DSL.name(srcTable, srcField))
+                                                    .eq(DSL.field(DSL.name(tgtTable, tgtField))))
+                                    .and(DSL.field(DSL.name(tgtTable, "deleted")).eq((byte) 0));
         }
-
-        // 当前层与下一层的父子关联: currentTable.parentKey = nextTable.childFk
-        Condition linkToNextCondition =
-                DSL.field(DSL.name(currentTable, parentKey))
-                        .eq(DSL.field(DSL.name(nextTable, childFk)));
-
-        if (currentIndex == 0) {
-            // 顶层根节点
-            Condition fullRootCondition = rootCond != null ? rootCond : DSL.noCondition();
-
-            if (currentIndex + 1 == targetIndex) {
-                // 只有一层 (直接子模块): EXISTS (SELECT 1 FROM root WHERE root.id = target.fk AND
-                // rootCond)
-                fullRootCondition = fullRootCondition.and(linkToNextCondition);
-            } else {
-                // 深度 >= 2: 将 linkToNextCondition 和后续更深层的 EXISTS 嵌套一并构建在下一层
-                Condition nextChain =
-                        buildRecursiveExistsChain(
-                                dsl,
-                                physicalPath,
-                                currentIndex + 1,
-                                targetIndex,
-                                null,
-                                linkToNextCondition);
-                if (nextChain != null) {
-                    fullRootCondition = fullRootCondition.and(nextChain);
-                }
-            }
-
-            return DSL.exists(rootMatchStep.where(fullRootCondition));
-        } else {
-            // 中间节点
-            SelectJoinStep<?> intermediateStep =
-                    dsl.selectOne().from(DSL.table(DSL.name(currentTable)));
-            if (currentPhysicalNode.getCompanionJoins() != null
-                    && !currentPhysicalNode.getCompanionJoins().isEmpty()) {
-                for (var joinSpec : currentPhysicalNode.getCompanionJoins()) {
-                    String tgtTable = joinSpec.getTargetTable();
-                    String tgtField = joinSpec.getTargetField();
-                    String srcTable = joinSpec.getSourceTable();
-                    String srcField = joinSpec.getSourceField();
-                    intermediateStep =
-                            (SelectJoinStep<?>)
-                                    intermediateStep
-                                            .leftJoin(DSL.table(DSL.name(tgtTable)))
-                                            .on(
-                                                    DSL.field(DSL.name(srcTable, srcField))
-                                                            .eq(
-                                                                    DSL.field(
-                                                                            DSL.name(
-                                                                                    tgtTable,
-                                                                                    tgtField))))
-                                            .and(
-                                                    DSL.field(DSL.name(tgtTable, "deleted"))
-                                                            .eq((byte) 0));
-                }
-            }
-
-            // 当前节点的自身条件 (含 deleted=0) + 上级传下来的父子关联 (rootCond: 即父节点.id = 当前中间节点.fk)
-            Condition currentCond =
-                    currentPhysicalNode.getCondition() != null
-                            ? currentPhysicalNode.getCondition()
-                            : DSL.noCondition();
-            if (rootCond != null && !DSL.noCondition().equals(rootCond)) {
-                currentCond = currentCond.and(rootCond);
-            }
-
-            if (currentIndex + 1 == targetIndex) {
-                // 到达最后一跳: 当前中间表直接关联目标表 (例如 student_course.id = score_item.course_id)
-                currentCond = currentCond.and(linkToNextCondition);
-            } else {
-                // 还有更深层级: 递归向下构建，并将当前与下一跳的关联条件传入作为其 rootCond
-                Condition nextInnerExists =
-                        buildRecursiveExistsChain(
-                                dsl,
-                                physicalPath,
-                                currentIndex + 1,
-                                targetIndex,
-                                null,
-                                linkToNextCondition);
-                if (nextInnerExists != null) {
-                    currentCond = currentCond.and(nextInnerExists);
-                }
-            }
-
-            return DSL.exists(intermediateStep.where(currentCond));
-        }
+        return result;
     }
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    /**
+     * 将一条物理记录抽取为同构 DataRow：主表空间先落主键 id，再按投影规格（或全列回退）填充字段。
+     *
+     * @param fkField 非空时额外注入内部技术外键 {@code _fk_xxx}，供装配阶段按父键分组（装配完成后剥离）
+     */
+    private DataRow extractRow(
+            Record r, String table, List<PhysicalFieldSpec> specs, String fkField) {
+        DataRow row = new DataRow();
+        Object pkVal = null;
+        try {
+            pkVal = r.get(DSL.field(DSL.name(table, "id")));
+            if (pkVal == null) {
+                pkVal = r.get("id");
+            }
+        } catch (Exception ignored) {
+        }
+
+        Map<String, Object> tableSpace = new LinkedHashMap<>();
+        if (pkVal != null) {
+            tableSpace.put("id", pkVal);
+        }
+        row.putTable(table, tableSpace);
+
+        // 临时注入内部技术外键（供装配器按外键分组，装配完成后自动剥离）
+        if (fkField != null && !fkField.isBlank()) {
+            try {
+                Object fkVal = r.get(fkField);
+                if (fkVal != null) {
+                    row.getTables().put("_fk_" + fkField, fkVal);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (specs != null && !specs.isEmpty()) {
+            for (PhysicalFieldSpec spec : specs) {
+                if (spec.getColumnName() == null) {
+                    continue;
+                }
+                String tbl = spec.getTableName() != null ? spec.getTableName() : table;
+                String alias =
+                        tbl.equalsIgnoreCase(table)
+                                ? spec.getColumnName()
+                                : tbl + "_" + spec.getColumnName();
+                Object val = null;
+                try {
+                    val = r.get(alias);
+                } catch (Exception e) {
+                    try {
+                        val = r.get(spec.getColumnName());
+                    } catch (Exception ignored) {
+                    }
+                }
+                val = parseIfJson(val);
+                Map<String, Object> targetTableMap = row.getTable(tbl);
+                if (targetTableMap == null) {
+                    targetTableMap = new LinkedHashMap<>();
+                    row.putTable(tbl, targetTableMap);
+                }
+                targetTableMap.put(spec.getColumnName(), val);
+            }
+        } else {
+            // 无字段元数据回退：读取记录中全部可用列并注入当前物理表空间
+            for (Field<?> f : r.fields()) {
+                String col = f.getName();
+                if ("id".equalsIgnoreCase(col) || col.startsWith("_fk_")) {
+                    continue;
+                }
+                tableSpace.put(col, parseIfJson(r.get(f)));
+            }
+        }
+        return row;
+    }
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** 自动将 JSON 字符串或 jOOQ JSON 对象转换为结构化的 List/Map，保持返回值纯净 */
     private Object parseIfJson(Object val) {
@@ -1010,7 +553,7 @@ public class QueryPlanExecutor {
                 return null;
             }
             try {
-                return objectMapper.readValue(jsonStr, Object.class);
+                return MAPPER.readValue(jsonStr, Object.class);
             } catch (Exception e) {
                 return jsonStr;
             }
@@ -1020,36 +563,12 @@ public class QueryPlanExecutor {
             if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
                     || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
                 try {
-                    return objectMapper.readValue(trimmed, Object.class);
+                    return MAPPER.readValue(trimmed, Object.class);
                 } catch (Exception ignored) {
                     return val;
                 }
             }
         }
         return val;
-    }
-
-    private boolean findPathToField(
-            QueryNodePlan node, Long targetFieldId, List<QueryNodePlan> path) {
-        if (node == null) {
-            return false;
-        }
-        path.add(node);
-        if (node.getProjectedFields() != null) {
-            for (PhysicalFieldSpec spec : node.getProjectedFields()) {
-                if (Objects.equals(spec.getFieldId(), targetFieldId)) {
-                    return true;
-                }
-            }
-        }
-        if (node.getChildren() != null) {
-            for (QueryNodePlan child : node.getChildren()) {
-                if (findPathToField(child, targetFieldId, path)) {
-                    return true;
-                }
-            }
-        }
-        path.remove(path.size() - 1);
-        return false;
     }
 }

@@ -10,14 +10,15 @@ import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
+import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
 import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
-import com.jdec.platform.data.api.dto.request.TableFilterItem;
 import com.jdec.platform.data.api.dto.request.TableOptionReq;
 import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
 import com.jdec.platform.data.api.dto.request.TableQueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
-import com.jdec.platform.data.api.dto.response.DataOption;
+import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
@@ -173,10 +174,10 @@ public class TableQueryEngineTest {
         DSLContext dsl = DSL.using(conn, SQLDialect.MYSQL);
 
         JooqDataContextFactory dcf = new FakeFactory(dsl);
-        QueryPlanCompiler compiler = new QueryPlanCompiler(configApi);
+        QueryPlanCompiler compiler = new QueryPlanCompiler();
         TreeResultAssembler assembler = new TreeResultAssembler();
         QueryPlanExecutor executor = new QueryPlanExecutor(dcf, assembler);
-        dataQueryService = new DataQueryService(compiler, executor);
+        dataQueryService = new DataQueryService(compiler, executor, new PlanMetaLoader(configApi));
     }
 
     @Test
@@ -216,12 +217,15 @@ public class TableQueryEngineTest {
                         .pageSize(10)
                         .tables(
                                 List.of(
-                                        TableSpec.of("company_info", List.of("id", "company_name")),
                                         TableSpec.of(
-                                                "company_member", List.of("id", "member_name"))))
+                                                10L, "company_info", List.of("id", "company_name")),
+                                        TableSpec.of(
+                                                20L,
+                                                "company_member",
+                                                List.of("id", "member_name"))))
                         .filters(
                                 List.of(
-                                        TableFilterItem.builder()
+                                        PhysicalFilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("company_code")
                                                 .operator("eq")
@@ -241,8 +245,8 @@ public class TableQueryEngineTest {
     @DisplayName("Filter 自身条件与其 children 的自然逻辑组合 (OR 组合测试)")
     void testFilterSelfAndChildrenOrCombination() {
         executedSqls.clear();
-        TableFilterItem hybridOrFilter =
-                TableFilterItem.builder()
+        PhysicalFilterItem hybridOrFilter =
+                PhysicalFilterItem.builder()
                         .tableName("company_info")
                         .columnName("company_name")
                         .operator("LIKE")
@@ -250,13 +254,13 @@ public class TableQueryEngineTest {
                         .logic("OR")
                         .children(
                                 List.of(
-                                        TableFilterItem.builder()
+                                        PhysicalFilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("id")
                                                 .operator("EQ")
                                                 .value(100L)
                                                 .build(),
-                                        TableFilterItem.builder()
+                                        PhysicalFilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("company_code")
                                                 .operator("EQ")
@@ -299,6 +303,7 @@ public class TableQueryEngineTest {
                         .tables(
                                 List.of(
                                         TableSpec.builder()
+                                                .moduleId(10L)
                                                 .tableName("company_info")
                                                 .columns(List.of("*"))
                                                 .build()))
@@ -330,6 +335,7 @@ public class TableQueryEngineTest {
                         .tables(
                                 List.of(
                                         TableSpec.builder()
+                                                .moduleId(10L)
                                                 .tableName("company_info")
                                                 .columns(List.of("company_name"))
                                                 .build()))
@@ -362,7 +368,7 @@ public class TableQueryEngineTest {
                         .moduleId(10L)
                         .filters(
                                 List.of(
-                                        TableFilterItem.builder()
+                                        PhysicalFilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("id")
                                                 .operator("EQ")
@@ -395,7 +401,7 @@ public class TableQueryEngineTest {
                         .limit(50)
                         .build();
 
-        List<DataOption> options = dataQueryService.getOptionsByTable(req);
+        List<DataOptionResp> options = dataQueryService.getOptionsByTable(req);
         assertNotNull(options);
         assertFalse(options.isEmpty());
         assertEquals("测试企业A", options.get(0).getLabel());

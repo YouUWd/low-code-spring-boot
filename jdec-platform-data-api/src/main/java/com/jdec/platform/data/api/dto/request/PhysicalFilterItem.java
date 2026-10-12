@@ -14,7 +14,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "物理表结构化过滤条件项（基于表名与列名驱动，支持树形条件组）")
-public class TableFilterItem implements Serializable {
+public class PhysicalFilterItem implements Serializable {
+
+    @Schema(description = "所属模块 ID (多模块同表或指定子模块过滤时建议显式指定)", example = "1001")
+    private Long moduleId;
 
     @Schema(description = "物理表名 (单表或根表查询时可缺省)", example = "info")
     private String tableName;
@@ -36,10 +39,10 @@ public class TableFilterItem implements Serializable {
     private String logic;
 
     @Schema(description = "嵌套子过滤条件列表（同级 filters 列表及同一 children 列表内部均固定使用 AND 拼接）")
-    private List<TableFilterItem> children;
+    private List<PhysicalFilterItem> children;
 
-    public static TableFilterItem eq(String tableName, String columnName, Object value) {
-        return TableFilterItem.builder()
+    public static PhysicalFilterItem eq(String tableName, String columnName, Object value) {
+        return PhysicalFilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
                 .operator("EQ")
@@ -47,12 +50,12 @@ public class TableFilterItem implements Serializable {
                 .build();
     }
 
-    public static TableFilterItem eq(String columnName, Object value) {
+    public static PhysicalFilterItem eq(String columnName, Object value) {
         return eq(null, columnName, value);
     }
 
-    public static TableFilterItem like(String tableName, String columnName, Object value) {
-        return TableFilterItem.builder()
+    public static PhysicalFilterItem like(String tableName, String columnName, Object value) {
+        return PhysicalFilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
                 .operator("LIKE")
@@ -60,8 +63,8 @@ public class TableFilterItem implements Serializable {
                 .build();
     }
 
-    public static TableFilterItem in(String tableName, String columnName, Object value) {
-        return TableFilterItem.builder()
+    public static PhysicalFilterItem in(String tableName, String columnName, Object value) {
+        return PhysicalFilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
                 .operator("IN")
@@ -69,11 +72,11 @@ public class TableFilterItem implements Serializable {
                 .build();
     }
 
-    public static TableFilterItem and(List<TableFilterItem> children) {
-        return TableFilterItem.builder().logic("AND").children(children).build();
+    public static PhysicalFilterItem and(List<PhysicalFilterItem> children) {
+        return PhysicalFilterItem.builder().logic("AND").children(children).build();
     }
 
-    public static TableFilterItem or(List<TableFilterItem> children) {
-        return TableFilterItem.builder().logic("OR").children(children).build();
+    public static PhysicalFilterItem or(List<PhysicalFilterItem> children) {
+        return PhysicalFilterItem.builder().logic("OR").children(children).build();
     }
 }

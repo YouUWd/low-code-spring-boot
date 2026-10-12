@@ -4,7 +4,7 @@ import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
-import com.jdec.platform.data.api.dto.response.DataOption;
+import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import java.util.List;
 
 /** 公共业务聚合服务接口 (基于菜单的数据隔离、动态列表与详情聚合) */
@@ -35,5 +35,5 @@ public interface CommonAggregateService {
      * @param req 包含目标 fieldId 和平铺单层 filters 的请求体
      * @return 下拉候选项列表 (label-value 结构)
      */
-    List<DataOption> getOptionsByMenu(Long menuId, MenuOptionReq req);
+    List<DataOptionResp> getOptionsByMenu(Long menuId, MenuOptionReq req);
 }

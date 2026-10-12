@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.biz.util.TreeMergeUtils;
+import com.jdec.platform.data.biz.util.DocumentVersionUtils;
 import java.util.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ public class ForkVersionEngineTest {
     void testPureCloneWithoutPatch() {
         DataBlock base156 = buildBaseRecord156();
 
-        DataBlock merged = TreeMergeUtils.deepMerge(base156, null);
+        DataBlock merged = DocumentVersionUtils.deepMerge(base156, null);
         assertNotNull(merged);
         DataRow mainRow = merged.getFirstRecord();
         assertNotNull(mainRow);
@@ -34,7 +34,7 @@ public class ForkVersionEngineTest {
         assertEquals(2, contactBlock.size());
 
         // 执行主键与审计擦除
-        TreeMergeUtils.stripIdsAndResetAudit(merged);
+        DocumentVersionUtils.stripIdsAndResetAudit(merged);
 
         // 验证主表主键和审计列已被彻底擦除
         assertNull(mainRow.getValue("orders", "id"));
@@ -66,8 +66,8 @@ public class ForkVersionEngineTest {
         patchRow.putValue("orders", "name", "李四 (已更新)");
         DataBlock patch = DataBlock.of(100L, patchRow);
 
-        DataBlock merged = TreeMergeUtils.deepMerge(base156, patch);
-        TreeMergeUtils.stripIdsAndResetAudit(merged);
+        DataBlock merged = DocumentVersionUtils.deepMerge(base156, patch);
+        DocumentVersionUtils.stripIdsAndResetAudit(merged);
 
         DataRow mainRow = merged.getFirstRecord();
         assertNotNull(mainRow);
@@ -121,8 +121,8 @@ public class ForkVersionEngineTest {
         DataBlock patch = DataBlock.of(100L, patchMainRow);
 
         // 执行深度合并与擦除
-        DataBlock merged = TreeMergeUtils.deepMerge(base156, patch);
-        TreeMergeUtils.stripIdsAndResetAudit(merged);
+        DataBlock merged = DocumentVersionUtils.deepMerge(base156, patch);
+        DocumentVersionUtils.stripIdsAndResetAudit(merged);
 
         DataRow mainRow = merged.getFirstRecord();
         assertNotNull(mainRow);

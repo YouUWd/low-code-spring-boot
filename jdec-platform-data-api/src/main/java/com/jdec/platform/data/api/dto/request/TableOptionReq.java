@@ -30,7 +30,7 @@ public class TableOptionReq implements Serializable {
     private String columnName;
 
     @Schema(description = "基于物理表与列名的过滤条件列表")
-    private List<TableFilterItem> filters;
+    private List<PhysicalFilterItem> filters;
 
     @Schema(description = "候选项排序方向: ASC (升序) / DESC (降序)，为 null 或空时默认 ASC", example = "ASC")
     private String direction;

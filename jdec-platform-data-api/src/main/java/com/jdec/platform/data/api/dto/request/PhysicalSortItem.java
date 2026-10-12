@@ -14,7 +14,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "物理表排序规则项")
-public class TableSortItem implements Serializable {
+public class PhysicalSortItem implements Serializable {
+
+    @NotNull(message = "所属模块 ID 不能为空")
+    @Schema(description = "所属模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
+    private Long moduleId;
 
     @Schema(description = "物理表名 (单表或根表查询时可缺省)", example = "info")
     private String tableName;
@@ -30,27 +34,29 @@ public class TableSortItem implements Serializable {
     @Builder.Default
     private String direction = "DESC";
 
-    public static TableSortItem asc(String tableName, String columnName) {
-        return TableSortItem.builder()
+    public static PhysicalSortItem asc(Long moduleId, String tableName, String columnName) {
+        return PhysicalSortItem.builder()
+                .moduleId(moduleId)
                 .tableName(tableName)
                 .columnName(columnName)
                 .direction("ASC")
                 .build();
     }
 
-    public static TableSortItem asc(String columnName) {
-        return asc(null, columnName);
+    public static PhysicalSortItem asc(Long moduleId, String columnName) {
+        return asc(moduleId, null, columnName);
     }
 
-    public static TableSortItem desc(String tableName, String columnName) {
-        return TableSortItem.builder()
+    public static PhysicalSortItem desc(Long moduleId, String tableName, String columnName) {
+        return PhysicalSortItem.builder()
+                .moduleId(moduleId)
                 .tableName(tableName)
                 .columnName(columnName)
                 .direction("DESC")
                 .build();
     }
 
-    public static TableSortItem desc(String columnName) {
-        return desc(null, columnName);
+    public static PhysicalSortItem desc(Long moduleId, String columnName) {
+        return desc(moduleId, null, columnName);
     }
 }

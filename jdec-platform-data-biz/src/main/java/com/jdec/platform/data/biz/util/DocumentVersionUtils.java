@@ -13,10 +13,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 树形物理数据块深层合并与清洗工具类 专门服务于单据克隆 (Clone)、版本派生 (Fork) 以及增量打补丁 (Deep Merge) 适配自相似 DataBlock / DataRow
- * 读写同构体系
+ * 单据版本派生工具类 (DocumentVersionUtils)
+ *
+ * <p>服务于单据克隆 (Clone) 与版本派生 (Fork)：深合并增量补丁 (Deep Merge)、剥离树主键并重置审计字段、 解析主表与单据号、向整树下发新版本号。适配自相似
+ * DataBlock / DataRow 读写同构体系。
  */
-public final class TreeMergeUtils {
+public final class DocumentVersionUtils {
 
     private static final Set<String> AUDIT_FIELDS =
             Collections.unmodifiableSet(
@@ -35,7 +37,7 @@ public final class TreeMergeUtils {
                                     "update_by",
                                     "updater")));
 
-    private TreeMergeUtils() {}
+    private DocumentVersionUtils() {}
 
     /**
      * 将局部增量补丁 patch 合并到基准数据 base 上 规则: 1. 主表字段: 复制 base 字段，patch 中存在的字段覆盖更新，其余保留 2. 子表明细行: - patch

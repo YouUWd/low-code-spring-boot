@@ -39,6 +39,9 @@ public class QueryNodePlan {
     /** 父表被关联的物理主键/唯一键字段名 (默认为 id) */
     @Builder.Default private String parentKey = "id";
 
+    /** 父模块的物理主表名 (用于装配时精准匹配父行主键) */
+    private String parentPrimaryTable;
+
     /** 当前节点自身的用户业务筛选条件与下级反向上卷约束复合后的 Condition (若无任何业务筛选则为 null) */
     private Condition effectiveFilterCondition;
 
@@ -57,8 +60,8 @@ public class QueryNodePlan {
     /** 编译后的 ORDER BY 字段序列 */
     @Builder.Default private List<OrderField<?>> orderFields = new ArrayList<>();
 
-    /** 伴生表物理 JOIN 列表 (用于 1:1 或 N:1 伴生关联投影) */
-    @Builder.Default private List<JoinTableSpec> companionJoins = new ArrayList<>();
+    /** 附加表物理 JOIN 列表 (伴生表 1:1 与上游表 N:1 共用同一列表) */
+    @Builder.Default private List<AttachedTableSpec> attachedJoins = new ArrayList<>();
 
     /** 编译后的下级子模块执行计划树 */
     @Builder.Default private List<QueryNodePlan> children = new ArrayList<>();

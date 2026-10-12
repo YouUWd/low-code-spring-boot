@@ -2,6 +2,7 @@ package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.request.SortItem;
 import com.jdec.platform.common.api.dto.response.*;
 import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
 import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
@@ -25,17 +26,18 @@ import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.FilterItem;
-import com.jdec.platform.data.api.dto.request.OptionReq;
-import com.jdec.platform.data.api.dto.request.PageQueryReq;
-import com.jdec.platform.data.api.dto.request.SortItem;
-import com.jdec.platform.data.api.dto.response.DataOption;
+import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
+import com.jdec.platform.data.api.dto.request.PhysicalSortItem;
+import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
+import com.jdec.platform.data.api.dto.request.TableOptionReq;
+import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
+import com.jdec.platform.data.api.dto.request.TableSpec;
+import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -90,24 +92,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 projectRelations,
                 branchCache);
 
-        // 2. 构建底层通用 QueryReq 并组装通用过滤/排序/分页
+        // 2. 将菜单元数据 fieldId 转换为 data-api 的物理表/列请求
         int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
         int pageSize = (req != null && req.getPageSize() != null) ? req.getPageSize() : 20;
-
-        PageQueryReq.PageQueryReqBuilder<?, ?> queryReqBuilder =
-                PageQueryReq.builder()
-                        .moduleId(rootModuleId)
-                        .fields(checkedFieldIds)
-                        .pageNo(pageNo)
-                        .pageSize(pageSize)
-                        .sorts(req != null ? req.getSorts() : null);
-
-        List<FilterItem> finalFilters =
-                (req != null && !CollectionUtils.isEmpty(req.getFilters()))
-                        ? req.getFilters().stream()
-                                .filter(Objects::nonNull)
-                                .map(FlatFilterItem::toFilterItem)
-                                .collect(Collectors.toCollection(ArrayList::new))
+        List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
+        List<PhysicalFilterItem> finalFilters =
+                req != null
+                        ? PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters())
+                        : new ArrayList<>();
+        List<PhysicalSortItem> finalSorts =
+                req != null
+                        ? PhysicalQueryMapper.toTableSorts(moduleTree, req.getSorts())
                         : new ArrayList<>();
 
         String primaryTable =
@@ -139,10 +134,18 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         if (!approvalOutcome.filterResult().filters().isEmpty()) {
             finalFilters.addAll(approvalOutcome.filterResult().filters());
         }
-        queryReqBuilder.filters(finalFilters);
 
         // 4. 调用底层低代码数据引擎进行分页查询
-        DataPage<DataBlock> rawDataPage = dataApi.query(queryReqBuilder.build());
+        DataPage<DataBlock> rawDataPage =
+                dataApi.queryByTable(
+                        TablePageQueryReq.builder()
+                                .moduleId(rootModuleId)
+                                .tables(tableSpecs)
+                                .filters(finalFilters)
+                                .sorts(finalSorts)
+                                .pageNo(pageNo)
+                                .pageSize(pageSize)
+                                .build());
 
         // 5. 将 DataRow 数据集结构转换为自相似同构树节点 ModuleDataNode 与 ApprovalRowItem 列表
         Long total =
@@ -216,9 +219,18 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         List<Long> checkedFieldIds = new ArrayList<>();
         collectCheckedFieldIds(headerRoot, checkedFieldIds);
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
 
-        // 2. 调用底层低代码引擎获取完整单据详情
-        DataBlock dataBlock = dataApi.getDetail(rootModuleId, id, checkedFieldIds);
+        // 2. 调用底层低代码引擎获取指定物理字段投影的单据详情
+        DataBlock dataBlock =
+                dataApi.getDetailByTable(
+                        TableDetailQueryReq.builder()
+                                .moduleId(rootModuleId)
+                                .id(id)
+                                .tables(tableSpecs)
+                                .build());
 
         // 3. 将 DataRow 数据转换为 ModuleDataNode 树
         ModuleDataNode dataTree =
@@ -245,7 +257,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     }
 
     @Override
-    public List<DataOption> getOptionsByMenu(Long menuId, MenuOptionReq req) {
+    public List<DataOptionResp> getOptionsByMenu(Long menuId, MenuOptionReq req) {
         if (menuId == null) {
             throw new IllegalArgumentException("菜单 ID 不能为空");
         }
@@ -259,19 +271,19 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new BusinessException("菜单 [" + menuId + "] 未关联有效的根模块 ID");
         }
 
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        PhysicalQueryMapper.PhysicalFieldRef targetField =
+                PhysicalQueryMapper.resolve(moduleTree, req.getFieldId());
+
         // 2. 组装单层 AND 组合过滤条件
-        List<FilterItem> finalFilters =
-                (req.getFilters() != null && !CollectionUtils.isEmpty(req.getFilters()))
-                        ? req.getFilters().stream()
-                                .filter(Objects::nonNull)
-                                .map(FlatFilterItem::toFilterItem)
-                                .collect(Collectors.toCollection(ArrayList::new))
-                        : new ArrayList<>();
+        List<PhysicalFilterItem> finalFilters =
+                PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters());
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req.getApprovalType();
         ApprovalFilterOutcome approvalOutcome =
-                resolveApprovalFilters(rootModuleId, approvalType, null);
+                resolveApprovalFilters(rootModuleId, approvalType, moduleTree);
 
         if (approvalOutcome.filterResult().shortCircuitEmpty()) {
             // 审批过滤无候选匹配时短路直接返回空候选项列表
@@ -282,16 +294,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             finalFilters.addAll(approvalOutcome.filterResult().filters());
         }
 
-        // 4. 构建 OptionReq 并调用底层低代码数据引擎
-        OptionReq optionReq =
-                OptionReq.builder()
+        // 4. 构建 TableOptionReq 并调用底层低代码数据引擎
+        TableOptionReq optionReq =
+                TableOptionReq.builder()
                         .moduleId(rootModuleId)
-                        .fieldId(req.getFieldId())
+                        .tableName(targetField.tableName())
+                        .columnName(targetField.columnName())
                         .filters(finalFilters)
                         .direction(req.getDirection())
                         .build();
 
-        return dataApi.getOptions(optionReq);
+        return dataApi.getOptionsByTable(optionReq);
     }
 
     private Long resolveActiveOneToManyBranch(
@@ -772,7 +785,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             RootModuleFieldIds rootFieldIds,
             Map<Long, List<Map<String, Object>>> btnGroupMap) {
 
-        List<FilterItem> filters = new ArrayList<>();
+        List<PhysicalFilterItem> filters = new ArrayList<>();
         if (approvalType == null) {
             return new ApprovalFilterResult(filters, false);
         }
@@ -783,88 +796,96 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             // 【待办】与【全部】：(id IN recordIds) OR (created_by == currentUserId &&
             // business_status == 1)
             Set<Long> recordIds = btnGroupMap.keySet();
-            boolean hasApprovalIds = !recordIds.isEmpty() && rootFieldIds.idFieldId() != null;
-            FilterItem draftBranch = buildDraftFilterBranch(currentUserId, rootFieldIds);
+            boolean hasApprovalIds = !recordIds.isEmpty() && rootFieldIds.idField() != null;
+            List<PhysicalFilterItem> draftItems =
+                    buildDraftFilterItems(currentUserId, rootFieldIds);
 
-            if (!hasApprovalIds && draftBranch == null) {
+            if (!hasApprovalIds && (draftItems == null || draftItems.isEmpty())) {
                 return new ApprovalFilterResult(filters, true);
             }
 
-            FilterItem approvalBranch =
+            PhysicalFilterItem approvalBranch =
                     hasApprovalIds
-                            ? FilterItem.builder()
-                                    .fieldId(rootFieldIds.idFieldId())
-                                    .operator("IN")
-                                    .value(new ArrayList<>(recordIds))
-                                    .build()
+                            ? PhysicalQueryMapper.filter(
+                                    rootFieldIds.tree(),
+                                    rootFieldIds.idField().fieldId(),
+                                    "IN",
+                                    new ArrayList<>(recordIds))
                             : null;
 
-            FilterItem combined = combineBranches(approvalBranch, draftBranch);
-            if (combined != null) {
-                filters.add(combined);
+            List<PhysicalFilterItem> combined = combineBranches(approvalBranch, draftItems);
+            if (combined != null && !combined.isEmpty()) {
+                filters.addAll(combined);
             }
         } else if (approvalType == 2) {
             // 【已办】: id IN doneRecordIds
             Set<Long> doneRecordIds = btnGroupMap.keySet();
-            if (doneRecordIds.isEmpty() || rootFieldIds.idFieldId() == null) {
+            if (doneRecordIds.isEmpty() || rootFieldIds.idField() == null) {
                 return new ApprovalFilterResult(filters, true);
             }
             filters.add(
-                    FilterItem.builder()
-                            .fieldId(rootFieldIds.idFieldId())
-                            .operator("IN")
-                            .value(new ArrayList<>(doneRecordIds))
-                            .build());
+                    PhysicalQueryMapper.filter(
+                            rootFieldIds.tree(),
+                            rootFieldIds.idField().fieldId(),
+                            "IN",
+                            new ArrayList<>(doneRecordIds)));
         }
 
         return new ApprovalFilterResult(filters, false);
     }
 
-    private FilterItem buildDraftFilterBranch(Long currentUserId, RootModuleFieldIds rootFieldIds) {
+    private List<PhysicalFilterItem> buildDraftFilterItems(
+            Long currentUserId, RootModuleFieldIds rootFieldIds) {
         if (currentUserId == null
-                || rootFieldIds.createdByFieldId() == null
-                || rootFieldIds.businessStatusFieldId() == null) {
-            return null;
+                || rootFieldIds.createdByField() == null
+                || rootFieldIds.businessStatusField() == null) {
+            return Collections.emptyList();
         }
-        List<FilterItem> draftItems = new ArrayList<>();
+        List<PhysicalFilterItem> draftItems = new ArrayList<>();
         draftItems.add(
-                FilterItem.builder()
-                        .fieldId(rootFieldIds.createdByFieldId())
-                        .operator("EQ")
-                        .value(currentUserId)
-                        .build());
+                PhysicalQueryMapper.filter(
+                        rootFieldIds.tree(),
+                        rootFieldIds.createdByField().fieldId(),
+                        "EQ",
+                        currentUserId));
         draftItems.add(
-                FilterItem.builder()
-                        .fieldId(rootFieldIds.businessStatusFieldId())
-                        .operator("EQ")
-                        .value(1)
-                        .build());
-        return FilterItem.builder().logic("AND").children(draftItems).build();
+                PhysicalQueryMapper.filter(
+                        rootFieldIds.tree(),
+                        rootFieldIds.businessStatusField().fieldId(),
+                        "EQ",
+                        1));
+        return draftItems;
     }
 
-    private FilterItem combineBranches(FilterItem approvalBranch, FilterItem draftBranch) {
-        if (approvalBranch != null && draftBranch != null) {
-            return FilterItem.builder()
-                    .logic("OR")
-                    .children(Arrays.asList(approvalBranch, draftBranch))
-                    .build();
+    private List<PhysicalFilterItem> combineBranches(
+            PhysicalFilterItem approvalBranch, List<PhysicalFilterItem> draftItems) {
+        if (approvalBranch != null && draftItems != null && !draftItems.isEmpty()) {
+            approvalBranch.setLogic("OR");
+            approvalBranch.setChildren(draftItems);
+            return Collections.singletonList(approvalBranch);
         }
-        return approvalBranch != null ? approvalBranch : draftBranch;
+        if (approvalBranch != null) {
+            return Collections.singletonList(approvalBranch);
+        }
+        if (draftItems != null && !draftItems.isEmpty()) {
+            return draftItems;
+        }
+        return Collections.emptyList();
     }
 
     private RootModuleFieldIds extractRootModuleFieldIds(
             Long rootModuleId, ModuleTreeDTO inMemoryModuleTree) {
         if (rootModuleId == null) {
-            return new RootModuleFieldIds(null, null, null);
+            return new RootModuleFieldIds(null, null, null, null);
         }
 
         ModuleTreeDTO moduleTree =
                 inMemoryModuleTree != null
                         ? inMemoryModuleTree
                         : configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
-        Long idFieldId = null;
-        Long createdByFieldId = null;
-        Long businessStatusFieldId = null;
+        PhysicalQueryMapper.PhysicalFieldRef idField = null;
+        PhysicalQueryMapper.PhysicalFieldRef createdByField = null;
+        PhysicalQueryMapper.PhysicalFieldRef businessStatusField = null;
 
         if (moduleTree != null && moduleTree.getRootModule() != null) {
             List<ModuleFieldDTO> fields = moduleTree.getRootModule().getFields();
@@ -872,19 +893,19 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 for (ModuleFieldDTO f : fields) {
                     String col = f.getColumnName();
                     if ("id".equalsIgnoreCase(col)) {
-                        idFieldId = f.getId();
+                        idField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     } else if ("created_by".equalsIgnoreCase(col)
                             || "createdBy".equalsIgnoreCase(col)) {
-                        createdByFieldId = f.getId();
+                        createdByField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     } else if ("business_status".equalsIgnoreCase(col)
                             || "businessStatus".equalsIgnoreCase(col)) {
-                        businessStatusFieldId = f.getId();
+                        businessStatusField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     }
                 }
             }
         }
 
-        return new RootModuleFieldIds(idFieldId, createdByFieldId, businessStatusFieldId);
+        return new RootModuleFieldIds(moduleTree, idField, createdByField, businessStatusField);
     }
 
     /**
@@ -1074,7 +1095,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             Map<Long, List<Map<String, Object>>> allBtns) {}
 
     private record RootModuleFieldIds(
-            Long idFieldId, Long createdByFieldId, Long businessStatusFieldId) {}
+            ModuleTreeDTO tree,
+            PhysicalQueryMapper.PhysicalFieldRef idField,
+            PhysicalQueryMapper.PhysicalFieldRef createdByField,
+            PhysicalQueryMapper.PhysicalFieldRef businessStatusField) {}
 
-    private record ApprovalFilterResult(List<FilterItem> filters, boolean shortCircuitEmpty) {}
+    private record ApprovalFilterResult(
+            List<PhysicalFilterItem> filters, boolean shortCircuitEmpty) {}
 }

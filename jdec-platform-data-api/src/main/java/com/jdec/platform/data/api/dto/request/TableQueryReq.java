@@ -28,10 +28,10 @@ public class TableQueryReq implements Serializable {
     private List<TableSpec> tables;
 
     @Schema(description = "基于物理表与列名的过滤条件列表")
-    private List<TableFilterItem> filters;
+    private List<PhysicalFilterItem> filters;
 
     @Schema(description = "基于物理表与列名的排序规则列表")
-    private List<TableSortItem> sorts;
+    private List<PhysicalSortItem> sorts;
 
     /** 追加投影表规格 */
     @SuppressWarnings("unchecked")
@@ -49,7 +49,7 @@ public class TableQueryReq implements Serializable {
 
     /** 追加过滤条件 */
     @SuppressWarnings("unchecked")
-    public <T extends TableQueryReq> T filter(TableFilterItem filter) {
+    public <T extends TableQueryReq> T filter(PhysicalFilterItem filter) {
         if (filter != null) {
             if (this.filters == null) {
                 this.filters = new ArrayList<>();
@@ -63,7 +63,7 @@ public class TableQueryReq implements Serializable {
 
     /** 追加排序规则 */
     @SuppressWarnings("unchecked")
-    public <T extends TableQueryReq> T sort(TableSortItem sort) {
+    public <T extends TableQueryReq> T sort(PhysicalSortItem sort) {
         if (sort != null) {
             if (this.sorts == null) {
                 this.sorts = new ArrayList<>();

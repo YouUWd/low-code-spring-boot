@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.Collections;
@@ -77,13 +76,6 @@ public class DataPage<T> implements Serializable {
                 .total(0L)
                 .data(DataBlock.empty(moduleId))
                 .build();
-    }
-
-    public static DataPage<DataBlock> empty(PageQueryReq req) {
-        if (req == null) {
-            return empty(null, 1, 20);
-        }
-        return empty(req.getModuleId(), req.getPageNo(), req.getPageSize());
     }
 
     public static <T> DataPage<T> empty() {

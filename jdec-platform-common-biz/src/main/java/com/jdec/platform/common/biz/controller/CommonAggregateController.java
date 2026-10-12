@@ -5,7 +5,7 @@ import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
-import com.jdec.platform.data.api.dto.response.DataOption;
+import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -77,10 +77,10 @@ public class CommonAggregateController {
             description =
                     "根据菜单 ID 自动解析模块上下文，根据 approvalType(1-待办, 2-已办, 3-全部) 进行审批流状态过滤，"
                             + "支持传入单层 AND 组合过滤条件与可选排序方向，获取去重候选值列表")
-    public ApiResponse<List<DataOption>> getOptionsByMenu(
+    public ApiResponse<List<DataOptionResp>> getOptionsByMenu(
             @PathVariable Long menuId, @RequestBody MenuOptionReq req) {
         try {
-            List<DataOption> result = commonAggregateService.getOptionsByMenu(menuId, req);
+            List<DataOptionResp> result = commonAggregateService.getOptionsByMenu(menuId, req);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(
