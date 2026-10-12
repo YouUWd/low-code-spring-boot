@@ -96,6 +96,7 @@
         "category": 2,
         "imgDefault": "",
         "imgActive": "",
+        "moduleCode": "MOD-SETTING-USER",
         "sortOrder": 5,
         "showed": 1,
         "enabled": 1

@@ -94,6 +94,14 @@
         "moduleDesc": "通用配置子模块",
         "category": 2,
         "sortOrder": 10
+      },
+      {
+        "id": 14,
+        "moduleCode": "MOD-SETTING-USER",
+        "moduleName": "人员管理",
+        "moduleDesc": "人员管理子模块",
+        "category": 2,
+        "sortOrder": 11
       }
     ]
   },

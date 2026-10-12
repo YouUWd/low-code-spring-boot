@@ -1,6 +1,7 @@
 package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -23,6 +24,7 @@ public class SysApprovalChainConfigButton implements Serializable {
     private Long buttonTypeId;
 
     @Schema(description = "按钮 sys_config_button按钮表对应ID")
+    @Reference(target = SysButton.class, name = "审批链按钮配置", displayField = "logName")
     private Long buttonId;
 
     @Schema(description = "日志对应图标")
