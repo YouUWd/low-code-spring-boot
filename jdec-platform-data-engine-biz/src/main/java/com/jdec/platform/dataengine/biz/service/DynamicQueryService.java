@@ -423,6 +423,12 @@ public class DynamicQueryService {
             primaryIds.addAll(queryReq.getRelateIds());
             currentModuleData.add(RecordDataDTO.builder().children(new ArrayList<>()).build());
             virtualModule = true;
+        } else if (CollectionUtils.isEmpty(primaryIds)) {
+            log.debug("模块id:{},模块名称:{}不是虚模块,但没有模块数据。", rootNode.getId(), rootNode.getModuleName());
+            return builder.moduleId(rootNode.getId())
+                    .menuId(rootNode.getId())
+                    .record(currentModuleData)
+                    .build();
         }
 
         for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
@@ -485,15 +491,16 @@ public class DynamicQueryService {
                                     .build());
                 }
                 for (RecordDataDTO vo : currentModuleData) {
-                    Long primaryId =
-                            extractFieldValue(vo.getRow(), "id", sysModuleInfo.getPrimaryTable());
-                    if (Objects.isNull(vo.getRow())) {
+                    if (vo.getRow().isEmpty()) {
                         log.debug(
                                 "子模块id:{},模块名称:{}是虚模块",
                                 childNode.getId(),
                                 childNode.getModuleName());
                         vo.getChildren().add(childResultList);
                     } else {
+                        Long primaryId =
+                                extractFieldValue(
+                                        vo.getRow(), "id", sysModuleInfo.getPrimaryTable());
                         vo.getChildren()
                                 .addAll(
                                         filterSubModuleList(
