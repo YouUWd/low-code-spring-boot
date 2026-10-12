@@ -60,6 +60,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
         LambdaQueryWrapper<SysModuleField> fieldWrapper = new LambdaQueryWrapper<>();
         fieldWrapper
                 .in(SysModuleField::getModuleId, moduleIds)
+                .eq(SysModuleField::getStatus, 1)
                 .orderByAsc(SysModuleField::getSortOrder);
         List<SysModuleField> allFields = sysModuleFieldMapper.selectList(fieldWrapper);
 
@@ -224,6 +225,7 @@ public class SysModuleFieldPermissionService implements SysModuleFieldPermission
                 sysModuleFieldMapper.selectList(
                         Wrappers.<SysModuleField>lambdaQuery()
                                 .eq(SysModuleField::getModuleId, moduleId)
+                                .eq(SysModuleField::getStatus, 1)
                                 .orderByAsc(SysModuleField::getSortOrder));
 
         Map<String, List<SysModuleField>> fieldsByTable =
