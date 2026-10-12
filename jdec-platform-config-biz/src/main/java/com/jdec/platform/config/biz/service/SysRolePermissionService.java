@@ -9,6 +9,7 @@ import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
@@ -27,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysRolePermissionService implements SysRolePermissionApi {
+public class SysRolePermissionService implements SysRolePermissionApi, OpenRolePermissionApi {
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
@@ -647,7 +648,8 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         List<SysRoleDataPermission> roleDataPermissions =
                 sysRoleDataPermissionMapper.selectList(
                         Wrappers.<SysRoleDataPermission>lambdaQuery()
-                                .eq(SysRoleDataPermission::getRoleId, roleId));
+                                .eq(SysRoleDataPermission::getRoleId, roleId)
+                                .orderByAsc(SysRoleDataPermission::getId));
 
         if (roleDataPermissions.isEmpty()) {
             return Collections.emptyList();
@@ -666,24 +668,30 @@ public class SysRolePermissionService implements SysRolePermissionApi {
         if (dataPermissions.isEmpty()) {
             return Collections.emptyList();
         }
+        Map<Long, SysDataPermission> permissionIdToEntity =
+                dataPermissions.stream()
+                        .collect(Collectors.toMap(SysDataPermission::getId, p -> p, (a, b) -> a));
 
-        // 4. 构建 permissionId -> bizNames 的映射（全选标识行 bizName 为空，需过滤）
-        Map<Long, List<String>> permissionIdToBizNamesMap =
+        // 4. 按 dataPermissionId 分组（保持插入顺序）
+        Map<Long, List<SysRoleDataPermission>> groupedByPermission =
                 roleDataPermissions.stream()
-                        .filter(permission -> permission.getBizName() != null)
                         .collect(
                                 Collectors.groupingBy(
                                         SysRoleDataPermission::getDataPermissionId,
-                                        Collectors.mapping(
-                                                SysRoleDataPermission::getBizName,
-                                                Collectors.toList())));
+                                        LinkedHashMap::new,
+                                        Collectors.toList()));
 
-        // 5. 构建临时数据结构：tableName -> (columnName -> bizNames)
-        Map<String, Map<String, List<String>>> tableColumnBizNamesMap = new HashMap<>();
+        // 5. 表名 -> 数据权限配置列表（保持插入顺序）
+        Map<String, List<DataRightConfigResp.DataConfig>> tableDataConfigMap =
+                new LinkedHashMap<>();
 
-        for (SysDataPermission dataPermission : dataPermissions) {
-            String code = dataPermission.getCode();
-            String[] parts = code.split("\\*");
+        for (Map.Entry<Long, List<SysRoleDataPermission>> permissionEntry :
+                groupedByPermission.entrySet()) {
+            SysDataPermission dataPermission = permissionIdToEntity.get(permissionEntry.getKey());
+            if (dataPermission == null || dataPermission.getCode() == null) {
+                continue;
+            }
+            String[] parts = dataPermission.getCode().split("\\*");
             if (parts.length != 2) {
                 continue; // 跳过格式不正确的 code
             }
@@ -691,42 +699,93 @@ public class SysRolePermissionService implements SysRolePermissionApi {
             String tableName = parts[0];
             String columnName = parts[1];
 
-            List<String> bizNames =
-                    permissionIdToBizNamesMap.getOrDefault(
-                            dataPermission.getId(), Collections.emptyList());
-
-            tableColumnBizNamesMap
-                    .computeIfAbsent(tableName, k -> new HashMap<>())
-                    .computeIfAbsent(columnName, k -> new ArrayList<>())
-                    .addAll(bizNames);
+            List<DataRightConfigResp.DataConfig> dataConfigs =
+                    buildDataConfigs(columnName, permissionEntry.getValue());
+            if (dataConfigs.isEmpty()) {
+                continue;
+            }
+            tableDataConfigMap
+                    .computeIfAbsent(tableName, k -> new ArrayList<>())
+                    .addAll(dataConfigs);
         }
 
-        // 6. 转换成最终结果：按表名分组，每个表名下按列名分组
+        // 6. 转换成最终结果：按表名分组
         List<DataRightConfigResp> result = new ArrayList<>();
-        for (Map.Entry<String, Map<String, List<String>>> tableEntry :
-                tableColumnBizNamesMap.entrySet()) {
-            String tableName = tableEntry.getKey();
-            Map<String, List<String>> columnBizNamesMap = tableEntry.getValue();
-
-            List<DataRightConfigResp.DataConfig> dataList = new ArrayList<>();
-            for (Map.Entry<String, List<String>> columnEntry : columnBizNamesMap.entrySet()) {
-                String columnName = columnEntry.getKey();
-                List<String> bizNames = columnEntry.getValue();
-
-                DataRightConfigResp.DataConfig dataConfig =
-                        DataRightConfigResp.DataConfig.builder()
-                                .columnName(columnName)
-                                .bizNames(bizNames)
-                                .build();
-                dataList.add(dataConfig);
-            }
-
+        for (Map.Entry<String, List<DataRightConfigResp.DataConfig>> tableEntry :
+                tableDataConfigMap.entrySet()) {
             DataRightConfigResp resp =
-                    DataRightConfigResp.builder().tableName(tableName).dataList(dataList).build();
+                    DataRightConfigResp.builder()
+                            .tableName(tableEntry.getKey())
+                            .dataList(tableEntry.getValue())
+                            .build();
             result.add(resp);
         }
 
         return result;
+    }
+
+    /**
+     * 将同一数据权限节点（表名*列名）下的记录，转换为业务方配置列表
+     *
+     * <p>两种全选逻辑：
+     *
+     * <ul>
+     *   <li>节点级全选（premission_check_all=1）：整个节点全部主体全选，输出单条配置，主体ID为空
+     *   <li>主体级全选（subject_check_all=1）：该主体下全部数据，输出该主体一条配置、业务名称为空
+     * </ul>
+     *
+     * 其余情况按主体拆分，业务名称取该主体的勾选值。
+     */
+    private List<DataRightConfigResp.DataConfig> buildDataConfigs(
+            String columnName, List<SysRoleDataPermission> records) {
+        // 节点级全选：该节点下所有主体全选
+        if (records.stream().anyMatch(r -> isCheckAll(r.getPermissionCheckAll()))) {
+            return List.of(
+                    DataRightConfigResp.DataConfig.builder()
+                            .columnName(columnName)
+                            .permissionCheckAll(1)
+                            .subjectId(null)
+                            .subjectCheckAll(0)
+                            .bizNames(Collections.emptyList())
+                            .build());
+        }
+
+        // 按主体拆分（节点级全选记录 subjectId 为空，已在上方返回）
+        Map<Long, List<SysRoleDataPermission>> groupedBySubject =
+                records.stream()
+                        .filter(r -> r.getSubjectId() != null)
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getSubjectId,
+                                        LinkedHashMap::new,
+                                        Collectors.toList()));
+
+        List<DataRightConfigResp.DataConfig> dataConfigs = new ArrayList<>();
+        for (Map.Entry<Long, List<SysRoleDataPermission>> subjectEntry :
+                groupedBySubject.entrySet()) {
+            List<SysRoleDataPermission> subjectRecords = subjectEntry.getValue();
+
+            boolean subjectCheckAll =
+                    subjectRecords.stream().anyMatch(r -> isCheckAll(r.getSubjectCheckAll()));
+            List<String> bizNames =
+                    subjectCheckAll
+                            ? Collections.emptyList()
+                            : subjectRecords.stream()
+                                    .map(SysRoleDataPermission::getBizName)
+                                    .filter(Objects::nonNull)
+                                    .toList();
+
+            dataConfigs.add(
+                    DataRightConfigResp.DataConfig.builder()
+                            .columnName(columnName)
+                            .permissionCheckAll(0)
+                            .subjectId(subjectEntry.getKey())
+                            .subjectCheckAll(subjectCheckAll ? 1 : 0)
+                            .bizNames(bizNames)
+                            .build());
+        }
+
+        return dataConfigs;
     }
 
     @Transactional(rollbackFor = Exception.class)

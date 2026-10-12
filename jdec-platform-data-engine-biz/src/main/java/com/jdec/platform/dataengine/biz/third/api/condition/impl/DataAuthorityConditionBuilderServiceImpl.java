@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
-import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
+import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
@@ -26,7 +26,7 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
 
     private final Set<QueryType> TYPE_SET = Set.of(QueryType.LIST);
 
-    private final SysRolePermissionApi sysRolePermissionApi;
+    private final OpenRolePermissionApi openRolePermissionApi;
 
     @Override
     public Boolean isReferTo(QueryType queryType) {
@@ -38,7 +38,7 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
         // 查询数据权限配置
 
         List<DataRightConfigResp> dataRightconfigs =
-                sysRolePermissionApi.getRoleDataPermissionDetail(UserContext.getRoleId());
+                openRolePermissionApi.getRoleDataPermissionDetail(UserContext.getRoleId());
 
         if (CollectionUtils.isEmpty(dataRightconfigs)) {
             log.debug("数据权限设置为空，无数据查看权限。");
