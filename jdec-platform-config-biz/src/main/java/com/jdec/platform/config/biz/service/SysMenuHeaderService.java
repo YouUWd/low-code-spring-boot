@@ -75,6 +75,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** sys_field 未删除标记 */
     private static final Integer FIELD_DELETED_NO = 0;
 
+    /** 模块字段启用状态（sys_module_field.status = 1），停用字段不参与表头生成 */
+    private static final Integer MODULE_FIELD_STATUS_ENABLED = 1;
+
     /** 变更标记：菜单关联的详情菜单已切换（表头配置尚未更新入库），0 表示未变化 */
     private static final Integer CHANGE_DETAIL_SWITCHED = 1;
 
@@ -927,7 +930,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                         .last("LIMIT 1"));
     }
 
-    /** 按模块查询字段并按模块分组；roleId 非空时仅保留角色满足 {@code scope} 权限的字段 */
+    /** 按模块查询启用字段（{@code status=1}）并按模块分组；roleId 非空时仅保留角色满足 {@code scope} 权限的字段 */
     private Map<Long, List<SysModuleField>> selectFieldsGroupByModule(
             Set<Long> moduleIds, Long roleId, MenuFieldPermissionScope scope) {
         if (moduleIds == null || moduleIds.isEmpty()) {
@@ -937,6 +940,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                 sysModuleFieldMapper.selectList(
                         Wrappers.<SysModuleField>lambdaQuery()
                                 .in(SysModuleField::getModuleId, moduleIds)
+                                .eq(SysModuleField::getStatus, MODULE_FIELD_STATUS_ENABLED)
                                 .orderByAsc(SysModuleField::getSortOrder)
                                 .orderByAsc(SysModuleField::getId));
         // 按角色字段权限过滤（无记录即无权限，直接丢弃）
