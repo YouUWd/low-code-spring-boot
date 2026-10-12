@@ -43,7 +43,7 @@ public class ForkVersionService {
      * @return 派生后生成的新单据根记录主键 ID
      */
     public Long forkNewVersion(ForkVersionReq req) {
-        if (req == null || req.getModuleId() == null || req.getBaseId() == null) {
+        if (req == null || req.getModuleId() == null || req.getId() == null) {
             throw new IllegalArgumentException(
                     "moduleId and baseId cannot be null for forkNewVersion");
         }
@@ -57,11 +57,11 @@ public class ForkVersionService {
                 dataQueryService.getDetailByTable(
                         TableDetailQueryReq.builder()
                                 .moduleId(req.getModuleId())
-                                .id(req.getBaseId())
+                                .id(req.getId())
                                 .build(),
                         meta);
         if (baseBlock == null || baseBlock.isEmpty()) {
-            throw new IllegalArgumentException("Base record not found for id: " + req.getBaseId());
+            throw new IllegalArgumentException("Base record not found for id: " + req.getId());
         }
 
         // 2. 深度合并局部增量数据
@@ -83,7 +83,7 @@ public class ForkVersionService {
                     "版本派生/克隆: 主表={}, 单据号={}, 原始基准ID={}, 计算生成最新版本号={}",
                     primaryTable,
                     businessNo,
-                    req.getBaseId(),
+                    req.getId(),
                     nextVersion);
         }
 

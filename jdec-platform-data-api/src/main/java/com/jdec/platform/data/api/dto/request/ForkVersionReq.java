@@ -13,13 +13,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ForkVersionReq implements Serializable {
-    private static final long serialVersionUID = 1L;
-
     /** 根模块 ID */
     private Long moduleId;
 
     /** 基准单据物理 ID (如 156) */
-    private Long baseId;
+    private Long id;
 
     /** 局部增量编辑物理数据块 (仅需携带变动的列与增删改的明细) */
     private DataBlock patchData;
