@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "通用字段搜索下拉候选项条目")
-public class DataOption implements Serializable {
+public class DataOptionResp implements Serializable {
 
     @Schema(description = "选项显示文本/对象 (展示文案/字典名称/枚举标签/完整对象等)", example = "新选课程1")
     private Object label;

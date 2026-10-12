@@ -10,8 +10,8 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
-import com.jdec.platform.data.api.dto.request.FilterItem;
-import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
+import com.jdec.platform.data.api.dto.request.TableQueryReq;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -74,8 +74,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
             if (!todoFilterResult.shortCircuitEmpty()) {
                 todoCount =
-                        dataApi.count(
-                                QueryReq.builder()
+                        dataApi.countByTable(
+                                TableQueryReq.builder()
                                         .moduleId(rootModuleId)
                                         .filters(todoFilterResult.filters())
                                         .build());
@@ -90,67 +90,65 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             Set<Long> allApprovalIds = new LinkedHashSet<>(doneRecordIds);
             allApprovalIds.addAll(todoRecordIds);
 
-            List<FilterItem> totalFilters = new ArrayList<>();
+            List<PhysicalFilterItem> totalFilters = new ArrayList<>();
 
             Long currentUserId = UserContext.getUserId();
-            boolean hasApprovalIds = !allApprovalIds.isEmpty() && rootFieldIds.idFieldId() != null;
+            boolean hasApprovalIds = !allApprovalIds.isEmpty() && rootFieldIds.idField() != null;
             boolean canQueryDraft =
                     currentUserId != null
-                            && rootFieldIds.createdByFieldId() != null
-                            && rootFieldIds.businessStatusFieldId() != null;
+                            && rootFieldIds.createdByField() != null
+                            && rootFieldIds.businessStatusField() != null;
 
             if (!hasApprovalIds && !canQueryDraft) {
                 totalCount = 0L;
             } else {
-                FilterItem approvalBranch = null;
+                PhysicalFilterItem approvalBranch = null;
                 if (hasApprovalIds) {
                     approvalBranch =
-                            FilterItem.builder()
-                                    .fieldId(rootFieldIds.idFieldId())
-                                    .operator("IN")
-                                    .value(new ArrayList<>(allApprovalIds))
-                                    .build();
+                            PhysicalQueryMapper.filter(
+                                    rootFieldIds.tree(),
+                                    rootFieldIds.idField().fieldId(),
+                                    "IN",
+                                    new ArrayList<>(allApprovalIds));
                 }
 
-                FilterItem draftBranch = null;
+                List<PhysicalFilterItem> draftItems = null;
                 if (canQueryDraft) {
-                    List<FilterItem> draftItems = new ArrayList<>();
+                    draftItems = new ArrayList<>();
                     draftItems.add(
-                            FilterItem.builder()
-                                    .fieldId(rootFieldIds.createdByFieldId())
-                                    .operator("EQ")
-                                    .value(currentUserId)
-                                    .build());
+                            PhysicalQueryMapper.filter(
+                                    rootFieldIds.tree(),
+                                    rootFieldIds.createdByField().fieldId(),
+                                    "EQ",
+                                    currentUserId));
                     draftItems.add(
-                            FilterItem.builder()
-                                    .fieldId(rootFieldIds.businessStatusFieldId())
-                                    .operator("EQ")
-                                    .value(1)
-                                    .build());
-                    draftBranch = FilterItem.builder().logic("AND").children(draftItems).build();
+                            PhysicalQueryMapper.filter(
+                                    rootFieldIds.tree(),
+                                    rootFieldIds.businessStatusField().fieldId(),
+                                    "EQ",
+                                    1));
                 }
 
-                if (approvalBranch != null && draftBranch != null) {
-                    totalFilters.add(
-                            FilterItem.builder()
-                                    .logic("OR")
-                                    .children(Arrays.asList(approvalBranch, draftBranch))
-                                    .build());
+                if (approvalBranch != null && draftItems != null && !draftItems.isEmpty()) {
+                    approvalBranch.setLogic("OR");
+                    approvalBranch.setChildren(draftItems);
+                    totalFilters.add(approvalBranch);
                 } else if (approvalBranch != null) {
                     totalFilters.add(approvalBranch);
-                } else {
-                    totalFilters.add(draftBranch);
+                } else if (draftItems != null && !draftItems.isEmpty()) {
+                    totalFilters.addAll(draftItems);
                 }
 
                 totalCount =
-                        dataApi.count(
-                                QueryReq.builder()
+                        dataApi.countByTable(
+                                TableQueryReq.builder()
                                         .moduleId(rootModuleId)
                                         .filters(totalFilters)
                                         .build());
             }
         } else {
-            totalCount = dataApi.count(QueryReq.builder().moduleId(rootModuleId).build());
+            totalCount =
+                    dataApi.countByTable(TableQueryReq.builder().moduleId(rootModuleId).build());
         }
         todo.put("count", todoCount != null ? todoCount : 0L);
         done.put("count", doneCount);
@@ -263,60 +261,57 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             RootModuleFieldIds rootFieldIds,
             Map<Long, List<Map<String, Object>>> btnGroupMap) {
 
-        List<FilterItem> filters = new ArrayList<>();
+        List<PhysicalFilterItem> filters = new ArrayList<>();
         Long currentUserId = UserContext.getUserId();
 
         if (approvalType == 1) {
             // 【待办】: (id IN recordIds) OR (created_by == currentUserId && business_status == 1)
             Set<Long> todoRecordIds = btnGroupMap.keySet();
-            boolean hasApprovalIds = !todoRecordIds.isEmpty() && rootFieldIds.idFieldId() != null;
+            boolean hasApprovalIds = !todoRecordIds.isEmpty() && rootFieldIds.idField() != null;
             boolean canQueryDraft =
                     currentUserId != null
-                            && rootFieldIds.createdByFieldId() != null
-                            && rootFieldIds.businessStatusFieldId() != null;
+                            && rootFieldIds.createdByField() != null
+                            && rootFieldIds.businessStatusField() != null;
 
             if (!hasApprovalIds && !canQueryDraft) {
                 return new ApprovalFilterResult(filters, true);
             }
 
-            FilterItem approvalBranch = null;
+            PhysicalFilterItem approvalBranch = null;
             if (hasApprovalIds) {
                 approvalBranch =
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.idFieldId())
-                                .operator("IN")
-                                .value(new ArrayList<>(todoRecordIds))
-                                .build();
+                        PhysicalQueryMapper.filter(
+                                rootFieldIds.tree(),
+                                rootFieldIds.idField().fieldId(),
+                                "IN",
+                                new ArrayList<>(todoRecordIds));
             }
 
-            FilterItem draftBranch = null;
+            List<PhysicalFilterItem> draftItems = null;
             if (canQueryDraft) {
-                List<FilterItem> draftItems = new ArrayList<>();
+                draftItems = new ArrayList<>();
                 draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.createdByFieldId())
-                                .operator("EQ")
-                                .value(currentUserId)
-                                .build());
+                        PhysicalQueryMapper.filter(
+                                rootFieldIds.tree(),
+                                rootFieldIds.createdByField().fieldId(),
+                                "EQ",
+                                currentUserId));
                 draftItems.add(
-                        FilterItem.builder()
-                                .fieldId(rootFieldIds.businessStatusFieldId())
-                                .operator("EQ")
-                                .value(1)
-                                .build());
-                draftBranch = FilterItem.builder().logic("AND").children(draftItems).build();
+                        PhysicalQueryMapper.filter(
+                                rootFieldIds.tree(),
+                                rootFieldIds.businessStatusField().fieldId(),
+                                "EQ",
+                                1));
             }
 
-            if (approvalBranch != null && draftBranch != null) {
-                filters.add(
-                        FilterItem.builder()
-                                .logic("OR")
-                                .children(Arrays.asList(approvalBranch, draftBranch))
-                                .build());
+            if (approvalBranch != null && draftItems != null && !draftItems.isEmpty()) {
+                approvalBranch.setLogic("OR");
+                approvalBranch.setChildren(draftItems);
+                filters.add(approvalBranch);
             } else if (approvalBranch != null) {
                 filters.add(approvalBranch);
-            } else {
-                filters.add(draftBranch);
+            } else if (draftItems != null && !draftItems.isEmpty()) {
+                filters.addAll(draftItems);
             }
         }
 
@@ -325,14 +320,14 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
     private RootModuleFieldIds extractRootModuleFieldIds(Long rootModuleId) {
         if (rootModuleId == null) {
-            return new RootModuleFieldIds(null, null, null);
+            return new RootModuleFieldIds(null, null, null, null);
         }
 
         ModuleTreeDTO moduleTree =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
-        Long idFieldId = null;
-        Long createdByFieldId = null;
-        Long businessStatusFieldId = null;
+        PhysicalQueryMapper.PhysicalFieldRef idField = null;
+        PhysicalQueryMapper.PhysicalFieldRef createdByField = null;
+        PhysicalQueryMapper.PhysicalFieldRef businessStatusField = null;
 
         if (moduleTree != null && moduleTree.getRootModule() != null) {
             List<ModuleFieldDTO> fields = moduleTree.getRootModule().getFields();
@@ -340,19 +335,19 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
                 for (ModuleFieldDTO f : fields) {
                     String col = f.getColumnName();
                     if ("id".equalsIgnoreCase(col)) {
-                        idFieldId = f.getId();
+                        idField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     } else if ("created_by".equalsIgnoreCase(col)
                             || "createdBy".equalsIgnoreCase(col)) {
-                        createdByFieldId = f.getId();
+                        createdByField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     } else if ("business_status".equalsIgnoreCase(col)
                             || "businessStatus".equalsIgnoreCase(col)) {
-                        businessStatusFieldId = f.getId();
+                        businessStatusField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     }
                 }
             }
         }
 
-        return new RootModuleFieldIds(idFieldId, createdByFieldId, businessStatusFieldId);
+        return new RootModuleFieldIds(moduleTree, idField, createdByField, businessStatusField);
     }
 
     private Long parseRecordIdFromRaw(Object rIdObj) {
@@ -373,7 +368,11 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             Map<Long, List<Map<String, Object>>> allBtns) {}
 
     private record RootModuleFieldIds(
-            Long idFieldId, Long createdByFieldId, Long businessStatusFieldId) {}
+            ModuleTreeDTO tree,
+            PhysicalQueryMapper.PhysicalFieldRef idField,
+            PhysicalQueryMapper.PhysicalFieldRef createdByField,
+            PhysicalQueryMapper.PhysicalFieldRef businessStatusField) {}
 
-    private record ApprovalFilterResult(List<FilterItem> filters, boolean shortCircuitEmpty) {}
+    private record ApprovalFilterResult(
+            List<PhysicalFilterItem> filters, boolean shortCircuitEmpty) {}
 }

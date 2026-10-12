@@ -1,6 +1,6 @@
 package com.jdec.platform.common.biz.dto.request;
 
-import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.common.api.dto.request.FilterItem;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;

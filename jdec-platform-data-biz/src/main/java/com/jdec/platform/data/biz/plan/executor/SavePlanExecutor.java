@@ -1,5 +1,6 @@
 package com.jdec.platform.data.biz.plan.executor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
@@ -28,10 +29,12 @@ public class SavePlanExecutor {
 
     private final JooqDataContextFactory jooqDataContextFactory;
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     /** 在单事务内执行整树落库并返回根记录 ID */
     @Transactional(rollbackFor = Exception.class)
     public Long execute(SavePlan plan) {
-        Map<String, Object> idMap = executeAndCollectIds(plan);
+        Map<String, Object> idMap = doSaveInTransaction(plan);
         if (plan != null
                 && plan.getRootNodePlan() != null
                 && plan.getRootNodePlan().getModuleId() != null) {
@@ -74,6 +77,16 @@ public class SavePlanExecutor {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> executeAndCollectIds(SavePlan plan) {
+        return doSaveInTransaction(plan);
+    }
+
+    /**
+     * 整树落库的共享实现。
+     *
+     * <p>刻意做成**非事务**的私有方法：两个公开入口各自开启事务，避免 {@code execute()} 自调用 {@code executeAndCollectIds()} 时内层
+     * {@code @Transactional} 因代理失效而被忽略（语义误导）。
+     */
+    private Map<String, Object> doSaveInTransaction(SavePlan plan) {
         if (plan == null || plan.getRootNodePlan() == null) {
             throw new IllegalArgumentException("保存计划为空");
         }
@@ -108,12 +121,16 @@ public class SavePlanExecutor {
                 }
 
                 // 递归级联保存各子孙模块节点并挂载到当前根行对象
-                if (rootPlan.getChildren() != null && !rootPlan.getChildren().isEmpty()) {
+                List<SaveNodePlan> rootRowChildren =
+                        (rootPlan.getRowChildren() != null && i < rootPlan.getRowChildren().size())
+                                ? rootPlan.getRowChildren().get(i)
+                                : rootPlan.getChildren();
+                if (rootRowChildren != null && !rootRowChildren.isEmpty()) {
                     Long currentParentId = generatedId != null ? generatedId : masterId;
                     if (currentParentId == null) {
                         throw new IllegalStateException("主记录 ID 未生成，无法级联保存子模块数据");
                     }
-                    for (SaveNodePlan childPlan : rootPlan.getChildren()) {
+                    for (SaveNodePlan childPlan : rootRowChildren) {
                         Object childResult =
                                 saveChildPlanRecursively(dsl, childPlan, currentParentId);
                         if (childPlan.getModuleId() != null && childResult != null) {
@@ -249,6 +266,10 @@ public class SavePlanExecutor {
                                                     DSL.field(DSL.name(table, "deleted"))
                                                             .eq((byte) 0)))
                             .execute();
+
+                    // 级联软删除当前孤儿记录的所有下级物理子模块数据，防止孙表记录游离
+                    cascadeDeleteOrphanDescendants(
+                            dsl, nodePlan.getChildren(), orphanIds, currentUserId, now);
                 }
             }
         }
@@ -271,10 +292,14 @@ public class SavePlanExecutor {
                     childRowMap.put(table, Map.of("id", rowId));
                 }
 
-                // 递归向下传播孙节点
-                if (nodePlan.getChildren() != null && !nodePlan.getChildren().isEmpty()) {
+                // 递归向下传播孙节点 (仅针对当前行拥有的子计划，避免 1:N 孙表交叉污染)
+                List<SaveNodePlan> rowChildren =
+                        (nodePlan.getRowChildren() != null && i < nodePlan.getRowChildren().size())
+                                ? nodePlan.getRowChildren().get(i)
+                                : nodePlan.getChildren();
+                if (rowChildren != null && !rowChildren.isEmpty()) {
                     Long currentId = rowId != null ? rowId : parentId;
-                    for (SaveNodePlan grandChild : nodePlan.getChildren()) {
+                    for (SaveNodePlan grandChild : rowChildren) {
                         Object grandChildRes = saveChildPlanRecursively(dsl, grandChild, currentId);
                         if (grandChild.getModuleId() != null && grandChildRes != null) {
                             childRowMap.put(
@@ -380,9 +405,8 @@ public class SavePlanExecutor {
             if (col == null
                     || "children".equals(col)
                     || col.matches("\\d+")
-                    || val instanceof Map<?, ?>
-                    || val instanceof List<?>) {
-                continue; // 忽略嵌套子节点数据、子模块数字键与对象结构
+                    || (table != null && col.equalsIgnoreCase(table))) {
+                continue; // 忽略嵌套子节点数据、子模块数字键及当前主表名自身
             }
             if (id != null && "id".equalsIgnoreCase(col)) {
                 continue; // 更新模式下不重复 SET 主键 id
@@ -390,6 +414,16 @@ public class SavePlanExecutor {
             if ("deleted".equalsIgnoreCase(col)) {
                 continue; // deleted 状态由引擎统一维护，避免外部非法覆盖
             }
+
+            // 支持实体中配置的 JSON/JSON 数组字段 (如 nature, cooperation_types 等 List/Map 结构)
+            if (val instanceof Map<?, ?> || val instanceof List<?>) {
+                try {
+                    val = MAPPER.writeValueAsString(val);
+                } catch (Exception ex) {
+                    log.warn("序列化物理表 [{}] 字段 [{}] 为 JSON 失败: {}", table, col, ex.getMessage());
+                }
+            }
+
             fieldValues.put(DSL.field(DSL.name(table, col)), val);
         }
 
@@ -469,5 +503,66 @@ public class SavePlanExecutor {
             return "1".equals(str) || "true".equalsIgnoreCase(str);
         }
         return false;
+    }
+
+    /** 递归级联软删除孤儿记录的所有下级物理子孙表数据，防止产生游离孙表记录 */
+    private void cascadeDeleteOrphanDescendants(
+            DSLContext dsl,
+            List<SaveNodePlan> childPlans,
+            List<Long> parentOrphanIds,
+            Long currentUserId,
+            LocalDateTime now) {
+        if (childPlans == null
+                || childPlans.isEmpty()
+                || parentOrphanIds == null
+                || parentOrphanIds.isEmpty()) {
+            return;
+        }
+        for (SaveNodePlan childPlan : childPlans) {
+            String childTable = childPlan.getPrimaryTable();
+            String fkField = childPlan.getParentForeignKey();
+            if (childTable == null || childTable.isBlank()) {
+                // 虚拟模块穿透：直接将当前孤儿 ID 列表透传给下级
+                cascadeDeleteOrphanDescendants(
+                        dsl, childPlan.getChildren(), parentOrphanIds, currentUserId, now);
+                continue;
+            }
+            if (fkField == null || fkField.isBlank() || "id".equalsIgnoreCase(fkField)) {
+                continue;
+            }
+            try {
+                // 查询该孤儿批次对应的直接子记录 ID
+                List<Long> childIds =
+                        dsl.select(DSL.field(DSL.name(childTable, "id"), Long.class))
+                                .from(DSL.table(DSL.name(childTable)))
+                                .where(
+                                        DSL.field(DSL.name(childTable, fkField))
+                                                .in(parentOrphanIds)
+                                                .and(
+                                                        DSL.field(DSL.name(childTable, "deleted"))
+                                                                .eq((byte) 0)))
+                                .fetch(0, Long.class);
+
+                if (childIds != null && !childIds.isEmpty()) {
+                    log.info(
+                            "级联软删除孤儿从表 [{}] 关联数据: fkField={}, 匹配记录数={}",
+                            childTable,
+                            fkField,
+                            childIds.size());
+                    dsl.update(DSL.table(DSL.name(childTable)))
+                            .set(DSL.field(DSL.name(childTable, "deleted")), (byte) 1)
+                            .set(DSL.field(DSL.name(childTable, "updated_by")), currentUserId)
+                            .set(DSL.field(DSL.name(childTable, "updated_date")), now)
+                            .where(DSL.field(DSL.name(childTable, "id")).in(childIds))
+                            .execute();
+
+                    // 继续向下递归级联软删除更深层孙节点
+                    cascadeDeleteOrphanDescendants(
+                            dsl, childPlan.getChildren(), childIds, currentUserId, now);
+                }
+            } catch (Exception ex) {
+                log.warn("级联软删除从表 [{}] 孤儿记录失败: {}", childTable, ex.getMessage());
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-package com.jdec.platform.data.api.dto.request;
+package com.jdec.platform.common.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -8,9 +8,11 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 结构化排序规则项
+ * 结构化排序规则项（菜单级契约）
  *
- * <p>核心以 fieldId (sys_module_field.id) 作为权威物理凭据， 支持指定排序方向 (ASC / DESC)。
+ * <p>以 fieldId (sys_module_field.id) 作为权威物理凭据，支持指定排序方向 (ASC / DESC)。
+ *
+ * <p>本类原属 data-api，但实际只被菜单聚合链路使用，故归位到 common-api。
  */
 @Data
 @Builder

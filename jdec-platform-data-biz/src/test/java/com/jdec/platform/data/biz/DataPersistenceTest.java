@@ -16,8 +16,8 @@ import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.SaveReq;
-import com.jdec.platform.data.api.dto.response.SaveResp;
+import com.jdec.platform.data.api.dto.response.DataSaveResp;
+import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.service.DataPersistenceService;
@@ -198,9 +198,11 @@ class DataPersistenceTest {
                 .when(configApi.getProjectTableRelations(nullable(String.class)))
                 .thenReturn(mockProjectRelations);
 
-        savePlanCompiler = new SavePlanCompiler(configApi);
+        savePlanCompiler = new SavePlanCompiler();
         savePlanExecutor = new SavePlanExecutor(jooqDataContextFactory);
-        dataPersistenceService = new DataPersistenceService(savePlanCompiler, savePlanExecutor);
+        dataPersistenceService =
+                new DataPersistenceService(
+                        savePlanCompiler, savePlanExecutor, new PlanMetaLoader(configApi));
     }
 
     private void initMockMetadata() {
@@ -482,9 +484,9 @@ class DataPersistenceTest {
         DataRow row = new DataRow();
         row.putTable("student", studentRow);
 
-        SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(row)).build();
+        DataBlock saveBlock = DataBlock.builder().moduleId(101L).records(List.of(row)).build();
 
-        Long savedId = dataPersistenceService.save(saveReq);
+        Long savedId = dataPersistenceService.save(saveBlock).getRootId();
 
         assertNotNull(savedId);
         assertTrue(savedId > 0);
@@ -524,9 +526,10 @@ class DataPersistenceTest {
         rootRecord.setChildren(
                 List.of(DataBlock.builder().moduleId(105L).records(List.of(courseRecord)).build()));
 
-        SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(rootRecord)).build();
+        DataBlock saveBlock =
+                DataBlock.builder().moduleId(101L).records(List.of(rootRecord)).build();
 
-        Long savedId = dataPersistenceService.save(saveReq);
+        Long savedId = dataPersistenceService.save(saveBlock).getRootId();
         assertNotNull(savedId);
 
         // 校验 3 张表的 INSERT 均被顺序触发
@@ -594,9 +597,10 @@ class DataPersistenceTest {
                                 .records(List.of(virtualContainer))
                                 .build()));
 
-        SaveReq saveReq = SaveReq.builder().moduleId(1001L).records(List.of(rootRecord)).build();
+        DataBlock saveBlock =
+                DataBlock.builder().moduleId(1001L).records(List.of(rootRecord)).build();
 
-        Long savedId = dataPersistenceService.save(saveReq);
+        Long savedId = dataPersistenceService.save(saveBlock).getRootId();
         assertNotNull(savedId);
 
         // 校验根表与穿透子表的 INSERT
@@ -625,9 +629,9 @@ class DataPersistenceTest {
         DataRow row = new DataRow();
         row.putTable("student", studentRow);
 
-        SaveReq saveReq = SaveReq.builder().moduleId(101L).records(List.of(row)).build();
+        DataBlock saveBlock = DataBlock.builder().moduleId(101L).records(List.of(row)).build();
 
-        Long savedId = dataPersistenceService.save(saveReq);
+        Long savedId = dataPersistenceService.save(saveBlock).getRootId();
         assertEquals(1001L, savedId);
 
         assertTrue(
@@ -660,7 +664,7 @@ class DataPersistenceTest {
         DataBlock rootBlock =
                 DataBlock.builder().moduleId(1001L).records(List.of(companyRow)).build();
 
-        SaveResp resp = dataPersistenceService.save(rootBlock);
+        DataSaveResp resp = dataPersistenceService.save(rootBlock);
 
         assertNotNull(resp);
         assertNotNull(resp.getRootId());
@@ -728,7 +732,7 @@ class DataPersistenceTest {
         DataBlock rootBlock =
                 DataBlock.builder().moduleId(101L).records(List.of(studentRow)).build();
 
-        SaveResp resp = dataPersistenceService.save(rootBlock);
+        DataSaveResp resp = dataPersistenceService.save(rootBlock);
 
         assertNotNull(resp);
         assertNotNull(resp.getRootId());
@@ -785,7 +789,7 @@ class DataPersistenceTest {
         DataBlock rootBlock =
                 DataBlock.builder().moduleId(101L).records(List.of(studentRow)).build();
 
-        SaveResp resp = dataPersistenceService.save(rootBlock);
+        DataSaveResp resp = dataPersistenceService.save(rootBlock);
 
         assertNotNull(resp);
         assertNotNull(resp.getRootId());

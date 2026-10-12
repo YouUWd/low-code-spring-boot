@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 /**
  * 经元数据编译解析后的物理字段规格
  *
- * <p>以 fieldId (sys_module_field.id) 为唯一锚点，严格映射到数据库物理表名和物理列名。
+ * <p>以物理表名 + 物理列名作为唯一锚点，严格映射到数据库物理表与物理列。
  */
 @Data
 @Builder
@@ -17,9 +17,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Schema(description = "物理字段规格说明")
 public class PhysicalFieldSpec {
-
-    /** 模块字段配置 ID */
-    private Long fieldId;
 
     /** 物理表名 */
     private String tableName;
