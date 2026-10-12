@@ -100,6 +100,7 @@ public class SavePlanCompiler {
 
         List<SaveNodePlan> allChildPlans = new ArrayList<>();
         List<List<SaveNodePlan>> rowChildrenList = new ArrayList<>();
+        List<List<SaveNodePlan>> rowCompanionList = new ArrayList<>();
 
         // 规范化当前节点的 records，并提取行内嵌套的 children (DataBlock 读写同构)
         List<DataRow> sourceRecords = node.getRecords();
@@ -112,6 +113,7 @@ public class SavePlanCompiler {
                     continue;
                 }
                 List<SaveNodePlan> thisRowChildPlans = new ArrayList<>();
+                List<SaveNodePlan> thisRowCompanionPlans = new ArrayList<>();
                 Map<String, Object> cleanRow =
                         normalizeRow(
                                 rawRow,
@@ -119,11 +121,13 @@ public class SavePlanCompiler {
                                 moduleId,
                                 meta,
                                 thisRowChildPlans,
+                                thisRowCompanionPlans,
                                 projectRelations,
                                 tree);
                 cleanRecords.add(cleanRow);
                 cleanSourceRows.add(rawRow);
                 rowChildrenList.add(thisRowChildPlans);
+                rowCompanionList.add(thisRowCompanionPlans);
                 allChildPlans.addAll(thisRowChildPlans);
             }
         }
@@ -142,16 +146,18 @@ public class SavePlanCompiler {
                 .sourceDataRows(cleanSourceRows)
                 .children(allChildPlans)
                 .rowChildren(rowChildrenList)
+                .companionPlans(rowCompanionList)
                 .build();
     }
 
-    /** 规范化行记录，支持解包物理表对象与提取行内挂载的子模块 (DataRow) */
+    /** 规范化行记录，支持解包物理表对象与提取行内挂载的子模块 (DataRow) 及 1:1 伴生表 */
     private Map<String, Object> normalizeRow(
             DataRow rawRow,
             String primaryTable,
             Long moduleId,
             ModuleInfo meta,
             List<SaveNodePlan> childPlans,
+            List<SaveNodePlan> companionPlans,
             ProjectTableRelationsDTO projectRelations,
             ModuleTreeDTO tree) {
         Map<String, Object> cleanRow = new HashMap<>();
@@ -178,6 +184,60 @@ public class SavePlanCompiler {
                 }
             }
             cleanRow.remove(primaryTable);
+        }
+
+        // 1.1 提取同一模块下的 1:1 伴生表 (垂直拆分表，未被模块树单独认领为模块主表)
+        if (primaryTable != null
+                && !primaryTable.isBlank()
+                && projectRelations != null
+                && projectRelations.getForwardRelations() != null) {
+            List<TableRelationDTO> fwdRels =
+                    projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
+            if (fwdRels != null) {
+                for (TableRelationDTO rel : fwdRels) {
+                    if (ModuleRelationResolver.isCompanionRelation(rel, tree)) {
+                        String compTable = rel.getJoinTable();
+                        if (compTable != null && !compTable.isBlank()) {
+                            String trimmedCompTable = compTable.trim();
+                            Object compVal = cleanRow.get(trimmedCompTable);
+                            if (compVal == null) {
+                                // 尝试忽略大小写查找
+                                for (Map.Entry<String, Object> e : cleanRow.entrySet()) {
+                                    if (trimmedCompTable.equalsIgnoreCase(e.getKey())) {
+                                        compVal = e.getValue();
+                                        break;
+                                    }
+                                }
+                            }
+                            if (compVal instanceof Map<?, ?> compMap) {
+                                cleanRow.remove(trimmedCompTable);
+                                Map<String, Object> compRecord = new HashMap<>();
+                                for (Map.Entry<?, ?> e : compMap.entrySet()) {
+                                    if (e.getKey() != null) {
+                                        compRecord.put(String.valueOf(e.getKey()), e.getValue());
+                                    }
+                                }
+                                String fk =
+                                        (rel.getJoinField() != null
+                                                        && !rel.getJoinField().isBlank())
+                                                ? rel.getJoinField().trim()
+                                                : "id";
+                                SaveNodePlan compPlan =
+                                        SaveNodePlan.builder()
+                                                .moduleId(moduleId)
+                                                .moduleMeta(meta)
+                                                .primaryTable(trimmedCompTable)
+                                                .parentForeignKey(fk)
+                                                .isMany(false)
+                                                .records(List.of(compRecord))
+                                                .sourceDataRows(List.of(rawRow))
+                                                .build();
+                                companionPlans.add(compPlan);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // 2. 检查数字键子模块 (例如 "103", "104", "106")

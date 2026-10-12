@@ -43,4 +43,7 @@ public class SaveNodePlan {
 
     /** 行级别私有子模块保存计划列表 (与 records 数组索引一一对应，用于 1:N 避免孙表交叉污染) */
     @Builder.Default private List<List<SaveNodePlan>> rowChildren = new ArrayList<>();
+
+    /** 行级别伴生表保存计划列表 (与 records 数组索引一一对应，用于 1:1 垂直拆分伴生表原子落库) */
+    @Builder.Default private List<List<SaveNodePlan>> companionPlans = new ArrayList<>();
 }

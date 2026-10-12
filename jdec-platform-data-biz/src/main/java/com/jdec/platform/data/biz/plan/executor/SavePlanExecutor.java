@@ -120,6 +120,23 @@ public class SavePlanExecutor {
                     }
                 }
 
+                // 级联保存当前行的 1:1 伴生表 (垂直拆分表)
+                List<SaveNodePlan> companions =
+                        (rootPlan.getCompanionPlans() != null
+                                        && i < rootPlan.getCompanionPlans().size())
+                                ? rootPlan.getCompanionPlans().get(i)
+                                : Collections.emptyList();
+                if (companions != null && !companions.isEmpty()) {
+                    Long currentPrimaryId = generatedId != null ? generatedId : masterId;
+                    for (SaveNodePlan compPlan : companions) {
+                        Object compResult =
+                                saveChildPlanRecursively(dsl, compPlan, currentPrimaryId);
+                        if (compPlan.getPrimaryTable() != null && compResult != null) {
+                            rootRowMap.put(compPlan.getPrimaryTable(), compResult);
+                        }
+                    }
+                }
+
                 // 递归级联保存各子孙模块节点并挂载到当前根行对象
                 List<SaveNodePlan> rootRowChildren =
                         (rootPlan.getRowChildren() != null && i < rootPlan.getRowChildren().size())
@@ -292,13 +309,29 @@ public class SavePlanExecutor {
                     childRowMap.put(table, Map.of("id", rowId));
                 }
 
+                Long currentId = rowId != null ? rowId : parentId;
+
+                // 级联保存当前行的 1:1 伴生表 (垂直拆分表)
+                List<SaveNodePlan> companions =
+                        (nodePlan.getCompanionPlans() != null
+                                        && i < nodePlan.getCompanionPlans().size())
+                                ? nodePlan.getCompanionPlans().get(i)
+                                : Collections.emptyList();
+                if (companions != null && !companions.isEmpty()) {
+                    for (SaveNodePlan compPlan : companions) {
+                        Object compResult = saveChildPlanRecursively(dsl, compPlan, currentId);
+                        if (compPlan.getPrimaryTable() != null && compResult != null) {
+                            childRowMap.put(compPlan.getPrimaryTable(), compResult);
+                        }
+                    }
+                }
+
                 // 递归向下传播孙节点 (仅针对当前行拥有的子计划，避免 1:N 孙表交叉污染)
                 List<SaveNodePlan> rowChildren =
                         (nodePlan.getRowChildren() != null && i < nodePlan.getRowChildren().size())
                                 ? nodePlan.getRowChildren().get(i)
                                 : nodePlan.getChildren();
                 if (rowChildren != null && !rowChildren.isEmpty()) {
-                    Long currentId = rowId != null ? rowId : parentId;
                     for (SaveNodePlan grandChild : rowChildren) {
                         Object grandChildRes = saveChildPlanRecursively(dsl, grandChild, currentId);
                         if (grandChild.getModuleId() != null && grandChildRes != null) {
@@ -399,6 +432,20 @@ public class SavePlanExecutor {
         // 2. 组装正常新增/更新字段
         Map<Field<Object>, Object> fieldValues = new LinkedHashMap<>();
 
+        Set<String> validColumns = null;
+        if (nodePlan != null
+                && nodePlan.getModuleMeta() != null
+                && nodePlan.getModuleMeta().getFields() != null) {
+            validColumns = new HashSet<>();
+            for (var f : nodePlan.getModuleMeta().getFields()) {
+                if (f != null && f.getColumnName() != null) {
+                    if (f.getTableName() == null || f.getTableName().equalsIgnoreCase(table)) {
+                        validColumns.add(f.getColumnName().toLowerCase());
+                    }
+                }
+            }
+        }
+
         for (Map.Entry<String, Object> entry : row.entrySet()) {
             String col = entry.getKey();
             Object val = entry.getValue();
@@ -413,6 +460,17 @@ public class SavePlanExecutor {
             }
             if ("deleted".equalsIgnoreCase(col)) {
                 continue; // deleted 状态由引擎统一维护，避免外部非法覆盖
+            }
+            // 若模块元数据定义了字段集合，过滤掉不属于该模块/表的冗余下发字段（如版本派生时从根节点向下传播但子表并不存在的 version_no）
+            if (validColumns != null && !validColumns.isEmpty()) {
+                if (!validColumns.contains(col.toLowerCase())
+                        && !"subject_id".equalsIgnoreCase(col)
+                        && !"created_by".equalsIgnoreCase(col)
+                        && !"created_date".equalsIgnoreCase(col)
+                        && !"updated_by".equalsIgnoreCase(col)
+                        && !"updated_date".equalsIgnoreCase(col)) {
+                    continue;
+                }
             }
 
             // 支持实体中配置的 JSON/JSON 数组字段 (如 nature, cooperation_types 等 List/Map 结构)
@@ -460,21 +518,29 @@ public class SavePlanExecutor {
                                 .returningResult(DSL.field(DSL.name(table, "id"), Long.class))
                                 .fetchOne(0, Long.class);
             } catch (Exception ex) {
-                log.debug("returningResult 获取自增主键未成功，尝试通过 lastID 回退获取: {}", ex.getMessage());
+                log.debug("returningResult 获取自增主键未成功 [table={}]: {}", table, ex.getMessage());
             }
 
             if (generatedId == null || generatedId <= 0) {
                 try {
                     if (dsl.lastID() != null && dsl.lastID().longValue() > 0) {
                         generatedId = dsl.lastID().longValue();
-                    } else {
-                        // 通过 SELECT LAST_INSERT_ID() 兜底
-                        generatedId =
-                                dsl.select(DSL.function("LAST_INSERT_ID", Long.class))
-                                        .fetchOne(0, Long.class);
                     }
-                } catch (Exception ex) {
-                    log.warn("获取最后插入主键失败: {}", ex.getMessage());
+                } catch (Exception ignored) {
+                }
+                if (generatedId == null || generatedId <= 0) {
+                    try {
+                        generatedId =
+                                dsl.resultQuery("SELECT LAST_INSERT_ID()").fetchOne(0, Long.class);
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (generatedId == null || generatedId <= 0) {
+                    try {
+                        generatedId =
+                                dsl.resultQuery("SELECT SCOPE_IDENTITY()").fetchOne(0, Long.class);
+                    } catch (Exception ignored) {
+                    }
                 }
             }
 

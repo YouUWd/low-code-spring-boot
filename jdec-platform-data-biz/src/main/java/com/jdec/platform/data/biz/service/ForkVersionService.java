@@ -44,8 +44,7 @@ public class ForkVersionService {
      */
     public Long forkNewVersion(ForkVersionReq req) {
         if (req == null || req.getModuleId() == null || req.getId() == null) {
-            throw new IllegalArgumentException(
-                    "moduleId and baseId cannot be null for forkNewVersion");
+            throw new IllegalArgumentException("moduleId and id cannot be null for forkNewVersion");
         }
 
         // 0. 在事务外一次性取好元数据快照 (无业务事务包裹 ConfigApi 远程/本地调用)，

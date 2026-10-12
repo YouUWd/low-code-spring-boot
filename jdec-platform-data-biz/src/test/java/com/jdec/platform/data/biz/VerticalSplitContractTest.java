@@ -283,6 +283,37 @@ class VerticalSplitContractTest {
         assertFalse(sql.contains("`teacher`"), "SQL 不应出现 teacher，实际=" + sql);
     }
 
+    @Test
+    @DisplayName("V10 保存侧：1:1 伴生表编译为 companionPlans，落库时自动外键回填并级联落库")
+    void savePlanCompilerExtractsCompanionPlans() {
+        com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler saveCompiler =
+                new com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler();
+        com.jdec.platform.data.api.dto.common.DataRow row =
+                new com.jdec.platform.data.api.dto.common.DataRow();
+        row.putValue(COURSE, "course_name", "高级软件架构");
+        row.putValue(SYLLABUS, "prerequisite", "Java编程基础");
+
+        com.jdec.platform.data.api.dto.common.DataBlock block =
+                com.jdec.platform.data.api.dto.common.DataBlock.builder()
+                        .moduleId(COURSE_MODULE_ID)
+                        .records(List.of(row))
+                        .build();
+
+        com.jdec.platform.data.biz.plan.model.SaveNodePlan plan =
+                saveCompiler.compile(block, courseMeta()).getRootNodePlan();
+
+        assertNotNull(plan.getCompanionPlans(), "伴生表计划列表不应为空");
+        assertEquals(1, plan.getCompanionPlans().size(), "应有1行伴生表计划");
+        List<com.jdec.platform.data.biz.plan.model.SaveNodePlan> rowCompanions =
+                plan.getCompanionPlans().get(0);
+        assertEquals(1, rowCompanions.size(), "第一行应包含1个伴生表计划");
+        com.jdec.platform.data.biz.plan.model.SaveNodePlan compPlan = rowCompanions.get(0);
+        assertEquals(SYLLABUS, compPlan.getPrimaryTable(), "伴生表名应为 course_syllabus");
+        assertEquals("course_id", compPlan.getParentForeignKey(), "伴生表外键字段应为 course_id");
+        assertEquals(1, compPlan.getRecords().size());
+        assertEquals("Java编程基础", compPlan.getRecords().get(0).get("prerequisite"));
+    }
+
     // ==================== 断言辅助 ====================
 
     private QueryNodePlan compileCourse(TableQueryReq req) {
