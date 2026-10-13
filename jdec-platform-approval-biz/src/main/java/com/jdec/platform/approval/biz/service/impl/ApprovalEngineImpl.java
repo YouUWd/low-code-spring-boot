@@ -609,7 +609,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         businessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("LIMIT 1");
         ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalChainBusiness)) {
-            return false;
+            return true;
         }
         // 加载变更页面时显示提交按钮
         if (Objects.nonNull(btnType)
