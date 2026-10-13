@@ -11,10 +11,12 @@ import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
+import com.jdec.platform.shared.enums.CommonStatusEnum;
 import com.jdec.platform.shared.enums.EffectiveTypeEnum;
 import java.time.LocalDate;
 import java.util.*;
@@ -652,7 +654,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                                 .orderByAsc(SysRoleDataPermission::getId));
 
         if (roleDataPermissions.isEmpty()) {
-            return Collections.emptyList();
+            // 角色尚未配置数据权限时，按数据权限节点定义回退返回表名/字段名
+            return buildDefaultDataRightConfigs();
         }
 
         // 2. 获取所有涉及的数据权限ID
@@ -721,6 +724,57 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
             result.add(resp);
         }
 
+        return result;
+    }
+
+    /**
+     * 角色无数据权限配置记录时的回退：按当前项目+主体下启用的数据权限节点定义（{@code sys_data_permission}），
+     * 将编码「表名*字段名」拆解后按表名分组返回，仅填充字段名，不带任何业务名称勾选值。
+     */
+    private List<DataRightConfigResp> buildDefaultDataRightConfigs() {
+        List<SysDataPermission> dataPermissions =
+                sysDataPermissionMapper.selectList(
+                        Wrappers.<SysDataPermission>lambdaQuery()
+                                .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysDataPermission::getStatus, CommonStatusEnum.ENABLE.getCode())
+                                .orderByAsc(SysDataPermission::getSort)
+                                .orderByAsc(SysDataPermission::getId));
+
+        // 表名 -> 字段配置列表（保持插入顺序）
+        Map<String, List<DataRightConfigResp.DataConfig>> tableDataConfigMap =
+                new LinkedHashMap<>();
+        for (SysDataPermission dataPermission : dataPermissions) {
+            String code = dataPermission.getCode();
+            if (code == null) {
+                continue;
+            }
+            String[] parts = code.split("\\*");
+            if (parts.length != 2) {
+                continue; // 跳过格式不正确的 code
+            }
+
+            tableDataConfigMap
+                    .computeIfAbsent(parts[0], k -> new ArrayList<>())
+                    .add(
+                            DataRightConfigResp.DataConfig.builder()
+                                    .columnName(parts[1])
+                                    .permissionCheckAll(0)
+                                    .subjectId(null)
+                                    .subjectCheckAll(0)
+                                    .bizNames(Collections.emptyList())
+                                    .build());
+        }
+
+        List<DataRightConfigResp> result = new ArrayList<>();
+        for (Map.Entry<String, List<DataRightConfigResp.DataConfig>> tableEntry :
+                tableDataConfigMap.entrySet()) {
+            result.add(
+                    DataRightConfigResp.builder()
+                            .tableName(tableEntry.getKey())
+                            .dataList(tableEntry.getValue())
+                            .build());
+        }
         return result;
     }
 
