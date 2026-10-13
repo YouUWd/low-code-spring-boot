@@ -242,10 +242,6 @@ public class DynamicQueryService {
 
         boolean history = false;
 
-        if (Objects.nonNull(dynamicDetailQueryReq.getHistory())) {
-            history = dynamicDetailQueryReq.getHistory();
-        }
-
         Boolean hasApproval =
                 sysApprovalChainConfigApi.getApprovalStatus(
                         List.of(dynamicDetailQueryReq.getModuleId()));
@@ -287,6 +283,24 @@ public class DynamicQueryService {
         if (Objects.nonNull(dynamicDetailQueryReq.getShowVersionCompare())
                 && dynamicDetailQueryReq.getShowVersionCompare()) {
 
+            List<NestedModuleDataDTO> preVersionResultList = new ArrayList<>();
+
+            // 查找当前数据的上一版本
+            Record preVersionRecord = getPreVersion(rootNode, dynamicDetailQueryReq.getId());
+            if (Objects.nonNull(preVersionRecord)) {
+                // 查找上一版本的详情数据
+                Map<String, Object> preVersionResultMap = preVersionRecord.intoMap();
+
+                recursiveQuery(
+                        pruneMenus,
+                        preVersionResultList,
+                        Long.parseLong(String.valueOf(preVersionResultMap.get("id"))),
+                        btnType,
+                        true,
+                        moduleIdToFieldMap,
+                        queryType);
+            }
+
             DataIntegrationContext dataIntegrationContext =
                     DataIntegrationContext.builder()
                             .moduleId(dynamicDetailQueryReq.getModuleId())
@@ -294,12 +308,74 @@ public class DynamicQueryService {
                             .version(dynamicDetailQueryReq.getVersion())
                             .moduleIdToFieldMap(moduleIdToFieldMap)
                             .queryType(queryType)
+                            .preVersionData(preVersionResultList)
                             .build();
 
             detailDataProcessFactory.processData(resultList, dataIntegrationContext);
         }
 
         return resultList;
+    }
+
+    private Record getPreVersion(SysModuleSimpleTreeResp rootNode, Long id) {
+        SysModuleInfo sysModuleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), rootNode.getId());
+
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        SelectJoinStep<org.jooq.Record> query =
+                dslContext.select(DSL.asterisk()).from(DSL.name(sysModuleInfo.getPrimaryTable()));
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+        conditions.add(DSL.field(DSL.name(sysModuleInfo.getPrimaryTable(), "id")).eq(id));
+
+        query.where(conditions);
+
+        Record recordsResult = query.fetchOne();
+        if (Objects.nonNull(recordsResult)) {
+            Long version =
+                    recordsResult.intoMap().get("version_no") == null
+                            ? null
+                            : Long.parseLong(
+                                    String.valueOf(recordsResult.intoMap().get("version_no")));
+            String businessNo =
+                    recordsResult.intoMap().get("business_no") == null
+                            ? null
+                            : String.valueOf(recordsResult.intoMap().get("business_no"));
+            if (Objects.isNull(version) || Objects.isNull(businessNo)) {
+                return null;
+            }
+
+            // 查询上一版本的主模块主表数据，获取数据ID和版本号
+            DSLContext dslContextPreVersion = jooqContextFactory.getContext();
+
+            SelectJoinStep<org.jooq.Record> preVersionQuery =
+                    dslContextPreVersion
+                            .select(DSL.asterisk())
+                            .from(DSL.name(sysModuleInfo.getPrimaryTable()));
+            // 构造SQL 查询条件
+            List<Condition> preVersionConditions = new ArrayList<>();
+            preVersionConditions.add(
+                    DSL.field(DSL.name(sysModuleInfo.getPrimaryTable(), "business_no"))
+                            .eq(businessNo));
+
+            preVersionConditions.add(
+                    DSL.field(DSL.name(sysModuleInfo.getPrimaryTable(), "version_no"))
+                            .lessThan(version));
+
+            preVersionConditions.add(
+                    DSL.field(DSL.name(sysModuleInfo.getPrimaryTable(), "business_status")).eq(99));
+
+            preVersionQuery.where(preVersionConditions);
+
+            preVersionQuery.stream().limit(1);
+
+            Record preVersionResult = preVersionQuery.fetchOne();
+            return preVersionResult;
+        } else {
+            return null;
+        }
     }
 
     private Map<Long, List<ModuleFieldDTO>> getModuleFields(List<Long> filterFields) {
@@ -776,13 +852,10 @@ public class DynamicQueryService {
                         .btnType(btnType)
                         .id(dynamicDetailQueryReq.getId())
                         .version(dynamicDetailQueryReq.getVersion())
-                        //                        .relateIds(queryReq.getRelateIds())
-                        //                        .menuId(queryReq.getMenuId())
                         .moduleId(moduleTree.getId())
                         .roleId(roleId)
                         .subjectId(subjectId)
                         .queryType(queryType)
-                        //                        .fields(queryReq.getFields())
                         .build();
 
         recursiveFillModuleFields(moduleTree, moduleFieldsMap);

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dto.VersionSnapShot;
 import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
@@ -25,8 +24,6 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
 
     private final JooqContextFactory jooqContextFactory;
 
-    private final DataModuleConfigService dataModuleConfigService;
-
     private final ModuleTreeDiffService moduleTreeDiffService;
 
     private final Set<QueryType> TYPE_SET = Set.of(QueryType.DETAIL_APPROVAL_CURRENT);
@@ -34,7 +31,7 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
     @Override
     public void processAssembleData(
             List<NestedModuleDataDTO> records, DataIntegrationContext context) {
-        List<NestedModuleDataDTO> preVersionData = getPreVersionData(context);
+        List<NestedModuleDataDTO> preVersionData = context.getPreVersionData();
         Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap =
                 buildCurrentModuleChangeIndex(context.getModuleId(), context.getId());
         if (CollectionUtils.isEmpty(records)) {
