@@ -177,10 +177,12 @@ public class CommonApprovalFilterResolver {
             return new ApprovalFilterResult(filters, false);
         }
 
-        Long currentUserId = UserContext.getUserId();
+        Long currentUserId =
+                UserContext.isMockLogin() ? UserContext.getMockUserId() : UserContext.getUserId();
 
         if (approvalType == 1 || approvalType == 3) {
-            // 【待办】与【全部】：(id IN recordIds) OR (created_by == currentUserId && business_status == 1)
+            // 【待办】与【全部】：(id IN recordIds) OR (created_by == currentUserId &&
+            // business_status == 1)
             Set<Long> recordIds =
                     btnGroupMap != null ? btnGroupMap.keySet() : Collections.emptySet();
             boolean hasApprovalIds = !recordIds.isEmpty() && rootFieldIds.idField() != null;

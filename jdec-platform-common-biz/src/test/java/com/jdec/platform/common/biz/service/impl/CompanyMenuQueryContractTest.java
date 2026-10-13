@@ -9,6 +9,7 @@ import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.SortItem;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
+import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
 import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
 import com.jdec.platform.common.biz.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.dto.response.StatusSimpleResp;
@@ -23,8 +24,10 @@ import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
+import com.jdec.platform.data.api.dto.request.TableOptionReq;
 import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
+import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -181,6 +184,7 @@ class CompanyMenuQueryContractTest {
         addField(moduleMap, fieldMap, fieldToModuleMap, 10002L, 1001L, "info", "company_name");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10003L, 1001L, "info", "created_by");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10004L, 1001L, "info", "business_status");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10005L, 1001L, "info", "reg_status");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10006L, 1001L, "info", "cooperation_types");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10021L, 1002L, "basic_info", "reg_capital");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10071L, 1007L, "address", "detail_address");
@@ -902,5 +906,125 @@ class CompanyMenuQueryContractTest {
 
         assertEquals(400, ex.getCode());
         assertTrue(ex.getMessage().contains("最多只允许 1 个 1:N 模块"));
+    }
+
+    @Test
+    @DisplayName("测试 getOptionsByMenu 查询 created_by 时，特殊处理将结果转换为 UserSimpleResp 对象 JSON")
+    void testGetOptionsByMenu_createdBy_convertsToUserSimpleResp() {
+        when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
+
+        // 模拟底层 lowcode dataApi 返回候选项：包含 Long userId (如 8888L)
+        List<DataOptionResp> mockDataOptions =
+                List.of(
+                        DataOptionResp.builder().label(8888L).value(8888L).build(),
+                        DataOptionResp.builder().label(9999L).value(9999L).build());
+        when(dataApi.getOptionsByTable(any(TableOptionReq.class))).thenReturn(mockDataOptions);
+
+        SysUserPageResp u8888 = new SysUserPageResp();
+        u8888.setUserId(8888L);
+        u8888.setUserName("张三");
+        u8888.setUserAvatar("https://avatar.com/zhangsan.png");
+        u8888.setWorkNumber("EMP8888");
+
+        when(sysUserApi.getUsersByUserIds(any())).thenReturn(List.of(u8888));
+
+        MenuOptionReq req =
+                MenuOptionReq.builder().fieldId(10003L).build(); // 10003L = info.created_by
+        List<DataOptionResp> options = commonAggregateService.getOptionsByMenu(100L, req);
+
+        assertNotNull(options);
+        assertEquals(2, options.size());
+
+        // 验证 8888 用户已正确组装为 UserSimpleResp
+        DataOptionResp opt1 = options.get(0);
+        assertTrue(opt1.getValue() instanceof UserSimpleResp);
+        assertTrue(opt1.getLabel() instanceof UserSimpleResp);
+        UserSimpleResp user1 = (UserSimpleResp) opt1.getValue();
+        assertEquals(8888L, user1.getUserId());
+        assertEquals("张三", user1.getUserName());
+        assertEquals("https://avatar.com/zhangsan.png", user1.getUserAvatar());
+        assertEquals("EMP8888", user1.getWorkNumber());
+
+        // 验证 9999 用户降级组装为只含 userId 的 UserSimpleResp
+        DataOptionResp opt2 = options.get(1);
+        assertTrue(opt2.getValue() instanceof UserSimpleResp);
+        UserSimpleResp user2 = (UserSimpleResp) opt2.getValue();
+        assertEquals(9999L, user2.getUserId());
+    }
+
+    @Test
+    @DisplayName("测试 getOptionsByMenu 查询 reg_status 时，返回组装的 JSON/Map 结构")
+    void testGetOptionsByMenu_regStatus_convertsToStructuredJson() {
+        when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
+
+        // 底层低代码数据引擎对 JSON 字段自动解析去重后返回结构化 Map 对象
+        Map<String, Object> map1 = Map.of("word_describe", "存续", "word_id", 455);
+        Map<String, Object> map2 = Map.of("word_describe", "注销", "word_id", 456);
+
+        List<DataOptionResp> mockDataOptions =
+                List.of(
+                        DataOptionResp.builder().label(map1).value(map1).build(),
+                        DataOptionResp.builder().label(map2).value(map2).build());
+        when(dataApi.getOptionsByTable(any(TableOptionReq.class))).thenReturn(mockDataOptions);
+
+        MenuOptionReq req =
+                MenuOptionReq.builder().fieldId(10005L).build(); // 10005L = info.reg_status
+        List<DataOptionResp> options = commonAggregateService.getOptionsByMenu(100L, req);
+
+        assertNotNull(options);
+        assertEquals(2, options.size());
+
+        DataOptionResp opt1 = options.get(0);
+        assertTrue(opt1.getValue() instanceof Map<?, ?>);
+        assertEquals("存续", ((Map<?, ?>) opt1.getValue()).get("word_describe"));
+
+        DataOptionResp opt2 = options.get(1);
+        assertTrue(opt2.getValue() instanceof Map<?, ?>);
+        assertEquals("注销", ((Map<?, ?>) opt2.getValue()).get("word_describe"));
+    }
+
+    @Test
+    @DisplayName("测试 getOptionsByMenu 查询 business_status 时，转换为 StatusSimpleResp 对象")
+    void testGetOptionsByMenu_businessStatus_convertsToStatusSimpleResp() {
+        when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
+
+        List<DataOptionResp> mockDataOptions =
+                List.of(
+                        DataOptionResp.builder().label(1).value(1).build(),
+                        DataOptionResp.builder().label(2).value(2).build());
+        when(dataApi.getOptionsByTable(any(TableOptionReq.class))).thenReturn(mockDataOptions);
+
+        ModuleApprovalChainConfigResp.StatusNode node1 =
+                new ModuleApprovalChainConfigResp.StatusNode();
+        node1.setTitle("已审核");
+        node1.setStatusValue(1);
+        node1.setStatusBackground("#e6f7ff");
+        node1.setStatusFontColor("#1890ff");
+
+        when(sysStatusApi.getStatusByValue(eq(1), eq(1001L))).thenReturn(node1);
+        when(sysStatusApi.getStatusByValue(eq(2), eq(1001L))).thenReturn(null);
+
+        MenuOptionReq req =
+                MenuOptionReq.builder().fieldId(10004L).build(); // 10004L = info.business_status
+        List<DataOptionResp> options = commonAggregateService.getOptionsByMenu(100L, req);
+
+        assertNotNull(options);
+        assertEquals(2, options.size());
+
+        // 验证 1 状态已正确组装为 StatusSimpleResp
+        DataOptionResp opt1 = options.get(0);
+        assertTrue(opt1.getValue() instanceof StatusSimpleResp);
+        assertTrue(opt1.getLabel() instanceof StatusSimpleResp);
+        StatusSimpleResp status1 = (StatusSimpleResp) opt1.getValue();
+        assertEquals(1, status1.getStatusValue());
+        assertEquals("已审核", status1.getTitle());
+        assertEquals("#e6f7ff", status1.getStatusBackground());
+        assertEquals("#1890ff", status1.getStatusFontColor());
+
+        // 验证 2 状态降级组装为只含 statusValue 的 StatusSimpleResp
+        DataOptionResp opt2 = options.get(1);
+        assertTrue(opt2.getValue() instanceof StatusSimpleResp);
+        StatusSimpleResp status2 = (StatusSimpleResp) opt2.getValue();
+        assertEquals(2, status2.getStatusValue());
     }
 }

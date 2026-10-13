@@ -4,7 +4,6 @@ import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
-import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.request.TableQueryReq;
@@ -25,7 +24,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
     private final IApprovalEngine approvalEngine;
     private final OpenMenuApi openMenuApi;
-    private final ConfigApi configApi;
     private final DataApi dataApi;
     private final CommonApprovalFilterResolver approvalFilterResolver;
     private final ApplicationEventPublisher eventPublisher;
