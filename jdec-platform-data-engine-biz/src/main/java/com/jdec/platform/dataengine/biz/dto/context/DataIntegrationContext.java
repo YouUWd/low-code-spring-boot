@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.biz.dto.BasicModel;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
@@ -22,4 +23,6 @@ public class DataIntegrationContext extends BasicModel {
     private Long moduleId;
 
     private Integer version;
+
+    private List<NestedModuleDataDTO> preVersionData;
 }

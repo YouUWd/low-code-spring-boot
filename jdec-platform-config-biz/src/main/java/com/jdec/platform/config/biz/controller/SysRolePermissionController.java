@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 public class SysRolePermissionController {
 
     private final SysRolePermissionApi sysRolePermissionApi;
+    private final OpenRolePermissionApi openRolePermissionApi;
 
     @GetMapping("/get-role-menu")
     @Operation(summary = "查询角色菜单", description = "根据角色ID查询该角色关联的菜单列表")
@@ -86,6 +88,17 @@ public class SysRolePermissionController {
     public ApiResponse<RoleDataPermissionResp> getRoleDataPermission(
             @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
         return ApiResponse.success(sysRolePermissionApi.getRoleDataPermission(roleId));
+    }
+
+    @GetMapping("/get-role-data-permission-detail")
+    @Operation(
+            summary = "查询角色数据权限详情（测试用）",
+            description =
+                    "数据引擎侧开放接口 getRoleDataPermissionDetail 的测试入口；以数据权限节点定义（sys_data_permission）为骨架，"
+                            + "已配置节点返回角色配置、未配置节点返回默认（仅字段名）")
+    public ApiResponse<List<DataRightConfigResp>> getRoleDataPermissionDetail(
+            @Parameter(description = "角色ID", example = "1") @RequestParam Long roleId) {
+        return ApiResponse.success(openRolePermissionApi.getRoleDataPermissionDetail(roleId));
     }
 
     @GetMapping("/get-role-special-permission")

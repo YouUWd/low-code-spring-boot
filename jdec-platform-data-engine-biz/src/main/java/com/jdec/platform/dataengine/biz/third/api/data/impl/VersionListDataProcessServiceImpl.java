@@ -27,24 +27,7 @@ public class VersionListDataProcessServiceImpl implements DetailDataProcessServi
 
     @Override
     public void processAssembleData(
-            List<NestedModuleDataDTO> records, DataIntegrationContext context) {
-
-        /**
-         * LambdaQueryWrapper<DataEngineSnapshot> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-         * lambdaQueryWrapper.eq( DataEngineSnapshot::getModuleId,
-         * context.getModuleFilterInfo().getModuleInfo().getModuleId());
-         * lambdaQueryWrapper.eq(DataEngineSnapshot::getDataId, context.getId());
-         * List<DataEngineSnapshot> dataEngineSnapshotList =
-         * dataEngineSnapshotMapper.selectList(lambdaQueryWrapper); if
-         * (CollectionUtil.isNotEmpty(dataEngineSnapshotList)) { List<VersionInfo> versionInfoList =
-         * new ArrayList<>(); for (DataEngineSnapshot ds : dataEngineSnapshotList) { VersionInfo
-         * versionInfo = VersionInfo.builder() .recordId(ds.getDataId())
-         * .statusValue(ds.getFinalStatusValue()) .versionNo(ds.getVersionNo())
-         * .businessNo(ds.getBusinessNo()) .history(true) .build();
-         * versionInfoList.add(versionInfo); } DataProcessUtils.fillMapUnitiveData( moduleData,
-         * ResultSetConstantKey.RESULT_SET_KEY_VERSION_LIST, versionInfoList); }
-         */
-    }
+            List<NestedModuleDataDTO> records, DataIntegrationContext context) {}
 
     @Override
     public Boolean isReferTo(QueryType queryType) {

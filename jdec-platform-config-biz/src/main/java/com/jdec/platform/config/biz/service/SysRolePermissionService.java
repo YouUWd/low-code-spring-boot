@@ -11,10 +11,12 @@ import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
+import com.jdec.platform.shared.enums.CommonStatusEnum;
 import com.jdec.platform.shared.enums.EffectiveTypeEnum;
 import java.time.LocalDate;
 import java.util.*;
@@ -644,35 +646,25 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
 
     @Override
     public List<DataRightConfigResp> getRoleDataPermissionDetail(Long roleId) {
-        // 1. 查询角色数据权限关联
+        // 1. 以当前项目+主体下启用的数据权限节点定义（sys_data_permission）为骨架，
+        //    保证「角色未配置」的权限节点也一并返回
+        List<SysDataPermission> dataPermissions =
+                sysDataPermissionMapper.selectList(
+                        Wrappers.<SysDataPermission>lambdaQuery()
+                                .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysDataPermission::getStatus, CommonStatusEnum.ENABLE.getCode())
+                                .orderByAsc(SysDataPermission::getSort)
+                                .orderByAsc(SysDataPermission::getId));
+
+        // 2. 查询该角色在 sys_role_data_permission 中的配置记录
         List<SysRoleDataPermission> roleDataPermissions =
                 sysRoleDataPermissionMapper.selectList(
                         Wrappers.<SysRoleDataPermission>lambdaQuery()
                                 .eq(SysRoleDataPermission::getRoleId, roleId)
                                 .orderByAsc(SysRoleDataPermission::getId));
 
-        if (roleDataPermissions.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        // 2. 获取所有涉及的数据权限ID
-        List<Long> dataPermissionIds =
-                roleDataPermissions.stream()
-                        .map(SysRoleDataPermission::getDataPermissionId)
-                        .distinct()
-                        .toList();
-
-        // 3. 查询数据权限类型信息
-        List<SysDataPermission> dataPermissions =
-                sysDataPermissionMapper.selectByIds(dataPermissionIds);
-        if (dataPermissions.isEmpty()) {
-            return Collections.emptyList();
-        }
-        Map<Long, SysDataPermission> permissionIdToEntity =
-                dataPermissions.stream()
-                        .collect(Collectors.toMap(SysDataPermission::getId, p -> p, (a, b) -> a));
-
-        // 4. 按 dataPermissionId 分组（保持插入顺序）
+        // 3. 按数据权限节点ID分组（保持插入顺序）
         Map<Long, List<SysRoleDataPermission>> groupedByPermission =
                 roleDataPermissions.stream()
                         .collect(
@@ -681,17 +673,15 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                                         LinkedHashMap::new,
                                         Collectors.toList()));
 
-        // 5. 表名 -> 数据权限配置列表（保持插入顺序）
+        // 4. 遍历全部数据权限节点：有角色记录的取角色配置，无记录的返回默认（仅字段名）
         Map<String, List<DataRightConfigResp.DataConfig>> tableDataConfigMap =
                 new LinkedHashMap<>();
-
-        for (Map.Entry<Long, List<SysRoleDataPermission>> permissionEntry :
-                groupedByPermission.entrySet()) {
-            SysDataPermission dataPermission = permissionIdToEntity.get(permissionEntry.getKey());
-            if (dataPermission == null || dataPermission.getCode() == null) {
+        for (SysDataPermission dataPermission : dataPermissions) {
+            String code = dataPermission.getCode();
+            if (code == null) {
                 continue;
             }
-            String[] parts = dataPermission.getCode().split("\\*");
+            String[] parts = code.split("\\*");
             if (parts.length != 2) {
                 continue; // 跳过格式不正确的 code
             }
@@ -699,8 +689,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
             String tableName = parts[0];
             String columnName = parts[1];
 
+            List<SysRoleDataPermission> records = groupedByPermission.get(dataPermission.getId());
             List<DataRightConfigResp.DataConfig> dataConfigs =
-                    buildDataConfigs(columnName, permissionEntry.getValue());
+                    (records == null || records.isEmpty())
+                            ? List.of(buildDefaultDataConfig(columnName))
+                            : buildDataConfigs(columnName, records);
             if (dataConfigs.isEmpty()) {
                 continue;
             }
@@ -709,19 +702,29 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                     .addAll(dataConfigs);
         }
 
-        // 6. 转换成最终结果：按表名分组
+        // 5. 转换成最终结果：按表名分组
         List<DataRightConfigResp> result = new ArrayList<>();
         for (Map.Entry<String, List<DataRightConfigResp.DataConfig>> tableEntry :
                 tableDataConfigMap.entrySet()) {
-            DataRightConfigResp resp =
+            result.add(
                     DataRightConfigResp.builder()
                             .tableName(tableEntry.getKey())
                             .dataList(tableEntry.getValue())
-                            .build();
-            result.add(resp);
+                            .build());
         }
 
         return result;
+    }
+
+    /** 角色未配置某数据权限节点时的默认配置：仅填充字段名，不带任何业务名称勾选值。 */
+    private DataRightConfigResp.DataConfig buildDefaultDataConfig(String columnName) {
+        return DataRightConfigResp.DataConfig.builder()
+                .columnName(columnName)
+                .permissionCheckAll(0)
+                .subjectId(null)
+                .subjectCheckAll(0)
+                .bizNames(Collections.emptyList())
+                .build();
     }
 
     /**

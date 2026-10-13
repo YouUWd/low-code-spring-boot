@@ -83,6 +83,9 @@ public class ModuleTreeDiffService {
                         buildRowChangeList(oldRow, rowNode, currentChangeMap);
                 if (changeList.size() > 0) {
                     recordItem.setChangeList(changeList);
+                    recordItem.setChangeType("改");
+                } else if (Objects.isNull(oldRow) && Objects.nonNull(oldNode)) {
+                    recordItem.setChangeType("新");
                 }
 
                 // 递归处理当前recordItem的children
@@ -162,7 +165,7 @@ public class ModuleTreeDiffService {
             Map<String, Object> newRow,
             Map<String, VersionSnapShot> currentChangeMap) {
         Map<String, VersionCompareItem> changeList = new HashMap<>();
-        if (Objects.isNull(newRow)) {
+        if (Objects.isNull(newRow) || Objects.isNull(oldRow)) {
             return changeList;
         }
 

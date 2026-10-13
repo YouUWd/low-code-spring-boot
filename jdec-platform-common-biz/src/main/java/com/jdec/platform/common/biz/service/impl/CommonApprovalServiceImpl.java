@@ -4,10 +4,10 @@ import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
-import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
@@ -25,7 +25,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
     private final IApprovalEngine approvalEngine;
     private final OpenMenuApi openMenuApi;
-    private final ConfigApi configApi;
     private final DataApi dataApi;
     private final CommonApprovalFilterResolver approvalFilterResolver;
     private final ApplicationEventPublisher eventPublisher;
@@ -58,36 +57,36 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         Long totalCount = 0L;
 
         if (approvalFilterResolver.isApprovalChainEnabled(rootModuleId)) {
-            CommonApprovalFilterResolver.AllApprovalCountsOutcome countsOutcome =
+            CommonApprovalFilterResolver.AllApprovalCountFilters countFilters =
                     approvalFilterResolver.resolveAllApprovalCountsFilters(rootModuleId, null);
 
             // 1. 统计【待办数量】 (approvalType = 1)
-            if (!countsOutcome.todoFilterResult().shortCircuitEmpty()) {
+            if (!countFilters.todoFilter().shortCircuitEmpty()) {
                 todoCount =
                         dataApi.countByTable(
                                 TableQueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countsOutcome.todoFilterResult().filters())
+                                        .filters(countFilters.todoFilter().filters())
                                         .build());
             }
 
             // 2. 统计【已办数量】 (approvalType = 2)
-            if (!countsOutcome.doneFilterResult().shortCircuitEmpty()) {
+            if (!countFilters.doneFilter().shortCircuitEmpty()) {
                 doneCount =
                         dataApi.countByTable(
                                 TableQueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countsOutcome.doneFilterResult().filters())
+                                        .filters(countFilters.doneFilter().filters())
                                         .build());
             }
 
             // 3. 统计【全部数量】 (approvalType = 3)
-            if (!countsOutcome.allFilterResult().shortCircuitEmpty()) {
+            if (!countFilters.allFilter().shortCircuitEmpty()) {
                 totalCount =
                         dataApi.countByTable(
                                 TableQueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countsOutcome.allFilterResult().filters())
+                                        .filters(countFilters.allFilter().filters())
                                         .build());
             }
         } else {
@@ -121,7 +120,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         approvalEvent.setApplicantId(UserContext.getMockUserId());
         approvalEvent.setCurrentUserId(UserContext.getRealUserId());
         approvalEvent.setRoleId(UserContext.getRoleId());
-        approvalEvent.setSubjectId(UserContext.getSubjectId());
+        approvalEvent.setSubjectId(AppContext.getSubjectId());
         approvalEvent.setMenuId(menuId);
         approvalEvent.setModuleId(rootModuleId);
         approvalEvent.setOldRecordId(req.getRecordId());

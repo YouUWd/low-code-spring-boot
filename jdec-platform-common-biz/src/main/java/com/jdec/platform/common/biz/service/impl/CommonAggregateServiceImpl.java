@@ -61,7 +61,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new IllegalArgumentException("菜单 ID 不能为空");
         }
 
-        Long userId = UserContext.getUserId();
+        Long userId = getEffectiveUserId();
         Long roleId = UserContext.getRoleId();
 
         // 1. 获取用户在该菜单下的个性化表头展示配置 (用于提取已勾选字段与多级表头)
@@ -109,11 +109,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req != null ? req.getApprovalType() : null;
-        CommonApprovalFilterResolver.ApprovalFilterOutcome approvalOutcome =
+        CommonApprovalFilterResolver.ApprovalFilterItem approvalFilter =
                 approvalFilterResolver.resolveApprovalFilters(
                         rootModuleId, approvalType, moduleTree);
 
-        if (approvalOutcome.filterResult().shortCircuitEmpty()) {
+        if (approvalFilter.shortCircuitEmpty()) {
             ModuleDataNode emptyNode =
                     ModuleDataNode.builder()
                             .moduleId(rootModuleId)
@@ -123,14 +123,14 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             .build();
 
             List<ApprovalRowItem> emptyApprovalRows =
-                    approvalOutcome.allBtnsMap() != null ? Collections.emptyList() : null;
+                    approvalFilter.btnMap() != null ? Collections.emptyList() : null;
 
             return assembleMenuDataResp(
                     headerRoot, menuId, rootModuleId, roleId, emptyNode, emptyApprovalRows);
         }
 
-        if (!approvalOutcome.filterResult().filters().isEmpty()) {
-            finalFilters.addAll(approvalOutcome.filterResult().filters());
+        if (!approvalFilter.filters().isEmpty()) {
+            finalFilters.addAll(approvalFilter.filters());
         }
 
         // 4. 调用底层低代码数据引擎进行分页查询
@@ -159,7 +159,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         List<ApprovalRowItem> approvalRows =
-                approvalOutcome.allBtnsMap() != null ? new ArrayList<>() : null;
+                approvalFilter.btnMap() != null ? new ArrayList<>() : null;
 
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
             enhanceDataRows(rawDataPage.getRecords(), rootModuleId, primaryTable);
@@ -173,7 +173,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 if (approvalRows != null) {
                     Long recordId = rawRow.getLong(primaryTable, "id");
                     if (recordId != null) {
-                        List<Map<String, Object>> btns = approvalOutcome.allBtnsMap().get(recordId);
+                        List<Map<String, Object>> btns = approvalFilter.btnMap().get(recordId);
                         if (CollectionUtils.isEmpty(btns)) {
                             boolean isHandle =
                                     approvalType != null
@@ -208,7 +208,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new IllegalArgumentException("单据 ID 不能为空");
         }
 
-        Long userId = UserContext.getUserId();
+        Long userId = getEffectiveUserId();
         Long roleId = UserContext.getRoleId();
 
         // 1. 获取表头展示配置提取 rootModuleId
@@ -280,17 +280,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req.getApprovalType();
-        CommonApprovalFilterResolver.ApprovalFilterOutcome approvalOutcome =
+        CommonApprovalFilterResolver.ApprovalFilterItem approvalFilter =
                 approvalFilterResolver.resolveApprovalFilters(
                         rootModuleId, approvalType, moduleTree);
 
-        if (approvalOutcome.filterResult().shortCircuitEmpty()) {
+        if (approvalFilter.shortCircuitEmpty()) {
             // 审批过滤无候选匹配时短路直接返回空候选项列表
             return Collections.emptyList();
         }
 
-        if (!approvalOutcome.filterResult().filters().isEmpty()) {
-            finalFilters.addAll(approvalOutcome.filterResult().filters());
+        if (!approvalFilter.filters().isEmpty()) {
+            finalFilters.addAll(approvalFilter.filters());
         }
 
         // 4. 构建 TableOptionReq 并调用底层低代码数据引擎
@@ -303,7 +303,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .direction(req.getDirection())
                         .build();
 
-        return dataApi.getOptionsByTable(optionReq);
+        List<DataOptionResp> rawOptions = dataApi.getOptionsByTable(optionReq);
+        return enhanceOptions(rawOptions, targetField.columnName(), rootModuleId);
     }
 
     private Long resolveActiveOneToManyBranch(
@@ -764,63 +765,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         // 2. 批量查询用户信息
-        Map<Long, UserSimpleResp> userMap = new HashMap<>();
-        if (!userIds.isEmpty()) {
-            try {
-                QueryUsersByIdsReq queryReq = new QueryUsersByIdsReq();
-                queryReq.setUserIds(new ArrayList<>(userIds));
-                List<SysUserPageResp> userList = sysUserApi.getUsersByUserIds(queryReq);
-                if (userList != null) {
-                    for (SysUserPageResp u : userList) {
-                        if (u == null) {
-                            continue;
-                        }
-                        UserSimpleResp resp =
-                                UserSimpleResp.builder()
-                                        .userId(u.getUserId())
-                                        .userName(u.getUserName())
-                                        .userAvatar(u.getUserAvatar())
-                                        .workNumber(u.getWorkNumber())
-                                        .build();
-                        if (u.getUserId() != null) {
-                            userMap.put(u.getUserId(), resp);
-                        }
-                        if (u.getId() != null) {
-                            userMap.putIfAbsent(u.getId(), resp);
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                log.warn("批量查询用户信息失败: userIds={}, err={}", userIds, ex.getMessage());
-            }
-        }
+        Map<Long, UserSimpleResp> userMap = queryUserMap(userIds);
 
         // 3. 批量查询状态信息
-        Map<Integer, StatusSimpleResp> statusMap = new HashMap<>();
-        if (!statusValues.isEmpty() && rootModuleId != null) {
-            for (Integer sv : statusValues) {
-                try {
-                    ModuleApprovalChainConfigResp.StatusNode node =
-                            sysStatusApi.getStatusByValue(sv, rootModuleId);
-                    if (node != null) {
-                        statusMap.put(
-                                sv,
-                                StatusSimpleResp.builder()
-                                        .title(node.getTitle())
-                                        .statusValue(node.getStatusValue())
-                                        .statusBackground(node.getStatusBackground())
-                                        .statusFontColor(node.getStatusFontColor())
-                                        .build());
-                    }
-                } catch (Exception ex) {
-                    log.warn(
-                            "获取模块状态信息失败: moduleId={}, statusValue={}, err={}",
-                            rootModuleId,
-                            sv,
-                            ex.getMessage());
-                }
-            }
-        }
+        Map<Integer, StatusSimpleResp> statusMap = queryStatusMap(statusValues, rootModuleId);
 
         // 4. 将转换后的对象写回 DataRow 主表
         for (DataRow row : records) {
@@ -846,6 +794,137 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 : StatusSimpleResp.builder().statusValue(sv).build());
             }
         }
+    }
+
+    private Map<Long, UserSimpleResp> queryUserMap(Set<Long> userIds) {
+        Map<Long, UserSimpleResp> userMap = new HashMap<>();
+        if (CollectionUtils.isEmpty(userIds)) {
+            return userMap;
+        }
+        try {
+            QueryUsersByIdsReq queryReq = new QueryUsersByIdsReq();
+            queryReq.setUserIds(new ArrayList<>(userIds));
+            List<SysUserPageResp> userList = sysUserApi.getUsersByUserIds(queryReq);
+            if (userList != null) {
+                for (SysUserPageResp u : userList) {
+                    if (u == null) {
+                        continue;
+                    }
+                    UserSimpleResp resp =
+                            UserSimpleResp.builder()
+                                    .userId(u.getUserId())
+                                    .userName(u.getUserName())
+                                    .userAvatar(u.getUserAvatar())
+                                    .workNumber(u.getWorkNumber())
+                                    .build();
+                    if (u.getUserId() != null) {
+                        userMap.put(u.getUserId(), resp);
+                    }
+                    if (u.getId() != null) {
+                        userMap.putIfAbsent(u.getId(), resp);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.warn("批量查询用户信息失败: userIds={}, err={}", userIds, ex.getMessage());
+        }
+        return userMap;
+    }
+
+    private Map<Integer, StatusSimpleResp> queryStatusMap(
+            Set<Integer> statusValues, Long rootModuleId) {
+        Map<Integer, StatusSimpleResp> statusMap = new HashMap<>();
+        if (CollectionUtils.isEmpty(statusValues) || rootModuleId == null) {
+            return statusMap;
+        }
+        for (Integer sv : statusValues) {
+            try {
+                ModuleApprovalChainConfigResp.StatusNode node =
+                        sysStatusApi.getStatusByValue(sv, rootModuleId);
+                if (node != null) {
+                    statusMap.put(
+                            sv,
+                            StatusSimpleResp.builder()
+                                    .title(node.getTitle())
+                                    .statusValue(node.getStatusValue())
+                                    .statusBackground(node.getStatusBackground())
+                                    .statusFontColor(node.getStatusFontColor())
+                                    .build());
+                }
+            } catch (Exception ex) {
+                log.warn(
+                        "获取模块状态信息失败: moduleId={}, statusValue={}, err={}",
+                        rootModuleId,
+                        sv,
+                        ex.getMessage());
+            }
+        }
+        return statusMap;
+    }
+
+    /**
+     * 对下拉候选值进行特殊处理： 1. created_by：转换为与列表一致的 UserSimpleResp 对象 JSON 2. business_status：转换为与列表一致的
+     * StatusSimpleResp 对象 JSON 3. reg_status 等字典字段：底层引擎已解析为结构化 JSON/Map 对象，直接返回即可
+     */
+    private List<DataOptionResp> enhanceOptions(
+            List<DataOptionResp> rawOptions, String columnName, Long rootModuleId) {
+        if (CollectionUtils.isEmpty(rawOptions) || columnName == null || columnName.isBlank()) {
+            return rawOptions != null ? rawOptions : Collections.emptyList();
+        }
+
+        String col = columnName.trim();
+
+        // 1. created_by 转换为 UserSimpleResp 对象
+        if ("created_by".equalsIgnoreCase(col)) {
+            Set<Long> userIds = new LinkedHashSet<>();
+            for (DataOptionResp opt : rawOptions) {
+                if (opt != null && opt.getValue() instanceof Number n) {
+                    userIds.add(n.longValue());
+                }
+            }
+
+            Map<Long, UserSimpleResp> userMap = queryUserMap(userIds);
+            for (DataOptionResp opt : rawOptions) {
+                if (opt != null && opt.getValue() instanceof Number n) {
+                    Long uid = n.longValue();
+                    UserSimpleResp userResp = userMap.get(uid);
+                    UserSimpleResp finalUser =
+                            userResp != null
+                                    ? userResp
+                                    : UserSimpleResp.builder().userId(uid).build();
+                    opt.setValue(finalUser);
+                    opt.setLabel(finalUser);
+                }
+            }
+            return rawOptions;
+        }
+
+        // 2. business_status 转换为 StatusSimpleResp 对象
+        if ("business_status".equalsIgnoreCase(col)) {
+            Set<Integer> statusValues = new LinkedHashSet<>();
+            for (DataOptionResp opt : rawOptions) {
+                if (opt != null && opt.getValue() instanceof Number n) {
+                    statusValues.add(n.intValue());
+                }
+            }
+
+            Map<Integer, StatusSimpleResp> statusMap = queryStatusMap(statusValues, rootModuleId);
+            for (DataOptionResp opt : rawOptions) {
+                if (opt != null && opt.getValue() instanceof Number n) {
+                    Integer sv = n.intValue();
+                    StatusSimpleResp statusResp = statusMap.get(sv);
+                    StatusSimpleResp finalStatus =
+                            statusResp != null
+                                    ? statusResp
+                                    : StatusSimpleResp.builder().statusValue(sv).build();
+                    opt.setValue(finalStatus);
+                    opt.setLabel(finalStatus);
+                }
+            }
+            return rawOptions;
+        }
+
+        return rawOptions;
     }
 
     private String extractPrimaryTable(Long rootModuleId) {
@@ -876,5 +955,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new BusinessException("菜单 [" + menuId + "] 对应的表头未关联有效的根模块 ID");
         }
         return headerRoot;
+    }
+
+    /** 获取当前生效的用户 ID： 若处于模拟登录模式（mockUserId 与 userId 不一致），取 mockUserId；否则取当前登录用户的 userId。 */
+    private Long getEffectiveUserId() {
+        return UserContext.isMockLogin() ? UserContext.getMockUserId() : UserContext.getUserId();
     }
 }
