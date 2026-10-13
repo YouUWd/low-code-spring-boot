@@ -5,6 +5,9 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleRowNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
+import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.biz.util.ToolUtils;
+import java.time.LocalDateTime;
 import java.util.*;
 
 public class ModuleTreeDataUtils {
@@ -278,6 +281,75 @@ public class ModuleTreeDataUtils {
         for (String key : rowMap.keySet()) {
             if (key.contains(".id")) {
                 rowMap.remove(key);
+            }
+        }
+    }
+
+    public static void fillApprovalData(
+            NestedModuleDataDTO nestedModuleData,
+            Integer versionNo,
+            Boolean isApproval,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (nestedModuleData == null) {
+            return;
+        }
+        SysModuleCombineInfo sysModuleInfo = moduleCacheMap.get(nestedModuleData.getModuleId());
+        if (CollectionUtil.isNotEmpty(nestedModuleData.getRecord())) {
+            for (RecordDataDTO recordDataDTO : nestedModuleData.getRecord()) {
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
+                    Long dataId =
+                            DataPersistenceUtil.getTableRowIdWithTabName(
+                                    recordDataDTO.getRow(),
+                                    sysModuleInfo.getModuleInfo().getPrimaryTable());
+                    // 新增加
+                    if (dataId == null || dataId <= 0) {
+                        recordDataDTO
+                                .getRow()
+                                .put(
+                                        sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                                + ".business_no",
+                                        ToolUtils.nextNoWithFixedLen(
+                                                sysModuleInfo.getModuleInfo().getPrimaryTable()));
+                        recordDataDTO
+                                .getRow()
+                                .put(
+                                        sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                                + ".version_no",
+                                        versionNo);
+                        // 如果是根模块主表, 设置状态
+                        if (sysModuleInfo.getModuleInfo().getParentId() == null
+                                || sysModuleInfo.getModuleInfo().getParentId().equals(0L)) {
+                            if (isApproval) {
+                                recordDataDTO
+                                        .getRow()
+                                        .put(
+                                                sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                                        + ".business_status",
+                                                1);
+                            } else {
+                                recordDataDTO
+                                        .getRow()
+                                        .put(
+                                                sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                                        + ".business_status",
+                                                99);
+                                recordDataDTO
+                                        .getRow()
+                                        .put(
+                                                sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                                        + ".registration_time",
+                                                LocalDateTime.now());
+                            }
+                        }
+                    } else {
+                        // 修改 不需要设置
+                    }
+                }
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                    for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                        fillApprovalData(child, versionNo, isApproval, moduleCacheMap);
+                    }
+                }
             }
         }
     }

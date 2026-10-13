@@ -36,6 +36,24 @@ public class DataPersistenceUtil {
         return id;
     }
 
+    public static Integer getTableRowVersionWithTabName(
+            Map<String, Object> record, String tabName) {
+        Object idObj =
+                record.get(
+                        getFullFieldName(tabName, CommonConstant.TABLE_DEFAULT_VERSION_NO_FIELD));
+        Integer id = idObj instanceof Number num ? num.intValue() : null;
+        return id;
+    }
+
+    public static String getTableRowBusinessNoWithTabName(
+            Map<String, Object> record, String tabName) {
+        Object obj =
+                record.get(
+                        getFullFieldName(tabName, CommonConstant.TABLE_DEFAULT_BUSINESS_NO_FIELD));
+        String businessNo = obj != null ? obj.toString() : null;
+        return businessNo;
+    }
+
     public static Integer getTableRowDeletedField(Map<String, Object> record) {
         Object idObj = record.get(CommonConstant.TABLE_DEFAULT_DELETED_FIELD);
         Integer deleted = idObj instanceof Number num ? num.intValue() : null;

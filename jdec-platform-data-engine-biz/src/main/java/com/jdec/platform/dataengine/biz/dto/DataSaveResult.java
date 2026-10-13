@@ -10,5 +10,11 @@ public class DataSaveResult implements java.io.Serializable {
 
     private Long dataId;
 
+    private Integer versinNo;
+
+    private String businessNo;
+
+    private Integer businessStatus;
+
     private RowChangeDTO rowChange;
 }

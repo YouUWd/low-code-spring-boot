@@ -28,4 +28,12 @@ public class ModuleDataStoreDTO {
 
     @Schema(description = "整体是否插入,还是新增")
     private Boolean isOverallInsert;
+
+    private Long rootModuleId;
+
+    private String mainTableBusinessNo;
+
+    private Integer mainTableVersionNo;
+
+    private Long mainTableDataId;
 }

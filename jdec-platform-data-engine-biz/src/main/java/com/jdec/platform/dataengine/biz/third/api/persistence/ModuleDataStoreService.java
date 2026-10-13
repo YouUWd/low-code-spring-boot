@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 
 // 数据存储服务
 public interface ModuleDataStoreService {
@@ -11,5 +12,5 @@ public interface ModuleDataStoreService {
      * @param req
      * @return 更模块数据ID
      */
-    Long save(DynamicSaveReq req);
+    DynamicSaveResp save(DynamicSaveReq req);
 }
