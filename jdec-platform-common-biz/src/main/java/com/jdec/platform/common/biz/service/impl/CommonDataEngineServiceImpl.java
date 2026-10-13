@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
@@ -50,6 +51,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
     private final UserMenuHeaderApi userMenuHeaderApi;
 
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+
+    private final IApprovalEngine iApprovalEngine;
 
     @Override
     public DetailDataResp<NestedModuleDataDTO> getDetailByMenu(
@@ -185,6 +188,18 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                         ele -> ele.getTableName() + "." + ele.getColumnName(),
                                         v -> v));
 
+        // 当前步骤能否编辑，有审批链时生效，无审批链时权限和模块权限一致
+        Boolean canEdit = true;
+
+        if (dynamicDetailQueryReq.getId() > 0 && hasApproval) {
+            canEdit =
+                    iApprovalEngine.getCanEdit(
+                            rootModule.getId(),
+                            dynamicDetailQueryReq.getId(),
+                            dynamicDetailQueryReq.getBtnType());
+            log.debug("从审批链获取id:{}当前步骤编辑权限:{}", dynamicDetailQueryReq.getId(), canEdit);
+        }
+
         // 构建模块元数据配置列表 (ModuleMetaDTO)
         ModuleMetaDTO metaDTO =
                 buildModuleMetaList(
@@ -194,7 +209,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         permMap,
                         moduleIdHeaderMap,
                         nameToWorldConfMap,
-                        rootNode);
+                        rootNode,
+                        canEdit);
 
         NestedModuleDataDTO detailData = null;
 
@@ -253,7 +269,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             Map<Long, ModulePermissionDTO> permMap,
             Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap,
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
-            ModuleTreeDTO moduleTreeDTO) {
+            ModuleTreeDTO moduleTreeDTO,
+            Boolean canEdit) {
         if (moduleTreeDTO == null || moduleTreeDTO.getModuleMap() == null) {
             return null;
         }
@@ -285,7 +302,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 .displayName(f.getDisplayName())
                                 .apply(fp != null ? fp.getApply() : false)
                                 .view(fp != null ? fp.getView() : false)
-                                .edit(fp != null ? fp.getEdit() : false)
+                                .edit(fp != null ? fp.getEdit() && canEdit : false)
                                 .businessNo(
                                         worldCloudConfigMap.containsKey(fullKey)
                                                 ? worldCloudConfigMap
@@ -331,7 +348,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 permMap,
                                 moduleIdHeaderMap,
                                 worldCloudConfigMap,
-                                moduleTreeDTO));
+                                moduleTreeDTO,
+                                canEdit));
             }
         }
 
