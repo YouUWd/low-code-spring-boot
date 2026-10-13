@@ -646,92 +646,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
 
     @Override
     public List<DataRightConfigResp> getRoleDataPermissionDetail(Long roleId) {
-        // 1. 查询角色数据权限关联
-        List<SysRoleDataPermission> roleDataPermissions =
-                sysRoleDataPermissionMapper.selectList(
-                        Wrappers.<SysRoleDataPermission>lambdaQuery()
-                                .eq(SysRoleDataPermission::getRoleId, roleId)
-                                .orderByAsc(SysRoleDataPermission::getId));
-
-        if (roleDataPermissions.isEmpty()) {
-            // 角色尚未配置数据权限时，按数据权限节点定义回退返回表名/字段名
-            return buildDefaultDataRightConfigs();
-        }
-
-        // 2. 获取所有涉及的数据权限ID
-        List<Long> dataPermissionIds =
-                roleDataPermissions.stream()
-                        .map(SysRoleDataPermission::getDataPermissionId)
-                        .distinct()
-                        .toList();
-
-        // 3. 查询数据权限类型信息
-        List<SysDataPermission> dataPermissions =
-                sysDataPermissionMapper.selectByIds(dataPermissionIds);
-        if (dataPermissions.isEmpty()) {
-            return Collections.emptyList();
-        }
-        Map<Long, SysDataPermission> permissionIdToEntity =
-                dataPermissions.stream()
-                        .collect(Collectors.toMap(SysDataPermission::getId, p -> p, (a, b) -> a));
-
-        // 4. 按 dataPermissionId 分组（保持插入顺序）
-        Map<Long, List<SysRoleDataPermission>> groupedByPermission =
-                roleDataPermissions.stream()
-                        .collect(
-                                Collectors.groupingBy(
-                                        SysRoleDataPermission::getDataPermissionId,
-                                        LinkedHashMap::new,
-                                        Collectors.toList()));
-
-        // 5. 表名 -> 数据权限配置列表（保持插入顺序）
-        Map<String, List<DataRightConfigResp.DataConfig>> tableDataConfigMap =
-                new LinkedHashMap<>();
-
-        for (Map.Entry<Long, List<SysRoleDataPermission>> permissionEntry :
-                groupedByPermission.entrySet()) {
-            SysDataPermission dataPermission = permissionIdToEntity.get(permissionEntry.getKey());
-            if (dataPermission == null || dataPermission.getCode() == null) {
-                continue;
-            }
-            String[] parts = dataPermission.getCode().split("\\*");
-            if (parts.length != 2) {
-                continue; // 跳过格式不正确的 code
-            }
-
-            String tableName = parts[0];
-            String columnName = parts[1];
-
-            List<DataRightConfigResp.DataConfig> dataConfigs =
-                    buildDataConfigs(columnName, permissionEntry.getValue());
-            if (dataConfigs.isEmpty()) {
-                continue;
-            }
-            tableDataConfigMap
-                    .computeIfAbsent(tableName, k -> new ArrayList<>())
-                    .addAll(dataConfigs);
-        }
-
-        // 6. 转换成最终结果：按表名分组
-        List<DataRightConfigResp> result = new ArrayList<>();
-        for (Map.Entry<String, List<DataRightConfigResp.DataConfig>> tableEntry :
-                tableDataConfigMap.entrySet()) {
-            DataRightConfigResp resp =
-                    DataRightConfigResp.builder()
-                            .tableName(tableEntry.getKey())
-                            .dataList(tableEntry.getValue())
-                            .build();
-            result.add(resp);
-        }
-
-        return result;
-    }
-
-    /**
-     * 角色无数据权限配置记录时的回退：按当前项目+主体下启用的数据权限节点定义（{@code sys_data_permission}），
-     * 将编码「表名*字段名」拆解后按表名分组返回，仅填充字段名，不带任何业务名称勾选值。
-     */
-    private List<DataRightConfigResp> buildDefaultDataRightConfigs() {
+        // 1. 以当前项目+主体下启用的数据权限节点定义（sys_data_permission）为骨架，
+        //    保证「角色未配置」的权限节点也一并返回
         List<SysDataPermission> dataPermissions =
                 sysDataPermissionMapper.selectList(
                         Wrappers.<SysDataPermission>lambdaQuery()
@@ -741,7 +657,23 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                                 .orderByAsc(SysDataPermission::getSort)
                                 .orderByAsc(SysDataPermission::getId));
 
-        // 表名 -> 字段配置列表（保持插入顺序）
+        // 2. 查询该角色在 sys_role_data_permission 中的配置记录
+        List<SysRoleDataPermission> roleDataPermissions =
+                sysRoleDataPermissionMapper.selectList(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(SysRoleDataPermission::getRoleId, roleId)
+                                .orderByAsc(SysRoleDataPermission::getId));
+
+        // 3. 按数据权限节点ID分组（保持插入顺序）
+        Map<Long, List<SysRoleDataPermission>> groupedByPermission =
+                roleDataPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        LinkedHashMap::new,
+                                        Collectors.toList()));
+
+        // 4. 遍历全部数据权限节点：有角色记录的取角色配置，无记录的返回默认（仅字段名）
         Map<String, List<DataRightConfigResp.DataConfig>> tableDataConfigMap =
                 new LinkedHashMap<>();
         for (SysDataPermission dataPermission : dataPermissions) {
@@ -754,18 +686,23 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                 continue; // 跳过格式不正确的 code
             }
 
+            String tableName = parts[0];
+            String columnName = parts[1];
+
+            List<SysRoleDataPermission> records = groupedByPermission.get(dataPermission.getId());
+            List<DataRightConfigResp.DataConfig> dataConfigs =
+                    (records == null || records.isEmpty())
+                            ? List.of(buildDefaultDataConfig(columnName))
+                            : buildDataConfigs(columnName, records);
+            if (dataConfigs.isEmpty()) {
+                continue;
+            }
             tableDataConfigMap
-                    .computeIfAbsent(parts[0], k -> new ArrayList<>())
-                    .add(
-                            DataRightConfigResp.DataConfig.builder()
-                                    .columnName(parts[1])
-                                    .permissionCheckAll(0)
-                                    .subjectId(null)
-                                    .subjectCheckAll(0)
-                                    .bizNames(Collections.emptyList())
-                                    .build());
+                    .computeIfAbsent(tableName, k -> new ArrayList<>())
+                    .addAll(dataConfigs);
         }
 
+        // 5. 转换成最终结果：按表名分组
         List<DataRightConfigResp> result = new ArrayList<>();
         for (Map.Entry<String, List<DataRightConfigResp.DataConfig>> tableEntry :
                 tableDataConfigMap.entrySet()) {
@@ -775,7 +712,19 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                             .dataList(tableEntry.getValue())
                             .build());
         }
+
         return result;
+    }
+
+    /** 角色未配置某数据权限节点时的默认配置：仅填充字段名，不带任何业务名称勾选值。 */
+    private DataRightConfigResp.DataConfig buildDefaultDataConfig(String columnName) {
+        return DataRightConfigResp.DataConfig.builder()
+                .columnName(columnName)
+                .permissionCheckAll(0)
+                .subjectId(null)
+                .subjectCheckAll(0)
+                .bizNames(Collections.emptyList())
+                .build();
     }
 
     /**
