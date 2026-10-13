@@ -56,36 +56,36 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         Long totalCount = 0L;
 
         if (approvalFilterResolver.isApprovalChainEnabled(rootModuleId)) {
-            CommonApprovalFilterResolver.AllApprovalCountsOutcome countsOutcome =
+            CommonApprovalFilterResolver.AllApprovalCountFilters countFilters =
                     approvalFilterResolver.resolveAllApprovalCountsFilters(rootModuleId, null);
 
             // 1. 统计【待办数量】 (approvalType = 1)
-            if (!countsOutcome.todoFilterResult().shortCircuitEmpty()) {
+            if (!countFilters.todoFilter().shortCircuitEmpty()) {
                 todoCount =
                         dataApi.countByTable(
                                 TableQueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countsOutcome.todoFilterResult().filters())
+                                        .filters(countFilters.todoFilter().filters())
                                         .build());
             }
 
             // 2. 统计【已办数量】 (approvalType = 2)
-            if (!countsOutcome.doneFilterResult().shortCircuitEmpty()) {
+            if (!countFilters.doneFilter().shortCircuitEmpty()) {
                 doneCount =
                         dataApi.countByTable(
                                 TableQueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countsOutcome.doneFilterResult().filters())
+                                        .filters(countFilters.doneFilter().filters())
                                         .build());
             }
 
             // 3. 统计【全部数量】 (approvalType = 3)
-            if (!countsOutcome.allFilterResult().shortCircuitEmpty()) {
+            if (!countFilters.allFilter().shortCircuitEmpty()) {
                 totalCount =
                         dataApi.countByTable(
                                 TableQueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countsOutcome.allFilterResult().filters())
+                                        .filters(countFilters.allFilter().filters())
                                         .build());
             }
         } else {
