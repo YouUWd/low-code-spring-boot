@@ -64,8 +64,25 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handleApprovalEvent(ApprovalEvent event) {
+        if (Objects.isNull(event.getBusinessNumber()) || event.getBusinessNumber().isEmpty()) {
+            throw new BusinessException(604, "缺少审批单据编号");
+        }
         log.info("收到模块配置变更事件: eventType={}, moduleId={}", event.getButton(), event.getModuleId());
         ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(event);
+        if (Objects.isNull(approvalProcessDTO.getButton())
+                || approvalProcessDTO.getButton().isEmpty()) {
+
+            LambdaQueryWrapper<ApprovalBusiness> wrapper = new LambdaQueryWrapper<>();
+            wrapper.in(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber());
+            wrapper.in(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId())
+                    .last("LIMIT 1");
+            ApprovalBusiness approvalBusiness = approvalBusinessMapper.selectOne(wrapper);
+            if (Objects.isNull(approvalBusiness)) {
+                approvalProcessDTO.setButton("create");
+            } else {
+                approvalProcessDTO.setButton("submit");
+            }
+        }
         if (List.of("submit", "edit", "change").contains(approvalProcessDTO.getButton())) {
             businessSubmit(approvalProcessDTO);
         } else if ("create".equals(approvalProcessDTO.getButton())) {
@@ -536,6 +553,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return !todoList.isEmpty() ? todoList.getFirst().getRecordId() : 0;
     }
 
+    // 查询已经审批的步骤
     @Override
     public List<Map<String, Object>> getApprovalStep(Long moduleId, Long recordId) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -578,6 +596,79 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             result.add(map);
         }
         return result;
+    }
+
+    // 查询当前步骤是否可编辑
+    @Override
+    public boolean getCanEdit(Long moduleId, Long recordId, String btnType) {
+        Long userId = UserContext.getUserId();
+        Long roleId = UserContext.getRoleId();
+        // 查询单据当前信息
+        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = new LambdaQueryWrapper<>();
+        businessWrapper.eq(ApprovalBusiness::getModuleId, moduleId);
+        businessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("LIMIT 1");
+        ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
+        if (Objects.isNull(approvalChainBusiness)) {
+            return false;
+        }
+        // 加载变更页面时显示提交按钮
+        if (Objects.nonNull(btnType)
+                && (btnType.equals("change-change") || btnType.equals("change"))) {
+            return true;
+        }
+        ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
+        approvalProcessDTO.setSerialNumber(approvalChainBusiness.getSerialNumber());
+        approvalProcessDTO.setSerialNo(approvalChainBusiness.getSerialNo());
+        approvalProcessDTO.setCurrentStep(approvalChainBusiness.getCurrentStep());
+        LambdaQueryWrapper<ApprovalChain> approvalWrapper = new LambdaQueryWrapper<>();
+        approvalWrapper.eq(ApprovalChain::getSerialNumber, approvalProcessDTO.getSerialNumber());
+        approvalWrapper.eq(ApprovalChain::getSerialNo, approvalProcessDTO.getSerialNo());
+        approvalWrapper
+                .eq(ApprovalChain::getCurrentStep, approvalProcessDTO.getCurrentStep())
+                .last("LIMIT 1");
+        ;
+        ApprovalChain approvalChain = approvalChainMapper.selectOne(approvalWrapper);
+        if (approvalChainBusiness.getStatusValue().equals(99)) {
+            return false;
+        } else if (approvalChainBusiness.getStatusValue() != -99) {
+            if (approvalChainBusiness.getCurrentStep().equals(0)) {
+                // 如果单据处于第一步驳回后申请人等待提交状态,显示提交和取消按钮
+                return approvalChainBusiness.getCreatedBy().equals(userId)
+                        && checkRight(approvalProcessDTO);
+            } else if ((Objects.nonNull(approvalChainBusiness.getApproverId())
+                            && approvalChainBusiness.getApproverId().equals(userId))
+                    || (Objects.nonNull(approvalChainBusiness.getApproveRoleId())
+                            && approvalChainBusiness.getApproveRoleId().equals(roleId))) {
+                boolean btnShow = true;
+                // 判断用户是否已经完成会签
+                if (List.of("all_members_done", "percent_of_group")
+                                .contains(approvalChain.getApprovalRule())
+                        && Objects.nonNull(approvalChain.getApproverIdList())) {
+                    List<String> ids = List.of(approvalChain.getApproverIdList().split(","));
+                    if (ids.contains(userId.toString())) {
+                        btnShow = false;
+                    }
+                }
+                if (btnShow) {
+                    // 如果单据处于等待审批状态,显示该步骤绑定的按钮
+                    LambdaQueryWrapper<ApprovalChainButton> approvalButtonWrapper =
+                            new LambdaQueryWrapper<>();
+                    approvalButtonWrapper.eq(
+                            ApprovalChainButton::getSerialNumber,
+                            approvalProcessDTO.getSerialNumber());
+                    approvalButtonWrapper.eq(
+                            ApprovalChainButton::getSerialNo, approvalProcessDTO.getSerialNo());
+                    approvalButtonWrapper.eq(
+                            ApprovalChainButton::getCurrentStep,
+                            approvalChainBusiness.getCurrentStep());
+                    approvalButtonWrapper.orderByAsc(ApprovalChainButton::getButtonId);
+                    List<ApprovalChainButton> buttonList =
+                            approvalChainButtonMapper.selectList(approvalButtonWrapper);
+                    return !buttonList.isEmpty();
+                }
+            }
+        }
+        return false;
     }
 
     // 新建业务发起审批申请------------------------------------------------------------------------
