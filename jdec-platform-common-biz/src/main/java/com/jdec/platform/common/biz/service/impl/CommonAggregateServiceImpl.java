@@ -109,11 +109,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req != null ? req.getApprovalType() : null;
-        CommonApprovalFilterResolver.ApprovalFilterOutcome approvalOutcome =
+        CommonApprovalFilterResolver.ApprovalFilterItem approvalFilter =
                 approvalFilterResolver.resolveApprovalFilters(
                         rootModuleId, approvalType, moduleTree);
 
-        if (approvalOutcome.filterResult().shortCircuitEmpty()) {
+        if (approvalFilter.shortCircuitEmpty()) {
             ModuleDataNode emptyNode =
                     ModuleDataNode.builder()
                             .moduleId(rootModuleId)
@@ -123,14 +123,14 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             .build();
 
             List<ApprovalRowItem> emptyApprovalRows =
-                    approvalOutcome.allBtnsMap() != null ? Collections.emptyList() : null;
+                    approvalFilter.btnMap() != null ? Collections.emptyList() : null;
 
             return assembleMenuDataResp(
                     headerRoot, menuId, rootModuleId, roleId, emptyNode, emptyApprovalRows);
         }
 
-        if (!approvalOutcome.filterResult().filters().isEmpty()) {
-            finalFilters.addAll(approvalOutcome.filterResult().filters());
+        if (!approvalFilter.filters().isEmpty()) {
+            finalFilters.addAll(approvalFilter.filters());
         }
 
         // 4. 调用底层低代码数据引擎进行分页查询
@@ -159,7 +159,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         List<ApprovalRowItem> approvalRows =
-                approvalOutcome.allBtnsMap() != null ? new ArrayList<>() : null;
+                approvalFilter.btnMap() != null ? new ArrayList<>() : null;
 
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
             enhanceDataRows(rawDataPage.getRecords(), rootModuleId, primaryTable);
@@ -173,7 +173,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 if (approvalRows != null) {
                     Long recordId = rawRow.getLong(primaryTable, "id");
                     if (recordId != null) {
-                        List<Map<String, Object>> btns = approvalOutcome.allBtnsMap().get(recordId);
+                        List<Map<String, Object>> btns = approvalFilter.btnMap().get(recordId);
                         if (CollectionUtils.isEmpty(btns)) {
                             boolean isHandle =
                                     approvalType != null
@@ -280,17 +280,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req.getApprovalType();
-        CommonApprovalFilterResolver.ApprovalFilterOutcome approvalOutcome =
+        CommonApprovalFilterResolver.ApprovalFilterItem approvalFilter =
                 approvalFilterResolver.resolveApprovalFilters(
                         rootModuleId, approvalType, moduleTree);
 
-        if (approvalOutcome.filterResult().shortCircuitEmpty()) {
+        if (approvalFilter.shortCircuitEmpty()) {
             // 审批过滤无候选匹配时短路直接返回空候选项列表
             return Collections.emptyList();
         }
 
-        if (!approvalOutcome.filterResult().filters().isEmpty()) {
-            finalFilters.addAll(approvalOutcome.filterResult().filters());
+        if (!approvalFilter.filters().isEmpty()) {
+            finalFilters.addAll(approvalFilter.filters());
         }
 
         // 4. 构建 TableOptionReq 并调用底层低代码数据引擎
