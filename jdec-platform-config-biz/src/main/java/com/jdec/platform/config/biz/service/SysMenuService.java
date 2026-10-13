@@ -53,12 +53,6 @@ public class SysMenuService implements SysMenuApi {
     /** 顶层父级ID */
     private static final Long ROOT_PID = 0L;
 
-    /** 表头变更标记：菜单关联的详情菜单未变化 */
-    private static final Integer HEADER_CHANGE_NONE = 0;
-
-    /** 表头变更标记：菜单关联的详情菜单已切换（表头配置需重新生成） */
-    private static final Integer HEADER_CHANGE_DETAIL_SWITCHED = 1;
-
     /**
      * 延迟获取自身代理，避免构造循环依赖。
      *
@@ -143,24 +137,15 @@ public class SysMenuService implements SysMenuApi {
             // 携带整棵树时，当前节点位置以 treeNodes 为准，保证同级重名等单节点校验分组正确
             fillOwnPositionFromTree(node, request.getTreeNodes());
         }
-        // 表头记录归属菜单的判定与旧配置清理都必须在保存前取旧数据（保存后库中已是新的菜单类型/详情菜单ID）
-        SysMenu oldMenu = selectMenuById(node.getId());
-        Long previousHeaderMenuId =
-                oldMenu == null ? null : sysMenuHeaderService.resolveHeaderMenuId(oldMenu);
         // 经自身代理调用单节点保存，确保 @DataAudit 审计生效
         SysMenuResp resp = selfProvider.getObject().saveMenuNode(node);
         if (hasTree) {
             // 整棵树父子关系与同级排序同步（参考模块 saveModule / 状态 saveStatus 的树节点拓扑同步逻辑）
             updateMenuTreeNodes(node.getId(), node.getCategory(), request.getTreeNodes());
         }
-        // 多级表头配置随菜单一并保存：归属菜单与变更标记统一按表头归属解析规则判定
+        // 多级表头配置随菜单一并保存：归属菜单按表头归属解析规则判定；层级/模块动态生成，改绑模块无需额外处理
         Long headerMenuId = resolveHeaderMenuId(node);
-        Integer headerChange =
-                Objects.equals(previousHeaderMenuId, headerMenuId)
-                        ? HEADER_CHANGE_NONE
-                        : HEADER_CHANGE_DETAIL_SWITCHED;
-        sysMenuHeaderService.saveMenuHeader(
-                headerMenuId, previousHeaderMenuId, headerChange, request.getHeader());
+        sysMenuHeaderService.saveMenuHeader(headerMenuId, request.getHeader());
         return resp;
     }
 
@@ -170,18 +155,6 @@ public class SysMenuService implements SysMenuApi {
             return node.getDetailId();
         }
         return node.getId();
-    }
-
-    /** 取库中菜单记录（数据隔离：subject_id + project_no），id 为空或查不到返回 {@code null} */
-    private SysMenu selectMenuById(Long id) {
-        if (id == null) {
-            return null;
-        }
-        return sysMenuMapper.selectOne(
-                Wrappers.<SysMenu>lambdaQuery()
-                        .eq(SysMenu::getId, id)
-                        .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
-                        .eq(SysMenu::getProjectNo, AppContext.getProjectNo()));
     }
 
     /**

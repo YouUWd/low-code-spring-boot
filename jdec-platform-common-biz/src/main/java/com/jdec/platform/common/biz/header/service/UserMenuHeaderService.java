@@ -35,9 +35,6 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class UserMenuHeaderService implements UserMenuHeaderApi {
 
-    /** 表头变更标记：菜单关联的详情菜单未变化 */
-    private static final Integer CHANGE_NONE = 0;
-
     /** 用户个性化表头配置表名（业务库） */
     private static final String TABLE_USER_MENU_HEADER = "user_menu_header";
 
@@ -72,11 +69,8 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                     DSL.field(DSL.name("user_id")).as("userId"),
                     DSL.field(DSL.name("vir_id")).as("virId"),
                     DSL.field(DSL.name("menu_id")).as("menuId"),
-                    DSL.field(DSL.name("parent_id")).as("parentId"),
                     DSL.field(DSL.name("node_type")).as("nodeType"),
                     DSL.field(DSL.name("source_id")).as("sourceId"),
-                    DSL.field(DSL.name("module_id")).as("moduleId"),
-                    DSL.field(DSL.name("label")).as("label"),
                     DSL.field(DSL.name("colors")).as("colors"),
                     DSL.field(DSL.name("width")).as("width"),
                     DSL.field(DSL.name("data_index")).as("dataIndex"),
@@ -101,7 +95,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
 
         // 默认表头树：菜单/字段生成 + sys_menu_header 已保存配置 + 角色权限过滤（config 侧实现）
-        SysMenuHeaderResp tree = openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId);
+        SysMenuHeaderResp tree = openMenuHeaderApi.getMenuHeaderTree(menuId, roleId);
         // 角色对该菜单无任何权限：整树丢弃，不返回任何节点
         if (tree == null) {
             return null;
@@ -139,44 +133,39 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         MenuFieldPermissionScope scope =
                 resolvePermissionScope(type, operate, hasApprove, roleId, currentRoleId);
 
-        // 模块侧最新可用节点（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
-        // 每次返回前都据此比对：user_menu_header 中模块侧已不存在的节点不返回给前端；
-        // 展示名与关联字段标记一律取该默认树（源头），不取用户表中存储值
-        // 角色对该菜单无任何权限时该树为 null，节点池为空
-        SysMenuHeaderResp sourceTree =
-                openMenuHeaderApi.getMenuHeaderTree(menuId, CHANGE_NONE, roleId, scope);
-        Map<String, SysMenuHeaderResp> sourceByVirId =
-                sourceTree == null ? Collections.emptyMap() : indexByVirId(sourceTree);
+        // 模块侧最新可用节点（菜单及其子菜单 + 各菜单绑定模块下的字段 + sys_menu_header 已保存展示配置）构成默认树，
+        // 本次展示的层级关系一律取该树动态结构；角色对该菜单无任何权限时该树为 null
+        SysMenuHeaderResp sourceTree = openMenuHeaderApi.getMenuHeaderTree(menuId, roleId, scope);
+        if (sourceTree == null) {
+            return new MenuHeaderDisplayResp();
+        }
+        Map<String, SysMenuHeaderResp> sourceByVirId = indexByVirId(sourceTree);
 
         // 读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no），
-        // 仅保留节点池中仍存在的节点
+        // 仅保留默认树中仍存在的节点（模块侧已删除的菜单/字段不返回给前端）
         List<UserMenuHeader> stored =
                 selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId).stream()
                         .filter(node -> sourceByVirId.containsKey(node.getVirId()))
                         .collect(Collectors.toList());
 
-        // 该用户在该菜单下没有任何有效个性化配置（无记录或记录指向的菜单/字段均已不存在）
+        // 该用户在该菜单下没有任何有效个性化配置：回退 config 侧默认表头配置（同样按角色权限过滤）
         if (stored.isEmpty()) {
-            // 节点池为空说明角色对该菜单无权限：整树丢弃，不回退默认表头
-            if (sourceByVirId.isEmpty()) {
-                return new MenuHeaderDisplayResp();
-            }
-            // 否则回退取 config 侧默认表头配置（同样按角色权限过滤）
             return openMenuHeaderApi.getMenuHeaderDisplay(menuId, roleId, scope);
         }
 
-        // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头
-        // （角色权限过滤已在上方通过可用节点池完成：无权限的菜单/字段不在池内，stored 已被剔除）
-        List<UserMenuHeader> nodes = retainCheckedWithAncestors(stored);
+        // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头；层级关系取默认树动态结构
+        Map<String, UserMenuHeader> storedByVirId = toMapByVirId(stored);
+        List<UserMenuHeader> nodes =
+                retainCheckedWithAncestors(stored, sourceByVirId, storedByVirId);
         if (nodes.isEmpty()) {
             return new MenuHeaderDisplayResp();
         }
 
-        // 按父节点虚拟id分组（保留查询顺序，parent_id 为 null/0 的是顶层节点）
+        // 按默认树中的父节点虚拟id分组（父节点为 null/0 的是顶层节点）
         Map<String, List<UserMenuHeader>> childrenByParent = new LinkedHashMap<>();
         List<UserMenuHeader> topNodes = new ArrayList<>();
         for (UserMenuHeader node : nodes) {
-            String parentId = node.getParentId();
+            String parentId = parentVirId(sourceByVirId, node.getVirId());
             if (parentId == null || ROOT_PARENT_ID.equals(parentId)) {
                 topNodes.add(node);
             } else {
@@ -184,7 +173,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             }
         }
 
-        UserMenuHeader root = selectDisplayRoot(headerMenuId, topNodes);
+        UserMenuHeader root = selectDisplayRoot(headerMenuId, topNodes, sourceByVirId);
         if (root == null) {
             return new MenuHeaderDisplayResp();
         }
@@ -453,17 +442,12 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                 .execute();
     }
 
-    /** 提交节点转列值：colors 序列化为 JSON 串，父引用为空时按顶层处理 */
+    /** 提交节点转列值：colors 序列化为 JSON 串；父子层级/模块/展示名不落库（查询时动态生成） */
     private Map<Field<Object>, Object> toFieldValues(SaveUserMenuHeaderReq node) {
         Map<Field<Object>, Object> values = new LinkedHashMap<>();
         values.put(DSL.field(DSL.name("vir_id")), node.getVirId());
-        values.put(
-                DSL.field(DSL.name("parent_id")),
-                node.getParentId() != null ? node.getParentId() : ROOT_PARENT_ID);
         values.put(DSL.field(DSL.name("node_type")), node.getNodeType());
         values.put(DSL.field(DSL.name("source_id")), node.getSourceId());
-        values.put(DSL.field(DSL.name("module_id")), node.getModuleId());
-        values.put(DSL.field(DSL.name("label")), node.getLabel());
         values.put(DSL.field(DSL.name("colors")), toColorsJson(node.getColors()));
         values.put(DSL.field(DSL.name("width")), node.getWidth());
         values.put(DSL.field(DSL.name("data_index")), node.getDataIndex());
@@ -524,22 +508,24 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
      *
      * <p>祖先节点不论是否勾选都保留，否则被勾选的下级列挂不到父节点上、多级列头组装不出来； 没有任何勾选节点时返回空列表。
      */
-    private List<UserMenuHeader> retainCheckedWithAncestors(List<UserMenuHeader> nodes) {
-        Map<String, UserMenuHeader> nodeByVirId = toMapByVirId(nodes);
+    private List<UserMenuHeader> retainCheckedWithAncestors(
+            List<UserMenuHeader> nodes,
+            Map<String, SysMenuHeaderResp> sourceByVirId,
+            Map<String, UserMenuHeader> storedByVirId) {
         Set<String> retainedVirIds = new HashSet<>();
         for (UserMenuHeader node : nodes) {
             if (!CHECKED_YES.equals(node.getChecked())) {
                 continue;
             }
             retainedVirIds.add(node.getVirId());
-            // 逐级向上补齐祖先节点，遇到已保留的节点或父节点缺失即终止
-            String parentId = node.getParentId();
+            // 逐级向上补齐祖先节点：父链取自默认树动态结构，父节点须在用户已保存节点中，否则终止
+            String parentId = parentVirId(sourceByVirId, node.getVirId());
             while (parentId != null && !ROOT_PARENT_ID.equals(parentId)) {
-                UserMenuHeader parent = nodeByVirId.get(parentId);
+                UserMenuHeader parent = storedByVirId.get(parentId);
                 if (parent == null || !retainedVirIds.add(parentId)) {
                     break;
                 }
-                parentId = parent.getParentId();
+                parentId = parentVirId(sourceByVirId, parentId);
             }
         }
         return nodes.stream()
@@ -547,18 +533,22 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                 .collect(Collectors.toList());
     }
 
-    /** 取顶层节点中的根节点，优先本菜单自身对应的菜单节点 */
-    private UserMenuHeader selectDisplayRoot(Long menuId, List<UserMenuHeader> topNodes) {
+    /** 取顶层节点中的根节点，优先本菜单自身对应的菜单节点（判定取自默认树动态结构） */
+    private UserMenuHeader selectDisplayRoot(
+            Long menuId,
+            List<UserMenuHeader> topNodes,
+            Map<String, SysMenuHeaderResp> sourceByVirId) {
         if (topNodes.isEmpty()) {
             return null;
         }
         for (UserMenuHeader node : topNodes) {
-            if (isMenuNode(node) && menuId.equals(node.getSourceId())) {
+            SysMenuHeaderResp source = sourceByVirId.get(node.getVirId());
+            if (isMenuNode(source) && menuId.equals(source.getSourceId())) {
                 return node;
             }
         }
         for (UserMenuHeader node : topNodes) {
-            if (isMenuNode(node)) {
+            if (isMenuNode(sourceByVirId.get(node.getVirId()))) {
                 return node;
             }
         }
@@ -568,7 +558,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
     /**
      * 递归组装多级列头展示节点：菜单节点输出 sourceId/colors，字段节点输出字段展示配置
      *
-     * <p>展示名与关联字段标记取默认树（源头：菜单标题 / 模块字段显示名、sys_field 关联配置），不取用户表存储值。
+     * <p>层级/来源/模块/展示名/关联字段标记一律取默认树（源头：菜单标题 / 模块字段显示名、sys_field 关联配置）， 展示项取用户记录，不取用户表存储的结构值。
      */
     private MenuHeaderColumnResp toColumnResp(
             UserMenuHeader node,
@@ -576,17 +566,14 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             Map<String, SysMenuHeaderResp> sourceByVirId) {
         SysMenuHeaderResp source = sourceByVirId.get(node.getVirId());
         MenuHeaderColumnResp resp = new MenuHeaderColumnResp();
-        resp.setNodeType(
-                source != null && source.getNodeType() != null
-                        ? source.getNodeType()
-                        : node.getNodeType());
-        resp.setLabel(source != null ? source.getLabel() : node.getLabel());
-        resp.setModuleId(node.getModuleId());
-        if (isMenuNode(node)) {
-            resp.setSourceId(node.getSourceId());
+        resp.setNodeType(source != null ? source.getNodeType() : node.getNodeType());
+        resp.setLabel(source != null ? source.getLabel() : null);
+        resp.setModuleId(source != null ? source.getModuleId() : null);
+        if (isMenuNode(source)) {
+            resp.setSourceId(source.getSourceId());
             resp.setColors(parseColors(node.getColors()));
         } else {
-            resp.setFieldId(node.getSourceId());
+            resp.setFieldId(source != null ? source.getSourceId() : node.getSourceId());
             resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
             resp.setRelationWord(source != null ? source.getRelationWord() : null);
             resp.setWidth(node.getWidth());
@@ -606,6 +593,17 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                             .collect(Collectors.toList()));
         }
         return resp;
+    }
+
+    /** 取默认树中该虚拟id 节点的父节点虚拟id（顶层或节点不存在时返回 null） */
+    private static String parentVirId(Map<String, SysMenuHeaderResp> sourceByVirId, String virId) {
+        SysMenuHeaderResp source = sourceByVirId.get(virId);
+        return source == null ? null : source.getParentId();
+    }
+
+    /** 是否为菜单节点（取自默认树动态结构：nodeType=0） */
+    private static boolean isMenuNode(SysMenuHeaderResp source) {
+        return source != null && NODE_TYPE_MENU.equals(source.getNodeType());
     }
 
     // ==================== 与默认表头树的合并 ====================
@@ -779,9 +777,5 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             log.warn("用户表头 searchType 解析失败: {}", searchType, e);
             return null;
         }
-    }
-
-    private boolean isMenuNode(UserMenuHeader node) {
-        return Objects.equals(node.getNodeType(), NODE_TYPE_MENU);
     }
 }

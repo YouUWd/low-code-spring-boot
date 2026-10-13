@@ -25,14 +25,8 @@ public class SaveUserMenuHeaderReq implements Serializable {
     @Schema(description = "虚拟id(类型-id)，如 MENU_47 / Field_10")
     private String virId;
 
-    @Schema(description = "父节点虚拟id(顶层为 0)")
-    private String parentId;
-
     @Schema(description = "所属菜单ID（传列表菜单ID，落库时以其详情菜单ID 为准）", example = "1")
     private Long menuId;
-
-    @Schema(description = "显示名（覆盖值或默认取菜单名/字段显示名）", example = "外部对象列表")
-    private String label;
 
     @Schema(description = "节点类型：0-菜单，1-字段", example = "0")
     private Integer nodeType;
@@ -40,10 +34,7 @@ public class SaveUserMenuHeaderReq implements Serializable {
     @Schema(description = "来源ID（nodeType=0 时=来源菜单ID，nodeType=1 时=来源字段ID）", example = "1")
     private Long sourceId;
 
-    @Schema(description = "模块id（nodeType=0 时=菜单绑定模块id，nodeType=1 时=字段所属模块id）", example = "1001")
-    private Long moduleId;
-
-    @Schema(description = "字段索引（模块id.表名.字段名）", example = "1001.info.company_name")
+    @Schema(description = "字段索引（表名.字段名）", example = "info.company_name")
     private String dataIndex;
 
     @Schema(description = "菜单显示颜色（落库时序列化为 JSON 串）")

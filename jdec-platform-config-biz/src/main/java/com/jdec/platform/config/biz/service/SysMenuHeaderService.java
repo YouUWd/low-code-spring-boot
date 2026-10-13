@@ -78,9 +78,6 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 模块字段启用状态（sys_module_field.status = 1），停用字段不参与表头生成 */
     private static final Integer MODULE_FIELD_STATUS_ENABLED = 1;
 
-    /** 变更标记：菜单关联的详情菜单已切换（表头配置尚未更新入库），0 表示未变化 */
-    private static final Integer CHANGE_DETAIL_SWITCHED = 1;
-
     /** 字段可查阅标记：sys_role_module_field_permission.view = 1 */
     private static final Integer VIEW_YES = 1;
 
@@ -104,18 +101,18 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     private final ObjectMapper objectMapper;
 
     @Override
-    public SysMenuHeaderResp getMenuHeaderTree(Long menuId, Integer change) {
-        return getMenuHeaderTree(menuId, change, null);
+    public SysMenuHeaderResp getMenuHeaderTree(Long menuId) {
+        return getMenuHeaderTree(menuId, null, null);
     }
 
     @Override
-    public SysMenuHeaderResp getMenuHeaderTree(Long menuId, Integer change, Long roleId) {
-        return getMenuHeaderTree(menuId, change, roleId, null);
+    public SysMenuHeaderResp getMenuHeaderTree(Long menuId, Long roleId) {
+        return getMenuHeaderTree(menuId, roleId, null);
     }
 
     @Override
     public SysMenuHeaderResp getMenuHeaderTree(
-            Long menuId, Integer change, Long roleId, MenuFieldPermissionScope scope) {
+            Long menuId, Long roleId, MenuFieldPermissionScope scope) {
         if (menuId == null) {
             throw new BusinessException("菜单ID不能为空");
         }
@@ -135,16 +132,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             return null;
         }
 
-        // 菜单关联的详情菜单已切换（表头配置尚未更新入库）：只用生成侧，不读表
-        if (CHANGE_DETAIL_SWITCHED.equals(change)) {
-            return assembleTree(headerMenuId, generatedNodes);
-        }
-
-        // 详情菜单未变化：与 sys_menu_header 已保存配置按虚拟id 合并
-        Set<String> generatedVirIds =
-                generatedNodes.stream()
-                        .map(SysMenuHeaderResp::getVirId)
-                        .collect(Collectors.toSet());
+        // 与 sys_menu_header 已保存的展示配置按虚拟id 合并
+        // （表里只存前端改动的配置内容；层级/模块/展示名一律取生成侧，实时反映菜单与模块绑定；
+        //  菜单改绑模块后旧字段的 virId 不再出现在生成侧，历史记录自然被丢弃，无需额外处理）
         Map<String, SysMenuHeader> storedByVirId = new LinkedHashMap<>();
         for (SysMenuHeader stored : selectStoredNodes(headerMenuId)) {
             storedByVirId.putIfAbsent(stored.getVirId(), stored);
@@ -152,8 +142,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         List<SysMenuHeaderResp> mergedNodes = new ArrayList<>();
         for (SysMenuHeaderResp node : generatedNodes) {
             SysMenuHeader stored = storedByVirId.get(node.getVirId());
-            // 两边都有同一虚拟id → 取表中记录（保留用户配置）；仅生成侧有 → 用生成侧默认值
-            mergedNodes.add(stored != null ? mergeWithStored(node, stored, generatedVirIds) : node);
+            // 两边都有同一虚拟id → 用表中记录覆写展示配置；仅生成侧有 → 用生成侧默认值
+            mergedNodes.add(stored != null ? applyStored(node, stored) : node);
         }
 
         // 仅表中有的节点不再返回（丢弃）；递归子菜单生成的节点直接返回，不落库、不带主键 id
@@ -188,36 +178,18 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * <p>表头记录按「归属菜单ID」存放，归属菜单由 {@link #resolveHeaderMenuId(SysMenu)} 统一解析：菜单类型为「页面」且关联了详情菜单时
      * 取该详情菜单ID，其余（「表」等）取菜单自身ID。
      *
-     * <ul>
-     *   <li>{@code change=1}（归属菜单已切换）：先删除变更前归属菜单（{@code previousMenuId}）在 {@code sys_menu_header}
-     *       中的全部记录（一条 SQL），再按本次提交的节点树以 {@code menuId} 为归属重新落库。
-     *   <li>{@code change=0}（归属菜单未变化）：将 {@code header} 树压平后与 {@code menuId} 已保存节点按 {@code virId}
-     *       比对，已存在的节点按主键批量更新，未存在的节点批量新增。
-     * </ul>
+     * <p>将 {@code header} 树压平后与 {@code menuId} 已保存节点按 {@code virId} 比对，已存在的节点按主键批量更新，未存在的节点批量新增；
+     * 并以本次提交的整棵树为准：{@code menuId} 下已保存、但 {@code header} 中未提交的节点一并删除（一条 SQL）。层级/模块/展示名均为查询时动态生成，
+     * 菜单改绑模块无需在此做任何额外处理。
      *
-     * <p>两种情形都以本次提交的整棵树为准：{@code menuId} 下已保存、但 {@code header} 中未提交的节点一并删除（一条 SQL）。
-     *
-     * <p>{@code header} 为空时只做上述清理、不做落库。数据隔离按 {@code subject_id} + {@code project_no}，所有写操作均为批量执行。
+     * <p>{@code header} 为空时不做落库。数据隔离按 {@code subject_id} + {@code project_no}，所有写操作均为批量执行。
      *
      * @param menuId 本次表头记录的归属菜单ID（由 {@code SysMenuService} 按归属规则解析后传入）
-     * @param previousMenuId 变更前表头记录的归属菜单ID，无变更或新增菜单时为 {@code null}
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveMenuHeader(
-            Long menuId, Long previousMenuId, Integer change, SaveMenuReq.MenuHeaderNode header) {
+    public void saveMenuHeader(Long menuId, SaveMenuReq.MenuHeaderNode header) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
-
-        // 详情菜单已切换：删除变更前归属菜单在 sys_menu_header 中的全部记录（一条 SQL）
-        if (CHANGE_DETAIL_SWITCHED.equals(change) && previousMenuId != null) {
-            int deleted =
-                    sysMenuHeaderMapper.delete(
-                            Wrappers.<SysMenuHeader>lambdaQuery()
-                                    .eq(SysMenuHeader::getMenuId, previousMenuId)
-                                    .eq(SysMenuHeader::getSubjectId, subjectId)
-                                    .eq(SysMenuHeader::getProjectNo, projectNo));
-            log.debug("详情菜单已切换，删除原归属菜单表头配置：previousMenuId={}, rows={}", previousMenuId, deleted);
-        }
 
         // 未提交表头节点树时不做落库处理
         if (header == null) {
@@ -229,7 +201,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             throw new BusinessException("菜单未关联详情菜单，不能保存表头配置");
         }
 
-        // 提交的树压平为节点列表（深度优先、父节点在前），父引用直接落父节点虚拟id
+        // 提交的树压平为节点列表（深度优先、父节点在前），逐节点按虚拟id 落展示配置
         List<SaveMenuReq.MenuHeaderNode> nodes = new ArrayList<>();
         flatten(header, nodes);
 
@@ -307,57 +279,17 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             throw new BusinessException("菜单ID不能为空");
         }
 
-        // 表头记录按归属菜单存放，先按统一规则解析出归属菜单ID
-        Long headerMenuId = resolveHeaderMenuId(menuId);
-
-        // 字段权限过滤开关统一在此收敛（与 getMenuHeaderTree 一致）；菜单不做权限过滤
-        Long effectiveRoleId = ROLE_PERMISSION_FILTER_ENABLED ? roleId : null;
-
-        // 生成侧最新数据（菜单及其子菜单 + 各菜单绑定模块下的字段）构成可用节点池，
-        // 每次返回前都据此比对：sys_menu_header 中模块侧已不存在的节点不返回给前端；
-        // 展示名与关联字段标记一律取生成侧（源头），不取库中存储值
-        // effectiveRoleId 非空时节点池按字段权限过滤：不满足 scope 权限的字段不在池内，无字段的菜单节点一并被裁剪
-        Map<String, SysMenuHeaderResp> generatedByVirId =
-                indexByVirId(buildGeneratedNodes(headerMenuId, effectiveRoleId, scope));
-
-        // 纯读取该菜单已保存的表头节点（数据隔离：subject_id + project_no），仅保留节点池中仍存在的节点
-        List<SysMenuHeader> stored =
-                sysMenuHeaderMapper
-                        .selectList(
-                                Wrappers.<SysMenuHeader>lambdaQuery()
-                                        .eq(SysMenuHeader::getMenuId, headerMenuId)
-                                        .eq(SysMenuHeader::getSubjectId, AppContext.getSubjectId())
-                                        .eq(SysMenuHeader::getProjectNo, AppContext.getProjectNo())
-                                        .orderByAsc(
-                                                SysMenuHeader::getSortValue, SysMenuHeader::getId))
-                        .stream()
-                        .filter(node -> generatedByVirId.containsKey(node.getVirId()))
-                        .collect(Collectors.toList());
-        // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头
-        List<SysMenuHeader> nodes = retainCheckedWithAncestors(stored);
-        if (nodes.isEmpty()) {
+        // 展示结构由生成侧动态给出：取「菜单/字段生成 + sys_menu_header 已保存展示配置」合并后的完整树，
+        // 再只保留已勾选（checked=1）的列及其祖先菜单节点，不依赖表记录中的父子关系
+        SysMenuHeaderResp tree = getMenuHeaderTree(menuId, roleId, scope);
+        if (tree == null) {
             return new MenuHeaderDisplayResp();
         }
-
-        // 按父节点虚拟id分组（保留查询顺序，parent_id 为 null/0 的是顶层节点）
-        Map<String, List<SysMenuHeader>> childrenByParent = new LinkedHashMap<>();
-        List<SysMenuHeader> topNodes = new ArrayList<>();
-        for (SysMenuHeader node : nodes) {
-            String parentId = node.getParentId();
-            if (parentId == null || ROOT_PARENT_ID.equals(parentId)) {
-                topNodes.add(node);
-            } else {
-                childrenByParent.computeIfAbsent(parentId, k -> new ArrayList<>()).add(node);
-            }
-        }
-
-        SysMenuHeader root = selectDisplayRoot(headerMenuId, topNodes);
-        if (root == null) {
+        MenuHeaderColumnResp header = toCheckedColumn(tree);
+        if (header == null) {
             return new MenuHeaderDisplayResp();
         }
-        return MenuHeaderDisplayResp.builder()
-                .header(toColumnResp(root, childrenByParent, generatedByVirId))
-                .build();
+        return MenuHeaderDisplayResp.builder().header(header).build();
     }
 
     /** 深度优先压平提交的表头节点树（父节点在前） */
@@ -372,16 +304,13 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         }
     }
 
-    /** 提交节点转实体：归属菜单统一取入参菜单ID，父引用为空时按顶层处理 */
+    /** 提交节点转实体：归属菜单统一取入参菜单ID；父子层级/模块/展示名不落库（查询时动态生成） */
     private SysMenuHeader toHeaderEntity(Long menuId, SaveMenuReq.MenuHeaderNode node) {
         SysMenuHeader entity = new SysMenuHeader();
         entity.setMenuId(menuId);
         entity.setVirId(node.getVirId());
-        entity.setParentId(node.getParentId() != null ? node.getParentId() : ROOT_PARENT_ID);
         entity.setNodeType(node.getNodeType());
         entity.setSourceId(node.getSourceId());
-        entity.setModuleId(node.getModuleId());
-        entity.setLabel(node.getLabel());
         entity.setColors(toColorsJson(node.getColors()));
         entity.setWidth(node.getWidth());
         entity.setDataIndex(node.getDataIndex());
@@ -399,78 +328,36 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     // ==================== 多级列头展示组装 ====================
 
     /**
-     * 展示节点筛选：只保留已勾选（{@code checked=1}）的节点，并向上补齐其祖先节点
+     * 递归组装多级列头展示节点：只输出已勾选（{@code checked=1}）的列，并保留其祖先菜单节点
      *
-     * <p>祖先节点不论是否勾选都保留，否则被勾选的下级列挂不到父节点上、多级列头组装不出来； 没有任何勾选节点时返回空列表。
+     * <p>节点结构（层级/来源/模块/展示名）一律取生成侧动态数据；节点自身未勾选但存在被保留的子节点时，作为祖先一并保留， 否则返回 {@code null}（整树无勾选节点时返回
+     * {@code null}）。菜单节点输出 {@code sourceId/colors}，字段节点输出字段展示配置。
      */
-    private List<SysMenuHeader> retainCheckedWithAncestors(List<SysMenuHeader> nodes) {
-        Map<String, SysMenuHeader> nodeByVirId = new LinkedHashMap<>();
-        for (SysMenuHeader node : nodes) {
-            nodeByVirId.putIfAbsent(node.getVirId(), node);
-        }
-        Set<String> retainedVirIds = new HashSet<>();
-        for (SysMenuHeader node : nodes) {
-            if (!CHECKED_YES.equals(node.getChecked())) {
-                continue;
-            }
-            retainedVirIds.add(node.getVirId());
-            // 逐级向上补齐祖先节点，遇到已保留的节点或父节点缺失即终止
-            String parentId = node.getParentId();
-            while (parentId != null && !ROOT_PARENT_ID.equals(parentId)) {
-                SysMenuHeader parent = nodeByVirId.get(parentId);
-                if (parent == null || !retainedVirIds.add(parentId)) {
-                    break;
+    private MenuHeaderColumnResp toCheckedColumn(SysMenuHeaderResp node) {
+        List<MenuHeaderColumnResp> children = new ArrayList<>();
+        if (node.getChildren() != null) {
+            for (SysMenuHeaderResp child : node.getChildren()) {
+                MenuHeaderColumnResp childResp = toCheckedColumn(child);
+                if (childResp != null) {
+                    children.add(childResp);
                 }
-                parentId = parent.getParentId();
             }
         }
-        return nodes.stream()
-                .filter(node -> retainedVirIds.contains(node.getVirId()))
-                .collect(Collectors.toList());
-    }
-
-    /** 取顶层节点中的根节点，优先本菜单自身对应的菜单节点 */
-    private SysMenuHeader selectDisplayRoot(Long menuId, List<SysMenuHeader> topNodes) {
-        if (topNodes.isEmpty()) {
+        if (!CHECKED_YES.equals(node.getChecked()) && children.isEmpty()) {
             return null;
         }
-        for (SysMenuHeader node : topNodes) {
-            if (isMenuNode(node) && menuId.equals(node.getSourceId())) {
-                return node;
-            }
-        }
-        for (SysMenuHeader node : topNodes) {
-            if (isMenuNode(node)) {
-                return node;
-            }
-        }
-        return topNodes.getFirst();
-    }
 
-    /**
-     * 递归组装多级列头展示节点：菜单节点输出 sourceId/colors，字段节点输出字段展示配置
-     *
-     * <p>展示名与关联字段标记取生成侧（源头：菜单标题 / 模块字段显示名、sys_field 关联配置），不取库中存储值。
-     */
-    private MenuHeaderColumnResp toColumnResp(
-            SysMenuHeader node,
-            Map<String, List<SysMenuHeader>> childrenByParent,
-            Map<String, SysMenuHeaderResp> generatedByVirId) {
-        SysMenuHeaderResp generated = generatedByVirId.get(node.getVirId());
         MenuHeaderColumnResp resp = new MenuHeaderColumnResp();
-        resp.setNodeType(
-                generated != null && generated.getNodeType() != null
-                        ? generated.getNodeType()
-                        : node.getNodeType());
-        resp.setLabel(generated != null ? generated.getLabel() : node.getLabel());
+        resp.setNodeType(node.getNodeType());
+        resp.setLabel(node.getLabel());
         resp.setModuleId(node.getModuleId());
-        if (isMenuNode(node)) {
+        if (NODE_TYPE_MENU.equals(node.getNodeType())) {
             resp.setSourceId(node.getSourceId());
-            resp.setColors(parseColors(node.getColors()));
+            resp.setColors(node.getColors());
         } else {
             resp.setFieldId(node.getSourceId());
             resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
-            resp.setRelationWord(generated != null ? generated.getRelationWord() : null);
+            resp.setRelationWord(node.getRelationWord());
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -478,14 +365,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             resp.setFixed(node.getFixed());
             resp.setSortValue(node.getSortValue());
         }
-
-        List<SysMenuHeader> children =
-                childrenByParent.getOrDefault(node.getVirId(), Collections.emptyList());
         if (!children.isEmpty()) {
-            resp.setChildren(
-                    children.stream()
-                            .map(child -> toColumnResp(child, childrenByParent, generatedByVirId))
-                            .collect(Collectors.toList()));
+            resp.setChildren(children);
         }
         return resp;
     }
@@ -530,17 +411,6 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     }
 
     // ==================== 生成侧：菜单 + 模块字段 ====================
-
-    /** 生成侧节点按虚拟id 建索引（可用节点池），供展示/合并时过滤模块侧已不存在的历史节点并取源头展示字段 */
-    private Map<String, SysMenuHeaderResp> indexByVirId(List<SysMenuHeaderResp> nodes) {
-        return nodes.stream()
-                .collect(
-                        Collectors.toMap(
-                                SysMenuHeaderResp::getVirId,
-                                node -> node,
-                                (first, second) -> first,
-                                LinkedHashMap::new));
-    }
 
     /**
      * 生成侧节点列表（深度优先、父节点在前）
@@ -723,27 +593,28 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     }
 
     /**
-     * 合并同一虚拟id 的两侧数据：表中记录优先（保留用户配置），表内未配置的项取生成侧默认值
+     * 把表中已保存的展示配置覆写到生成侧节点上（表里只存前端改动的配置内容）
      *
-     * @param generated 生成侧节点
-     * @param stored 表中已保存的节点
-     * @param generatedVirIds 生成侧全部虚拟id，用于判断表中父节点是否仍然有效
+     * <p>层级/来源/模块/展示名/关联字段标记一律取生成侧（实时反映菜单与模块绑定），不取库中存储值； 展示项（{@code
+     * id/colors/width/data_index/sorted/search_type/ellipsis/fixed/checked/sort_value}）
+     * 以表中非空值为准，为空时回退生成侧默认值。
+     *
+     * @param generated 生成侧节点（动态结构）
+     * @param stored 表中已保存的节点（同一虚拟id）
      */
-    private SysMenuHeaderResp mergeWithStored(
-            SysMenuHeaderResp generated, SysMenuHeader stored, Set<String> generatedVirIds) {
+    private SysMenuHeaderResp applyStored(SysMenuHeaderResp generated, SysMenuHeader stored) {
         SysMenuHeaderResp resp = new SysMenuHeaderResp();
         resp.setId(stored.getId());
-        resp.setVirId(stored.getVirId());
-        resp.setMenuId(stored.getMenuId() != null ? stored.getMenuId() : generated.getMenuId());
-        resp.setNodeType(
-                stored.getNodeType() != null ? stored.getNodeType() : generated.getNodeType());
-        resp.setSourceId(
-                stored.getSourceId() != null ? stored.getSourceId() : generated.getSourceId());
-        resp.setModuleId(
-                stored.getModuleId() != null ? stored.getModuleId() : generated.getModuleId());
-        // 展示名与关联字段标记一律取生成侧（源头），不取库中存储值
+        // 结构（父子层级/来源/模块/展示名）一律取生成侧
+        resp.setVirId(generated.getVirId());
+        resp.setParentId(generated.getParentId());
+        resp.setMenuId(generated.getMenuId());
+        resp.setNodeType(generated.getNodeType());
+        resp.setSourceId(generated.getSourceId());
+        resp.setModuleId(generated.getModuleId());
         resp.setLabel(generated.getLabel());
         resp.setRelationWord(generated.getRelationWord());
+        // 展示项：表中非空优先，否则回退生成侧默认值
         resp.setDataIndex(
                 stripModulePrefix(
                         stored.getDataIndex() != null
@@ -755,19 +626,10 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         resp.setChecked(stored.getChecked() != null ? stored.getChecked() : generated.getChecked());
         resp.setSortValue(
                 stored.getSortValue() != null ? stored.getSortValue() : generated.getSortValue());
-        // 表头展示相关配置原样透传
         resp.setColors(parseColors(stored.getColors()));
         resp.setWidth(stored.getWidth());
         resp.setSearchType(stored.getSearchType());
         resp.setFixed(stored.getFixed());
-
-        // parent_id 直接存父节点虚拟id，顶层统一为 0；表中父节点已不在当前菜单结构内时沿用生成侧父子关系
-        String parentId = stored.getParentId();
-        if (parentId == null
-                || (!ROOT_PARENT_ID.equals(parentId) && !generatedVirIds.contains(parentId))) {
-            parentId = generated.getParentId();
-        }
-        resp.setParentId(parentId);
         return resp;
     }
 
@@ -1032,10 +894,6 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             return dataIndex.substring(dot + 1);
         }
         return dataIndex;
-    }
-
-    private boolean isMenuNode(SysMenuHeader node) {
-        return Objects.equals(node.getNodeType(), NODE_TYPE_MENU);
     }
 
     private String firstNotBlank(String... values) {

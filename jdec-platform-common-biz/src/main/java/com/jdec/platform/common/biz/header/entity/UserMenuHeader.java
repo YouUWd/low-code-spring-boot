@@ -22,20 +22,11 @@ public class UserMenuHeader implements Serializable {
     @Schema(description = "所属菜单ID(详情菜单ID)")
     private Long menuId;
 
-    @Schema(description = "父节点ID(0=顶层)，可为MENU也可为FIELD之下挂子级")
-    private String parentId;
-
     @Schema(description = "节点类型: 0-菜单 / 1-字段")
     private Integer nodeType;
 
     @Schema(description = "来源ID")
     private Long sourceId;
-
-    @Schema(description = "模块id")
-    private Long moduleId;
-
-    @Schema(description = "显示名覆盖。FIELD空=取字段显示名，MENU空=取来源菜单名")
-    private String label;
 
     @Schema(description = "菜单显示颜色")
     private String colors;

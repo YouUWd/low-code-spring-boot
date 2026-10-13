@@ -38,27 +38,24 @@ public interface OpenMenuHeaderApi {
      * </ul>
      *
      * @param menuId 列表菜单ID
-     * @param change 变更标记：0-菜单关联的详情菜单未变化，1-详情菜单已切换
      * @param roleId 角色ID，为空时不做字段权限过滤
      * @return 菜单表头树的根节点；整树裁剪后为空时返回 {@code null}
      */
-    SysMenuHeaderResp getMenuHeaderTree(Long menuId, Integer change, Long roleId);
+    SysMenuHeaderResp getMenuHeaderTree(Long menuId, Long roleId);
 
     /**
      * 按指定字段权限范围查询列表表头树（供数据引擎等下游消费）
      *
-     * <p>与 {@link #getMenuHeaderTree(Long, Integer, Long)} 同一套逻辑，区别是字段过滤的权限范围由 {@code scope}
+     * <p>与 {@link #getMenuHeaderTree(Long, Long)} 同一套逻辑，区别是字段过滤的权限范围由 {@code scope}
      * 决定（查看/申请/编辑的任意组合，见 {@link MenuFieldPermissionScope}），而非固定 {@code view=1}；{@code scope} 为空时回退
      * {@link MenuFieldPermissionScope#VIEW_ONLY}。
      *
      * @param menuId 列表菜单ID
-     * @param change 变更标记：0-菜单关联的详情菜单未变化，1-详情菜单已切换
      * @param roleId 角色ID，为空时不做字段权限过滤
      * @param scope 字段权限过滤范围，为空时按 {@link MenuFieldPermissionScope#VIEW_ONLY} 处理
      * @return 菜单表头树的根节点；整树裁剪后为空时返回 {@code null}
      */
-    SysMenuHeaderResp getMenuHeaderTree(
-            Long menuId, Integer change, Long roleId, MenuFieldPermissionScope scope);
+    SysMenuHeaderResp getMenuHeaderTree(Long menuId, Long roleId, MenuFieldPermissionScope scope);
 
     /**
      * 查询角色可查阅（{@code view=1}）的字段ID集合
@@ -75,9 +72,9 @@ public interface OpenMenuHeaderApi {
     /**
      * 查询菜单默认多级列头展示结构（供数据引擎在用户未个性化时回退使用）
      *
-     * <p>与 {@code SysMenuHeaderApi#getMenuHeaderDisplay} 同一套逻辑：纯读取 {@code sys_menu_header} 中该菜单（按
-     * {@code subject_id} + {@code project_no} 隔离）已保存的节点，只输出已勾选（{@code
-     * checked=1}）的列并保留其祖先菜单节点；无配置记录时返回空（{@code header} 为 null）。
+     * <p>与 {@code SysMenuHeaderApi#getMenuHeaderDisplay} 同一套逻辑：先取「菜单/字段生成 + {@code sys_menu_header}
+     * 已保存展示配置」 合并后的完整树（结构动态生成），只输出已勾选（{@code checked=1}）的列并保留其祖先菜单节点；无已勾选配置时返回空（{@code header} 为
+     * null）。
      *
      * @param menuId 列表菜单ID，内部按 {@link #resolveHeaderMenuId(Long)} 解析出表头归属菜单ID 后读取
      * @return 多级列头展示结构
