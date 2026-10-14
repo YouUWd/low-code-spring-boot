@@ -1188,14 +1188,6 @@ public class DynamicQueryService {
         String businessNo = versionListQueryReq.getBusinessNo();
         Long moduleId = versionListQueryReq.getModuleId();
 
-        Boolean hasApproval =
-                sysApprovalChainConfigApi.getApprovalStatus(
-                        List.of(versionListQueryReq.getModuleId()));
-
-        if (!hasApproval) {
-            return List.of();
-        }
-
         List<VersionListResp> versionList = new ArrayList<>();
 
         Result<Record> recordsResult =

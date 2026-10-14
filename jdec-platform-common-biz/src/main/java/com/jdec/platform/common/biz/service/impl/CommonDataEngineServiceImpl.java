@@ -334,6 +334,13 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             return null;
         }
 
+        Boolean hasApproval =
+                sysApprovalChainConfigApi.getApprovalStatus(List.of(targetMenus.getModuleId()));
+
+        if (!hasApproval) {
+            return List.of();
+        }
+
         VersionListQueryReq versionListQueryReq =
                 VersionListQueryReq.builder()
                         .id(menuDetailQueryReq.getId())
