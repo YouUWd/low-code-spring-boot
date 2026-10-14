@@ -479,10 +479,7 @@ public class DynamicQueryService {
         currentModuleData = querySingleModule(rootNode, queryReq, queryReq.getQueryType());
 
         if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
-            return builder.moduleId(rootNode.getId())
-                    .menuId(rootNode.getId())
-                    .record(currentModuleData)
-                    .build();
+            return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
         }
 
         Set<Long> primaryIds = getPrimaryIdSet(currentModuleData, rootNode.getId());
@@ -501,10 +498,7 @@ public class DynamicQueryService {
             virtualModule = true;
         } else if (CollectionUtils.isEmpty(primaryIds)) {
             log.debug("模块id:{},模块名称:{}不是虚模块,但没有模块数据。", rootNode.getId(), rootNode.getModuleName());
-            return builder.moduleId(rootNode.getId())
-                    .menuId(rootNode.getId())
-                    .record(currentModuleData)
-                    .build();
+            return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
         }
 
         for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
@@ -589,10 +583,7 @@ public class DynamicQueryService {
             }
         }
 
-        return builder.moduleId(rootNode.getId())
-                .menuId(rootNode.getId())
-                .record(currentModuleData)
-                .build();
+        return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
     }
 
     private List<ModuleFieldDTO> getIdAndRelateIdField(Long id) {
@@ -663,7 +654,6 @@ public class DynamicQueryService {
         for (NestedModuleDataDTO subModule : subModuleList) {
             NestedModuleDataDTO newSubModule = new NestedModuleDataDTO();
             newSubModule.setModuleId(subModule.getModuleId());
-            newSubModule.setMenuId(subModule.getMenuId());
 
             SysModuleInfo sysModuleInfo =
                     dataModuleConfigService.getModuleCompleteById(

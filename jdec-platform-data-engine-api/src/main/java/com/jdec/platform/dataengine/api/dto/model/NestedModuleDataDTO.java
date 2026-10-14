@@ -18,9 +18,6 @@ public class NestedModuleDataDTO implements Serializable {
     @Schema(description = "模块ID")
     private Long moduleId;
 
-    @Schema(description = "菜单ID")
-    private Long menuId;
-
     @Schema(description = "记录数据,代表主表的行记录数据")
     private List<RecordDataDTO> record;
 }
