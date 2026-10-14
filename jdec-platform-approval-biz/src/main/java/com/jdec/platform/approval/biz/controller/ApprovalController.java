@@ -1,6 +1,7 @@
 package com.jdec.platform.approval.biz.controller;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.*;
 import com.jdec.platform.config.open.api.OpenMenuApi;
@@ -63,16 +64,16 @@ public class ApprovalController {
         return ApiResponse.success();
     }
 
-    @GetMapping("/getListNumber/{menuId}")
-    @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
-    public ApiResponse<List<Map<String, Object>>> getListNumber(@PathVariable Long menuId) {
-        Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);
-        return ApiResponse.success(approvalService.getListNumber(moduleId));
-    }
+    //    @GetMapping("/getListNumber/{menuId}")
+    //    @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
+    //    public ApiResponse<List<Map<String, Object>>> getListNumber(@PathVariable Long menuId) {
+    //        Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);
+    //        return ApiResponse.success(approvalService.getListNumber(moduleId));
+    //    }
 
     @GetMapping("/getListButton/{moduleId}")
     @Operation(summary = "查询单据列表按钮", description = "查询查询单据列表按钮")
-    public ApiResponse<List<Map<String, Object>>> getListButton(
+    public ApiResponse<List<ApprpvalIdButton>> getListButton(
             @PathVariable Long moduleId, @RequestParam Integer approvalType) {
         return ApiResponse.success(approvalService.getListButton(moduleId, approvalType));
     }
