@@ -9,6 +9,7 @@ import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApproval
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -69,5 +70,10 @@ public class DataEngineService implements DataEngineApi {
     @Override
     public CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo) {
         return dynamicQueryService.getCreatedUserInfo(moduleId, id, businessNo);
+    }
+
+    @Override
+    public Map<String, Object> getRecordData(Long moduleId, Long id) {
+        return dynamicQueryService.getRecordData(moduleId, id);
     }
 }

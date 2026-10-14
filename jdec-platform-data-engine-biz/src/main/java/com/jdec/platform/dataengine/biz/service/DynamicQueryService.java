@@ -1444,4 +1444,33 @@ public class DynamicQueryService {
 
         return createdUserInfoRespBuilder.build();
     }
+
+    public Map<String, Object> getRecordData(Long moduleId, Long id) {
+        SysModuleInfo sysModuleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+
+        String primaryTable = sysModuleInfo.getPrimaryTable();
+
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        SelectJoinStep<Record> query =
+                dslContext.select(DSL.asterisk()).from(DSL.name(primaryTable));
+
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+
+        conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
+
+        query.where(conditions);
+
+        Map<String, Object> resultMap = new HashMap<>();
+
+        Record result = query.fetchOne();
+        if (Objects.nonNull(result)) {
+            resultMap = result.intoMap();
+        }
+
+        return resultMap;
+    }
 }
