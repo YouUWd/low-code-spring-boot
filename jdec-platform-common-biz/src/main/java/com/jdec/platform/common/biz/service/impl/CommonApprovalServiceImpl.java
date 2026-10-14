@@ -129,6 +129,20 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     }
 
     @Override
+    public void approvalSave(Long moduleId, ApprovalReq req) {
+        ApprovalEvent approvalEvent = new ApprovalEvent();
+        BeanUtils.copyProperties(req, approvalEvent);
+        approvalEvent.setApplicantId(UserContext.getMockUserId());
+        approvalEvent.setCurrentUserId(UserContext.getRealUserId());
+        approvalEvent.setRoleId(UserContext.getRoleId());
+        approvalEvent.setSubjectId(AppContext.getSubjectId());
+        approvalEvent.setModuleId(moduleId);
+        approvalEvent.setOldRecordId(req.getRecordId());
+
+        eventPublisher.publishEvent(approvalEvent);
+    }
+
+    @Override
     public Long BusinessNextId(Long menuId) {
         if (menuId == null) {
             throw new IllegalArgumentException("菜单 ID 不能为空");

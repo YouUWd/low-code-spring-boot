@@ -57,13 +57,12 @@ public class CommonController {
             ApprovalReq approvalReq = new ApprovalReq();
             approvalReq.setRecordId(result.getDataId());
             approvalReq.setBusinessNumber(result.getBusinessNo());
-            commonApprovalService.approvalBusiness(
-                    req.getNestedModuleData().getMenuId(), approvalReq);
+            commonApprovalService.approvalSave(result.getModuleId(), approvalReq);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(
-                    "Common DataEngine save failed: menuId={},err={}",
-                    req.getNestedModuleData().getMenuId(),
+                    "Common DataEngine save failed: moduleId={},err={}",
+                    req.getNestedModuleData().getModuleId(),
                     ex.getMessage(),
                     ex);
             throw ex;
