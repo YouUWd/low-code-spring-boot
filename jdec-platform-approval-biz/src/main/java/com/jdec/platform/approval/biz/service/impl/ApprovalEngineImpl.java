@@ -317,12 +317,13 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (approvalListReq.getModuleIdList().isEmpty()) {
             return respList;
         }
-        List<Long> approvalTypeIds =
-                getApprovalTypeIdList(
+        List<Long> approvalIds =
+                getApprovalRecordIdList(
                         approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
 
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
         todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+        todoWrapper.in(ApprovalBusiness::getRecordId, approvalIds);
         todoWrapper.and(
                 wrapper ->
                         wrapper.nested(
@@ -365,10 +366,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 toDoList.remove(item);
             }
         }
-        toDoList.removeIf(
-                item ->
-                        !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
-                                && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
         Set<Long> ids = toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
         if (approvalListReq.getApprovalType() == 1) {
             respList =
@@ -378,13 +375,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if (approvalListReq.getApprovalType() == 2) {
             LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
             processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            processWrapper.in(ApprovalBusiness::getRecordId, approvalIds);
             processWrapper.apply(
                     "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
-            resultList.removeIf(
-                    item ->
-                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
-                                    && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
             for (ApprovalBusiness item : resultList) {
                 if (!ids.contains(item.getId())) {
                     respList.add(convertMapResp(item, 3));
@@ -393,29 +387,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if (approvalListReq.getApprovalType() == 3) {
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
             allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+            allWrapper.in(ApprovalBusiness::getRecordId, approvalIds);
             List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
-            allList.removeIf(
-                    item ->
-                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
-                                    && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
-            allList.removeIf(
-                    item ->
-                            Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
-                                    && item.getCurrentStep().equals(0)
-                                    && !ids.contains(item.getId()));
-            if (Objects.nonNull(approvalListReq.getAllowedIdList())
-                    && !approvalListReq.getAllowedIdList().isEmpty()) {
-                LambdaQueryWrapper<ApprovalBusiness> allowedWrapper = new LambdaQueryWrapper<>();
-                allowedWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-                //   allowedWrapper.in(
-                //           ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-                //                allowedWrapper.in(
-                //                        ApprovalBusiness::getRecordId,
-                // approvalListReq.getAllowedIdList());
-                List<ApprovalBusiness> allowedList =
-                        approvalBusinessMapper.selectList(allowedWrapper);
-                allList.addAll(allowedList);
-            }
             for (ApprovalBusiness item : allList) {
                 if (ids.contains(item.getId())) {
                     respList.add(convertMapResp(item, 1));
@@ -446,7 +419,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     public List<ApprpvalIdButton> getListButton(Long moduleId, Integer approvalType) {
         Long mockUserId = UserContext.getMockUserId();
         ApprovalListReq req = new ApprovalListReq();
-        req.setApprovalType(1);
+        req.setApprovalType(approvalType);
         req.setModuleIdList(List.of(moduleId));
         req.setRoleId(UserContext.getRoleId());
         req.setApplicantId(mockUserId);
@@ -1943,26 +1916,28 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
     }
 
-    // 查询角色在指定模块中每条审批业务最后一版审批链中有审批权限的审批分类ID列表
-    public List<Long> getApprovalTypeIdList(List<Long> moduleIds, Long roleId) {
-        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = Wrappers.lambdaQuery();
-        businessWrapper.in(ApprovalBusiness::getModuleId, moduleIds);
-        List<ApprovalBusiness> businessList = approvalBusinessMapper.selectList(businessWrapper);
-        List<String> serialList =
-                businessList.stream()
-                        .map(b -> b.getSerialNumber() + "@" + b.getSerialNo())
-                        .toList();
-        // 1. 查询审批链配置列表
+    // 查询角色在指定模块中每条审批业务最后一版审批链中有审批权限的业务ID列表
+    public List<Long> getApprovalRecordIdList(List<Long> moduleIds, Long roleId) {
         LambdaQueryWrapper<ApprovalChain> chainConfigQuery = Wrappers.lambdaQuery();
         chainConfigQuery.in(ApprovalChain::getModuleId, moduleIds);
         chainConfigQuery.eq(ApprovalChain::getApproveRoleId, roleId);
-        chainConfigQuery.apply("CONCAT(serial_number, '@', serial_no) IN ({0})", serialList);
         List<ApprovalChain> chainConfigs = approvalChainMapper.selectList(chainConfigQuery);
-        if (CollectionUtils.isEmpty(chainConfigs)) {
+        List<String> serialList =
+                chainConfigs.stream()
+                        .map(b -> "'" + b.getSerialNumber() + "@" + b.getSerialNo() + "'")
+                        .distinct()
+                        .toList();
+        String placeholders = String.join(",", serialList);
+
+        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = Wrappers.lambdaQuery();
+        businessWrapper.in(ApprovalBusiness::getModuleId, moduleIds);
+        businessWrapper.apply("CONCAT(serial_number, '@', serial_no) IN (" + placeholders + ")");
+        List<ApprovalBusiness> businessList = approvalBusinessMapper.selectList(businessWrapper);
+        if (CollectionUtils.isEmpty(businessList)) {
             return List.of();
         }
-        return chainConfigs.stream()
-                .map(ApprovalChain::getApprovalChainTypeId)
+        return businessList.stream()
+                .map(ApprovalBusiness::getRecordId)
                 .collect(Collectors.toList());
     }
 
