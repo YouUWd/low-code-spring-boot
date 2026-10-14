@@ -51,7 +51,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private final OpenMenuApi openMenuApi;
     private final ConfigApi configApi;
     private final DataApi dataApi;
-    private final CommonApprovalFilterResolver approvalFilterResolver;
+    private final CommonFilterResolver approvalFilterResolver;
     private final SysUserApi sysUserApi;
     private final SysStatusApi sysStatusApi;
 
@@ -109,7 +109,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req != null ? req.getApprovalType() : null;
-        CommonApprovalFilterResolver.ApprovalFilterItem approvalFilter =
+        CommonFilterResolver.ApprovalFilterItem approvalFilter =
                 approvalFilterResolver.resolveApprovalFilters(
                         rootModuleId, approvalType, moduleTree);
 
@@ -280,7 +280,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req.getApprovalType();
-        CommonApprovalFilterResolver.ApprovalFilterItem approvalFilter =
+        CommonFilterResolver.ApprovalFilterItem approvalFilter =
                 approvalFilterResolver.resolveApprovalFilters(
                         rootModuleId, approvalType, moduleTree);
 

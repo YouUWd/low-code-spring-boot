@@ -6,6 +6,7 @@ import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
+import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
 import com.jdec.platform.data.api.dto.request.TableQueryReq;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -26,7 +27,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     private final IApprovalEngine approvalEngine;
     private final OpenMenuApi openMenuApi;
     private final DataApi dataApi;
-    private final CommonApprovalFilterResolver approvalFilterResolver;
+    private final CommonFilterResolver approvalFilterResolver;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -57,7 +58,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         Long totalCount = 0L;
 
         if (approvalFilterResolver.isApprovalChainEnabled(rootModuleId)) {
-            CommonApprovalFilterResolver.AllApprovalCountFilters countFilters =
+            CommonFilterResolver.AllApprovalCountFilters countFilters =
                     approvalFilterResolver.resolveAllApprovalCountsFilters(rootModuleId, null);
 
             // 1. 统计【待办数量】 (approvalType = 1)
@@ -90,8 +91,14 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
                                         .build());
             }
         } else {
+            List<PhysicalFilterItem> dataPermFilters =
+                    approvalFilterResolver.buildDataPermissionFilters(rootModuleId);
             totalCount =
-                    dataApi.countByTable(TableQueryReq.builder().moduleId(rootModuleId).build());
+                    dataApi.countByTable(
+                            TableQueryReq.builder()
+                                    .moduleId(rootModuleId)
+                                    .filters(dataPermFilters)
+                                    .build());
         }
 
         todo.put("count", todoCount != null ? todoCount : 0L);
