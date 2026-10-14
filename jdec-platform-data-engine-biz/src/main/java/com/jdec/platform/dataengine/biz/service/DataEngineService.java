@@ -3,10 +3,7 @@ package com.jdec.platform.dataengine.biz.service;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
-import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
-import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
-import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
-import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
+import com.jdec.platform.dataengine.api.dto.response.*;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
@@ -65,5 +62,10 @@ public class DataEngineService implements DataEngineApi {
     @Override
     public Long deleteById(DynamicDeleteReq req) {
         return moduleDataPersistenceService.deleteById(req);
+    }
+
+    @Override
+    public CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo) {
+        return dynamicQueryService.getCreatedUserInfo(moduleId, id, businessNo);
     }
 }

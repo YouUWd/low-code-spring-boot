@@ -5,17 +5,16 @@ import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
 import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 /** 公共业务数据聚合控制器 (基于菜单的数据隔离、动态列表与详情聚合) */
 @Slf4j
@@ -63,6 +62,27 @@ public class CommonDataEngineController {
                     "Common DataEngine getVersionListByMenu failed: menuId={}, id={}, err={}",
                     menuDetailQueryReq.getMenuId(),
                     menuDetailQueryReq.getId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/get-create-info")
+    @Operation(summary = "查询登记人信息", description = "传入菜单id、单据 id和业务编码，返回该条数据的创建人信息")
+    public ApiResponse<CreatedUserInfoResp> getCretedUserInfo(
+            @Schema(description = "顶层菜单ID") @RequestParam Long menuId,
+            @Schema(description = "数据ID") @RequestParam Long id,
+            @Schema(description = "数据业务编号") @RequestParam(required = false) String businessNo) {
+        try {
+            CreatedUserInfoResp result =
+                    commonDataEngineService.getCreatedUserInfo(menuId, id, businessNo);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common DataEngine getCretedUserInfo failed: id={}, businessNo={}, err={}",
+                    id,
+                    businessNo,
                     ex.getMessage(),
                     ex);
             throw ex;

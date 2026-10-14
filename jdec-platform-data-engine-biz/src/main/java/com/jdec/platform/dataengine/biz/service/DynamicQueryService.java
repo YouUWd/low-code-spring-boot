@@ -5,12 +5,14 @@ import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
+import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
+import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
@@ -29,6 +31,9 @@ import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.Comparator;
 import java.util.stream.Collectors;
@@ -66,6 +71,8 @@ public class DynamicQueryService {
     private final DetailDataProcessFactory detailDataProcessFactory;
 
     private final ConfigApi configApi;
+
+    private final SysUserApi sysUserApi;
 
     /** 一体化列表分页查询 */
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -369,6 +376,8 @@ public class DynamicQueryService {
 
             preVersionQuery.where(preVersionConditions);
 
+            preVersionQuery.orderBy(DSL.field(DSL.name("version_no")).desc());
+
             preVersionQuery.stream().limit(1);
 
             Record preVersionResult = preVersionQuery.fetchOne();
@@ -628,6 +637,14 @@ public class DynamicQueryService {
                             .moduleId(id)
                             .tableName(tableName)
                             .columnName("id")
+                            .build());
+
+            // 手动加入business_no字段，版本对比时此字段有数据
+            moduleFields.add(
+                    ModuleFieldDTO.builder()
+                            .moduleId(id)
+                            .tableName(tableName)
+                            .columnName("business_no")
                             .build());
         }
 
@@ -1357,5 +1374,75 @@ public class DynamicQueryService {
         }
 
         return historyVersionList;
+    }
+
+    public CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo) {
+
+        CreatedUserInfoResp.CreatedUserInfoRespBuilder createdUserInfoRespBuilder =
+                CreatedUserInfoResp.builder();
+
+        SysModuleInfo sysModuleInfo =
+                dataModuleConfigService.getModuleCompleteById(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+
+        String primaryTable = sysModuleInfo.getPrimaryTable();
+
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        SelectJoinStep<Record> query =
+                dslContext.select(DSL.asterisk()).from(DSL.name(primaryTable));
+
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+
+        conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
+
+        if (StringUtils.isNotBlank(businessNo)) {
+            conditions.add(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo));
+        }
+
+        query.where(conditions);
+
+        Record result = query.fetchOne();
+        if (Objects.nonNull(result)) {
+            Map<String, Object> resultMap = result.intoMap();
+
+            Timestamp createdDate = (Timestamp) result.get("created_date");
+
+            LocalDateTime localDateTime =
+                    createdDate.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
+            createdUserInfoRespBuilder.createdDate(localDateTime);
+
+            Long userId = (Long) resultMap.get("created_by");
+
+            UserDetailResp createByUser = new UserDetailResp();
+            if (!userId.equals(9999999L)) {
+                try {
+                    createByUser = sysUserApi.getUserDetailByUserId(userId);
+                } catch (Exception e) {
+                    createByUser.setId(userId);
+                    createByUser.setUserName("");
+                }
+            } else {
+                createByUser.setId(9999999L);
+                createByUser.setUserName("系统自动审批");
+            }
+
+            UserInfo.UserInfoBuilder userInfoBuilder = UserInfo.builder();
+
+            if (createByUser != null) {
+                userInfoBuilder
+                        .id(createByUser.getId())
+                        .userName(createByUser.getUserName())
+                        .userAvatar(createByUser.getUserAvatar())
+                        .departName(createByUser.getDepartName())
+                        .positionName(createByUser.getPositionName())
+                        .workNumber(createByUser.getWorkNumber());
+
+                createdUserInfoRespBuilder.createUser(userInfoBuilder.build());
+            }
+        }
+
+        return createdUserInfoRespBuilder.build();
     }
 }

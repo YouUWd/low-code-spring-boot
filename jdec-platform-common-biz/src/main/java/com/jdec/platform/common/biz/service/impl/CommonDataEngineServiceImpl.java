@@ -23,6 +23,7 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
+import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -342,6 +343,37 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .build();
 
         return dataEngineApi.getVersionList(versionListQueryReq);
+    }
+
+    @Override
+    public CreatedUserInfoResp getCreatedUserInfo(Long menuId, Long id, String businessNo) {
+        if (Objects.isNull(menuId) || menuId <= 0) {
+            throw new IllegalArgumentException("菜单ID不能为空");
+        }
+
+        if (Objects.isNull(id) || id <= 0) {
+            throw new IllegalArgumentException("数据ID不能为空");
+        }
+
+        List<SysMenuResp> menuList = sysMenuApi.list(1);
+
+        if (CollectionUtils.isEmpty(menuList)) {
+            return null;
+        }
+
+        SysMenuResp targetMenu =
+                menuList.stream()
+                        .filter(ele -> menuId.equals(ele.getId()))
+                        .findFirst()
+                        .orElse(null);
+
+        if (Objects.isNull(targetMenu)) {
+            throw new BusinessException("菜单 [" + menuId + "] 没有对应的菜单数据");
+        }
+
+        Long moduleId = targetMenu.getModuleId();
+
+        return dataEngineApi.getCreatedUserInfo(moduleId, id, businessNo);
     }
 
     private ModuleMetaDTO buildModuleMetaList(

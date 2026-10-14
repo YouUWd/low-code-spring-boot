@@ -33,7 +33,8 @@ public class ModuleTreeDiffService {
             NestedModuleDataDTO newTree,
             Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap) {
         // 构建旧树 moduleId -> recordMap(业务id -> recordNode)
-        Map<Long, Map<Long, RecordDataDTO>> oldModuleRecordMap = buildOldModuleRecordIndex(oldTree);
+        Map<Long, Map<String, RecordDataDTO>> oldModuleRecordMap =
+                buildOldModuleRecordIndex(oldTree);
         recursiveDiff(oldTree, newTree, oldModuleRecordMap, currentVersionMap);
     }
 
@@ -41,7 +42,7 @@ public class ModuleTreeDiffService {
     private void recursiveDiff(
             NestedModuleDataDTO oldNode,
             NestedModuleDataDTO newNode,
-            Map<Long, Map<Long, RecordDataDTO>> oldModuleRecordMap,
+            Map<Long, Map<String, RecordDataDTO>> oldModuleRecordMap,
             Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap) {
         if (Objects.isNull(newNode)) {
             return;
@@ -54,8 +55,9 @@ public class ModuleTreeDiffService {
 
         String primaryTable = sysModuleInfo.getPrimaryTable();
 
-        // 获取旧模块下所有record：业务id -> record节点
-        Map<Long, RecordDataDTO> oldRecordMap = oldModuleRecordMap.getOrDefault(moduleId, Map.of());
+        // 获取旧模块下所有record：business_no -> record节点
+        Map<String, RecordDataDTO> oldRecordMap =
+                oldModuleRecordMap.getOrDefault(moduleId, Map.of());
 
         // 处理当前模块的 record 数组
         List<RecordDataDTO> recordArr = newNode.getRecord();
@@ -68,7 +70,7 @@ public class ModuleTreeDiffService {
                     continue;
                 }
                 // 提取row主键：找到 xxx.id 的字段值
-                Long rowPk = extractRowPk(rowNode, primaryTable);
+                String rowPk = extractRowPk(rowNode, primaryTable);
                 RecordDataDTO oldRecordItem = oldRecordMap.get(rowPk);
                 Map<String, Object> oldRow = oldRecordItem != null ? oldRecordItem.getRow() : null;
 
@@ -100,15 +102,15 @@ public class ModuleTreeDiffService {
     }
 
     /** 构建旧树索引：moduleId -> Map<业务主键, recordNode> */
-    private Map<Long, Map<Long, RecordDataDTO>> buildOldModuleRecordIndex(
+    private Map<Long, Map<String, RecordDataDTO>> buildOldModuleRecordIndex(
             NestedModuleDataDTO root) {
-        Map<Long, Map<Long, RecordDataDTO>> index = new ConcurrentHashMap<>();
+        Map<Long, Map<String, RecordDataDTO>> index = new ConcurrentHashMap<>();
         traverseOldTree(root, index);
         return index;
     }
 
     private void traverseOldTree(
-            NestedModuleDataDTO node, Map<Long, Map<Long, RecordDataDTO>> index) {
+            NestedModuleDataDTO node, Map<Long, Map<String, RecordDataDTO>> index) {
         if (Objects.isNull(node)) return;
         Long moduleId = node.getModuleId();
         SysModuleInfo sysModuleInfo =
@@ -118,13 +120,13 @@ public class ModuleTreeDiffService {
         if (moduleId != null) {
             List<RecordDataDTO> recordArr = node.getRecord();
             if (!CollectionUtils.isEmpty(recordArr)) {
-                Map<Long, RecordDataDTO> recordMap =
+                Map<String, RecordDataDTO> recordMap =
                         index.computeIfAbsent(moduleId, k -> new ConcurrentHashMap<>());
                 for (RecordDataDTO recordItem : recordArr) {
                     Map<String, Object> rowNode = recordItem.getRow();
                     if (rowNode == null) continue;
-                    Long pk = extractRowPk(rowNode, primaryTable);
-                    recordMap.put(pk, recordItem);
+                    String businessNoPk = extractRowPk(rowNode, primaryTable);
+                    recordMap.put(businessNoPk, recordItem);
 
                     // 递归children
                     List<NestedModuleDataDTO> childrenNode = recordItem.getChildren();
@@ -138,20 +140,20 @@ public class ModuleTreeDiffService {
         }
     }
 
-    /** 从row中提取主键：查找key以 .id 结尾的字段，例如 info.id、basic_info.id */
-    private Long extractRowPk(Map<String, Object> rowNode, String tableName) {
+    /** 从row中提取主键：查找key以 .business_no 结尾的字段，例如 info.business_no、basic_info.business_no */
+    private String extractRowPk(Map<String, Object> rowNode, String tableName) {
         // TODO 需要读取模块配置获取主表.id作为key进行主表主键查找
         Object primaryTableId =
                 rowNode.entrySet().stream()
-                        .filter(ele -> ele.getKey().equals(tableName + "." + "id"))
+                        .filter(ele -> ele.getKey().equals(tableName + "." + "business_no"))
                         .map(item -> item.getValue())
                         .findFirst()
                         .orElse(null);
 
         if (Objects.nonNull(primaryTableId)) {
-            return Long.parseLong(String.valueOf(primaryTableId));
+            return String.valueOf(primaryTableId);
         } else {
-            return 0L;
+            return "";
         }
     }
 
