@@ -119,6 +119,9 @@ public class ModuleDataChangeRowConvertService {
             NestedModuleDataDTO oldData,
             NestedModuleDataDTO newData,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (oldData == null) {
+            return null;
+        }
         Map<String, Map<String, Object>> oldRowMap = getRowMap(oldData, moduleCacheMap);
         Map<String, Map<String, Object>> newRowMap = getRowMap(newData, moduleCacheMap);
         Map<Long, Map<Long, RowChangeDTO>> rowChangeMap =

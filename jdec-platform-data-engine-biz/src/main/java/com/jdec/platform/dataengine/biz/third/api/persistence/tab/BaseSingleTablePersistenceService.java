@@ -17,4 +17,8 @@ public interface BaseSingleTablePersistenceService {
             DSLContext dslContext, String tableName, String relatedField, List<Long> ids);
 
     int deleteByIds(DSLContext dslContext, String tableName, List<Long> ids);
+
+    Integer getMaxVersionNoByBusinessNo(DSLContext dslContext, String tableName, String businessNo);
+
+    Integer inactiveRecordById(DSLContext dslContext, String tableName, Long id);
 }

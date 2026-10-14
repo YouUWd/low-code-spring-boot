@@ -36,4 +36,8 @@ public class ModuleDataStoreDTO {
     private Integer mainTableVersionNo;
 
     private Long mainTableDataId;
+
+    private Integer mainTableSourceVersionNo;
+
+    private Long mainTableDataSourceId;
 }

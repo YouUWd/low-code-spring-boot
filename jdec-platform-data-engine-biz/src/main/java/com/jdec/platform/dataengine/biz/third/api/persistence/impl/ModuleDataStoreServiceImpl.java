@@ -13,12 +13,14 @@ import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.*;
+import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -33,6 +35,8 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
     private final ModuleDataPersistenceService moduleDataPersistenceService;
 
     private final ModuleDataPreStoreService moduleDataPreStoreService;
+
+    private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
 
     @Override
     public DynamicSaveResp save(DynamicSaveReq req) {
@@ -152,6 +156,44 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             nestedSaveData =
                     ModuleTreeDataUtils.mergeNestedModuleData(
                             detailData, nestedSaveData, moduleCacheMap);
+            // 变更插入 剔除ID 等相关的字段
+            ModuleTreeDataUtils.cleanNestedModuleData(nestedSaveData, moduleCacheMap);
+
+            // 变更插入 根模块 主表的业务编号
+            String businessNo =
+                    DataPersistenceUtil.getTableRowBusinessNoWithTabName(
+                            detailData.getRecord().get(0).getRow(),
+                            rootModule.getModuleInfo().getPrimaryTable());
+            Long sourceId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            detailData.getRecord().get(0).getRow(),
+                            rootModule.getModuleInfo().getPrimaryTable());
+            if (StringUtils.isEmpty(businessNo) || sourceId == null || sourceId <= 0) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_REQUEST.getCode(), "变更保存时，根模块主表业务编号和ID不能为空");
+            }
+            // 变更提交原始 版本
+            Integer sourceVersionNo =
+                    DataPersistenceUtil.getTableRowVersionWithTabName(
+                            detailData.getRecord().get(0).getRow(),
+                            rootModule.getModuleInfo().getPrimaryTable());
+            if (sourceVersionNo == null || sourceVersionNo <= 0) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_REQUEST.getCode(), "变更保存时，根模块主表源版本号不能为空");
+            }
+
+            Integer maxVersionNo =
+                    baseSingleTablePersistenceService.getMaxVersionNoByBusinessNo(
+                            null, rootModule.getModuleInfo().getPrimaryTable(), businessNo);
+            Integer versionNo = maxVersionNo == null ? 0 : maxVersionNo + 1;
+
+            ModuleTreeDataUtils.fillApprovalDataByChange(
+                    nestedSaveData, versionNo, isApproval, moduleCacheMap);
+
+            moduleDataStoreDTO.setMainTableBusinessNo(businessNo);
+            moduleDataStoreDTO.setMainTableVersionNo(versionNo);
+            moduleDataStoreDTO.setMainTableSourceVersionNo(sourceVersionNo);
+            moduleDataStoreDTO.setMainTableDataSourceId(sourceId);
         }
         moduleDataStoreDTO.setParamData(nestedSaveData);
         moduleDataStoreDTO.setDetailData(detailData);

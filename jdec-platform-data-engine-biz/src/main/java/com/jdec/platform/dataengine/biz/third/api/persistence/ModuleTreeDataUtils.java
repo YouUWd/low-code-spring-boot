@@ -12,6 +12,19 @@ import org.apache.commons.lang3.StringUtils;
 
 public class ModuleTreeDataUtils {
 
+    private static final Set<String> CLEAN_FIELDS =
+            Set.of(
+                    "id",
+                    "ID",
+                    "subject_id",
+                    "registration_time",
+                    "created_by",
+                    "updated_by",
+                    "created_date",
+                    "updated_date",
+                    "deleted",
+                    "active");
+
     /**
      * 根据 新增数据 构建模块树节点数据
      *
@@ -451,26 +464,78 @@ public class ModuleTreeDataUtils {
         if (CollectionUtil.isNotEmpty(nestedModuleData.getRecord())) {
             for (RecordDataDTO recordDataDTO : nestedModuleData.getRecord()) {
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
-                    Long dataId =
-                            DataPersistenceUtil.getTableRowIdWithTabName(
-                                    recordDataDTO.getRow(),
-                                    sysModuleInfo.getModuleInfo().getPrimaryTable());
-                    // 新增加
-                    if (dataId == null || dataId <= 0) {
-                        recordDataDTO
-                                .getRow()
-                                .put(
-                                        sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                                + ".business_no",
-                                        DataPersistenceUtil.getNewBusinessNo(
-                                                sysModuleInfo.getModuleInfo().getModuleCode(),
-                                                sysModuleInfo.getModuleInfo().getPrimaryTable()));
-                        recordDataDTO
-                                .getRow()
-                                .put(
-                                        sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                                + ".version_no",
-                                        versionNo);
+                    // 补充主表及其子表的字段
+                    Set<String> tabs = new HashSet<>();
+                    tabs.add(sysModuleInfo.getModuleInfo().getPrimaryTable());
+                    if (CollectionUtil.isNotEmpty(sysModuleInfo.getSubTables())) {
+                        tabs.addAll(sysModuleInfo.getSubTables());
+                    }
+                    for (String tab : tabs) {
+
+                        Long dataId =
+                                DataPersistenceUtil.getTableRowIdWithTabName(
+                                        recordDataDTO.getRow(), tab);
+                        // 新增加
+                        if (dataId == null || dataId <= 0) {
+                            recordDataDTO
+                                    .getRow()
+                                    .put(
+                                            tab + ".business_no",
+                                            DataPersistenceUtil.getNewBusinessNo(
+                                                    sysModuleInfo.getModuleInfo().getModuleCode(),
+                                                    tab));
+                            recordDataDTO.getRow().put(tab + ".version_no", versionNo);
+                            // 如果是根模块主表, 设置状态
+                            if (sysModuleInfo.getModuleInfo().getParentId() == null
+                                    || sysModuleInfo.getModuleInfo().getParentId().equals(0L)) {
+                                if (isApproval) {
+                                    recordDataDTO.getRow().put(tab + ".business_status", 1);
+                                } else {
+                                    recordDataDTO.getRow().put(tab + ".business_status", 99);
+                                    recordDataDTO
+                                            .getRow()
+                                            .put(tab + ".registration_time", LocalDateTime.now());
+                                }
+                            }
+                        } else {
+                            // 修改 不需要设置
+                        }
+                    }
+                }
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                    for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                        fillApprovalData(child, versionNo, isApproval, moduleCacheMap);
+                    }
+                }
+            }
+        }
+    }
+
+    // 变更保存时 填充 审批相关的数据
+    public static void fillApprovalDataByChange(
+            NestedModuleDataDTO nestedModuleData,
+            Integer versionNo,
+            Boolean isApproval,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (nestedModuleData == null) {
+            return;
+        }
+        SysModuleCombineInfo sysModuleInfo = moduleCacheMap.get(nestedModuleData.getModuleId());
+        if (CollectionUtil.isNotEmpty(nestedModuleData.getRecord())) {
+            for (RecordDataDTO recordDataDTO : nestedModuleData.getRecord()) {
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
+                    // 补充主表及其子表的字段
+                    Set<String> tabs = new HashSet<>();
+                    tabs.add(sysModuleInfo.getModuleInfo().getPrimaryTable());
+                    if (CollectionUtil.isNotEmpty(sysModuleInfo.getSubTables())) {
+                        tabs.addAll(sysModuleInfo.getSubTables());
+                    }
+
+                    for (String tab : tabs) {
+                        String businessNo =
+                                DataPersistenceUtil.getTableRowBusinessNoWithTabName(
+                                        recordDataDTO.getRow(), tab);
+
                         // 如果是根模块主表, 设置状态
                         if (sysModuleInfo.getModuleInfo().getParentId() == null
                                 || sysModuleInfo.getModuleInfo().getParentId().equals(0L)) {
@@ -482,27 +547,27 @@ public class ModuleTreeDataUtils {
                                                         + ".business_status",
                                                 1);
                             } else {
-                                recordDataDTO
-                                        .getRow()
-                                        .put(
-                                                sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                                        + ".business_status",
-                                                99);
-                                recordDataDTO
-                                        .getRow()
-                                        .put(
-                                                sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                                        + ".registration_time",
-                                                LocalDateTime.now());
+                                // 变更都是 待审批链的
                             }
                         }
-                    } else {
-                        // 修改 不需要设置
+
+                        recordDataDTO.getRow().put(tab + ".version_no", versionNo);
+
+                        // 新增加
+                        if (StringUtils.isEmpty(businessNo)) {
+                            recordDataDTO
+                                    .getRow()
+                                    .put(
+                                            tab + ".business_no",
+                                            DataPersistenceUtil.getNewBusinessNo(
+                                                    sysModuleInfo.getModuleInfo().getModuleCode(),
+                                                    tab));
+                        }
                     }
                 }
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                     for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
-                        fillApprovalData(child, versionNo, isApproval, moduleCacheMap);
+                        fillApprovalDataByChange(child, versionNo, isApproval, moduleCacheMap);
                     }
                 }
             }
@@ -518,31 +583,24 @@ public class ModuleTreeDataUtils {
         if (CollectionUtil.isNotEmpty(nestedModuleData.getRecord())) {
             for (RecordDataDTO recordDataDTO : nestedModuleData.getRecord()) {
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
-                    recordDataDTO
-                            .getRow()
-                            .remove(
-                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                            + ".business_no");
-                    recordDataDTO
-                            .getRow()
-                            .remove(
-                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                            + ".version_no");
-                    recordDataDTO
-                            .getRow()
-                            .remove(
-                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                            + ".business_status");
-                    recordDataDTO
-                            .getRow()
-                            .remove(
-                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                            + ".registration_time");
+                    cleanRow(recordDataDTO.getRow(), sysModuleInfo);
                 }
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                     for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                         cleanNestedModuleData(child, moduleCacheMap);
                     }
+                }
+            }
+        }
+    }
+
+    public static void cleanRow(
+            Map<String, Object> row, SysModuleCombineInfo sysModuleCombineInfo) {
+        for (String field : CLEAN_FIELDS) {
+            row.remove(sysModuleCombineInfo.getModuleInfo().getPrimaryTable() + "." + field);
+            if (CollectionUtil.isNotEmpty(sysModuleCombineInfo.getSubTables())) {
+                for (String subTable : sysModuleCombineInfo.getSubTables()) {
+                    row.remove(subTable + "." + field);
                 }
             }
         }

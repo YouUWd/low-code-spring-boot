@@ -96,16 +96,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 .build());
 
         // 如果是终态 保存模块数据的 版本快照
-        if (req.getIsTermination() != null && req.getIsTermination()) {
-            moduleSnapShotDataService.saveModuleDataPermanentSnapshot(
-                    ModuleSnapShotDataContext.builder()
-                            .dataId(req.getDataId())
-                            .dslContext(context)
-                            .moduleDataDTO(result)
-                            .rootModuleInfo(rootModule)
-                            .rootModuleId(rootModule.getModuleInfo().getModuleId())
-                            .build());
-        }
+
         // 获取上一个状态的 快照数据
         NestedModuleDataDTO tmpSnapshot =
                 moduleSnapShotDataService.getLastStatusModuleDataTempSnapshot(

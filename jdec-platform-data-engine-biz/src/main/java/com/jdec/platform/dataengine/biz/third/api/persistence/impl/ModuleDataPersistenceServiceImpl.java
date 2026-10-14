@@ -8,7 +8,6 @@ import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
-import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
@@ -27,6 +26,7 @@ import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,7 +42,7 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceService {
-    private final JooqContextFactory jooqContextFactory;
+    private final JooqDataContextFactory jooqContextFactory;
 
     private final ModuleDataSavePostFactoryService moduleDataSavePostFactoryService;
 
@@ -230,6 +230,16 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                             }
                                             first = false;
                                         }
+                                    }
+                                    // 变更保存 把上根表 上一个版本的数据 标记非活跃
+                                    if (SaveType.APPROVAL_CHANGE.equals(finalSaveType)) {
+                                        baseSingleTablePersistenceService.inactiveRecordById(
+                                                txDsl,
+                                                moduleCacheMap
+                                                        .get(req.getRootModuleId())
+                                                        .getModuleInfo()
+                                                        .getPrimaryTable(),
+                                                req.getMainTableDataSourceId());
                                     }
                                     // 其他sql
                                 } catch (Exception e) {

@@ -24,6 +24,9 @@ public class UserContextDataFieldFillServiceImpl implements BaseDataSaveNecessar
             fMap.put("created_date", LocalDateTime.now());
             fMap.put("updated_date", LocalDateTime.now());
             fMap.put("deleted", 0);
+            if (recordSaveContext.getIsRootModuleMainTable()) {
+                fMap.put("active", 0);
+            }
             recordSaveContext.setDefaultUserContextDataMap(fMap);
         } else {
             fMap.put("updated_by", recordSaveContext.getUserId());

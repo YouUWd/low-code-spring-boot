@@ -21,6 +21,7 @@ import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSav
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -44,6 +45,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
     private final ModuleDataSaveCheckFactoryService moduleDataSaveCheckFactoryService;
 
+    private final JooqDataContextFactory jooqDataContextFactory;
+
     private final Set<String> UPDATE_DEFAULT_EXCLUDE_FIELD =
             Set.of(
                     "id",
@@ -52,22 +55,18 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     "version_no",
                     "business_status",
                     "created_by",
-                    "created_date");
+                    "created_date",
+                    "active");
 
-    private final Set<String> CHANGE_DEFAULT_SET_NULL_EXCLUDE_FIELD =
+    private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
             Set.of(
                     "id",
                     "subject_id",
-                    "business_no",
-                    "business_status",
-                    "version_no",
                     "created_by",
                     "updated_by",
                     "created_date",
-                    "updated_date");
-
-    private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
-            Set.of("id", "subject_id", "created_by", "updated_by", "created_date", "updated_date");
+                    "updated_date",
+                    "active");
 
     @Override
     public DataSaveResult insertRecord(RecordSaveContext context) {
@@ -136,15 +135,6 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                                     context.getSysModuleCompleteResp().getModuleInfo().getFields(),
                                     context.getTableName()));
         }
-        //        Integer versionNo=null;
-        //        String businessNo=null;
-        //        if(context.getIsRootModuleMainTable()){
-        //            versionNo=(Integer) context.getBizDataMap().get("version_no");
-        //            businessNo=(String) context.getBizDataMap().get("business_no");
-        //            if(StringUtils.isEmpty(businessNo)){
-        //                businessNo=(String) context.getRecord().get("business_no");
-        //            }
-        //        }
         return DataSaveResult.builder().dataId(num.longValue()).rowChange(rowChange).build();
     }
 
@@ -300,6 +290,44 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
             return result;
         }
         return 0;
+    }
+
+    @Override
+    public Integer getMaxVersionNoByBusinessNo(
+            DSLContext dslContext, String tableName, String businessNo) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        Integer maxVersionNo =
+                dslContext
+                        .select(DSL.max(DSL.field(DSL.name(tableName, "version_no"))))
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(DSL.field(DSL.name(tableName, "business_no")).eq(businessNo))
+                        .fetchOne(0, Integer.class);
+        if (maxVersionNo != null) {
+            return maxVersionNo;
+        }
+        return 0;
+    }
+
+    @Override
+    public Integer inactiveRecordById(DSLContext dslContext, String tableName, Long id) {
+        Long currentUserId = UserContext.getUserId();
+        LocalDateTime now = LocalDateTime.now();
+        int result =
+                dslContext
+                        .update(DSL.table(DSL.name(tableName)))
+                        .set(DSL.field(DSL.name(tableName, "active")), (byte) 1)
+                        .set(DSL.field(DSL.name(tableName, "updated_by")), currentUserId)
+                        .set(DSL.field(DSL.name(tableName, "updated_date")), now)
+                        .where(
+                                DSL.field(DSL.name(tableName, "id"))
+                                        .eq(id)
+                                        .and(
+                                                DSL.field(DSL.name(tableName, "deleted"))
+                                                        .eq((byte) 0)))
+                        .execute();
+        return result;
     }
 
     private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {
