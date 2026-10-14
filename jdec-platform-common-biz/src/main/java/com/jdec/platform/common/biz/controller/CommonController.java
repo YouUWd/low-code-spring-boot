@@ -6,6 +6,7 @@ import com.jdec.platform.common.biz.service.UserService;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -50,13 +51,12 @@ public class CommonController {
 
     @PostMapping("/approval/save")
     @Operation(summary = "提交数据审批申请", description = "提交数据审批申请")
-    public ApiResponse<Long> approvalSave(@RequestBody DynamicSaveReq req) {
+    public ApiResponse<DynamicSaveResp> approvalSave(@RequestBody DynamicSaveReq req) {
         try {
-            // Long result =dataEngineApi.save(req);
-            Long result = 172L;
+            DynamicSaveResp result = dataEngineApi.save(req);
             ApprovalReq approvalReq = new ApprovalReq();
-            approvalReq.setRecordId(result);
-            approvalReq.setBusinessNumber("CR20261012001");
+            approvalReq.setRecordId(result.getDataId());
+            approvalReq.setBusinessNumber(result.getBusinessNo());
             commonApprovalService.approvalBusiness(
                     req.getNestedModuleData().getMenuId(), approvalReq);
             return ApiResponse.success(result);

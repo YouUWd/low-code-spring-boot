@@ -63,7 +63,7 @@ public class ApprovalController {
         return ApiResponse.success();
     }
 
-    @GetMapping("/getListNumber/{moduleId}")
+    @GetMapping("/getListNumber/{menuId}")
     @Operation(summary = "查询单据数量", description = "查询待办、已办、全部单据数量")
     public ApiResponse<List<Map<String, Object>>> getListNumber(@PathVariable Long menuId) {
         Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);

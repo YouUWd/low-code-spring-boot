@@ -7,6 +7,7 @@ import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
@@ -119,7 +120,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         approvalEvent.setApplicantId(UserContext.getMockUserId());
         approvalEvent.setCurrentUserId(UserContext.getRealUserId());
         approvalEvent.setRoleId(UserContext.getRoleId());
-        approvalEvent.setSubjectId(UserContext.getSubjectId());
+        approvalEvent.setSubjectId(AppContext.getSubjectId());
         approvalEvent.setMenuId(menuId);
         approvalEvent.setModuleId(rootModuleId);
         approvalEvent.setOldRecordId(req.getRecordId());

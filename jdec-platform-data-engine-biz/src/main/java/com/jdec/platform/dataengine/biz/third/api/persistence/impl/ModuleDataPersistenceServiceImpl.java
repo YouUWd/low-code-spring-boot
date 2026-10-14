@@ -5,20 +5,20 @@ import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDeleteReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicInsertReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
+import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDataPostContext;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.RelationType;
 import com.jdec.platform.dataengine.biz.enums.SaveButtonType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
-import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.post.ModuleDataSavePostFactoryService;
@@ -47,25 +47,14 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
 
     private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
 
-    private final ModuleMetaDataService moduleMetaDataService;
+    public Long save(ModuleDataStoreDTO req) {
 
-    public Long save(DynamicSaveReq req) {
-
-        boolean isRelatedApproval =
-                moduleMetaDataService.getApprovalStatusByModuleIdAsync(
-                        req.getNestedModuleData().getModuleId());
+        boolean isRelatedApproval = req.getIsApproval();
         // 模块是否关联审批链 保存类型
-        SaveType finalSaveType = getSaveType(req);
-        Map<Long, SysModuleCombineInfo> moduleCacheMap =
-                moduleMetaDataService.getModuleMetaDataMapAsync(
-                        ModuleQueryContext.builder()
-                                .moduleId(req.getNestedModuleData().getModuleId())
-                                .projectNo(AppContext.getProjectNo())
-                                .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
-                                .isBuildFieldPermission(true)
-                                .isBuildFieldPro(true)
-                                .build());
+        SaveType finalSaveType = req.getSaveType();
+        Map<Long, SysModuleCombineInfo> moduleCacheMap = req.getModuleCacheMap();
+        NestedModuleDataDTO nestedStoreData = req.getParamData();
+        DynamicSaveResp resp = new DynamicSaveResp();
         AtomicReference<Long> rootModuleMainTableDataId = new AtomicReference<>();
         Long actionId = null;
         try {
@@ -81,12 +70,12 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
 
                                     Queue<DynamicSaveReqContext> saveReqQueue = new LinkedList<>();
 
-                                    Long rootModuleId = req.getNestedModuleData().getModuleId();
+                                    Long rootModuleId = nestedStoreData.getModuleId();
 
                                     // 根模块数据 没有父模块和父模块主表ID
                                     saveReqQueue.add(
                                             DynamicSaveReqContext.builder()
-                                                    .nestedModuleData(req.getNestedModuleData())
+                                                    .nestedModuleData(nestedStoreData)
                                                     .parentModuleId(null)
                                                     .parentModulePrimaryTableId(null)
                                                     .rootModuleId(rootModuleId) // 第一层的 根模块就是自己的模块ID
@@ -179,7 +168,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                 .mockUserId(UserContext.getMockUserId())
                                 .roleId(UserContext.getRoleId())
                                 .saveType(finalSaveType)
-                                .nestedModuleDataDTO(req.getNestedModuleData())
+                                .nestedModuleDataDTO(nestedStoreData)
                                 .changeMap(ModuleDataSaveContextHolder.getRowChange())
                                 .moduleCacheMap(moduleCacheMap)
                                 .requestContextSnapshot(RequestContextSnapshotHolder.get())
@@ -193,7 +182,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         }
         try {
             log.info("=======" + "\n");
-            log.info("=======" + JsonUtil.obj2Json(req));
+            log.info("=======" + JsonUtil.obj2Json(req.getParamData()));
         } catch (Exception e) {
         }
 
@@ -210,7 +199,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         recordDataDTO.setRow(req.getRow());
         nestedModuleDataDTO.setRecord(Collections.singletonList(recordDataDTO));
         saveReq.setNestedModuleData(nestedModuleDataDTO);
-        return save(saveReq);
+        // return save(saveReq);
+        return 0L;
     }
 
     @Override
@@ -235,7 +225,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         recordDataDTO.setRow(req.getRow());
         nestedModuleDataDTO.setRecord(Collections.singletonList(recordDataDTO));
         saveReq.setNestedModuleData(nestedModuleDataDTO);
-        return save(saveReq);
+        // return save(saveReq);
+        return 0L;
     }
 
     private Long saveModuleData(

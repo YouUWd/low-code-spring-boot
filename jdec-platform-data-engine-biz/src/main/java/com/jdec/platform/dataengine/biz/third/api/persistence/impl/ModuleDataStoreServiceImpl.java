@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
@@ -11,9 +12,7 @@ import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
-import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
-import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPreStoreService;
-import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
+import com.jdec.platform.dataengine.biz.third.api.persistence.*;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -31,10 +30,12 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
 
     private final ModuleBizDataService moduleBizDataService;
 
+    private final ModuleDataPersistenceService moduleDataPersistenceService;
+
     private final ModuleDataPreStoreService moduleDataPreStoreService;
 
     @Override
-    public Long save(DynamicSaveReq req) {
+    public DynamicSaveResp save(DynamicSaveReq req) {
 
         // 参数为空，顶层模块ID为空，顶层模块结构为空
         if (req == null
@@ -64,6 +65,8 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         }
         Long rootModuleId =
                 moduleCacheMap.get(structureRootModuleId).getModuleTree().getRootModuleId();
+
+        SysModuleCombineInfo rootModule = moduleCacheMap.get(rootModuleId);
 
         Boolean isApproval = moduleMetaDataService.getApprovalStatusByModuleIdAsync(rootModuleId);
         if (isApproval == null) {
@@ -99,18 +102,69 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                     .loginUser(UserContext.getLoginUser())
                                     .build());
         }
-        ModuleDataStoreDTO moduleDataStoreDTO =
-                ModuleDataStoreDTO.builder()
-                        .paramData(req.getNestedModuleData())
-                        .detailData(detailData)
-                        .saveType(saveType)
-                        .isApproval(isApproval)
-                        .moduleCacheMap(moduleCacheMap)
-                        .isOverallInsert(isOverallInsert)
-                        .build();
 
-        moduleDataPreStoreService.preProcess(moduleDataStoreDTO);
+        ModuleDataStoreDTO moduleDataStoreDTO = ModuleDataStoreDTO.builder().build();
+        NestedModuleDataDTO nestedStoreData = req.getNestedModuleData();
+        ;
+        // 非变更保存
+        if (saveType != SaveType.APPROVAL_CHANGE) {
+            if (isOverallInsert) {
+                Integer versionNo = 1;
+                // 填充版本号
+                ModuleTreeDataUtils.fillApprovalData(
+                        nestedStoreData, versionNo, isApproval, moduleCacheMap);
+                // 从填充的数据中获取版本号
+                String businessNo =
+                        DataPersistenceUtil.getTableRowBusinessNoWithTabName(
+                                nestedStoreData.getRecord().get(0).getRow(),
+                                rootModule.getModuleInfo().getPrimaryTable());
+                moduleDataStoreDTO.setMainTableBusinessNo(businessNo);
+                moduleDataStoreDTO.setMainTableVersionNo(versionNo);
 
-        return 0L;
+            } else {
+                // 全局更新数据,先从主表拿出 版本号
+                String businessNo =
+                        DataPersistenceUtil.getTableRowBusinessNoWithTabName(
+                                detailData.getRecord().get(0).getRow(),
+                                rootModule.getModuleInfo().getPrimaryTable());
+                Integer versionNo =
+                        DataPersistenceUtil.getTableRowVersionWithTabName(
+                                detailData.getRecord().get(0).getRow(),
+                                rootModule.getModuleInfo().getPrimaryTable());
+                // 填充插入行的版本号
+                ModuleTreeDataUtils.fillApprovalData(
+                        req.getNestedModuleData(), versionNo, isApproval, moduleCacheMap);
+                moduleDataStoreDTO.setMainTableBusinessNo(businessNo);
+                moduleDataStoreDTO.setMainTableVersionNo(versionNo);
+            }
+
+        } else {
+            //            ModuleTreeNodeDataDTO detailData =
+            //
+            // ModuleTreeDataUtils.copyToModuleTreeNodeData(dataStoreDTO.getDetailData());
+            //            ModuleTreeNodeDataDTO paramData =
+            //
+            // ModuleTreeDataUtils.copyToModuleTreeNodeData(dataStoreDTO.getParamData());
+            //            moduleTreeNodeDataDTO =
+            //                    ModuleTreeDataUtils.mergeModuleTreeNodeData(detailData,
+            // paramData);
+        }
+        moduleDataStoreDTO.setParamData(req.getNestedModuleData());
+        moduleDataStoreDTO.setDetailData(detailData);
+        moduleDataStoreDTO.setSaveType(saveType);
+        moduleDataStoreDTO.setIsApproval(isApproval);
+        moduleDataStoreDTO.setModuleCacheMap(moduleCacheMap);
+        moduleDataStoreDTO.setIsOverallInsert(isOverallInsert);
+        moduleDataStoreDTO.setRootModuleId(rootModuleId);
+
+        Long dataId = moduleDataPersistenceService.save(moduleDataStoreDTO);
+
+        DynamicSaveResp resp = new DynamicSaveResp();
+        resp.setDataId(dataId);
+        resp.setModuleId(rootModuleId);
+        resp.setBusinessNo(moduleDataStoreDTO.getMainTableBusinessNo());
+        resp.setVersionNo(moduleDataStoreDTO.getMainTableVersionNo());
+        resp.setData(moduleDataStoreDTO.getParamData());
+        return resp;
     }
 }

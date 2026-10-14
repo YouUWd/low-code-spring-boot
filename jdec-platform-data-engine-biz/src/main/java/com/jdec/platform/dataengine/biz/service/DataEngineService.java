@@ -5,9 +5,11 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
+import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
+import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,6 +20,7 @@ import org.springframework.util.CollectionUtils;
 public class DataEngineService implements DataEngineApi {
 
     private final DynamicQueryService dynamicQueryService;
+    private final ModuleDataStoreService moduleDataStoreService;
     private final ModuleDataPersistenceService moduleDataPersistenceService;
     private final ModuleDataApprovalBizService moduleDataApprovalBizService;
 
@@ -40,8 +43,8 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public Long save(DynamicSaveReq req) {
-        return moduleDataPersistenceService.save(req);
+    public DynamicSaveResp save(DynamicSaveReq req) {
+        return moduleDataStoreService.save(req);
     }
 
     @Override
