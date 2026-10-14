@@ -11,6 +11,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -126,7 +127,9 @@ public class ModuleTreeDiffService {
                     Map<String, Object> rowNode = recordItem.getRow();
                     if (rowNode == null) continue;
                     String businessNoPk = extractRowPk(rowNode, primaryTable);
-                    recordMap.put(businessNoPk, recordItem);
+                    if (StringUtils.isNotBlank(businessNoPk)) {
+                        recordMap.put(businessNoPk, recordItem);
+                    }
 
                     // 递归children
                     List<NestedModuleDataDTO> childrenNode = recordItem.getChildren();
@@ -143,12 +146,7 @@ public class ModuleTreeDiffService {
     /** 从row中提取主键：查找key以 .business_no 结尾的字段，例如 info.business_no、basic_info.business_no */
     private String extractRowPk(Map<String, Object> rowNode, String tableName) {
         // TODO 需要读取模块配置获取主表.id作为key进行主表主键查找
-        Object primaryTableId =
-                rowNode.entrySet().stream()
-                        .filter(ele -> ele.getKey().equals(tableName + "." + "business_no"))
-                        .map(item -> item.getValue())
-                        .findFirst()
-                        .orElse(null);
+        Object primaryTableId = rowNode.get(tableName + "." + "business_no");
 
         if (Objects.nonNull(primaryTableId)) {
             return String.valueOf(primaryTableId);
