@@ -21,6 +21,7 @@ import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
+import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
@@ -50,6 +51,7 @@ class CompanyMenuQueryContractTest {
     private SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private SysUserApi sysUserApi;
     private SysStatusApi sysStatusApi;
+    private OpenRolePermissionApi openRolePermissionApi;
 
     private CommonAggregateServiceImpl commonAggregateService;
 
@@ -71,6 +73,7 @@ class CompanyMenuQueryContractTest {
         sysApprovalChainConfigApi = mock(SysApprovalChainConfigApi.class);
         sysUserApi = mock(SysUserApi.class);
         sysStatusApi = mock(SysStatusApi.class);
+        openRolePermissionApi = mock(OpenRolePermissionApi.class);
 
         commonAggregateService =
                 new CommonAggregateServiceImpl(
@@ -78,8 +81,11 @@ class CompanyMenuQueryContractTest {
                         openMenuApi,
                         configApi,
                         dataApi,
-                        new CommonApprovalFilterResolver(
-                                approvalEngine, sysApprovalChainConfigApi, configApi),
+                        new CommonFilterResolver(
+                                approvalEngine,
+                                sysApprovalChainConfigApi,
+                                configApi,
+                                openRolePermissionApi),
                         sysUserApi,
                         sysStatusApi);
 
@@ -682,8 +688,12 @@ class CompanyMenuQueryContractTest {
     @Test
     @DisplayName("测试待办(approvalType=1)中非审批引擎返回的自建草稿记录，btnList 成功补齐为办理(handle)")
     void testApprovalButtons_fallbackForNonEngineTodoRecords() {
-        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
-        when(approvalEngine.getListButton(eq(1001L), eq(1))).thenReturn(Collections.emptyList());
+        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp emptyResp =
+                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
+        emptyResp.setToDoList(Collections.emptyList());
+        emptyResp.setDoneList(Collections.emptyList());
+        emptyResp.setAllList(Collections.emptyList());
+        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(emptyResp);
 
         Map<String, Object> tableData = new HashMap<>();
         tableData.put("id", 999L);
@@ -723,17 +733,25 @@ class CompanyMenuQueryContractTest {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
         // 模拟审批引擎返回：记录 101 为办理(handle)，记录 102 为查阅(view)
-        Map<String, Object> btn101 = new HashMap<>();
-        btn101.put("recordId", 101L);
-        btn101.put("buttonKey", "handle");
-        btn101.put("buttonName", "办理");
+        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
+                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        btn101.setRecordId(101L);
+        btn101.setButtonKey("handle");
+        btn101.setButtonName("办理");
 
-        Map<String, Object> btn102 = new HashMap<>();
-        btn102.put("recordId", 102L);
-        btn102.put("buttonKey", "view");
-        btn102.put("buttonName", "查阅");
+        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn102 =
+                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        btn102.setRecordId(102L);
+        btn102.setButtonKey("view");
+        btn102.setButtonName("查阅");
 
-        when(approvalEngine.getListButton(eq(1001L), eq(3))).thenReturn(List.of(btn101, btn102));
+        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp countResp =
+                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
+        countResp.setToDoList(List.of(btn101));
+        countResp.setDoneList(List.of(btn102));
+        countResp.setAllList(List.of(btn101, btn102));
+
+        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(countResp);
 
         // 模拟底层数据返回 3 条记录：101(审批中待办), 102(已办), 999(非审批引擎自建草稿)
         Map<String, Object> row101 = new HashMap<>();
@@ -1026,5 +1044,95 @@ class CompanyMenuQueryContractTest {
         assertTrue(opt2.getValue() instanceof StatusSimpleResp);
         StatusSimpleResp status2 = (StatusSimpleResp) opt2.getValue();
         assertEquals(2, status2.getStatusValue());
+    }
+
+    @Test
+    @DisplayName(
+            "验证数据权限解析：subjectCheckAll=1 与 subjectCheckAll=0 且 bizNames 为空/非空场景正确转换为 PhysicalFilterItem")
+    void testDataPermissionResolution() {
+        DataRightConfigResp config1 =
+                DataRightConfigResp.builder()
+                        .tableName("info")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(101L)
+                                                .subjectCheckAll(1)
+                                                .columnName("company_name")
+                                                .bizNames(Collections.emptyList())
+                                                .build()))
+                        .build();
+
+        DataRightConfigResp config2 =
+                DataRightConfigResp.builder()
+                        .tableName("basic_info")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(202L)
+                                                .subjectCheckAll(0)
+                                                .columnName("short_name")
+                                                .bizNames(List.of("盛港焦化", "襄阳焦化"))
+                                                .build(),
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(303L)
+                                                .subjectCheckAll(0)
+                                                .columnName("short_name")
+                                                .bizNames(Collections.emptyList())
+                                                .build()))
+                        .build();
+
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L))
+                .thenReturn(List.of(config1, config2));
+
+        CommonFilterResolver resolver =
+                new CommonFilterResolver(
+                        approvalEngine,
+                        sysApprovalChainConfigApi,
+                        configApi,
+                        openRolePermissionApi);
+
+        var filterItem = resolver.resolveApprovalFilters(null, null, null);
+        assertNotNull(filterItem);
+        List<com.jdec.platform.data.api.dto.request.PhysicalFilterItem> filters =
+                filterItem.filters();
+        assertEquals(5, filters.size());
+
+        // 1. info: subjectCheckAll = 1 -> info.subject_id = 101
+        var f1 = filters.get(0);
+        assertEquals("info", f1.getTableName());
+        assertEquals("subject_id", f1.getColumnName());
+        assertEquals("EQ", f1.getOperator());
+        assertEquals(101L, f1.getValue());
+
+        // 2. basic_info: subjectCheckAll = 0, subjectId = 202
+        var f2 = filters.get(1);
+        assertEquals("basic_info", f2.getTableName());
+        assertEquals("subject_id", f2.getColumnName());
+        assertEquals("EQ", f2.getOperator());
+        assertEquals(202L, f2.getValue());
+
+        // 3. basic_info: short_name IN ('盛港焦化', '襄阳焦化')
+        var f3 = filters.get(2);
+        assertEquals("basic_info", f3.getTableName());
+        assertEquals("short_name", f3.getColumnName());
+        assertEquals("IN", f3.getOperator());
+        assertEquals(List.of("盛港焦化", "襄阳焦化"), f3.getValue());
+
+        // 4. basic_info: subjectId = 303
+        var f4 = filters.get(3);
+        assertEquals("basic_info", f4.getTableName());
+        assertEquals("subject_id", f4.getColumnName());
+        assertEquals(303L, f4.getValue());
+
+        // 5. basic_info: bizNames 为空 -> short_name IN ()
+        var f5 = filters.get(4);
+        assertEquals("basic_info", f5.getTableName());
+        assertEquals("short_name", f5.getColumnName());
+        assertEquals("IN", f5.getOperator());
+        assertEquals(Collections.emptyList(), f5.getValue());
     }
 }
