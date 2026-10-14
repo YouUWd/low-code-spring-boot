@@ -8,6 +8,7 @@ import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import java.time.LocalDateTime;
 import java.util.*;
+import org.apache.commons.lang3.StringUtils;
 
 public class ModuleTreeDataUtils {
 
@@ -43,22 +44,22 @@ public class ModuleTreeDataUtils {
                 moduleRowNodeDataDTO.setChildren(children);
             }
         }
-        moduleTreeNodeDataDTO.setRecords(records);
+        moduleTreeNodeDataDTO.setRecord(records);
         return moduleTreeNodeDataDTO;
     }
 
     public static ModuleTreeNodeDataDTO copyToModuleTreeNodeData(ModuleTreeNodeDataDTO paramData) {
         ModuleTreeNodeDataDTO moduleTreeNodeDataDTO = ModuleTreeNodeDataDTO.builder().build();
         moduleTreeNodeDataDTO.setModuleId(paramData.getModuleId());
-        if (CollectionUtil.isEmpty(paramData.getRecords())) {
+        if (CollectionUtil.isEmpty(paramData.getRecord())) {
             return moduleTreeNodeDataDTO;
         }
         List<ModuleRowNodeDataDTO> rowNodeDataDTOList = new ArrayList<>();
-        for (ModuleRowNodeDataDTO record : paramData.getRecords()) {
+        for (ModuleRowNodeDataDTO record : paramData.getRecord()) {
             ModuleRowNodeDataDTO moduleRowNodeDataDTO = copyToModuleRowNodeDataDTO(record);
             rowNodeDataDTOList.add(moduleRowNodeDataDTO);
         }
-        moduleTreeNodeDataDTO.setRecords(rowNodeDataDTOList);
+        moduleTreeNodeDataDTO.setRecord(rowNodeDataDTOList);
         return moduleTreeNodeDataDTO;
     }
 
@@ -71,14 +72,6 @@ public class ModuleTreeDataUtils {
                 row.put(String.valueOf(entry.getKey()), copyObject(entry.getValue()));
         }
         moduleRowNodeDataDTO.setRow(row);
-
-        Map<String, Object> originalRow = new HashMap<>();
-        if (CollectionUtil.isNotEmpty(paramData.getOriginalRow())) {
-            for (Map.Entry<String, Object> entry : paramData.getOriginalRow().entrySet())
-                originalRow.put(String.valueOf(entry.getKey()), copyObject(entry.getValue()));
-        }
-        moduleRowNodeDataDTO.setOriginalRow(originalRow);
-
         if (CollectionUtil.isNotEmpty(paramData.getChildren())) {
             List<ModuleTreeNodeDataDTO> children = new ArrayList<>();
             for (ModuleTreeNodeDataDTO child : paramData.getChildren()) {
@@ -120,8 +113,8 @@ public class ModuleTreeDataUtils {
         Long moduleId =
                 baseDetail.getModuleId() != null ? baseDetail.getModuleId() : newData.getModuleId();
 
-        List<ModuleRowNodeDataDTO> baseRecords = baseDetail.getRecords();
-        List<ModuleRowNodeDataDTO> newRecords = newData.getRecords();
+        List<ModuleRowNodeDataDTO> baseRecords = baseDetail.getRecord();
+        List<ModuleRowNodeDataDTO> newRecords = newData.getRecord();
         if (CollectionUtil.isEmpty(baseRecords)) {
             return copyToModuleTreeNodeData(newData);
         }
@@ -132,7 +125,7 @@ public class ModuleTreeDataUtils {
 
         return ModuleTreeNodeDataDTO.builder()
                 .moduleId(moduleId)
-                .records(CollectionUtil.newArrayList(mergedFirst))
+                .record(CollectionUtil.newArrayList(mergedFirst))
                 .build();
     }
 
@@ -156,12 +149,6 @@ public class ModuleTreeDataUtils {
             rowMap.put(String.valueOf(entry.getKey()), copyObject(entry.getValue()));
         }
         mergeRow.setRow(rowMap);
-
-        Map<String, Object> originalRowMap = new HashMap<>();
-        for (Map.Entry<String, Object> entry : baseRow.getRow().entrySet()) {
-            originalRowMap.put(String.valueOf(entry.getKey()), copyObject(entry.getValue()));
-        }
-        mergeRow.setOriginalRow(originalRowMap);
 
         List<ModuleTreeNodeDataDTO> baseChildren =
                 baseRow.getChildren() != null ? baseRow.getChildren() : Collections.emptyList();
@@ -191,25 +178,25 @@ public class ModuleTreeDataUtils {
                 mergedChildren.add(copyToModuleTreeNodeData(baseChild));
             } else if (baseChild == null) {
                 // 新增的行 和 节点
-                List<ModuleRowNodeDataDTO> newChildRecords = newChild.getRecords();
-                if (CollectionUtil.isNotEmpty(newChild.getRecords())) {
-                    for (ModuleRowNodeDataDTO record : newChild.getRecords()) {
+                List<ModuleRowNodeDataDTO> newChildRecords = new ArrayList<>();
+                if (CollectionUtil.isNotEmpty(newChild.getRecord())) {
+                    for (ModuleRowNodeDataDTO record : newChild.getRecord()) {
                         newChildRecords.add(copyToModuleRowNodeDataDTO(record));
                     }
                 }
                 mergedChildren.add(
                         ModuleTreeNodeDataDTO.builder()
                                 .moduleId(moduleId)
-                                .records(newChildRecords)
+                                .record(newChildRecords)
                                 .build());
             } else {
                 // 对比数据ID，进行合并
                 List<ModuleRowNodeDataDTO> mergedChildRows =
-                        mergedChildModuleRows(baseChild.getRecords(), newChild.getRecords());
+                        mergedChildModuleRows(baseChild.getRecord(), newChild.getRecord());
                 mergedChildren.add(
                         ModuleTreeNodeDataDTO.builder()
                                 .moduleId(moduleId)
-                                .records(mergedChildRows)
+                                .record(mergedChildRows)
                                 .build());
             }
         }
@@ -226,14 +213,14 @@ public class ModuleTreeDataUtils {
         Map<String, ModuleRowNodeDataDTO> baseRowMap = new HashMap<>();
 
         for (ModuleRowNodeDataDTO baseRow : baseRows) {
-            Object id = extractId(baseRow.getRow());
+            Object id = extractId(baseRow.getRow(), null);
             if (id != null) {
                 baseRowMap.put(id.toString(), baseRow);
             }
         }
         List<ModuleRowNodeDataDTO> mergedRows = new ArrayList<>();
         for (ModuleRowNodeDataDTO newRow : newRows) {
-            Object id = extractId(newRow.getRow());
+            Object id = extractId(newRow.getRow(), null);
             if (id != null && baseRowMap.containsKey(id.toString())) {
                 ModuleRowNodeDataDTO baseRow = baseRowMap.get(id.toString());
                 mergedRows.add(mergeModuleRowNodeData(baseRow, newRow));
@@ -244,44 +231,212 @@ public class ModuleTreeDataUtils {
         return mergedRows;
     }
 
-    public static Object extractId(Map<String, Object> row) {
+    public static Object extractId(Map<String, Object> row, String primaryTabName) {
         if (row == null) {
             return null;
         }
-        for (Map.Entry<String, Object> entry : row.entrySet()) {
-            if (entry.getKey().contains(".id")) {
-                return entry.getValue();
+        if (StringUtils.isEmpty(primaryTabName)) {
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                if (entry.getKey().contains(".id")) {
+                    return entry.getValue();
+                }
             }
+        } else {
+            return DataPersistenceUtil.getTableRowIdWithTabName(row, primaryTabName);
         }
         return null;
     }
 
-    public static void cleanMapId(ModuleTreeNodeDataDTO moduleTreeNodeDataDTO) {
-        if (moduleTreeNodeDataDTO == null) {
-            return;
+    public static NestedModuleDataDTO mergeNestedModuleData(
+            NestedModuleDataDTO baseDetail,
+            NestedModuleDataDTO newData,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (baseDetail == null) {
+            return newData != null ? copyToNestedModuleData(newData) : null;
         }
-        if (CollectionUtil.isNotEmpty(moduleTreeNodeDataDTO.getRecords())) {
-            for (ModuleRowNodeDataDTO moduleRowNodeDataDTO : moduleTreeNodeDataDTO.getRecords()) {
-                cleanRowId(moduleRowNodeDataDTO.getRow());
-                if (CollectionUtil.isNotEmpty(moduleRowNodeDataDTO.getChildren())) {
-                    for (ModuleTreeNodeDataDTO child : moduleRowNodeDataDTO.getChildren()) {
-                        cleanMapId(child);
-                    }
-                }
-            }
+        if (newData == null) {
+            return baseDetail != null ? copyToNestedModuleData(baseDetail) : null;
         }
+
+        Long moduleId =
+                baseDetail.getModuleId() != null ? baseDetail.getModuleId() : newData.getModuleId();
+
+        List<RecordDataDTO> baseRecords = baseDetail.getRecord();
+        List<RecordDataDTO> newRecords = newData.getRecord();
+        if (CollectionUtil.isEmpty(baseRecords)) {
+            return copyToNestedModuleData(newData);
+        }
+        RecordDataDTO baseFirst = baseRecords.get(0);
+        RecordDataDTO newFirst = newRecords.get(0);
+
+        RecordDataDTO mergedFirst = mergeNestedModuleRowData(baseFirst, newFirst, moduleCacheMap);
+
+        return NestedModuleDataDTO.builder()
+                .moduleId(moduleId)
+                .record(CollectionUtil.newArrayList(mergedFirst))
+                .build();
     }
 
-    public static void cleanRowId(Map<String, Object> rowMap) {
-        if (rowMap == null) {
-            return;
+    public static NestedModuleDataDTO copyToNestedModuleData(NestedModuleDataDTO nestedModuleData) {
+        NestedModuleDataDTO nestedModuleDataDTO = NestedModuleDataDTO.builder().build();
+        nestedModuleDataDTO.setModuleId(nestedModuleData.getModuleId());
+        if (CollectionUtil.isEmpty(nestedModuleData.getRecord())) {
+            return nestedModuleDataDTO;
+        }
+        List<RecordDataDTO> rowNodeDataDTOList = new ArrayList<>();
+        for (RecordDataDTO record : nestedModuleData.getRecord()) {
+            RecordDataDTO moduleRowNodeDataDTO = copyToNestedModuleRowData(record);
+            rowNodeDataDTOList.add(moduleRowNodeDataDTO);
+        }
+        nestedModuleDataDTO.setRecord(rowNodeDataDTOList);
+        return nestedModuleDataDTO;
+    }
+
+    public static RecordDataDTO copyToNestedModuleRowData(RecordDataDTO paramData) {
+        RecordDataDTO nestedModuleRow = RecordDataDTO.builder().build();
+
+        Map<String, Object> row = new HashMap<>();
+        if (CollectionUtil.isNotEmpty(paramData.getRow())) {
+            for (Map.Entry<String, Object> entry : paramData.getRow().entrySet())
+                row.put(String.valueOf(entry.getKey()), copyObject(entry.getValue()));
+        }
+        nestedModuleRow.setRow(row);
+
+        if (CollectionUtil.isNotEmpty(paramData.getChildren())) {
+            List<NestedModuleDataDTO> children = new ArrayList<>();
+            for (NestedModuleDataDTO child : paramData.getChildren()) {
+                children.add(copyToNestedModuleData(child));
+            }
+            nestedModuleRow.setChildren(children);
+        }
+        return nestedModuleRow;
+    }
+
+    public static RecordDataDTO mergeNestedModuleRowData(
+            RecordDataDTO baseRow,
+            RecordDataDTO newRow,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (baseRow == null) {
+            return newRow != null ? copyToNestedModuleRowData(newRow) : null;
+        }
+        if (newRow == null) {
+            return baseRow != null ? copyToNestedModuleRowData(baseRow) : null;
         }
 
-        for (String key : rowMap.keySet()) {
-            if (key.contains(".id")) {
-                rowMap.remove(key);
+        RecordDataDTO mergeRow = RecordDataDTO.builder().build();
+
+        Map<String, Object> rowMap = new HashMap<>();
+        for (Map.Entry<String, Object> entry : baseRow.getRow().entrySet()) {
+            rowMap.put(String.valueOf(entry.getKey()), copyObject(entry.getValue()));
+        }
+
+        // 前端参数 覆盖 数据库中查出来的行
+        for (Map.Entry<String, Object> entry : newRow.getRow().entrySet()) {
+            rowMap.put(String.valueOf(entry.getKey()), copyObject(entry.getValue()));
+        }
+        mergeRow.setRow(rowMap);
+
+        List<NestedModuleDataDTO> baseChildren =
+                baseRow.getChildren() != null ? baseRow.getChildren() : Collections.emptyList();
+        List<NestedModuleDataDTO> newChildren =
+                newRow.getChildren() != null ? newRow.getChildren() : Collections.emptyList();
+
+        Map<Long, NestedModuleDataDTO> baseChildMap = new LinkedHashMap<>();
+        for (NestedModuleDataDTO baseChild : baseChildren) {
+            baseChildMap.put(baseChild.getModuleId(), baseChild);
+        }
+
+        Map<Long, NestedModuleDataDTO> newChildMap = new LinkedHashMap<>();
+        for (NestedModuleDataDTO newChild : newChildren) {
+            newChildMap.put(newChild.getModuleId(), newChild);
+        }
+        Set<Long> allChildModules = new HashSet<>();
+        allChildModules.addAll(baseChildMap.keySet());
+        allChildModules.addAll(newChildMap.keySet());
+
+        // 所有的子模块数据
+        List<NestedModuleDataDTO> mergedChildren = new ArrayList<>();
+
+        for (Long moduleId : allChildModules) {
+            NestedModuleDataDTO baseChild = baseChildMap.get(moduleId);
+            NestedModuleDataDTO newChild = newChildMap.get(moduleId);
+
+            if (newChild == null) {
+                // 前端参数没有,拷贝详情页中的子模块和数据
+                mergedChildren.add(copyToNestedModuleData(baseChild));
+            } else if (baseChild == null) {
+                // 详情页中没有 前端参数新加入的子模块和数据
+                // 新增的行 和 节点
+                List<RecordDataDTO> newChildRecords = new ArrayList<>();
+                if (CollectionUtil.isNotEmpty(newChild.getRecord())) {
+                    for (RecordDataDTO record : newChild.getRecord()) {
+                        newChildRecords.add(copyToNestedModuleRowData(record));
+                    }
+                }
+                mergedChildren.add(
+                        NestedModuleDataDTO.builder()
+                                .moduleId(moduleId)
+                                .record(newChildRecords)
+                                .build());
+            } else {
+                // 对比数据ID，进行合并
+                List<RecordDataDTO> mergedChildRows =
+                        mergedNestedChildModuleRows(
+                                baseChild.getRecord(),
+                                newChild.getRecord(),
+                                moduleId,
+                                moduleCacheMap);
+                mergedChildren.add(
+                        NestedModuleDataDTO.builder()
+                                .moduleId(moduleId)
+                                .record(mergedChildRows)
+                                .build());
             }
         }
+        mergeRow.setChildren(mergedChildren);
+        return mergeRow;
+    }
+
+    public static List<RecordDataDTO> mergedNestedChildModuleRows(
+            List<RecordDataDTO> baseRows,
+            List<RecordDataDTO> newRows,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        baseRows = baseRows != null ? baseRows : Collections.emptyList();
+        newRows = newRows != null ? newRows : Collections.emptyList();
+
+        Map<String, RecordDataDTO> baseRowMap = new HashMap<>();
+
+        for (RecordDataDTO baseRow : baseRows) {
+            Object id =
+                    extractId(
+                            baseRow.getRow(),
+                            moduleCacheMap.get(moduleId).getModuleInfo().getPrimaryTable());
+            if (id != null) {
+                baseRowMap.put(id.toString(), baseRow);
+            }
+        }
+        List<RecordDataDTO> mergedRows = new ArrayList<>();
+
+        // 以newRows为基准，如果newRows中有数据 && baseRows中有数据 表示更新 则合并数据
+        // 如果newRows中有数据 && baseRows中没有的数据  表示新增 则合并数据
+        // 如果newRows没有的数据  && baseRows中有的数据  表示删除  丢弃
+        for (RecordDataDTO newRow : newRows) {
+            Object id =
+                    extractId(
+                            newRow.getRow(),
+                            moduleCacheMap.get(moduleId).getModuleInfo().getPrimaryTable());
+            // 如果Id不为空  并且在 base中有 表示这条数据 是更新的 合并该行数据
+            if (id != null && baseRowMap.containsKey(id.toString())) {
+                RecordDataDTO baseRow = baseRowMap.get(id.toString());
+                mergedRows.add(mergeNestedModuleRowData(baseRow, newRow, moduleCacheMap));
+            } else {
+                // 如果ID 为空 表示这行数据是新增的行
+                // 不存咋 ID不为空 && baseRowMap.containsKey(id.toString())
+                mergedRows.add(copyToNestedModuleRowData(newRow));
+            }
+        }
+        return mergedRows;
     }
 
     public static void fillApprovalData(
@@ -348,6 +503,45 @@ public class ModuleTreeDataUtils {
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                     for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                         fillApprovalData(child, versionNo, isApproval, moduleCacheMap);
+                    }
+                }
+            }
+        }
+    }
+
+    public static void cleanNestedModuleData(
+            NestedModuleDataDTO nestedModuleData, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (nestedModuleData == null) {
+            return;
+        }
+        SysModuleCombineInfo sysModuleInfo = moduleCacheMap.get(nestedModuleData.getModuleId());
+        if (CollectionUtil.isNotEmpty(nestedModuleData.getRecord())) {
+            for (RecordDataDTO recordDataDTO : nestedModuleData.getRecord()) {
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
+                    recordDataDTO
+                            .getRow()
+                            .remove(
+                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                            + ".business_no");
+                    recordDataDTO
+                            .getRow()
+                            .remove(
+                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                            + ".version_no");
+                    recordDataDTO
+                            .getRow()
+                            .remove(
+                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                            + ".business_status");
+                    recordDataDTO
+                            .getRow()
+                            .remove(
+                                    sysModuleInfo.getModuleInfo().getPrimaryTable()
+                                            + ".registration_time");
+                }
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                    for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                        cleanNestedModuleData(child, moduleCacheMap);
                     }
                 }
             }

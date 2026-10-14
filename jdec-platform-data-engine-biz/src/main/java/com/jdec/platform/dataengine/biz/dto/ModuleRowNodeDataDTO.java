@@ -14,8 +14,5 @@ public class ModuleRowNodeDataDTO implements Serializable {
     @Schema(description = "主表，关联表，组合的行记录,需要更新的行记录")
     private Map<String, Object> row;
 
-    @Schema(description = "主表，关联表，组合的行记录,原始的行记录")
-    private Map<String, Object> originalRow;
-
     private List<ModuleTreeNodeDataDTO> children;
 }
