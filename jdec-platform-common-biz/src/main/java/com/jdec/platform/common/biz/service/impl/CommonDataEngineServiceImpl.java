@@ -164,6 +164,37 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             checkedFieldIds.addAll(fieldIds);
         }
 
+        // 获取根模块的business_status字段，手动加入到查询列表中
+        Map.Entry<Long, ModuleFieldDTO> businessStatusField =
+                rootNode.getFieldMap().entrySet().stream()
+                        .filter(
+                                ele ->
+                                        ele.getValue().getModuleId().equals(rootModule.getId())
+                                                && ele.getValue()
+                                                        .getColumnName()
+                                                        .equals("business_status"))
+                        .findFirst()
+                        .orElse(null);
+
+        Map.Entry<Long, ModuleFieldDTO> createBy =
+                rootNode.getFieldMap().entrySet().stream()
+                        .filter(
+                                ele ->
+                                        ele.getValue().getModuleId().equals(rootModule.getId())
+                                                && ele.getValue()
+                                                        .getColumnName()
+                                                        .equals("created_by"))
+                        .findFirst()
+                        .orElse(null);
+
+        if (Objects.nonNull(businessStatusField)) {
+            checkedFieldIds.add(businessStatusField.getKey());
+        }
+
+        if (Objects.nonNull(createBy)) {
+            checkedFieldIds.add(createBy.getKey());
+        }
+
         // 根模块加入
         moduleIds.add(rootModule.getId());
 
@@ -188,16 +219,77 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                         ele -> ele.getTableName() + "." + ele.getColumnName(),
                                         v -> v));
 
+        NestedModuleDataDTO detailData = null;
+
+        if (dynamicDetailQueryReq.getId() > 0) {
+            if (!CollectionUtils.isEmpty(checkedFieldIds)) {
+                detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
+            }
+        }
+
         // 当前步骤能否编辑，有审批链时生效，无审批链时权限和模块权限一致
         Boolean canEdit = true;
 
-        if (dynamicDetailQueryReq.getId() > 0 && hasApproval) {
-            canEdit =
-                    iApprovalEngine.getCanEdit(
-                            rootModule.getId(),
-                            dynamicDetailQueryReq.getId(),
-                            dynamicDetailQueryReq.getBtnType());
-            log.debug("从审批链获取id:{}当前步骤编辑权限:{}", dynamicDetailQueryReq.getId(), canEdit);
+        if (Objects.nonNull(detailData)) {
+            if (hasApproval) {
+                Long businessStatusValue =
+                        detailData
+                                                .getRecord()
+                                                .get(0)
+                                                .getRow()
+                                                .get(
+                                                        rootNode.getRootModule().getPrimaryTable()
+                                                                + "."
+                                                                + "business_status")
+                                        == null
+                                ? 0L
+                                : Long.parseLong(
+                                        String.valueOf(
+                                                detailData
+                                                        .getRecord()
+                                                        .get(0)
+                                                        .getRow()
+                                                        .get(
+                                                                rootNode.getRootModule()
+                                                                                .getPrimaryTable()
+                                                                        + "."
+                                                                        + "business_status")));
+                Long createById =
+                        detailData
+                                                .getRecord()
+                                                .get(0)
+                                                .getRow()
+                                                .get(
+                                                        rootNode.getRootModule().getPrimaryTable()
+                                                                + "."
+                                                                + "created_by")
+                                        == null
+                                ? 0L
+                                : Long.parseLong(
+                                        String.valueOf(
+                                                detailData
+                                                        .getRecord()
+                                                        .get(0)
+                                                        .getRow()
+                                                        .get(
+                                                                rootNode.getRootModule()
+                                                                                .getPrimaryTable()
+                                                                        + "."
+                                                                        + "created_by")));
+                if (businessStatusValue == 1) {
+                    log.debug("数据id:{},创建人id:{}为草稿数据", dynamicDetailQueryReq.getId(), createById);
+
+                    // 草稿只有创建人能编辑
+                    canEdit = UserContext.getUserId().equals(createById);
+                } else if (dynamicDetailQueryReq.getId() > 0) {
+                    canEdit =
+                            iApprovalEngine.getCanEdit(
+                                    rootModule.getId(),
+                                    dynamicDetailQueryReq.getId(),
+                                    dynamicDetailQueryReq.getBtnType());
+                    log.debug("从审批链获取id:{}当前步骤编辑权限:{}", dynamicDetailQueryReq.getId(), canEdit);
+                }
+            }
         }
 
         // 构建模块元数据配置列表 (ModuleMetaDTO)
@@ -211,16 +303,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         nameToWorldConfMap,
                         rootNode,
                         canEdit);
-
-        NestedModuleDataDTO detailData = null;
-
-        if (dynamicDetailQueryReq.getId() > 0) {
-            if (!CollectionUtils.isEmpty(checkedFieldIds)) {
-                detailData = dataEngineApi.getDetail(dynamicDetailQueryReq);
-            }
-        } else {
-            detailData = buildTemplateTree(metaDTO);
-        }
 
         return DetailDataResp.of(metaDTO, detailData);
     }
