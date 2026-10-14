@@ -242,6 +242,11 @@
         "code": "JSON_CONTAINS",
         "name": "模糊查询",
         "component": "singleFuzzySelect"
+      },
+      {
+        "code": "JSON_CONTAINS",
+        "name": "多选下拉",
+        "component": "multipleSelect"
       }
     ]
   },
