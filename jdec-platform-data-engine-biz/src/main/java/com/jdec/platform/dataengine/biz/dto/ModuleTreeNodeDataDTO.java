@@ -11,5 +11,5 @@ public class ModuleTreeNodeDataDTO implements Serializable {
 
     private Long moduleId;
 
-    private List<ModuleRowNodeDataDTO> records;
+    private List<ModuleRowNodeDataDTO> record;
 }

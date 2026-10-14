@@ -79,6 +79,11 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "保存类型不能为空");
         }
 
+        // 待保存的数据
+        NestedModuleDataDTO nestedSaveData = req.getNestedModuleData();
+
+        // todo 如果待保存的数据不是 从根模块的主表数据开始的，需要进行数据转换寻找父模块的数据
+
         Long structureRootDataId =
                 DataPersistenceUtil.getTableRowIdWithTabName(
                         req.getNestedModuleData().getRecord().get(0).getRow(),
@@ -86,9 +91,10 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .get(structureRootModuleId)
                                 .getModuleInfo()
                                 .getPrimaryTable());
-
+        // 是否是全局的插入
         Boolean isOverallInsert = structureRootDataId == null || structureRootDataId <= 0;
         NestedModuleDataDTO detailData = null;
+        // 更新时先获取一遍详情页
         if (!isOverallInsert) {
             detailData =
                     moduleBizDataService.getModuleDetailDataAsync(
@@ -104,19 +110,20 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         }
 
         ModuleDataStoreDTO moduleDataStoreDTO = ModuleDataStoreDTO.builder().build();
-        NestedModuleDataDTO nestedStoreData = req.getNestedModuleData();
-        ;
+
         // 非变更保存
         if (saveType != SaveType.APPROVAL_CHANGE) {
+
+            // 全局插入
             if (isOverallInsert) {
                 Integer versionNo = 1;
                 // 填充版本号
                 ModuleTreeDataUtils.fillApprovalData(
-                        nestedStoreData, versionNo, isApproval, moduleCacheMap);
-                // 从填充的数据中获取版本号
+                        nestedSaveData, versionNo, isApproval, moduleCacheMap);
+                // 从填充的数据中获取版本号和业务编号
                 String businessNo =
                         DataPersistenceUtil.getTableRowBusinessNoWithTabName(
-                                nestedStoreData.getRecord().get(0).getRow(),
+                                nestedSaveData.getRecord().get(0).getRow(),
                                 rootModule.getModuleInfo().getPrimaryTable());
                 moduleDataStoreDTO.setMainTableBusinessNo(businessNo);
                 moduleDataStoreDTO.setMainTableVersionNo(versionNo);
@@ -131,25 +138,22 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                         DataPersistenceUtil.getTableRowVersionWithTabName(
                                 detailData.getRecord().get(0).getRow(),
                                 rootModule.getModuleInfo().getPrimaryTable());
-                // 填充插入行的版本号
+                // 用根模块的主表版本号 填充插入行的版本号
                 ModuleTreeDataUtils.fillApprovalData(
-                        req.getNestedModuleData(), versionNo, isApproval, moduleCacheMap);
+                        nestedSaveData, versionNo, isApproval, moduleCacheMap);
                 moduleDataStoreDTO.setMainTableBusinessNo(businessNo);
                 moduleDataStoreDTO.setMainTableVersionNo(versionNo);
             }
 
         } else {
-            //            ModuleTreeNodeDataDTO detailData =
-            //
-            // ModuleTreeDataUtils.copyToModuleTreeNodeData(dataStoreDTO.getDetailData());
-            //            ModuleTreeNodeDataDTO paramData =
-            //
-            // ModuleTreeDataUtils.copyToModuleTreeNodeData(dataStoreDTO.getParamData());
-            //            moduleTreeNodeDataDTO =
-            //                    ModuleTreeDataUtils.mergeModuleTreeNodeData(detailData,
-            // paramData);
+            // 变更保存都是 全局插入操作
+            isOverallInsert = true;
+            // 已数据库中的detail数据为基准，合并前端提交过来的数据nestedSaveData
+            nestedSaveData =
+                    ModuleTreeDataUtils.mergeNestedModuleData(
+                            detailData, nestedSaveData, moduleCacheMap);
         }
-        moduleDataStoreDTO.setParamData(req.getNestedModuleData());
+        moduleDataStoreDTO.setParamData(nestedSaveData);
         moduleDataStoreDTO.setDetailData(detailData);
         moduleDataStoreDTO.setSaveType(saveType);
         moduleDataStoreDTO.setIsApproval(isApproval);
