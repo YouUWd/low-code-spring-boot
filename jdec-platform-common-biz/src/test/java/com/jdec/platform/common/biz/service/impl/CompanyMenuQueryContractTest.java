@@ -85,7 +85,8 @@ class CompanyMenuQueryContractTest {
                                 approvalEngine,
                                 sysApprovalChainConfigApi,
                                 configApi,
-                                openRolePermissionApi),
+                                openRolePermissionApi,
+                                dataApi),
                         sysUserApi,
                         sysStatusApi);
 
@@ -1093,7 +1094,8 @@ class CompanyMenuQueryContractTest {
                         approvalEngine,
                         sysApprovalChainConfigApi,
                         configApi,
-                        openRolePermissionApi);
+                        openRolePermissionApi,
+                        dataApi);
 
         var filterItem = resolver.resolveApprovalFilters(null, null, null);
         assertNotNull(filterItem);
@@ -1134,5 +1136,179 @@ class CompanyMenuQueryContractTest {
         assertEquals("short_name", f5.getColumnName());
         assertEquals("IN", f5.getOperator());
         assertEquals(Collections.emptyList(), f5.getValue());
+    }
+
+    @Test
+    @DisplayName("测试待办(approvalType=1)场景：不考虑数据权限，仅为自建草稿与审批待办单据OR组合")
+    void testApprovalType1_withoutDataPermission() {
+        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
+
+        // 1. 审批引擎返回待办记录 101
+        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
+                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        btn101.setRecordId(101L);
+        btn101.setButtonKey("handle");
+        btn101.setButtonName("办理");
+
+        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp resp =
+                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
+        resp.setToDoList(List.of(btn101));
+        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
+
+        // 2. 角色数据权限配置 (待办不应调用此接口查询 ID)
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("info")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(999L)
+                                                .subjectCheckAll(1)
+                                                .build()))
+                        .build();
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+
+        CommonFilterResolver resolver =
+                new CommonFilterResolver(
+                        approvalEngine,
+                        sysApprovalChainConfigApi,
+                        configApi,
+                        openRolePermissionApi,
+                        dataApi);
+
+        var filterItem = resolver.resolveApprovalFilters(1001L, 1, companyModuleTree);
+        assertNotNull(filterItem);
+        assertFalse(filterItem.shortCircuitEmpty());
+
+        // 验证组合后的顶层为链式 OR 树: 纯逻辑 OR 节点 -> children: [草稿分支 (AND容器), 审批待办分支 (id IN [101])]
+        List<com.jdec.platform.data.api.dto.request.PhysicalFilterItem> filters =
+                filterItem.filters();
+        assertEquals(1, filters.size());
+        var rootOr = filters.get(0);
+        assertEquals("OR", rootOr.getLogic());
+        assertNull(rootOr.getColumnName());
+        assertNotNull(rootOr.getChildren());
+        assertEquals(2, rootOr.getChildren().size());
+
+        // 分支 1: 草稿分支 (AND 容器)
+        var draftBranch = rootOr.getChildren().get(0);
+        assertEquals("AND", draftBranch.getLogic());
+        assertNull(draftBranch.getColumnName());
+        assertNotNull(draftBranch.getChildren());
+        assertEquals(2, draftBranch.getChildren().size());
+        assertEquals("created_by", draftBranch.getChildren().get(0).getColumnName());
+        assertEquals("business_status", draftBranch.getChildren().get(1).getColumnName());
+
+        // 分支 2: 审批待办分支 (id IN [101])，不再有数据权限分支
+        var approvalBranch = rootOr.getChildren().get(1);
+        assertEquals("info", approvalBranch.getTableName());
+        assertEquals("id", approvalBranch.getColumnName());
+        assertEquals("IN", approvalBranch.getOperator());
+        @SuppressWarnings("unchecked")
+        List<Long> approvalIds = (List<Long>) approvalBranch.getValue();
+        assertEquals(List.of(101L), approvalIds);
+    }
+
+    @Test
+    @DisplayName("测试全部(approvalType=3)场景：数据权限单据ID与审批引擎单据ID取并集，并与自建草稿OR组合")
+    void testApprovalType3_dataPermissionIdsUnionWithApprovalIds() {
+        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
+
+        // 1. 审批引擎返回全部记录 101
+        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
+                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        btn101.setRecordId(101L);
+        btn101.setButtonKey("handle");
+        btn101.setButtonName("办理");
+
+        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp resp =
+                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
+        resp.setAllList(List.of(btn101));
+        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
+
+        // 2. 角色数据权限配置
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("info")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(999L)
+                                                .subjectCheckAll(1)
+                                                .build()))
+                        .build();
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+
+        // 3. 模拟 DataApi 单独按数据权限条件查询，返回数据权限匹配的单据 ID 202
+        DataRow permRow = DataRow.builder().tables(Map.of("info", Map.of("id", 202L))).build();
+        DataBlock permBlock = DataBlock.builder().moduleId(1001L).records(List.of(permRow)).build();
+        when(dataApi.queryByTable(
+                        argThat(
+                                req ->
+                                        req != null
+                                                && req.getTables() != null
+                                                && !req.getTables().isEmpty()
+                                                && List.of("id")
+                                                        .equals(
+                                                                req.getTables()
+                                                                        .get(0)
+                                                                        .getColumns()))))
+                .thenReturn(DataPage.of(permBlock, 1, 10000, 1L));
+
+        CommonFilterResolver resolver =
+                new CommonFilterResolver(
+                        approvalEngine,
+                        sysApprovalChainConfigApi,
+                        configApi,
+                        openRolePermissionApi,
+                        dataApi);
+
+        var filterItem = resolver.resolveApprovalFilters(1001L, 3, companyModuleTree);
+        assertNotNull(filterItem);
+        assertFalse(filterItem.shortCircuitEmpty());
+
+        // 验证组合后的顶层为链式 OR 树: 草稿分支 OR (审批单据分支 OR 数据权限单据分支)
+        List<com.jdec.platform.data.api.dto.request.PhysicalFilterItem> filters =
+                filterItem.filters();
+        assertEquals(1, filters.size());
+        var rootOr = filters.get(0);
+        assertEquals("OR", rootOr.getLogic());
+        assertNull(rootOr.getColumnName());
+        assertNotNull(rootOr.getChildren());
+        assertEquals(2, rootOr.getChildren().size());
+
+        // 分支 1: 草稿分支 (AND 容器)
+        var draftBranch = rootOr.getChildren().get(0);
+        assertEquals("AND", draftBranch.getLogic());
+        assertNull(draftBranch.getColumnName());
+        assertNotNull(draftBranch.getChildren());
+        assertEquals(2, draftBranch.getChildren().size());
+        assertEquals("created_by", draftBranch.getChildren().get(0).getColumnName());
+        assertEquals("business_status", draftBranch.getChildren().get(1).getColumnName());
+
+        // 嵌套 OR 分支: approvalBranch (id IN [101]) OR dataPermBranch (id IN [202])
+        var nextOr = rootOr.getChildren().get(1);
+        assertEquals("OR", nextOr.getLogic());
+        assertNull(nextOr.getColumnName());
+        assertNotNull(nextOr.getChildren());
+        assertEquals(2, nextOr.getChildren().size());
+
+        var approvalBranch = nextOr.getChildren().get(0);
+        assertEquals("info", approvalBranch.getTableName());
+        assertEquals("id", approvalBranch.getColumnName());
+        assertEquals("IN", approvalBranch.getOperator());
+        @SuppressWarnings("unchecked")
+        List<Long> approvalIds = (List<Long>) approvalBranch.getValue();
+        assertEquals(List.of(101L), approvalIds);
+
+        var dataPermBranch = nextOr.getChildren().get(1);
+        assertEquals("info", dataPermBranch.getTableName());
+        assertEquals("id", dataPermBranch.getColumnName());
+        assertEquals("IN", dataPermBranch.getOperator());
+        @SuppressWarnings("unchecked")
+        List<Long> dataPermIds = (List<Long>) dataPermBranch.getValue();
+        assertEquals(List.of(202L), dataPermIds);
     }
 }

@@ -63,6 +63,9 @@ public class QueryNodePlan {
     /** 附加表物理 JOIN 列表 (伴生表 1:1 与上游表 N:1 共用同一列表) */
     @Builder.Default private List<AttachedTableSpec> attachedJoins = new ArrayList<>();
 
+    /** 是否需要拉取本节点实体数据 (若为 false 则仅用于条件上卷/路径推导，跳过 Batch Fetch) */
+    @Builder.Default private boolean fetchData = true;
+
     /** 编译后的下级子模块执行计划树 */
     @Builder.Default private List<QueryNodePlan> children = new ArrayList<>();
 }

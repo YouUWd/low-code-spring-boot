@@ -126,18 +126,20 @@ public final class FilterConditionCompiler {
             }
         }
 
+        // 3. 组合逻辑：当前节点定义的 logic ("AND" 或 "OR")
+        String logic =
+                (item.getLogic() != null && !item.getLogic().isBlank())
+                        ? item.getLogic().toUpperCase().trim()
+                        : "AND";
+
         Condition childrenCond =
                 subConditions.isEmpty()
                         ? null
                         : (subConditions.size() == 1
                                 ? subConditions.get(0)
-                                : DSL.and(subConditions));
-
-        // 3. 组合逻辑：自身条件与 children 之间使用当前节点的 logic 拼接
-        String logic =
-                (item.getLogic() != null && !item.getLogic().isBlank())
-                        ? item.getLogic().toUpperCase().trim()
-                        : "AND";
+                                : ("OR".equals(logic)
+                                        ? DSL.or(subConditions)
+                                        : DSL.and(subConditions)));
 
         if (selfCond != null && childrenCond != null) {
             return "OR".equals(logic) ? selfCond.or(childrenCond) : selfCond.and(childrenCond);
