@@ -1,4 +1,4 @@
-package com.jdec.platform.dataengine.biz.vo;
+package com.jdec.platform.dataengine.api.dto.model;
 
 import lombok.Builder;
 import lombok.Data;

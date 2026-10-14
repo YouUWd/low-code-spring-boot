@@ -2,10 +2,7 @@ package com.jdec.platform.dataengine.api;
 
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
-import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
-import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
-import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
-import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
+import com.jdec.platform.dataengine.api.dto.response.*;
 import java.util.List;
 
 public interface DataEngineApi {
@@ -24,4 +21,6 @@ public interface DataEngineApi {
     Long insertAndGetId(DynamicInsertReq req);
 
     Long deleteById(DynamicDeleteReq req);
+
+    CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo);
 }

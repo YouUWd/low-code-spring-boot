@@ -11,9 +11,11 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.approval.api.AsyncTaskService;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.dto.ApprovalProcessDTO;
+import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.*;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
+import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
 import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
 import com.jdec.platform.config.api.*;
@@ -41,6 +43,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.util.CollectionUtils;
 
 @Slf4j
 @Service
@@ -308,127 +311,93 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
     @Override
-    public List<Map<String, Object>> getBusinessList(ApprovalListReq approvalListReq) {
+    public List<ApprpvalIdButton> getBusinessList(ApprovalListReq approvalListReq) {
         List<ApprovalBusiness> toDoList = new ArrayList<>();
-        List<Map<String, Object>> respList = new ArrayList<>();
+        List<ApprpvalIdButton> respList = new ArrayList<>();
         if (approvalListReq.getModuleIdList().isEmpty()) {
-            //   || approvalListReq.getSubjectIdList().isEmpty()) {
             return respList;
         }
         List<Long> approvalTypeIds =
-                sysApprovalChainConfigApi.getApprovalTypeIdList(
+                getApprovalTypeIdList(
                         approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
-        if (approvalListReq.getApprovalType() != 2) {
-            LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
-            todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            //  todoWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-            todoWrapper.and(
-                    wrapper ->
-                            wrapper.nested(
-                                            wp1 ->
-                                                    wp1.eq(
-                                                                    ApprovalBusiness::getApproverId,
-                                                                    approvalListReq
-                                                                            .getApplicantId())
-                                                            .eq(
-                                                                    ApprovalBusiness
-                                                                            ::getApproveRoleId,
-                                                                    approvalListReq.getRoleId())
-                                                            .ne(
-                                                                    ApprovalBusiness
-                                                                            ::getCurrentStep,
-                                                                    0))
-                                    .or()
-                                    .nested(
-                                            wp2 ->
-                                                    wp2.isNull(ApprovalBusiness::getApproverId)
-                                                            .eq(
-                                                                    ApprovalBusiness
-                                                                            ::getApproveRoleId,
-                                                                    approvalListReq.getRoleId())
-                                                            .ne(ApprovalBusiness::getCurrentStep, 0)
-                                                            .apply(
-                                                                    "NOT FIND_IN_SET({0}, IFNULL(approver_id_list, ''))",
-                                                                    approvalListReq
-                                                                            .getApplicantId()))
-                                    .or()
-                                    .nested(
-                                            wp3 ->
-                                                    wp3.isNull(ApprovalBusiness::getApproverId)
-                                                            .eq(
-                                                                    ApprovalBusiness::getCreatedBy,
-                                                                    approvalListReq
-                                                                            .getApplicantId())
-                                                            .eq(
-                                                                    ApprovalBusiness
-                                                                            ::getCurrentStep,
-                                                                    0)));
-            todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
-            // todoWrapper.in(ApprovalBusiness::getRecordId, approvalListReq.getRecordIdList());
-            toDoList = approvalBusinessMapper.selectList(todoWrapper);
-            List<ApprovalBusiness> submitList =
-                    toDoList.stream().filter(item -> item.getCurrentStep() == 0).toList();
-            for (ApprovalBusiness item : submitList) {
-                ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
-                approvalProcessDTO.setModuleId(item.getModuleId());
-                approvalProcessDTO.setRoleId(approvalListReq.getRoleId());
-                if (!checkRight(approvalProcessDTO)) {
-                    toDoList.remove(item);
-                }
+
+        LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
+        todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+        todoWrapper.and(
+                wrapper ->
+                        wrapper.nested(
+                                        wp1 ->
+                                                wp1.eq(
+                                                                ApprovalBusiness::getApproverId,
+                                                                approvalListReq.getApplicantId())
+                                                        .eq(
+                                                                ApprovalBusiness::getApproveRoleId,
+                                                                approvalListReq.getRoleId())
+                                                        .ne(ApprovalBusiness::getCurrentStep, 0))
+                                .or()
+                                .nested(
+                                        wp2 ->
+                                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                                        .eq(
+                                                                ApprovalBusiness::getApproveRoleId,
+                                                                approvalListReq.getRoleId())
+                                                        .ne(ApprovalBusiness::getCurrentStep, 0)
+                                                        .apply(
+                                                                "NOT FIND_IN_SET({0}, IFNULL(approver_id_list, ''))",
+                                                                approvalListReq.getApplicantId()))
+                                .or()
+                                .nested(
+                                        wp3 ->
+                                                wp3.isNull(ApprovalBusiness::getApproverId)
+                                                        .eq(
+                                                                ApprovalBusiness::getCreatedBy,
+                                                                approvalListReq.getApplicantId())
+                                                        .eq(ApprovalBusiness::getCurrentStep, 0)));
+        todoWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
+        toDoList = approvalBusinessMapper.selectList(todoWrapper);
+        List<ApprovalBusiness> submitList =
+                toDoList.stream().filter(item -> item.getCurrentStep() == 0).toList();
+        for (ApprovalBusiness item : submitList) {
+            ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
+            approvalProcessDTO.setModuleId(item.getModuleId());
+            approvalProcessDTO.setRoleId(approvalListReq.getRoleId());
+            if (!checkRight(approvalProcessDTO)) {
+                toDoList.remove(item);
             }
-            toDoList.removeIf(
-                    item ->
-                            !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
-                                    && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
-            if (approvalListReq.getApprovalType() == 1) {
-                respList =
-                        toDoList.stream()
-                                .map(business -> convertMapResp(business, 1))
-                                .collect(Collectors.toList());
-            }
-        } else {
+        }
+        toDoList.removeIf(
+                item ->
+                        !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
+                                && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
+        Set<Long> ids = toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
+        if (approvalListReq.getApprovalType() == 1) {
+            respList =
+                    toDoList.stream()
+                            .map(business -> convertMapResp(business, 1))
+                            .collect(Collectors.toList());
+        } else if (approvalListReq.getApprovalType() == 2) {
             LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
             processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            //  processWrapper.in(ApprovalBusiness::getSubjectId,
-            // approvalListReq.getSubjectIdList());
             processWrapper.apply(
                     "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
-            //            if (Objects.nonNull(approvalListReq.getRecordIdList())
-            //                    && !approvalListReq.getRecordIdList().isEmpty()) {
-            //                processWrapper.in(ApprovalBusiness::getRecordId,
-            // approvalListReq.getRecordIdList());
-            //            }
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
             resultList.removeIf(
                     item ->
                             !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
                                     && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
-            respList =
-                    resultList.stream()
-                            .map(business -> convertMapResp(business, 2))
-                            .collect(Collectors.toList());
-        }
-        if (approvalListReq.getApprovalType() == 3) {
+            for (ApprovalBusiness item : resultList) {
+                if (!ids.contains(item.getId())) {
+                    respList.add(convertMapResp(item, 3));
+                }
+            }
+        } else if (approvalListReq.getApprovalType() == 3) {
             LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
             allWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
-            //   allWrapper.in(ApprovalBusiness::getSubjectId, approvalListReq.getSubjectIdList());
-            //            if (Objects.nonNull(approvalListReq.getRecordIdList())
-            //                    && !approvalListReq.getRecordIdList().isEmpty()) {
-            //                allWrapper.in(ApprovalBusiness::getRecordId,
-            // approvalListReq.getRecordIdList());
-            //            }
-            //            if (Objects.nonNull(approvalListReq.getAllowedIdList())
-            //                    && !approvalListReq.getAllowedIdList().isEmpty()) {
-            //                allWrapper.notIn(ApprovalBusiness::getRecordId,
-            // approvalListReq.getAllowedIdList());
-            //            }
             List<ApprovalBusiness> allList = approvalBusinessMapper.selectList(allWrapper);
             allList.removeIf(
                     item ->
                             !Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
                                     && !approvalTypeIds.contains(item.getApprovalChainTypeId()));
-            Set<Long> ids =
-                    toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
             allList.removeIf(
                     item ->
                             Objects.equals(item.getCreatedBy(), approvalListReq.getApplicantId())
@@ -458,34 +427,40 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return respList;
     }
 
+    // 根据模块ID查询操作人在当前模块下的审批链业务代办/已办/全部数量-----------------------------------
     @Override
     public List<Map<String, Object>> getListNumber(Long moduleId) {
         if (!sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId))) {
             return null;
         }
-        LoginUser loginUserInfo = SecurityUtils.getLoginUser();
-        boolean isMockLogin =
-                loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
-        Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : loginUserInfo.getUserId();
+        Long mockUserId = UserContext.getMockUserId();
         ApprovalListReq req = new ApprovalListReq();
         req.setModuleIdList(List.of(moduleId));
-        req.setRoleId(loginUserInfo.getRoleId());
+        req.setRoleId(UserContext.getRoleId());
         req.setApplicantId(mockUserId);
         return getBusinessTypeList(req);
     }
 
+    // 根据模块ID及类型查询用户指定业务的代办，已办，全部列表ID及按钮---------------------------------
     @Override
-    public List<Map<String, Object>> getListButton(Long moduleId, Integer approvalType) {
-        LoginUser loginUserInfo = SecurityUtils.getLoginUser();
-        boolean isMockLogin =
-                loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
-        Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : loginUserInfo.getUserId();
+    public List<ApprpvalIdButton> getListButton(Long moduleId, Integer approvalType) {
+        Long mockUserId = UserContext.getMockUserId();
         ApprovalListReq req = new ApprovalListReq();
-        req.setApprovalType(approvalType);
+        req.setApprovalType(1);
         req.setModuleIdList(List.of(moduleId));
-        req.setRoleId(loginUserInfo.getRoleId());
+        req.setRoleId(UserContext.getRoleId());
         req.setApplicantId(mockUserId);
         return getBusinessList(req);
+    }
+
+    // 根据模块ID及类型查询用户指定业务的代办，已办，全部列表ID及按钮---------------------------------
+    @Override
+    public ApprovalIdButtonListResp getApprovalListButton(Long moduleId) {
+        ApprovalIdButtonListResp result = new ApprovalIdButtonListResp();
+        result.setToDoList(getListButton(moduleId, 1));
+        result.setDoneList(getListButton(moduleId, 2));
+        result.setAllList(getListButton(moduleId, 3));
+        return result;
     }
 
     @Override
@@ -609,7 +584,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         businessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("LIMIT 1");
         ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalChainBusiness)) {
-            return true;
+            return false;
         }
         // 加载变更页面时显示提交按钮
         if (Objects.nonNull(btnType)
@@ -1968,6 +1943,29 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
     }
 
+    // 查询角色在指定模块中每条审批业务最后一版审批链中有审批权限的审批分类ID列表
+    public List<Long> getApprovalTypeIdList(List<Long> moduleIds, Long roleId) {
+        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = Wrappers.lambdaQuery();
+        businessWrapper.in(ApprovalBusiness::getModuleId, moduleIds);
+        List<ApprovalBusiness> businessList = approvalBusinessMapper.selectList(businessWrapper);
+        List<String> serialList =
+                businessList.stream()
+                        .map(b -> b.getSerialNumber() + "@" + b.getSerialNo())
+                        .toList();
+        // 1. 查询审批链配置列表
+        LambdaQueryWrapper<ApprovalChain> chainConfigQuery = Wrappers.lambdaQuery();
+        chainConfigQuery.in(ApprovalChain::getModuleId, moduleIds);
+        chainConfigQuery.eq(ApprovalChain::getApproveRoleId, roleId);
+        chainConfigQuery.apply("CONCAT(serial_number, '@', serial_no) IN ({0})", serialList);
+        List<ApprovalChain> chainConfigs = approvalChainMapper.selectList(chainConfigQuery);
+        if (CollectionUtils.isEmpty(chainConfigs)) {
+            return List.of();
+        }
+        return chainConfigs.stream()
+                .map(ApprovalChain::getApprovalChainTypeId)
+                .collect(Collectors.toList());
+    }
+
     // ApprovalProcessReq转换为ApprovalProcessDTO----------------------------------------
     private ApprovalProcessDTO convertApprovalDTO(ApprovalProcessReq approvalProcessReq) {
         ApprovalProcessDTO approvalProcessDTO = new ApprovalProcessDTO();
@@ -1982,42 +1980,24 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     // 转换对象--------------------------------------------------------------------------
-    private Map<String, Object> convertMapResp(
+    private ApprpvalIdButton convertMapResp(
             ApprovalBusiness approvalBusiness, Integer approvalType) {
-        // Map<String, Object> approvalListResp = new HashMap<>();
-        // approvalListResp.put("recordId", approvalBusiness.getRecordId());
-        // Map<String, Object> businessNo = new HashMap<>();
-        // businessNo.put("businessNumber", approvalBusiness.getBusinessNumber());
-        // businessNo.put("versionNo", approvalBusiness.getVersionNo());
-        // approvalListResp.put("businessNo", businessNo);
-        // approvalListResp.put("createUser", convertUserResp(approvalBusiness.getCreatedBy()));
-        // approvalListResp.put("createdDate", approvalBusiness.getCreatedDate());
-        //        Map<String, Object> approvalStatus = new HashMap<>();
-        //        approvalStatus.put("id", approvalBusiness.getStatusId());
-        //        approvalStatus.put("statusValue", approvalBusiness.getStatusValue());
-        //        approvalStatus.put("title", approvalBusiness.getStatusTitle());
-        //        approvalStatus.put("statusBackground", approvalBusiness.getStatusBackground());
-        //        approvalStatus.put("statusFontColor", approvalBusiness.getStatusFontColor());
-        //        approvalListResp.put("approvalStatus", approvalStatus);
-        Map<String, Object> btnInfo = new LinkedHashMap<>();
+        ApprpvalIdButton btnInfo = new ApprpvalIdButton();
         String alias = "view";
         String btnName = "查阅";
         if (approvalType == 1) {
             alias = "handle";
             btnName = "办理";
         }
-        btnInfo.put("recordId", approvalBusiness.getRecordId());
-        btnInfo.put("buttonKey", alias);
+        btnInfo.setRecordId(approvalBusiness.getRecordId());
+        btnInfo.setButtonKey(alias);
         SysConfigItemResp modelConfig =
                 sysConfigCategoryApi.getConfigItemsByValue("ListButtonStyle", alias);
         if (Objects.nonNull(modelConfig) && Objects.nonNull(modelConfig.getLabel())) {
-            btnInfo.put("buttonName", modelConfig.getLabel());
+            btnInfo.setButtonName(modelConfig.getLabel());
         } else {
-            btnInfo.put("buttonName", btnName);
+            btnInfo.setButtonName(btnName);
         }
-        // List<Map<String, Object>> btnList = new ArrayList<>();
-        // btnList.add(btnInfo);
-        // approvalListResp.put("btnInfo", btnInfo);
         return btnInfo;
     }
 

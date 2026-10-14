@@ -4,6 +4,7 @@ import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
 import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
 import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import java.util.List;
 
@@ -13,4 +14,6 @@ public interface CommonDataEngineService {
     DetailDataResp<NestedModuleDataDTO> getDetailByMenu(MenuDetailQueryReq menuDetailQueryReq);
 
     List<VersionListResp> getVersionList(MenuVersionListQueryReq menuDetailQueryReq);
+
+    CreatedUserInfoResp getCreatedUserInfo(Long menuId, Long id, String businessNo);
 }
