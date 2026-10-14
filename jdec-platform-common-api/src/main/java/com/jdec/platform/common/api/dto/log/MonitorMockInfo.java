@@ -20,7 +20,7 @@ public class MonitorMockInfo implements Serializable {
     private Long userId;
 
     @Schema(description = "被模拟用户名称（日志侧补全，调用方无需传）")
-    private String name;
+    private String userName;
 
     @Schema(description = "被模拟用户头像（日志侧补全，调用方无需传）")
     private String avatar;

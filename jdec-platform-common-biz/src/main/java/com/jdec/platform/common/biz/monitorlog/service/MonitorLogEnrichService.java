@@ -118,7 +118,7 @@ public class MonitorLogEnrichService {
         }
         HrUser user = loadHrUser(mockInfo.getUserId());
         if (user != null) {
-            mockInfo.setName(user.userName());
+            mockInfo.setUserName(user.userName());
             mockInfo.setAvatar(user.avatar());
             mockInfo.setUserNumber(user.userNumber());
             mockInfo.setDeptId(user.deptId());
