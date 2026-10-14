@@ -6,7 +6,6 @@ import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleRowNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
-import com.jdec.platform.dataengine.biz.util.ToolUtils;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -308,7 +307,8 @@ public class ModuleTreeDataUtils {
                                 .put(
                                         sysModuleInfo.getModuleInfo().getPrimaryTable()
                                                 + ".business_no",
-                                        ToolUtils.nextNoWithFixedLen(
+                                        DataPersistenceUtil.getNewBusinessNo(
+                                                sysModuleInfo.getModuleInfo().getModuleCode(),
                                                 sysModuleInfo.getModuleInfo().getPrimaryTable()));
                         recordDataDTO
                                 .getRow()

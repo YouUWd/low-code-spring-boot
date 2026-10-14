@@ -30,6 +30,7 @@ import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -99,6 +100,86 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                                                 .getNestedModuleData()
                                                                 .getRecord())) {
                                             continue;
+                                        }
+
+                                        Long currentModuleId =
+                                                currentReq.getNestedModuleData().getModuleId();
+
+                                        if (currentReq.getParentModuleId() != null
+                                                && currentReq.getParentModuleId() > 0) {
+                                            SysModuleCombineInfo sysModuleCombineInfo =
+                                                    moduleCacheMap.get(currentModuleId);
+                                            // 虚模块不处理
+                                            if (StringUtils.isNotEmpty(
+                                                    sysModuleCombineInfo
+                                                            .getModuleInfo()
+                                                            .getPrimaryTable())) {
+                                                // 当前父模块父数据ID 关联的 所有子模块子表的ID
+                                                List<Long> dbIds =
+                                                        baseSingleTablePersistenceService
+                                                                .getRecordIdsByFk(
+                                                                        txDsl,
+                                                                        sysModuleCombineInfo
+                                                                                .getModuleInfo()
+                                                                                .getPrimaryTable(),
+                                                                        sysModuleCombineInfo
+                                                                                .getMainTableRelationDTO()
+                                                                                .getJoinField(),
+                                                                        List.of(
+                                                                                currentReq
+                                                                                        .getParentModulePrimaryTableId()));
+
+                                                Set<Long> storeIds = new HashSet();
+                                                for (RecordDataDTO recordDataDTO :
+                                                        currentReq
+                                                                .getNestedModuleData()
+                                                                .getRecord()) {
+                                                    if (CollectionUtil.isNotEmpty(
+                                                            recordDataDTO.getRow())) {
+                                                        Boolean deleteFlag =
+                                                                DataPersistenceUtil
+                                                                        .getTableRowDeletedFlagWithTabName(
+                                                                                recordDataDTO
+                                                                                        .getRow(),
+                                                                                sysModuleCombineInfo
+                                                                                        .getModuleInfo()
+                                                                                        .getPrimaryTable());
+                                                        // 显示删除的数据 走整体的保存逻辑
+                                                        if (deleteFlag) {
+                                                            continue;
+                                                        }
+                                                        Long id =
+                                                                DataPersistenceUtil
+                                                                        .getTableRowIdWithTabName(
+                                                                                recordDataDTO
+                                                                                        .getRow(),
+                                                                                sysModuleCombineInfo
+                                                                                        .getModuleInfo()
+                                                                                        .getPrimaryTable());
+                                                        if (id != null && id > 0) {
+                                                            storeIds.add(id);
+                                                        }
+                                                    }
+                                                }
+                                                if (CollectionUtil.isNotEmpty(dbIds)) {
+                                                    List<Long> deleteIds =
+                                                            dbIds.stream()
+                                                                    .filter(
+                                                                            x ->
+                                                                                    x != null
+                                                                                            && !storeIds
+                                                                                                    .contains(
+                                                                                                            x))
+                                                                    .collect(Collectors.toList());
+                                                    if (CollectionUtil.isNotEmpty(deleteIds)) {
+                                                        deleteOrphanModuleData(
+                                                                deleteIds,
+                                                                currentModuleId,
+                                                                moduleCacheMap,
+                                                                txDsl);
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         // 保存当前 模块数据 第一次进来  NestedModuleDataDTO.record 只有一条数据
@@ -369,7 +450,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         .saveType(currentReq.getSaveType())
                         .isApproval(currentReq.isApproval())
                         .build();
-        // moduleDataSaveNecessaryFieldFillFactoryService.fillData(recordSaveContext);
         // 首先 写入当前 模块 主表的数据
         DataSaveResult dataSaveResult =
                 baseSingleTablePersistenceService.saveRecord(recordSaveContext);
@@ -587,39 +667,100 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         return dataSaveResult;
     }
 
-    /*
-     * 获取保存类型  模块关联 审批链  和 保存按钮
+    private void deleteOrphanModuleData(
+            List<Long> dataIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        // 先删除 父当前模块数据
+        baseSingleTablePersistenceService.deleteByIds(
+                dslContext, sysModuleCombineInfo.getModuleInfo().getPrimaryTable(), dataIds);
+        deleteRelatedModuleData(dataIds, moduleId, moduleCacheMap, dslContext);
+        // 子模块
+        List<Long> childrenModuleIds =
+                sysModuleCombineInfo.getModuleTree().getChildModuleIds(moduleId);
+        if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+            for (Long childModuleId : childrenModuleIds) {
+                deleteChildrenModuleDataByParentIdsRecursion(
+                        dataIds, childModuleId, moduleCacheMap, dslContext);
+            }
+        }
+    }
+
+    private void deleteChildrenModuleDataByParentIdsRecursion(
+            List<Long> parentIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        // 子模块ID
+        List<Long> childrenModuleIds =
+                sysModuleCombineInfo.getModuleTree().getChildModuleIds(moduleId);
+
+        // 虚拟模块 直接透传到下级模块删除
+        if (StringUtils.isEmpty(sysModuleCombineInfo.getModuleInfo().getPrimaryTable())) {
+            if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+                for (Long childModuleId : childrenModuleIds) {
+                    deleteChildrenModuleDataByParentIdsRecursion(
+                            parentIds, childModuleId, moduleCacheMap, dslContext);
+                }
+            }
+        }
+        // 子表 待删除的 数据ID
+        List<Long> dataIds =
+                baseSingleTablePersistenceService.getRecordIdsByFk(
+                        dslContext,
+                        sysModuleCombineInfo.getModuleInfo().getPrimaryTable(),
+                        sysModuleCombineInfo.getMainTableRelationDTO().getJoinField(),
+                        parentIds);
+        if (CollectionUtil.isNotEmpty(dataIds)) {
+            // 删除子表数据
+            baseSingleTablePersistenceService.deleteByIds(
+                    dslContext, sysModuleCombineInfo.getModuleInfo().getPrimaryTable(), dataIds);
+            deleteRelatedModuleData(dataIds, moduleId, moduleCacheMap, dslContext);
+            if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+                for (Long childModuleId : childrenModuleIds) {
+                    deleteChildrenModuleDataByParentIdsRecursion(
+                            dataIds, childModuleId, moduleCacheMap, dslContext);
+                }
+            }
+        }
+    }
+
+    /**
+     * 删除模块关联表的数据
+     *
+     * @param mainDataIds 模块主表的数据ID
+     * @param moduleId
+     * @param moduleCacheMap
+     * @param dslContext
      */
-    private SaveType getSaveType(DynamicSaveReq req) {
-        SaveButtonType saveButtonType = SaveButtonType.getSaveButtonTypeByKey(req.getBtnType());
-        if (saveButtonType == null) {
-            saveButtonType = SaveButtonType.SAVE;
+    private void deleteRelatedModuleData(
+            List<Long> mainDataIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        if (CollectionUtil.isNotEmpty(sysModuleCombineInfo.getSubTables())) {
+            for (String subTable : sysModuleCombineInfo.getSubTables()) {
+                // 子表中关联的字段
+                com.jdec.platform.config.api.dto.common.TableRelationDTO subTableRelationDTO =
+                        sysModuleCombineInfo.getSubTableRelationMap().get(subTable);
+                if (subTableRelationDTO != null) {
+                    // 子表的ID
+                    List<Long> subTabDataIds =
+                            baseSingleTablePersistenceService.getRecordIdsByFk(
+                                    dslContext,
+                                    subTable,
+                                    subTableRelationDTO.getJoinField(),
+                                    mainDataIds);
+                    if (CollectionUtil.isNotEmpty(subTabDataIds)) {
+                        baseSingleTablePersistenceService.deleteByIds(
+                                dslContext, subTable, subTabDataIds);
+                    }
+                }
+            }
         }
-        SaveType saveType = null;
-        switch (saveButtonType) {
-            case SAVE -> {
-                // 保存
-                saveType = SaveType.SAVE;
-            }
-            case CHANGE -> {
-                // 提交
-                saveType = SaveType.APPROVAL_CHANGE;
-            }
-            case REAL_TIME_CHANGE -> {
-                saveType = SaveType.APPROVAL_REALTIME;
-            }
-            case INSERT_AND_GET_ID -> {
-                saveType = SaveType.INSERT_AND_GET_ID;
-            }
-            case DELETE_BY_ID -> {
-                saveType = SaveType.DELETE_BY_ID;
-            }
-        }
-        if (saveType == null) {
-            throw new BusinessException(
-                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
-                    ApiResponseCodeEnum.BAD_REQUEST.getMessage());
-        }
-        return saveType;
     }
 }

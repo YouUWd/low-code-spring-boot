@@ -1,12 +1,14 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
+import com.jdec.platform.dataengine.biz.util.ToolUtils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -52,6 +54,14 @@ public class DataPersistenceUtil {
                         getFullFieldName(tabName, CommonConstant.TABLE_DEFAULT_BUSINESS_NO_FIELD));
         String businessNo = obj != null ? obj.toString() : null;
         return businessNo;
+    }
+
+    public static Boolean getTableRowDeletedFlagWithTabName(
+            Map<String, Object> record, String tabName) {
+        Object obj =
+                record.get(getFullFieldName(tabName, CommonConstant.TABLE_DEFAULT_DELETED_FIELD));
+        Integer deleted = obj instanceof Number num ? num.intValue() : null;
+        return deleted != null && deleted.equals(1);
     }
 
     public static Integer getTableRowDeletedField(Map<String, Object> record) {
@@ -444,5 +454,14 @@ public class DataPersistenceUtil {
         String name = primary != null ? primary.getName() : null;
         String action = primary != null ? primary.getAction() : null;
         return RowChangeDTO.builder().columns(columns).name(name).action(action).build();
+    }
+
+    public static String getNewBusinessNo(String moduleCode, String table) {
+        String prefix =
+                StrUtil.split(moduleCode, "-").stream()
+                        .filter(word -> !word.isBlank())
+                        .map(word -> String.valueOf(word.charAt(0)))
+                        .collect(Collectors.joining());
+        return ToolUtils.nextNoWithFixedLen(prefix.toUpperCase());
     }
 }

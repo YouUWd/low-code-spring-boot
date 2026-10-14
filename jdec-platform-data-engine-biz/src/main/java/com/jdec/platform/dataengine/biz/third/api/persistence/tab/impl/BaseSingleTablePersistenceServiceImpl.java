@@ -20,6 +20,7 @@ import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSa
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
+import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -257,6 +258,48 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         } else {
             return updateRecord(context);
         }
+    }
+
+    @Override
+    public List<Long> getRecordIdsByFk(
+            DSLContext dslContext, String tableName, String relatedField, List<Long> values) {
+        List<Long> dbLiveIds = Collections.emptyList();
+        dbLiveIds =
+                dslContext
+                        .select(DSL.field(DSL.name(tableName, "id"), Long.class))
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(
+                                DSL.field(DSL.name(tableName, relatedField))
+                                        .in(values)
+                                        .and(
+                                                DSL.field(DSL.name(tableName, "deleted"))
+                                                        .eq((byte) 0)))
+                        .fetch(0, Long.class);
+        return dbLiveIds;
+    }
+
+    @Override
+    public int deleteByIds(DSLContext dslContext, String tableName, List<Long> ids) {
+        if (!ids.isEmpty()) {
+            Long currentUserId = UserContext.getUserId();
+            LocalDateTime now = LocalDateTime.now();
+            log.info("1:N 子表 [{}] 执行被动数据记录软删除:Ids={}", tableName, ids);
+            int result =
+                    dslContext
+                            .update(DSL.table(DSL.name(tableName)))
+                            .set(DSL.field(DSL.name(tableName, "deleted")), (byte) 1)
+                            .set(DSL.field(DSL.name(tableName, "updated_by")), currentUserId)
+                            .set(DSL.field(DSL.name(tableName, "updated_date")), now)
+                            .where(
+                                    DSL.field(DSL.name(tableName, "id"))
+                                            .in(ids)
+                                            .and(
+                                                    DSL.field(DSL.name(tableName, "deleted"))
+                                                            .eq((byte) 0)))
+                            .execute();
+            return result;
+        }
+        return 0;
     }
 
     private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {
