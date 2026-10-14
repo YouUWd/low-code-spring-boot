@@ -1211,7 +1211,7 @@ public class DynamicQueryService {
 
             int resultLength = recordsResult.size();
 
-            for (int i = 0; i < recordsResult.size(); i++) {
+            for (int i = 0; i < resultLength; i++) {
 
                 Map<String, Object> resultMap = recordsResult.get(i).intoMap();
 
@@ -1231,8 +1231,15 @@ public class DynamicQueryService {
                                     .btnType("view");
 
                     // 除了第一版，其他版本设置preVersion为上一版本号
-                    if (resultLength > 1 && i != (resultLength - 1)) {
-                        versionBuilder.preVersion(versionList.get(i - 1).getVersion());
+                    if (resultLength > 1 && i < (resultLength - 1)) {
+                        versionBuilder.preVersion(
+                                recordsResult.get(i + 1).get("version_no") == null
+                                        ? null
+                                        : Integer.valueOf(
+                                                String.valueOf(
+                                                        recordsResult
+                                                                .get(i + 1)
+                                                                .get("version_no"))));
                     }
 
                     if (i == 0) {
