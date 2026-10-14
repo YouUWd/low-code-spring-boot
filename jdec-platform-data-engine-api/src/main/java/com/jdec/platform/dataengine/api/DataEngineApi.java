@@ -4,6 +4,7 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.*;
 import java.util.List;
+import java.util.Map;
 
 public interface DataEngineApi {
     DynamicQueryResp query(DynamicQueryReq req);
@@ -23,4 +24,6 @@ public interface DataEngineApi {
     Long deleteById(DynamicDeleteReq req);
 
     CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo);
+
+    Map<String, Object> getRecordData(Long moduleId, Long id);
 }

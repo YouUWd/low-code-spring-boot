@@ -508,6 +508,12 @@ public class QueryPlanCompiler {
                         ? p.getPageSize()
                         : (req instanceof TableDetailQueryReq ? 1 : 20);
 
+        // 8. 判定当前节点是否需要拉取实体数据 (fetchData)
+        // 规则：全树模式下恒拉取；指定 tableSpecs 模式下，仅当本节点显式在 tableSpecs 中声明时才拉取实体数据。
+        // 若未声明，则仅用于上卷过滤 (EXISTS) 或下拉选项跨表路径推导，跳过 Stage 1 的 Batch Fetch 二次回查。
+        boolean shouldFetchData =
+                isFullTreeMode || isTableOrDescendantInSpecs(currentModuleId, tableSpecs, tree);
+
         return QueryNodePlan.builder()
                 .moduleId(currentModuleId)
                 .moduleMeta(meta)
@@ -523,6 +529,7 @@ public class QueryPlanCompiler {
                 .condition(finalCombinedCondition)
                 .orderFields(orderFields)
                 .attachedJoins(attachedJoins)
+                .fetchData(shouldFetchData)
                 .children(childPlans)
                 .build();
     }

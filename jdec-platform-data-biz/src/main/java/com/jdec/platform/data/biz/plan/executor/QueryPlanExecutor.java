@@ -168,6 +168,16 @@ public class QueryPlanExecutor {
         for (QueryNodePlan childPlan : childPlans) {
             String childTable = childPlan.getPrimaryTable();
             String fkField = childPlan.getParentForeignKey();
+
+            // 若当前子节点未在投影白名单内声明 (fetchData == false)，则仅用于条件上卷/跨表选项，跳过自身物理表的批量拉取
+            if (!childPlan.isFetchData()) {
+                if (childPlan.getChildren() != null && !childPlan.getChildren().isEmpty()) {
+                    batchFetchChildNodesRecursively(
+                            dsl, parentIds, childPlan.getChildren(), rawDataByNode);
+                }
+                continue;
+            }
+
             log.debug(
                     "[QueryPlanExecutor] 批量拉取子节点数据: moduleId={}, primaryTable={}, fkField={}, parentIdsCount={}",
                     childPlan.getModuleId(),
