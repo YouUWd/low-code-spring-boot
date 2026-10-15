@@ -71,9 +71,11 @@ public class ModuleTreeDiffService {
                     continue;
                 }
                 // 提取row主键：找到 xxx.id 的字段值
-                String rowPk = extractRowPk(rowNode, primaryTable);
-                RecordDataDTO oldRecordItem = oldRecordMap.get(rowPk);
+                String rowBusinessNo = extractRowBusinessNo(rowNode, primaryTable);
+                RecordDataDTO oldRecordItem = oldRecordMap.get(rowBusinessNo);
                 Map<String, Object> oldRow = oldRecordItem != null ? oldRecordItem.getRow() : null;
+
+                Long rowPk = extractRowPk(rowNode, primaryTable);
 
                 Map<String, VersionSnapShot> currentChangeMap = new HashMap<>();
                 if (currentVersionMap.containsKey(moduleId)
@@ -126,7 +128,7 @@ public class ModuleTreeDiffService {
                 for (RecordDataDTO recordItem : recordArr) {
                     Map<String, Object> rowNode = recordItem.getRow();
                     if (rowNode == null) continue;
-                    String businessNoPk = extractRowPk(rowNode, primaryTable);
+                    String businessNoPk = extractRowBusinessNo(rowNode, primaryTable);
                     if (StringUtils.isNotBlank(businessNoPk)) {
                         recordMap.put(businessNoPk, recordItem);
                     }
@@ -144,14 +146,24 @@ public class ModuleTreeDiffService {
     }
 
     /** 从row中提取主键：查找key以 .business_no 结尾的字段，例如 info.business_no、basic_info.business_no */
-    private String extractRowPk(Map<String, Object> rowNode, String tableName) {
-        // TODO 需要读取模块配置获取主表.id作为key进行主表主键查找
+    private String extractRowBusinessNo(Map<String, Object> rowNode, String tableName) {
         Object primaryTableId = rowNode.get(tableName + "." + "business_no");
 
         if (Objects.nonNull(primaryTableId)) {
             return String.valueOf(primaryTableId);
         } else {
             return "";
+        }
+    }
+
+    /** 从row中提取主键：查找key以 .id 结尾的字段，例如 info.id、basic_info.id */
+    private Long extractRowPk(Map<String, Object> rowNode, String tableName) {
+        Object primaryTableId = rowNode.get(tableName + "." + "id");
+
+        if (Objects.nonNull(primaryTableId)) {
+            return Long.parseLong(String.valueOf(primaryTableId));
+        } else {
+            return null;
         }
     }
 
