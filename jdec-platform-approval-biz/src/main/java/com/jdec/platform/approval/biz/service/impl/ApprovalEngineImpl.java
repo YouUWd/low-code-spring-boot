@@ -1659,11 +1659,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 continue;
             }
             currentVersionNo = item.getVersionNo();
+            LambdaQueryWrapper<ApprovalVersionRecord> sourcewWrapper =
+                    new LambdaQueryWrapper<ApprovalVersionRecord>()
+                            .eq(ApprovalVersionRecord::getBusinessNumber, getBusinessNumber)
+                            .eq(ApprovalVersionRecord::getRecordId, item.getSourceId())
+                            .last("LIMIT 1");
+            ApprovalVersionRecord sourceRecord =
+                    approvalVersionRecordMapper.selectOne(sourcewWrapper);
             Map<String, Object> map = new HashMap<>();
-            map.put("id", item.getId());
-            map.put("recordId", item.getRecordId());
+            map.put("id", item.getRecordId());
             map.put("versionNo", item.getVersionNo());
             map.put("statusValue", item.getStatusValue());
+            map.put("preVersion", sourceRecord.getVersionNo());
             map.put("btnType", btnType.contains("change") ? "change-view" : "");
             versionList.add(map);
         }
@@ -1683,8 +1690,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 sortData.sort((a, b) -> Long.compare(((Long) b.get("id")), ((Long) a.get("id"))));
                 // 取第一条
                 Map<String, Object> lastData = new HashMap<>(sortData.get(0));
-                lastData.put("id", 0);
-                lastData.put("recordId", sortData.get(0).get("recordId"));
+                lastData.put("id", sortData.get(0).get("recordId"));
                 lastData.put("statusValue", 1);
                 lastData.put("btnType", "change-change");
                 versionNo = versionList.size() + 1;

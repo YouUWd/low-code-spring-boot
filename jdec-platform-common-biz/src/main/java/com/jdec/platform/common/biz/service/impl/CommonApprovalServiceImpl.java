@@ -84,6 +84,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
         }
         Map<String, Object> recordData = dataEngineApi.getRecordData(rootModuleId, recordId);
+        if (Objects.isNull(recordData)) {
+            throw new BusinessException(608, "业务记录异常");
+        }
         boolean approvalChainStatus = approvalEngine.getApprovalChainStatus(rootModuleId, recordId);
         Map<String, Object> result = new HashMap<>();
         // 是否草稿
