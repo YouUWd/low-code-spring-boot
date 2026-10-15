@@ -13,7 +13,7 @@ public class VersionListResp {
     private Long id;
 
     @Schema(description = "版本号", example = "版本号")
-    private Integer version;
+    private Integer versionNo;
 
     @Schema(description = "上一版本号", example = "上一版本号")
     private Integer preVersion;
@@ -23,4 +23,7 @@ public class VersionListResp {
 
     @Schema(description = "查看类型", example = "查看类型")
     private String btnType;
+
+    @Schema(description = "业务状态", example = "99")
+    private Integer statusValue;
 }

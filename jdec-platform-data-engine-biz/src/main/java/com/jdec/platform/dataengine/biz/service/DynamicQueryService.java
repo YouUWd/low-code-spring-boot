@@ -1367,7 +1367,7 @@ public class DynamicQueryService {
                 Integer fakeVersionNo = lastVersion == null ? 0 : lastVersion + 1;
                 versionList.add(
                         VersionListResp.builder()
-                                .version(fakeVersionNo)
+                                .versionNo(fakeVersionNo)
                                 .id(versionListQueryReq.getId())
                                 .history(false)
                                 .btnType("change-change")
@@ -1388,23 +1388,47 @@ public class DynamicQueryService {
 
                     Long id = Long.parseLong(String.valueOf(resultMap.get("id")));
 
+                    Integer businessStatus =
+                            Integer.parseInt(String.valueOf(resultMap.get("business_status")));
+
                     VersionListResp.VersionListRespBuilder versionBuilder =
                             VersionListResp.builder()
-                                    .version(versionNo)
+                                    .versionNo(versionNo)
                                     .id(id)
                                     .history(true)
-                                    .btnType("view");
+                                    .btnType("view")
+                                    .statusValue(businessStatus);
 
                     // 除了第一版，其他版本设置preVersion为上一版本号
                     if (resultLength > 1 && i < (resultLength - 1)) {
-                        versionBuilder.preVersion(
-                                recordsResult.get(i + 1).get("version_no") == null
-                                        ? null
-                                        : Integer.valueOf(
-                                                String.valueOf(
-                                                        recordsResult
-                                                                .get(i + 1)
-                                                                .get("version_no"))));
+
+                        Record preVersionData =
+                                recordsResult.stream()
+                                        .filter(
+                                                item -> {
+                                                    Map<String, Object> itemMap = item.intoMap();
+                                                    return Integer.parseInt(
+                                                                            String.valueOf(
+                                                                                    itemMap.get(
+                                                                                            "version_no")))
+                                                                    < versionNo
+                                                            && Integer.parseInt(
+                                                                            String.valueOf(
+                                                                                    itemMap.get(
+                                                                                            "business_status")))
+                                                                    == 99;
+                                                })
+                                        .findFirst()
+                                        .orElse(null);
+
+                        if (Objects.nonNull(preVersionData)) {
+                            versionBuilder.preVersion(
+                                    preVersionData.get("version_no") == null
+                                            ? null
+                                            : Integer.valueOf(
+                                                    String.valueOf(
+                                                            preVersionData.get("version_no"))));
+                        }
                     }
 
                     if (i == 0) {
@@ -1435,10 +1459,10 @@ public class DynamicQueryService {
 
         conditions.add(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo));
 
-        conditions.add(
-                DSL.field(DSL.name(primaryTable, "business_status"))
-                        .eq(99)
-                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
+        //        conditions.add(
+        //                DSL.field(DSL.name(primaryTable, "business_status"))
+        //                        .eq(99)
+        //                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
 
         query.where(conditions);
 
@@ -1518,21 +1542,23 @@ public class DynamicQueryService {
                         Integer.parseInt(String.valueOf(resultMap.get("root_table_data_version")));
                 historyVersionList.add(
                         VersionListResp.builder()
-                                .version(versionNo)
+                                .versionNo(versionNo)
                                 .history(true)
                                 .btnType("view")
                                 .build());
             }
         }
 
-        historyVersionList.sort(Comparator.comparing(VersionListResp::getVersion).reversed());
+        historyVersionList.sort(Comparator.comparing(VersionListResp::getVersionNo).reversed());
 
         if (!CollectionUtils.isEmpty(historyVersionList)) {
             // 设置上一版本版本号
             int i = 0;
             int last = (historyVersionList.size() - 1);
             while (i < (last)) {
-                historyVersionList.get(i).setPreVersion(historyVersionList.get(i + 1).getVersion());
+                historyVersionList
+                        .get(i)
+                        .setPreVersion(historyVersionList.get(i + 1).getVersionNo());
                 i++;
             }
         }
