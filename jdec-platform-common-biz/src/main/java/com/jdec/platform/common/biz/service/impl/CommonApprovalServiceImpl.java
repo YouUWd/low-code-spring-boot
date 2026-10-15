@@ -136,6 +136,13 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
                             rootModuleId, recordId, recordData.get("business_no").toString());
 
             result.putAll(objectMapper.convertValue(userInfoResp, HashMap.class));
+            // 是否可以保存提交
+            Long userId =
+                    Objects.nonNull(UserContext.getMockUserId())
+                            ? UserContext.getMockUserId()
+                            : UserContext.getRealUserId();
+            if (userId.equals(recordData.get("created_by"))) result.put("canEdit", 1);
+            else result.put("canEdit", 0);
         }
         return result;
     }
