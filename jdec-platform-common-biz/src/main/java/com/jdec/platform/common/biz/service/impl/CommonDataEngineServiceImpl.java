@@ -66,7 +66,10 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             throw new IllegalArgumentException("单据 ID 不能为空");
         }
 
-        Long userId = UserContext.getUserId();
+        Long userId =
+                Objects.nonNull(UserContext.getMockUserId())
+                        ? UserContext.getMockUserId()
+                        : UserContext.getRealUserId();
         Long roleId = UserContext.getRoleId();
 
         List<SysMenuResp> menuList = sysMenuApi.list(1);
@@ -284,7 +287,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                     log.debug("数据id:{},创建人id:{}为草稿数据", dynamicDetailQueryReq.getId(), createById);
 
                     // 草稿只有创建人能编辑
-                    canEdit = UserContext.getUserId().equals(createById);
+                    canEdit = userId.equals(createById);
                 } else if (dynamicDetailQueryReq.getId() > 0) {
                     canEdit =
                             iApprovalEngine.getCanEdit(
