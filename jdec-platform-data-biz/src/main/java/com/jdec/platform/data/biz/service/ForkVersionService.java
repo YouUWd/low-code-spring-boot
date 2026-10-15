@@ -1,8 +1,8 @@
 package com.jdec.platform.data.biz.service;
 
 import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.ForkVersionReq;
-import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
 import com.jdec.platform.data.api.dto.response.DataSaveResp;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
@@ -53,8 +53,8 @@ public class ForkVersionService {
 
         // 1. 抓取基准单据完整物理快照 (含伴生表与所有子表全部列)
         DataBlock baseBlock =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder()
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder()
                                 .moduleId(req.getModuleId())
                                 .id(req.getId())
                                 .build(),

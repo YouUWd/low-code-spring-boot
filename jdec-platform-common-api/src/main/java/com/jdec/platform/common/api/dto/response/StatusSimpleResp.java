@@ -1,4 +1,4 @@
-package com.jdec.platform.common.biz.dto.response;
+package com.jdec.platform.common.api.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;

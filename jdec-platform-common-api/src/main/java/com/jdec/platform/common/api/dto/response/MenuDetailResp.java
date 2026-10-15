@@ -1,7 +1,5 @@
-package com.jdec.platform.common.biz.dto.response;
+package com.jdec.platform.common.api.dto.response;
 
-import com.jdec.platform.common.api.dto.response.ModuleDataNode;
-import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;

@@ -11,11 +11,11 @@ import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
+import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.ForkVersionReq;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
-import com.jdec.platform.data.api.dto.request.TableOptionReq;
-import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
@@ -385,12 +385,8 @@ class CompanyH2IntegrationTest {
     @DisplayName("H2 查询整树：聚合根 100 的 17 行全部装配，两层虚拟模块被穿透，孙表按父行分组")
     void queryWholeTreeAssemblesRealAggregate() {
         DataPage<DataBlock> page =
-                dataQueryService.queryByTable(
-                        TablePageQueryReq.builder()
-                                .moduleId(M_INFO)
-                                .pageNo(1)
-                                .pageSize(10)
-                                .build());
+                dataQueryService.queryPage(
+                        PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(10).build());
 
         long dbInfoTotal = countOf("select count(*) from info");
         assertEquals(dbInfoTotal, page.getTotal(), "查询总数必须与数据库 info 表行数一致");
@@ -509,8 +505,8 @@ class CompanyH2IntegrationTest {
     @DisplayName("H2b 稀疏根与极简根装配边界：缺失子表安全返回空集合或不挂载，不发生 NPE")
     void querySparseAndMinimalAggregateRootsSafely() {
         DataBlock detail101 =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(101L).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(101L).build());
         DataRow root101 = detail101.getFirstRecord();
         assertEquals(101L, asLong(root101.getValue("info", "id")));
         long db101BasicCnt =
@@ -529,8 +525,8 @@ class CompanyH2IntegrationTest {
                 (int) db101CreditCnt, child(root101, M_CREDIT).size(), "稀疏根 101 有 credit_rating");
 
         DataBlock detail102 =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(102L).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(102L).build());
         DataRow root102 = detail102.getFirstRecord();
         assertEquals(102L, asLong(root102.getValue("info", "id")));
         long db102BasicCnt =
@@ -553,8 +549,8 @@ class CompanyH2IntegrationTest {
     @Test
     @DisplayName("H3 SQL 形态：每张表恰好一条 SELECT、零 JOIN、批量 IN 抓取，且只触达 9 张表")
     void sqlShapeIsBatchFetchWithoutJoins() {
-        dataQueryService.queryByTable(
-                TablePageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(10).build());
+        dataQueryService.queryPage(
+                PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(10).build());
 
         List<String> selects =
                 recording.sqls.stream()
@@ -619,14 +615,14 @@ class CompanyH2IntegrationTest {
     @DisplayName("H8 分页与投影：pageSize 生效、显式投影走列名而非 SELECT *")
     void paginationAndExplicitProjection() {
         DataPage<DataBlock> page1 =
-                dataQueryService.queryByTable(
-                        TablePageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(2).build());
+                dataQueryService.queryPage(
+                        PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(2).build());
         assertEquals(3L, page1.getTotal());
         assertEquals(2, page1.getRecords().size(), "pageSize=2 应只返回 2 行");
 
         DataPage<DataBlock> page2 =
-                dataQueryService.queryByTable(
-                        TablePageQueryReq.builder().moduleId(M_INFO).pageNo(2).pageSize(2).build());
+                dataQueryService.queryPage(
+                        PageQueryReq.builder().moduleId(M_INFO).pageNo(2).pageSize(2).build());
         assertEquals(1, page2.getRecords().size());
         assertTrue(
                 asLong(page1.getRecords().get(0).getValue("info", "id"))
@@ -634,8 +630,8 @@ class CompanyH2IntegrationTest {
 
         recording.sqls.clear();
         DataPage<DataBlock> projected =
-                dataQueryService.queryByTable(
-                        TablePageQueryReq.builder()
+                dataQueryService.queryPage(
+                        PageQueryReq.builder()
                                 .moduleId(M_INFO)
                                 .pageNo(1)
                                 .pageSize(10)
@@ -665,14 +661,14 @@ class CompanyH2IntegrationTest {
     @Test
     @DisplayName("H5 子孙过滤上卷：对孙表 member_contact 过滤，上卷为嵌套 EXISTS 并精准裁剪父级与子级")
     void descendantFilterRollsUpAsNestedExists() {
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(M_INFO)
                         .pageNo(1)
                         .pageSize(10)
                         .filters(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .moduleId(M_CONTACT)
                                                 .tableName("member_contact")
                                                 .columnName("contact_value")
@@ -681,7 +677,7 @@ class CompanyH2IntegrationTest {
                                                 .build()))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertEquals(1L, page.getTotal());
         DataRow root = page.getRecords().get(0);
         assertEquals(100L, asLong(root.getValue("info", "id")));
@@ -715,14 +711,14 @@ class CompanyH2IntegrationTest {
     @Test
     @DisplayName("H5b 虚拟模块下子表过滤：对 1009 过滤，EXISTS 穿透虚拟层直接挂到根表")
     void filterOnVirtualModuleChildRollsUpThroughVirtualLayer() {
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(M_INFO)
                         .pageNo(1)
                         .pageSize(10)
                         .filters(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .moduleId(M_DIGITAL_ACCOUNT)
                                                 .tableName("digital_account")
                                                 .columnName("account_no")
@@ -731,7 +727,7 @@ class CompanyH2IntegrationTest {
                                                 .build()))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertEquals(1L, page.getTotal(), "只有 100 拥有 ZFB001");
 
         String rootSql =
@@ -751,14 +747,14 @@ class CompanyH2IntegrationTest {
     @DisplayName("H10 跨层级下拉选项：根模块下查孙表 member_contact.contact_type，自动沿层级 INNER JOIN 回根表且应用祖先条件")
     void optionsAcrossModuleLevelsGeneratesInnerJoins() {
         recording.sqls.clear();
-        TableOptionReq req =
-                TableOptionReq.builder()
+        OptionReq req =
+                OptionReq.builder()
                         .moduleId(M_INFO)
                         .tableName("member_contact")
                         .columnName("contact_value")
                         .filters(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .moduleId(M_INFO)
                                                 .tableName("info")
                                                 .columnName("id")
@@ -767,7 +763,7 @@ class CompanyH2IntegrationTest {
                                                 .build()))
                         .build();
 
-        List<DataOptionResp> options = dataQueryService.getOptionsByTable(req);
+        List<DataOptionResp> options = dataQueryService.getOptions(req);
         assertNotNull(options);
         assertFalse(options.isEmpty(), "种子数据 100 下应存在 member_contact.contact_value");
 
@@ -788,14 +784,14 @@ class CompanyH2IntegrationTest {
     @DisplayName("H11 跨虚拟模块下拉选项：根模块下查跨虚拟模块孙表 company_contact.contact_type，正确 JOIN 根表且不产生歧义列名")
     void optionsAcrossVirtualModuleGeneratesCorrectJoin() {
         recording.sqls.clear();
-        TableOptionReq req =
-                TableOptionReq.builder()
+        OptionReq req =
+                OptionReq.builder()
                         .moduleId(M_INFO)
                         .tableName("company_contact")
                         .columnName("contact_type")
                         .filters(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .moduleId(M_INFO)
                                                 .tableName("info")
                                                 .columnName("id")
@@ -804,7 +800,7 @@ class CompanyH2IntegrationTest {
                                                 .build()))
                         .build();
 
-        List<DataOptionResp> options = dataQueryService.getOptionsByTable(req);
+        List<DataOptionResp> options = dataQueryService.getOptions(req);
         assertNotNull(options);
 
         String sql =
@@ -829,14 +825,14 @@ class CompanyH2IntegrationTest {
             "H12 跨分支兄弟模块过滤：查 company_contact.contact_type 时过滤 address.comm_country，正确保留 address 模块的 EXISTS 谓词")
     void optionsWithSiblingModuleFilterRetainsExistsPredicate() {
         recording.sqls.clear();
-        TableOptionReq req =
-                TableOptionReq.builder()
+        OptionReq req =
+                OptionReq.builder()
                         .moduleId(M_INFO)
                         .tableName("company_contact")
                         .columnName("contact_type")
                         .filters(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .moduleId(1005L)
                                                 .tableName("address")
                                                 .columnName("comm_country")
@@ -845,7 +841,7 @@ class CompanyH2IntegrationTest {
                                                 .build()))
                         .build();
 
-        List<DataOptionResp> options = dataQueryService.getOptionsByTable(req);
+        List<DataOptionResp> options = dataQueryService.getOptions(req);
         assertNotNull(options);
         assertFalse(options.isEmpty());
 
@@ -953,8 +949,8 @@ class CompanyH2IntegrationTest {
     @DisplayName("H4 详情读写同构：getDetail 的整树可直接回写，行数与父子外键均不变")
     void detailIsReadWriteIsomorphic() {
         DataBlock detail =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
         assertEquals(1, detail.size());
         assertEquals(100L, asLong(detail.getFirstRecord().getValue("info", "id")));
 
@@ -985,8 +981,8 @@ class CompanyH2IntegrationTest {
     @DisplayName("H13 局部更新 Patch 回写：仅更新部分字段，其余子模块原样保留且外键保持稳定")
     void partialUpdateRetainsOtherModules() {
         DataBlock detail =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
         DataRow root = detail.getFirstRecord();
 
         // 保存前先快照各子表实际行数，用于后续验证“未变”
@@ -1079,8 +1075,8 @@ class CompanyH2IntegrationTest {
 
         // 验证读出值装配
         DataBlock reloaded =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(savedId).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(savedId).build());
         DataRow reloadedRow = reloaded.getFirstRecord();
         Object reloadedNature = reloadedRow.getValue("info", "nature");
         assertInstanceOf(List.class, reloadedNature);
@@ -1103,8 +1099,8 @@ class CompanyH2IntegrationTest {
                         "select count(*) from member_contact where member_id = 1001 and deleted = 0");
 
         DataBlock detail =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
 
         DataBlock members = child(detail.getFirstRecord(), M_MEMBER);
         List<DataRow> kept =
@@ -1142,8 +1138,8 @@ class CompanyH2IntegrationTest {
     @DisplayName("H6b 1:N 混合保存：在 1:N 列表中同时执行保留旧行、修改现有行与新增新行")
     void mixedSaveInOneToManyRelationship() {
         DataBlock detail =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
         DataBlock members = child(detail.getFirstRecord(), M_MEMBER);
 
         // 保存前快照 member 活跃行数
@@ -1391,11 +1387,11 @@ class CompanyH2IntegrationTest {
         //    进行逐模块、逐行、逐字段的深度一致性与差异性比对
         // ------------------------------------------------------------------
         DataBlock baseDetail =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
         DataBlock derivedDetail =
-                dataQueryService.getDetailByTable(
-                        TableDetailQueryReq.builder().moduleId(M_INFO).id(newId).build());
+                dataQueryService.getDetail(
+                        DetailQueryReq.builder().moduleId(M_INFO).id(newId).build());
 
         DataRow baseRoot = baseDetail.getFirstRecord();
         DataRow derivedRoot = derivedDetail.getFirstRecord();
@@ -1809,12 +1805,8 @@ class CompanyH2IntegrationTest {
         AppContext.setContext("company", 99L);
 
         DataPage<DataBlock> page =
-                dataQueryService.queryByTable(
-                        TablePageQueryReq.builder()
-                                .moduleId(M_INFO)
-                                .pageNo(1)
-                                .pageSize(10)
-                                .build());
+                dataQueryService.queryPage(
+                        PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(10).build());
 
         assertEquals(0L, page.getTotal(), "主体 99 下不应看到任何 company 数据");
         assertTrue(page.getRecords().isEmpty());

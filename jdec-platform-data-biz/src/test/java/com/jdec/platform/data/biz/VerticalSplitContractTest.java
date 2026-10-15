@@ -9,7 +9,7 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
-import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
@@ -77,8 +77,7 @@ class VerticalSplitContractTest {
     void fullTreeModeJoinsVerticalSplitAndUpstreamTables() {
         QueryNodePlan root =
                 compiler.compile(
-                                TableQueryReq.builder().moduleId(COURSE_MODULE_ID).build(),
-                                courseMeta())
+                                QueryReq.builder().moduleId(COURSE_MODULE_ID).build(), courseMeta())
                         .getRootNodePlan();
 
         List<AttachedTableSpec> joins = root.getAttachedJoins();
@@ -102,7 +101,7 @@ class VerticalSplitContractTest {
     void explicitPrimaryOnlyProjectionSkipsAllJoins() {
         QueryNodePlan root =
                 compileCourse(
-                        TableQueryReq.builder()
+                        QueryReq.builder()
                                 .moduleId(COURSE_MODULE_ID)
                                 .tables(
                                         List.of(
@@ -122,7 +121,7 @@ class VerticalSplitContractTest {
     void explicitCompanionProjectionKeepsVerticalSplitJoin() {
         QueryNodePlan root =
                 compileCourse(
-                        TableQueryReq.builder()
+                        QueryReq.builder()
                                 .moduleId(COURSE_MODULE_ID)
                                 .tables(
                                         List.of(
@@ -154,7 +153,7 @@ class VerticalSplitContractTest {
     void explicitUpstreamProjectionKeepsUpstreamJoin() {
         QueryNodePlan root =
                 compileCourse(
-                        TableQueryReq.builder()
+                        QueryReq.builder()
                                 .moduleId(COURSE_MODULE_ID)
                                 .tables(
                                         List.of(
@@ -189,7 +188,7 @@ class VerticalSplitContractTest {
         // 不声明 clazz.* ⇒ 不应为了 clazz 而 JOIN。
         QueryNodePlan root =
                 compiler.compile(
-                                TableQueryReq.builder()
+                                QueryReq.builder()
                                         .moduleId(STUDENT_LIST_MODULE_ID)
                                         .tables(
                                                 List.of(
@@ -214,7 +213,7 @@ class VerticalSplitContractTest {
         List<String> sqls = new ArrayList<>();
         DataQueryService service = serviceCapturing(sqls);
 
-        service.queryByTable(TableQueryReq.builder().moduleId(COURSE_MODULE_ID).build());
+        service.query(QueryReq.builder().moduleId(COURSE_MODULE_ID).build());
 
         String sql = dataSql(sqls);
         assertTrue(
@@ -238,8 +237,7 @@ class VerticalSplitContractTest {
     void fullTreeModeWithAttachedTablesUsesExplicitProjection() {
         QueryNodePlan root =
                 compiler.compile(
-                                TableQueryReq.builder().moduleId(COURSE_MODULE_ID).build(),
-                                courseMeta())
+                                QueryReq.builder().moduleId(COURSE_MODULE_ID).build(), courseMeta())
                         .getRootNodePlan();
 
         List<String> projected = projectedKeys(root);
@@ -254,7 +252,7 @@ class VerticalSplitContractTest {
     void fullTreeModeWithoutAttachedTablesKeepsSelectAll() {
         QueryNodePlan root =
                 compiler.compile(
-                                TableQueryReq.builder().moduleId(STUDENT_LIST_MODULE_ID).build(),
+                                QueryReq.builder().moduleId(STUDENT_LIST_MODULE_ID).build(),
                                 studentListMeta())
                         .getRootNodePlan();
 
@@ -269,8 +267,8 @@ class VerticalSplitContractTest {
         List<String> sqls = new ArrayList<>();
         DataQueryService service = serviceCapturing(sqls);
 
-        service.queryByTable(
-                TableQueryReq.builder()
+        service.query(
+                QueryReq.builder()
                         .moduleId(COURSE_MODULE_ID)
                         .tables(
                                 List.of(
@@ -316,7 +314,7 @@ class VerticalSplitContractTest {
 
     // ==================== 断言辅助 ====================
 
-    private QueryNodePlan compileCourse(TableQueryReq req) {
+    private QueryNodePlan compileCourse(QueryReq req) {
         return compiler.compile(req, courseMeta()).getRootNodePlan();
     }
 

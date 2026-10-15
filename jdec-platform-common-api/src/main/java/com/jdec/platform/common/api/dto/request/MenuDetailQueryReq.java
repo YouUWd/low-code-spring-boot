@@ -1,6 +1,7 @@
-package com.jdec.platform.common.biz.dto.request;
+package com.jdec.platform.common.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,7 +13,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "基于菜单的详情数据查询请求")
-public class MenuDetailQueryReq {
+public class MenuDetailQueryReq implements Serializable {
 
     @Schema(description = "菜单ID", example = "20")
     private List<Long> menuIds;

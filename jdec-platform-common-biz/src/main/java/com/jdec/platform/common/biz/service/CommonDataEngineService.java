@@ -1,8 +1,8 @@
 package com.jdec.platform.common.biz.service;
 
-import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
-import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
-import com.jdec.platform.common.biz.dto.response.DetailDataResp;
+import com.jdec.platform.common.api.dto.request.MenuDetailQueryReq;
+import com.jdec.platform.common.api.dto.request.MenuVersionListQueryReq;
+import com.jdec.platform.common.api.dto.response.DetailDataResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
