@@ -891,14 +891,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 审批通过---------------------------------------------------------------------
     @Transactional
     public void businessApprove(ApprovalProcessDTO approvalProcessDTO) {
-        Long recordId =
-                Objects.nonNull(approvalProcessDTO.getOldRecordId())
-                        ? approvalProcessDTO.getOldRecordId()
-                        : approvalProcessDTO.getRecordId();
         // 查询当前业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
-        approvalBusinessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("limit 1");
+        approvalBusinessWrapper
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
+                .last("limit 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
@@ -1091,7 +1089,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
                 .last("LIMIT 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
@@ -1267,7 +1265,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
                 .last("LIMIT 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
