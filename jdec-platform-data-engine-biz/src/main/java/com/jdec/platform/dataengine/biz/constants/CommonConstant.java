@@ -80,6 +80,8 @@ public interface CommonConstant {
 
     String TABLE_DEFAULT_UPDATED_DATE_FIELD = "updated_date";
 
+    String TABLE_DEFAULT_ACTIVE_FIELD = "active";
+
     public static final Set<String> NONE_DIFF_FIELD_SET =
             Set.of(
                     "id",

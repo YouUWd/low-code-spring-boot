@@ -57,7 +57,9 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     "created_by",
                     "created_date",
                     "active",
-                    "source_id");
+                    "source_id",
+                    "node_id",
+                    "parent_node_id");
 
     private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
             Set.of(
@@ -329,6 +331,49 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                                                         .eq((byte) 0)))
                         .execute();
         return result;
+    }
+
+    @Override
+    public Map<String, Object> getRecordById(DSLContext dslContext, String tableName, Long id) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        Record r =
+                dslContext
+                        .select(DSL.asterisk())
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(
+                                DSL.field(DSL.name(tableName, "id"))
+                                        .eq(id)
+                                        .and(
+                                                DSL.field(DSL.name(tableName, "deleted"))
+                                                        .eq((byte) 0)))
+                        .fetchOne();
+        if (r != null) {
+            return r.intoMap();
+        }
+        return null;
+    }
+
+    @Override
+    public int existRecordInNoneTerminationState(
+            DSLContext dslContext, String tableName, String businessNo, List<Integer> statusList) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        Integer r =
+                dslContext
+                        .select(DSL.count())
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(
+                                DSL.field(DSL.name(tableName, "business_no"))
+                                        .eq(businessNo)
+                                        .and(DSL.field(DSL.name(tableName, "deleted")).eq((byte) 0))
+                                        .and(
+                                                DSL.field(DSL.name(tableName, "business_status"))
+                                                        .notIn(statusList)))
+                        .fetchOne(0, Integer.class);
+        return r;
     }
 
     private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {

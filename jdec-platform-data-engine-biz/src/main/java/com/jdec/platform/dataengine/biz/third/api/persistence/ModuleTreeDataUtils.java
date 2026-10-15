@@ -23,7 +23,9 @@ public class ModuleTreeDataUtils {
                     "created_date",
                     "updated_date",
                     "deleted",
-                    "active");
+                    "active",
+                    "source_id",
+                    "version_no");
 
     /**
      * 根据 新增数据 构建模块树节点数据
@@ -549,7 +551,7 @@ public class ModuleTreeDataUtils {
                             if (tab.equalsIgnoreCase(
                                     sysModuleInfo.getModuleInfo().getPrimaryTable())) {
                                 recordDataDTO.getRow().put(tab + ".business_status", 1);
-                                recordDataDTO.getRow().put(tab + ".soruce_id", sourceId);
+                                recordDataDTO.getRow().put(tab + ".source_id", sourceId);
                             } else {
                                 // 变更都是 待审批链的
                             }
@@ -601,7 +603,21 @@ public class ModuleTreeDataUtils {
 
     public static void cleanRow(
             Map<String, Object> row, SysModuleCombineInfo sysModuleCombineInfo) {
-        for (String field : CLEAN_FIELDS) {
+        // 哪些字段需要移除
+        // 1.CLEAN_FIELDS 通用的字段
+        // 2.表关联的上级的字段
+        Set<String> cleanFields = new HashSet<>();
+        cleanFields.addAll(CLEAN_FIELDS);
+        if (sysModuleCombineInfo.getMainTableRelationDTO() != null) {
+            cleanFields.add(sysModuleCombineInfo.getMainTableRelationDTO().getJoinField());
+        }
+        for (String subTable : sysModuleCombineInfo.getSubTables()) {
+            if (sysModuleCombineInfo.getSubTableRelationMap().get(subTable) != null) {
+                cleanFields.add(
+                        sysModuleCombineInfo.getSubTableRelationMap().get(subTable).getJoinField());
+            }
+        }
+        for (String field : cleanFields) {
             row.remove(sysModuleCombineInfo.getModuleInfo().getPrimaryTable() + "." + field);
             if (CollectionUtil.isNotEmpty(sysModuleCombineInfo.getSubTables())) {
                 for (String subTable : sysModuleCombineInfo.getSubTables()) {

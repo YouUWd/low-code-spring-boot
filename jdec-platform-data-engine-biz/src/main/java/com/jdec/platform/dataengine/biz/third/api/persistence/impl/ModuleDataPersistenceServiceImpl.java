@@ -320,6 +320,61 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         return 0L;
     }
 
+    @Override
+    public Integer getMaxVersionNoByBusinessNo(String tableName, String businessNo) {
+        return baseSingleTablePersistenceService.getMaxVersionNoByBusinessNo(
+                null, tableName, businessNo);
+    }
+
+    @Override
+    public Long getRootModuleMainTableDataId(
+            Long id, Long currentModuleId, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (id == null || id <= 0) {
+            return null;
+        }
+        Long parentId = moduleCacheMap.get(currentModuleId).getModuleInfo().getParentId();
+        // 根模块直接返回
+        if (parentId == null || parentId <= 0) {
+            return id;
+        }
+        // 不是根模块
+        Long tempId = id;
+        Long tempModuleId = currentModuleId;
+        while (tempModuleId != null && tempModuleId > 0) {
+            // 虚拟模块直接 往上找
+            if (StringUtils.isEmpty(
+                    moduleCacheMap.get(tempModuleId).getModuleInfo().getPrimaryTable())) {
+                tempId = tempId;
+                tempModuleId = moduleCacheMap.get(tempModuleId).getModuleInfo().getParentId();
+                continue;
+            }
+            Map<String, Object> recordMap =
+                    baseSingleTablePersistenceService.getRecordById(
+                            null,
+                            moduleCacheMap.get(tempModuleId).getModuleInfo().getPrimaryTable(),
+                            id);
+
+            Object fk =
+                    recordMap.get(
+                            moduleCacheMap
+                                    .get(tempModuleId)
+                                    .getMainTableRelationDTO()
+                                    .getJoinField());
+
+            tempId = fk instanceof Number ? ((Number) fk).longValue() : null;
+            tempModuleId = moduleCacheMap.get(tempModuleId).getModuleInfo().getParentId();
+        }
+        return tempId;
+    }
+
+    @Override
+    public Boolean existRecordInNoneTerminationState(
+            String tableName, String businessNo, List<Integer> statusList) {
+        return baseSingleTablePersistenceService.existRecordInNoneTerminationState(
+                        null, tableName, businessNo, statusList)
+                != 0;
+    }
+
     private Long saveModuleData(
             RecordDataDTO recordDataDTO,
             DynamicSaveReqContext currentReq,

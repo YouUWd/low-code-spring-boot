@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.tab;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import java.util.List;
+import java.util.Map;
 import org.jooq.DSLContext;
 
 public interface BaseSingleTablePersistenceService {
@@ -21,4 +22,9 @@ public interface BaseSingleTablePersistenceService {
     Integer getMaxVersionNoByBusinessNo(DSLContext dslContext, String tableName, String businessNo);
 
     Integer inactiveRecordById(DSLContext dslContext, String tableName, Long id);
+
+    Map<String, Object> getRecordById(DSLContext dslContext, String tableName, Long id);
+
+    int existRecordInNoneTerminationState(
+            DSLContext dslContext, String tableName, String businessNo, List<Integer> statusList);
 }
