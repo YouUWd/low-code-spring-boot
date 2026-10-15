@@ -1,6 +1,8 @@
 package com.jdec.platform.common.biz.controller;
 
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
+import com.jdec.platform.common.api.dto.response.MenuApprovalCountResp;
+import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,15 +22,17 @@ import org.springframework.web.bind.annotation.*;
 public class CommonApprovalController {
 
     private final CommonApprovalService commonApprovalService;
+    private final CommonAggregateService commonAggregateService;
 
     @GetMapping("/menu/{menuId}/approval-count")
     @Operation(
             summary = "基于菜单 ID 一次性统计待办、已办和全部的记录数量",
-            description = "仅需传入 menuId，一次性返回 Map 映射：1(待办)、2(已办)、3(全部) 的全量数量")
-    public ApiResponse<List<Map<String, Object>>> getApprovalCountByMenu(
+            description = "仅需传入 menuId，一次性返回 1(待办)、2(已办)、3(全部) 的统计数量列表")
+    public ApiResponse<List<MenuApprovalCountResp>> getApprovalCountByMenu(
             @PathVariable Long menuId) {
         try {
-            List<Map<String, Object>> result = commonApprovalService.getApprovalCountByMenu(menuId);
+            List<MenuApprovalCountResp> result =
+                    commonAggregateService.getApprovalCountByMenu(menuId);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error(

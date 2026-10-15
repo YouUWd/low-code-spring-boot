@@ -1086,8 +1086,20 @@ class CompanyMenuQueryContractTest {
                                                 .build()))
                         .build();
 
+        DataRightConfigResp config3 =
+                DataRightConfigResp.builder()
+                        .tableName("unrelated_table")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(999L)
+                                                .subjectCheckAll(1)
+                                                .build()))
+                        .build();
+
         when(openRolePermissionApi.getRoleDataPermissionDetail(1L))
-                .thenReturn(List.of(config1, config2));
+                .thenReturn(List.of(config1, config2, config3));
 
         CommonFilterResolver resolver =
                 new CommonFilterResolver(
@@ -1097,7 +1109,7 @@ class CompanyMenuQueryContractTest {
                         openRolePermissionApi,
                         dataApi);
 
-        var filterItem = resolver.resolveApprovalFilters(null, null, null);
+        var filterItem = resolver.resolveApprovalFilters(null, null, companyModuleTree);
         assertNotNull(filterItem);
         List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
         assertEquals(5, filters.size());
@@ -1135,6 +1147,12 @@ class CompanyMenuQueryContractTest {
         assertEquals("short_name", f5.getColumnName());
         assertEquals("IN", f5.getOperator());
         assertEquals(Collections.emptyList(), f5.getValue());
+
+        // 验证：moduleTree中没有引用的表 (unrelated_table)，绝不会加入 filters
+        boolean hasUnrelatedTable =
+                filters.stream()
+                        .anyMatch(f -> "unrelated_table".equalsIgnoreCase(f.getTableName()));
+        assertFalse(hasUnrelatedTable);
     }
 
     @Test
@@ -1302,5 +1320,30 @@ class CompanyMenuQueryContractTest {
         @SuppressWarnings("unchecked")
         List<Long> dataPermIds = (List<Long>) dataPermBranch.getValue();
         assertEquals(List.of(202L), dataPermIds);
+    }
+
+    @Test
+    @DisplayName("测试基于菜单 ID 统计审批待办/已办/全部角标数量")
+    void testGetApprovalCountByMenu() {
+        when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
+        when(configApi.getModuleTree(any(), any(), eq(1001L))).thenReturn(companyModuleTree);
+        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
+
+        when(dataApi.count(any())).thenReturn(5L, 10L, 15L);
+
+        List<com.jdec.platform.common.api.dto.response.MenuApprovalCountResp> counts =
+                commonAggregateService.getApprovalCountByMenu(100L);
+
+        assertNotNull(counts);
+        assertEquals(3, counts.size());
+
+        assertEquals("待办", counts.get(0).getLabel());
+        assertEquals(1, counts.get(0).getType());
+
+        assertEquals("已办", counts.get(1).getLabel());
+        assertEquals(2, counts.get(1).getType());
+
+        assertEquals("全部", counts.get(2).getLabel());
+        assertEquals(3, counts.get(2).getType());
     }
 }

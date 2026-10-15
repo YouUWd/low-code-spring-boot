@@ -2,6 +2,7 @@ package com.jdec.platform.common.biz.controller;
 
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
+import com.jdec.platform.common.api.dto.response.MenuApprovalCountResp;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
@@ -87,6 +88,26 @@ public class CommonAggregateController {
                     "Common aggregate getOptionsByMenu failed: menuId={}, fieldId={}, err={}",
                     menuId,
                     req != null ? req.getFieldId() : null,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/menu/{menuId}/approval-count")
+    @Operation(
+            summary = "基于菜单 ID 一次性统计待办、已办和全部的记录数量",
+            description = "仅需传入 menuId，一次性返回 1(待办)、2(已办)、3(全部) 的统计数量列表")
+    public ApiResponse<List<MenuApprovalCountResp>> getApprovalCountByMenu(
+            @PathVariable Long menuId) {
+        try {
+            List<MenuApprovalCountResp> result =
+                    commonAggregateService.getApprovalCountByMenu(menuId);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common aggregate getApprovalCountByMenu failed: menuId={}, err={}",
+                    menuId,
                     ex.getMessage(),
                     ex);
             throw ex;

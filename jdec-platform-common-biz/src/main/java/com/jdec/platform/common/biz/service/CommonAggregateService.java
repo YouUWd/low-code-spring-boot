@@ -36,4 +36,13 @@ public interface CommonAggregateService {
      * @return 下拉候选项列表 (label-value 结构)
      */
     List<DataOptionResp> getOptionsByMenu(Long menuId, MenuOptionReq req);
+
+    /**
+     * 基于菜单 ID 一次性统计待办、已办和全部的记录数量
+     *
+     * @param menuId 菜单 ID
+     * @return 审批统计响应列表: 1(待办)、2(已办)、3(全部)
+     */
+    List<com.jdec.platform.common.api.dto.response.MenuApprovalCountResp> getApprovalCountByMenu(
+            Long menuId);
 }

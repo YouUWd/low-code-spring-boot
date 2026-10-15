@@ -23,6 +23,7 @@ import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
@@ -935,6 +936,79 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             log.warn("获取主模块主表名失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
         }
         return null;
+    }
+
+    @Override
+    public List<MenuApprovalCountResp> getApprovalCountByMenu(Long menuId) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+
+        // 1. 通过 OpenMenuApi 获取菜单关联的根模块 ID，并抓取模块树
+        Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (rootModuleId == null) {
+            throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
+        }
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+
+        Long todoCount = 0L;
+        Long doneCount = 0L;
+        Long totalCount = 0L;
+
+        // 2. 根据模块是否启用审批链分支统计
+        if (approvalFilterResolver.isApprovalChainEnabled(rootModuleId)) {
+            CommonFilterResolver.AllApprovalCountFilters countFilters =
+                    approvalFilterResolver.resolveAllApprovalCountsFilters(
+                            rootModuleId, moduleTree);
+
+            // 待办 (type = 1)
+            if (countFilters.todoFilter() != null
+                    && !countFilters.todoFilter().shortCircuitEmpty()) {
+                todoCount =
+                        dataApi.count(
+                                QueryReq.builder()
+                                        .moduleId(rootModuleId)
+                                        .filters(countFilters.todoFilter().filters())
+                                        .build());
+            }
+
+            // 已办 (type = 2)
+            if (countFilters.doneFilter() != null
+                    && !countFilters.doneFilter().shortCircuitEmpty()) {
+                doneCount =
+                        dataApi.count(
+                                QueryReq.builder()
+                                        .moduleId(rootModuleId)
+                                        .filters(countFilters.doneFilter().filters())
+                                        .build());
+            }
+
+            // 全部 (type = 3)
+            if (countFilters.allFilter() != null && !countFilters.allFilter().shortCircuitEmpty()) {
+                totalCount =
+                        dataApi.count(
+                                QueryReq.builder()
+                                        .moduleId(rootModuleId)
+                                        .filters(countFilters.allFilter().filters())
+                                        .build());
+            }
+        } else {
+            // 未启用审批流：仅统计数据权限约束下的全部数据
+            List<com.jdec.platform.data.api.dto.request.FilterItem> dataPermFilters =
+                    approvalFilterResolver.buildDataPermissionFilters(moduleTree);
+            totalCount =
+                    dataApi.count(
+                            QueryReq.builder()
+                                    .moduleId(rootModuleId)
+                                    .filters(dataPermFilters)
+                                    .build());
+        }
+
+        return List.of(
+                MenuApprovalCountResp.of("待办", 1, todoCount),
+                MenuApprovalCountResp.of("已办", 2, doneCount),
+                MenuApprovalCountResp.of("全部", 3, totalCount));
     }
 
     private MenuHeaderColumnResp getHeaderDisplayOrThrow(Long userId, Long menuId, Long roleId) {

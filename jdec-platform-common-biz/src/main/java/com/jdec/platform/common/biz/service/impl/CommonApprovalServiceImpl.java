@@ -8,9 +8,6 @@ import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.open.api.OpenMenuApi;
-import com.jdec.platform.data.api.DataApi;
-import com.jdec.platform.data.api.dto.request.FilterItem;
-import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
@@ -32,92 +29,10 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
     private final IApprovalEngine approvalEngine;
     private final OpenMenuApi openMenuApi;
-    private final DataApi dataApi;
     private final DataEngineApi dataEngineApi;
-    private final CommonFilterResolver approvalFilterResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final SysStatusApi sysStatusApi;
     private final ObjectMapper objectMapper;
-
-    @Override
-    public List<Map<String, Object>> getApprovalCountByMenu(Long menuId) {
-        if (menuId == null) {
-            throw new IllegalArgumentException("菜单 ID 不能为空");
-        }
-
-        // 1. 直接通过 OpenMenuApi 解析菜单绑定的根模块 ID
-        Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
-        if (rootModuleId == null) {
-            throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
-        }
-
-        List<Map<String, Object>> resultMap = new LinkedList<>();
-        Map<String, Object> todo = new HashMap<>();
-        todo.put("label", "待办");
-        todo.put("type", "1");
-        Map<String, Object> done = new HashMap<>();
-        done.put("label", "已办");
-        done.put("type", "2");
-        Map<String, Object> all = new HashMap<>();
-        all.put("label", "全部");
-        all.put("type", "3");
-
-        Long todoCount = 0L;
-        Long doneCount = 0L;
-        Long totalCount = 0L;
-
-        if (approvalFilterResolver.isApprovalChainEnabled(rootModuleId)) {
-            CommonFilterResolver.AllApprovalCountFilters countFilters =
-                    approvalFilterResolver.resolveAllApprovalCountsFilters(rootModuleId, null);
-
-            // 1. 统计【待办数量】 (approvalType = 1)
-            if (!countFilters.todoFilter().shortCircuitEmpty()) {
-                todoCount =
-                        dataApi.count(
-                                QueryReq.builder()
-                                        .moduleId(rootModuleId)
-                                        .filters(countFilters.todoFilter().filters())
-                                        .build());
-            }
-
-            // 2. 统计【已办数量】 (approvalType = 2)
-            if (!countFilters.doneFilter().shortCircuitEmpty()) {
-                doneCount =
-                        dataApi.count(
-                                QueryReq.builder()
-                                        .moduleId(rootModuleId)
-                                        .filters(countFilters.doneFilter().filters())
-                                        .build());
-            }
-
-            // 3. 统计【全部数量】 (approvalType = 3)
-            if (!countFilters.allFilter().shortCircuitEmpty()) {
-                totalCount =
-                        dataApi.count(
-                                QueryReq.builder()
-                                        .moduleId(rootModuleId)
-                                        .filters(countFilters.allFilter().filters())
-                                        .build());
-            }
-        } else {
-            List<FilterItem> dataPermFilters =
-                    approvalFilterResolver.buildDataPermissionFilters(rootModuleId);
-            totalCount =
-                    dataApi.count(
-                            QueryReq.builder()
-                                    .moduleId(rootModuleId)
-                                    .filters(dataPermFilters)
-                                    .build());
-        }
-
-        todo.put("count", todoCount != null ? todoCount : 0L);
-        done.put("count", doneCount != null ? doneCount : 0L);
-        all.put("count", totalCount != null ? totalCount : 0L);
-        resultMap.add(todo);
-        resultMap.add(done);
-        resultMap.add(all);
-        return resultMap;
-    }
 
     @Override
     public void approvalBusiness(Long menuId, ApprovalReq req) {
