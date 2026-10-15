@@ -52,14 +52,14 @@ public class CommonController {
 
     @PostMapping("/approval/save")
     @Operation(summary = "提交数据审批申请", description = "提交数据审批申请")
-    public ApiResponse<DynamicSaveResp> approvalSave(@RequestBody DynamicSaveReq req) {
+    public ApiResponse<Long> approvalSave(@RequestBody DynamicSaveReq req) {
         try {
             DynamicSaveResp result = dataEngineApi.save(req);
             ApprovalReq approvalReq = new ApprovalReq();
             approvalReq.setRecordId(result.getDataId());
             approvalReq.setBusinessNumber(result.getBusinessNo());
             commonApprovalService.approvalSave(result.getModuleId(), approvalReq);
-            return ApiResponse.success(result);
+            return ApiResponse.success(result.getDataId());
         } catch (Exception ex) {
             log.error(
                     "Common DataEngine save failed: moduleId={},err={}",
