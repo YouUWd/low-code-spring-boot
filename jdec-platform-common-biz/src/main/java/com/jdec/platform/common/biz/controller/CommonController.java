@@ -75,7 +75,8 @@ public class CommonController {
     public ApiResponse<Map<String, Object>> getDetailHead(
             @Schema(description = "菜单ID") @RequestParam Long menuId,
             @Schema(description = "业务ID") @RequestParam Long recordId,
-            @Schema(description = "查看类型") @RequestParam String btnType) {
+            @Schema(description = "查看类型") @RequestParam(defaultValue = "", required = false)
+                    String btnType) {
         try {
             return ApiResponse.success(
                     commonApprovalService.getDetailHead(menuId, recordId, btnType));
