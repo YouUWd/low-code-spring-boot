@@ -188,7 +188,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             Integer versionNo = maxVersionNo == null ? 0 : maxVersionNo + 1;
 
             ModuleTreeDataUtils.fillApprovalDataByChange(
-                    nestedSaveData, versionNo, isApproval, moduleCacheMap);
+                    nestedSaveData, versionNo, sourceId, isApproval, moduleCacheMap);
 
             moduleDataStoreDTO.setMainTableBusinessNo(businessNo);
             moduleDataStoreDTO.setMainTableVersionNo(versionNo);
