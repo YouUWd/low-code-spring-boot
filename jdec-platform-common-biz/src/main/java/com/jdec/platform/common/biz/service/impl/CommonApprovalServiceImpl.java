@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
@@ -12,6 +13,7 @@ import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
 import com.jdec.platform.data.api.dto.request.TableQueryReq;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
+import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -35,6 +37,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     private final CommonFilterResolver approvalFilterResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final SysStatusApi sysStatusApi;
+    private final ObjectMapper objectMapper;
 
     @Override
     public List<Map<String, Object>> getApprovalCountByMenu(Long menuId) {
@@ -175,8 +178,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         } else {
             // 单据编号
             result.put("businessNumber", recordData.get("business_no"));
-            // 创建日期
-            result.put("createdDate", recordData.get("created_date"));
             // 版本号列表
             VersionListQueryReq versionListQueryReq =
                     VersionListQueryReq.builder()
@@ -215,10 +216,11 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             result.put("versionNo", recordData.get("version_no"));
             result.put("approvalStatus", approvalStatus);
             // 创建人
-            result.put(
-                    "createUser",
+            CreatedUserInfoResp userInfoResp =
                     dataEngineApi.getCreatedUserInfo(
-                            rootModuleId, recordId, recordData.get("business_no").toString()));
+                            rootModuleId, recordId, recordData.get("business_no").toString());
+
+            result.putAll(objectMapper.convertValue(userInfoResp, HashMap.class));
         }
         return result;
     }
