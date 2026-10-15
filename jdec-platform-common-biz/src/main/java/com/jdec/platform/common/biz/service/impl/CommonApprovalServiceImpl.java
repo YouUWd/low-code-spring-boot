@@ -141,7 +141,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
                     Objects.nonNull(UserContext.getMockUserId())
                             ? UserContext.getMockUserId()
                             : UserContext.getRealUserId();
-            if (userId.equals(recordData.get("created_by"))) result.put("canEdit", 1);
+            if (recordData.get("created_by").equals(userId)
+                    && recordData.get("business_status").equals(1)) result.put("canEdit", 1);
             else result.put("canEdit", 0);
         }
         return result;
