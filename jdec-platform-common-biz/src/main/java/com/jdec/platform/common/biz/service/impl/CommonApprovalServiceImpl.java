@@ -9,8 +9,8 @@ import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
@@ -73,8 +73,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             // 1. 统计【待办数量】 (approvalType = 1)
             if (!countFilters.todoFilter().shortCircuitEmpty()) {
                 todoCount =
-                        dataApi.countByTable(
-                                TableQueryReq.builder()
+                        dataApi.count(
+                                QueryReq.builder()
                                         .moduleId(rootModuleId)
                                         .filters(countFilters.todoFilter().filters())
                                         .build());
@@ -83,8 +83,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             // 2. 统计【已办数量】 (approvalType = 2)
             if (!countFilters.doneFilter().shortCircuitEmpty()) {
                 doneCount =
-                        dataApi.countByTable(
-                                TableQueryReq.builder()
+                        dataApi.count(
+                                QueryReq.builder()
                                         .moduleId(rootModuleId)
                                         .filters(countFilters.doneFilter().filters())
                                         .build());
@@ -93,18 +93,18 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             // 3. 统计【全部数量】 (approvalType = 3)
             if (!countFilters.allFilter().shortCircuitEmpty()) {
                 totalCount =
-                        dataApi.countByTable(
-                                TableQueryReq.builder()
+                        dataApi.count(
+                                QueryReq.builder()
                                         .moduleId(rootModuleId)
                                         .filters(countFilters.allFilter().filters())
                                         .build());
             }
         } else {
-            List<PhysicalFilterItem> dataPermFilters =
+            List<FilterItem> dataPermFilters =
                     approvalFilterResolver.buildDataPermissionFilters(rootModuleId);
             totalCount =
-                    dataApi.countByTable(
-                            TableQueryReq.builder()
+                    dataApi.count(
+                            QueryReq.builder()
                                     .moduleId(rootModuleId)
                                     .filters(dataPermFilters)
                                     .build());

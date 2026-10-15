@@ -2,11 +2,11 @@ package com.jdec.platform.data.biz.controller;
 
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.ForkVersionReq;
-import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
-import com.jdec.platform.data.api.dto.request.TableOptionReq;
-import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
-import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.DataSaveResp;
@@ -31,28 +31,30 @@ public class DataController {
 
     private final DataApi dataApi;
 
-    @PostMapping("/table/query")
-    @Operation(summary = "物理表驱动动态分页查询", description = "支持直接使用物理表名、列名规格及多条件过滤进行跨自相似树查询 (脱离 fieldId)")
-    public ApiResponse<DataPage<DataBlock>> queryByTable(@RequestBody TablePageQueryReq req) {
-        return ApiResponse.success(dataApi.queryByTable(req));
+    // ==================== 标准接口端点 (规范简洁) ====================
+
+    @PostMapping("/query")
+    @Operation(summary = "动态分页查询", description = "支持基于业务聚合树、物理表列投影及多条件过滤进行查询")
+    public ApiResponse<DataPage<DataBlock>> queryPage(@RequestBody PageQueryReq req) {
+        return ApiResponse.success(dataApi.queryPage(req));
     }
 
-    @PostMapping("/table/detail")
-    @Operation(summary = "物理表驱动单条详情查询", description = "支持直接根据物理表名及列名规约加载单条业务对象详情，返回读写同构的 DataBlock")
-    public ApiResponse<DataBlock> getDetailByTable(@RequestBody TableDetailQueryReq req) {
-        return ApiResponse.success(dataApi.getDetailByTable(req));
+    @PostMapping("/detail")
+    @Operation(summary = "单条业务对象详情精准查询", description = "支持加载完整自相似树或指定投影表，返回读写同构的 DataBlock")
+    public ApiResponse<DataBlock> getDetail(@RequestBody DetailQueryReq req) {
+        return ApiResponse.success(dataApi.getDetail(req));
     }
 
-    @PostMapping("/table/count")
-    @Operation(summary = "物理表驱动动态计数查询", description = "返回满足基于物理表/列过滤条件的记录总数 (脱离 fieldId)")
-    public ApiResponse<Long> countByTable(@RequestBody TableQueryReq req) {
-        return ApiResponse.success(dataApi.countByTable(req));
+    @PostMapping("/count")
+    @Operation(summary = "动态计数查询", description = "返回满足业务聚合树与过滤条件的记录总数")
+    public ApiResponse<Long> count(@RequestBody QueryReq req) {
+        return ApiResponse.success(dataApi.count(req));
     }
 
-    @PostMapping("/table/options")
-    @Operation(summary = "物理表驱动字段搜索下拉候选项", description = "支持直接根据物理表名及列名获取去重候选值列表 (脱离 fieldId)")
-    public ApiResponse<List<DataOptionResp>> getOptionsByTable(@RequestBody TableOptionReq req) {
-        return ApiResponse.success(dataApi.getOptionsByTable(req));
+    @PostMapping("/options")
+    @Operation(summary = "字段搜索下拉候选项查询", description = "获取字段去重候选值列表")
+    public ApiResponse<List<DataOptionResp>> getOptions(@RequestBody OptionReq req) {
+        return ApiResponse.success(dataApi.getOptions(req));
     }
 
     @GetMapping("/{moduleId}/{id}/full")
@@ -73,7 +75,7 @@ public class DataController {
         return ApiResponse.success(dataApi.save(block));
     }
 
-    @PostMapping("/table/fork-version")
+    @PostMapping("/fork-version")
     @Operation(
             summary = "单据版本派生与局部增量融合保存",
             description = "基于基准单据ID(如156)自动抓取完整数据树，并与前端提交的局部增量修改(patchData)深度合并，生成全新的独立单据版本并返回新根ID")

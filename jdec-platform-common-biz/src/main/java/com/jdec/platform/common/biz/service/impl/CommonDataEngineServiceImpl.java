@@ -2,12 +2,12 @@ package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.request.MenuDetailQueryReq;
+import com.jdec.platform.common.api.dto.request.MenuVersionListQueryReq;
+import com.jdec.platform.common.api.dto.response.DetailDataResp;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
-import com.jdec.platform.common.biz.dto.request.MenuDetailQueryReq;
-import com.jdec.platform.common.biz.dto.request.MenuVersionListQueryReq;
-import com.jdec.platform.common.biz.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysMenuApi;

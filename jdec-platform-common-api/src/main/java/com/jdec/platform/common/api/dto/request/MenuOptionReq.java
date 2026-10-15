@@ -1,4 +1,4 @@
-package com.jdec.platform.common.biz.dto.request;
+package com.jdec.platform.common.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -25,7 +25,7 @@ public class MenuOptionReq implements Serializable {
     private Long fieldId;
 
     @Schema(description = "纯平铺单字段过滤条件列表 (默认以平级 AND 组合)")
-    private List<FlatFilterItem> filters;
+    private List<MenuFlatFieldFilterItem> filters;
 
     @Schema(description = "候选项排序方向: ASC (升序) / DESC (降序)，为 null 或空时默认不进行额外排序", example = "ASC")
     private String direction;

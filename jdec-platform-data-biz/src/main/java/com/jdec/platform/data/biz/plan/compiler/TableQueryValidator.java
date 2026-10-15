@@ -3,9 +3,9 @@ package com.jdec.platform.data.biz.plan.compiler;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.PhysicalSortItem;
-import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import java.util.HashSet;
 import java.util.Set;
@@ -22,7 +22,7 @@ public final class TableQueryValidator {
     private TableQueryValidator() {}
 
     /** 校验物理表查询请求的表/列是否都在当前模块树允许范围内。 */
-    public static void validate(TableQueryReq req, ModuleTreeDTO tree) {
+    public static void validate(QueryReq req, ModuleTreeDTO tree) {
         Set<String> allowedColumns = new HashSet<>();
         Set<String> allowedTables = new HashSet<>();
         if (tree.getModuleMap() != null) {
@@ -84,12 +84,12 @@ public final class TableQueryValidator {
 
         String defaultTable = ModuleRelationResolver.resolvePrimaryTable(tree.getRootModule());
         if (req.getFilters() != null) {
-            for (PhysicalFilterItem filter : req.getFilters()) {
+            for (FilterItem filter : req.getFilters()) {
                 validateTableFilter(allowedColumns, defaultTable, filter, tree);
             }
         }
         if (req.getSorts() != null) {
-            for (PhysicalSortItem sort : req.getSorts()) {
+            for (SortItem sort : req.getSorts()) {
                 if (sort == null
                         || sort.getColumnName() == null
                         || sort.getColumnName().isBlank()) {
@@ -115,7 +115,7 @@ public final class TableQueryValidator {
     private static void validateTableFilter(
             Set<String> allowedColumns,
             String defaultTable,
-            PhysicalFilterItem filter,
+            FilterItem filter,
             ModuleTreeDTO tree) {
         if (filter == null) {
             return;
@@ -134,7 +134,7 @@ public final class TableQueryValidator {
             validatePhysicalColumn(allowedColumns, table, filter.getColumnName(), "过滤字段");
         }
         if (filter.getChildren() != null) {
-            for (PhysicalFilterItem child : filter.getChildren()) {
+            for (FilterItem child : filter.getChildren()) {
                 validateTableFilter(allowedColumns, defaultTable, child, tree);
             }
         }

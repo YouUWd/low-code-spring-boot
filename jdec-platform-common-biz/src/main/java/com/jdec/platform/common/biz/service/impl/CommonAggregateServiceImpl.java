@@ -1,15 +1,11 @@
 package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.common.api.UserMenuHeaderApi;
-import com.jdec.platform.common.api.dto.request.SortItem;
+import com.jdec.platform.common.api.dto.request.FieldSortItem;
+import com.jdec.platform.common.api.dto.request.MenuFlatFieldFilterItem;
+import com.jdec.platform.common.api.dto.request.MenuOptionReq;
+import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.response.*;
-import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
-import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
-import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
-import com.jdec.platform.common.biz.dto.response.MenuDataResp;
-import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
-import com.jdec.platform.common.biz.dto.response.StatusSimpleResp;
-import com.jdec.platform.common.biz.dto.response.UserSimpleResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
@@ -24,11 +20,9 @@ import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.PhysicalSortItem;
-import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
-import com.jdec.platform.data.api.dto.request.TableOptionReq;
-import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
@@ -93,11 +87,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
         int pageSize = (req != null && req.getPageSize() != null) ? req.getPageSize() : 20;
         List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
-        List<PhysicalFilterItem> finalFilters =
+        List<com.jdec.platform.data.api.dto.request.FilterItem> finalFilters =
                 req != null
                         ? PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters())
                         : new ArrayList<>();
-        List<PhysicalSortItem> finalSorts =
+        List<com.jdec.platform.data.api.dto.request.SortItem> finalSorts =
                 req != null
                         ? PhysicalQueryMapper.toTableSorts(moduleTree, req.getSorts())
                         : new ArrayList<>();
@@ -135,8 +129,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 4. 调用底层低代码数据引擎进行分页查询
         DataPage<DataBlock> rawDataPage =
-                dataApi.queryByTable(
-                        TablePageQueryReq.builder()
+                dataApi.queryPage(
+                        PageQueryReq.builder()
                                 .moduleId(rootModuleId)
                                 .tables(tableSpecs)
                                 .filters(finalFilters)
@@ -223,8 +217,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 2. 调用底层低代码引擎获取指定物理字段投影的单据详情
         DataBlock dataBlock =
-                dataApi.getDetailByTable(
-                        TableDetailQueryReq.builder()
+                dataApi.getDetail(
+                        DetailQueryReq.builder()
                                 .moduleId(rootModuleId)
                                 .id(id)
                                 .tables(tableSpecs)
@@ -275,7 +269,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 PhysicalQueryMapper.resolve(moduleTree, req.getFieldId());
 
         // 2. 组装单层 AND 组合过滤条件
-        List<PhysicalFilterItem> finalFilters =
+        List<com.jdec.platform.data.api.dto.request.FilterItem> finalFilters =
                 PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters());
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
@@ -293,9 +287,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             finalFilters.addAll(approvalFilter.filters());
         }
 
-        // 4. 构建 TableOptionReq 并调用底层低代码数据引擎
-        TableOptionReq optionReq =
-                TableOptionReq.builder()
+        // 4. 构建 OptionReq 并调用底层低代码数据引擎
+        OptionReq optionReq =
+                OptionReq.builder()
                         .moduleId(rootModuleId)
                         .tableName(targetField.tableName())
                         .columnName(targetField.columnName())
@@ -303,7 +297,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .direction(req.getDirection())
                         .build();
 
-        List<DataOptionResp> rawOptions = dataApi.getOptionsByTable(optionReq);
+        List<DataOptionResp> rawOptions = dataApi.getOptions(optionReq);
         return enhanceOptions(rawOptions, targetField.columnName(), rootModuleId);
     }
 
@@ -322,7 +316,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Set<Long> hitOneToManyBranches = new LinkedHashSet<>();
         if (req != null) {
             if (!CollectionUtils.isEmpty(req.getFilters())) {
-                for (FlatFilterItem flatFilter : req.getFilters()) {
+                for (MenuFlatFieldFilterItem flatFilter : req.getFilters()) {
                     if (flatFilter != null && flatFilter.getFieldId() != null) {
                         Long branch =
                                 resolveBranchByFieldId(
@@ -339,7 +333,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 }
             }
             if (!CollectionUtils.isEmpty(req.getSorts())) {
-                for (SortItem sortItem : req.getSorts()) {
+                for (FieldSortItem sortItem : req.getSorts()) {
                     if (sortItem != null && sortItem.getFieldId() != null) {
                         Long branch =
                                 resolveBranchByFieldId(
