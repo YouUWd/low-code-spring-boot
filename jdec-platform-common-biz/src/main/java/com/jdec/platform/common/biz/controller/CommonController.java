@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -65,6 +66,22 @@ public class CommonController {
                     req.getNestedModuleData().getModuleId(),
                     ex.getMessage(),
                     ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/detailHead")
+    @Operation(summary = "查询详情头部信息", description = "查询详情头部信息")
+    public ApiResponse<Map<String, Object>> getDetailHead(
+            @Schema(description = "菜单ID") @RequestParam Long menuId,
+            @Schema(description = "业务ID") @RequestParam Long recordId,
+            @Schema(description = "查看类型") @RequestParam String btnType) {
+        try {
+            return ApiResponse.success(
+                    commonApprovalService.getDetailHead(menuId, recordId, btnType));
+        } catch (Exception ex) {
+            log.error(
+                    "Common DataEngine save failed: menuId={},err={}", menuId, ex.getMessage(), ex);
             throw ex;
         }
     }

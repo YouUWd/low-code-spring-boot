@@ -19,6 +19,8 @@ public interface CommonApprovalService {
 
     void approvalSave(Long moduleId, ApprovalReq req);
 
+    Map<String, Object> getDetailHead(Long menuId, Long recordId, String btnType);
+
     Long BusinessNextId(Long menuId);
 
     List<Map<String, Object>> getApprovalStep(Long menuId, Long id);
