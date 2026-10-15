@@ -11,6 +11,7 @@ import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
+import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -99,8 +100,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
                         .businessNo(recordData.get("business_no").toString())
                         .btnType(btnType)
                         .build();
-        ;
-        result.put("versionList", dataEngineApi.getVersionList(versionListQueryReq));
+        List<VersionListResp> versionList = dataEngineApi.getVersionList(versionListQueryReq);
+        result.put("versionList", versionList);
         // 当前状态
         Map<String, Object> approvalStatus = new HashMap<>();
         if (Objects.nonNull(btnType)
@@ -136,7 +137,10 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         result.putAll(objectMapper.convertValue(userInfoResp, HashMap.class));
         // 是否草稿
         result.put("approvalChainStatus", approvalChainStatus);
-        if (approvalChainStatus) {
+        if (approvalChainStatus
+                && !versionList
+                        .get(versionList.size() - ((int) recordData.get("version_no")))
+                        .getHistory()) {
             result.putAll(approvalEngine.getApprovalData(rootModuleId, recordId, btnType));
         } else {
             // 是否可以保存提交
