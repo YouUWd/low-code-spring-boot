@@ -37,7 +37,8 @@ public class SubModuleRelateIdConditionBuilderServiceImpl
             return DSL.falseCondition();
         } else {
             return DSL.field(DSL.name(context.getTableName(), relationList.get(0).getJoinField()))
-                    .in(context.getRelateIds());
+                    .in(context.getRelateIds())
+                    .and(DSL.field(DSL.name(context.getTableName(), "deleted")).eq(0));
         }
     }
 

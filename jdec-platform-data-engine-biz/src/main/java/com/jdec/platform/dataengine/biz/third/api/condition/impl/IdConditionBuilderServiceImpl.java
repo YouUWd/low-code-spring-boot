@@ -28,6 +28,8 @@ public class IdConditionBuilderServiceImpl implements SingleBizConditionBuilderS
         String primaryTableName =
                 null; // context.getSysModuleCompleteResp().getModule().getPrimaryTable();
 
-        return DSL.field(DSL.name(primaryTableName, "id")).eq(context.getId());
+        return DSL.field(DSL.name(primaryTableName, "id"))
+                .eq(context.getId())
+                .and(DSL.field(DSL.name(primaryTableName, "deleted")).eq(0));
     }
 }
