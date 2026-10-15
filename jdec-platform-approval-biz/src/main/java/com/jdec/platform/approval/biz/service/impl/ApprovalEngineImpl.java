@@ -609,10 +609,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     @Override
     public boolean getApprovalChainStatus(Long moduleId, Long recordId) {
-        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = new LambdaQueryWrapper<>();
-        businessWrapper.eq(ApprovalBusiness::getModuleId, moduleId);
-        businessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("LIMIT 1");
-        ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
+        LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
+        businessWrapper.eq(ApprovalVersionRecord::getModuleId, moduleId);
+        businessWrapper
+                .eq(ApprovalVersionRecord::getRecordId, recordId)
+                .orderByAsc(ApprovalVersionRecord::getId)
+                .last("LIMIT 1");
+        ApprovalVersionRecord approvalChainBusiness =
+                approvalVersionRecordMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalChainBusiness)) {
             return false;
         }
