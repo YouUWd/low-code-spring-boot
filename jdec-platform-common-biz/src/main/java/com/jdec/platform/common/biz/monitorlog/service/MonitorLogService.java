@@ -24,11 +24,7 @@ import com.jdec.platform.shared.security.SecurityUtils;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -315,9 +311,7 @@ public class MonitorLogService implements MonitorLogApi {
                         .select(LOG_COLUMNS)
                         .from(DSL.table(DSL.name(TABLE_MONITOR_LOG)))
                         .where(DSL.field(DSL.name("id"), Long.class).in(logIds))
-                        .orderBy(
-                                DSL.field(DSL.name("record_time")).desc(),
-                                DSL.field(DSL.name("id")).desc())
+                        .orderBy(DSL.field(DSL.name("record_time")), DSL.field(DSL.name("id")))
                         .fetchInto(MonitorLog.class)
                         .stream()
                         .map(this::toResp)
