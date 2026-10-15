@@ -125,7 +125,9 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
                     .computeIfAbsent(itemModuleId, k -> new HashMap<>())
                     .computeIfAbsent(dataId, m -> new HashMap<>())
                     .put(
-                            String.valueOf(rMap.get("field_id")),
+                            String.valueOf(rMap.get("table_name"))
+                                    + "."
+                                    + String.valueOf(rMap.get("field_id")),
                             VersionSnapShot.builder()
                                     .firstSnapshot(
                                             rMap.get("first_snapshot") == null

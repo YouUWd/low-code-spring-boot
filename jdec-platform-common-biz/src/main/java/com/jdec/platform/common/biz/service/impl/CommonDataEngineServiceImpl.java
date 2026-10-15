@@ -229,7 +229,10 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         }
 
         // 当前步骤能否编辑，有审批链时生效，无审批链时权限和模块权限一致
-        Boolean canEdit = true;
+        Boolean canEdit = dynamicDetailQueryReq.getId() <= 0 ? false : true;
+
+        // 申请权限能否生效
+        Boolean canApply = dynamicDetailQueryReq.getId() <= 0 ? true : false;
 
         if (Objects.nonNull(detailData)) {
             if (hasApproval) {
@@ -303,7 +306,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         moduleIdHeaderMap,
                         nameToWorldConfMap,
                         rootNode,
-                        canEdit);
+                        canEdit,
+                        canApply);
 
         return DetailDataResp.of(metaDTO, detailData);
     }
@@ -391,7 +395,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap,
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
             ModuleTreeDTO moduleTreeDTO,
-            Boolean canEdit) {
+            Boolean canEdit,
+            Boolean canApply) {
         if (moduleTreeDTO == null || moduleTreeDTO.getModuleMap() == null) {
             return null;
         }
@@ -421,7 +426,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         FieldMetaDTO.builder()
                                 .id(f.getId())
                                 .displayName(f.getDisplayName())
-                                .apply(fp != null ? fp.getApply() : false)
+                                .apply(fp != null ? fp.getApply() && canApply : false)
                                 .view(fp != null ? fp.getView() : false)
                                 .edit(fp != null ? fp.getEdit() && canEdit : false)
                                 .businessNo(
@@ -470,7 +475,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 moduleIdHeaderMap,
                                 worldCloudConfigMap,
                                 moduleTreeDTO,
-                                canEdit));
+                                canEdit,
+                                canApply));
             }
         }
 

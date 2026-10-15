@@ -8,6 +8,8 @@ import com.jdec.platform.dataengine.biz.operatelog.annotation.SaveOperateLog;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +76,9 @@ public class DataEngineService implements DataEngineApi {
 
     @Override
     public Map<String, Object> getRecordData(Long moduleId, Long id) {
-        return dynamicQueryService.getRecordData(moduleId, id);
+        List<Map<String, Object>> dataList =
+                dynamicQueryService.getRecordDatas(
+                        moduleId, Arrays.asList(id), new ArrayList<>(), null);
+        return CollectionUtils.isEmpty(dataList) ? null : dataList.get(0);
     }
 }

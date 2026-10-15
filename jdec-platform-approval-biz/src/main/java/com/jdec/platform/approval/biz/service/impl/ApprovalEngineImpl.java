@@ -609,10 +609,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     @Override
     public boolean getApprovalChainStatus(Long moduleId, Long recordId) {
-        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = new LambdaQueryWrapper<>();
-        businessWrapper.eq(ApprovalBusiness::getModuleId, moduleId);
-        businessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("LIMIT 1");
-        ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
+        LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
+        businessWrapper.eq(ApprovalVersionRecord::getModuleId, moduleId);
+        businessWrapper
+                .eq(ApprovalVersionRecord::getRecordId, recordId)
+                .orderByAsc(ApprovalVersionRecord::getId)
+                .last("LIMIT 1");
+        ApprovalVersionRecord approvalChainBusiness =
+                approvalVersionRecordMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalChainBusiness)) {
             return false;
         }
@@ -739,7 +743,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getOldRecordId())
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
                 .last("limit 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
@@ -891,14 +895,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 审批通过---------------------------------------------------------------------
     @Transactional
     public void businessApprove(ApprovalProcessDTO approvalProcessDTO) {
-        Long recordId =
-                Objects.nonNull(approvalProcessDTO.getOldRecordId())
-                        ? approvalProcessDTO.getOldRecordId()
-                        : approvalProcessDTO.getRecordId();
         // 查询当前业务单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
-        approvalBusinessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("limit 1");
+        approvalBusinessWrapper
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
+                .last("limit 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
         if (Objects.isNull(approvalBusiness)) {
@@ -1091,7 +1093,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
                 .last("LIMIT 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
@@ -1267,7 +1269,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getRecordId())
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
                 .last("LIMIT 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
@@ -1657,11 +1659,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 continue;
             }
             currentVersionNo = item.getVersionNo();
+            LambdaQueryWrapper<ApprovalVersionRecord> sourcewWrapper =
+                    new LambdaQueryWrapper<ApprovalVersionRecord>()
+                            .eq(ApprovalVersionRecord::getBusinessNumber, getBusinessNumber)
+                            .eq(ApprovalVersionRecord::getRecordId, item.getSourceId())
+                            .last("LIMIT 1");
+            ApprovalVersionRecord sourceRecord =
+                    approvalVersionRecordMapper.selectOne(sourcewWrapper);
             Map<String, Object> map = new HashMap<>();
-            map.put("id", item.getId());
-            map.put("recordId", item.getRecordId());
+            map.put("id", item.getRecordId());
             map.put("versionNo", item.getVersionNo());
             map.put("statusValue", item.getStatusValue());
+            map.put("preVersion", sourceRecord.getVersionNo());
             map.put("btnType", btnType.contains("change") ? "change-view" : "");
             versionList.add(map);
         }
@@ -1681,8 +1690,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 sortData.sort((a, b) -> Long.compare(((Long) b.get("id")), ((Long) a.get("id"))));
                 // 取第一条
                 Map<String, Object> lastData = new HashMap<>(sortData.get(0));
-                lastData.put("id", 0);
-                lastData.put("recordId", sortData.get(0).get("recordId"));
+                lastData.put("id", sortData.get(0).get("recordId"));
                 lastData.put("statusValue", 1);
                 lastData.put("btnType", "change-change");
                 versionNo = versionList.size() + 1;

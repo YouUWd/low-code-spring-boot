@@ -2,6 +2,8 @@ package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.config.api.*;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.response.SysModuleResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
@@ -458,8 +460,17 @@ public class DynamicQueryService {
                         .queryType(queryType)
                         .build();
 
+        ModuleTreeDTO moduleTreeDTO =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootNode.getId());
+
         NestedModuleDataDTO moduleData =
-                queryModule(singleQueryDTO, rootNode, true, topQuery, moduleIdToFieldMap);
+                queryModule(
+                        singleQueryDTO,
+                        rootNode,
+                        true,
+                        topQuery,
+                        moduleIdToFieldMap,
+                        moduleTreeDTO);
         resultList.add(moduleData);
     }
 
@@ -468,7 +479,8 @@ public class DynamicQueryService {
             SysModuleSimpleTreeResp rootNode,
             Boolean recursive,
             Boolean topQUery,
-            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
+            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap,
+            ModuleTreeDTO moduleTreeDTO) {
         NestedModuleDataDTO.NestedModuleDataDTOBuilder builder = NestedModuleDataDTO.builder();
 
         // 非顶层模块查询，需要设置关联键作为查询条件
@@ -486,6 +498,12 @@ public class DynamicQueryService {
         List<RecordDataDTO> currentModuleData = new ArrayList<>();
 
         currentModuleData = querySingleModule(rootNode, queryReq, queryReq.getQueryType());
+
+        // 填充parent_id字段
+        if (topQUery) {
+            fillParentData(
+                    rootNode.getId(), moduleTreeDTO, currentModuleData, queryReq.getFields());
+        }
 
         if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
             return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
@@ -546,7 +564,13 @@ public class DynamicQueryService {
                             .queryType(queryReq.getQueryType())
                             .build();
             NestedModuleDataDTO childResultList =
-                    queryModule(singleQueryDTO, childNode, true, false, moduleIdToFieldMap);
+                    queryModule(
+                            singleQueryDTO,
+                            childNode,
+                            true,
+                            false,
+                            moduleIdToFieldMap,
+                            moduleTreeDTO);
 
             ProjectTableRelationsDTO projectTableRelationsDTO =
                     configApi.getProjectTableRelations(AppContext.getProjectNo());
@@ -593,6 +617,147 @@ public class DynamicQueryService {
         }
 
         return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
+    }
+
+    /**
+     * parent_id字段填充数据库对应查询对象
+     *
+     * @param moduleId
+     * @param moduleTreeDTO
+     * @param moduleDatas
+     * @param fields
+     */
+    private void fillParentData(
+            Long moduleId,
+            ModuleTreeDTO moduleTreeDTO,
+            List<RecordDataDTO> moduleDatas,
+            List<ModuleFieldDTO> fields) {
+        boolean existParentIdField =
+                fields.stream().anyMatch(field -> field.getColumnName().equals("parent_id"));
+        if (!existParentIdField) {
+            return;
+        }
+
+        // 模块信息
+        ModuleInfo moduleInfo = moduleTreeDTO.getModule(moduleId);
+
+        // 模块主表数据按主表id分组
+        Map<Long, Map<String, Object>> primaryIdToDataMap =
+                moduleDatas.stream()
+                        .filter(
+                                ele ->
+                                        Objects.nonNull(
+                                                ele.getRow()
+                                                        .get(
+                                                                moduleInfo.getPrimaryTable()
+                                                                        + "."
+                                                                        + "id")))
+                        .collect(
+                                Collectors.toMap(
+                                        item ->
+                                                Long.parseLong(
+                                                        String.valueOf(
+                                                                item.getRow()
+                                                                        .get(
+                                                                                moduleInfo
+                                                                                                .getPrimaryTable()
+                                                                                        + "."
+                                                                                        + "id"))),
+                                        v -> {
+                                            Map<String, Object> rowData = v.getRow();
+                                            Map<String, Object> primaryTableData = new HashMap<>();
+                                            rowData.entrySet().stream()
+                                                    .forEach(
+                                                            entry -> {
+                                                                if (entry.getKey()
+                                                                        .startsWith(
+                                                                                moduleInfo
+                                                                                                .getPrimaryTable()
+                                                                                        + ".")) {
+                                                                    primaryTableData.put(
+                                                                            entry.getKey(),
+                                                                            entry.getValue());
+                                                                }
+                                                            });
+                                            return primaryTableData;
+                                        },
+                                        (a, b) -> a));
+
+        // 待获取数据的parentId集合
+        Set<Long> parentIdSet =
+                moduleDatas.stream()
+                        .filter(
+                                ele ->
+                                        Objects.nonNull(
+                                                ele.getRow()
+                                                        .get(
+                                                                moduleInfo.getPrimaryTable()
+                                                                        + "."
+                                                                        + "parent_id")))
+                        .map(
+                                item ->
+                                        Long.parseLong(
+                                                String.valueOf(
+                                                        item.getRow()
+                                                                .get(
+                                                                        moduleInfo.getPrimaryTable()
+                                                                                + "."
+                                                                                + "parent_id"))))
+                        .collect(Collectors.toSet());
+
+        // 需要从数据库查询的id列表，其他数据从已有的模块数据中获取
+        Set<Long> queryIds =
+                parentIdSet.stream()
+                        .filter(ele -> !primaryIdToDataMap.keySet().contains(ele))
+                        .collect(Collectors.toSet());
+
+        // 模块主表的有权限字段
+        List<ModuleFieldDTO> primaryTableFields =
+                fields.stream()
+                        .filter(ele -> ele.getTableName().equals(moduleInfo.getPrimaryTable()))
+                        .collect(Collectors.toList());
+
+        if (!CollectionUtils.isEmpty(queryIds)) {
+            List<Long> idSet = new ArrayList<>(queryIds);
+            List<Map<String, Object>> queryData =
+                    getRecordDatas(moduleId, idSet, primaryTableFields, moduleInfo);
+
+            Map<Long, Map<String, Object>> queryDataIdToMap =
+                    queryData.stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            v ->
+                                                    Long.parseLong(
+                                                            String.valueOf(
+                                                                    v.get(
+                                                                            moduleInfo
+                                                                                            .getPrimaryTable()
+                                                                                    + "."
+                                                                                    + "id"))),
+                                            k -> k));
+
+            primaryIdToDataMap.putAll(queryDataIdToMap);
+        }
+
+        // 遍历模块数据，填充parent_id字段为对象
+        for (RecordDataDTO recordDataDTO : moduleDatas) {
+            if (recordDataDTO
+                    .getRow()
+                    .containsKey(moduleInfo.getPrimaryTable() + "." + "parent_id")) {
+                Object parentId =
+                        recordDataDTO
+                                .getRow()
+                                .get(moduleInfo.getPrimaryTable() + "." + "parent_id");
+                if (Objects.nonNull(parentId)) {
+                    Long parentIdLong = Long.parseLong(String.valueOf(parentId));
+                    recordDataDTO
+                            .getRow()
+                            .put(
+                                    moduleInfo.getPrimaryTable() + "." + "parent_id",
+                                    primaryIdToDataMap.get(parentIdLong));
+                }
+            }
+        }
     }
 
     private List<ModuleFieldDTO> getIdAndRelateIdField(Long id) {
@@ -1202,7 +1367,7 @@ public class DynamicQueryService {
                 Integer fakeVersionNo = lastVersion == null ? 0 : lastVersion + 1;
                 versionList.add(
                         VersionListResp.builder()
-                                .version(fakeVersionNo)
+                                .versionNo(fakeVersionNo)
                                 .id(versionListQueryReq.getId())
                                 .history(false)
                                 .btnType("change-change")
@@ -1223,23 +1388,47 @@ public class DynamicQueryService {
 
                     Long id = Long.parseLong(String.valueOf(resultMap.get("id")));
 
+                    Integer businessStatus =
+                            Integer.parseInt(String.valueOf(resultMap.get("business_status")));
+
                     VersionListResp.VersionListRespBuilder versionBuilder =
                             VersionListResp.builder()
-                                    .version(versionNo)
+                                    .versionNo(versionNo)
                                     .id(id)
                                     .history(true)
-                                    .btnType("view");
+                                    .btnType("view")
+                                    .statusValue(businessStatus);
 
                     // 除了第一版，其他版本设置preVersion为上一版本号
                     if (resultLength > 1 && i < (resultLength - 1)) {
-                        versionBuilder.preVersion(
-                                recordsResult.get(i + 1).get("version_no") == null
-                                        ? null
-                                        : Integer.valueOf(
-                                                String.valueOf(
-                                                        recordsResult
-                                                                .get(i + 1)
-                                                                .get("version_no"))));
+
+                        Record preVersionData =
+                                recordsResult.stream()
+                                        .filter(
+                                                item -> {
+                                                    Map<String, Object> itemMap = item.intoMap();
+                                                    return Integer.parseInt(
+                                                                            String.valueOf(
+                                                                                    itemMap.get(
+                                                                                            "version_no")))
+                                                                    < versionNo
+                                                            && Integer.parseInt(
+                                                                            String.valueOf(
+                                                                                    itemMap.get(
+                                                                                            "business_status")))
+                                                                    == 99;
+                                                })
+                                        .findFirst()
+                                        .orElse(null);
+
+                        if (Objects.nonNull(preVersionData)) {
+                            versionBuilder.preVersion(
+                                    preVersionData.get("version_no") == null
+                                            ? null
+                                            : Integer.valueOf(
+                                                    String.valueOf(
+                                                            preVersionData.get("version_no"))));
+                        }
                     }
 
                     if (i == 0) {
@@ -1270,10 +1459,10 @@ public class DynamicQueryService {
 
         conditions.add(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo));
 
-        conditions.add(
-                DSL.field(DSL.name(primaryTable, "business_status"))
-                        .eq(99)
-                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
+        //        conditions.add(
+        //                DSL.field(DSL.name(primaryTable, "business_status"))
+        //                        .eq(99)
+        //                        .or(DSL.field(DSL.name(primaryTable, "id")).eq(id)));
 
         query.where(conditions);
 
@@ -1353,21 +1542,23 @@ public class DynamicQueryService {
                         Integer.parseInt(String.valueOf(resultMap.get("root_table_data_version")));
                 historyVersionList.add(
                         VersionListResp.builder()
-                                .version(versionNo)
+                                .versionNo(versionNo)
                                 .history(true)
                                 .btnType("view")
                                 .build());
             }
         }
 
-        historyVersionList.sort(Comparator.comparing(VersionListResp::getVersion).reversed());
+        historyVersionList.sort(Comparator.comparing(VersionListResp::getVersionNo).reversed());
 
         if (!CollectionUtils.isEmpty(historyVersionList)) {
             // 设置上一版本版本号
             int i = 0;
             int last = (historyVersionList.size() - 1);
             while (i < (last)) {
-                historyVersionList.get(i).setPreVersion(historyVersionList.get(i + 1).getVersion());
+                historyVersionList
+                        .get(i)
+                        .setPreVersion(historyVersionList.get(i + 1).getVersionNo());
                 i++;
             }
         }
@@ -1445,32 +1636,57 @@ public class DynamicQueryService {
         return createdUserInfoRespBuilder.build();
     }
 
-    public Map<String, Object> getRecordData(Long moduleId, Long id) {
-        SysModuleInfo sysModuleInfo =
-                dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+    public List<Map<String, Object>> getRecordDatas(
+            Long moduleId, List<Long> ids, List<ModuleFieldDTO> fields, ModuleInfo moduleInfo) {
+        String primaryTable = "";
 
-        String primaryTable = sysModuleInfo.getPrimaryTable();
+        if (Objects.nonNull(moduleInfo)) {
+            primaryTable = moduleInfo.getPrimaryTable();
+        } else {
+            SysModuleInfo sysModuleInfo =
+                    dataModuleConfigService.getModuleCompleteById(
+                            AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+            primaryTable = sysModuleInfo.getPrimaryTable();
+        }
 
         DSLContext dslContext = jooqContextFactory.getContext();
 
-        SelectJoinStep<Record> query =
-                dslContext.select(DSL.asterisk()).from(DSL.name(primaryTable));
+        List<Field<?>> queryFields =
+                fields.stream()
+                        .map(
+                                item ->
+                                        DSL.field(
+                                                        DSL.name(
+                                                                item.getTableName(),
+                                                                item.getColumnName()))
+                                                .as(
+                                                        item.getTableName()
+                                                                + "."
+                                                                + item.getColumnName()))
+                        .collect(Collectors.toList());
+        SelectJoinStep<Record> query;
+        if (CollectionUtils.isEmpty(fields)) {
+            query = dslContext.select(DSL.asterisk()).from(primaryTable);
+        } else {
+            query = dslContext.select(queryFields).from(primaryTable);
+        }
 
         // 构造SQL 查询条件
         List<Condition> conditions = new ArrayList<>();
 
-        conditions.add(DSL.field(DSL.name(primaryTable, "id")).eq(id));
+        conditions.add(DSL.field(DSL.name(primaryTable, "id")).in(ids));
 
         query.where(conditions);
 
-        Map<String, Object> resultMap = new HashMap<>();
+        List<Map<String, Object>> resultMaps = new ArrayList<>();
 
-        Record result = query.fetchOne();
-        if (Objects.nonNull(result)) {
-            resultMap = result.intoMap();
+        Result<Record> result = query.fetch();
+        for (Record record : result) {
+            if (Objects.nonNull(record)) {
+                resultMaps.add(record.intoMap());
+            }
         }
 
-        return resultMap;
+        return resultMaps;
     }
 }
