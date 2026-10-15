@@ -146,38 +146,20 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
     private Long saveModuleApprovalData(
             ApprovalStatusCallBackReq req, SysModuleCombineInfo rootModule, DSLContext dslContext) {
-        //        Map<String, Object> row = new HashMap<>();
-        //        row.put(
-        //                DataPersistenceUtil.getFullFieldName(
-        //                        rootModule.getModuleInfo().getPrimaryTable(),
-        //                        CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD),
-        //                req.getDataId());
-        //        row.put(
-        //                DataPersistenceUtil.getFullFieldName(
-        //                        rootModule.getModuleInfo().getPrimaryTable(),
-        //                        CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD),
-        //                req.getBusinessStatus());
-        //
-        //        // 第一次提交，要更新 登记时间
-        //        if (req.getIsFirstSubmit() != null && req.getIsFirstSubmit()) {
-        //            row.put(
-        //                    DataPersistenceUtil.getFullFieldName(
-        //                            rootModule.getModuleInfo().getPrimaryTable(),
-        //                            CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD),
-        //                    req.getRegistrationTime());
-        //        }
 
-        //        RecordDataDTO recordDataDTO = new RecordDataDTO();
-        //        recordDataDTO.setRow(row);
-        //        List<RecordDataDTO> recordDataDTOList = new ArrayList<>();
-        //        recordDataDTOList.add(recordDataDTO);
-        //        NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
-        //        nestedModuleDataDTO.setModuleId(rootModule.getModuleInfo().getModuleId());
-        //        nestedModuleDataDTO.setRecord(recordDataDTOList);
-        //        DynamicSaveReq saveReq = new DynamicSaveReq();
-        //        saveReq.setNestedModuleData(nestedModuleDataDTO);
-        //        // 更更新 业务数据的 审批状态
-        //        Long rootModuleMainTableId = moduleDataPersistenceService.save(saveReq);
+        Record r =
+                dslContext
+                        .select(DSL.asterisk())
+                        .from(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
+                        .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
+                        .fetchOne();
+        if (r == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                    "审批状态回调数据ID[" + req.getDataId() + "]无此记录");
+        }
+
+        Long sourceId = r.get(DSL.field(DSL.name("source_id")), Long.class);
 
         Map<Field<Object>, Object> fieldValues = new HashMap<>();
         fieldValues.put(
@@ -196,11 +178,31 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
                     req.getRegistrationTime());
         }
+        // 如果是 取消状态  而且有上一个版本的数据
+        if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
+            // 当前版本 要设置成 非活跃
+            fieldValues.put(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 1);
+        }
         dslContext
                 .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
                 .set(fieldValues)
                 .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
                 .execute();
+        // 如果是 取消状态  而且有上一个版本的数据
+        if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
+            // 上一个版本 要活跃
+            dslContext
+                    .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
+                    .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0)
+                    .set(
+                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+                            UserContext.getUserId())
+                    .set(
+                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+                            LocalDateTime.now())
+                    .where(DSL.field(DSL.name("id")).eq(sourceId))
+                    .execute();
+        }
         return req.getDataId();
     }
 

@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.collection.ListUtil;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
@@ -13,7 +14,6 @@ import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.*;
-import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -35,8 +35,6 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
     private final ModuleDataPersistenceService moduleDataPersistenceService;
 
     private final ModuleDataPreStoreService moduleDataPreStoreService;
-
-    private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
 
     @Override
     public DynamicSaveResp save(DynamicSaveReq req) {
@@ -67,6 +65,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
         }
+        // 获取根模块ID
         Long rootModuleId =
                 moduleCacheMap.get(structureRootModuleId).getModuleTree().getRootModuleId();
 
@@ -82,10 +81,6 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         if (saveType == null) {
             throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "保存类型不能为空");
         }
-
-        // 待保存的数据
-        NestedModuleDataDTO nestedSaveData = req.getNestedModuleData();
-
         // todo 如果待保存的数据不是 从根模块的主表数据开始的，需要进行数据转换寻找父模块的数据
 
         Long structureRootDataId =
@@ -95,16 +90,28 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .get(structureRootModuleId)
                                 .getModuleInfo()
                                 .getPrimaryTable());
+        // 待保存的数据
+        NestedModuleDataDTO nestedSaveData = req.getNestedModuleData();
+
         // 是否是全局的插入
         Boolean isOverallInsert = structureRootDataId == null || structureRootDataId <= 0;
         NestedModuleDataDTO detailData = null;
         // 更新时先获取一遍详情页
         if (!isOverallInsert) {
+            // 如果不是从根模块节点 传参数的
+            Long rootModuleMainTableDataId = null;
+            if (!rootModuleId.equals(structureRootModuleId)) {
+                rootModuleMainTableDataId =
+                        moduleDataPersistenceService.getRootModuleMainTableDataId(
+                                structureRootModuleId, structureRootDataId, moduleCacheMap);
+            } else {
+                rootModuleMainTableDataId = structureRootDataId;
+            }
             detailData =
                     moduleBizDataService.getModuleDetailDataAsync(
                             ModuleDetailQueryContext.builder()
-                                    .moduleId(structureRootModuleId)
-                                    .dataId(structureRootDataId)
+                                    .moduleId(rootModuleId)
+                                    .dataId(rootModuleMainTableDataId)
                                     .versionNo(null)
                                     .moduleCacheMap(moduleCacheMap)
                                     .projectNo(AppContext.getProjectNo())
@@ -150,14 +157,6 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             }
 
         } else {
-            // 变更保存都是 全局插入操作
-            isOverallInsert = true;
-            // 已数据库中的detail数据为基准，合并前端提交过来的数据nestedSaveData
-            nestedSaveData =
-                    ModuleTreeDataUtils.mergeNestedModuleData(
-                            detailData, nestedSaveData, moduleCacheMap);
-            // 变更插入 剔除ID 等相关的字段
-            ModuleTreeDataUtils.cleanNestedModuleData(nestedSaveData, moduleCacheMap);
 
             // 变更插入 根模块 主表的业务编号
             String businessNo =
@@ -168,6 +167,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                     DataPersistenceUtil.getTableRowIdWithTabName(
                             detailData.getRecord().get(0).getRow(),
                             rootModule.getModuleInfo().getPrimaryTable());
+            // 无论如何变更保存，原来的 单据号和ID都要存在
             if (StringUtils.isEmpty(businessNo) || sourceId == null || sourceId <= 0) {
                 throw new BusinessException(
                         ApiResponseCodeEnum.BAD_REQUEST.getCode(), "变更保存时，根模块主表业务编号和ID不能为空");
@@ -182,11 +182,32 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                         ApiResponseCodeEnum.BAD_REQUEST.getCode(), "变更保存时，根模块主表源版本号不能为空");
             }
 
+            // 这个单据号是否有在草稿状态和在审批流程中的 单子
+            // 99,-99 是终态，其他是非终态
+            Boolean exist =
+                    moduleDataPersistenceService.existRecordInNoneTerminationState(
+                            rootModule.getModuleInfo().getPrimaryTable(),
+                            businessNo,
+                            ListUtil.toList(99, -99));
+            if (exist) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_REQUEST.getCode(), "变更保存时，根模块主表业务编号已存在在流程的单据");
+            }
+            // 变更保存都是 全局插入操作
+            isOverallInsert = true;
+            // 已数据库中的detail数据为基准，合并前端提交过来的数据nestedSaveData
+            nestedSaveData =
+                    ModuleTreeDataUtils.mergeNestedModuleData(
+                            detailData, nestedSaveData, moduleCacheMap);
+            // 变更插入 剔除ID 等相关的字段
+            ModuleTreeDataUtils.cleanNestedModuleData(nestedSaveData, moduleCacheMap);
+            // 获取最大版本号 计算下一个版本号
             Integer maxVersionNo =
-                    baseSingleTablePersistenceService.getMaxVersionNoByBusinessNo(
-                            null, rootModule.getModuleInfo().getPrimaryTable(), businessNo);
+                    moduleDataPersistenceService.getMaxVersionNoByBusinessNo(
+                            rootModule.getModuleInfo().getPrimaryTable(), businessNo);
             Integer versionNo = maxVersionNo == null ? 0 : maxVersionNo + 1;
 
+            // 填充状态，版本号，sourceId,补充新增行的business_no
             ModuleTreeDataUtils.fillApprovalDataByChange(
                     nestedSaveData, versionNo, sourceId, isApproval, moduleCacheMap);
 
@@ -202,6 +223,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         moduleDataStoreDTO.setModuleCacheMap(moduleCacheMap);
         moduleDataStoreDTO.setIsOverallInsert(isOverallInsert);
         moduleDataStoreDTO.setRootModuleId(rootModuleId);
+        moduleDataStoreDTO.setStructureRootModuleId(structureRootModuleId);
 
         Long dataId = moduleDataPersistenceService.save(moduleDataStoreDTO);
 

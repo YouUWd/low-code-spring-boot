@@ -31,6 +31,8 @@ public class ModuleDataStoreDTO {
 
     private Long rootModuleId;
 
+    private Long structureRootModuleId;
+
     private String mainTableBusinessNo;
 
     private Integer mainTableVersionNo;

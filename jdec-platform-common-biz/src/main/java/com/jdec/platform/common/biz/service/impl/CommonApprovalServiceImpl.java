@@ -84,58 +84,61 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
         }
         Map<String, Object> recordData = dataEngineApi.getRecordData(rootModuleId, recordId);
+        if (Objects.isNull(recordData)) {
+            throw new BusinessException(608, "业务记录异常");
+        }
         boolean approvalChainStatus = approvalEngine.getApprovalChainStatus(rootModuleId, recordId);
         Map<String, Object> result = new HashMap<>();
+        // 单据编号
+        result.put("businessNumber", recordData.get("business_no"));
+        // 版本号列表
+        VersionListQueryReq versionListQueryReq =
+                VersionListQueryReq.builder()
+                        .id(recordId)
+                        .moduleId(rootModuleId)
+                        .businessNo(recordData.get("business_no").toString())
+                        .btnType(btnType)
+                        .build();
+        ;
+        result.put("versionList", dataEngineApi.getVersionList(versionListQueryReq));
+        // 当前状态
+        Map<String, Object> approvalStatus = new HashMap<>();
+        if (Objects.nonNull(btnType)
+                && (btnType.equals("change") || btnType.equals("change-change"))) {
+            ModuleApprovalChainConfigResp.StatusNode statusNode =
+                    sysStatusApi.getStatusByValue(1, rootModuleId);
+            if (Objects.isNull(statusNode)) {
+                throw new BusinessException(601, "模块状态配置异常");
+            }
+            approvalStatus.put("id", statusNode.getId());
+            approvalStatus.put("statusValue", statusNode.getStatusValue());
+            approvalStatus.put("title", statusNode.getTitle());
+            approvalStatus.put("statusBackground", statusNode.getStatusBackground());
+            approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+        } else {
+            ModuleApprovalChainConfigResp.StatusNode statusNode =
+                    sysStatusApi.getStatusByValue(
+                            (Integer) recordData.get("business_status"), rootModuleId);
+            approvalStatus.put("id", statusNode.getId());
+            approvalStatus.put("statusValue", statusNode.getStatusValue());
+            approvalStatus.put("title", statusNode.getTitle());
+            approvalStatus.put("statusBackground", statusNode.getStatusBackground());
+            approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+        }
+        // 当前版本号
+        result.put("versionNo", recordData.get("version_no"));
+        result.put("approvalStatus", approvalStatus);
+        // 创建人
+        CreatedUserInfoResp userInfoResp =
+                dataEngineApi.getCreatedUserInfo(
+                        rootModuleId, recordId, recordData.get("business_no").toString());
+
+        result.putAll(objectMapper.convertValue(userInfoResp, HashMap.class));
         // 是否草稿
         result.put("approvalChainStatus", approvalChainStatus);
         if (approvalChainStatus) {
             result.putAll(approvalEngine.getApprovalData(rootModuleId, recordId, btnType));
         } else {
-            // 单据编号
-            result.put("businessNumber", recordData.get("business_no"));
-            // 版本号列表
-            VersionListQueryReq versionListQueryReq =
-                    VersionListQueryReq.builder()
-                            .id(recordId)
-                            .moduleId(rootModuleId)
-                            .businessNo(recordData.get("business_no").toString())
-                            .btnType(btnType)
-                            .build();
-            ;
-            result.put("versionList", dataEngineApi.getVersionList(versionListQueryReq));
-            // 当前状态
-            Map<String, Object> approvalStatus = new HashMap<>();
-            if (Objects.nonNull(btnType)
-                    && (btnType.equals("change") || btnType.equals("change-change"))) {
-                ModuleApprovalChainConfigResp.StatusNode statusNode =
-                        sysStatusApi.getStatusByValue(1, rootModuleId);
-                if (Objects.isNull(statusNode)) {
-                    throw new BusinessException(601, "模块状态配置异常");
-                }
-                approvalStatus.put("id", statusNode.getId());
-                approvalStatus.put("statusValue", statusNode.getStatusValue());
-                approvalStatus.put("title", statusNode.getTitle());
-                approvalStatus.put("statusBackground", statusNode.getStatusBackground());
-                approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
-            } else {
-                ModuleApprovalChainConfigResp.StatusNode statusNode =
-                        sysStatusApi.getStatusByValue(
-                                (Integer) recordData.get("business_status"), rootModuleId);
-                approvalStatus.put("id", statusNode.getId());
-                approvalStatus.put("statusValue", statusNode.getStatusValue());
-                approvalStatus.put("title", statusNode.getTitle());
-                approvalStatus.put("statusBackground", statusNode.getStatusBackground());
-                approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
-            }
-            // 当前版本号
-            result.put("versionNo", recordData.get("version_no"));
-            result.put("approvalStatus", approvalStatus);
-            // 创建人
-            CreatedUserInfoResp userInfoResp =
-                    dataEngineApi.getCreatedUserInfo(
-                            rootModuleId, recordId, recordData.get("business_no").toString());
-
-            result.putAll(objectMapper.convertValue(userInfoResp, HashMap.class));
             // 是否可以保存提交
             Long userId =
                     Objects.nonNull(UserContext.getMockUserId())
