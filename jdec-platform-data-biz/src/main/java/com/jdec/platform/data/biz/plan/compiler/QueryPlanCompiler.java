@@ -5,12 +5,12 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.PhysicalSortItem;
-import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
-import com.jdec.platform.data.api.dto.request.TableOptionReq;
-import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
-import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.model.AttachedTableSpec;
@@ -47,8 +47,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class QueryPlanCompiler {
 
-    /** 编译物理表候选项查询请求为单列投影与物理过滤上下文的 QueryPlan */
-    public QueryPlan compile(TableOptionReq req, PlanMeta meta) {
+    /** 编译候选项查询请求为单列投影与物理过滤上下文的 QueryPlan */
+    public QueryPlan compile(OptionReq req, PlanMeta meta) {
         if (req == null) {
             throw new IllegalArgumentException("候选项请求不能为空");
         }
@@ -82,8 +82,8 @@ public class QueryPlanCompiler {
             tables.add(TableSpec.of(targetModuleId, table, req.getColumnName().trim()));
         }
 
-        TableQueryReq queryReq =
-                TableQueryReq.builder()
+        QueryReq queryReq =
+                QueryReq.builder()
                         .moduleId(req.getModuleId())
                         .tables(tables)
                         .filters(req.getFilters())
@@ -91,10 +91,10 @@ public class QueryPlanCompiler {
         return compile(queryReq, meta);
     }
 
-    /** 编译物理表单据详情精准查询请求为 QueryPlan */
-    public QueryPlan compileDetail(TableDetailQueryReq req, PlanMeta meta) {
+    /** 编译单据详情精准查询请求为 QueryPlan */
+    public QueryPlan compileDetail(DetailQueryReq req, PlanMeta meta) {
         if (req == null) {
-            throw new IllegalArgumentException("物理表详情查询请求不能为空");
+            throw new IllegalArgumentException("详情查询请求不能为空");
         }
         if (req.getModuleId() == null || req.getId() == null) {
             throw new IllegalArgumentException("模块 ID 和单据 ID 不能为空");
@@ -107,14 +107,14 @@ public class QueryPlanCompiler {
 
         // id 过滤条件与后续投影/校验必须取自同一份元数据快照，故直接复用入参 meta
         String primaryTable = ModuleRelationResolver.resolvePrimaryTable(tree.getRootModule());
-        List<PhysicalFilterItem> mergedFilters = new ArrayList<>();
-        mergedFilters.add(PhysicalFilterItem.eq(primaryTable, "id", req.getId()));
+        List<FilterItem> mergedFilters = new ArrayList<>();
+        mergedFilters.add(FilterItem.eq(primaryTable, "id", req.getId()));
         if (req.getFilters() != null && !req.getFilters().isEmpty()) {
             mergedFilters.addAll(req.getFilters());
         }
 
-        TableQueryReq queryReq =
-                TableDetailQueryReq.builder()
+        QueryReq queryReq =
+                DetailQueryReq.builder()
                         .moduleId(req.getModuleId())
                         .id(req.getId())
                         .tables(req.getTables())
@@ -125,10 +125,10 @@ public class QueryPlanCompiler {
         return compile(queryReq, meta);
     }
 
-    /** 编译基于物理表与字段的查询请求为 QueryPlan */
-    public QueryPlan compile(TableQueryReq req, PlanMeta meta) {
+    /** 编译基于业务聚合树与物理表的查询请求为 QueryPlan */
+    public QueryPlan compile(QueryReq req, PlanMeta meta) {
         if (req == null) {
-            throw new IllegalArgumentException("物理表查询请求不能为空");
+            throw new IllegalArgumentException("查询请求不能为空");
         }
         Long rootModuleId = req.getModuleId();
         if (rootModuleId == null) {
@@ -141,7 +141,7 @@ public class QueryPlanCompiler {
         }
         TableQueryValidator.validate(req, tree);
 
-        ProjectTableRelationsDTO projectRelations = meta != null ? meta.projectRelations() : null;
+        ProjectTableRelationsDTO projectRelations = meta.projectRelations();
         QueryNodePlan rootPlan =
                 compileTableNode(rootModuleId, null, null, req, projectRelations, tree);
         return QueryPlan.builder().rootNodePlan(rootPlan).build();
@@ -270,7 +270,7 @@ public class QueryPlanCompiler {
             Long currentModuleId,
             Long parentModuleId,
             ModuleInfo parentMeta,
-            TableQueryReq req,
+            QueryReq req,
             ProjectTableRelationsDTO projectRelations,
             ModuleTreeDTO tree) {
         ModuleInfo meta = tree.getModule(currentModuleId);
@@ -375,7 +375,7 @@ public class QueryPlanCompiler {
             }
         }
 
-        // 3. 过滤条件编译 (将归属于当前模块/主表/伴生表的 PhysicalFilterItem 编译为 Condition)
+        // 3. 过滤条件编译 (将归属于当前模块/主表/伴生表的 FilterItem 编译为 Condition)
         Condition userFilterCondition =
                 isVirtual
                         ? null
@@ -500,13 +500,13 @@ public class QueryPlanCompiler {
         }
 
         Integer pNo =
-                (currentModuleId.equals(req.getModuleId()) && req instanceof TablePageQueryReq p)
+                (currentModuleId.equals(req.getModuleId()) && req instanceof PageQueryReq p)
                         ? p.getPageNo()
                         : 1;
         Integer pSize =
-                (currentModuleId.equals(req.getModuleId()) && req instanceof TablePageQueryReq p)
+                (currentModuleId.equals(req.getModuleId()) && req instanceof PageQueryReq p)
                         ? p.getPageSize()
-                        : (req instanceof TableDetailQueryReq ? 1 : 20);
+                        : (req instanceof DetailQueryReq ? 1 : 20);
 
         // 8. 判定当前节点是否需要拉取实体数据 (fetchData)
         // 规则：全树模式下恒拉取；指定 tableSpecs 模式下，仅当本节点显式在 tableSpecs 中声明时才拉取实体数据。
@@ -839,14 +839,14 @@ public class QueryPlanCompiler {
     }
 
     private boolean isModuleOrDescendantInFilters(
-            Long moduleId, List<PhysicalFilterItem> filters, ModuleTreeDTO tree) {
+            Long moduleId, List<FilterItem> filters, ModuleTreeDTO tree) {
         if (moduleId == null || tree == null || filters == null || filters.isEmpty()) {
             return false;
         }
         ModuleInfo meta = tree.getModule(moduleId);
         if (meta != null) {
             String pt = ModuleRelationResolver.resolvePrimaryTable(meta);
-            for (PhysicalFilterItem f : filters) {
+            for (FilterItem f : filters) {
                 if (f == null) {
                     continue;
                 }
@@ -873,12 +873,12 @@ public class QueryPlanCompiler {
     }
 
     private List<OrderField<?>> compileTableSorts(
-            Long targetModuleId, String primaryTable, List<PhysicalSortItem> sorts) {
+            Long targetModuleId, String primaryTable, List<SortItem> sorts) {
         if (sorts == null || sorts.isEmpty()) {
             return List.of(DSL.field(DSL.name(primaryTable, "id")).desc());
         }
         List<OrderField<?>> orderFields = new ArrayList<>();
-        for (PhysicalSortItem s : sorts) {
+        for (SortItem s : sorts) {
             if (s != null && s.getColumnName() != null && !s.getColumnName().isBlank()) {
                 if (s.getModuleId() != null) {
                     if (targetModuleId != null && !s.getModuleId().equals(targetModuleId)) {

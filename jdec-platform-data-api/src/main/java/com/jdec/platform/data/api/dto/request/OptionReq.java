@@ -6,17 +6,17 @@ import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 import java.util.List;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
-/** 物理表动态字段搜索下拉候选项请求 DTO (脱离上层 fieldId) */
+/** 业务字段搜索下拉候选项请求 DTO (OptionReq) */
 @Data
-@Builder
+@SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "物理表动态字段搜索下拉候选项请求参数")
-public class TableOptionReq implements Serializable {
+@Schema(description = "业务字段搜索下拉候选项请求参数")
+public class OptionReq implements Serializable {
 
     @NotNull(message = "查询主模块 ID 不能为空")
     @Schema(description = "当前模块 ID，用于锚定根模块上下文与数据隔离范围", example = "1001")
@@ -30,7 +30,7 @@ public class TableOptionReq implements Serializable {
     private String columnName;
 
     @Schema(description = "基于物理表与列名的过滤条件列表")
-    private List<PhysicalFilterItem> filters;
+    private List<FilterItem> filters;
 
     @Schema(description = "候选项排序方向: ASC (升序) / DESC (降序)，为 null 或空时默认 ASC", example = "ASC")
     private String direction;

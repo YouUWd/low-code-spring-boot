@@ -18,10 +18,10 @@ import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.PhysicalSortItem;
-import com.jdec.platform.data.api.dto.request.TableOptionReq;
-import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
@@ -307,9 +307,9 @@ class DataQueryTest {
         return result;
     }
 
-    private PhysicalFilterItem tf(long fieldId, String operator, Object value) {
+    private FilterItem tf(long fieldId, String operator, Object value) {
         ModuleFieldDTO f = fieldOf(fieldId);
-        return PhysicalFilterItem.builder()
+        return FilterItem.builder()
                 .tableName(tableOf(f))
                 .columnName(f.getColumnName())
                 .operator(operator)
@@ -317,9 +317,9 @@ class DataQueryTest {
                 .build();
     }
 
-    private PhysicalSortItem ts(long fieldId, String direction) {
+    private SortItem ts(long fieldId, String direction) {
         ModuleFieldDTO f = fieldOf(fieldId);
-        return PhysicalSortItem.builder()
+        return SortItem.builder()
                 .moduleId(f.getModuleId())
                 .tableName(tableOf(f))
                 .columnName(f.getColumnName())
@@ -327,9 +327,9 @@ class DataQueryTest {
                 .build();
     }
 
-    private TableOptionReq option(long moduleId, long fieldId, String direction) {
+    private OptionReq option(long moduleId, long fieldId, String direction) {
         ModuleFieldDTO f = fieldOf(fieldId);
-        return TableOptionReq.builder()
+        return OptionReq.builder()
                 .moduleId(moduleId)
                 .tableName(tableOf(f))
                 .columnName(f.getColumnName())
@@ -845,15 +845,15 @@ class DataQueryTest {
     @Test
     @DisplayName("测试单模块查询 (School 101): 返回 DataPage 结构与顶层 moduleId 规范")
     void testQuerySingleModuleSchool() {
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .tables(specs(1L, 2L, 3L))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
 
         assertNotNull(page);
         assertEquals(101L, page.getModuleId());
@@ -875,15 +875,15 @@ class DataQueryTest {
     @DisplayName("测试多级深层自相似树查询 (School 101 -> 105 -> 108): 学生 -> 选课 -> 成绩分项")
     void testQueryDeepCascadeTreeSchool() {
         // 请求同时包含 101(学生), 105(选课), 108(成绩分项) 的字段
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .tables(specs(1L, 3L, 28L, 32L, 57L, 59L))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
 
         assertNotNull(page);
         assertEquals(101L, page.getModuleId());
@@ -933,15 +933,15 @@ class DataQueryTest {
     @Test
     @DisplayName("测试同级多分枝子树查询 (School 101 -> 104 -> 106 & 105 -> 108)")
     void testQueryMultipleBranchesSchool() {
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
                         .tables(specs(1L, 3L, 37L, 39L, 74L, 76L, 28L, 32L, 57L, 59L))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
 
         DataRow rootRow = page.getRecords().get(0);
@@ -971,8 +971,8 @@ class DataQueryTest {
     @Test
     @DisplayName("测试虚拟模块与 JSON 原生解析 (Company 1001 -> 1020 -> 1005 / 1006)")
     void testQueryVirtualModuleAndJsonParsingCompany() {
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(1001L)
                         .pageNo(1)
                         .pageSize(10)
@@ -982,7 +982,7 @@ class DataQueryTest {
                                         10055L))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
         assertEquals(1001L, page.getModuleId());
 
@@ -1029,11 +1029,11 @@ class DataQueryTest {
     @DisplayName("测试动态多维组合过滤条件 (Dynamic Filter Items)")
     void testQueryDynamicFilters() {
         // student.name LIKE / student.id IN
-        List<PhysicalFilterItem> filters =
+        List<FilterItem> filters =
                 List.of(tf(3L, "LIKE", "张%"), tf(1L, "IN", List.of(1001L, 1002L)));
 
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
@@ -1041,7 +1041,7 @@ class DataQueryTest {
                         .filters(filters)
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
 
         assertTrue(
@@ -1057,13 +1057,13 @@ class DataQueryTest {
     @DisplayName("测试 JSON 数组字段过滤 (JSON_CONTAINS / CONTAINS_ANY / CONTAINS_ALL)")
     void testQueryJsonContainsFilter() {
         // info.cooperation_types CONTAINS / info.industry_tags CONTAINS_ALL
-        List<PhysicalFilterItem> filters =
+        List<FilterItem> filters =
                 List.of(
                         tf(10006L, "CONTAINS", "客户"),
                         tf(10007L, "CONTAINS_ALL", List.of("焦化", "煤炭")));
 
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(1001L)
                         .pageNo(1)
                         .pageSize(10)
@@ -1071,7 +1071,7 @@ class DataQueryTest {
                         .filters(filters)
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
 
         assertTrue(
@@ -1086,10 +1086,10 @@ class DataQueryTest {
     @Test
     @DisplayName("测试排序字段解析 (Sorting Direction)")
     void testQuerySorts() {
-        List<PhysicalSortItem> sorts = List.of(ts(1L, "DESC"), ts(2L, "ASC"));
+        List<SortItem> sorts = List.of(ts(1L, "DESC"), ts(2L, "ASC"));
 
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(101L)
                         .pageNo(1)
                         .pageSize(10)
@@ -1097,7 +1097,7 @@ class DataQueryTest {
                         .sorts(sorts)
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
 
         assertTrue(
@@ -1112,9 +1112,9 @@ class DataQueryTest {
     @Test
     @DisplayName("测试去重下拉候选项查询 (Get Options): 标量字段")
     void testGetOptions() {
-        TableOptionReq req = option(101L, 32L, null); // course_name
+        OptionReq req = option(101L, 32L, null); // course_name
 
-        List<DataOptionResp> options = dataQueryService.getOptionsByTable(req);
+        List<DataOptionResp> options = dataQueryService.getOptions(req);
 
         assertNotNull(options);
         assertEquals(2, options.size());
@@ -1125,9 +1125,9 @@ class DataQueryTest {
     @Test
     @DisplayName("测试去重下拉候选项查询 (Get Options): JSON 数组字段打散展平与去重")
     void testGetOptionsJsonArray() {
-        TableOptionReq req = option(1001L, 10006L, null); // cooperation_types
+        OptionReq req = option(1001L, 10006L, null); // cooperation_types
 
-        List<DataOptionResp> options = dataQueryService.getOptionsByTable(req);
+        List<DataOptionResp> options = dataQueryService.getOptions(req);
 
         assertNotNull(options);
         // 原数据为 2 行: 行1 ["客户", "供应商"], 行2 ["供应商", "战略伙伴"] -> 展平去重后应为 ["客户", "供应商", "战略伙伴"]
@@ -1147,16 +1147,16 @@ class DataQueryTest {
     @DisplayName("测试去重下拉候选项查询 (Get Options): 可选排序方向")
     void testGetOptionsWithSortDirection() {
         // 1. 测试 ASC 升序
-        TableOptionReq reqAsc = option(101L, 32L, "ASC"); // course_name
-        List<DataOptionResp> optionsAsc = dataQueryService.getOptionsByTable(reqAsc);
+        OptionReq reqAsc = option(101L, 32L, "ASC"); // course_name
+        List<DataOptionResp> optionsAsc = dataQueryService.getOptions(reqAsc);
         assertNotNull(optionsAsc);
         assertEquals(2, optionsAsc.size());
         assertEquals("大学英语", optionsAsc.get(0).getLabel());
         assertEquals("高等数学", optionsAsc.get(1).getLabel());
 
         // 2. 测试 DESC 降序
-        TableOptionReq reqDesc = option(101L, 32L, "DESC"); // course_name
-        List<DataOptionResp> optionsDesc = dataQueryService.getOptionsByTable(reqDesc);
+        OptionReq reqDesc = option(101L, 32L, "DESC"); // course_name
+        List<DataOptionResp> optionsDesc = dataQueryService.getOptions(reqDesc);
         assertNotNull(optionsDesc);
         assertEquals(2, optionsDesc.size());
         assertEquals("高等数学", optionsDesc.get(0).getLabel());

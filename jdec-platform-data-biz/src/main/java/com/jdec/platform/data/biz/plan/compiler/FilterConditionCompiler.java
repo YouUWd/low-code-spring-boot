@@ -3,7 +3,7 @@ package com.jdec.platform.data.biz.plan.compiler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
+import com.jdec.platform.data.api.dto.request.FilterItem;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -18,8 +18,8 @@ import org.jooq.impl.DSL;
 /**
  * 物理表过滤条件编译器 (FilterConditionCompiler)
  *
- * <p>职责：把面向 UI 的 {@link PhysicalFilterItem} 树编译为强类型 jOOQ {@link Condition}，覆盖比较、集合、区间以及
- * JSON_CONTAINS / JSON_CONTAINS_ALL 等操作符。从 {@link QueryPlanCompiler} 拆出，让编译内核聚焦于树结构装配。
+ * <p>职责：把面向 UI 的 {@link FilterItem} 树编译为强类型 jOOQ {@link Condition}，覆盖比较、集合、区间以及 JSON_CONTAINS /
+ * JSON_CONTAINS_ALL 等操作符。从 {@link QueryPlanCompiler} 拆出，让编译内核聚焦于树结构装配。
  */
 public final class FilterConditionCompiler {
 
@@ -39,7 +39,7 @@ public final class FilterConditionCompiler {
     public static Condition compileTableFilters(
             Long targetModuleId,
             String primaryTable,
-            List<PhysicalFilterItem> filters,
+            List<FilterItem> filters,
             ProjectTableRelationsDTO projectRelations) {
         if (filters == null || filters.isEmpty()) {
             return null;
@@ -60,18 +60,23 @@ public final class FilterConditionCompiler {
         }
 
         List<Condition> conditions = new ArrayList<>();
-        for (PhysicalFilterItem item : filters) {
-            Condition cond =
-                    compileSingleFilterItem(item, targetModuleId, primaryTable, applicableTables);
-            if (cond != null && !DSL.noCondition().equals(cond)) {
-                conditions.add(cond);
+        for (FilterItem item : filters) {
+            if (item != null) {
+                // 统一转为 Predicate AST 交由 PredicateCompiler 编译，彻底消除逻辑二义性
+                var pred = item.toPredicate();
+                Condition cond =
+                        PredicateCompiler.compile(
+                                pred, targetModuleId, primaryTable, applicableTables);
+                if (cond != null && !DSL.noCondition().equals(cond)) {
+                    conditions.add(cond);
+                }
             }
         }
         return conditions.isEmpty() ? null : DSL.and(conditions);
     }
 
     private static Condition compileSingleFilterItem(
-            PhysicalFilterItem item,
+            FilterItem item,
             Long targetModuleId,
             String defaultTable,
             Set<String> applicableTables) {
@@ -116,7 +121,7 @@ public final class FilterConditionCompiler {
         // 2. 递归编译子条件列表 (children 内部固定为同级 AND 结合)
         List<Condition> subConditions = new ArrayList<>();
         if (item.getChildren() != null && !item.getChildren().isEmpty()) {
-            for (PhysicalFilterItem child : item.getChildren()) {
+            for (FilterItem child : item.getChildren()) {
                 Condition subCond =
                         compileSingleFilterItem(
                                 child, targetModuleId, defaultTable, applicableTables);

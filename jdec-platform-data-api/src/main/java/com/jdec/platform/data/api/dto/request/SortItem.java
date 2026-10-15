@@ -8,13 +8,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 物理表排序规则项 (基于物理表名与列名) */
+/** 结构化排序规则项 (SortItem，基于物理表名与列名) */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "物理表排序规则项")
-public class PhysicalSortItem implements Serializable {
+@Schema(description = "结构化排序规则项")
+public class SortItem implements Serializable {
 
     @NotNull(message = "所属模块 ID 不能为空")
     @Schema(description = "所属模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
@@ -34,8 +34,8 @@ public class PhysicalSortItem implements Serializable {
     @Builder.Default
     private String direction = "DESC";
 
-    public static PhysicalSortItem asc(Long moduleId, String tableName, String columnName) {
-        return PhysicalSortItem.builder()
+    public static SortItem asc(Long moduleId, String tableName, String columnName) {
+        return SortItem.builder()
                 .moduleId(moduleId)
                 .tableName(tableName)
                 .columnName(columnName)
@@ -43,12 +43,12 @@ public class PhysicalSortItem implements Serializable {
                 .build();
     }
 
-    public static PhysicalSortItem asc(Long moduleId, String columnName) {
+    public static SortItem asc(Long moduleId, String columnName) {
         return asc(moduleId, null, columnName);
     }
 
-    public static PhysicalSortItem desc(Long moduleId, String tableName, String columnName) {
-        return PhysicalSortItem.builder()
+    public static SortItem desc(Long moduleId, String tableName, String columnName) {
+        return SortItem.builder()
                 .moduleId(moduleId)
                 .tableName(tableName)
                 .columnName(columnName)
@@ -56,7 +56,7 @@ public class PhysicalSortItem implements Serializable {
                 .build();
     }
 
-    public static PhysicalSortItem desc(Long moduleId, String columnName) {
+    public static SortItem desc(Long moduleId, String columnName) {
         return desc(moduleId, null, columnName);
     }
 }

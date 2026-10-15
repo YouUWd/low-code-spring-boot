@@ -10,11 +10,11 @@ import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
-import com.jdec.platform.data.api.dto.request.TableOptionReq;
-import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
-import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
@@ -183,9 +183,9 @@ public class TableQueryEngineTest {
     @Test
     @DisplayName("全量物理树详情查询：自动递归抓取主表与子表全部字段")
     void testGetFullDetail() {
-        TableDetailQueryReq req = TableDetailQueryReq.builder().moduleId(10L).id(100L).build();
+        DetailQueryReq req = DetailQueryReq.builder().moduleId(10L).id(100L).build();
 
-        DataBlock block = dataQueryService.getDetailByTable(req);
+        DataBlock block = dataQueryService.getDetail(req);
         assertNotNull(block);
         assertEquals(10L, block.getModuleId());
         assertEquals(1, block.getRecords().size());
@@ -210,8 +210,8 @@ public class TableQueryEngineTest {
     @Test
     @DisplayName("结构化 TableSpec 物理投影分页查询")
     void testTablePageQuery() {
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(10L)
                         .pageNo(1)
                         .pageSize(10)
@@ -225,7 +225,7 @@ public class TableQueryEngineTest {
                                                 List.of("id", "member_name"))))
                         .filters(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("company_code")
                                                 .operator("eq")
@@ -233,7 +233,7 @@ public class TableQueryEngineTest {
                                                 .build()))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
         assertEquals(1, page.getTotal());
         DataBlock data = page.getData();
@@ -245,8 +245,8 @@ public class TableQueryEngineTest {
     @DisplayName("Filter 自身条件与其 children 的自然逻辑组合 (OR 组合测试)")
     void testFilterSelfAndChildrenOrCombination() {
         executedSqls.clear();
-        PhysicalFilterItem hybridOrFilter =
-                PhysicalFilterItem.builder()
+        FilterItem hybridOrFilter =
+                FilterItem.builder()
                         .tableName("company_info")
                         .columnName("company_name")
                         .operator("LIKE")
@@ -254,13 +254,13 @@ public class TableQueryEngineTest {
                         .logic("OR")
                         .children(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("id")
                                                 .operator("EQ")
                                                 .value(100L)
                                                 .build(),
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("company_code")
                                                 .operator("EQ")
@@ -268,15 +268,15 @@ public class TableQueryEngineTest {
                                                 .build()))
                         .build();
 
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(10L)
                         .pageNo(1)
                         .pageSize(10)
                         .filters(List.of(hybridOrFilter))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
         assertEquals(1, page.getTotal());
         assertNotNull(page.getData());
@@ -295,8 +295,8 @@ public class TableQueryEngineTest {
     @DisplayName("投影测试: 未指定列或指定 * 时生成 SELECT *")
     void testAsteriskProjection() {
         executedSqls.clear();
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(10L)
                         .pageNo(1)
                         .pageSize(10)
@@ -309,7 +309,7 @@ public class TableQueryEngineTest {
                                                 .build()))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
         assertEquals(1, page.getTotal());
 
@@ -327,8 +327,8 @@ public class TableQueryEngineTest {
     @DisplayName("投影测试: 指定特定列名时生成精准 SELECT 投影列")
     void testSpecificColumnProjection() {
         executedSqls.clear();
-        TablePageQueryReq req =
-                TablePageQueryReq.builder()
+        PageQueryReq req =
+                PageQueryReq.builder()
                         .moduleId(10L)
                         .pageNo(1)
                         .pageSize(10)
@@ -341,7 +341,7 @@ public class TableQueryEngineTest {
                                                 .build()))
                         .build();
 
-        DataPage<DataBlock> page = dataQueryService.queryByTable(req);
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
         assertEquals(1, page.getTotal());
 
@@ -363,12 +363,12 @@ public class TableQueryEngineTest {
     @DisplayName("物理表计数查询测试: countByTable")
     void testCountByTable() {
         executedSqls.clear();
-        TableQueryReq req =
-                TableQueryReq.builder()
+        QueryReq req =
+                QueryReq.builder()
                         .moduleId(10L)
                         .filters(
                                 List.of(
-                                        PhysicalFilterItem.builder()
+                                        FilterItem.builder()
                                                 .tableName("company_info")
                                                 .columnName("id")
                                                 .operator("EQ")
@@ -376,7 +376,7 @@ public class TableQueryEngineTest {
                                                 .build()))
                         .build();
 
-        Long count = dataQueryService.countByTable(req);
+        Long count = dataQueryService.count(req);
         assertNotNull(count);
         assertEquals(1L, count);
 
@@ -392,8 +392,8 @@ public class TableQueryEngineTest {
     @DisplayName("物理表字段下拉候选项查询测试: getOptionsByTable")
     void testOptionsByTable() {
         executedSqls.clear();
-        TableOptionReq req =
-                TableOptionReq.builder()
+        OptionReq req =
+                OptionReq.builder()
                         .moduleId(10L)
                         .tableName("company_info")
                         .columnName("company_name")
@@ -401,7 +401,7 @@ public class TableQueryEngineTest {
                         .limit(50)
                         .build();
 
-        List<DataOptionResp> options = dataQueryService.getOptionsByTable(req);
+        List<DataOptionResp> options = dataQueryService.getOptions(req);
         assertNotNull(options);
         assertFalse(options.isEmpty());
         assertEquals("测试企业A", options.get(0).getLabel());

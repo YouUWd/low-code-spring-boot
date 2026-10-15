@@ -39,12 +39,6 @@ public class TreeResultAssembler {
             return;
         }
 
-        log.debug(
-                "[TreeResultAssembler] 启动递归装配: parentModuleId={}, 父记录数={}, 下级待装配计划数={}",
-                parentModuleId,
-                parentRecords.size(),
-                childPlans.size());
-
         for (QueryNodePlan childPlan : childPlans) {
             // 区分虚拟模块容器装配与物理子表装配
             if (childPlan.getPrimaryTable() == null || childPlan.getPrimaryTable().isBlank()) {
@@ -74,11 +68,6 @@ public class TreeResultAssembler {
             Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
 
         Long virtualModuleId = virtualPlan.getModuleId();
-        log.debug(
-                "[TreeResultAssembler] 开始装配虚拟模块逻辑容器: virtualModuleId={}, 目标父行数={}, 下级子计划数={}",
-                virtualModuleId,
-                parentRecords.size(),
-                virtualPlan.getChildren() != null ? virtualPlan.getChildren().size() : 0);
 
         // 🌟 必须使用 IdentityHashMap 建立父行引用与当前虚拟容器的映射关系，杜绝父行内容变更导致哈希寻址失效
         Map<DataRow, DataRow> nextContainers = new IdentityHashMap<>();
@@ -106,17 +95,10 @@ public class TreeResultAssembler {
 
         List<QueryNodePlan> subPlans = virtualPlan.getChildren();
         if (subPlans == null || subPlans.isEmpty()) {
-            log.debug("[TreeResultAssembler] 虚拟模块 [{}] 的 subPlans 为空，跳过下级子节点装配", virtualModuleId);
             return;
         }
 
         for (QueryNodePlan subPlan : subPlans) {
-            log.debug(
-                    "[TreeResultAssembler] 递归向下装配虚拟模块 [{}] 的子节点: childModuleId={}, primaryTable={}, parentFk={}",
-                    virtualModuleId,
-                    subPlan.getModuleId(),
-                    subPlan.getPrimaryTable(),
-                    subPlan.getParentForeignKey());
             if (subPlan.getPrimaryTable() == null || subPlan.getPrimaryTable().isBlank()) {
                 // 子节点若依然是嵌套的虚拟模块，继续递归钻取
                 assembleVirtualPlanInternal(parentRecords, nextContainers, subPlan, rawDataByNode);
@@ -144,13 +126,6 @@ public class TreeResultAssembler {
         Long childModId = childPlan.getModuleId();
         String fkField = childPlan.getParentForeignKey();
         List<DataRow> rawChildRows = rawDataByNode.getOrDefault(childPlan, Collections.emptyList());
-
-        log.debug(
-                "[TreeResultAssembler] 物理子模块装配开始: moduleId={}, primaryTable={}, parentFk={}, rawRowsCount={}",
-                childModId,
-                childPlan.getPrimaryTable(),
-                fkField,
-                rawChildRows.size());
 
         List<QueryNodePlan> subModulePlans =
                 childPlan.getChildren() != null ? childPlan.getChildren() : Collections.emptyList();
@@ -189,11 +164,6 @@ public class TreeResultAssembler {
             cleanChildRows.add(cleanRow);
         }
 
-        log.debug(
-                "[TreeResultAssembler] 物理子模块 [{}] 分组完毕: 匹配键集(外键值)={}",
-                childModId,
-                groupedByFk.keySet());
-
         // 3. 将分组后的子模块实体挂载在目标容器的 children 列表中 (自相似读写同构)
         for (DataRow parentRow : parentRecords) {
             DataRow targetContainer = containerResolver.apply(parentRow);
@@ -211,12 +181,6 @@ public class TreeResultAssembler {
             if (pkVal instanceof Number pkNum) {
                 List<DataRow> matchedChildren =
                         groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
-
-                log.debug(
-                        "[TreeResultAssembler] 父行匹配装配: parentPkVal={}, childModuleId={}, 匹配到子实体行数={}",
-                        pkNum.longValue(),
-                        childModId,
-                        matchedChildren.size());
 
                 DataBlock childModuleNode =
                         DataBlock.builder().moduleId(childModId).records(matchedChildren).build();

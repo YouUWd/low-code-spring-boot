@@ -8,7 +8,7 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenRolePermissionApi;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
+import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import java.util.*;
@@ -74,12 +74,12 @@ public class CommonFilterResolver {
     }
 
     /** 根据当前用户登录角色解析行级数据权限过滤项 (AND 组合) */
-    public List<PhysicalFilterItem> buildDataPermissionFilters() {
+    public List<FilterItem> buildDataPermissionFilters() {
         return buildDataPermissionFilters((ModuleTreeDTO) null);
     }
 
     /** 根据当前用户登录角色与指定根模块解析行级数据权限过滤项 (AND 组合) */
-    public List<PhysicalFilterItem> buildDataPermissionFilters(Long rootModuleId) {
+    public List<FilterItem> buildDataPermissionFilters(Long rootModuleId) {
         if (rootModuleId == null) {
             return buildDataPermissionFilters((ModuleTreeDTO) null);
         }
@@ -93,10 +93,10 @@ public class CommonFilterResolver {
     /**
      * 根据当前用户登录角色解析行级数据权限过滤项 (AND 组合)
      *
-     * <p>若提供 moduleTree，会解析出各物理表对应的所属 moduleId，赋给 PhysicalFilterItem， 避免非主表过滤条件被错误拼接到主表根查询的顶层 WHERE
-     * 中引发 Unknown column 异常。
+     * <p>若提供 moduleTree，会解析出各物理表对应的所属 moduleId，赋给 FilterItem， 避免非主表过滤条件被错误拼接到主表根查询的顶层 WHERE 中引发
+     * Unknown column 异常。
      */
-    public List<PhysicalFilterItem> buildDataPermissionFilters(ModuleTreeDTO moduleTree) {
+    public List<FilterItem> buildDataPermissionFilters(ModuleTreeDTO moduleTree) {
         Long roleId = UserContext.getRoleId();
         if (roleId == null || openRolePermissionApi == null) {
             return Collections.emptyList();
@@ -142,7 +142,7 @@ public class CommonFilterResolver {
             }
         }
 
-        List<PhysicalFilterItem> filters = new ArrayList<>();
+        List<FilterItem> filters = new ArrayList<>();
         for (DataRightConfigResp tableResp : permDetails) {
             if (tableResp == null
                     || tableResp.getTableName() == null
@@ -188,8 +188,8 @@ public class CommonFilterResolver {
                     // 2.1 主体全选：利用返回的 subjectId 过滤 subject_id，不对业务字段 columnName 限制
                     if (Integer.valueOf(1).equals(subjectCheckAll)) {
                         if (subjectId != null) {
-                            PhysicalFilterItem item =
-                                    PhysicalFilterItem.eq(tableName, SUBJECT_ID_COLUMN, subjectId);
+                            FilterItem item =
+                                    FilterItem.eq(tableName, SUBJECT_ID_COLUMN, subjectId);
                             item.setModuleId(targetModuleId);
                             filters.add(item);
                         }
@@ -198,8 +198,7 @@ public class CommonFilterResolver {
 
                     // 2.2 非主体全选 (subjectCheckAll == 0)：按业务名称过滤
                     if (subjectId != null) {
-                        PhysicalFilterItem item =
-                                PhysicalFilterItem.eq(tableName, SUBJECT_ID_COLUMN, subjectId);
+                        FilterItem item = FilterItem.eq(tableName, SUBJECT_ID_COLUMN, subjectId);
                         item.setModuleId(targetModuleId);
                         filters.add(item);
                     }
@@ -207,8 +206,8 @@ public class CommonFilterResolver {
                         List<String> validBizNames =
                                 (bizNames != null) ? bizNames : Collections.emptyList();
                         // bizNames 为空时，生成 IN 空列表，SQL 编译层按 1=0 或 IN () 查不出数据
-                        PhysicalFilterItem item =
-                                PhysicalFilterItem.in(tableName, columnName.trim(), validBizNames);
+                        FilterItem item =
+                                FilterItem.in(tableName, columnName.trim(), validBizNames);
                         item.setModuleId(targetModuleId);
                         filters.add(item);
                     }
@@ -245,8 +244,7 @@ public class CommonFilterResolver {
                     resp != null ? parseButtonsByRecord(resp.getAllList()) : Collections.emptyMap();
 
             // 2. 一次性拉取数据权限过滤条件，并通过 DataApi 仅抽取一次轻量的主表 ID 列表 (仅查一次，避免重复调用接口与多次SQL查询)
-            List<PhysicalFilterItem> dataPermFilters =
-                    buildDataPermissionFilters(rootFieldIds.tree());
+            List<FilterItem> dataPermFilters = buildDataPermissionFilters(rootFieldIds.tree());
             List<Long> dataPermRecordIds =
                     queryDataPermissionRecordIds(rootFieldIds.tree(), dataPermFilters);
 
@@ -302,7 +300,7 @@ public class CommonFilterResolver {
             Map<Long, List<Map<String, Object>>> btnGroupMap) {
         ModuleTreeDTO tree = rootFieldIds != null ? rootFieldIds.tree() : null;
         // 待办和已办不考虑数据权限；仅全部(3)考虑数据权限
-        List<PhysicalFilterItem> dataPermFilters =
+        List<FilterItem> dataPermFilters =
                 (approvalType != null && (approvalType == 1 || approvalType == 2))
                         ? Collections.emptyList()
                         : buildDataPermissionFilters(tree);
@@ -319,9 +317,9 @@ public class CommonFilterResolver {
             Integer approvalType,
             RootModuleFieldIds rootFieldIds,
             Map<Long, List<Map<String, Object>>> btnGroupMap,
-            List<PhysicalFilterItem> dataPermFilters,
+            List<FilterItem> dataPermFilters,
             List<Long> dataPermRecordIds) {
-        List<PhysicalFilterItem> effectiveDataPermFilters =
+        List<FilterItem> effectiveDataPermFilters =
                 dataPermFilters != null ? dataPermFilters : Collections.emptyList();
 
         if (approvalType == null) {
@@ -335,8 +333,7 @@ public class CommonFilterResolver {
 
         // 【待办 (1)】：(我创建的草稿) OR (审批待办单据)，不考虑数据权限
         if (approvalType == 1) {
-            List<PhysicalFilterItem> draftItems =
-                    buildDraftFilterItems(currentUserId, rootFieldIds);
+            List<FilterItem> draftItems = buildDraftFilterItems(currentUserId, rootFieldIds);
             boolean hasDraft = !CollectionUtils.isEmpty(draftItems);
 
             if (!hasApprovalIds && !hasDraft) {
@@ -344,7 +341,7 @@ public class CommonFilterResolver {
             }
 
             // 审批待办单据分支：id IN (:todoRecordIds)
-            PhysicalFilterItem approvalBranch =
+            FilterItem approvalBranch =
                     hasApprovalIds
                             ? PhysicalQueryMapper.filter(
                                     rootFieldIds.tree(),
@@ -353,7 +350,7 @@ public class CommonFilterResolver {
                                     new ArrayList<>(recordIds))
                             : null;
 
-            List<PhysicalFilterItem> combined = combineOrBranches(draftItems, approvalBranch, null);
+            List<FilterItem> combined = combineOrBranches(draftItems, approvalBranch, null);
             return new ApprovalFilterItem(combined, false, btnGroupMap);
         }
 
@@ -362,7 +359,7 @@ public class CommonFilterResolver {
             if (!hasApprovalIds) {
                 return new ApprovalFilterItem(Collections.emptyList(), true, btnGroupMap);
             }
-            PhysicalFilterItem doneFilter =
+            FilterItem doneFilter =
                     PhysicalQueryMapper.filter(
                             rootFieldIds.tree(),
                             rootFieldIds.idField().fieldId(),
@@ -373,8 +370,7 @@ public class CommonFilterResolver {
 
         // 【全部 (3)】：(我创建的草稿) OR (审批全部单据) OR (数据权限单据)
         if (approvalType == 3) {
-            List<PhysicalFilterItem> draftItems =
-                    buildDraftFilterItems(currentUserId, rootFieldIds);
+            List<FilterItem> draftItems = buildDraftFilterItems(currentUserId, rootFieldIds);
             boolean hasDraft = !CollectionUtils.isEmpty(draftItems);
 
             boolean hasDataPermIds =
@@ -385,7 +381,7 @@ public class CommonFilterResolver {
             }
 
             // 1. 审批单据分支：id IN (:approvalRecordIds)
-            PhysicalFilterItem approvalBranch =
+            FilterItem approvalBranch =
                     hasApprovalIds
                             ? PhysicalQueryMapper.filter(
                                     rootFieldIds.tree(),
@@ -395,7 +391,7 @@ public class CommonFilterResolver {
                             : null;
 
             // 2. 数据权限单据分支：id IN (:dataPermRecordIds)
-            PhysicalFilterItem dataPermBranch =
+            FilterItem dataPermBranch =
                     hasDataPermIds
                             ? PhysicalQueryMapper.filter(
                                     rootFieldIds.tree(),
@@ -404,7 +400,7 @@ public class CommonFilterResolver {
                                     new ArrayList<>(dataPermRecordIds))
                             : null;
 
-            List<PhysicalFilterItem> combined =
+            List<FilterItem> combined =
                     combineOrBranches(draftItems, approvalBranch, dataPermBranch);
             return new ApprovalFilterItem(combined, false, btnGroupMap);
         }
@@ -414,7 +410,7 @@ public class CommonFilterResolver {
 
     /** 调用 DataApi 通过物理表条件查询抽出符合数据权限单据的根主表 ID 列表 */
     public List<Long> queryDataPermissionRecordIds(
-            ModuleTreeDTO moduleTree, List<PhysicalFilterItem> dataPermFilters) {
+            ModuleTreeDTO moduleTree, List<FilterItem> dataPermFilters) {
         if (dataApi == null || moduleTree == null || moduleTree.getRootModule() == null) {
             return Collections.emptyList();
         }
@@ -429,8 +425,8 @@ public class CommonFilterResolver {
         }
 
         try {
-            com.jdec.platform.data.api.dto.request.TablePageQueryReq req =
-                    com.jdec.platform.data.api.dto.request.TablePageQueryReq.builder()
+            com.jdec.platform.data.api.dto.request.PageQueryReq req =
+                    com.jdec.platform.data.api.dto.request.PageQueryReq.builder()
                             .moduleId(rootModuleId)
                             .tables(
                                     List.of(
@@ -447,7 +443,7 @@ public class CommonFilterResolver {
 
             com.jdec.platform.data.api.dto.response.DataPage<
                             com.jdec.platform.data.api.dto.common.DataBlock>
-                    page = dataApi.queryByTable(req);
+                    page = dataApi.queryPage(req);
             if (page == null
                     || page.getData() == null
                     || CollectionUtils.isEmpty(page.getData().getRecords())) {
@@ -476,54 +472,62 @@ public class CommonFilterResolver {
     }
 
     /** 将 (我创建的草稿)、(审批单据分支) 与 (数据权限单据分支) 组合为平级/嵌套的 OR 关系 */
-    private List<PhysicalFilterItem> combineOrBranches(
-            List<PhysicalFilterItem> draftItems,
-            PhysicalFilterItem approvalBranch,
-            PhysicalFilterItem dataPermBranch) {
-        List<PhysicalFilterItem> branches = new ArrayList<>();
+    private List<FilterItem> combineOrBranches(
+            List<FilterItem> draftItems, FilterItem approvalBranch, FilterItem dataPermBranch) {
+        List<com.jdec.platform.data.api.model.predicate.Predicate> branchPredicates =
+                new ArrayList<>();
 
-        // 1. 草稿分支：children 内部同级自然为 AND (created_by == me AND business_status == 1)
+        // 1. 草稿分支：created_by == me AND business_status == 1
         if (!CollectionUtils.isEmpty(draftItems)) {
-            PhysicalFilterItem draftBranch = new PhysicalFilterItem();
-            draftBranch.setLogic("AND");
-            draftBranch.setChildren(draftItems);
-            branches.add(draftBranch);
+            List<com.jdec.platform.data.api.model.predicate.Predicate> draftPreds =
+                    new ArrayList<>();
+            for (FilterItem di : draftItems) {
+                if (di != null) {
+                    var p = di.toPredicate();
+                    if (p != null) {
+                        draftPreds.add(p);
+                    }
+                }
+            }
+            if (!draftPreds.isEmpty()) {
+                branchPredicates.add(
+                        com.jdec.platform.data.api.model.predicate.Predicates.and(draftPreds));
+            }
         }
 
         // 2. 审批流单据分支：id IN (:approvalRecordIds)
         if (approvalBranch != null) {
-            branches.add(approvalBranch);
+            var p = approvalBranch.toPredicate();
+            if (p != null) {
+                branchPredicates.add(p);
+            }
         }
 
         // 3. 数据权限单据分支：id IN (:dataPermRecordIds)
         if (dataPermBranch != null) {
-            branches.add(dataPermBranch);
+            var p = dataPermBranch.toPredicate();
+            if (p != null) {
+                branchPredicates.add(p);
+            }
         }
 
-        if (branches.isEmpty()) {
+        if (branchPredicates.isEmpty()) {
             return Collections.emptyList();
         }
-        if (branches.size() == 1) {
-            return Collections.singletonList(branches.get(0));
+        if (branchPredicates.size() == 1) {
+            return Collections.singletonList(FilterItem.fromPredicate(branchPredicates.get(0)));
         }
 
-        // 4. 递归链式构建 OR 树：branch0 OR (branch1 OR branch2)
-        // 关键：构建纯逻辑 OR 节点，绝不污染或覆盖各分支节点自身的 children
-        PhysicalFilterItem rootOr = branches.get(branches.size() - 1);
-        for (int i = branches.size() - 2; i >= 0; i--) {
-            PhysicalFilterItem orNode = new PhysicalFilterItem();
-            orNode.setLogic("OR");
-            orNode.setChildren(List.of(branches.get(i), rootOr));
-            rootOr = orNode;
-        }
-        return Collections.singletonList(rootOr);
+        // 4. 基于全新 Predicates 构造器构建自洽 OR 复合树，并通过 fromPredicate 完美桥接
+        var rootOr = com.jdec.platform.data.api.model.predicate.Predicates.or(branchPredicates);
+        return Collections.singletonList(FilterItem.fromPredicate(rootOr));
     }
 
-    private PhysicalFilterItem copyFilterItem(PhysicalFilterItem src) {
+    private FilterItem copyFilterItem(FilterItem src) {
         if (src == null) {
             return null;
         }
-        PhysicalFilterItem copy = new PhysicalFilterItem();
+        FilterItem copy = new FilterItem();
         copy.setModuleId(src.getModuleId());
         copy.setTableName(src.getTableName());
         copy.setColumnName(src.getColumnName());
@@ -531,8 +535,8 @@ public class CommonFilterResolver {
         copy.setValue(src.getValue());
         copy.setLogic(src.getLogic());
         if (src.getChildren() != null) {
-            List<PhysicalFilterItem> childCopies = new ArrayList<>();
-            for (PhysicalFilterItem c : src.getChildren()) {
+            List<FilterItem> childCopies = new ArrayList<>();
+            for (FilterItem c : src.getChildren()) {
                 childCopies.add(copyFilterItem(c));
             }
             copy.setChildren(childCopies);
@@ -540,7 +544,7 @@ public class CommonFilterResolver {
         return copy;
     }
 
-    private List<PhysicalFilterItem> buildDraftFilterItems(
+    private List<FilterItem> buildDraftFilterItems(
             Long currentUserId, RootModuleFieldIds rootFieldIds) {
         if (currentUserId == null
                 || rootFieldIds.createdByField() == null
@@ -629,7 +633,7 @@ public class CommonFilterResolver {
 
     /** 审批流与通用过滤解析结果单项（包含过滤项集合、是否短路为空、单据按钮映射） */
     public record ApprovalFilterItem(
-            List<PhysicalFilterItem> filters,
+            List<FilterItem> filters,
             boolean shortCircuitEmpty,
             Map<Long, List<Map<String, Object>>> btnMap) {}
 

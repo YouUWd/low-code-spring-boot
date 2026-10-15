@@ -1,9 +1,9 @@
 package com.jdec.platform.common.biz.service;
 
-import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
-import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
-import com.jdec.platform.common.biz.dto.response.MenuDataResp;
-import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
+import com.jdec.platform.common.api.dto.request.MenuOptionReq;
+import com.jdec.platform.common.api.dto.request.MenuQueryReq;
+import com.jdec.platform.common.api.dto.response.MenuDataResp;
+import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import java.util.List;
 
