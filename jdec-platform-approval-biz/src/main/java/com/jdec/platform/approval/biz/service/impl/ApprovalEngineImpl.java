@@ -739,7 +739,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
         approvalBusinessWrapper
-                .eq(ApprovalBusiness::getRecordId, approvalProcessDTO.getOldRecordId())
+                .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
                 .last("limit 1");
         ApprovalBusiness approvalBusiness =
                 approvalBusinessMapper.selectOne(approvalBusinessWrapper);
