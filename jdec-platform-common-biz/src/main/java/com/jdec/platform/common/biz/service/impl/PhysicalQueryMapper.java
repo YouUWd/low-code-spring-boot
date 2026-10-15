@@ -1,12 +1,12 @@
 package com.jdec.platform.common.biz.service.impl;
 
-import com.jdec.platform.common.api.dto.request.SortItem;
-import com.jdec.platform.common.biz.dto.request.FlatFilterItem;
+import com.jdec.platform.common.api.dto.request.FieldSortItem;
+import com.jdec.platform.common.api.dto.request.MenuFlatFieldFilterItem;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
-import com.jdec.platform.data.api.dto.request.PhysicalFilterItem;
-import com.jdec.platform.data.api.dto.request.PhysicalSortItem;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -76,17 +76,17 @@ final class PhysicalQueryMapper {
         return specs;
     }
 
-    static List<PhysicalFilterItem> toTableFilters(
-            ModuleTreeDTO tree, Collection<FlatFilterItem> filters) {
-        List<PhysicalFilterItem> result = new ArrayList<>();
+    static List<FilterItem> toTableFilters(
+            ModuleTreeDTO tree, Collection<MenuFlatFieldFilterItem> filters) {
+        List<FilterItem> result = new ArrayList<>();
         if (filters == null) {
             return result;
         }
-        for (FlatFilterItem filter : filters) {
+        for (MenuFlatFieldFilterItem filter : filters) {
             if (filter != null) {
                 PhysicalFieldRef ref = resolve(tree, filter.getFieldId());
                 result.add(
-                        PhysicalFilterItem.builder()
+                        FilterItem.builder()
                                 .moduleId(ref.moduleId())
                                 .tableName(ref.tableName())
                                 .columnName(ref.columnName())
@@ -99,16 +99,16 @@ final class PhysicalQueryMapper {
         return result;
     }
 
-    static List<PhysicalSortItem> toTableSorts(ModuleTreeDTO tree, Collection<SortItem> sorts) {
-        List<PhysicalSortItem> result = new ArrayList<>();
+    static List<SortItem> toTableSorts(ModuleTreeDTO tree, Collection<FieldSortItem> sorts) {
+        List<SortItem> result = new ArrayList<>();
         if (sorts == null) {
             return result;
         }
-        for (SortItem sort : sorts) {
+        for (FieldSortItem sort : sorts) {
             if (sort != null) {
                 PhysicalFieldRef ref = resolve(tree, sort.getFieldId());
                 result.add(
-                        PhysicalSortItem.builder()
+                        SortItem.builder()
                                 .moduleId(ref.moduleId())
                                 .tableName(ref.tableName())
                                 .columnName(ref.columnName())
@@ -120,10 +120,9 @@ final class PhysicalQueryMapper {
         return result;
     }
 
-    static PhysicalFilterItem filter(
-            ModuleTreeDTO tree, Long fieldId, String operator, Object value) {
+    static FilterItem filter(ModuleTreeDTO tree, Long fieldId, String operator, Object value) {
         PhysicalFieldRef ref = resolve(tree, fieldId);
-        return PhysicalFilterItem.builder()
+        return FilterItem.builder()
                 .moduleId(ref.moduleId())
                 .tableName(ref.tableName())
                 .columnName(ref.columnName())

@@ -2,11 +2,11 @@ package com.jdec.platform.data.biz.service;
 
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.ForkVersionReq;
-import com.jdec.platform.data.api.dto.request.TableDetailQueryReq;
-import com.jdec.platform.data.api.dto.request.TableOptionReq;
-import com.jdec.platform.data.api.dto.request.TablePageQueryReq;
-import com.jdec.platform.data.api.dto.request.TableQueryReq;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.DataSaveResp;
@@ -26,23 +26,23 @@ public class DataService implements DataApi {
     private final ForkVersionService forkVersionService;
 
     @Override
-    public DataPage<DataBlock> queryByTable(TablePageQueryReq req) {
-        return dataQueryService.queryByTable(req);
+    public DataPage<DataBlock> queryPage(PageQueryReq req) {
+        return dataQueryService.queryPage(req);
     }
 
     @Override
-    public Long countByTable(TableQueryReq req) {
-        return dataQueryService.countByTable(req);
+    public Long count(QueryReq req) {
+        return dataQueryService.count(req);
     }
 
     @Override
-    public DataBlock getDetailByTable(TableDetailQueryReq req) {
-        return dataQueryService.getDetailByTable(req);
+    public DataBlock getDetail(DetailQueryReq req) {
+        return dataQueryService.getDetail(req);
     }
 
     @Override
-    public List<DataOptionResp> getOptionsByTable(TableOptionReq req) {
-        return dataQueryService.getOptionsByTable(req);
+    public List<DataOptionResp> getOptions(OptionReq req) {
+        return dataQueryService.getOptions(req);
     }
 
     @Override

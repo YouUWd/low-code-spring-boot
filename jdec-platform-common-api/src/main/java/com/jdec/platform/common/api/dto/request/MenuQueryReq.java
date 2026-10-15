@@ -1,6 +1,5 @@
-package com.jdec.platform.common.biz.dto.request;
+package com.jdec.platform.common.api.dto.request;
 
-import com.jdec.platform.common.api.dto.request.SortItem;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
@@ -28,10 +27,10 @@ public class MenuQueryReq implements Serializable {
     private Integer pageSize;
 
     @Schema(description = "纯平铺单字段过滤条件列表 (默认以平级 AND 组合，避免多层树形嵌套)")
-    private List<FlatFilterItem> filters;
+    private List<MenuFlatFieldFilterItem> filters;
 
     @Schema(description = "平铺排序规则列表")
-    private List<SortItem> sorts;
+    private List<FieldSortItem> sorts;
 
     @Schema(description = "审批流过滤类型: 1-待办, 2-已办, 3-全部 (可选，默认3)", example = "3")
     private Integer approvalType;

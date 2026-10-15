@@ -12,6 +12,7 @@ import com.jdec.platform.config.biz.entity.SysButton;
 import com.jdec.platform.config.biz.mapper.SysButtonMapper;
 import com.jdec.platform.config.biz.reference.ReferenceCheckService;
 import com.jdec.platform.config.biz.reference.ReferenceViolation;
+import com.jdec.platform.config.open.api.OpenButtonApi;
 import com.jdec.platform.shared.audit.annotation.DataAudit;
 import com.jdec.platform.shared.audit.enums.OperationType;
 import com.jdec.platform.shared.context.AppContext;
@@ -33,7 +34,7 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
-public class SysButtonService implements SysButtonApi {
+public class SysButtonService implements SysButtonApi, OpenButtonApi {
 
     private final SysButtonMapper sysButtonMapper;
     private final ReferenceCheckService referenceCheckService;
@@ -176,6 +177,11 @@ public class SysButtonService implements SysButtonApi {
                     referenceCheckService.buildMessage(button.getTitle(), violations));
         }
         sysButtonMapper.deleteById(id);
+    }
+
+    @Override
+    public List<SysButtonResp> listButtons() {
+        return list();
     }
 
     @Override

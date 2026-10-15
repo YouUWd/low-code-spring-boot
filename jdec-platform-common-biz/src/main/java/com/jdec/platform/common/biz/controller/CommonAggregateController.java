@@ -1,9 +1,9 @@
 package com.jdec.platform.common.biz.controller;
 
-import com.jdec.platform.common.biz.dto.request.MenuOptionReq;
-import com.jdec.platform.common.biz.dto.request.MenuQueryReq;
-import com.jdec.platform.common.biz.dto.response.MenuDataResp;
-import com.jdec.platform.common.biz.dto.response.MenuDetailResp;
+import com.jdec.platform.common.api.dto.request.MenuOptionReq;
+import com.jdec.platform.common.api.dto.request.MenuQueryReq;
+import com.jdec.platform.common.api.dto.response.MenuDataResp;
+import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.shared.model.ApiResponse;

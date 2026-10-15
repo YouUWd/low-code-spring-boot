@@ -37,4 +37,7 @@ public interface IApprovalEngine {
 
     // 查询当前步骤是否可编辑
     boolean getCanEdit(Long moduleId, Long recordId, String btnType);
+
+    // 查询单据指定版本是否草稿状态
+    boolean getApprovalChainStatus(Long moduleId, Long recordId);
 }

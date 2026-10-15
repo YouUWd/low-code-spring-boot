@@ -56,7 +56,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     "business_status",
                     "created_by",
                     "created_date",
-                    "active");
+                    "active",
+                    "source_id");
 
     private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
             Set.of(

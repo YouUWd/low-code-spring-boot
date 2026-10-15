@@ -26,8 +26,6 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
-import com.jdec.platform.shared.security.SecurityUtils;
-import com.jdec.platform.shared.security.model.LoginUser;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
@@ -189,7 +187,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     public List<Map<String, Object>> getBusinessTypeList(ApprovalListReq approvalProcessReq) {
         List<Map<String, Object>> resultMap = new LinkedList<>();
         if (approvalProcessReq.getModuleIdList().isEmpty()) {
-            //   || approvalProcessReq.getSubjectIdList().isEmpty()) {
             return resultMap;
         }
         List<Long> approvalTypeIds =
@@ -197,7 +194,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                         approvalProcessReq.getModuleIdList(), approvalProcessReq.getRoleId());
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
         todoWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-        //   todoWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         todoWrapper.and(
                 wrapper ->
                         wrapper.nested(
@@ -252,9 +248,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         resultMap.add(todo);
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
         processWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-        // processWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
-        // processWrapper.eq(ApprovalBusiness::getApprovalUids,
-        // approvalProcessReq.getApplicantId());
         processWrapper.apply(
                 "FIND_IN_SET({0}, approval_uids)", approvalProcessReq.getApplicantId());
         List<ApprovalBusiness> processList = approvalBusinessMapper.selectList(processWrapper);
@@ -269,7 +262,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         resultMap.add(done);
         LambdaQueryWrapper<ApprovalBusiness> allWrapper = new LambdaQueryWrapper<>();
         allWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-        // allWrapper.in(ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
         if (Objects.nonNull(approvalProcessReq.getRecordIdList())
                 && !approvalProcessReq.getRecordIdList().isEmpty()) {
             allWrapper.in(ApprovalBusiness::getRecordId, approvalProcessReq.getRecordIdList());
@@ -295,8 +287,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 && !approvalProcessReq.getAllowedIdList().isEmpty()) {
             LambdaQueryWrapper<ApprovalBusiness> allowedWrapper = new LambdaQueryWrapper<>();
             allowedWrapper.in(ApprovalBusiness::getModuleId, approvalProcessReq.getModuleIdList());
-            // allowedWrapper.in(
-            //         ApprovalBusiness::getSubjectId, approvalProcessReq.getSubjectIdList());
             allowedWrapper.in(ApprovalBusiness::getRecordId, approvalProcessReq.getAllowedIdList());
             List<ApprovalBusiness> allowedList = approvalBusinessMapper.selectList(allowedWrapper);
             allList.addAll(allowedList);
@@ -436,19 +426,17 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         return result;
     }
 
+    // 根据模块ID及数据ID查询详情及按钮信息----------------------------------------------------
     @Override
     public Map<String, Object> getApprovalData(Long moduleId, Long recordId, String button) {
         if (!sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId))) {
             return null;
         }
-        LoginUser loginUserInfo = SecurityUtils.getLoginUser();
-        boolean isMockLogin =
-                loginUserInfo != null && Boolean.TRUE.equals(loginUserInfo.getIsMockLogin());
-        Long mockUserId = isMockLogin ? loginUserInfo.getMockUserId() : loginUserInfo.getUserId();
+        Long mockUserId = UserContext.getMockUserId();
         ApprovalProcessReq req = new ApprovalProcessReq();
         req.setModuleId(moduleId);
         req.setRecordId(recordId);
-        req.setRoleId(loginUserInfo.getRoleId());
+        req.setRoleId(UserContext.getRoleId());
         req.setApplicantId(mockUserId);
         req.setButton(button);
         return getApprovalDetail(req);
@@ -617,6 +605,18 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
         }
         return false;
+    }
+
+    @Override
+    public boolean getApprovalChainStatus(Long moduleId, Long recordId) {
+        LambdaQueryWrapper<ApprovalBusiness> businessWrapper = new LambdaQueryWrapper<>();
+        businessWrapper.eq(ApprovalBusiness::getModuleId, moduleId);
+        businessWrapper.eq(ApprovalBusiness::getRecordId, recordId).last("LIMIT 1");
+        ApprovalBusiness approvalChainBusiness = approvalBusinessMapper.selectOne(businessWrapper);
+        if (Objects.isNull(approvalChainBusiness)) {
+            return false;
+        }
+        return approvalChainBusiness.getCurrentStep() > 0;
     }
 
     // 新建业务发起审批申请------------------------------------------------------------------------

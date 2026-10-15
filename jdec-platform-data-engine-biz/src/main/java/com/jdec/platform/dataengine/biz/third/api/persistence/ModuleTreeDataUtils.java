@@ -488,13 +488,18 @@ public class ModuleTreeDataUtils {
                             // 如果是根模块主表, 设置状态
                             if (sysModuleInfo.getModuleInfo().getParentId() == null
                                     || sysModuleInfo.getModuleInfo().getParentId().equals(0L)) {
-                                if (isApproval) {
-                                    recordDataDTO.getRow().put(tab + ".business_status", 1);
-                                } else {
-                                    recordDataDTO.getRow().put(tab + ".business_status", 99);
-                                    recordDataDTO
-                                            .getRow()
-                                            .put(tab + ".registration_time", LocalDateTime.now());
+                                if (tab.equalsIgnoreCase(
+                                        sysModuleInfo.getModuleInfo().getPrimaryTable())) {
+                                    if (isApproval) {
+                                        recordDataDTO.getRow().put(tab + ".business_status", 1);
+                                    } else {
+                                        recordDataDTO.getRow().put(tab + ".business_status", 99);
+                                        recordDataDTO
+                                                .getRow()
+                                                .put(
+                                                        tab + ".registration_time",
+                                                        LocalDateTime.now());
+                                    }
                                 }
                             }
                         } else {
@@ -515,6 +520,7 @@ public class ModuleTreeDataUtils {
     public static void fillApprovalDataByChange(
             NestedModuleDataDTO nestedModuleData,
             Integer versionNo,
+            Long sourceId,
             Boolean isApproval,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         if (nestedModuleData == null) {
@@ -539,13 +545,11 @@ public class ModuleTreeDataUtils {
                         // 如果是根模块主表, 设置状态
                         if (sysModuleInfo.getModuleInfo().getParentId() == null
                                 || sysModuleInfo.getModuleInfo().getParentId().equals(0L)) {
-                            if (isApproval) {
-                                recordDataDTO
-                                        .getRow()
-                                        .put(
-                                                sysModuleInfo.getModuleInfo().getPrimaryTable()
-                                                        + ".business_status",
-                                                1);
+                            // 主表 才补充的字段
+                            if (tab.equalsIgnoreCase(
+                                    sysModuleInfo.getModuleInfo().getPrimaryTable())) {
+                                recordDataDTO.getRow().put(tab + ".business_status", 1);
+                                recordDataDTO.getRow().put(tab + ".soruce_id", sourceId);
                             } else {
                                 // 变更都是 待审批链的
                             }
@@ -567,7 +571,8 @@ public class ModuleTreeDataUtils {
                 }
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                     for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
-                        fillApprovalDataByChange(child, versionNo, isApproval, moduleCacheMap);
+                        fillApprovalDataByChange(
+                                child, versionNo, sourceId, isApproval, moduleCacheMap);
                     }
                 }
             }
