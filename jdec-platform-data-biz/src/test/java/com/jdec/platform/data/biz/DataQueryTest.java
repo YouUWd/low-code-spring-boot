@@ -21,6 +21,7 @@ import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
@@ -1161,5 +1162,41 @@ class DataQueryTest {
         assertEquals(2, optionsDesc.size());
         assertEquals("高等数学", optionsDesc.get(0).getLabel());
         assertEquals("大学英语", optionsDesc.get(1).getLabel());
+    }
+
+    @Test
+    @DisplayName("测试动态列表全量查询 (Query List): 不分页且不触发 COUNT 查询，直接返回聚合根数据区块")
+    void testQueryListWithoutPagingAndCount() {
+        executedSqlList.clear();
+
+        QueryReq req =
+                QueryReq.builder()
+                        .moduleId(101L)
+                        .tables(
+                                List.of(
+                                        TableSpec.of(
+                                                101L,
+                                                "student",
+                                                List.of("id", "student_no", "name"))))
+                        .build();
+
+        DataBlock resultBlock = dataQueryService.queryList(req);
+
+        assertNotNull(resultBlock);
+        assertEquals(101L, resultBlock.getModuleId());
+        assertNotNull(resultBlock.getRecords());
+        assertEquals(1, resultBlock.getRecords().size());
+
+        // 验证执行的 SQL 集合：不应包含 select count，只包含对 student 的 select
+        boolean hasCountSql = executedSqlList.stream().anyMatch(sql -> sql.contains("count"));
+        assertFalse(hasCountSql, "不分页全量列表查询不应触发 COUNT 查询");
+
+        boolean hasStudentSelect =
+                executedSqlList.stream()
+                        .anyMatch(
+                                sql ->
+                                        sql.contains("from `student`")
+                                                || sql.contains("from student"));
+        assertTrue(hasStudentSelect, "应当执行对主表 student 的数据查询");
     }
 }

@@ -23,4 +23,12 @@ public interface OpenMenuApi {
      * @return 模块ID，无法解析时返回 null
      */
     Long getModuleIdByMenuId(Long menuId);
+
+    /**
+     * 根据模块ID 查询绑定的菜单ID
+     *
+     * @param moduleId 模块ID
+     * @return 菜单ID，未找到时返回 null
+     */
+    Long getMenuIdByModuleId(Long moduleId);
 }

@@ -70,7 +70,8 @@ public final class TableQueryValidator {
                 }
                 String table = spec.getTableName().trim();
                 if (!allowedTables.contains(table.toLowerCase())) {
-                    throw new IllegalArgumentException("物理表 [" + table + "] 不属于当前模块查询范围");
+                    throw new IllegalArgumentException(
+                            "物理表 [" + table + "] 不属于当前模块查询范围，当前模块树允许的物理表为: " + allowedTables);
                 }
                 if (spec.getColumns() != null && !spec.getColumns().isEmpty()) {
                     for (String column : spec.getColumns()) {

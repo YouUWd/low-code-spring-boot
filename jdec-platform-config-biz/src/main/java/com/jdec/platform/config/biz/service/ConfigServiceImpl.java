@@ -197,6 +197,46 @@ public class ConfigServiceImpl implements ConfigApi {
         return treeDTO;
     }
 
+    @Override
+    public List<ModuleTreeDTO> getProjectModuleTree(String projectNo, Long subjectId) {
+        log.info("getProjectModuleTree: projectNo={}, subjectId={}", projectNo, subjectId);
+
+        List<SysModule> moduleList =
+                sysModuleMapper.selectList(
+                        Wrappers.<SysModule>lambdaQuery()
+                                .eq(
+                                        projectNo != null && !projectNo.isBlank(),
+                                        SysModule::getProjectNo,
+                                        projectNo)
+                                .eq(subjectId != null, SysModule::getSubjectId, subjectId)
+                                .orderByAsc(SysModule::getSortOrder));
+
+        if (moduleList == null || moduleList.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 识别所有根模块 (parentId 为空或 0)
+        List<Long> rootModuleIds =
+                moduleList.stream()
+                        .filter(
+                                m ->
+                                        m.getId() != null
+                                                && (m.getParentId() == null
+                                                        || m.getParentId() == 0L))
+                        .map(SysModule::getId)
+                        .distinct()
+                        .toList();
+
+        List<ModuleTreeDTO> trees = new ArrayList<>();
+        for (Long rootMid : rootModuleIds) {
+            ModuleTreeDTO tree = getModuleTree(projectNo, subjectId, rootMid);
+            if (tree != null) {
+                trees.add(tree);
+            }
+        }
+        return trees;
+    }
+
     private void collectDescendantSysModules(
             Long currentId,
             Map<Long, List<SysModule>> childrenMap,

@@ -73,7 +73,6 @@ public class QueryPlanExecutor {
 
         QueryNodePlan rootPlan = plan.getRootNodePlan();
         String primaryTable = rootPlan.getPrimaryTable();
-        DSLContext dsl = jooqDataContextFactory.getContext();
 
         // 0. 防御空主表 (如未配置的虚拟模块)
         if (primaryTable == null || primaryTable.isBlank()) {
@@ -94,7 +93,37 @@ public class QueryPlanExecutor {
                         : 20;
         int offset = (pageNo - 1) * pageSize;
 
-        // 2. 构建根查询物理投影字段列表
+        DataBlock block = executeCore(rootPlan, primaryTable, pageSize, offset);
+        return DataPage.<DataBlock>builder()
+                .pageNo(pageNo)
+                .pageSize(pageSize)
+                .total(total)
+                .data(block)
+                .build();
+    }
+
+    /** 执行整树列表全量查询计划 (不分页，跳过 COUNT 统计，返回聚合根模块自相似数据区块) */
+    public DataBlock executeList(QueryPlan plan) {
+        if (plan == null || plan.getRootNodePlan() == null) {
+            return null;
+        }
+
+        QueryNodePlan rootPlan = plan.getRootNodePlan();
+        String primaryTable = rootPlan.getPrimaryTable();
+        if (primaryTable == null || primaryTable.isBlank()) {
+            return DataBlock.empty(rootPlan.getModuleId());
+        }
+
+        // 不分页执行：pageSize 与 offset 均为 null
+        return executeCore(rootPlan, primaryTable, null, null);
+    }
+
+    /** 核心执行管线：Stage 0 (主表扫描) -> Stage 1 (批量回查子模块) -> Stage 2 (自相似树内存装配) */
+    private DataBlock executeCore(
+            QueryNodePlan rootPlan, String primaryTable, Integer limit, Integer offset) {
+        DSLContext dsl = jooqDataContextFactory.getContext();
+
+        // 1. 构建根查询物理投影字段列表
         List<Field<?>> selectFields =
                 buildSelectFields(primaryTable, rootPlan.getProjectedFields());
 
@@ -103,17 +132,19 @@ public class QueryPlanExecutor {
                         ? dsl.select(DSL.asterisk()).from(DSL.table(DSL.name(primaryTable)))
                         : dsl.select(selectFields).from(DSL.table(DSL.name(primaryTable)));
 
-        // 2.1 若根节点配置有附加表 (伴生 1:1 / 上游 N:1)，执行安全 LEFT JOIN
+        // 2. 若根节点配置有附加表 (伴生 1:1 / 上游 N:1)，执行安全 LEFT JOIN
         selectStep = applyAttachedJoins(selectStep, rootPlan.getAttachedJoins());
 
-        // 3. 执行主表分页查询
-        Result<Record> records =
-                selectStep
-                        .where(rootPlan.getCondition())
-                        .orderBy(rootPlan.getOrderFields())
-                        .limit(pageSize)
-                        .offset(offset)
-                        .fetch();
+        // 3. 执行主表查询 (若指定 limit/offset 则分页，否则全量扫描)
+        var whereStep =
+                selectStep.where(rootPlan.getCondition()).orderBy(rootPlan.getOrderFields());
+
+        Result<Record> records;
+        if (limit != null && limit > 0) {
+            records = whereStep.limit(limit).offset(offset != null ? offset : 0).fetch();
+        } else {
+            records = whereStep.fetch();
+        }
 
         List<Long> primaryIds = new ArrayList<>();
         List<DataRow> rootRows = new ArrayList<>();
@@ -142,13 +173,7 @@ public class QueryPlanExecutor {
                     rootRows, rootPlan.getModuleId(), rootPlan.getChildren(), rawDataByNode);
         }
 
-        DataBlock block = DataBlock.of(rootPlan.getModuleId(), rootRows);
-        return DataPage.<DataBlock>builder()
-                .pageNo(pageNo)
-                .pageSize(pageSize)
-                .total(total)
-                .data(block)
-                .build();
+        return DataBlock.of(rootPlan.getModuleId(), rootRows);
     }
 
     /** 递归分批批量拉取各层子模块/子表数据 (利用 fk IN (:parentIds)) */
