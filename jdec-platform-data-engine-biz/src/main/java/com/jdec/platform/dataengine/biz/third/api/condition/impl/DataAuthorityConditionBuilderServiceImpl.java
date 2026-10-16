@@ -52,17 +52,15 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
                         .collect(Collectors.groupingBy(DataRightConfigResp::getTableName));
 
         // 主表数据权限筛选条件构造
-        //        applyDataRightFilter(
-        //                context.getSysModuleCompleteResp().getModule().getPrimaryTable(),
-        //                tableNameToConfigItems,
-        //                conditions);
+        applyDataRightFilter(context.getTableName(), tableNameToConfigItems, conditions);
 
         // 遍历关联表，构造关联表查询条件
-        //        for (ModuleTableDTO moduleTable :
-        // context.getSysModuleCompleteResp().getModuleTables()) {
-        //            applyDataRightFilter(moduleTable.getTableName(), tableNameToConfigItems,
-        // conditions);
-        //        }
+        //                for (ModuleTableDTO moduleTable :
+        //         context.getSysModuleCompleteResp().getModuleTables()) {
+        //                    applyDataRightFilter(moduleTable.getTableName(),
+        // tableNameToConfigItems,
+        //         conditions);
+        //                }
 
         return DSL.and(conditions);
     }

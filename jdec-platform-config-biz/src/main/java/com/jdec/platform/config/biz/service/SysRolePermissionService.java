@@ -1627,7 +1627,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
             String remarkJson = JSONUtil.toJsonStr(remarkMap);
 
             // 5. 发送审计日志
-            String operation = (checkFlag == 1) ? "新增权限" : "取消权限";
+            String operation = (checkFlag == 1) ? "新增" : "取消";
             auditLogHelper.logWithCustomRemark(
                     subModuleStr, tableName, operation, roleId, remarkJson);
 

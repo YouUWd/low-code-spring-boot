@@ -117,44 +117,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.isNull(approvalVersionRecord)) {
             throw new BusinessException(601, "单据记录不存在");
         }
-        // 单据编号
-        result.put("businessNumber", approvalVersionRecord.getBusinessNumber());
-        // 创建日期
-        result.put("createdDate", approvalVersionRecord.getCreatedDate());
-        // 版本号列表
-        Object[] versionArr =
-                getVersionList(approvalVersionRecord.getBusinessNumber(), req.getButton())
-                        .toArray();
-        List<Map<String, Object>> versionList = (List<Map<String, Object>>) versionArr[0];
-        result.put("versionList", versionList);
-        // 当前状态
-        Map<String, Object> approvalStatus = new HashMap<>();
-        if (Objects.nonNull(req.getButton())
-                && (req.getButton().equals("change") || req.getButton().equals("change-change"))) {
-            ModuleApprovalChainConfigResp.StatusNode statusNode =
-                    sysStatusApi.getStatusByValue(1, req.getModuleId());
-            if (Objects.isNull(statusNode)) {
-                throw new BusinessException(601, "单据记录异常");
-            }
-            approvalStatus.put("id", statusNode.getId());
-            approvalStatus.put("statusValue", statusNode.getStatusValue());
-            approvalStatus.put("title", statusNode.getTitle());
-            approvalStatus.put("statusBackground", statusNode.getStatusBackground());
-            approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
-            // 当前版本号
-            result.put("versionNo", versionList.getFirst().get("versionNo"));
-            // 是否显示对比
-            result.put("showChangeList", false);
-        } else {
-            approvalStatus.put("id", approvalVersionRecord.getStatusId());
-            approvalStatus.put("statusValue", approvalVersionRecord.getStatusValue());
-            approvalStatus.put("title", approvalVersionRecord.getStatusTitle());
-            approvalStatus.put("statusBackground", approvalVersionRecord.getStatusBackground());
-            approvalStatus.put("statusFontColor", approvalVersionRecord.getStatusFontColor());
-            // 当前版本号
-            result.put("versionNo", approvalVersionRecord.getVersionNo());
-        }
-        result.put("approvalStatus", approvalStatus);
         if (approvalVersionRecord.getCurrentStep() > 0
                 && (Objects.isNull(req.getButton())
                         || (!req.getButton().equals("change")
@@ -170,9 +132,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else {
             result.put("step", new ArrayList<>());
         }
-        // 创建人
-        result.put("createUser", convertUserResp(approvalVersionRecord.getCreatedBy()));
-
         // 操作按钮、是否可编辑
         AtomicReference<Integer> canEdit = new AtomicReference<>();
         canEdit.set(0);
@@ -613,7 +572,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, moduleId);
         businessWrapper
                 .eq(ApprovalVersionRecord::getRecordId, recordId)
-                .orderByAsc(ApprovalVersionRecord::getId)
+                .orderByDesc(ApprovalVersionRecord::getId)
                 .last("LIMIT 1");
         ApprovalVersionRecord approvalChainBusiness =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
@@ -1670,7 +1629,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             map.put("id", item.getRecordId());
             map.put("versionNo", item.getVersionNo());
             map.put("statusValue", item.getStatusValue());
-            map.put("preVersion", sourceRecord.getVersionNo());
+            if (Objects.nonNull(sourceRecord)) map.put("preVersion", sourceRecord.getVersionNo());
             map.put("btnType", btnType.contains("change") ? "change-view" : "");
             versionList.add(map);
         }
@@ -1972,7 +1931,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             alias = "handle";
             btnName = "办理";
         }
-        btnInfo.setRecordId(approvalBusiness.getRecordId());
+        btnInfo.setBusinessNo(approvalBusiness.getBusinessNumber());
         btnInfo.setButtonKey(alias);
         SysConfigItemResp modelConfig =
                 sysConfigCategoryApi.getConfigItemsByValue("ListButtonStyle", alias);

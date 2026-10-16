@@ -1367,7 +1367,7 @@ public class DynamicQueryService {
                 Integer fakeVersionNo = lastVersion == null ? 0 : lastVersion + 1;
                 versionList.add(
                         VersionListResp.builder()
-                                .versionNo(fakeVersionNo)
+                                .version(fakeVersionNo)
                                 .id(versionListQueryReq.getId())
                                 .history(false)
                                 .btnType("change-change")
@@ -1393,7 +1393,7 @@ public class DynamicQueryService {
 
                     VersionListResp.VersionListRespBuilder versionBuilder =
                             VersionListResp.builder()
-                                    .versionNo(versionNo)
+                                    .version(versionNo)
                                     .id(id)
                                     .history(true)
                                     .btnType("view")
@@ -1542,23 +1542,21 @@ public class DynamicQueryService {
                         Integer.parseInt(String.valueOf(resultMap.get("root_table_data_version")));
                 historyVersionList.add(
                         VersionListResp.builder()
-                                .versionNo(versionNo)
+                                .version(versionNo)
                                 .history(true)
                                 .btnType("view")
                                 .build());
             }
         }
 
-        historyVersionList.sort(Comparator.comparing(VersionListResp::getVersionNo).reversed());
+        historyVersionList.sort(Comparator.comparing(VersionListResp::getVersion).reversed());
 
         if (!CollectionUtils.isEmpty(historyVersionList)) {
             // 设置上一版本版本号
             int i = 0;
             int last = (historyVersionList.size() - 1);
             while (i < (last)) {
-                historyVersionList
-                        .get(i)
-                        .setPreVersion(historyVersionList.get(i + 1).getVersionNo());
+                historyVersionList.get(i).setPreVersion(historyVersionList.get(i + 1).getVersion());
                 i++;
             }
         }

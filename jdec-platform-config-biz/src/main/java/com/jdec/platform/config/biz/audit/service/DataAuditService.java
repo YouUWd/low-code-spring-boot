@@ -435,7 +435,7 @@ public class DataAuditService {
      *
      * @param module 业务模块
      * @param subModule 业务子模块
-     * @param operation 操作描述（如："新增权限"、"取消权限"）
+     * @param operation 操作描述（如："新增"、"取消"）
      * @param tableName 表名
      * @param dataId 数据ID
      * @param remarkJson 自定义的 logRemark JSON 字符串
