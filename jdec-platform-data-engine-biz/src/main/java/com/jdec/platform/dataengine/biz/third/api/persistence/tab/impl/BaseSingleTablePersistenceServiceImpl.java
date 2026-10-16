@@ -320,7 +320,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         int result =
                 dslContext
                         .update(DSL.table(DSL.name(tableName)))
-                        .set(DSL.field(DSL.name(tableName, "active")), (byte) 1)
+                        .set(DSL.field(DSL.name(tableName, "active")), (byte) 0)
                         .set(DSL.field(DSL.name(tableName, "updated_by")), currentUserId)
                         .set(DSL.field(DSL.name(tableName, "updated_date")), now)
                         .where(
