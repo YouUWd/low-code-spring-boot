@@ -27,6 +27,15 @@ public interface ConfigApi {
      */
     ModuleTreeDTO getModuleTree(String projectNo, Long subjectId, Long rootModuleId);
 
+    /**
+     * 获取指定项目及主体下的完整模块树列表 (每个根模块及其子孙模块构成的 ModuleTreeDTO 集合)
+     *
+     * @param projectNo 项目编码 (可选校验)
+     * @param subjectId 主体 ID (可选校验)
+     * @return 项目级各根模块子树聚合 DTO 列表，若不存在则返回空列表
+     */
+    List<ModuleTreeDTO> getProjectModuleTree(String projectNo, Long subjectId);
+
     // ================= 2. 物理表关系 (sys_table_relation) =============
 
     /**

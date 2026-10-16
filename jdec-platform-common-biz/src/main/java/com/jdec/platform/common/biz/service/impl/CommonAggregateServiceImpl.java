@@ -3,6 +3,7 @@ package com.jdec.platform.common.biz.service.impl;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.FieldSortItem;
 import com.jdec.platform.common.api.dto.request.MenuFlatFieldFilterItem;
+import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.response.*;
@@ -192,6 +193,373 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         // 6. 组装并返回复合响应
         return assembleMenuDataResp(
                 headerRoot, menuId, rootModuleId, roleId, rootNode, approvalRows);
+    }
+
+    @Override
+    public List<DataRecordItem> queryList(MenuListReq req) {
+        // 1. 根据 tables 中携带的 menuId 解析对应的 moduleId，在项目模块树中定位目标根模块树
+        ModuleTreeDTO moduleTree = resolveRootModuleTree(req);
+        Long rootModuleId = moduleTree.getRootModuleId();
+        String primaryTable =
+                (moduleTree.getRootModule() != null)
+                        ? moduleTree.getRootModule().getPrimaryTable()
+                        : null;
+
+        // 2. 将 MenuTableSpec 转换为 data-api 物理投影表规格 TableSpec
+        List<TableSpec> tableSpecs =
+                resolveTableSpecs(
+                        req != null ? req.getTables() : null,
+                        rootModuleId,
+                        primaryTable,
+                        moduleTree);
+
+        // 3. 将 FlatFilterItem 与 FlatSortItem 转换为 data-api 物理过滤与排序项 (自动解析消歧所属 moduleId)
+        List<com.jdec.platform.data.api.dto.request.FilterItem> finalFilters =
+                resolveFlatFilters(
+                        req != null ? req.getFilters() : null,
+                        rootModuleId,
+                        primaryTable,
+                        moduleTree);
+        List<com.jdec.platform.data.api.dto.request.SortItem> finalSorts =
+                resolveFlatSorts(
+                        req != null ? req.getSorts() : null,
+                        rootModuleId,
+                        primaryTable,
+                        moduleTree);
+
+        // 4. 审批流与数据权限过滤注入 (默认查询全部集合: 3)
+        CommonFilterResolver.ApprovalFilterItem approvalFilter =
+                approvalFilterResolver.resolveApprovalFilters(rootModuleId, 3, moduleTree);
+        if (approvalFilter.shortCircuitEmpty()) {
+            return Collections.emptyList();
+        }
+        if (!approvalFilter.filters().isEmpty()) {
+            finalFilters.addAll(approvalFilter.filters());
+        }
+
+        // 5. 阶段 1：轻量级调用底层数据引擎查询主表数据，收集符合条件的 business_no 集合
+        TableSpec lightSpec =
+                TableSpec.builder()
+                        .moduleId(rootModuleId)
+                        .tableName(primaryTable)
+                        .columns(List.of("id", "business_no"))
+                        .build();
+
+        DataBlock lightBlock =
+                dataApi.queryList(
+                        QueryReq.builder()
+                                .moduleId(rootModuleId)
+                                .tables(List.of(lightSpec))
+                                .filters(finalFilters)
+                                .sorts(finalSorts)
+                                .build());
+
+        List<DataRow> lightRows =
+                (lightBlock != null && lightBlock.getRecords() != null)
+                        ? lightBlock.getRecords()
+                        : Collections.emptyList();
+
+        Set<String> businessNoSet = new LinkedHashSet<>();
+        for (DataRow r : lightRows) {
+            if (r != null) {
+                String bNo = r.getString(primaryTable, "business_no");
+                if (bNo != null && !bNo.isBlank()) {
+                    businessNoSet.add(bNo.trim());
+                }
+            }
+        }
+
+        if (businessNoSet.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 5. 阶段 2：通过数据引擎单表 API 在主表上精准查找每个 business_no 最新启用 (business_status = 99) 的最大版本主键 id 列表
+        List<Long> latestEnabledIds = dataApi.getLatestVersionIds(primaryTable, businessNoSet, 99);
+
+        if (CollectionUtils.isEmpty(latestEnabledIds)) {
+            return Collections.emptyList();
+        }
+
+        // 6. 阶段 3：直接基于这批唯一的主键 id 列表，调用底层数据引擎进行全量关联投影查询
+        List<com.jdec.platform.data.api.dto.request.FilterItem> targetFilters = new ArrayList<>();
+        targetFilters.add(
+                com.jdec.platform.data.api.dto.request.FilterItem.builder()
+                        .moduleId(rootModuleId)
+                        .tableName(primaryTable)
+                        .columnName("id")
+                        .operator("IN")
+                        .value(latestEnabledIds)
+                        .build());
+
+        DataBlock enabledBlock =
+                dataApi.queryList(
+                        QueryReq.builder()
+                                .moduleId(rootModuleId)
+                                .tables(tableSpecs)
+                                .filters(targetFilters)
+                                .sorts(finalSorts)
+                                .build());
+
+        List<DataRow> finalRows =
+                (enabledBlock != null && enabledBlock.getRecords() != null)
+                        ? enabledBlock.getRecords()
+                        : Collections.emptyList();
+
+        // 6. 收集请求中各模块 ID 对应的菜单 ID 映射关系，供装配子节点 ModuleDataNode 时精准带出 menuId
+        Map<Long, Long> moduleToMenuMap = new HashMap<>();
+        if (req != null && req.getTables() != null) {
+            for (com.jdec.platform.common.api.dto.request.MenuTableSpec mSpec : req.getTables()) {
+                if (mSpec != null && mSpec.getMenuId() != null) {
+                    Long modId = openMenuApi.getModuleIdByMenuId(mSpec.getMenuId());
+                    if (modId != null) {
+                        moduleToMenuMap.put(modId, mSpec.getMenuId());
+                    }
+                }
+            }
+        }
+
+        // 7. 将筛选后的 DataRow 数据集结构转换为自相似同构树记录列表 List<DataRecordItem> (不返回包含 total 的外层节点)
+        List<DataRecordItem> recordList = new ArrayList<>();
+        if (!finalRows.isEmpty()) {
+            enhanceDataRows(finalRows, rootModuleId, primaryTable);
+            Long rootMenuId = moduleToMenuMap.get(rootModuleId);
+            for (DataRow rawRow : finalRows) {
+                if (rawRow != null) {
+                    recordList.add(
+                            buildDataRecordItemFromDataRow(
+                                    rootModuleId, rootMenuId, rawRow, moduleToMenuMap));
+                }
+            }
+        }
+
+        return recordList;
+    }
+
+    /** 根据请求中 tables 规格携带的 menuId 解析对应的 moduleId，在项目的全量模块树列表中定位公共根模块树 */
+    private ModuleTreeDTO resolveRootModuleTree(MenuListReq req) {
+        if (req == null || CollectionUtils.isEmpty(req.getTables())) {
+            throw new IllegalArgumentException("查询请求中的 tables 物理表规格不能为空");
+        }
+
+        // 1. 收集所有 MenuTableSpec 中有效的 menuId 并转换为 moduleId
+        Set<Long> moduleIds = new LinkedHashSet<>();
+        for (com.jdec.platform.common.api.dto.request.MenuTableSpec table : req.getTables()) {
+            if (table != null && table.getMenuId() != null) {
+                Long mid = openMenuApi.getModuleIdByMenuId(table.getMenuId());
+                if (mid != null) {
+                    moduleIds.add(mid);
+                }
+            }
+        }
+
+        if (moduleIds.isEmpty()) {
+            throw new IllegalArgumentException("tables 规格中必须至少指定一个能关联到有效模块的 menuId");
+        }
+
+        // 2. 获取项目及主体下所有根模块的模块树列表
+        List<ModuleTreeDTO> projectTrees =
+                configApi.getProjectModuleTree(
+                        AppContext.getProjectNo(), AppContext.getSubjectId());
+        if (CollectionUtils.isEmpty(projectTrees)) {
+            throw new BusinessException("当前项目 [" + AppContext.getProjectNo() + "] 下未配置任何模块树");
+        }
+
+        // 3. 在所有模块树中找到涵盖所有 moduleIds 的目标树
+        ModuleTreeDTO matchedTree = null;
+        for (ModuleTreeDTO tree : projectTrees) {
+            if (tree != null
+                    && tree.getAllowedModuleIds() != null
+                    && tree.getAllowedModuleIds().containsAll(moduleIds)) {
+                matchedTree = tree;
+                break;
+            }
+        }
+
+        if (matchedTree == null) {
+            throw new BusinessException(
+                    "所选菜单对应的模块 " + moduleIds + " 跨越了多个不同的业务根模块树或未在当前项目树中找到匹配的公共根模块");
+        }
+
+        return matchedTree;
+    }
+
+    private List<TableSpec> resolveTableSpecs(
+            List<com.jdec.platform.common.api.dto.request.MenuTableSpec> menuTableSpecs,
+            Long rootModuleId,
+            String primaryTable,
+            ModuleTreeDTO moduleTree) {
+        if (CollectionUtils.isEmpty(menuTableSpecs)) {
+            return null; // 为 null 时底层默认投影所有关联表全部字段
+        }
+        List<TableSpec> result = new ArrayList<>();
+        for (com.jdec.platform.common.api.dto.request.MenuTableSpec mSpec : menuTableSpecs) {
+            if (mSpec == null) {
+                continue;
+            }
+            Long modId =
+                    resolveModuleIdForTable(
+                            mSpec.getMenuId(),
+                            mSpec.getTableName(),
+                            rootModuleId,
+                            primaryTable,
+                            moduleTree);
+            ModuleInfo mod =
+                    (moduleTree != null && moduleTree.getModuleMap() != null)
+                            ? moduleTree.getModuleMap().get(modId)
+                            : null;
+            String modPrimaryTable = (mod != null) ? mod.getPrimaryTable() : null;
+
+            String rawTable = mSpec.getTableName() != null ? mSpec.getTableName().trim() : null;
+            String table = rawTable;
+            if (table == null || table.isBlank()) {
+                table = modPrimaryTable;
+            } else if (modPrimaryTable != null && !table.equalsIgnoreCase(modPrimaryTable)) {
+                // 如果传入的物理表名不在整个模块树的任何模块主表或伴生表中，且当前模块有唯一明确的主表，自动校正为真实物理主表
+                if (moduleTree != null && moduleTree.getModuleMap() != null) {
+                    boolean tableExistsInTree =
+                            moduleTree.getModuleMap().values().stream()
+                                    .anyMatch(
+                                            m ->
+                                                    m != null
+                                                            && rawTable.equalsIgnoreCase(
+                                                                    m.getPrimaryTable()));
+                    if (!tableExistsInTree) {
+                        log.warn(
+                                "MenuTableSpec 中指定的物理表名 [{}] 不在当前模块树的物理表中，根据模块 ID [{}] 自动校正为真实物理主表 [{}]",
+                                rawTable,
+                                modId,
+                                modPrimaryTable);
+                        table = modPrimaryTable;
+                    }
+                }
+            }
+
+            if (table == null || table.isBlank()) {
+                continue;
+            }
+
+            result.add(
+                    TableSpec.builder()
+                            .moduleId(modId)
+                            .tableName(table)
+                            .columns(mSpec.getColumns())
+                            .build());
+        }
+        return result;
+    }
+
+    private List<com.jdec.platform.data.api.dto.request.FilterItem> resolveFlatFilters(
+            List<com.jdec.platform.common.api.dto.request.FlatFilterItem> flatFilters,
+            Long rootModuleId,
+            String primaryTable,
+            ModuleTreeDTO moduleTree) {
+        if (CollectionUtils.isEmpty(flatFilters)) {
+            return new ArrayList<>();
+        }
+        List<com.jdec.platform.data.api.dto.request.FilterItem> result = new ArrayList<>();
+        for (com.jdec.platform.common.api.dto.request.FlatFilterItem f : flatFilters) {
+            if (f == null || f.getColumnName() == null || f.getColumnName().isBlank()) {
+                continue;
+            }
+            String table =
+                    (f.getTableName() != null && !f.getTableName().isBlank())
+                            ? f.getTableName().trim()
+                            : primaryTable;
+            Long modId =
+                    resolveModuleIdForTable(
+                            f.getMenuId(), table, rootModuleId, primaryTable, moduleTree);
+            result.add(
+                    com.jdec.platform.data.api.dto.request.FilterItem.builder()
+                            .moduleId(modId)
+                            .tableName(table)
+                            .columnName(f.getColumnName().trim())
+                            .operator(f.getOperator() != null ? f.getOperator() : "EQ")
+                            .value(f.getValue())
+                            .build());
+        }
+        return result;
+    }
+
+    private List<com.jdec.platform.data.api.dto.request.SortItem> resolveFlatSorts(
+            List<com.jdec.platform.common.api.dto.request.FlatSortItem> flatSorts,
+            Long rootModuleId,
+            String primaryTable,
+            ModuleTreeDTO moduleTree) {
+        if (CollectionUtils.isEmpty(flatSorts)) {
+            return new ArrayList<>();
+        }
+        List<com.jdec.platform.data.api.dto.request.SortItem> result = new ArrayList<>();
+        for (com.jdec.platform.common.api.dto.request.FlatSortItem s : flatSorts) {
+            if (s == null || s.getColumnName() == null || s.getColumnName().isBlank()) {
+                continue;
+            }
+            String table =
+                    (s.getTableName() != null && !s.getTableName().isBlank())
+                            ? s.getTableName().trim()
+                            : primaryTable;
+            Long modId =
+                    resolveModuleIdForTable(
+                            s.getMenuId(), table, rootModuleId, primaryTable, moduleTree);
+            result.add(
+                    com.jdec.platform.data.api.dto.request.SortItem.builder()
+                            .moduleId(modId)
+                            .tableName(table)
+                            .columnName(s.getColumnName().trim())
+                            .direction(s.getDirection() != null ? s.getDirection() : "DESC")
+                            .build());
+        }
+        return result;
+    }
+
+    private Long resolveModuleIdForTable(
+            Long specificMenuId,
+            String tableName,
+            Long rootModuleId,
+            String primaryTable,
+            ModuleTreeDTO moduleTree) {
+        // 1. 若入参显式指定了靠近的菜单 ID，优先通过 openMenuApi 解析该菜单对应的模块 ID
+        if (specificMenuId != null) {
+            Long mappedModId = openMenuApi.getModuleIdByMenuId(specificMenuId);
+            if (mappedModId != null
+                    && moduleTree != null
+                    && moduleTree.getModuleMap() != null
+                    && moduleTree.getModuleMap().containsKey(mappedModId)) {
+                return mappedModId;
+            }
+        }
+
+        // 2. 若表名为主表，直接归属根模块
+        if (tableName != null && tableName.equalsIgnoreCase(primaryTable)) {
+            return rootModuleId;
+        }
+
+        // 3. 在当前模块树中根据 primaryTable 或字段表名查找匹配的模块
+        if (moduleTree != null && moduleTree.getModuleMap() != null) {
+            // 先尝试匹配作为主表的模块
+            for (ModuleInfo m : moduleTree.getModuleMap().values()) {
+                if (m != null
+                        && tableName != null
+                        && tableName.equalsIgnoreCase(m.getPrimaryTable())) {
+                    return m.getModuleId();
+                }
+            }
+            // 再尝试匹配字段包含该物理表名的模块
+            if (moduleTree.getFieldMap() != null) {
+                for (ModuleFieldDTO f : moduleTree.getFieldMap().values()) {
+                    if (f != null
+                            && tableName != null
+                            && tableName.equalsIgnoreCase(f.getTableName())) {
+                        Long modId = moduleTree.getModuleIdByFieldId(f.getId());
+                        if (modId != null) {
+                            return modId;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. 默认兜底为根模块 ID
+        return rootModuleId;
     }
 
     @Override
@@ -587,6 +955,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private DataRecordItem buildDataRecordItemFromDataRow(
             Long moduleId, Long menuId, DataRow dataRow) {
+        return buildDataRecordItemFromDataRow(moduleId, menuId, dataRow, null);
+    }
+
+    private DataRecordItem buildDataRecordItemFromDataRow(
+            Long moduleId, Long menuId, DataRow dataRow, Map<Long, Long> moduleToMenuMap) {
         if (dataRow == null) {
             return DataRecordItem.builder().row(Collections.emptyMap()).build();
         }
@@ -619,17 +992,39 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 if (childNode.getRecords() != null) {
                     for (DataRow subRow : childNode.getRecords()) {
                         if (subRow != null) {
-                            childItems.add(buildDataRecordItemFromDataRow(subModId, null, subRow));
+                            childItems.add(
+                                    buildDataRecordItemFromDataRow(
+                                            subModId, null, subRow, moduleToMenuMap));
                         }
                     }
                 }
+
+                // 解析子模块的 menuId：优先从 moduleToMenuMap 取，未命中则通过 openMenuApi 兜底查询
+                Long subMenuId =
+                        (moduleToMenuMap != null && subModId != null)
+                                ? moduleToMenuMap.get(subModId)
+                                : null;
+                if (subMenuId == null && subModId != null) {
+                    try {
+                        subMenuId = openMenuApi.getMenuIdByModuleId(subModId);
+                    } catch (Exception ex) {
+                        log.debug("通过 openMenuApi 解析子模块 menuId 失败: subModId={}", subModId);
+                    }
+                }
+
                 ModuleDataNode moduleDataNode =
-                        ModuleDataNode.builder().moduleId(subModId).record(childItems).build();
+                        ModuleDataNode.builder()
+                                .moduleId(subModId)
+                                .menuId(subMenuId)
+                                .record(childItems)
+                                .build();
                 childrenNodes.add(moduleDataNode);
             }
         }
 
-        return DataRecordItem.builder().row(flatRow).children(childrenNodes).build();
+        // 当没有子模块记录或者为空列表时设置为 null，配合 @JsonInclude(NON_EMPTY) 彻底避免序列化为 "children": []
+        List<ModuleDataNode> finalChildren = childrenNodes.isEmpty() ? null : childrenNodes;
+        return DataRecordItem.builder().row(flatRow).children(finalChildren).build();
     }
 
     private List<ModuleMetaDTO> buildModuleMetaList(Long rootModuleId, Long menuId, Long roleId) {

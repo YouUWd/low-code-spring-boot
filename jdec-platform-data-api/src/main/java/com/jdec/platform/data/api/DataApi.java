@@ -23,6 +23,9 @@ public interface DataApi {
     /** 动态分页查询 (PageQueryReq -> DataPage<DataBlock>) */
     DataPage<DataBlock> queryPage(PageQueryReq req);
 
+    /** 动态列表全量查询 (不分页，跳过 COUNT 统计，返回聚合根模块自相似数据区块) */
+    DataBlock queryList(QueryReq req);
+
     /** 动态数据集数量统计 (QueryReq -> Long) */
     Long count(QueryReq req);
 
@@ -36,6 +39,59 @@ public interface DataApi {
     default DataBlock getFullDetail(Long moduleId, Long id) {
         return getDetail(DetailQueryReq.builder().moduleId(moduleId).id(id).build());
     }
+
+    // ==================== 单表轻量操作契约 (Single Table APIs) ====================
+
+    /**
+     * 单表列表轻量投影查询 (不依赖模块树，直接在目标单表上执行查询，跳过多表编译与复杂上下文)
+     *
+     * @param req 单表查询请求
+     * @return 记录列表，每条记录为 Map<列名, 字段值>
+     */
+    List<java.util.Map<String, Object>> querySingleTableList(
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req);
+
+    /**
+     * 单表单列值投影查询 (直接提取满足条件的指定列数据，例如 List<Long> ids 或 List<String> businessNos)
+     *
+     * @param req 单表查询请求 (需在 req 中指定单一列名)
+     * @param targetType 目标类型 Class
+     * @return 单列值列表
+     */
+    <T> List<T> querySingleTableColumn(
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req, Class<T> targetType);
+
+    /**
+     * 单表主键 ID 列表轻量查询快捷方法 (相当于 querySingleTableColumn(req, Long.class))
+     *
+     * @param req 单表查询请求
+     * @return 满足条件的 ID 列表
+     */
+    default List<Long> querySingleTableIds(
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+        return querySingleTableColumn(req, Long.class);
+    }
+
+    /**
+     * 单表条件计数 (SELECT COUNT(1) FROM tableName WHERE ...)
+     *
+     * @param req 单表查询请求 (仅使用 tableName 与 filters)
+     * @return 满足条件的记录数
+     */
+    Long countSingleTable(com.jdec.platform.data.api.dto.request.SingleTableQueryReq req);
+
+    /**
+     * 批量查询单据最新启用的最大版本主键 ID 集合
+     *
+     * <p>底层在数据库端通过分组聚合与连接过滤，直接获取每个 business_no 在指定 business_status 下的最大版本记录主键 ID 列表。
+     *
+     * @param tableName 物理主表名
+     * @param businessNos 业务单号集合
+     * @param businessStatus 业务状态 (如 99-已启用)
+     * @return 各单号最新启用的记录 ID 列表
+     */
+    List<Long> getLatestVersionIds(
+            String tableName, java.util.Collection<String> businessNos, Integer businessStatus);
 
     // ==================== 写契约 (100% 读写同构强约束) ====================
 

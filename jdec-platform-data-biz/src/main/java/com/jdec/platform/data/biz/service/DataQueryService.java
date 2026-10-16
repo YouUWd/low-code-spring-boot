@@ -44,6 +44,12 @@ public class DataQueryService {
         return query(req);
     }
 
+    /** 标准动态列表全量查询门面 (QueryReq -> DataBlock，不分页，跳过 COUNT 统计) */
+    public DataBlock queryList(QueryReq req) {
+        QueryPlan plan = queryPlanCompiler.compile(req, planMetaLoader.load(req.getModuleId()));
+        return queryPlanExecutor.executeList(plan);
+    }
+
     /** 标准通用查询门面 (QueryReq -> DataPage<DataBlock>) */
     public DataPage<DataBlock> query(QueryReq req) {
         QueryPlan plan = queryPlanCompiler.compile(req, planMetaLoader.load(req.getModuleId()));

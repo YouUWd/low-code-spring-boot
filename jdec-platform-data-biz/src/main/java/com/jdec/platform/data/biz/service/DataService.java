@@ -24,10 +24,16 @@ public class DataService implements DataApi {
     private final DataQueryService dataQueryService;
     private final DataPersistenceService dataPersistenceService;
     private final ForkVersionService forkVersionService;
+    private final SingleTableQueryService singleTableQueryService;
 
     @Override
     public DataPage<DataBlock> queryPage(PageQueryReq req) {
         return dataQueryService.queryPage(req);
+    }
+
+    @Override
+    public DataBlock queryList(QueryReq req) {
+        return dataQueryService.queryList(req);
     }
 
     @Override
@@ -43,6 +49,29 @@ public class DataService implements DataApi {
     @Override
     public List<DataOptionResp> getOptions(OptionReq req) {
         return dataQueryService.getOptions(req);
+    }
+
+    @Override
+    public List<java.util.Map<String, Object>> querySingleTableList(
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+        return singleTableQueryService.querySingleTableList(req);
+    }
+
+    @Override
+    public <T> List<T> querySingleTableColumn(
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req, Class<T> targetType) {
+        return singleTableQueryService.querySingleTableColumn(req, targetType);
+    }
+
+    @Override
+    public Long countSingleTable(com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+        return singleTableQueryService.countSingleTable(req);
+    }
+
+    @Override
+    public List<Long> getLatestVersionIds(
+            String tableName, java.util.Collection<String> businessNos, Integer businessStatus) {
+        return singleTableQueryService.getLatestVersionIds(tableName, businessNos, businessStatus);
     }
 
     @Override

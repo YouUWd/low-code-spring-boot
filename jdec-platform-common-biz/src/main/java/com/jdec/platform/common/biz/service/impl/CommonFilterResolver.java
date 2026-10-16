@@ -430,8 +430,19 @@ public class CommonFilterResolver {
         }
 
         try {
-            com.jdec.platform.data.api.dto.request.PageQueryReq req =
-                    com.jdec.platform.data.api.dto.request.PageQueryReq.builder()
+            // 优化：数据权限在大多数场景下仅基于主表（如 created_by、dept_id），直接走轻量单表查询，跳过整树元数据加载与复杂装配
+            if (isSingleTableOnly(dataPermFilters, primaryTable, rootModuleId)) {
+                com.jdec.platform.data.api.dto.request.SingleTableQueryReq singleReq =
+                        com.jdec.platform.data.api.dto.request.SingleTableQueryReq.of(
+                                primaryTable, "id");
+                singleReq.setFilters(dataPermFilters);
+                List<Long> singleIds = dataApi.querySingleTableIds(singleReq);
+                return singleIds != null ? singleIds : Collections.emptyList();
+            }
+
+            // 若涉及子表数据权限（子表影响主表数据），退回通过整树引擎进行级联关联推导
+            com.jdec.platform.data.api.dto.request.QueryReq req =
+                    com.jdec.platform.data.api.dto.request.QueryReq.builder()
                             .moduleId(rootModuleId)
                             .tables(
                                     List.of(
@@ -442,21 +453,15 @@ public class CommonFilterResolver {
                                                     .columns(List.of("id"))
                                                     .build()))
                             .filters(dataPermFilters)
-                            .pageNo(1)
-                            .pageSize(10000)
                             .build();
 
-            com.jdec.platform.data.api.dto.response.DataPage<
-                            com.jdec.platform.data.api.dto.common.DataBlock>
-                    page = dataApi.queryPage(req);
-            if (page == null
-                    || page.getData() == null
-                    || CollectionUtils.isEmpty(page.getData().getRecords())) {
+            com.jdec.platform.data.api.dto.common.DataBlock block = dataApi.queryList(req);
+            if (block == null || CollectionUtils.isEmpty(block.getRecords())) {
                 return Collections.emptyList();
             }
 
             List<Long> resultIds = new ArrayList<>();
-            for (com.jdec.platform.data.api.dto.common.DataRow row : page.getData().getRecords()) {
+            for (com.jdec.platform.data.api.dto.common.DataRow row : block.getRecords()) {
                 if (row == null) {
                     continue;
                 }
@@ -474,6 +479,33 @@ public class CommonFilterResolver {
                     ex);
             return Collections.emptyList();
         }
+    }
+
+    /** 判断过滤条件是否仅涉及主表字段（用于决定是否可直接降级为轻量单表查询） */
+    private boolean isSingleTableOnly(
+            List<FilterItem> filters, String primaryTable, Long rootModuleId) {
+        if (CollectionUtils.isEmpty(filters)) {
+            return true;
+        }
+        for (FilterItem f : filters) {
+            if (f == null) {
+                continue;
+            }
+            if (f.getModuleId() != null && !f.getModuleId().equals(rootModuleId)) {
+                return false;
+            }
+            if (f.getTableName() != null
+                    && !f.getTableName().isBlank()
+                    && !f.getTableName().equalsIgnoreCase(primaryTable)) {
+                return false;
+            }
+            if (!CollectionUtils.isEmpty(f.getChildren())) {
+                if (!isSingleTableOnly(f.getChildren(), primaryTable, rootModuleId)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /** 将 (我创建的草稿)、(审批单据分支) 与 (数据权限单据分支) 3 组独立的过滤器组合为顶层 OR 树结构 */
