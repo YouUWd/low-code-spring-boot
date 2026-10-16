@@ -389,7 +389,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     @Override
     public Map<String, Object> getApprovalData(Long moduleId, Long recordId, String button) {
         if (!sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId))) {
-            return null;
+            return new HashMap<>();
         }
         Long mockUserId = UserContext.getMockUserId();
         ApprovalProcessReq req = new ApprovalProcessReq();
@@ -568,6 +568,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     @Override
     public boolean getApprovalChainStatus(Long moduleId, Long recordId) {
+        if (!sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId))) {
+            return false;
+        }
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, moduleId);
         businessWrapper
