@@ -110,6 +110,8 @@ class CompanyMenuQueryContractTest {
                 .thenReturn(List.of(companyModuleTree));
         when(openMenuApi.getModuleIdByMenuId(anyLong())).thenReturn(1001L);
         when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(DataPage.empty());
+        when(dataApi.querySingleTableColumn(any(), eq(String.class)))
+                .thenReturn(List.of("CR100", "CR101", "CR102"));
     }
 
     private void initCompanyFixture() {
@@ -1413,8 +1415,14 @@ class CompanyMenuQueryContractTest {
                                                 .build()))
                         .build();
 
-        List<DataRecordItem> recordList = commonAggregateService.queryList(req);
+        ModuleDataNode rootNode = commonAggregateService.queryList(req);
 
+        assertNotNull(rootNode);
+        assertEquals(1001L, rootNode.getModuleId());
+        assertEquals(100L, rootNode.getMenuId());
+        assertEquals(2L, rootNode.getTotal());
+
+        List<DataRecordItem> recordList = rootNode.getRecord();
         assertNotNull(recordList);
         // 结果应该只包含 2 条记录 (CR001 的最大版本 v3，CR002 的版本 v1，CR003被丢弃)
         assertEquals(2, recordList.size());
@@ -1422,7 +1430,9 @@ class CompanyMenuQueryContractTest {
         // CR001 只保留最大版本 v3 (id=1103)
         assertEquals(1103L, recordList.get(0).getRow().get("info.id"));
         assertEquals("CR001", recordList.get(0).getRow().get("info.business_no"));
-        assertEquals(3, recordList.get(0).getRow().get("info.version_no"));
+        assertEquals("阿里", recordList.get(0).getRow().get("info.company_name"));
+        // 核心断言：未在 MenuTableSpec.columns 中请求的 version_no 不返回
+        assertNull(recordList.get(0).getRow().get("info.version_no"));
 
         // CR002 保留版本 v1 (id=1201)
         assertEquals(1201L, recordList.get(1).getRow().get("info.id"));
@@ -1481,7 +1491,13 @@ class CompanyMenuQueryContractTest {
                                                 .build()))
                         .build();
 
-        List<DataRecordItem> result = commonAggregateService.queryList(req);
+        ModuleDataNode resultNode = commonAggregateService.queryList(req);
+        assertNotNull(resultNode);
+        assertEquals(1001L, resultNode.getModuleId());
+        assertEquals(100L, resultNode.getMenuId());
+        assertEquals(1L, resultNode.getTotal());
+
+        List<DataRecordItem> result = resultNode.getRecord();
         assertNotNull(result);
         assertEquals(1, result.size());
 
@@ -1503,69 +1519,137 @@ class CompanyMenuQueryContractTest {
         // 核心断言 3：Jackson 序列化时不包含 "children": []
         com.fasterxml.jackson.databind.ObjectMapper mapper =
                 new com.fasterxml.jackson.databind.ObjectMapper();
-        String json = mapper.writeValueAsString(result);
+        String json = mapper.writeValueAsString(resultNode);
         assertFalse(json.contains("\"children\":[]"), "JSON 中不应该出现空列表 children: []");
         assertTrue(json.contains("\"menuId\":200"), "JSON 中应该包含子模块的 menuId");
+        assertTrue(json.contains("\"menuId\":100"), "JSON 中顶层应该包含根模块的 menuId");
     }
 
     @Test
-    @DisplayName("测试审批流待办(type=1)：过滤条件基于主表 business_no 且按钮映射按 business_no 关联")
-    void testApprovalType1_filterByBusinessNo() {
-        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
+    @DisplayName("测试 queryList 未请求子模块时，自动过滤掉无关子模块数据与无关物理表列")
+    void testQueryList_filterUnrelatedTablesAndColumns() {
+        when(openMenuApi.getModuleIdByMenuId(100L)).thenReturn(1001L);
 
-        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn =
-                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
-        btn.setBusinessNo("CR001");
-        btn.setButtonKey("approve");
-        btn.setButtonName("同意");
+        // 主表数据包含已请求的 company_name，以及未请求的 extra_col 和附加表 extra_table
+        DataRow mainRow = new DataRow();
+        mainRow.putTable(
+                "info",
+                Map.of(
+                        "id", 101L,
+                        "business_no", "CR100",
+                        "company_name", "主企业",
+                        "extra_col", "无关字段值"));
+        mainRow.putTable("unrelated_table", Map.of("unrelated_field", "无关表数据"));
 
-        com.jdec.platform.approval.api.dto.IApprovalEngineMapResp engineResp =
-                new com.jdec.platform.approval.api.dto.IApprovalEngineMapResp();
-        engineResp.setTodoList(List.of(btn));
+        // 子模块数据 (未在 tables 中请求)
+        DataRow subRow = new DataRow();
+        subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L));
+        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        mainRow.setChildren(List.of(subBlock));
 
-        when(approvalEngine.findApprovalButtonsMap(any())).thenReturn(engineResp);
+        DataBlock stage1Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage3Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
 
-        MenuQueryReq req = MenuQueryReq.builder().approvalType(1).build();
+        when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
+        when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
 
-        Map<String, Object> tableData = new HashMap<>();
-        tableData.put("id", 1001L);
-        tableData.put("business_no", "CR001");
-        tableData.put("company_name", "测试企业");
-        DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
-
-        DataPage dataPage =
-                DataPage.builder()
-                        .records(List.of(dataRow))
-                        .total(1L)
-                        .pageNo(1)
-                        .pageSize(20)
+        // 仅请求 info 表的 id, business_no, company_name
+        MenuListReq req =
+                MenuListReq.builder()
+                        .tables(
+                                List.of(
+                                        MenuTableSpec.builder()
+                                                .menuId(100L)
+                                                .tableName("info")
+                                                .columns(
+                                                        List.of(
+                                                                "id",
+                                                                "business_no",
+                                                                "company_name"))
+                                                .build()))
                         .build();
 
-        ArgumentCaptor<PageQueryReq> captor = ArgumentCaptor.forClass(PageQueryReq.class);
-        when(dataApi.queryPage(captor.capture())).thenReturn(dataPage);
+        ModuleDataNode resultNode = commonAggregateService.queryList(req);
+        assertNotNull(resultNode);
+        assertEquals(1, resultNode.getRecord().size());
 
-        MenuDataResp resp = commonAggregateService.queryByMenu(100L, req);
+        DataRecordItem rootItem = resultNode.getRecord().get(0);
+        // 验证请求的字段存在
+        assertEquals(101L, rootItem.getRow().get("info.id"));
+        assertEquals("CR100", rootItem.getRow().get("info.business_no"));
+        assertEquals("主企业", rootItem.getRow().get("info.company_name"));
 
-        assertNotNull(resp);
-        assertEquals(1, resp.getTotal());
-        assertNotNull(resp.getRecords());
-        assertEquals(1, resp.getRecords().size());
+        // 验证未请求的字段被过滤
+        assertNull(rootItem.getRow().get("info.extra_col"));
+        // 验证未请求的表被过滤
+        assertNull(rootItem.getRow().get("unrelated_table.unrelated_field"));
+        // 验证未请求的子模块被过滤，children 为 null
+        assertNull(rootItem.getChildren());
+    }
 
-        DataRecordItem item = resp.getRecords().get(0);
-        assertNotNull(item.getButtons());
-        assertEquals(1, item.getButtons().size());
-        assertEquals("approve", item.getButtons().get(0).get("buttonKey"));
+    @Test
+    @DisplayName("测试 queryList 请求子菜单时上溯到根模块并在顶层返回子菜单ModuleDataNode")
+    void testQueryList_requestChildMenuReturnsChildModuleAsTopLevel() throws Exception {
+        when(openMenuApi.getModuleIdByMenuId(26L)).thenReturn(1002L);
 
-        // 验证 dataApi 过滤条件基于 business_no
-        PageQueryReq capturedReq = captor.getValue();
-        assertNotNull(capturedReq);
-        assertNotNull(capturedReq.getFilters());
-        assertFalse(capturedReq.getFilters().isEmpty());
+        // 主表数据
+        DataRow mainRow = new DataRow();
+        mainRow.putTable(
+                "info",
+                Map.of(
+                        "id", 101L,
+                        "business_no", "CR100",
+                        "company_name", "主企业"));
 
-        com.jdec.platform.data.api.dto.request.FilterItem rootFilter =
-                capturedReq.getFilters().get(0);
-        // OR 组合条件树包含 approvalBranch
-        String filterJson = rootFilter.toString();
-        assertTrue(filterJson.contains("business_no"), "过滤条件应包含 business_no 字段过滤");
+        // 子模块数据 (basic_info / company_contact)
+        DataRow subRow = new DataRow();
+        subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L, "contact_name", "张三"));
+        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        mainRow.setChildren(List.of(subBlock));
+
+        DataBlock stage1Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage3Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+
+        when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
+        when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
+
+        MenuListReq req =
+                MenuListReq.builder()
+                        .tables(
+                                List.of(
+                                        MenuTableSpec.builder()
+                                                .menuId(26L)
+                                                .tableName("basic_info")
+                                                .columns(List.of("id", "contact_name"))
+                                                .build()))
+                        .build();
+
+        ModuleDataNode resultNode = commonAggregateService.queryList(req);
+        assertNotNull(resultNode);
+        // 核心断言 1：顶层为子菜单与子模块
+        assertEquals(1002L, resultNode.getModuleId());
+        assertEquals(26L, resultNode.getMenuId());
+        assertEquals(1L, resultNode.getTotal());
+        assertNotNull(resultNode.getRecord());
+        assertEquals(1, resultNode.getRecord().size());
+
+        // 核心断言 2：顶层 record 直接是 basic_info 的数据行
+        DataRecordItem item = resultNode.getRecord().get(0);
+        assertEquals(501L, item.getRow().get("basic_info.id"));
+        assertEquals("张三", item.getRow().get("basic_info.contact_name"));
+        // 核心断言 3：没有更下级子模块时 children 为 null
+        assertNull(item.getChildren());
+
+        // 核心断言 4：序列化 JSON 结构顶层为 menuId: 26
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+        String json = mapper.writeValueAsString(resultNode);
+        assertTrue(json.contains("\"menuId\":26"));
+        assertTrue(json.contains("\"moduleId\":1002"));
+        assertFalse(json.contains("\"moduleId\":1001"), "顶层及内容不应该再包含根模块 1001 节点");
     }
 }

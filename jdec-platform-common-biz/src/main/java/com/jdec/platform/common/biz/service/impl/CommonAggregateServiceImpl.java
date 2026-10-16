@@ -211,7 +211,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     }
 
     @Override
-    public List<DataRecordItem> queryList(MenuListReq req) {
+    public ModuleDataNode queryList(MenuListReq req) {
         // 1. 根据 tables 中携带的 menuId 解析对应的 moduleId，在项目模块树中定位目标根模块树
         ModuleTreeDTO moduleTree = resolveRootModuleTree(req);
         Long rootModuleId = moduleTree.getRootModuleId();
@@ -219,6 +219,79 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 (moduleTree.getRootModule() != null)
                         ? moduleTree.getRootModule().getPrimaryTable()
                         : null;
+
+        // 收集请求中各模块 ID 对应的菜单 ID 映射关系，供装配节点 ModuleDataNode 时精准带出 menuId
+        Map<Long, Long> moduleToMenuMap = new HashMap<>();
+        if (req != null && req.getTables() != null) {
+            for (com.jdec.platform.common.api.dto.request.MenuTableSpec mSpec : req.getTables()) {
+                if (mSpec != null && mSpec.getMenuId() != null) {
+                    Long modId = openMenuApi.getModuleIdByMenuId(mSpec.getMenuId());
+                    if (modId != null) {
+                        moduleToMenuMap.put(modId, mSpec.getMenuId());
+                    }
+                }
+            }
+        }
+        Long rootMenuId = moduleToMenuMap.get(rootModuleId);
+        if (rootMenuId == null && rootModuleId != null) {
+            try {
+                rootMenuId = openMenuApi.getMenuIdByModuleId(rootModuleId);
+                if (rootMenuId != null) {
+                    moduleToMenuMap.put(rootModuleId, rootMenuId);
+                }
+            } catch (Exception ex) {
+                log.debug("通过 openMenuApi 解析根模块 menuId 失败: rootModuleId={}", rootModuleId);
+            }
+        }
+
+        // 解析本次请求的目标模块 (Target Module) 与目标菜单 (Target Menu)：
+        // 遍历请求的 tables，选取在模块树中层级最高 (深度最小) 的模块作为返回数据的最顶层节点
+        Long targetModuleId = rootModuleId;
+        Long targetMenuId = rootMenuId;
+        int minDepth = Integer.MAX_VALUE;
+        if (req != null && !CollectionUtils.isEmpty(req.getTables())) {
+            for (com.jdec.platform.common.api.dto.request.MenuTableSpec mSpec : req.getTables()) {
+                if (mSpec == null) {
+                    continue;
+                }
+                Long mId = null;
+                if (mSpec.getMenuId() != null) {
+                    mId = openMenuApi.getModuleIdByMenuId(mSpec.getMenuId());
+                }
+                if (mId == null) {
+                    mId =
+                            resolveModuleIdForTable(
+                                    mSpec.getMenuId(),
+                                    mSpec.getTableName(),
+                                    rootModuleId,
+                                    primaryTable,
+                                    moduleTree);
+                }
+                if (mId != null) {
+                    int depth = getModuleDepth(mId, rootModuleId, moduleTree);
+                    if (depth < minDepth) {
+                        minDepth = depth;
+                        targetModuleId = mId;
+                        targetMenuId = mSpec.getMenuId();
+                    }
+                }
+            }
+        }
+        if (targetModuleId == null) {
+            targetModuleId = rootModuleId;
+        }
+        if (targetMenuId == null) {
+            targetMenuId = moduleToMenuMap.get(targetModuleId);
+            if (targetMenuId == null && targetModuleId != null) {
+                try {
+                    targetMenuId = openMenuApi.getMenuIdByModuleId(targetModuleId);
+                } catch (Exception ex) {
+                    log.debug(
+                            "通过 openMenuApi 解析 targetModuleId menuId 失败: targetModuleId={}",
+                            targetModuleId);
+                }
+            }
+        }
 
         // 2. 将 MenuTableSpec 转换为 data-api 物理投影表规格 TableSpec
         List<TableSpec> tableSpecs =
@@ -228,7 +301,56 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         primaryTable,
                         moduleTree);
 
-        // 3. 将 FlatFilterItem 与 FlatSortItem 转换为 data-api 物理过滤与排序项 (自动解析消歧所属 moduleId)
+        // 3. 构建 MenuTableSpec 允许的物理表名和字段集合映射：Map<小写表名, 允许的字段小写集合(null代表所有字段)>
+        Map<String, Set<String>> requestedTableColumnsMap = null;
+        if (req != null && !CollectionUtils.isEmpty(req.getTables())) {
+            requestedTableColumnsMap = new HashMap<>();
+            for (com.jdec.platform.common.api.dto.request.MenuTableSpec mSpec : req.getTables()) {
+                if (mSpec == null
+                        || mSpec.getTableName() == null
+                        || mSpec.getTableName().isBlank()) {
+                    continue;
+                }
+                String rawTable = mSpec.getTableName().trim().toLowerCase();
+                Set<String> cols = null;
+                if (mSpec.getColumns() != null
+                        && !mSpec.getColumns().isEmpty()
+                        && !mSpec.getColumns().contains("*")) {
+                    cols = new HashSet<>();
+                    for (String c : mSpec.getColumns()) {
+                        if (c != null && !c.isBlank()) {
+                            String cleanC =
+                                    c.contains(".")
+                                            ? c.substring(c.lastIndexOf('.') + 1).trim()
+                                            : c.trim();
+                            cols.add(cleanC.toLowerCase());
+                        }
+                    }
+                }
+                addTableSpecToMap(requestedTableColumnsMap, rawTable, cols);
+
+                Long modId =
+                        resolveModuleIdForTable(
+                                mSpec.getMenuId(),
+                                mSpec.getTableName(),
+                                rootModuleId,
+                                primaryTable,
+                                moduleTree);
+                if (moduleTree != null && moduleTree.getModuleMap() != null && modId != null) {
+                    ModuleInfo mod = moduleTree.getModuleMap().get(modId);
+                    if (mod != null
+                            && mod.getPrimaryTable() != null
+                            && !mod.getPrimaryTable().isBlank()) {
+                        addTableSpecToMap(
+                                requestedTableColumnsMap,
+                                mod.getPrimaryTable().trim().toLowerCase(),
+                                cols);
+                    }
+                }
+            }
+        }
+
+        // 4. 将 FlatFilterItem 与 FlatSortItem 转换为 data-api 物理过滤与排序项 (自动解析消歧所属 moduleId)
         List<com.jdec.platform.data.api.dto.request.FilterItem> finalFilters =
                 resolveFlatFilters(
                         req != null ? req.getFilters() : null,
@@ -242,17 +364,22 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         primaryTable,
                         moduleTree);
 
-        // 4. 审批流与数据权限过滤注入 (默认查询全部集合: 3)
+        // 5. 审批流与数据权限过滤注入 (默认查询全部集合: 3)
         CommonFilterResolver.ApprovalFilterItem approvalFilter =
                 approvalFilterResolver.resolveApprovalFilters(rootModuleId, 3, moduleTree);
         if (approvalFilter.shortCircuitEmpty()) {
-            return Collections.emptyList();
+            return ModuleDataNode.builder()
+                    .moduleId(targetModuleId)
+                    .menuId(targetMenuId)
+                    .total(0L)
+                    .record(Collections.emptyList())
+                    .build();
         }
         if (!approvalFilter.filters().isEmpty()) {
             finalFilters.addAll(approvalFilter.filters());
         }
 
-        // 5. 阶段 1：轻量级调用底层数据引擎查询主表数据，收集符合条件的 business_no 集合
+        // 6. 阶段 1：轻量级调用底层数据引擎查询主表数据，收集符合条件的 business_no 集合
         TableSpec lightSpec =
                 TableSpec.builder()
                         .moduleId(rootModuleId)
@@ -285,17 +412,27 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         if (businessNoSet.isEmpty()) {
-            return Collections.emptyList();
+            return ModuleDataNode.builder()
+                    .moduleId(targetModuleId)
+                    .menuId(targetMenuId)
+                    .total(0L)
+                    .record(Collections.emptyList())
+                    .build();
         }
 
-        // 5. 阶段 2：通过数据引擎单表 API 在主表上精准查找每个 business_no 最新启用 (business_status = 99) 的最大版本主键 id 列表
+        // 7. 阶段 2：通过数据引擎单表 API 在主表上精准查找每个 business_no 最新启用 (business_status = 99) 的最大版本主键 id 列表
         List<Long> latestEnabledIds = dataApi.getLatestVersionIds(primaryTable, businessNoSet, 99);
 
         if (CollectionUtils.isEmpty(latestEnabledIds)) {
-            return Collections.emptyList();
+            return ModuleDataNode.builder()
+                    .moduleId(targetModuleId)
+                    .menuId(targetMenuId)
+                    .total(0L)
+                    .record(Collections.emptyList())
+                    .build();
         }
 
-        // 6. 阶段 3：直接基于这批唯一的主键 id 列表，调用底层数据引擎进行全量关联投影查询
+        // 8. 阶段 3：直接基于这批唯一的主键 id 列表，调用底层数据引擎进行全量关联投影查询
         List<com.jdec.platform.data.api.dto.request.FilterItem> targetFilters = new ArrayList<>();
         targetFilters.add(
                 com.jdec.platform.data.api.dto.request.FilterItem.builder()
@@ -320,34 +457,123 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         ? enabledBlock.getRecords()
                         : Collections.emptyList();
 
-        // 6. 收集请求中各模块 ID 对应的菜单 ID 映射关系，供装配子节点 ModuleDataNode 时精准带出 menuId
-        Map<Long, Long> moduleToMenuMap = new HashMap<>();
-        if (req != null && req.getTables() != null) {
-            for (com.jdec.platform.common.api.dto.request.MenuTableSpec mSpec : req.getTables()) {
-                if (mSpec != null && mSpec.getMenuId() != null) {
-                    Long modId = openMenuApi.getModuleIdByMenuId(mSpec.getMenuId());
-                    if (modId != null) {
-                        moduleToMenuMap.put(modId, mSpec.getMenuId());
-                    }
-                }
-            }
-        }
-
-        // 7. 将筛选后的 DataRow 数据集结构转换为自相似同构树记录列表 List<DataRecordItem> (不返回包含 total 的外层节点)
+        // 9. 将筛选后的 DataRow 数据集结构转换为自相似同构树记录列表 (严格仅保留 MenuTableSpec 涉及的物理表、字段与子模块)
         List<DataRecordItem> recordList = new ArrayList<>();
         if (!finalRows.isEmpty()) {
             enhanceDataRows(finalRows, rootModuleId, primaryTable);
-            Long rootMenuId = moduleToMenuMap.get(rootModuleId);
             for (DataRow rawRow : finalRows) {
                 if (rawRow != null) {
                     recordList.add(
                             buildDataRecordItemFromDataRow(
-                                    rootModuleId, rootMenuId, rawRow, moduleToMenuMap));
+                                    rootModuleId,
+                                    rootMenuId,
+                                    rawRow,
+                                    moduleToMenuMap,
+                                    requestedTableColumnsMap));
                 }
             }
         }
 
-        return recordList;
+        // 10. 若请求的目标模块是根模块，直接返回根模块节点；
+        // 若请求的是子模块（如 menuId: 26, company_contact），则将树状结构提升至目标子模块层级，将所有根记录下的目标子模块记录平铺作为顶层返回
+        List<DataRecordItem> finalRecords;
+        if (targetModuleId.equals(rootModuleId)) {
+            finalRecords = recordList;
+        } else {
+            finalRecords = extractTargetRecords(recordList, targetModuleId);
+        }
+
+        return ModuleDataNode.builder()
+                .moduleId(targetModuleId)
+                .menuId(targetMenuId)
+                .total((long) finalRecords.size())
+                .record(finalRecords)
+                .build();
+    }
+
+    private int getModuleDepth(Long moduleId, Long rootModuleId, ModuleTreeDTO moduleTree) {
+        if (moduleId == null || rootModuleId == null) {
+            return Integer.MAX_VALUE;
+        }
+        if (moduleId.equals(rootModuleId)) {
+            return 0;
+        }
+        if (moduleTree == null || moduleTree.getModuleMap() == null) {
+            return Integer.MAX_VALUE;
+        }
+        int depth = 0;
+        Long curr = moduleId;
+        Set<Long> visited = new HashSet<>();
+        while (curr != null && !curr.equals(rootModuleId)) {
+            if (!visited.add(curr)) {
+                return Integer.MAX_VALUE;
+            }
+            ModuleInfo info = moduleTree.getModuleMap().get(curr);
+            if (info == null || info.getParentId() == null || info.getParentId() <= 0) {
+                return Integer.MAX_VALUE;
+            }
+            curr = info.getParentId();
+            depth++;
+        }
+        return curr != null && curr.equals(rootModuleId) ? depth : Integer.MAX_VALUE;
+    }
+
+    private List<DataRecordItem> extractTargetRecords(
+            List<DataRecordItem> rootRecords, Long targetModuleId) {
+        List<DataRecordItem> targetItems = new ArrayList<>();
+        if (CollectionUtils.isEmpty(rootRecords) || targetModuleId == null) {
+            return targetItems;
+        }
+        for (DataRecordItem item : rootRecords) {
+            if (item == null || item.getChildren() == null) {
+                continue;
+            }
+            collectRecordsFromChildren(item.getChildren(), targetModuleId, targetItems);
+        }
+        return targetItems;
+    }
+
+    private void collectRecordsFromChildren(
+            List<ModuleDataNode> children, Long targetModuleId, List<DataRecordItem> targetItems) {
+        if (CollectionUtils.isEmpty(children) || targetModuleId == null) {
+            return;
+        }
+        for (ModuleDataNode node : children) {
+            if (node == null) {
+                continue;
+            }
+            if (targetModuleId.equals(node.getModuleId())) {
+                if (node.getRecord() != null) {
+                    targetItems.addAll(node.getRecord());
+                }
+            } else if (node.getRecord() != null) {
+                for (DataRecordItem subItem : node.getRecord()) {
+                    if (subItem != null && subItem.getChildren() != null) {
+                        collectRecordsFromChildren(
+                                subItem.getChildren(), targetModuleId, targetItems);
+                    }
+                }
+            }
+        }
+    }
+
+    private void addTableSpecToMap(Map<String, Set<String>> map, String table, Set<String> cols) {
+        if (table == null || table.isBlank()) {
+            return;
+        }
+        String key = table.trim().toLowerCase();
+        if (!map.containsKey(key)) {
+            map.put(key, cols != null ? new HashSet<>(cols) : null);
+        } else {
+            Set<String> existing = map.get(key);
+            if (existing != null) {
+                if (cols == null) {
+                    map.put(key, null);
+                } else {
+                    existing.addAll(cols);
+                }
+            }
+        }
     }
 
     /** 根据请求中 tables 规格携带的 menuId 解析对应的 moduleId，在项目的全量模块树列表中定位公共根模块树 */
@@ -970,11 +1196,20 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private DataRecordItem buildDataRecordItemFromDataRow(
             Long moduleId, Long menuId, DataRow dataRow) {
-        return buildDataRecordItemFromDataRow(moduleId, menuId, dataRow, null);
+        return buildDataRecordItemFromDataRow(moduleId, menuId, dataRow, null, null);
     }
 
     private DataRecordItem buildDataRecordItemFromDataRow(
             Long moduleId, Long menuId, DataRow dataRow, Map<Long, Long> moduleToMenuMap) {
+        return buildDataRecordItemFromDataRow(moduleId, menuId, dataRow, moduleToMenuMap, null);
+    }
+
+    private DataRecordItem buildDataRecordItemFromDataRow(
+            Long moduleId,
+            Long menuId,
+            DataRow dataRow,
+            Map<Long, Long> moduleToMenuMap,
+            Map<String, Set<String>> requestedTableColumnsMap) {
         if (dataRow == null) {
             return DataRecordItem.builder().row(Collections.emptyMap()).build();
         }
@@ -985,11 +1220,35 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         // 1. 展平当前数据行的物理表字段 (通过 DataRow.getTable 获取表结构化映射)
         if (dataRow.getTables() != null) {
             for (String tableName : dataRow.getTables().keySet()) {
+                if (tableName == null || tableName.isBlank()) {
+                    continue;
+                }
+                String normalizedTable = tableName.trim().toLowerCase();
+                // 若指定了投影表，且当前表不在请求的物理表列表中，则跳过无关表
+                if (requestedTableColumnsMap != null
+                        && !requestedTableColumnsMap.containsKey(normalizedTable)) {
+                    continue;
+                }
+                Set<String> allowedCols =
+                        requestedTableColumnsMap != null
+                                ? requestedTableColumnsMap.get(normalizedTable)
+                                : null;
+
                 Map<String, Object> tableData = dataRow.getTable(tableName);
                 if (tableData != null) {
                     for (Map.Entry<String, Object> colEntry : tableData.entrySet()) {
                         if (colEntry.getKey() != null && !colEntry.getKey().isBlank()) {
-                            flatRow.put(tableName + "." + colEntry.getKey(), colEntry.getValue());
+                            String rawCol = colEntry.getKey().trim();
+                            String cleanCol =
+                                    rawCol.contains(".")
+                                            ? rawCol.substring(rawCol.lastIndexOf('.') + 1).trim()
+                                            : rawCol;
+                            // 若指定了列范围，且当前列不在列投影集合中，则跳过无关列
+                            if (allowedCols != null
+                                    && !allowedCols.contains(cleanCol.toLowerCase())) {
+                                continue;
+                            }
+                            flatRow.put(tableName + "." + cleanCol, colEntry.getValue());
                         }
                     }
                 }
@@ -1007,11 +1266,26 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 if (childNode.getRecords() != null) {
                     for (DataRow subRow : childNode.getRecords()) {
                         if (subRow != null) {
-                            childItems.add(
+                            DataRecordItem childItem =
                                     buildDataRecordItemFromDataRow(
-                                            subModId, null, subRow, moduleToMenuMap));
+                                            subModId,
+                                            null,
+                                            subRow,
+                                            moduleToMenuMap,
+                                            requestedTableColumnsMap);
+                            // 仅当子记录项包含有效数据(有行数据或有级联子节点)时才加入
+                            if ((childItem.getRow() != null && !childItem.getRow().isEmpty())
+                                    || (childItem.getChildren() != null
+                                            && !childItem.getChildren().isEmpty())) {
+                                childItems.add(childItem);
+                            }
                         }
                     }
+                }
+
+                // 如果经过过滤后该子模块没有任何有效记录项，跳过该子模块节点
+                if (childItems.isEmpty()) {
+                    continue;
                 }
 
                 // 解析子模块的 menuId：优先从 moduleToMenuMap 取，未命中则通过 openMenuApi 兜底查询
