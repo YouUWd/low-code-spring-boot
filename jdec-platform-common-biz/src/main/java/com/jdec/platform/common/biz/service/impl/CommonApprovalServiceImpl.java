@@ -86,12 +86,19 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         if (rootModuleId == null) {
             throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
         }
+        Map<String, Object> result = new HashMap<>();
+        // 模块是否挂审批链
+        boolean approvalEnable = sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModuleId));
+        if (!approvalEnable && recordId == 0) {
+            result.put("approvalEnable", false);
+            return result;
+        }
+        result.put("approvalEnable", approvalEnable);
         Map<String, Object> recordData = dataEngineApi.getRecordData(rootModuleId, recordId);
         if (Objects.isNull(recordData)) {
             throw new BusinessException(608, "业务记录异常");
         }
         boolean approvalChainStatus = approvalEngine.getApprovalChainStatus(rootModuleId, recordId);
-        Map<String, Object> result = new HashMap<>();
         // 单据编号
         result.put("businessNumber", recordData.get("business_no"));
         // 创建人
@@ -100,7 +107,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
                         rootModuleId, recordId, recordData.get("business_no").toString());
 
         result.putAll(objectMapper.convertValue(userInfoResp, HashMap.class));
-        if (sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModuleId))) {
+        if (approvalEnable) {
             // 版本号列表
             VersionListQueryReq versionListQueryReq =
                     VersionListQueryReq.builder()
