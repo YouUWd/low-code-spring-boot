@@ -1931,7 +1931,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             alias = "handle";
             btnName = "办理";
         }
-        btnInfo.setRecordId(approvalBusiness.getRecordId());
+        btnInfo.setBusinessNo(approvalBusiness.getBusinessNumber());
         btnInfo.setButtonKey(alias);
         SysConfigItemResp modelConfig =
                 sysConfigCategoryApi.getConfigItemsByValue("ListButtonStyle", alias);
