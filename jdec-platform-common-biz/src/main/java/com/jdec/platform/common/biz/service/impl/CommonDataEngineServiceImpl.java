@@ -312,6 +312,10 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         canEdit,
                         canApply);
 
+        if (dynamicDetailQueryReq.getId() <= 0) {
+            detailData = buildTemplateTree(metaDTO);
+        }
+
         return DetailDataResp.of(metaDTO, detailData);
     }
 
