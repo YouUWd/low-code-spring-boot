@@ -13,7 +13,7 @@ public class VersionListResp {
     private Long id;
 
     @Schema(description = "版本号", example = "版本号")
-    private Integer versionNo;
+    private Integer version;
 
     @Schema(description = "上一版本号", example = "上一版本号")
     private Integer preVersion;
