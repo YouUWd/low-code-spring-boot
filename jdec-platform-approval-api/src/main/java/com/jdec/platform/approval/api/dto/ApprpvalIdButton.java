@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 public class ApprpvalIdButton {
     // 业务记录ID
-    // private Long recordId;
+    private Long recordId;
     // 业务单据编号
     private String businessNo;
     // 按钮标识
