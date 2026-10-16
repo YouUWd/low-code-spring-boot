@@ -27,8 +27,8 @@ import org.springframework.util.CollectionUtils;
  *   <li>2. 有审批链：
  *       <ul>
  *         <li>已办 (type = 2)：仅过滤审批已办 business_no 集合，AND active = 1（不考虑 created_by 与数据权限）。
- *         <li>待办 (type = 1)：[审批待办 business_no] OR [created_by = :me business_no (不限状态)]，AND active
- *             = 1。
+ *         <li>待办 (type = 1)：[审批待办 business_no] OR [created_by = :me AND business_status = 1]，AND
+ *             active = 1。
  *         <li>全部 (type = 3)：[审批全部 business_no] OR [created_by = :me business_no (不限状态)] OR [数据权限
  *             business_no]，AND active = 1。
  *       </ul>
@@ -48,6 +48,7 @@ public class CommonFilterResolver {
     public static final String BUSINESS_NO_COLUMN = "business_no";
     public static final String ACTIVE_COLUMN = "active";
     public static final String CREATED_BY_COLUMN = "created_by";
+    public static final String BUSINESS_STATUS_COLUMN = "business_status";
 
     private final IApprovalEngine approvalEngine;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
@@ -111,7 +112,10 @@ public class CommonFilterResolver {
                     resp != null ? parseButtonsByRecord(resp.getAllList()) : Collections.emptyMap();
 
             // 预先抽取由我创建的 business_no 集合与数据权限 business_no 集合，供待办/全部复用
-            List<String> myBusinessNos = queryMyCreatedBusinessNos(rootFieldIds);
+            // 待办 (type = 1) 仅统计草稿 (business_status = 1)
+            List<String> myDraftBusinessNos = queryMyCreatedBusinessNos(rootFieldIds, 1);
+            // 全部 (type = 3) 统计全部由我创建 (不限状态)
+            List<String> myAllBusinessNos = queryMyCreatedBusinessNos(rootFieldIds, null);
             List<FilterItem> dataPermFilters = buildDataPermissionFilters(rootFieldIds.tree());
             List<String> dataPermBusinessNos =
                     queryDataPermissionRecordIds(rootFieldIds.tree(), dataPermFilters);
@@ -119,11 +123,15 @@ public class CommonFilterResolver {
             return new AllApprovalCountFilters(
                     true,
                     buildApprovalFilterItem(
-                            1, rootFieldIds, todoBtns, myBusinessNos, dataPermBusinessNos),
+                            1, rootFieldIds, todoBtns, myDraftBusinessNos, dataPermBusinessNos),
                     buildApprovalFilterItem(
-                            2, rootFieldIds, doneBtns, myBusinessNos, dataPermBusinessNos),
+                            2,
+                            rootFieldIds,
+                            doneBtns,
+                            Collections.emptyList(),
+                            dataPermBusinessNos),
                     buildApprovalFilterItem(
-                            3, rootFieldIds, allBtns, myBusinessNos, dataPermBusinessNos));
+                            3, rootFieldIds, allBtns, myAllBusinessNos, dataPermBusinessNos));
         } catch (Exception ex) {
             log.warn("批量获取审批链按钮失败: moduleId={}, err={}", rootModuleId, ex.getMessage());
             return new AllApprovalCountFilters(false, null, null, null);
@@ -134,6 +142,12 @@ public class CommonFilterResolver {
 
     /** 调用 DataApi 抽取当前登录人创建的主表 business_no 列表 (不限状态，distinct, active = 1) */
     public List<String> queryMyCreatedBusinessNos(RootModuleFieldIds rootFieldIds) {
+        return queryMyCreatedBusinessNos(rootFieldIds, null);
+    }
+
+    /** 调用 DataApi 抽取当前登录人创建的主表 business_no 列表 (指定业务状态 business_status，distinct, active = 1) */
+    public List<String> queryMyCreatedBusinessNos(
+            RootModuleFieldIds rootFieldIds, Integer businessStatus) {
         if (rootFieldIds == null
                 || rootFieldIds.tree() == null
                 || rootFieldIds.tree().getRootModule() == null) {
@@ -166,6 +180,24 @@ public class CommonFilterResolver {
                 f.setModuleId(rootModuleId);
                 filters.add(f);
             }
+
+            // business_status = :businessStatus
+            if (businessStatus != null) {
+                if (rootFieldIds.businessStatusField() != null) {
+                    filters.add(
+                            PhysicalQueryMapper.filter(
+                                    rootFieldIds.tree(),
+                                    rootFieldIds.businessStatusField().fieldId(),
+                                    "EQ",
+                                    businessStatus));
+                } else {
+                    FilterItem f =
+                            FilterItem.eq(primaryTable, BUSINESS_STATUS_COLUMN, businessStatus);
+                    f.setModuleId(rootModuleId);
+                    filters.add(f);
+                }
+            }
+
             // active = 1
             filters.add(buildActiveFilter(rootFieldIds));
 
@@ -181,8 +213,9 @@ public class CommonFilterResolver {
                     : Collections.emptyList();
         } catch (Exception ex) {
             log.warn(
-                    "通过 DataApi 抽取 created_by business_no 失败: table={}, err={}",
+                    "通过 DataApi 抽取 created_by business_no 失败: table={}, status={}, err={}",
                     primaryTable,
+                    businessStatus,
                     ex.getMessage());
             return Collections.emptyList();
         }
@@ -426,10 +459,11 @@ public class CommonFilterResolver {
             Integer approvalType,
             RootModuleFieldIds rootFieldIds,
             Map<String, List<Map<String, Object>>> btnGroupMap) {
+        Integer targetStatus = (approvalType != null && approvalType == 1) ? 1 : null;
         List<String> myBusinessNos =
                 (approvalType != null && approvalType == 2)
                         ? Collections.emptyList()
-                        : queryMyCreatedBusinessNos(rootFieldIds);
+                        : queryMyCreatedBusinessNos(rootFieldIds, targetStatus);
 
         List<FilterItem> dataPermFilters =
                 (approvalType != null && approvalType == 3)
@@ -638,7 +672,7 @@ public class CommonFilterResolver {
     public RootModuleFieldIds extractRootModuleFieldIds(
             Long rootModuleId, ModuleTreeDTO inMemoryModuleTree) {
         if (rootModuleId == null) {
-            return new RootModuleFieldIds(null, null, null, null, null);
+            return new RootModuleFieldIds(null, null, null, null, null, null);
         }
         ModuleTreeDTO moduleTree =
                 inMemoryModuleTree != null
@@ -648,6 +682,7 @@ public class CommonFilterResolver {
         PhysicalQueryMapper.PhysicalFieldRef idField = null;
         PhysicalQueryMapper.PhysicalFieldRef businessNoField = null;
         PhysicalQueryMapper.PhysicalFieldRef createdByField = null;
+        PhysicalQueryMapper.PhysicalFieldRef businessStatusField = null;
         PhysicalQueryMapper.PhysicalFieldRef activeField = null;
 
         if (moduleTree != null && moduleTree.getRootModule() != null) {
@@ -664,6 +699,9 @@ public class CommonFilterResolver {
                     } else if ("created_by".equalsIgnoreCase(col)
                             || "createdBy".equalsIgnoreCase(col)) {
                         createdByField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
+                    } else if ("business_status".equalsIgnoreCase(col)
+                            || "businessStatus".equalsIgnoreCase(col)) {
+                        businessStatusField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     } else if ("active".equalsIgnoreCase(col)) {
                         activeField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     }
@@ -671,7 +709,12 @@ public class CommonFilterResolver {
             }
         }
         return new RootModuleFieldIds(
-                moduleTree, idField, businessNoField, createdByField, activeField);
+                moduleTree,
+                idField,
+                businessNoField,
+                createdByField,
+                businessStatusField,
+                activeField);
     }
 
     /** 判断过滤条件是否仅涉及主表字段（用于决定是否可直接降级为轻量单表查询） */
@@ -713,6 +756,7 @@ public class CommonFilterResolver {
             PhysicalQueryMapper.PhysicalFieldRef idField,
             PhysicalQueryMapper.PhysicalFieldRef businessNoField,
             PhysicalQueryMapper.PhysicalFieldRef createdByField,
+            PhysicalQueryMapper.PhysicalFieldRef businessStatusField,
             PhysicalQueryMapper.PhysicalFieldRef activeField) {}
 
     /** 全量角标统计过滤结果（待办/已办/全部） */

@@ -1184,9 +1184,24 @@ class CompanyMenuQueryContractTest {
         resp.setToDoList(List.of(btn101));
         when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
 
-        // 2. 模拟 DataApi 查询 created_by = :me 抽取出的 business_no: CR002
+        // 2. 模拟 DataApi 查询 created_by = :me AND business_status = 1 抽取出的 business_no: CR002
         when(dataApi.querySingleTableColumn(
-                        argThat(r -> r != null && "business_no".equals(r.getColumns().get(0))),
+                        argThat(
+                                r ->
+                                        r != null
+                                                && r.getFilters() != null
+                                                && r.getFilters().stream()
+                                                        .anyMatch(
+                                                                f ->
+                                                                        "business_status"
+                                                                                        .equals(
+                                                                                                f
+                                                                                                        .getColumnName())
+                                                                                && Integer.valueOf(
+                                                                                                1)
+                                                                                        .equals(
+                                                                                                f
+                                                                                                        .getValue()))),
                         eq(String.class)))
                 .thenReturn(List.of("CR002"));
 
