@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.operatelog.service;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.common.api.MonitorLogApi;
 import com.jdec.platform.common.api.dto.log.MonitorLoginInfo;
 import com.jdec.platform.common.api.dto.log.MonitorMockInfo;
@@ -12,11 +13,11 @@ import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
-import com.jdec.platform.dataengine.biz.operatelog.convert.OperateLogRemarkConverter;
-import com.jdec.platform.dataengine.biz.operatelog.dto.OperateLogRemarkDTO;
+import com.jdec.platform.dataengine.biz.operatelog.util.OperateLogRemarkUtil;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
+import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.RequestContextSnapshot;
 import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
@@ -42,7 +43,7 @@ public class SaveOperateLogService {
 
     private final ModuleBizDataService moduleBizDataService;
 
-    private final OperateLogRemarkConverter operateLogRemarkConverter;
+    private final OperateLogRemarkUtil operateLogRemarkUtil;
 
     private final MonitorLogApi monitorLogApi;
 
@@ -117,13 +118,13 @@ public class SaveOperateLogService {
         if (ctx == null || req == null || req.getNestedModuleData() == null) {
             return;
         }
-        OperateLogRemarkDTO remark =
-                operateLogRemarkConverter.convert(
+        String remarkJson =
+                operateLogRemarkUtil.buildRemark(
                         ctx.getOldData(),
                         req.getNestedModuleData(),
                         ctx.getModuleCacheMap(),
                         ctx.getMenuId());
-        if (remark == null || CollectionUtil.isEmpty(remark.getChange())) {
+        if (StringUtils.isBlank(remarkJson)) {
             // 无变更不记录
             return;
         }
@@ -149,7 +150,13 @@ public class SaveOperateLogService {
         // moduleId + dataId：monitor_operate_index 需要，用于按单据查询操作日志
         logReq.setModuleId(resp != null ? resp.getModuleId() : null);
         logReq.setDataId(resp != null ? resp.getDataId() : null);
-        logReq.setRemark(remark);
+        // remark 为 JSON 串，需解析回对象再落库，避免监控日志侧二次序列化变成转义字符串
+        try {
+            logReq.setRemark(JsonUtil.json2Node(remarkJson));
+        } catch (JsonProcessingException e) {
+            log.warn("操作日志 remark 解析失败，跳过日志记录", e);
+            return;
+        }
 
         monitorLogApi.saveLog(logReq);
     }
