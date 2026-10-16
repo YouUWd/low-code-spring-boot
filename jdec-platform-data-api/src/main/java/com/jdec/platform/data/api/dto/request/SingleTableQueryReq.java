@@ -38,6 +38,9 @@ public class SingleTableQueryReq implements Serializable {
     @Schema(description = "限制返回的最大条数 (可选，缺省无限制)", example = "100")
     private Integer limit;
 
+    @Schema(description = "是否启用 DISTINCT 去重投影 (可选，缺省为 false)", example = "true")
+    private Boolean distinct;
+
     public static SingleTableQueryReq of(String tableName) {
         return SingleTableQueryReq.builder().tableName(tableName).build();
     }

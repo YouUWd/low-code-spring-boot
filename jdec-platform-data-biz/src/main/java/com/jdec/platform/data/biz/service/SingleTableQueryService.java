@@ -56,8 +56,14 @@ public class SingleTableQueryService {
             }
         }
 
-        SelectSelectStep<?> selectStep =
-                selectFields.isEmpty() ? dsl.select(DSL.asterisk()) : dsl.select(selectFields);
+        boolean isDistinct = Boolean.TRUE.equals(req.getDistinct());
+        SelectSelectStep<?> selectStep;
+        if (selectFields.isEmpty()) {
+            selectStep =
+                    isDistinct ? dsl.selectDistinct(DSL.asterisk()) : dsl.select(DSL.asterisk());
+        } else {
+            selectStep = isDistinct ? dsl.selectDistinct(selectFields) : dsl.select(selectFields);
+        }
         var query = selectStep.from(table);
 
         // 2. 构建过滤条件
@@ -95,7 +101,9 @@ public class SingleTableQueryService {
         Table<?> table = DSL.table(DSL.name(tableName));
         Field<T> field = DSL.field(DSL.name(targetCol.trim()), targetType);
 
-        var query = dsl.select(field).from(table);
+        boolean isDistinct = Boolean.TRUE.equals(req.getDistinct());
+        var query =
+                isDistinct ? dsl.selectDistinct(field).from(table) : dsl.select(field).from(table);
 
         Condition condition = compileFilters(req.getFilters(), tableName);
         SelectConditionStep<?> whereStep =

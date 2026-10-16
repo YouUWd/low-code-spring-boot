@@ -196,6 +196,7 @@ class CompanyMenuQueryContractTest {
         p2c.put(1020L, List.of(1006L));
 
         addField(moduleMap, fieldMap, fieldToModuleMap, 10001L, 1001L, "info", "id");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10007L, 1001L, "info", "business_no");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10002L, 1001L, "info", "company_name");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10003L, 1001L, "info", "created_by");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10004L, 1001L, "info", "business_status");
@@ -1117,9 +1118,9 @@ class CompanyMenuQueryContractTest {
                         openRolePermissionApi,
                         dataApi);
 
-        var filterItem = resolver.resolveApprovalFilters(null, null, companyModuleTree);
+        var filterItem = resolver.buildDataPermissionFilters(companyModuleTree);
         assertNotNull(filterItem);
-        List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
+        List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem;
         assertEquals(5, filters.size());
 
         // 1. info: subjectCheckAll = 1 -> info.subject_id = 101
@@ -1164,14 +1165,15 @@ class CompanyMenuQueryContractTest {
     }
 
     @Test
-    @DisplayName("测试待办(approvalType=1)场景：不考虑数据权限，仅为自建草稿与审批待办单据OR组合")
+    @DisplayName(
+            "测试待办(approvalType=1)场景：审批待办 business_no 与 created_by=:me business_no 取并集，最后加上 AND active = 1")
     void testApprovalType1_withoutDataPermission() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
-        // 1. 审批引擎返回待办记录 101
+        // 1. 审批引擎返回待办记录 CR001
         com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
                 new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
-        btn101.setRecordId(101L);
+        btn101.setBusinessNo("CR001");
         btn101.setButtonKey("handle");
         btn101.setButtonName("办理");
 
@@ -1180,19 +1182,11 @@ class CompanyMenuQueryContractTest {
         resp.setToDoList(List.of(btn101));
         when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
 
-        // 2. 角色数据权限配置 (待办不应调用此接口查询 ID)
-        DataRightConfigResp config =
-                DataRightConfigResp.builder()
-                        .tableName("info")
-                        .dataList(
-                                List.of(
-                                        DataRightConfigResp.DataConfig.builder()
-                                                .permissionCheckAll(0)
-                                                .subjectId(999L)
-                                                .subjectCheckAll(1)
-                                                .build()))
-                        .build();
-        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+        // 2. 模拟 DataApi 查询 created_by = :me 抽取出的 business_no: CR002
+        when(dataApi.querySingleTableColumn(
+                        argThat(r -> r != null && "business_no".equals(r.getColumns().get(0))),
+                        eq(String.class)))
+                .thenReturn(List.of("CR002"));
 
         CommonFilterResolver resolver =
                 new CommonFilterResolver(
@@ -1206,43 +1200,35 @@ class CompanyMenuQueryContractTest {
         assertNotNull(filterItem);
         assertFalse(filterItem.shortCircuitEmpty());
 
-        // 验证组合后的顶层为链式 OR 树: 纯逻辑 OR 节点 -> children: [草稿分支 (AND容器), 审批待办分支 (id IN [101])]
+        // 验证结果包含 2 个条件：主表 business_no IN ('CR001', 'CR002') AND 主表 active = 1
         List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
-        assertEquals(1, filters.size());
-        var rootOr = filters.get(0);
-        assertEquals("OR", rootOr.getLogic());
-        assertNull(rootOr.getColumnName());
-        assertNotNull(rootOr.getChildren());
-        assertEquals(2, rootOr.getChildren().size());
+        assertEquals(2, filters.size());
 
-        // 分支 1: 草稿分支 (AND 容器)
-        var draftBranch = rootOr.getChildren().get(0);
-        assertEquals("AND", draftBranch.getLogic());
-        assertNull(draftBranch.getColumnName());
-        assertNotNull(draftBranch.getChildren());
-        assertEquals(2, draftBranch.getChildren().size());
-        assertEquals("created_by", draftBranch.getChildren().get(0).getColumnName());
-        assertEquals("business_status", draftBranch.getChildren().get(1).getColumnName());
-
-        // 分支 2: 审批待办分支 (id IN [101])，不再有数据权限分支
-        var approvalBranch = rootOr.getChildren().get(1);
-        assertEquals("info", approvalBranch.getTableName());
-        assertEquals("id", approvalBranch.getColumnName());
-        assertEquals("IN", approvalBranch.getOperator());
+        var bFilter = filters.get(0);
+        assertEquals("info", bFilter.getTableName());
+        assertEquals("business_no", bFilter.getColumnName());
+        assertEquals("IN", bFilter.getOperator());
         @SuppressWarnings("unchecked")
-        List<Long> approvalIds = (List<Long>) approvalBranch.getValue();
-        assertEquals(List.of(101L), approvalIds);
+        List<String> bNos = (List<String>) bFilter.getValue();
+        assertTrue(bNos.containsAll(List.of("CR001", "CR002")));
+
+        var aFilter = filters.get(1);
+        assertEquals("info", aFilter.getTableName());
+        assertEquals("active", aFilter.getColumnName());
+        assertEquals("EQ", aFilter.getOperator());
+        assertEquals(1, aFilter.getValue());
     }
 
     @Test
-    @DisplayName("测试全部(approvalType=3)场景：数据权限单据ID与审批引擎单据ID取并集，并与自建草稿OR组合")
+    @DisplayName(
+            "测试全部(approvalType=3)场景：审批全部单据、created_by=:me 单据与数据权限单据三者 business_no 取并集，最后加上 AND active = 1")
     void testApprovalType3_dataPermissionIdsUnionWithApprovalIds() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
-        // 1. 审批引擎返回全部记录 101
+        // 1. 审批引擎返回全部记录 CR001
         com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
                 new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
-        btn101.setRecordId(101L);
+        btn101.setBusinessNo("CR001");
         btn101.setButtonKey("handle");
         btn101.setButtonName("办理");
 
@@ -1265,23 +1251,11 @@ class CompanyMenuQueryContractTest {
                         .build();
         when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
 
-        // 3. 模拟 DataApi 单独按数据权限条件查询，返回数据权限匹配的单据 ID 202 (同时支持单表快速查询与整树查询)
-        DataRow permRow = DataRow.builder().tables(Map.of("info", Map.of("id", 202L))).build();
-        DataBlock permBlock = DataBlock.builder().moduleId(1001L).records(List.of(permRow)).build();
-        when(dataApi.querySingleTableIds(any())).thenReturn(List.of(202L));
-        when(dataApi.querySingleTableColumn(any(), eq(Long.class))).thenReturn(List.of(202L));
-        when(dataApi.queryList(
-                        argThat(
-                                req ->
-                                        req != null
-                                                && req.getTables() != null
-                                                && !req.getTables().isEmpty()
-                                                && List.of("id")
-                                                        .equals(
-                                                                req.getTables()
-                                                                        .get(0)
-                                                                        .getColumns()))))
-                .thenReturn(permBlock);
+        // 3. 模拟 DataApi 抽取 created_by=:me 为 CR002，数据权限为 CR003
+        when(dataApi.querySingleTableColumn(
+                        argThat(r -> r != null && "business_no".equals(r.getColumns().get(0))),
+                        eq(String.class)))
+                .thenReturn(List.of("CR002"), List.of("CR003"));
 
         CommonFilterResolver resolver =
                 new CommonFilterResolver(
@@ -1295,41 +1269,23 @@ class CompanyMenuQueryContractTest {
         assertNotNull(filterItem);
         assertFalse(filterItem.shortCircuitEmpty());
 
-        // 验证组合后的顶层 OR 树: 纯逻辑 OR 节点 -> 3个子分支：[草稿分支, 审批分支, 数据权限分支]
+        // 验证三者取并集：business_no IN ('CR001', 'CR002', 'CR003') AND active = 1
         List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
-        assertEquals(1, filters.size());
-        var rootOr = filters.get(0);
-        assertEquals("OR", rootOr.getLogic());
-        assertNull(rootOr.getColumnName());
-        assertNotNull(rootOr.getChildren());
-        assertEquals(3, rootOr.getChildren().size());
+        assertEquals(2, filters.size());
 
-        // 分支 1: 草稿分支 (AND 容器)
-        var draftBranch = rootOr.getChildren().get(0);
-        assertEquals("AND", draftBranch.getLogic());
-        assertNull(draftBranch.getColumnName());
-        assertNotNull(draftBranch.getChildren());
-        assertEquals(2, draftBranch.getChildren().size());
-        assertEquals("created_by", draftBranch.getChildren().get(0).getColumnName());
-        assertEquals("business_status", draftBranch.getChildren().get(1).getColumnName());
-
-        // 分支 2: approvalBranch (id IN [101])
-        var approvalBranch = rootOr.getChildren().get(1);
-        assertEquals("info", approvalBranch.getTableName());
-        assertEquals("id", approvalBranch.getColumnName());
-        assertEquals("IN", approvalBranch.getOperator());
+        var bFilter = filters.get(0);
+        assertEquals("info", bFilter.getTableName());
+        assertEquals("business_no", bFilter.getColumnName());
+        assertEquals("IN", bFilter.getOperator());
         @SuppressWarnings("unchecked")
-        List<Long> approvalIds = (List<Long>) approvalBranch.getValue();
-        assertEquals(List.of(101L), approvalIds);
+        List<String> allNos = (List<String>) bFilter.getValue();
+        assertTrue(allNos.containsAll(List.of("CR001", "CR002", "CR003")));
 
-        // 分支 3: dataPermBranch (id IN [202])
-        var dataPermBranch = rootOr.getChildren().get(2);
-        assertEquals("info", dataPermBranch.getTableName());
-        assertEquals("id", dataPermBranch.getColumnName());
-        assertEquals("IN", dataPermBranch.getOperator());
-        @SuppressWarnings("unchecked")
-        List<Long> dataPermIds = (List<Long>) dataPermBranch.getValue();
-        assertEquals(List.of(202L), dataPermIds);
+        var aFilter = filters.get(1);
+        assertEquals("info", aFilter.getTableName());
+        assertEquals("active", aFilter.getColumnName());
+        assertEquals("EQ", aFilter.getOperator());
+        assertEquals(1, aFilter.getValue());
     }
 
     @Test
@@ -1550,5 +1506,66 @@ class CompanyMenuQueryContractTest {
         String json = mapper.writeValueAsString(result);
         assertFalse(json.contains("\"children\":[]"), "JSON 中不应该出现空列表 children: []");
         assertTrue(json.contains("\"menuId\":200"), "JSON 中应该包含子模块的 menuId");
+    }
+
+    @Test
+    @DisplayName("测试审批流待办(type=1)：过滤条件基于主表 business_no 且按钮映射按 business_no 关联")
+    void testApprovalType1_filterByBusinessNo() {
+        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
+
+        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn =
+                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        btn.setBusinessNo("CR001");
+        btn.setButtonKey("approve");
+        btn.setButtonName("同意");
+
+        com.jdec.platform.approval.api.dto.IApprovalEngineMapResp engineResp =
+                new com.jdec.platform.approval.api.dto.IApprovalEngineMapResp();
+        engineResp.setTodoList(List.of(btn));
+
+        when(approvalEngine.findApprovalButtonsMap(any())).thenReturn(engineResp);
+
+        MenuQueryReq req = MenuQueryReq.builder().approvalType(1).build();
+
+        Map<String, Object> tableData = new HashMap<>();
+        tableData.put("id", 1001L);
+        tableData.put("business_no", "CR001");
+        tableData.put("company_name", "测试企业");
+        DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
+
+        DataPage dataPage =
+                DataPage.builder()
+                        .records(List.of(dataRow))
+                        .total(1L)
+                        .pageNo(1)
+                        .pageSize(20)
+                        .build();
+
+        ArgumentCaptor<PageQueryReq> captor = ArgumentCaptor.forClass(PageQueryReq.class);
+        when(dataApi.queryPage(captor.capture())).thenReturn(dataPage);
+
+        MenuDataResp resp = commonAggregateService.queryByMenu(100L, req);
+
+        assertNotNull(resp);
+        assertEquals(1, resp.getTotal());
+        assertNotNull(resp.getRecords());
+        assertEquals(1, resp.getRecords().size());
+
+        DataRecordItem item = resp.getRecords().get(0);
+        assertNotNull(item.getButtons());
+        assertEquals(1, item.getButtons().size());
+        assertEquals("approve", item.getButtons().get(0).get("buttonKey"));
+
+        // 验证 dataApi 过滤条件基于 business_no
+        PageQueryReq capturedReq = captor.getValue();
+        assertNotNull(capturedReq);
+        assertNotNull(capturedReq.getFilters());
+        assertFalse(capturedReq.getFilters().isEmpty());
+
+        com.jdec.platform.data.api.dto.request.FilterItem rootFilter =
+                capturedReq.getFilters().get(0);
+        // OR 组合条件树包含 approvalBranch
+        String filterJson = rootFilter.toString();
+        assertTrue(filterJson.contains("business_no"), "过滤条件应包含 business_no 字段过滤");
     }
 }

@@ -168,8 +168,18 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
                 if (approvalRows != null) {
                     Long recordId = rawRow.getLong(primaryTable, "id");
-                    if (recordId != null) {
-                        List<Map<String, Object>> btns = approvalFilter.btnMap().get(recordId);
+                    String businessNo = rawRow.getString(primaryTable, "business_no");
+                    if (businessNo == null || businessNo.isBlank()) {
+                        businessNo = rawRow.getString(primaryTable, "businessNo");
+                    }
+                    if (recordId != null || (businessNo != null && !businessNo.isBlank())) {
+                        List<Map<String, Object>> btns = null;
+                        if (businessNo != null && !businessNo.isBlank()) {
+                            btns = approvalFilter.btnMap().get(businessNo);
+                        }
+                        if (CollectionUtils.isEmpty(btns) && recordId != null) {
+                            btns = approvalFilter.btnMap().get(String.valueOf(recordId));
+                        }
                         if (CollectionUtils.isEmpty(btns)) {
                             boolean isHandle =
                                     approvalType != null
@@ -182,7 +192,12 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             btns = Collections.singletonList(defaultBtn);
                         }
                         Map<String, Object> rowPayload = new LinkedHashMap<>();
-                        rowPayload.put("id", recordId);
+                        if (recordId != null) {
+                            rowPayload.put("id", recordId);
+                        }
+                        if (businessNo != null && !businessNo.isBlank()) {
+                            rowPayload.put("businessNo", businessNo);
+                        }
                         rowPayload.put("btnList", btns);
                         approvalRows.add(ApprovalRowItem.builder().row(rowPayload).build());
                     }
