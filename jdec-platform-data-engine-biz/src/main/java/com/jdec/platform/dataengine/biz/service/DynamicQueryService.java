@@ -380,7 +380,7 @@ public class DynamicQueryService {
 
             preVersionQuery.orderBy(DSL.field(DSL.name("version_no")).desc());
 
-            preVersionQuery.stream().limit(1);
+            preVersionQuery.limit(1);
 
             Record preVersionResult = preVersionQuery.fetchOne();
             return preVersionResult;

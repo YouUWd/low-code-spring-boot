@@ -209,7 +209,11 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .id(menuDetailQueryReq.getId())
                         .version(menuDetailQueryReq.getVersionNo())
                         .history(menuDetailQueryReq.getHistory())
-                        .showVersionCompare(menuDetailQueryReq.getShowVersionCompare())
+                        .showVersionCompare(
+                                hasApproval
+                                        && (Objects.nonNull(
+                                                        menuDetailQueryReq.getShowVersionCompare())
+                                                && menuDetailQueryReq.getShowVersionCompare()))
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
 

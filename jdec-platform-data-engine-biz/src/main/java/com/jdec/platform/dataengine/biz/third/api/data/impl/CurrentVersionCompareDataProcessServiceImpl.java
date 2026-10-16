@@ -65,7 +65,7 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
                 DSL.field(DSL.name("module_data_snapshot_content", "root_table_data_version"))
                         .desc());
 
-        query.stream().limit(1);
+        query.limit(1);
 
         Record recordsResult = query.fetchAny();
 
