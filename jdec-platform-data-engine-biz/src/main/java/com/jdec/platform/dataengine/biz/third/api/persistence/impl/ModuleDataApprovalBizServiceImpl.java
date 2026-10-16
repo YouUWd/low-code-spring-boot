@@ -181,7 +181,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         // 如果是 取消状态  而且有上一个版本的数据
         if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
             // 当前版本 要设置成 非活跃
-            fieldValues.put(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 1);
+            fieldValues.put(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0);
         }
         dslContext
                 .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))

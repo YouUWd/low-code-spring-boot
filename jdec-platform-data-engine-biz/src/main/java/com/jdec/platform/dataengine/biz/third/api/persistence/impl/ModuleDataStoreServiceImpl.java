@@ -34,8 +34,6 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
 
     private final ModuleDataPersistenceService moduleDataPersistenceService;
 
-    private final ModuleDataPreStoreService moduleDataPreStoreService;
-
     @Override
     public DynamicSaveResp save(DynamicSaveReq req) {
 
@@ -119,6 +117,8 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                     .loginUser(UserContext.getLoginUser())
                                     .build());
         }
+
+        // todo 校验字段权限是否可编辑可写入
 
         ModuleDataStoreDTO moduleDataStoreDTO = ModuleDataStoreDTO.builder().build();
 
