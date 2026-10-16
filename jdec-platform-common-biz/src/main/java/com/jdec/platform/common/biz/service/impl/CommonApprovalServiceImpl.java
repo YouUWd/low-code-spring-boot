@@ -147,10 +147,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             result.put("approvalStatus", approvalStatus);
             // 是否草稿
             result.put("approvalChainStatus", approvalChainStatus);
-            if (approvalChainStatus
-                    && !versionList
-                            .get(versionList.size() - ((int) recordData.get("version_no")))
-                            .getHistory()) {
+            if (approvalChainStatus) {
                 result.putAll(approvalEngine.getApprovalData(rootModuleId, recordId, btnType));
             } else {
                 // 是否可以保存提交
