@@ -3,9 +3,9 @@ package com.jdec.platform.common.biz.service;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
-import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.MenuDetailResp;
+import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import java.util.List;
 
@@ -27,9 +27,9 @@ public interface CommonAggregateService {
      * <p>根据传入物理表 specs 中携带的 menuId 解析对应的 moduleId，在项目的全量模块树中定位公共根模块。
      *
      * @param req 面向物理表名与列名的查询过滤与排序请求体 (可选)
-     * @return 记录列表 (List<DataRecordItem>)
+     * @return 根模块自相似数据节点 (ModuleDataNode)
      */
-    List<DataRecordItem> queryList(MenuListReq req);
+    ModuleDataNode queryList(MenuListReq req);
 
     /**
      * 基于菜单 ID 的单据详情及元数据聚合查询 (仅需 menuId 和 id)

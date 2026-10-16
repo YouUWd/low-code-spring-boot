@@ -3,10 +3,10 @@ package com.jdec.platform.common.biz.controller;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
-import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.api.dto.response.MenuApprovalCountResp;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.MenuDetailResp;
+import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -61,11 +61,10 @@ public class CommonAggregateController {
                     "根据传入物理表 specs 中携带的 menuId 解析对应的 moduleId，在项目的全量模块树中定位公共根模块；"
                             + "根据传入的物理表与列名进行数据投影，基于平铺条件进行过滤与排序，"
                             + "定位匹配记录并获取其最新启用 (business_status=99) 的最大版本，"
-                            + "只返回记录列表 (List<DataRecordItem>)，不包含元数据及分页信息")
-    public ApiResponse<List<DataRecordItem>> queryList(
-            @RequestBody(required = false) MenuListReq req) {
+                            + "返回包含根模块及菜单元数据的自相似模块数据节点 (ModuleDataNode)")
+    public ApiResponse<ModuleDataNode> queryList(@RequestBody(required = false) MenuListReq req) {
         try {
-            List<DataRecordItem> result = commonAggregateService.queryList(req);
+            ModuleDataNode result = commonAggregateService.queryList(req);
             return ApiResponse.success(result);
         } catch (Exception ex) {
             log.error("Common aggregate queryList failed: err={}", ex.getMessage(), ex);

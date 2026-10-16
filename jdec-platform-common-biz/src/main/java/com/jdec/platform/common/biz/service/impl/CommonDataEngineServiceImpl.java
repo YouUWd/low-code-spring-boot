@@ -66,6 +66,11 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             throw new IllegalArgumentException("单据 ID 不能为空");
         }
 
+        // 版本对比为传递默认为true
+        if (Objects.isNull(menuDetailQueryReq.getShowVersionCompare())) {
+            menuDetailQueryReq.setShowVersionCompare(true);
+        }
+
         Long userId =
                 Objects.nonNull(UserContext.getMockUserId())
                         ? UserContext.getMockUserId()
@@ -210,10 +215,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .version(menuDetailQueryReq.getVersionNo())
                         .history(menuDetailQueryReq.getHistory())
                         .showVersionCompare(
-                                hasApproval
-                                        && (Objects.nonNull(
-                                                        menuDetailQueryReq.getShowVersionCompare())
-                                                && menuDetailQueryReq.getShowVersionCompare()))
+                                hasApproval && menuDetailQueryReq.getShowVersionCompare())
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
 
