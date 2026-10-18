@@ -29,4 +29,10 @@ public class ApprovalStatusCallBackReq implements Serializable {
 
     @Schema(description = "是否第一次提交")
     private Boolean isFirstSubmit;
+
+    @Schema(description = "菜单ID")
+    private Long menuId;
+
+    @Schema(description = "原因")
+    private String reason;
 }

@@ -8,6 +8,7 @@ import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
 public class ModuleTreeDataUtils {
@@ -622,6 +623,196 @@ public class ModuleTreeDataUtils {
             if (CollectionUtil.isNotEmpty(sysModuleCombineInfo.getSubTables())) {
                 for (String subTable : sysModuleCombineInfo.getSubTables()) {
                     row.remove(subTable + "." + field);
+                }
+            }
+        }
+    }
+
+    public static void mergeDeletionsNestedModuleData(
+            NestedModuleDataDTO nestedStoreData,
+            NestedModuleDataDTO detail,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (nestedStoreData == null) {
+            return;
+        }
+        // 没有数据
+        if (nestedStoreData.getModuleId() == null
+                || CollectionUtil.isEmpty(nestedStoreData.getRecord())) {
+            return;
+        }
+        RecordDataDTO rootRecord = nestedStoreData.getRecord().get(0);
+        Long rootModuleId = nestedStoreData.getModuleId();
+        Long rootDataId =
+                DataPersistenceUtil.getTableRowIdWithTabName(
+                        rootRecord.getRow(),
+                        moduleCacheMap.get(rootModuleId).getModuleInfo().getPrimaryTable());
+        if (rootDataId == null) {
+            return;
+        }
+        Map<Long, Map<Long, Set<Long>>> parentToChildDataMap =
+                collectParentToChildDataMap(detail, moduleCacheMap);
+        if (CollectionUtil.isNotEmpty(rootRecord.getChildren())) {
+            for (NestedModuleDataDTO child : rootRecord.getChildren()) {
+                mergeDeletionsChild(
+                        child, rootModuleId, rootDataId, parentToChildDataMap, moduleCacheMap);
+            }
+        }
+    }
+
+    public static void mergeDeletionsChild(
+            NestedModuleDataDTO nestedStoreData,
+            Long parentModuleId,
+            Long parentDataId,
+            Map<Long, Map<Long, Set<Long>>> parentToChildDataMap,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (nestedStoreData == null) {
+            return;
+        }
+        if (nestedStoreData.getModuleId() == null
+                || CollectionUtil.isEmpty(nestedStoreData.getRecord())) {
+            return;
+        }
+        Long currentModuleId = nestedStoreData.getModuleId();
+        if (StringUtils.isEmpty(
+                moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable())) {
+            for (RecordDataDTO recordDataDTO : nestedStoreData.getRecord()) {
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                    for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                        mergeDeletionsChild(
+                                child,
+                                currentModuleId,
+                                parentDataId,
+                                parentToChildDataMap,
+                                moduleCacheMap);
+                    }
+                }
+            }
+        }
+
+        // 显示更新的 ID
+        Set<Long> updateIds = new HashSet<>();
+        for (RecordDataDTO recordDataDTO : nestedStoreData.getRecord()) {
+            Long dataId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            recordDataDTO.getRow(),
+                            moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
+            if (dataId != null && dataId > 0) {
+                updateIds.add(dataId);
+            }
+        }
+        // 详情页中的所有的ID
+        Set<Long> dbIds =
+                parentToChildDataMap
+                        .getOrDefault(parentModuleId, new HashMap<>())
+                        .getOrDefault(parentDataId, new HashSet<>());
+
+        // 隐士删除的ID
+        Set<Long> deletionIds =
+                dbIds.stream()
+                        .filter(x -> x != null)
+                        .filter(x -> !updateIds.contains(x))
+                        .collect(Collectors.toSet());
+
+        // 处理子数据
+        for (RecordDataDTO recordDataDTO : nestedStoreData.getRecord()) {
+            Long dataId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            recordDataDTO.getRow(),
+                            moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
+            boolean insert = (dataId == null || dataId <= 0);
+
+            if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                    if (!insert) {
+                        mergeDeletionsChild(
+                                child,
+                                currentModuleId,
+                                dataId,
+                                parentToChildDataMap,
+                                moduleCacheMap);
+                    }
+                }
+            }
+        }
+        if (CollectionUtil.isNotEmpty(deletionIds)) {
+            for (Long dataId : deletionIds) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put(
+                        moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable()
+                                + ".id",
+                        dataId);
+                row.put(
+                        moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable()
+                                + ".deleted",
+                        (byte) 1);
+                RecordDataDTO deletedRecord = new RecordDataDTO();
+                deletedRecord.setRow(row);
+                if (nestedStoreData.getRecord() == null) {
+                    nestedStoreData.setRecord(new ArrayList<>());
+                }
+                nestedStoreData.getRecord().add(deletedRecord);
+            }
+        }
+    }
+
+    public static Map<Long, Map<Long, Set<Long>>> collectParentToChildDataMap(
+            NestedModuleDataDTO detail, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        Map<Long, Map<Long, Set<Long>>> result = new HashMap<>();
+        collectDataMap(detail, 0L, 0L, moduleCacheMap, result);
+        return result;
+    }
+
+    private static void collectDataMap(
+            NestedModuleDataDTO base,
+            Long parentModuleId,
+            Long parentDataId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            Map<Long, Map<Long, Set<Long>>> parentToChildDataMap) {
+        if (base == null) {
+            return;
+        }
+        Long currentModuleId = base.getModuleId();
+
+        if (CollectionUtil.isNotEmpty(base.getRecord())) {
+            for (RecordDataDTO recordDataDTO : base.getRecord()) {
+                // 有行数据
+                if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
+                    Long dataId =
+                            DataPersistenceUtil.getTableRowIdWithTabName(
+                                    recordDataDTO.getRow(),
+                                    moduleCacheMap
+                                            .get(currentModuleId)
+                                            .getModuleInfo()
+                                            .getPrimaryTable());
+
+                    // 收集父子ID关系
+                    parentToChildDataMap
+                            .computeIfAbsent(parentModuleId, k -> new HashMap<>())
+                            .computeIfAbsent(parentDataId, k -> new HashSet<>())
+                            .add(dataId);
+
+                    if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                        for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                            collectDataMap(
+                                    child,
+                                    currentModuleId,
+                                    dataId,
+                                    moduleCacheMap,
+                                    parentToChildDataMap);
+                        }
+                    }
+                } else {
+                    // 没有行数据 向下递归
+                    if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                        for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                            collectDataMap(
+                                    child,
+                                    currentModuleId,
+                                    parentDataId,
+                                    moduleCacheMap,
+                                    parentToChildDataMap);
+                        }
+                    }
                 }
             }
         }

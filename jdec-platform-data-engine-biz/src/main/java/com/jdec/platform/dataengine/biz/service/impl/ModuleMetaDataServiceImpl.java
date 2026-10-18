@@ -112,6 +112,13 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                                                     x.getJoinTable(), moduleInfo.getPrimaryTable()))
                             .findFirst()
                             .orElse(null));
+            if (moduleCombineInfo.getMainTableRelationDTO() != null) {
+                moduleCombineInfo
+                        .getSubTableRelationMap()
+                        .put(
+                                moduleInfo.getPrimaryTable(),
+                                moduleCombineInfo.getMainTableRelationDTO());
+            }
             if (CollectionUtil.isNotEmpty(moduleCombineInfo.getSubTables())) {
                 for (String subTable : moduleCombineInfo.getSubTables()) {
                     moduleCombineInfo

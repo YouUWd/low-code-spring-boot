@@ -13,4 +13,6 @@ public class ApprovalProcessResultResp implements Serializable {
     private NestedModuleDataDTO nestedModuleData;
 
     private ModuleChangeDTO moduleChange;
+
+    private String remark;
 }

@@ -34,6 +34,8 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
 
     private final ModuleDataPersistenceService moduleDataPersistenceService;
 
+    private final ModuleDataPreCheckService moduleDataPreCheckService;
+
     @Override
     public DynamicSaveResp save(DynamicSaveReq req) {
 
@@ -119,6 +121,8 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         }
 
         // todo 校验字段权限是否可编辑可写入
+        moduleDataPreCheckService.prePermissionCheck(
+                nestedSaveData, detailData, isOverallInsert, moduleCacheMap);
 
         ModuleDataStoreDTO moduleDataStoreDTO = ModuleDataStoreDTO.builder().build();
 
@@ -140,6 +144,9 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                 moduleDataStoreDTO.setMainTableVersionNo(versionNo);
 
             } else {
+                // 全局更新,要处理删除数据的情况
+                ModuleTreeDataUtils.mergeDeletionsNestedModuleData(
+                        nestedSaveData, detailData, moduleCacheMap);
                 // 全局更新数据,先从主表拿出 版本号
                 String businessNo =
                         DataPersistenceUtil.getTableRowBusinessNoWithTabName(

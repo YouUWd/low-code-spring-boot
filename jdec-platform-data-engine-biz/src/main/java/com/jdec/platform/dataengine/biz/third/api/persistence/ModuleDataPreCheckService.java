@@ -6,7 +6,7 @@ import java.util.Map;
 
 public interface ModuleDataPreCheckService {
 
-    Object preCheck(
+    Boolean prePermissionCheck(
             NestedModuleDataDTO param,
             NestedModuleDataDTO base,
             Boolean isOverAllInsert,
