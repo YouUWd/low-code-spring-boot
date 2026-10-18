@@ -44,6 +44,23 @@ public class OpenMenuQueryService implements OpenMenuApi {
         return menu.getModuleId();
     }
 
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public Long getMenuIdByModuleId(Long moduleId) {
+        if (moduleId == null) {
+            return null;
+        }
+        // 优先在当前主体与项目范围内查找匹配该模块的有效菜单
+        SysMenu menu =
+                sysMenuMapper.selectOne(
+                        Wrappers.<SysMenu>lambdaQuery()
+                                .eq(SysMenu::getModuleId, moduleId)
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, AppContext.getProjectNo())
+                                .last("LIMIT 1"));
+        return menu != null ? menu.getId() : null;
+    }
+
     /** 取库中菜单记录（数据隔离：subject_id + project_no），id 为空或查不到返回 {@code null} */
     private SysMenu selectMenuById(Long id) {
         if (id == null) {

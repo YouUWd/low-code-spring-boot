@@ -1,9 +1,11 @@
 package com.jdec.platform.common.biz.service;
 
+import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.MenuDetailResp;
+import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import java.util.List;
 
@@ -18,6 +20,16 @@ public interface CommonAggregateService {
      * @return 包含顶层多级列头、权限汇总、审批链数据与自相似数据树的复合响应
      */
     MenuDataResp queryByMenu(Long menuId, MenuQueryReq req);
+
+    /**
+     * 动态数据列表全量查询 (不分页，支持自定义物理投影字段与平铺过滤，获取最新启用 business_status=99 的最大版本)
+     *
+     * <p>根据传入物理表 specs 中携带的 menuId 解析对应的 moduleId，在项目的全量模块树中定位公共根模块。
+     *
+     * @param req 面向物理表名与列名的查询过滤与排序请求体 (可选)
+     * @return 根模块自相似数据节点 (ModuleDataNode)
+     */
+    ModuleDataNode queryList(MenuListReq req);
 
     /**
      * 基于菜单 ID 的单据详情及元数据聚合查询 (仅需 menuId 和 id)

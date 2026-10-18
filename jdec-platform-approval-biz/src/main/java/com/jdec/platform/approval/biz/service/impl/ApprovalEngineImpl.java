@@ -269,7 +269,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         List<Long> approvalIds =
                 getApprovalRecordIdList(
                         approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
-
+        if (approvalIds.isEmpty()) {
+            return respList;
+        }
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
         todoWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
         todoWrapper.in(ApprovalBusiness::getRecordId, approvalIds);
@@ -389,7 +391,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     @Override
     public Map<String, Object> getApprovalData(Long moduleId, Long recordId, String button) {
         if (!sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId))) {
-            return null;
+            return new HashMap<>();
         }
         Long mockUserId = UserContext.getMockUserId();
         ApprovalProcessReq req = new ApprovalProcessReq();
@@ -568,6 +570,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     @Override
     public boolean getApprovalChainStatus(Long moduleId, Long recordId) {
+        if (!sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId))) {
+            return false;
+        }
         LambdaQueryWrapper<ApprovalVersionRecord> businessWrapper = new LambdaQueryWrapper<>();
         businessWrapper.eq(ApprovalVersionRecord::getModuleId, moduleId);
         businessWrapper
@@ -580,6 +585,66 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             return false;
         }
         return approvalChainBusiness.getCurrentStep() > 0;
+    }
+
+    // 新建业务发起草稿申请------------------------------------------------------------------------
+    @Transactional
+    public void businessDraft(ApprovalProcessDTO approvalProcessDTO) {
+        String businessNumber = approvalProcessDTO.getBusinessNumber();
+        String serialNumber = businessNumber + "@1";
+        approvalProcessDTO.setSerialNumber(serialNumber);
+        approvalProcessDTO.setSerialNo(1);
+        ModuleApprovalChainConfigResp.StatusNode statusNode =
+                sysStatusApi.getStatusByValue(1, approvalProcessDTO.getModuleId());
+
+        // 创建业务单据记录
+        ApprovalBusiness approvalBusiness = new ApprovalBusiness();
+        approvalBusiness.setSubjectId(approvalProcessDTO.getSubjectId());
+        approvalBusiness.setModuleId(approvalProcessDTO.getModuleId());
+        approvalBusiness.setRecordId(approvalProcessDTO.getRecordId());
+        approvalBusiness.setBusinessNumber(businessNumber);
+        approvalBusiness.setVersionNo(1);
+        approvalBusiness.setSerialNumber(serialNumber);
+        approvalBusiness.setSerialNo(1);
+        approvalBusiness.setCurrentStep(0);
+        approvalBusiness.setStatusId(statusNode.getId());
+        approvalBusiness.setStatusTitle(statusNode.getTitle());
+        approvalBusiness.setStatusBackground(statusNode.getStatusBackground());
+        approvalBusiness.setStatusFontColor(statusNode.getStatusFontColor());
+        approvalBusiness.setStatusValue(statusNode.getStatusValue());
+        approvalBusiness.setApprovalChainTypeId(0L);
+        approvalBusiness.setApproverId(0L);
+        approvalBusiness.setApproveRoleId(0L);
+        approvalBusiness.setApprovalUids(approvalProcessDTO.getApplicantId().toString());
+        approvalBusiness.setCreatedBy(approvalProcessDTO.getApplicantId());
+        approvalBusiness.setCreatedDate(LocalDateTime.now());
+        approvalBusiness.setUpdatedBy(approvalProcessDTO.getApplicantId());
+        approvalBusiness.setUpdatedDate(LocalDateTime.now());
+        approvalBusiness.setDeleted(false);
+        approvalBusinessMapper.insert(approvalBusiness);
+
+        // 创建业务单据详细内容记录
+        ApprovalVersionRecord approvalVersionRecord = new ApprovalVersionRecord();
+        approvalVersionRecord.setSubjectId(approvalProcessDTO.getSubjectId());
+        approvalVersionRecord.setModuleId(approvalProcessDTO.getModuleId());
+        approvalVersionRecord.setRecordId(approvalProcessDTO.getRecordId());
+        approvalVersionRecord.setBusinessNumber(businessNumber);
+        approvalVersionRecord.setVersionNo(1);
+        approvalVersionRecord.setSerialNumber(serialNumber);
+        approvalVersionRecord.setSerialNo(1);
+        approvalVersionRecord.setCurrentStep(1);
+        approvalVersionRecord.setStatusId(statusNode.getId());
+        approvalVersionRecord.setStatusTitle(statusNode.getTitle());
+        approvalVersionRecord.setStatusBackground(statusNode.getStatusBackground());
+        approvalVersionRecord.setStatusFontColor(statusNode.getStatusFontColor());
+        approvalVersionRecord.setStatusValue(statusNode.getStatusValue());
+        approvalVersionRecord.setSourceId(0L);
+        approvalVersionRecord.setApprovalChainTypeId(0L);
+        approvalVersionRecord.setCreatedBy(approvalProcessDTO.getApplicantId());
+        approvalVersionRecord.setCreatedDate(LocalDateTime.now());
+        approvalVersionRecord.setUpdatedBy(approvalProcessDTO.getApplicantId());
+        approvalVersionRecord.setUpdatedDate(LocalDateTime.now());
+        approvalVersionRecordMapper.insert(approvalVersionRecord);
     }
 
     // 新建业务发起审批申请------------------------------------------------------------------------
@@ -1889,6 +1954,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         chainConfigQuery.in(ApprovalChain::getModuleId, moduleIds);
         chainConfigQuery.eq(ApprovalChain::getApproveRoleId, roleId);
         List<ApprovalChain> chainConfigs = approvalChainMapper.selectList(chainConfigQuery);
+        if (chainConfigs.isEmpty()) {
+            return new ArrayList<>();
+        }
         List<String> serialList =
                 chainConfigs.stream()
                         .map(b -> "'" + b.getSerialNumber() + "@" + b.getSerialNo() + "'")

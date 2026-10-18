@@ -66,6 +66,11 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             throw new IllegalArgumentException("单据 ID 不能为空");
         }
 
+        // 版本对比为传递默认为true
+        if (Objects.isNull(menuDetailQueryReq.getShowVersionCompare())) {
+            menuDetailQueryReq.setShowVersionCompare(true);
+        }
+
         Long userId =
                 Objects.nonNull(UserContext.getMockUserId())
                         ? UserContext.getMockUserId()
@@ -209,7 +214,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .id(menuDetailQueryReq.getId())
                         .version(menuDetailQueryReq.getVersionNo())
                         .history(menuDetailQueryReq.getHistory())
-                        .showVersionCompare(menuDetailQueryReq.getShowVersionCompare())
+                        .showVersionCompare(
+                                hasApproval && menuDetailQueryReq.getShowVersionCompare())
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
 
@@ -311,6 +317,10 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         rootNode,
                         canEdit,
                         canApply);
+
+        if (dynamicDetailQueryReq.getId() <= 0) {
+            detailData = buildTemplateTree(metaDTO);
+        }
 
         return DetailDataResp.of(metaDTO, detailData);
     }

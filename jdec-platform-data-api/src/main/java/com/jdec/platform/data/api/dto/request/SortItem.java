@@ -16,8 +16,7 @@ import lombok.NoArgsConstructor;
 @Schema(description = "结构化排序规则项")
 public class SortItem implements Serializable {
 
-    @NotNull(message = "所属模块 ID 不能为空")
-    @Schema(description = "所属模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
+    @Schema(description = "所属模块 ID (多模块树查询时建议指定，单表查询时可缺省)", example = "1001")
     private Long moduleId;
 
     @Schema(description = "物理表名 (单表或根表查询时可缺省)", example = "info")
@@ -47,6 +46,14 @@ public class SortItem implements Serializable {
         return asc(moduleId, null, columnName);
     }
 
+    public static SortItem asc(String tableName, String columnName) {
+        return asc(null, tableName, columnName);
+    }
+
+    public static SortItem asc(String columnName) {
+        return asc(null, null, columnName);
+    }
+
     public static SortItem desc(Long moduleId, String tableName, String columnName) {
         return SortItem.builder()
                 .moduleId(moduleId)
@@ -58,5 +65,13 @@ public class SortItem implements Serializable {
 
     public static SortItem desc(Long moduleId, String columnName) {
         return desc(moduleId, null, columnName);
+    }
+
+    public static SortItem desc(String tableName, String columnName) {
+        return desc(null, tableName, columnName);
+    }
+
+    public static SortItem desc(String columnName) {
+        return desc(null, null, columnName);
     }
 }

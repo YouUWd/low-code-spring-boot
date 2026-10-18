@@ -9,8 +9,6 @@ import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.data.api.dto.request.FilterItem;
-import com.jdec.platform.data.api.model.predicate.Predicate;
-import com.jdec.platform.data.api.model.predicate.Predicates;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import java.util.*;
@@ -22,13 +20,23 @@ import org.springframework.util.CollectionUtils;
 /**
  * 统一通用过滤条件解析组件 (CommonFilterResolver)
  *
- * <p>职责划分清晰：由 3 组独立的过滤器解析后，通过顶层组合器（Combiner）进行逻辑组合：
+ * <p>业务过滤逻辑：
  *
  * <ul>
- *   <li>1. 待办 (type = 1): (我创建的草稿) OR (审批待办单据)
- *   <li>2. 已办 (type = 2): 审批已办单据 (id IN :doneRecordIds)
- *   <li>3. 全部 (type = 3): (我创建的草稿) OR (审批全部单据) OR (数据权限单据)
- *   <li>4. 未开启审批流: 行级数据权限过滤
+ *   <li>1. 区分 rootModuleId 是否带有审批链。
+ *   <li>2. 有审批链：
+ *       <ul>
+ *         <li>已办 (type = 2)：仅过滤审批已办 business_no 集合，AND active = 1（不考虑 created_by 与数据权限）。
+ *         <li>待办 (type = 1)：[审批待办 business_no] OR [created_by = :me AND business_status = 1]，AND
+ *             active = 1。
+ *         <li>全部 (type = 3)：[审批全部 business_no] OR [created_by = :me business_no (不限状态)] OR [数据权限
+ *             business_no]，AND active = 1。
+ *       </ul>
+ *   <li>3. 没有审批链（或未传审批类型）：
+ *       <ul>
+ *         <li>[created_by = :me business_no (不限状态)] OR [数据权限 business_no]，AND active = 1。
+ *       </ul>
+ *   <li>4. 所有单据集合均采用 DISTINCT 抽取，最终组合时统一按主表 business_no 进行过滤，最后加上 AND active = 1。
  * </ul>
  */
 @Slf4j
@@ -37,6 +45,10 @@ import org.springframework.util.CollectionUtils;
 public class CommonFilterResolver {
 
     public static final String SUBJECT_ID_COLUMN = "subject_id";
+    public static final String BUSINESS_NO_COLUMN = "business_no";
+    public static final String ACTIVE_COLUMN = "active";
+    public static final String CREATED_BY_COLUMN = "created_by";
+    public static final String BUSINESS_STATUS_COLUMN = "business_status";
 
     private final IApprovalEngine approvalEngine;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
@@ -62,20 +74,18 @@ public class CommonFilterResolver {
     /** 统一为列表与字段下拉解析审批过滤、数据权限与按钮 (Search / Option) */
     public ApprovalFilterItem resolveApprovalFilters(
             Long rootModuleId, Integer approvalType, ModuleTreeDTO moduleTree) {
-        // 1. 若未指定审批类型或未开启审批链，直接返回数据权限过滤结果
-        if (rootModuleId == null || approvalType == null || !isApprovalChainEnabled(rootModuleId)) {
-            return new ApprovalFilterItem(
-                    buildDataPermissionFilters(moduleTree), false, Collections.emptyMap());
+        RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId, moduleTree);
+        boolean approvalChainEnabled = isApprovalChainEnabled(rootModuleId);
+
+        // 未开启审批链或未指定审批类型：执行无审批链逻辑
+        if (!approvalChainEnabled || approvalType == null) {
+            return buildNoApprovalFilterItem(rootFieldIds);
         }
 
-        // 2. 提取根模块元数据
-        RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId, moduleTree);
-
-        // 3. 独立拉取审批流按钮与单据
-        Map<Long, List<Map<String, Object>>> btnMap =
+        // 开启审批链：拉取审批流按钮与单据
+        Map<String, List<Map<String, Object>>> btnMap =
                 queryApprovalButtons(rootModuleId, approvalType);
 
-        // 4. 组装并组合 3 组独立 filter
         return buildApprovalFilterItem(approvalType, rootFieldIds, btnMap);
     }
 
@@ -88,71 +98,133 @@ public class CommonFilterResolver {
 
         RootModuleFieldIds rootFieldIds = extractRootModuleFieldIds(rootModuleId, moduleTree);
         try {
-            // 1. 一次性获取审批流按钮与分组列表
             com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp resp =
                     approvalEngine.getApprovalListButton(rootModuleId);
-            Map<Long, List<Map<String, Object>>> todoBtns =
+            Map<String, List<Map<String, Object>>> todoBtns =
                     resp != null
                             ? parseButtonsByRecord(resp.getToDoList())
                             : Collections.emptyMap();
-            Map<Long, List<Map<String, Object>>> doneBtns =
+            Map<String, List<Map<String, Object>>> doneBtns =
                     resp != null
                             ? parseButtonsByRecord(resp.getDoneList())
                             : Collections.emptyMap();
-            Map<Long, List<Map<String, Object>>> allBtns =
+            Map<String, List<Map<String, Object>>> allBtns =
                     resp != null ? parseButtonsByRecord(resp.getAllList()) : Collections.emptyMap();
 
-            // 2. 独立解析行级数据权限条件，并提取数据权限匹配的主表 ID 列表（供 type=3 并集使用）
+            // 预先抽取由我创建的 business_no 集合与数据权限 business_no 集合，供待办/全部复用
+            // 待办 (type = 1) 仅统计草稿 (business_status = 1)
+            List<String> myDraftBusinessNos = queryMyCreatedBusinessNos(rootFieldIds, 1);
+            // 全部 (type = 3) 统计全部由我创建 (不限状态)
+            List<String> myAllBusinessNos = queryMyCreatedBusinessNos(rootFieldIds, null);
             List<FilterItem> dataPermFilters = buildDataPermissionFilters(rootFieldIds.tree());
-            List<Long> dataPermRecordIds =
+            List<String> dataPermBusinessNos =
                     queryDataPermissionRecordIds(rootFieldIds.tree(), dataPermFilters);
 
-            // 3. 分别构建待办、已办、全部的过滤项
             return new AllApprovalCountFilters(
                     true,
                     buildApprovalFilterItem(
-                            1, rootFieldIds, todoBtns, dataPermFilters, dataPermRecordIds),
+                            1, rootFieldIds, todoBtns, myDraftBusinessNos, dataPermBusinessNos),
                     buildApprovalFilterItem(
-                            2, rootFieldIds, doneBtns, dataPermFilters, dataPermRecordIds),
+                            2,
+                            rootFieldIds,
+                            doneBtns,
+                            Collections.emptyList(),
+                            dataPermBusinessNos),
                     buildApprovalFilterItem(
-                            3, rootFieldIds, allBtns, dataPermFilters, dataPermRecordIds));
+                            3, rootFieldIds, allBtns, myAllBusinessNos, dataPermBusinessNos));
         } catch (Exception ex) {
             log.warn("批量获取审批链按钮失败: moduleId={}, err={}", rootModuleId, ex.getMessage());
             return new AllApprovalCountFilters(false, null, null, null);
         }
     }
 
-    // ==================== 1. 独立解析器：我创建的草稿 (Draft Filters) ====================
+    // ==================== 1. 独立解析器：我创建的单据 (created_by = :me) ====================
 
-    /** 构建当前用户创建的草稿过滤项列表：created_by = :me AND business_status = 1 */
-    public List<FilterItem> buildDraftFilters(RootModuleFieldIds rootFieldIds) {
-        if (rootFieldIds == null || rootFieldIds.tree() == null) {
+    /** 调用 DataApi 抽取当前登录人创建的主表 business_no 列表 (不限状态，distinct, active = 1) */
+    public List<String> queryMyCreatedBusinessNos(RootModuleFieldIds rootFieldIds) {
+        return queryMyCreatedBusinessNos(rootFieldIds, null);
+    }
+
+    /** 调用 DataApi 抽取当前登录人创建的主表 business_no 列表 (指定业务状态 business_status，distinct, active = 1) */
+    public List<String> queryMyCreatedBusinessNos(
+            RootModuleFieldIds rootFieldIds, Integer businessStatus) {
+        if (rootFieldIds == null
+                || rootFieldIds.tree() == null
+                || rootFieldIds.tree().getRootModule() == null) {
             return Collections.emptyList();
         }
         Long currentUserId =
                 UserContext.isMockLogin() ? UserContext.getMockUserId() : UserContext.getUserId();
-        if (currentUserId == null
-                || rootFieldIds.createdByField() == null
-                || rootFieldIds.businessStatusField() == null) {
+        if (currentUserId == null) {
             return Collections.emptyList();
         }
-        return List.of(
-                PhysicalQueryMapper.filter(
-                        rootFieldIds.tree(),
-                        rootFieldIds.createdByField().fieldId(),
-                        "EQ",
-                        currentUserId),
-                PhysicalQueryMapper.filter(
-                        rootFieldIds.tree(),
-                        rootFieldIds.businessStatusField().fieldId(),
-                        "EQ",
-                        1));
+
+        String primaryTable = rootFieldIds.tree().getRootModule().getPrimaryTable();
+        Long rootModuleId = rootFieldIds.tree().getRootModule().getModuleId();
+        if (primaryTable == null || primaryTable.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            List<FilterItem> filters = new ArrayList<>();
+            // created_by = :me
+            if (rootFieldIds.createdByField() != null) {
+                filters.add(
+                        PhysicalQueryMapper.filter(
+                                rootFieldIds.tree(),
+                                rootFieldIds.createdByField().fieldId(),
+                                "EQ",
+                                currentUserId));
+            } else {
+                FilterItem f = FilterItem.eq(primaryTable, CREATED_BY_COLUMN, currentUserId);
+                f.setModuleId(rootModuleId);
+                filters.add(f);
+            }
+
+            // business_status = :businessStatus
+            if (businessStatus != null) {
+                if (rootFieldIds.businessStatusField() != null) {
+                    filters.add(
+                            PhysicalQueryMapper.filter(
+                                    rootFieldIds.tree(),
+                                    rootFieldIds.businessStatusField().fieldId(),
+                                    "EQ",
+                                    businessStatus));
+                } else {
+                    FilterItem f =
+                            FilterItem.eq(primaryTable, BUSINESS_STATUS_COLUMN, businessStatus);
+                    f.setModuleId(rootModuleId);
+                    filters.add(f);
+                }
+            }
+
+            // active = 1
+            filters.add(buildActiveFilter(rootFieldIds));
+
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq singleReq =
+                    com.jdec.platform.data.api.dto.request.SingleTableQueryReq.of(
+                            primaryTable, BUSINESS_NO_COLUMN);
+            singleReq.setFilters(filters);
+            singleReq.setDistinct(true);
+
+            List<String> nos = dataApi.querySingleTableColumn(singleReq, String.class);
+            return (nos != null && !nos.isEmpty())
+                    ? new ArrayList<>(new LinkedHashSet<>(nos))
+                    : Collections.emptyList();
+        } catch (Exception ex) {
+            log.warn(
+                    "通过 DataApi 抽取 created_by business_no 失败: table={}, status={}, err={}",
+                    primaryTable,
+                    businessStatus,
+                    ex.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     // ==================== 2. 独立解析器：审批流单据过滤 (Approval Record Filters) ====================
 
-    /** 向审批引擎查询指定审批类型的记录与按钮列表 */
-    public Map<Long, List<Map<String, Object>>> queryApprovalButtons(
+    /** 向审批引擎查询指定审批类型的记录与按钮列表（以 business_no 为主键） */
+    public Map<String, List<Map<String, Object>>> queryApprovalButtons(
             Long rootModuleId, Integer approvalType) {
         if (rootModuleId == null || approvalType == null) {
             return Collections.emptyMap();
@@ -179,22 +251,6 @@ public class CommonFilterResolver {
                     ex.getMessage());
             return Collections.emptyMap();
         }
-    }
-
-    /** 构建审批流单据过滤项：id IN (:recordIds) */
-    public FilterItem buildApprovalRecordFilter(
-            RootModuleFieldIds rootFieldIds, Set<Long> recordIds) {
-        if (rootFieldIds == null
-                || rootFieldIds.tree() == null
-                || rootFieldIds.idField() == null
-                || CollectionUtils.isEmpty(recordIds)) {
-            return null;
-        }
-        return PhysicalQueryMapper.filter(
-                rootFieldIds.tree(),
-                rootFieldIds.idField().fieldId(),
-                "IN",
-                new ArrayList<>(recordIds));
     }
 
     // ==================== 3. 独立解析器：行级数据权限 (Data Permission Filters) ====================
@@ -299,20 +355,20 @@ public class CommonFilterResolver {
                         continue;
                     }
 
-                    // 2.2 非主体全选 (subjectCheckAll == 0)：按业务名称过滤
+                    // 2.2 主体未全选：按主体 ID 过滤 subject_id，并且对具体业务字段 columnName 限制业务值范围 bizNames
                     if (subjectId != null) {
-                        FilterItem item = FilterItem.eq(tableName, SUBJECT_ID_COLUMN, subjectId);
-                        item.setModuleId(targetModuleId);
-                        filters.add(item);
+                        FilterItem subjectItem =
+                                FilterItem.eq(tableName, SUBJECT_ID_COLUMN, subjectId);
+                        subjectItem.setModuleId(targetModuleId);
+                        filters.add(subjectItem);
                     }
                     if (columnName != null && !columnName.isBlank()) {
-                        List<String> validBizNames =
-                                (bizNames != null) ? bizNames : Collections.emptyList();
-                        // bizNames 为空时，生成 IN 空列表，SQL 编译层按 1=0 或 IN () 查不出数据
-                        FilterItem item =
-                                FilterItem.in(tableName, columnName.trim(), validBizNames);
-                        item.setModuleId(targetModuleId);
-                        filters.add(item);
+                        List<String> effectiveBizNames =
+                                bizNames != null ? bizNames : Collections.emptyList();
+                        FilterItem columnItem =
+                                FilterItem.in(tableName, columnName.trim(), effectiveBizNames);
+                        columnItem.setModuleId(targetModuleId);
+                        filters.add(columnItem);
                     }
                 }
             }
@@ -320,102 +376,8 @@ public class CommonFilterResolver {
         return filters;
     }
 
-    /** 构建数据权限匹配的单据 ID 过滤项：id IN (:dataPermRecordIds) */
-    public FilterItem buildDataPermRecordFilter(
-            RootModuleFieldIds rootFieldIds, List<Long> dataPermRecordIds) {
-        if (rootFieldIds == null
-                || rootFieldIds.tree() == null
-                || rootFieldIds.idField() == null
-                || CollectionUtils.isEmpty(dataPermRecordIds)) {
-            return null;
-        }
-        return PhysicalQueryMapper.filter(
-                rootFieldIds.tree(),
-                rootFieldIds.idField().fieldId(),
-                "IN",
-                new ArrayList<>(dataPermRecordIds));
-    }
-
-    // ==================== 4. 顶层组合器：纯粹且清晰的组合逻辑 (Combiner) ====================
-
-    /** 核心过滤构建：组装指定 approvalType 对应的过滤项、数据权限与按钮（自动计算数据权限） */
-    public ApprovalFilterItem buildApprovalFilterItem(
-            Integer approvalType,
-            RootModuleFieldIds rootFieldIds,
-            Map<Long, List<Map<String, Object>>> btnGroupMap) {
-        ModuleTreeDTO tree = rootFieldIds != null ? rootFieldIds.tree() : null;
-        // 待办(1)和已办(2)不考虑数据权限；仅全部(3)考虑数据权限
-        List<FilterItem> dataPermFilters =
-                (approvalType != null && (approvalType == 1 || approvalType == 2))
-                        ? Collections.emptyList()
-                        : buildDataPermissionFilters(tree);
-        List<Long> dataPermRecordIds =
-                (approvalType != null && approvalType == 3)
-                        ? queryDataPermissionRecordIds(tree, dataPermFilters)
-                        : Collections.emptyList();
-        return buildApprovalFilterItem(
-                approvalType, rootFieldIds, btnGroupMap, dataPermFilters, dataPermRecordIds);
-    }
-
-    /** 核心过滤构建：复用预先计算好的数据权限过滤项与数据权限主表 ID 列表，实现 3 组独立 filter 的清晰组合 */
-    public ApprovalFilterItem buildApprovalFilterItem(
-            Integer approvalType,
-            RootModuleFieldIds rootFieldIds,
-            Map<Long, List<Map<String, Object>>> btnGroupMap,
-            List<FilterItem> dataPermFilters,
-            List<Long> dataPermRecordIds) {
-        List<FilterItem> effectiveDataPermFilters =
-                dataPermFilters != null ? dataPermFilters : Collections.emptyList();
-
-        if (approvalType == null) {
-            return new ApprovalFilterItem(effectiveDataPermFilters, false, btnGroupMap);
-        }
-
-        Set<Long> approvalRecordIds =
-                btnGroupMap != null ? btnGroupMap.keySet() : Collections.emptySet();
-
-        // 1. 独立解析：【草稿过滤器】 (created_by = me AND business_status = 1)
-        List<FilterItem> draftFilters = buildDraftFilters(rootFieldIds);
-
-        // 2. 独立解析：【审批单据过滤器】 (id IN :approvalRecordIds)
-        FilterItem approvalFilter = buildApprovalRecordFilter(rootFieldIds, approvalRecordIds);
-
-        // 3. 独立解析：【数据权限单据过滤器】 (id IN :dataPermRecordIds)
-        FilterItem dataPermFilter = buildDataPermRecordFilter(rootFieldIds, dataPermRecordIds);
-
-        // 4. 场景组合
-        // 【待办 (1)】：(我创建的草稿) OR (审批待办单据)
-        if (approvalType == 1) {
-            if (approvalFilter == null && draftFilters.isEmpty()) {
-                return new ApprovalFilterItem(Collections.emptyList(), true, btnGroupMap);
-            }
-            List<FilterItem> combined = combineOrBranches(draftFilters, approvalFilter, null);
-            return new ApprovalFilterItem(combined, false, btnGroupMap);
-        }
-
-        // 【已办 (2)】：审批已办单据 (id IN :doneRecordIds)
-        if (approvalType == 2) {
-            if (approvalFilter == null) {
-                return new ApprovalFilterItem(Collections.emptyList(), true, btnGroupMap);
-            }
-            return new ApprovalFilterItem(List.of(approvalFilter), false, btnGroupMap);
-        }
-
-        // 【全部 (3)】：(我创建的草稿) OR (审批全部单据) OR (数据权限单据)
-        if (approvalType == 3) {
-            if (approvalFilter == null && dataPermFilter == null && draftFilters.isEmpty()) {
-                return new ApprovalFilterItem(Collections.emptyList(), true, btnGroupMap);
-            }
-            List<FilterItem> combined =
-                    combineOrBranches(draftFilters, approvalFilter, dataPermFilter);
-            return new ApprovalFilterItem(combined, false, btnGroupMap);
-        }
-
-        return new ApprovalFilterItem(effectiveDataPermFilters, false, btnGroupMap);
-    }
-
-    /** 调用 DataApi 通过物理表条件查询抽出符合数据权限单据的根主表 ID 列表 */
-    public List<Long> queryDataPermissionRecordIds(
+    /** 调用 DataApi 通过物理表条件查询抽出符合数据权限单据的根主表 business_no 列表 (distinct, active = 1) */
+    public List<String> queryDataPermissionRecordIds(
             ModuleTreeDTO moduleTree, List<FilterItem> dataPermFilters) {
         if (dataApi == null || moduleTree == null || moduleTree.getRootModule() == null) {
             return Collections.emptyList();
@@ -429,9 +391,29 @@ public class CommonFilterResolver {
             return Collections.emptyList();
         }
 
+        // 追加 active = 1 条件
+        List<FilterItem> effectiveFilters = new ArrayList<>(dataPermFilters);
+        FilterItem activeItem = FilterItem.eq(primaryTable, ACTIVE_COLUMN, 1);
+        activeItem.setModuleId(rootModuleId);
+        effectiveFilters.add(activeItem);
+
         try {
-            com.jdec.platform.data.api.dto.request.PageQueryReq req =
-                    com.jdec.platform.data.api.dto.request.PageQueryReq.builder()
+            // 优化：数据权限在大多数场景下仅基于主表（如 created_by、dept_id），直接走轻量单表查询，跳过整树元数据加载与复杂装配
+            if (isSingleTableOnly(effectiveFilters, primaryTable, rootModuleId)) {
+                com.jdec.platform.data.api.dto.request.SingleTableQueryReq singleReq =
+                        com.jdec.platform.data.api.dto.request.SingleTableQueryReq.of(
+                                primaryTable, BUSINESS_NO_COLUMN);
+                singleReq.setFilters(effectiveFilters);
+                singleReq.setDistinct(true);
+                List<String> singleNos = dataApi.querySingleTableColumn(singleReq, String.class);
+                return (singleNos != null && !singleNos.isEmpty())
+                        ? new ArrayList<>(new LinkedHashSet<>(singleNos))
+                        : Collections.emptyList();
+            }
+
+            // 若涉及子表数据权限（子表影响主表数据），退回通过整树引擎进行级联关联推导
+            com.jdec.platform.data.api.dto.request.QueryReq req =
+                    com.jdec.platform.data.api.dto.request.QueryReq.builder()
                             .moduleId(rootModuleId)
                             .tables(
                                     List.of(
@@ -439,36 +421,30 @@ public class CommonFilterResolver {
                                                     .builder()
                                                     .moduleId(rootModuleId)
                                                     .tableName(primaryTable)
-                                                    .columns(List.of("id"))
+                                                    .columns(List.of(BUSINESS_NO_COLUMN))
                                                     .build()))
-                            .filters(dataPermFilters)
-                            .pageNo(1)
-                            .pageSize(10000)
+                            .filters(effectiveFilters)
                             .build();
 
-            com.jdec.platform.data.api.dto.response.DataPage<
-                            com.jdec.platform.data.api.dto.common.DataBlock>
-                    page = dataApi.queryPage(req);
-            if (page == null
-                    || page.getData() == null
-                    || CollectionUtils.isEmpty(page.getData().getRecords())) {
+            com.jdec.platform.data.api.dto.common.DataBlock block = dataApi.queryList(req);
+            if (block == null || CollectionUtils.isEmpty(block.getRecords())) {
                 return Collections.emptyList();
             }
 
-            List<Long> resultIds = new ArrayList<>();
-            for (com.jdec.platform.data.api.dto.common.DataRow row : page.getData().getRecords()) {
+            Set<String> distinctNos = new LinkedHashSet<>();
+            for (com.jdec.platform.data.api.dto.common.DataRow row : block.getRecords()) {
                 if (row == null) {
                     continue;
                 }
-                Long id = row.getLong(primaryTable, "id");
-                if (id != null) {
-                    resultIds.add(id);
+                String no = row.getString(primaryTable, BUSINESS_NO_COLUMN);
+                if (no != null && !no.isBlank()) {
+                    distinctNos.add(no.trim());
                 }
             }
-            return resultIds;
+            return new ArrayList<>(distinctNos);
         } catch (Exception ex) {
             log.warn(
-                    "通过 DataApi 抽取数据权限 ID 失败: moduleId={}, err={}",
+                    "通过 DataApi 抽取数据权限 business_no 失败: moduleId={}, err={}",
                     rootModuleId,
                     ex.getMessage(),
                     ex);
@@ -476,80 +452,227 @@ public class CommonFilterResolver {
         }
     }
 
-    /** 将 (我创建的草稿)、(审批单据分支) 与 (数据权限单据分支) 3 组独立的过滤器组合为顶层 OR 树结构 */
-    private List<FilterItem> combineOrBranches(
-            List<FilterItem> draftItems, FilterItem approvalBranch, FilterItem dataPermBranch) {
-        List<Predicate> branchPredicates = new ArrayList<>();
+    // ==================== 4. 核心过滤组合构建器 ====================
 
-        // 1. 草稿分支：created_by == me AND business_status == 1
-        if (!CollectionUtils.isEmpty(draftItems)) {
-            List<Predicate> draftPreds = new ArrayList<>();
-            for (FilterItem di : draftItems) {
-                if (di != null) {
-                    Predicate p = di.toPredicate();
-                    if (p != null) {
-                        draftPreds.add(p);
-                    }
-                }
-            }
-            if (!draftPreds.isEmpty()) {
-                branchPredicates.add(Predicates.and(draftPreds));
-            }
-        }
+    /** 核心过滤构建：有审批链场景 (自动计算由我创建与数据权限的 business_no 集合) */
+    public ApprovalFilterItem buildApprovalFilterItem(
+            Integer approvalType,
+            RootModuleFieldIds rootFieldIds,
+            Map<String, List<Map<String, Object>>> btnGroupMap) {
+        Integer targetStatus = (approvalType != null && approvalType == 1) ? 1 : null;
+        List<String> myBusinessNos =
+                (approvalType != null && approvalType == 2)
+                        ? Collections.emptyList()
+                        : queryMyCreatedBusinessNos(rootFieldIds, targetStatus);
 
-        // 2. 审批流单据分支：id IN (:approvalRecordIds)
-        if (approvalBranch != null) {
-            Predicate p = approvalBranch.toPredicate();
-            if (p != null) {
-                branchPredicates.add(p);
-            }
-        }
+        List<FilterItem> dataPermFilters =
+                (approvalType != null && approvalType == 3)
+                        ? buildDataPermissionFilters(
+                                rootFieldIds != null ? rootFieldIds.tree() : null)
+                        : Collections.emptyList();
 
-        // 3. 数据权限单据分支：id IN (:dataPermRecordIds)
-        if (dataPermBranch != null) {
-            Predicate p = dataPermBranch.toPredicate();
-            if (p != null) {
-                branchPredicates.add(p);
-            }
-        }
+        List<String> dataPermBusinessNos =
+                (approvalType != null && approvalType == 3)
+                        ? queryDataPermissionRecordIds(
+                                rootFieldIds != null ? rootFieldIds.tree() : null, dataPermFilters)
+                        : Collections.emptyList();
 
-        if (branchPredicates.isEmpty()) {
-            return Collections.emptyList();
-        }
-        if (branchPredicates.size() == 1) {
-            return Collections.singletonList(FilterItem.fromPredicate(branchPredicates.get(0)));
-        }
-
-        // 4. 构造标准 OR 复合树
-        Predicate rootOr = Predicates.or(branchPredicates);
-        return Collections.singletonList(FilterItem.fromPredicate(rootOr));
+        return buildApprovalFilterItem(
+                approvalType, rootFieldIds, btnGroupMap, myBusinessNos, dataPermBusinessNos);
     }
 
-    private Map<Long, List<Map<String, Object>>> parseButtonsByRecord(
+    /** 核心过滤构建：复用预先计算好的单据集合，精准组装最终过滤项 */
+    public ApprovalFilterItem buildApprovalFilterItem(
+            Integer approvalType,
+            RootModuleFieldIds rootFieldIds,
+            Map<String, List<Map<String, Object>>> btnGroupMap,
+            List<String> myBusinessNos,
+            List<String> dataPermBusinessNos) {
+
+        Set<String> approvalBusinessNos =
+                btnGroupMap != null ? btnGroupMap.keySet() : Collections.emptySet();
+
+        // 1. 已办 (type = 2)：仅过滤审批已办 business_no 集合，AND active = 1（不考虑 created_by 与数据权限）
+        if (approvalType != null && approvalType == 2) {
+            if (approvalBusinessNos.isEmpty()) {
+                return new ApprovalFilterItem(Collections.emptyList(), true, btnGroupMap);
+            }
+            return assembleResult(rootFieldIds, approvalBusinessNos, btnGroupMap);
+        }
+
+        // 2. 待办 (type = 1)：[审批待办] OR [created_by = :me]
+        if (approvalType != null && approvalType == 1) {
+            Set<String> mergedTodoNos = new LinkedHashSet<>(approvalBusinessNos);
+            if (!CollectionUtils.isEmpty(myBusinessNos)) {
+                mergedTodoNos.addAll(myBusinessNos);
+            }
+            if (mergedTodoNos.isEmpty()) {
+                return new ApprovalFilterItem(Collections.emptyList(), true, btnGroupMap);
+            }
+            return assembleResult(rootFieldIds, mergedTodoNos, btnGroupMap);
+        }
+
+        // 3. 全部 (type = 3)：[审批全部] OR [created_by = :me] OR [数据权限]
+        if (approvalType != null && approvalType == 3) {
+            Set<String> mergedAllNos = new LinkedHashSet<>(approvalBusinessNos);
+            if (!CollectionUtils.isEmpty(myBusinessNos)) {
+                mergedAllNos.addAll(myBusinessNos);
+            }
+            if (!CollectionUtils.isEmpty(dataPermBusinessNos)) {
+                mergedAllNos.addAll(dataPermBusinessNos);
+            }
+            if (mergedAllNos.isEmpty()) {
+                return new ApprovalFilterItem(Collections.emptyList(), true, btnGroupMap);
+            }
+            return assembleResult(rootFieldIds, mergedAllNos, btnGroupMap);
+        }
+
+        // 4. 缺省兜底（未指定具体 approvalType）：走无审批链逻辑
+        return buildNoApprovalFilterItem(rootFieldIds);
+    }
+
+    /** 无审批链场景过滤构建：[created_by = :me] OR [数据权限]，最后 AND active = 1 */
+    public ApprovalFilterItem buildNoApprovalFilterItem(RootModuleFieldIds rootFieldIds) {
+        List<String> myBusinessNos = queryMyCreatedBusinessNos(rootFieldIds);
+        List<FilterItem> dataPermFilters =
+                buildDataPermissionFilters(rootFieldIds != null ? rootFieldIds.tree() : null);
+        List<String> dataPermBusinessNos =
+                queryDataPermissionRecordIds(
+                        rootFieldIds != null ? rootFieldIds.tree() : null, dataPermFilters);
+
+        Set<String> mergedNos = new LinkedHashSet<>();
+        if (!CollectionUtils.isEmpty(myBusinessNos)) {
+            mergedNos.addAll(myBusinessNos);
+        }
+        if (!CollectionUtils.isEmpty(dataPermBusinessNos)) {
+            mergedNos.addAll(dataPermBusinessNos);
+        }
+
+        // 若双方集合均为空，短路为空
+        if (mergedNos.isEmpty()) {
+            return new ApprovalFilterItem(Collections.emptyList(), true, Collections.emptyMap());
+        }
+
+        return assembleResult(rootFieldIds, mergedNos, Collections.emptyMap());
+    }
+
+    /** 统一组装结果：主表 business_no IN (:businessNos) AND 主表 active = 1 */
+    private ApprovalFilterItem assembleResult(
+            RootModuleFieldIds rootFieldIds,
+            Collection<String> businessNos,
+            Map<String, List<Map<String, Object>>> btnMap) {
+        FilterItem businessNoFilter = buildApprovalRecordFilter(rootFieldIds, businessNos);
+        FilterItem activeFilter = buildActiveFilter(rootFieldIds);
+
+        List<FilterItem> filters = new ArrayList<>();
+        if (businessNoFilter != null) {
+            filters.add(businessNoFilter);
+        }
+        if (activeFilter != null) {
+            filters.add(activeFilter);
+        }
+        return new ApprovalFilterItem(filters, false, btnMap);
+    }
+
+    /** 构建主表 business_no IN (:businessNos) 过滤项 */
+    public FilterItem buildApprovalRecordFilter(
+            RootModuleFieldIds rootFieldIds, Collection<String> businessNos) {
+        if (CollectionUtils.isEmpty(businessNos)) {
+            return null;
+        }
+        if (rootFieldIds != null
+                && rootFieldIds.tree() != null
+                && rootFieldIds.businessNoField() != null) {
+            return PhysicalQueryMapper.filter(
+                    rootFieldIds.tree(),
+                    rootFieldIds.businessNoField().fieldId(),
+                    "IN",
+                    new ArrayList<>(businessNos));
+        }
+        String primaryTable =
+                rootFieldIds != null
+                                && rootFieldIds.tree() != null
+                                && rootFieldIds.tree().getRootModule() != null
+                        ? rootFieldIds.tree().getRootModule().getPrimaryTable()
+                        : null;
+        Long rootModuleId =
+                rootFieldIds != null
+                                && rootFieldIds.tree() != null
+                                && rootFieldIds.tree().getRootModule() != null
+                        ? rootFieldIds.tree().getRootModule().getModuleId()
+                        : null;
+        if (primaryTable != null && !primaryTable.isBlank()) {
+            FilterItem item =
+                    FilterItem.in(primaryTable, BUSINESS_NO_COLUMN, new ArrayList<>(businessNos));
+            item.setModuleId(rootModuleId);
+            return item;
+        }
+        return null;
+    }
+
+    /** 构建主表 active = 1 过滤项 */
+    public FilterItem buildActiveFilter(RootModuleFieldIds rootFieldIds) {
+        if (rootFieldIds != null
+                && rootFieldIds.tree() != null
+                && rootFieldIds.activeField() != null) {
+            return PhysicalQueryMapper.filter(
+                    rootFieldIds.tree(), rootFieldIds.activeField().fieldId(), "EQ", 1);
+        }
+        String primaryTable =
+                rootFieldIds != null
+                                && rootFieldIds.tree() != null
+                                && rootFieldIds.tree().getRootModule() != null
+                        ? rootFieldIds.tree().getRootModule().getPrimaryTable()
+                        : null;
+        Long rootModuleId =
+                rootFieldIds != null
+                                && rootFieldIds.tree() != null
+                                && rootFieldIds.tree().getRootModule() != null
+                        ? rootFieldIds.tree().getRootModule().getModuleId()
+                        : null;
+        if (primaryTable != null && !primaryTable.isBlank()) {
+            FilterItem item = FilterItem.eq(primaryTable, ACTIVE_COLUMN, 1);
+            item.setModuleId(rootModuleId);
+            return item;
+        }
+        return null;
+    }
+
+    /** 解析审批流按钮数据结构，返回以 business_no 为 key 的按钮映射 */
+    private Map<String, List<Map<String, Object>>> parseButtonsByRecord(
             List<ApprpvalIdButton> rawList) {
         if (CollectionUtils.isEmpty(rawList)) {
             return Collections.emptyMap();
         }
-        Map<Long, List<Map<String, Object>>> recordBtnMap = new LinkedHashMap<>();
+        Map<String, List<Map<String, Object>>> recordBtnMap = new LinkedHashMap<>();
         for (ApprpvalIdButton rawBtn : rawList) {
-            if (rawBtn == null || rawBtn.getRecordId() == null) {
+            if (rawBtn == null) {
                 continue;
             }
-            Long recordId = rawBtn.getRecordId();
+            String key =
+                    (rawBtn.getBusinessNo() != null && !rawBtn.getBusinessNo().isBlank())
+                            ? rawBtn.getBusinessNo().trim()
+                            : (rawBtn.getRecordId() != null
+                                    ? String.valueOf(rawBtn.getRecordId())
+                                    : null);
+            if (key == null) {
+                continue;
+            }
             Map<String, Object> btnInfo = new LinkedHashMap<>();
             btnInfo.put(
                     "buttonKey", rawBtn.getButtonKey() != null ? rawBtn.getButtonKey() : "view");
             btnInfo.put(
                     "buttonName", rawBtn.getButtonName() != null ? rawBtn.getButtonName() : "查阅");
-            recordBtnMap.computeIfAbsent(recordId, k -> new ArrayList<>()).add(btnInfo);
+            recordBtnMap.computeIfAbsent(key, k -> new ArrayList<>()).add(btnInfo);
         }
         return recordBtnMap;
     }
 
+    /** 提取根模块的字段引用元数据 (id, business_no, created_by, active) */
     public RootModuleFieldIds extractRootModuleFieldIds(
             Long rootModuleId, ModuleTreeDTO inMemoryModuleTree) {
         if (rootModuleId == null) {
-            return new RootModuleFieldIds(null, null, null, null);
+            return new RootModuleFieldIds(null, null, null, null, null, null);
         }
         ModuleTreeDTO moduleTree =
                 inMemoryModuleTree != null
@@ -557,8 +680,10 @@ public class CommonFilterResolver {
                         : configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
 
         PhysicalQueryMapper.PhysicalFieldRef idField = null;
+        PhysicalQueryMapper.PhysicalFieldRef businessNoField = null;
         PhysicalQueryMapper.PhysicalFieldRef createdByField = null;
         PhysicalQueryMapper.PhysicalFieldRef businessStatusField = null;
+        PhysicalQueryMapper.PhysicalFieldRef activeField = null;
 
         if (moduleTree != null && moduleTree.getRootModule() != null) {
             List<ModuleFieldDTO> fields = moduleTree.getRootModule().getFields();
@@ -567,31 +692,72 @@ public class CommonFilterResolver {
                     String col = f.getColumnName();
                     if ("id".equalsIgnoreCase(col)) {
                         idField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
+                    } else if ("business_no".equalsIgnoreCase(col)
+                            || "businessNo".equalsIgnoreCase(col)
+                            || "business_number".equalsIgnoreCase(col)) {
+                        businessNoField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     } else if ("created_by".equalsIgnoreCase(col)
                             || "createdBy".equalsIgnoreCase(col)) {
                         createdByField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     } else if ("business_status".equalsIgnoreCase(col)
                             || "businessStatus".equalsIgnoreCase(col)) {
                         businessStatusField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
+                    } else if ("active".equalsIgnoreCase(col)) {
+                        activeField = PhysicalQueryMapper.resolve(moduleTree, f.getId());
                     }
                 }
             }
         }
-        return new RootModuleFieldIds(moduleTree, idField, createdByField, businessStatusField);
+        return new RootModuleFieldIds(
+                moduleTree,
+                idField,
+                businessNoField,
+                createdByField,
+                businessStatusField,
+                activeField);
+    }
+
+    /** 判断过滤条件是否仅涉及主表字段（用于决定是否可直接降级为轻量单表查询） */
+    private boolean isSingleTableOnly(
+            List<FilterItem> filters, String primaryTable, Long rootModuleId) {
+        if (CollectionUtils.isEmpty(filters)) {
+            return true;
+        }
+        for (FilterItem f : filters) {
+            if (f == null) {
+                continue;
+            }
+            if (f.getModuleId() != null && !f.getModuleId().equals(rootModuleId)) {
+                return false;
+            }
+            if (f.getTableName() != null
+                    && !f.getTableName().isBlank()
+                    && !f.getTableName().equalsIgnoreCase(primaryTable)) {
+                return false;
+            }
+            if (!CollectionUtils.isEmpty(f.getChildren())) {
+                if (!isSingleTableOnly(f.getChildren(), primaryTable, rootModuleId)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /** 审批流与通用过滤解析结果单项（包含过滤项集合、是否短路为空、单据按钮映射） */
     public record ApprovalFilterItem(
             List<FilterItem> filters,
             boolean shortCircuitEmpty,
-            Map<Long, List<Map<String, Object>>> btnMap) {}
+            Map<String, List<Map<String, Object>>> btnMap) {}
 
     /** 根模块关键字段引用 */
     public record RootModuleFieldIds(
             ModuleTreeDTO tree,
             PhysicalQueryMapper.PhysicalFieldRef idField,
+            PhysicalQueryMapper.PhysicalFieldRef businessNoField,
             PhysicalQueryMapper.PhysicalFieldRef createdByField,
-            PhysicalQueryMapper.PhysicalFieldRef businessStatusField) {}
+            PhysicalQueryMapper.PhysicalFieldRef businessStatusField,
+            PhysicalQueryMapper.PhysicalFieldRef activeField) {}
 
     /** 全量角标统计过滤结果（待办/已办/全部） */
     public record AllApprovalCountFilters(

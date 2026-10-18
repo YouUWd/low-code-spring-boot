@@ -7,11 +7,16 @@ import static org.mockito.Mockito.*;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.FieldSortItem;
+import com.jdec.platform.common.api.dto.request.FlatFilterItem;
+import com.jdec.platform.common.api.dto.request.FlatSortItem;
 import com.jdec.platform.common.api.dto.request.MenuFlatFieldFilterItem;
+import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
+import com.jdec.platform.common.api.dto.request.MenuTableSpec;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
+import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.common.api.dto.response.UserSimpleResp;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
@@ -101,7 +106,12 @@ class CompanyMenuQueryContractTest {
                 .thenReturn(companyModuleTree);
         when(configApi.getProjectTableRelations(eq("company"))).thenReturn(companyRelations);
 
+        when(configApi.getProjectModuleTree(eq("company"), any()))
+                .thenReturn(List.of(companyModuleTree));
+        when(openMenuApi.getModuleIdByMenuId(anyLong())).thenReturn(1001L);
         when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(DataPage.empty());
+        when(dataApi.querySingleTableColumn(any(), eq(String.class)))
+                .thenReturn(List.of("CR100", "CR101", "CR102"));
     }
 
     private void initCompanyFixture() {
@@ -188,6 +198,7 @@ class CompanyMenuQueryContractTest {
         p2c.put(1020L, List.of(1006L));
 
         addField(moduleMap, fieldMap, fieldToModuleMap, 10001L, 1001L, "info", "id");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10007L, 1001L, "info", "business_no");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10002L, 1001L, "info", "company_name");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10003L, 1001L, "info", "created_by");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10004L, 1001L, "info", "business_status");
@@ -1109,9 +1120,9 @@ class CompanyMenuQueryContractTest {
                         openRolePermissionApi,
                         dataApi);
 
-        var filterItem = resolver.resolveApprovalFilters(null, null, companyModuleTree);
+        var filterItem = resolver.buildDataPermissionFilters(companyModuleTree);
         assertNotNull(filterItem);
-        List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
+        List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem;
         assertEquals(5, filters.size());
 
         // 1. info: subjectCheckAll = 1 -> info.subject_id = 101
@@ -1156,14 +1167,15 @@ class CompanyMenuQueryContractTest {
     }
 
     @Test
-    @DisplayName("测试待办(approvalType=1)场景：不考虑数据权限，仅为自建草稿与审批待办单据OR组合")
+    @DisplayName(
+            "测试待办(approvalType=1)场景：审批待办 business_no 与 created_by=:me business_no 取并集，最后加上 AND active = 1")
     void testApprovalType1_withoutDataPermission() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
-        // 1. 审批引擎返回待办记录 101
+        // 1. 审批引擎返回待办记录 CR001
         com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
                 new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
-        btn101.setRecordId(101L);
+        btn101.setBusinessNo("CR001");
         btn101.setButtonKey("handle");
         btn101.setButtonName("办理");
 
@@ -1172,19 +1184,26 @@ class CompanyMenuQueryContractTest {
         resp.setToDoList(List.of(btn101));
         when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
 
-        // 2. 角色数据权限配置 (待办不应调用此接口查询 ID)
-        DataRightConfigResp config =
-                DataRightConfigResp.builder()
-                        .tableName("info")
-                        .dataList(
-                                List.of(
-                                        DataRightConfigResp.DataConfig.builder()
-                                                .permissionCheckAll(0)
-                                                .subjectId(999L)
-                                                .subjectCheckAll(1)
-                                                .build()))
-                        .build();
-        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+        // 2. 模拟 DataApi 查询 created_by = :me AND business_status = 1 抽取出的 business_no: CR002
+        when(dataApi.querySingleTableColumn(
+                        argThat(
+                                r ->
+                                        r != null
+                                                && r.getFilters() != null
+                                                && r.getFilters().stream()
+                                                        .anyMatch(
+                                                                f ->
+                                                                        "business_status"
+                                                                                        .equals(
+                                                                                                f
+                                                                                                        .getColumnName())
+                                                                                && Integer.valueOf(
+                                                                                                1)
+                                                                                        .equals(
+                                                                                                f
+                                                                                                        .getValue()))),
+                        eq(String.class)))
+                .thenReturn(List.of("CR002"));
 
         CommonFilterResolver resolver =
                 new CommonFilterResolver(
@@ -1198,43 +1217,35 @@ class CompanyMenuQueryContractTest {
         assertNotNull(filterItem);
         assertFalse(filterItem.shortCircuitEmpty());
 
-        // 验证组合后的顶层为链式 OR 树: 纯逻辑 OR 节点 -> children: [草稿分支 (AND容器), 审批待办分支 (id IN [101])]
+        // 验证结果包含 2 个条件：主表 business_no IN ('CR001', 'CR002') AND 主表 active = 1
         List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
-        assertEquals(1, filters.size());
-        var rootOr = filters.get(0);
-        assertEquals("OR", rootOr.getLogic());
-        assertNull(rootOr.getColumnName());
-        assertNotNull(rootOr.getChildren());
-        assertEquals(2, rootOr.getChildren().size());
+        assertEquals(2, filters.size());
 
-        // 分支 1: 草稿分支 (AND 容器)
-        var draftBranch = rootOr.getChildren().get(0);
-        assertEquals("AND", draftBranch.getLogic());
-        assertNull(draftBranch.getColumnName());
-        assertNotNull(draftBranch.getChildren());
-        assertEquals(2, draftBranch.getChildren().size());
-        assertEquals("created_by", draftBranch.getChildren().get(0).getColumnName());
-        assertEquals("business_status", draftBranch.getChildren().get(1).getColumnName());
-
-        // 分支 2: 审批待办分支 (id IN [101])，不再有数据权限分支
-        var approvalBranch = rootOr.getChildren().get(1);
-        assertEquals("info", approvalBranch.getTableName());
-        assertEquals("id", approvalBranch.getColumnName());
-        assertEquals("IN", approvalBranch.getOperator());
+        var bFilter = filters.get(0);
+        assertEquals("info", bFilter.getTableName());
+        assertEquals("business_no", bFilter.getColumnName());
+        assertEquals("IN", bFilter.getOperator());
         @SuppressWarnings("unchecked")
-        List<Long> approvalIds = (List<Long>) approvalBranch.getValue();
-        assertEquals(List.of(101L), approvalIds);
+        List<String> bNos = (List<String>) bFilter.getValue();
+        assertTrue(bNos.containsAll(List.of("CR001", "CR002")));
+
+        var aFilter = filters.get(1);
+        assertEquals("info", aFilter.getTableName());
+        assertEquals("active", aFilter.getColumnName());
+        assertEquals("EQ", aFilter.getOperator());
+        assertEquals(1, aFilter.getValue());
     }
 
     @Test
-    @DisplayName("测试全部(approvalType=3)场景：数据权限单据ID与审批引擎单据ID取并集，并与自建草稿OR组合")
+    @DisplayName(
+            "测试全部(approvalType=3)场景：审批全部单据、created_by=:me 单据与数据权限单据三者 business_no 取并集，最后加上 AND active = 1")
     void testApprovalType3_dataPermissionIdsUnionWithApprovalIds() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
-        // 1. 审批引擎返回全部记录 101
+        // 1. 审批引擎返回全部记录 CR001
         com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
                 new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
-        btn101.setRecordId(101L);
+        btn101.setBusinessNo("CR001");
         btn101.setButtonKey("handle");
         btn101.setButtonName("办理");
 
@@ -1257,21 +1268,11 @@ class CompanyMenuQueryContractTest {
                         .build();
         when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
 
-        // 3. 模拟 DataApi 单独按数据权限条件查询，返回数据权限匹配的单据 ID 202
-        DataRow permRow = DataRow.builder().tables(Map.of("info", Map.of("id", 202L))).build();
-        DataBlock permBlock = DataBlock.builder().moduleId(1001L).records(List.of(permRow)).build();
-        when(dataApi.queryPage(
-                        argThat(
-                                req ->
-                                        req != null
-                                                && req.getTables() != null
-                                                && !req.getTables().isEmpty()
-                                                && List.of("id")
-                                                        .equals(
-                                                                req.getTables()
-                                                                        .get(0)
-                                                                        .getColumns()))))
-                .thenReturn(DataPage.of(permBlock, 1, 10000, 1L));
+        // 3. 模拟 DataApi 抽取 created_by=:me 为 CR002，数据权限为 CR003
+        when(dataApi.querySingleTableColumn(
+                        argThat(r -> r != null && "business_no".equals(r.getColumns().get(0))),
+                        eq(String.class)))
+                .thenReturn(List.of("CR002"), List.of("CR003"));
 
         CommonFilterResolver resolver =
                 new CommonFilterResolver(
@@ -1285,41 +1286,23 @@ class CompanyMenuQueryContractTest {
         assertNotNull(filterItem);
         assertFalse(filterItem.shortCircuitEmpty());
 
-        // 验证组合后的顶层 OR 树: 纯逻辑 OR 节点 -> 3个子分支：[草稿分支, 审批分支, 数据权限分支]
+        // 验证三者取并集：business_no IN ('CR001', 'CR002', 'CR003') AND active = 1
         List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
-        assertEquals(1, filters.size());
-        var rootOr = filters.get(0);
-        assertEquals("OR", rootOr.getLogic());
-        assertNull(rootOr.getColumnName());
-        assertNotNull(rootOr.getChildren());
-        assertEquals(3, rootOr.getChildren().size());
+        assertEquals(2, filters.size());
 
-        // 分支 1: 草稿分支 (AND 容器)
-        var draftBranch = rootOr.getChildren().get(0);
-        assertEquals("AND", draftBranch.getLogic());
-        assertNull(draftBranch.getColumnName());
-        assertNotNull(draftBranch.getChildren());
-        assertEquals(2, draftBranch.getChildren().size());
-        assertEquals("created_by", draftBranch.getChildren().get(0).getColumnName());
-        assertEquals("business_status", draftBranch.getChildren().get(1).getColumnName());
-
-        // 分支 2: approvalBranch (id IN [101])
-        var approvalBranch = rootOr.getChildren().get(1);
-        assertEquals("info", approvalBranch.getTableName());
-        assertEquals("id", approvalBranch.getColumnName());
-        assertEquals("IN", approvalBranch.getOperator());
+        var bFilter = filters.get(0);
+        assertEquals("info", bFilter.getTableName());
+        assertEquals("business_no", bFilter.getColumnName());
+        assertEquals("IN", bFilter.getOperator());
         @SuppressWarnings("unchecked")
-        List<Long> approvalIds = (List<Long>) approvalBranch.getValue();
-        assertEquals(List.of(101L), approvalIds);
+        List<String> allNos = (List<String>) bFilter.getValue();
+        assertTrue(allNos.containsAll(List.of("CR001", "CR002", "CR003")));
 
-        // 分支 3: dataPermBranch (id IN [202])
-        var dataPermBranch = rootOr.getChildren().get(2);
-        assertEquals("info", dataPermBranch.getTableName());
-        assertEquals("id", dataPermBranch.getColumnName());
-        assertEquals("IN", dataPermBranch.getOperator());
-        @SuppressWarnings("unchecked")
-        List<Long> dataPermIds = (List<Long>) dataPermBranch.getValue();
-        assertEquals(List.of(202L), dataPermIds);
+        var aFilter = filters.get(1);
+        assertEquals("info", aFilter.getTableName());
+        assertEquals("active", aFilter.getColumnName());
+        assertEquals("EQ", aFilter.getOperator());
+        assertEquals(1, aFilter.getValue());
     }
 
     @Test
@@ -1345,5 +1328,343 @@ class CompanyMenuQueryContractTest {
 
         assertEquals("全部", counts.get(2).getLabel());
         assertEquals(3, counts.get(2).getType());
+    }
+
+    @Test
+    @DisplayName("测试基于菜单 ID 进行全量列表查询 (根据全部记录的 id 找 business_no，再找最新启用 business_status=99 的最大版本)")
+    void testQueryListByMenu() {
+        // 阶段 1：模拟轻量查询返回主表 id 与 business_no
+        DataRow light1 = new DataRow();
+        Map<String, Object> lInfo1 = new HashMap<>();
+        lInfo1.put("id", 1001L);
+        lInfo1.put("business_no", "CR001");
+        light1.putTable("info", lInfo1);
+
+        DataRow light2 = new DataRow();
+        Map<String, Object> lInfo2 = new HashMap<>();
+        lInfo2.put("id", 1002L);
+        lInfo2.put("business_no", "CR002");
+        light2.putTable("info", lInfo2);
+
+        // 包含无启用版本的单据 CR003
+        DataRow light3 = new DataRow();
+        Map<String, Object> lInfo3 = new HashMap<>();
+        lInfo3.put("id", 1003L);
+        lInfo3.put("business_no", "CR003");
+        light3.putTable("info", lInfo3);
+
+        DataBlock stage1Block =
+                DataBlock.builder()
+                        .moduleId(1001L)
+                        .records(List.of(light1, light2, light3))
+                        .build();
+
+        // 阶段 2：模拟最新启用查询返回结果
+        // CR001 有两个启用版本：version_no=3 和 version_no=2（按降序返回）
+        DataRow enabledV3 = new DataRow();
+        Map<String, Object> v3 = new HashMap<>();
+        v3.put("id", 1103L);
+        v3.put("business_no", "CR001");
+        v3.put("version_no", 3);
+        v3.put("business_status", 99);
+        v3.put("company_name", "企业001-v3(启用)");
+        enabledV3.putTable("info", v3);
+
+        DataRow enabledV2 = new DataRow();
+        Map<String, Object> v2 = new HashMap<>();
+        v2.put("id", 1102L);
+        v2.put("business_no", "CR001");
+        v2.put("version_no", 2);
+        v2.put("business_status", 99);
+        v2.put("company_name", "企业001-v2(旧启用)");
+        enabledV2.putTable("info", v2);
+
+        // CR002 只有一个启用版本：version_no=1
+        DataRow enabledCR2 = new DataRow();
+        Map<String, Object> cr2 = new HashMap<>();
+        cr2.put("id", 1201L);
+        cr2.put("business_no", "CR002");
+        cr2.put("version_no", 1);
+        cr2.put("business_status", 99);
+        cr2.put("company_name", "企业002-v1(启用)");
+        enabledCR2.putTable("info", cr2);
+
+        // 阶段 2：通过数据引擎单表 API 查出最大启用的 id 列表 [1103L, 1201L] (CR003 无启用版本因此不返回)
+        when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99)))
+                .thenReturn(List.of(1103L, 1201L));
+
+        // 阶段 3：底层数据引擎根据 [1103L, 1201L] 查询返回全量数据
+        DataBlock stage3Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(enabledV3, enabledCR2)).build();
+
+        // 第一次 queryList 模拟阶段 1，第二次 queryList 模拟阶段 3
+        when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
+
+        MenuListReq req =
+                MenuListReq.builder()
+                        .tables(
+                                List.of(
+                                        MenuTableSpec.builder()
+                                                .menuId(100L)
+                                                .tableName("info")
+                                                .columns(
+                                                        List.of(
+                                                                "id",
+                                                                "business_no",
+                                                                "company_name"))
+                                                .build()))
+                        .filters(
+                                List.of(
+                                        FlatFilterItem.builder()
+                                                .tableName("info")
+                                                .columnName("company_name")
+                                                .operator("LIKE")
+                                                .value("企业")
+                                                .build()))
+                        .sorts(
+                                List.of(
+                                        FlatSortItem.builder()
+                                                .tableName("info")
+                                                .columnName("id")
+                                                .direction("DESC")
+                                                .build()))
+                        .build();
+
+        ModuleDataNode rootNode = commonAggregateService.queryList(req);
+
+        assertNotNull(rootNode);
+        assertEquals(1001L, rootNode.getModuleId());
+        assertEquals(100L, rootNode.getMenuId());
+        assertEquals(2L, rootNode.getTotal());
+
+        List<DataRecordItem> recordList = rootNode.getRecord();
+        assertNotNull(recordList);
+        // 结果应该只包含 2 条记录 (CR001 的最大版本 v3，CR002 的版本 v1，CR003被丢弃)
+        assertEquals(2, recordList.size());
+
+        // CR001 只保留最大版本 v3 (id=1103)
+        assertEquals(1103L, recordList.get(0).getRow().get("info.id"));
+        assertEquals("CR001", recordList.get(0).getRow().get("info.business_no"));
+        assertEquals("阿里", recordList.get(0).getRow().get("info.company_name"));
+        // 核心断言：未在 MenuTableSpec.columns 中请求的 version_no 不返回
+        assertNull(recordList.get(0).getRow().get("info.version_no"));
+
+        // CR002 保留版本 v1 (id=1201)
+        assertEquals(1201L, recordList.get(1).getRow().get("info.id"));
+        assertEquals("CR002", recordList.get(1).getRow().get("info.business_no"));
+
+        // 验证没有子模块时 children 为 null (不会渲染出空列表 "children": [])
+        assertNull(recordList.get(0).getChildren());
+        assertNull(recordList.get(1).getChildren());
+
+        // 验证调用了 2 次 queryList，并且没有调用 queryPage
+        verify(dataApi, times(2)).queryList(any());
+        verify(dataApi, never()).queryPage(any());
+    }
+
+    @Test
+    @DisplayName("测试 queryList 携带子模块数据时，子模块 ModuleDataNode 正确带出 menuId，且叶子记录 children 为空不渲染")
+    void testQueryList_withSubModule_carriesMenuIdAndOmitsEmptyChildren() throws Exception {
+        when(openMenuApi.getModuleIdByMenuId(100L)).thenReturn(1001L);
+        when(openMenuApi.getModuleIdByMenuId(200L)).thenReturn(1002L);
+
+        // 阶段 1：主表查询
+        DataRow mainRow = new DataRow();
+        mainRow.putTable("info", Map.of("id", 101L, "business_no", "CR100", "company_name", "主企业"));
+
+        // 子模块数据
+        DataRow subRow = new DataRow();
+        subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L));
+        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        mainRow.setChildren(List.of(subBlock));
+
+        DataBlock stage1Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage3Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+
+        when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
+        when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
+
+        MenuListReq req =
+                MenuListReq.builder()
+                        .tables(
+                                List.of(
+                                        MenuTableSpec.builder()
+                                                .menuId(100L)
+                                                .tableName("info")
+                                                .columns(
+                                                        List.of(
+                                                                "id",
+                                                                "business_no",
+                                                                "company_name"))
+                                                .build(),
+                                        MenuTableSpec.builder()
+                                                .menuId(200L)
+                                                .tableName("basic_info")
+                                                .columns(List.of("id", "company_id"))
+                                                .build()))
+                        .build();
+
+        ModuleDataNode resultNode = commonAggregateService.queryList(req);
+        assertNotNull(resultNode);
+        assertEquals(1001L, resultNode.getModuleId());
+        assertEquals(100L, resultNode.getMenuId());
+        assertEquals(1L, resultNode.getTotal());
+
+        List<DataRecordItem> result = resultNode.getRecord();
+        assertNotNull(result);
+        assertEquals(1, result.size());
+
+        DataRecordItem rootItem = result.get(0);
+        assertNotNull(rootItem.getChildren());
+        assertEquals(1, rootItem.getChildren().size());
+
+        ModuleDataNode subNode = rootItem.getChildren().get(0);
+        assertEquals(1002L, subNode.getModuleId());
+        // 核心断言 1：子模块成功带出 menuId = 200
+        assertEquals(200L, subNode.getMenuId());
+        assertNotNull(subNode.getRecord());
+        assertEquals(1, subNode.getRecord().size());
+
+        DataRecordItem subItem = subNode.getRecord().get(0);
+        // 核心断言 2：叶子节点 children 为 null
+        assertNull(subItem.getChildren());
+
+        // 核心断言 3：Jackson 序列化时不包含 "children": []
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+        String json = mapper.writeValueAsString(resultNode);
+        assertFalse(json.contains("\"children\":[]"), "JSON 中不应该出现空列表 children: []");
+        assertTrue(json.contains("\"menuId\":200"), "JSON 中应该包含子模块的 menuId");
+        assertTrue(json.contains("\"menuId\":100"), "JSON 中顶层应该包含根模块的 menuId");
+    }
+
+    @Test
+    @DisplayName("测试 queryList 未请求子模块时，自动过滤掉无关子模块数据与无关物理表列")
+    void testQueryList_filterUnrelatedTablesAndColumns() {
+        when(openMenuApi.getModuleIdByMenuId(100L)).thenReturn(1001L);
+
+        // 主表数据包含已请求的 company_name，以及未请求的 extra_col 和附加表 extra_table
+        DataRow mainRow = new DataRow();
+        mainRow.putTable(
+                "info",
+                Map.of(
+                        "id", 101L,
+                        "business_no", "CR100",
+                        "company_name", "主企业",
+                        "extra_col", "无关字段值"));
+        mainRow.putTable("unrelated_table", Map.of("unrelated_field", "无关表数据"));
+
+        // 子模块数据 (未在 tables 中请求)
+        DataRow subRow = new DataRow();
+        subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L));
+        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        mainRow.setChildren(List.of(subBlock));
+
+        DataBlock stage1Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage3Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+
+        when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
+        when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
+
+        // 仅请求 info 表的 id, business_no, company_name
+        MenuListReq req =
+                MenuListReq.builder()
+                        .tables(
+                                List.of(
+                                        MenuTableSpec.builder()
+                                                .menuId(100L)
+                                                .tableName("info")
+                                                .columns(
+                                                        List.of(
+                                                                "id",
+                                                                "business_no",
+                                                                "company_name"))
+                                                .build()))
+                        .build();
+
+        ModuleDataNode resultNode = commonAggregateService.queryList(req);
+        assertNotNull(resultNode);
+        assertEquals(1, resultNode.getRecord().size());
+
+        DataRecordItem rootItem = resultNode.getRecord().get(0);
+        // 验证请求的字段存在
+        assertEquals(101L, rootItem.getRow().get("info.id"));
+        assertEquals("CR100", rootItem.getRow().get("info.business_no"));
+        assertEquals("主企业", rootItem.getRow().get("info.company_name"));
+
+        // 验证未请求的字段被过滤
+        assertNull(rootItem.getRow().get("info.extra_col"));
+        // 验证未请求的表被过滤
+        assertNull(rootItem.getRow().get("unrelated_table.unrelated_field"));
+        // 验证未请求的子模块被过滤，children 为 null
+        assertNull(rootItem.getChildren());
+    }
+
+    @Test
+    @DisplayName("测试 queryList 请求子菜单时上溯到根模块并在顶层返回子菜单ModuleDataNode")
+    void testQueryList_requestChildMenuReturnsChildModuleAsTopLevel() throws Exception {
+        when(openMenuApi.getModuleIdByMenuId(26L)).thenReturn(1002L);
+
+        // 主表数据
+        DataRow mainRow = new DataRow();
+        mainRow.putTable(
+                "info",
+                Map.of(
+                        "id", 101L,
+                        "business_no", "CR100",
+                        "company_name", "主企业"));
+
+        // 子模块数据 (basic_info / company_contact)
+        DataRow subRow = new DataRow();
+        subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L, "contact_name", "张三"));
+        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        mainRow.setChildren(List.of(subBlock));
+
+        DataBlock stage1Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage3Block =
+                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+
+        when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
+        when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
+
+        MenuListReq req =
+                MenuListReq.builder()
+                        .tables(
+                                List.of(
+                                        MenuTableSpec.builder()
+                                                .menuId(26L)
+                                                .tableName("basic_info")
+                                                .columns(List.of("id", "contact_name"))
+                                                .build()))
+                        .build();
+
+        ModuleDataNode resultNode = commonAggregateService.queryList(req);
+        assertNotNull(resultNode);
+        // 核心断言 1：顶层为子菜单与子模块
+        assertEquals(1002L, resultNode.getModuleId());
+        assertEquals(26L, resultNode.getMenuId());
+        assertEquals(1L, resultNode.getTotal());
+        assertNotNull(resultNode.getRecord());
+        assertEquals(1, resultNode.getRecord().size());
+
+        // 核心断言 2：顶层 record 直接是 basic_info 的数据行
+        DataRecordItem item = resultNode.getRecord().get(0);
+        assertEquals(501L, item.getRow().get("basic_info.id"));
+        assertEquals("张三", item.getRow().get("basic_info.contact_name"));
+        // 核心断言 3：没有更下级子模块时 children 为 null
+        assertNull(item.getChildren());
+
+        // 核心断言 4：序列化 JSON 结构顶层为 menuId: 26
+        com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+        String json = mapper.writeValueAsString(resultNode);
+        assertTrue(json.contains("\"menuId\":26"));
+        assertTrue(json.contains("\"moduleId\":1002"));
+        assertFalse(json.contains("\"moduleId\":1001"), "顶层及内容不应该再包含根模块 1001 节点");
     }
 }

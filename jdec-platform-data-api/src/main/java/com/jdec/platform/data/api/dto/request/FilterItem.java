@@ -54,6 +54,19 @@ public class FilterItem implements Serializable {
         return eq(null, columnName, value);
     }
 
+    public static FilterItem neq(String tableName, String columnName, Object value) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("NEQ")
+                .value(value)
+                .build();
+    }
+
+    public static FilterItem neq(String columnName, Object value) {
+        return neq(null, columnName, value);
+    }
+
     public static FilterItem like(String tableName, String columnName, Object value) {
         return FilterItem.builder()
                 .tableName(tableName)
@@ -61,6 +74,10 @@ public class FilterItem implements Serializable {
                 .operator("LIKE")
                 .value(value)
                 .build();
+    }
+
+    public static FilterItem like(String columnName, Object value) {
+        return like(null, columnName, value);
     }
 
     public static FilterItem in(String tableName, String columnName, Object value) {
@@ -72,12 +89,133 @@ public class FilterItem implements Serializable {
                 .build();
     }
 
+    public static FilterItem in(String columnName, Object value) {
+        return in(null, columnName, value);
+    }
+
+    public static FilterItem notIn(String tableName, String columnName, Object value) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("NOT_IN")
+                .value(value)
+                .build();
+    }
+
+    public static FilterItem notIn(String columnName, Object value) {
+        return notIn(null, columnName, value);
+    }
+
+    public static FilterItem gt(String tableName, String columnName, Object value) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("GT")
+                .value(value)
+                .build();
+    }
+
+    public static FilterItem gt(String columnName, Object value) {
+        return gt(null, columnName, value);
+    }
+
+    public static FilterItem gte(String tableName, String columnName, Object value) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("GTE")
+                .value(value)
+                .build();
+    }
+
+    public static FilterItem gte(String columnName, Object value) {
+        return gte(null, columnName, value);
+    }
+
+    public static FilterItem lt(String tableName, String columnName, Object value) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("LT")
+                .value(value)
+                .build();
+    }
+
+    public static FilterItem lt(String columnName, Object value) {
+        return lt(null, columnName, value);
+    }
+
+    public static FilterItem lte(String tableName, String columnName, Object value) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("LTE")
+                .value(value)
+                .build();
+    }
+
+    public static FilterItem lte(String columnName, Object value) {
+        return lte(null, columnName, value);
+    }
+
+    public static FilterItem isNull(String tableName, String columnName) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("IS_NULL")
+                .build();
+    }
+
+    public static FilterItem isNull(String columnName) {
+        return isNull(null, columnName);
+    }
+
+    public static FilterItem isNotNull(String tableName, String columnName) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("IS_NOT_NULL")
+                .build();
+    }
+
+    public static FilterItem isNotNull(String columnName) {
+        return isNotNull(null, columnName);
+    }
+
+    public static FilterItem between(
+            String tableName, String columnName, Object lower, Object upper) {
+        return FilterItem.builder()
+                .tableName(tableName)
+                .columnName(columnName)
+                .operator("BETWEEN")
+                .value(java.util.List.of(lower, upper))
+                .build();
+    }
+
+    public static FilterItem between(String columnName, Object lower, Object upper) {
+        return between(null, columnName, lower, upper);
+    }
+
     public static FilterItem and(List<FilterItem> children) {
         return FilterItem.builder().logic("AND").children(children).build();
     }
 
+    public static FilterItem and(FilterItem... children) {
+        return and(
+                children != null
+                        ? java.util.Arrays.asList(children)
+                        : java.util.Collections.emptyList());
+    }
+
     public static FilterItem or(List<FilterItem> children) {
         return FilterItem.builder().logic("OR").children(children).build();
+    }
+
+    public static FilterItem or(FilterItem... children) {
+        return or(
+                children != null
+                        ? java.util.Arrays.asList(children)
+                        : java.util.Collections.emptyList());
     }
 
     /** 将当前 FilterItem 转换为统一规范的 Predicate AST */
