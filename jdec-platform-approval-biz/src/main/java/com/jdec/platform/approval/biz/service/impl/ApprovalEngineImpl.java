@@ -81,6 +81,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 && "save".equals(approvalProcessDTO.getButton())
                 && Objects.isNull(approvalBusiness)) {
             businessSaveSubmit(approvalProcessDTO);
+            return;
         }
         if (Objects.nonNull(event.getButton()) && "submit".equals(approvalProcessDTO.getButton())) {
             if (Objects.isNull(approvalBusiness)) {
