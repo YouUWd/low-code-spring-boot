@@ -147,18 +147,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
             result.put("approvalStatus", approvalStatus);
             // 是否草稿
             result.put("approvalChainStatus", approvalChainStatus);
-            if (approvalChainStatus) {
-                result.putAll(approvalEngine.getApprovalData(rootModuleId, recordId, btnType));
-            } else {
-                // 是否可以保存提交
-                Long userId =
-                        Objects.nonNull(UserContext.getMockUserId())
-                                ? UserContext.getMockUserId()
-                                : UserContext.getRealUserId();
-                if (recordData.get("created_by").equals(userId)
-                        && recordData.get("business_status").equals(1)) result.put("canEdit", 1);
-                else result.put("canEdit", 0);
-            }
+            result.putAll(approvalEngine.getApprovalData(rootModuleId, recordId, btnType));
         }
         return result;
     }
