@@ -368,7 +368,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                         continue;
                     }
                     // 修改了
-                    String[] field = key.split(".");
+                    String[] field = key.split("\\.");
                     boolean canUpdate =
                             sysModuleCombineInfo
                                     .getUpdateFields()

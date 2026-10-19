@@ -29,6 +29,9 @@ public class DynamicSaveReqContext implements Serializable {
     // 根模块对应的主表数据的版本
     private Integer rootModuleMainTableDataVersion;
 
+    // 结构上的根模块ID
+    private Long structureRootModuleId;
+
     // 事务DSL
     private DSLContext txDsl;
 

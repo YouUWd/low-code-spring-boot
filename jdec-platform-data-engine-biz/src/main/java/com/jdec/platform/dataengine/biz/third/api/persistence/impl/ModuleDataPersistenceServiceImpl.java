@@ -11,7 +11,6 @@ import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleDataPostContext;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.RelationType;
@@ -19,11 +18,9 @@ import com.jdec.platform.dataengine.biz.enums.SaveButtonType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
-import com.jdec.platform.dataengine.biz.third.api.persistence.post.ModuleDataSavePostFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -42,8 +39,6 @@ import org.springframework.stereotype.Service;
 public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceService {
     private final JooqDataContextFactory jooqContextFactory;
 
-    private final ModuleDataSavePostFactoryService moduleDataSavePostFactoryService;
-
     private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
 
     public Long save(ModuleDataStoreDTO req) {
@@ -53,6 +48,13 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         SaveType finalSaveType = req.getSaveType();
         Map<Long, SysModuleCombineInfo> moduleCacheMap = req.getModuleCacheMap();
         NestedModuleDataDTO nestedStoreData = req.getParamData();
+
+        // 配置上的根模块ID
+        Long rootModuleId = req.getRootModuleId();
+
+        // 保存参数上 结构上的 根模块ID
+        Long structureRootModuleId = req.getStructureRootModuleId();
+
         AtomicReference<Long> rootModuleMainTableDataId = new AtomicReference<>();
         Long actionId = null;
         try {
@@ -68,8 +70,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
 
                                     Queue<DynamicSaveReqContext> saveReqQueue = new LinkedList<>();
 
-                                    Long rootModuleId = nestedStoreData.getModuleId();
-
                                     // 根模块数据 没有父模块和父模块主表ID
                                     saveReqQueue.add(
                                             DynamicSaveReqContext.builder()
@@ -77,6 +77,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                                     .parentModuleId(null)
                                                     .parentModuleMainTableDataId(null)
                                                     .rootModuleId(rootModuleId) // 第一层的 根模块就是自己的模块ID
+                                                    .structureRootModuleId(structureRootModuleId)
                                                     .rootModuleMainTableDataId(null)
                                                     .rootModuleMainTableDataVersion(null)
                                                     .txDsl(txDsl)
@@ -97,9 +98,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                                                 .getRecord())) {
                                             continue;
                                         }
-
-                                        Long currentModuleId =
-                                                currentReq.getNestedModuleData().getModuleId();
 
                                         // 保存当前 模块数据 第一次进来  NestedModuleDataDTO.record 只有一条数据
                                         for (RecordDataDTO recordDataDTO :
@@ -167,24 +165,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                 }
                             });
 
-            if (!isRelatedApproval && SaveType.SAVE.equals(finalSaveType)) {
-                moduleDataSavePostFactoryService.postProcess(
-                        ModuleDataPostContext.builder()
-                                .actionId(actionId)
-                                .subjectId(AppContext.getSubjectId())
-                                .projectNo(AppContext.getProjectNo())
-                                .realUserId(UserContext.getRealUserId())
-                                .userId(UserContext.getUserId())
-                                .mockUserId(UserContext.getMockUserId())
-                                .roleId(UserContext.getRoleId())
-                                .saveType(finalSaveType)
-                                .nestedModuleDataDTO(nestedStoreData)
-                                .changeMap(ModuleDataSaveContextHolder.getRowChange())
-                                .moduleCacheMap(moduleCacheMap)
-                                .requestContextSnapshot(RequestContextSnapshotHolder.get())
-                                .loginUser(UserContext.getLoginUser())
-                                .build());
-            }
         } catch (Exception e) {
             throw e;
         } finally {
@@ -299,7 +279,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
             DynamicSaveReqContext currentReq,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
 
-        // 获取模块元数据
+        // 获取当前要保存模块元数据,从数据上拿
         SysModuleCombineInfo sysModuleCompleteResp =
                 moduleCacheMap.get(currentReq.getNestedModuleData().getModuleId());
         //
@@ -321,14 +301,12 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                     "模块id={},name={}记录数据为空",
                     sysModuleCompleteResp.getModuleInfo().getModuleId(),
                     sysModuleCompleteResp.getModuleInfo().getModuleName());
-            //            throw new BusinessException(
-            //                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
-            //                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
             return 0L;
         }
         // 首先 写入当前 模块 主表的数据,主表数据 只有一行
         DataSaveResult primaryDataSaveResult =
-                saveModulePrimaryTableData(recordDataDTO, sysModuleCompleteResp, currentReq);
+                saveModulePrimaryTableData(
+                        recordDataDTO, sysModuleCompleteResp, currentReq, moduleCacheMap);
         Long primaryTableId = primaryDataSaveResult.getDataId();
 
         if (primaryTableId == null || primaryTableId.equals(0L)) {
@@ -338,27 +316,11 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         // 在写入当前模块 关联的表数据
         List<DataSaveResult> relatedDataSaveResult =
                 saveModuleRelatedTableData(
-                        recordDataDTO, sysModuleCompleteResp, primaryTableId, currentReq);
-
-        // 合并两张表的变更记录
-        if (!currentReq.isApproval() && SaveType.SAVE.equals(currentReq.getSaveType())) {
-            List<RowChangeDTO> rowChangeDTOList = new ArrayList<>();
-            if (CollectionUtil.isNotEmpty(relatedDataSaveResult)) {
-                for (DataSaveResult dataSaveResult : relatedDataSaveResult) {
-                    if (dataSaveResult.getRowChange() != null) {
-                        rowChangeDTOList.add(dataSaveResult.getRowChange());
-                    }
-                }
-            }
-            RowChangeDTO combinedRowChange =
-                    DataPersistenceUtil.combineRowChanges(
-                            primaryDataSaveResult.getRowChange(), rowChangeDTOList);
-            // recordDataDTO.setRowChanges(combinedRowChange);
-            ModuleDataSaveContextHolder.addRowChange(
-                    sysModuleCompleteResp.getModuleInfo().getModuleId(),
-                    primaryTableId,
-                    combinedRowChange);
-        }
+                        recordDataDTO,
+                        sysModuleCompleteResp,
+                        primaryTableId,
+                        currentReq,
+                        moduleCacheMap);
         return primaryTableId;
     }
 
@@ -372,7 +334,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
     private DataSaveResult saveModulePrimaryTableData(
             RecordDataDTO recordDataDTO,
             SysModuleCombineInfo sysModuleCompleteResp,
-            DynamicSaveReqContext currentReq) {
+            DynamicSaveReqContext currentReq,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
 
         Map<String, Object> parentLevelTableAssociationMap = new HashMap<>();
         boolean isRootModule = false;
@@ -429,6 +392,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         .rootModuleId(currentReq.getRootModuleId())
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
+                        .moduleCacheMap(moduleCacheMap)
                         .userId(UserContext.getUserId())
                         .subjectId(AppContext.getSubjectId())
                         .saveType(currentReq.getSaveType())
@@ -499,7 +463,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
             RecordDataDTO recordDataDTO,
             SysModuleCombineInfo sysModuleCompleteResp,
             Long modulePrimaryTableId,
-            DynamicSaveReqContext currentReq) {
+            DynamicSaveReqContext currentReq,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         Set<String> tables = sysModuleCompleteResp.getSubTables();
         List<DataSaveResult> dataSaveResultList = new ArrayList<>();
         if (CollectionUtil.isEmpty(tables)) {
