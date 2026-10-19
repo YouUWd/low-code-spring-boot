@@ -58,6 +58,7 @@ class CompanyMenuQueryContractTest {
     private SysStatusApi sysStatusApi;
     private OpenRolePermissionApi openRolePermissionApi;
 
+    private CommonFilterResolver commonFilterResolver;
     private CommonAggregateServiceImpl commonAggregateService;
 
     private ModuleTreeDTO companyModuleTree;
@@ -79,6 +80,18 @@ class CompanyMenuQueryContractTest {
         sysUserApi = mock(SysUserApi.class);
         sysStatusApi = mock(SysStatusApi.class);
         openRolePermissionApi = mock(OpenRolePermissionApi.class);
+        commonFilterResolver = mock(CommonFilterResolver.class);
+
+        CommonFilterResolver.PrimaryFilterResult dummyResult =
+                CommonFilterResolver.PrimaryFilterResult.of(
+                        Collections.emptyList(), Collections.emptyList());
+        when(commonFilterResolver.resolveTodoFilters(any(), any(), any())).thenReturn(dummyResult);
+        when(commonFilterResolver.resolveDoneFilters(any(), any())).thenReturn(dummyResult);
+        when(commonFilterResolver.resolveAllFilters(any(), any(), any())).thenReturn(dummyResult);
+        when(commonFilterResolver.resolveDefaultFilters(any(), any())).thenReturn(dummyResult);
+        when(commonFilterResolver.resolvePrimaryFilters(
+                        any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(dummyResult);
 
         commonAggregateService =
                 new CommonAggregateServiceImpl(
@@ -86,14 +99,11 @@ class CompanyMenuQueryContractTest {
                         openMenuApi,
                         configApi,
                         dataApi,
-                        new CommonFilterResolver(
-                                approvalEngine,
-                                sysApprovalChainConfigApi,
-                                configApi,
-                                openRolePermissionApi,
-                                dataApi),
+                        commonFilterResolver,
                         sysUserApi,
-                        sysStatusApi);
+                        sysStatusApi,
+                        approvalEngine,
+                        sysApprovalChainConfigApi);
 
         initCompanyFixture();
 
@@ -700,6 +710,7 @@ class CompanyMenuQueryContractTest {
     @Test
     @DisplayName("测试待办(approvalType=1)中非审批引擎返回的自建草稿记录，btnList 成功补齐为办理(handle)")
     void testApprovalButtons_fallbackForNonEngineTodoRecords() {
+        when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
         com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp emptyResp =
                 new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
         emptyResp.setToDoList(Collections.emptyList());
@@ -1112,63 +1123,135 @@ class CompanyMenuQueryContractTest {
         when(openRolePermissionApi.getRoleDataPermissionDetail(1L))
                 .thenReturn(List.of(config1, config2, config3));
 
-        CommonFilterResolver resolver =
-                new CommonFilterResolver(
-                        approvalEngine,
-                        sysApprovalChainConfigApi,
-                        configApi,
-                        openRolePermissionApi,
-                        dataApi);
+        ArgumentCaptor<com.jdec.platform.data.api.dto.request.QueryReq> captor =
+                ArgumentCaptor.forClass(com.jdec.platform.data.api.dto.request.QueryReq.class);
+        DataRow row1 = new DataRow();
+        row1.putTable("info", Map.of("id", 101L));
+        DataRow row2 = new DataRow();
+        row2.putTable("info", Map.of("id", 102L));
+        when(dataApi.queryList(captor.capture()))
+                .thenReturn(
+                        DataBlock.builder().moduleId(1001L).records(List.of(row1, row2)).build());
 
-        var filterItem = resolver.buildDataPermissionFilters(companyModuleTree);
-        assertNotNull(filterItem);
-        List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem;
-        assertEquals(5, filters.size());
+        DataPermissionConditionResolver resolver =
+                new DataPermissionConditionResolver(openRolePermissionApi, dataApi);
 
-        // 1. info: subjectCheckAll = 1 -> info.subject_id = 101
-        var f1 = filters.get(0);
-        assertEquals("info", f1.getTableName());
-        assertEquals("subject_id", f1.getColumnName());
-        assertEquals("EQ", f1.getOperator());
-        assertEquals(101L, f1.getValue());
+        org.jooq.Condition condition =
+                resolver.resolve(companyModuleTree, companyRelations).orElse(null);
+        assertNotNull(condition);
 
-        // 2. basic_info: subjectCheckAll = 0, subjectId = 202
-        var f2 = filters.get(1);
-        assertEquals("basic_info", f2.getTableName());
-        assertEquals("subject_id", f2.getColumnName());
-        assertEquals("EQ", f2.getOperator());
-        assertEquals(202L, f2.getValue());
+        // 验证传递给 queryList 的过滤条件
+        com.jdec.platform.data.api.dto.request.QueryReq capturedReq = captor.getValue();
+        assertNotNull(capturedReq);
+        assertEquals(1001L, capturedReq.getModuleId());
+        assertNotNull(capturedReq.getFilters());
 
-        // 3. basic_info: short_name IN ('盛港焦化', '襄阳焦化')
-        var f3 = filters.get(2);
-        assertEquals("basic_info", f3.getTableName());
-        assertEquals("short_name", f3.getColumnName());
-        assertEquals("IN", f3.getOperator());
-        assertEquals(List.of("盛港焦化", "襄阳焦化"), f3.getValue());
+        // 验证主表过滤项被传递
+        assertTrue(
+                capturedReq.getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        "info".equalsIgnoreCase(f.getTableName())
+                                                && "subject_id".equalsIgnoreCase(f.getColumnName())
+                                                && Long.valueOf(101L).equals(f.getValue())));
 
-        // 4. basic_info: subjectId = 303
-        var f4 = filters.get(3);
-        assertEquals("basic_info", f4.getTableName());
-        assertEquals("subject_id", f4.getColumnName());
-        assertEquals(303L, f4.getValue());
+        // 验证子表过滤项被传递
+        assertTrue(
+                capturedReq.getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        "basic_info".equalsIgnoreCase(f.getTableName())
+                                                && "short_name".equalsIgnoreCase(f.getColumnName())
+                                                && f.getValue() instanceof List<?> l
+                                                && l.contains("盛港焦化")));
 
-        // 5. basic_info: bizNames 为空 -> short_name IN ()
-        var f5 = filters.get(4);
-        assertEquals("basic_info", f5.getTableName());
-        assertEquals("short_name", f5.getColumnName());
-        assertEquals("IN", f5.getOperator());
-        assertEquals(Collections.emptyList(), f5.getValue());
+        // 验证 unrelated_table 不会被混入
+        assertFalse(
+                capturedReq.getFilters().stream()
+                        .anyMatch(f -> "unrelated_table".equalsIgnoreCase(f.getTableName())));
 
-        // 验证：moduleTree中没有引用的表 (unrelated_table)，绝不会加入 filters
-        boolean hasUnrelatedTable =
-                filters.stream()
-                        .anyMatch(f -> "unrelated_table".equalsIgnoreCase(f.getTableName()));
-        assertFalse(hasUnrelatedTable);
+        // 验证由 queryList 匹配出的 ID 生成主表 in 条件
+        String sql = condition.toString();
+        assertTrue(
+                sql.contains("info")
+                        && sql.contains("id")
+                        && sql.contains("101")
+                        && sql.contains("102"));
     }
 
     @Test
-    @DisplayName(
-            "测试待办(approvalType=1)场景：审批待办 business_no 与 created_by=:me business_no 取并集，最后加上 AND active = 1")
+    @DisplayName("测试同名表在树中多个不同模块出现时，每个模块均生成带自身 moduleId 的 FilterItem")
+    void testDataPermissionResolution_sameTableInMultipleModules() {
+        // 构造一个包含同名物理表的模块树：模块 1002 (primaryTable: basic_info) 与 模块 1099 (primaryTable: basic_info)
+        Map<Long, ModuleInfo> multiModuleMap =
+                new LinkedHashMap<>(companyModuleTree.getModuleMap());
+        multiModuleMap.put(
+                1099L,
+                ModuleInfo.builder()
+                        .moduleId(1099L)
+                        .parentId(1001L)
+                        .primaryTable("basic_info")
+                        .build());
+
+        ModuleTreeDTO treeWithDuplicateTable =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(companyModuleTree.getRootModuleId())
+                        .rootModule(companyModuleTree.getRootModule())
+                        .moduleMap(multiModuleMap)
+                        .build();
+
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("basic_info")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(202L)
+                                                .subjectCheckAll(1)
+                                                .build()))
+                        .build();
+
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+
+        ArgumentCaptor<com.jdec.platform.data.api.dto.request.QueryReq> captor =
+                ArgumentCaptor.forClass(com.jdec.platform.data.api.dto.request.QueryReq.class);
+        when(dataApi.queryList(captor.capture()))
+                .thenReturn(
+                        DataBlock.builder()
+                                .moduleId(1001L)
+                                .records(Collections.emptyList())
+                                .build());
+
+        DataPermissionConditionResolver resolver =
+                new DataPermissionConditionResolver(openRolePermissionApi, dataApi);
+
+        resolver.resolve(treeWithDuplicateTable, companyRelations);
+
+        com.jdec.platform.data.api.dto.request.QueryReq req = captor.getValue();
+        assertNotNull(req);
+        assertNotNull(req.getFilters());
+
+        // 核心验证：同名物理表 basic_info 在两个模块中出现，必须分别为模块 1002 和 模块 1099 各自生成绑定其 moduleId 的 FilterItem
+        boolean has1002 =
+                req.getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        Long.valueOf(1002L).equals(f.getModuleId())
+                                                && "basic_info".equalsIgnoreCase(f.getTableName()));
+        boolean has1099 =
+                req.getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        Long.valueOf(1099L).equals(f.getModuleId())
+                                                && "basic_info".equalsIgnoreCase(f.getTableName()));
+
+        assertTrue(has1002, "模块 1002 必须生成针对 basic_info 的过滤项");
+        assertTrue(has1099, "模块 1099 必须生成针对 basic_info 的过滤项");
+    }
+
+    @Test
+    @DisplayName("测试待办(approvalType=1)场景：审批待办 business_no 传递至 resolveTodoFilters")
     void testApprovalType1_withoutDataPermission() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
@@ -1184,61 +1267,17 @@ class CompanyMenuQueryContractTest {
         resp.setToDoList(List.of(btn101));
         when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
 
-        // 2. 模拟 DataApi 查询 created_by = :me AND business_status = 1 抽取出的 business_no: CR002
-        when(dataApi.querySingleTableColumn(
-                        argThat(
-                                r ->
-                                        r != null
-                                                && r.getFilters() != null
-                                                && r.getFilters().stream()
-                                                        .anyMatch(
-                                                                f ->
-                                                                        "business_status"
-                                                                                        .equals(
-                                                                                                f
-                                                                                                        .getColumnName())
-                                                                                && Integer.valueOf(
-                                                                                                1)
-                                                                                        .equals(
-                                                                                                f
-                                                                                                        .getValue()))),
-                        eq(String.class)))
-                .thenReturn(List.of("CR002"));
+        // 执行查询
+        commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().approvalType(1).build());
 
-        CommonFilterResolver resolver =
-                new CommonFilterResolver(
-                        approvalEngine,
-                        sysApprovalChainConfigApi,
-                        configApi,
-                        openRolePermissionApi,
-                        dataApi);
-
-        var filterItem = resolver.resolveApprovalFilters(1001L, 1, companyModuleTree);
-        assertNotNull(filterItem);
-        assertFalse(filterItem.shortCircuitEmpty());
-
-        // 验证结果包含 2 个条件：主表 business_no IN ('CR001', 'CR002') AND 主表 active = 1
-        List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
-        assertEquals(2, filters.size());
-
-        var bFilter = filters.get(0);
-        assertEquals("info", bFilter.getTableName());
-        assertEquals("business_no", bFilter.getColumnName());
-        assertEquals("IN", bFilter.getOperator());
-        @SuppressWarnings("unchecked")
-        List<String> bNos = (List<String>) bFilter.getValue();
-        assertTrue(bNos.containsAll(List.of("CR001", "CR002")));
-
-        var aFilter = filters.get(1);
-        assertEquals("info", aFilter.getTableName());
-        assertEquals("active", aFilter.getColumnName());
-        assertEquals("EQ", aFilter.getOperator());
-        assertEquals(1, aFilter.getValue());
+        // 验证 CommonAggregateServiceImpl 精准向 CommonFilterResolver 编排传递语义化待办方法
+        verify(commonFilterResolver)
+                .resolveTodoFilters(
+                        eq(companyModuleTree), eq(companyRelations), eq(List.of("CR001")));
     }
 
     @Test
-    @DisplayName(
-            "测试全部(approvalType=3)场景：审批全部单据、created_by=:me 单据与数据权限单据三者 business_no 取并集，最后加上 AND active = 1")
+    @DisplayName("测试全部(approvalType=3)场景：审批全部单据、created_by 与数据权限传递至 resolveAllFilters")
     void testApprovalType3_dataPermissionIdsUnionWithApprovalIds() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
@@ -1254,55 +1293,13 @@ class CompanyMenuQueryContractTest {
         resp.setAllList(List.of(btn101));
         when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
 
-        // 2. 角色数据权限配置
-        DataRightConfigResp config =
-                DataRightConfigResp.builder()
-                        .tableName("info")
-                        .dataList(
-                                List.of(
-                                        DataRightConfigResp.DataConfig.builder()
-                                                .permissionCheckAll(0)
-                                                .subjectId(999L)
-                                                .subjectCheckAll(1)
-                                                .build()))
-                        .build();
-        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+        // 执行查询
+        commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().approvalType(3).build());
 
-        // 3. 模拟 DataApi 抽取 created_by=:me 为 CR002，数据权限为 CR003
-        when(dataApi.querySingleTableColumn(
-                        argThat(r -> r != null && "business_no".equals(r.getColumns().get(0))),
-                        eq(String.class)))
-                .thenReturn(List.of("CR002"), List.of("CR003"));
-
-        CommonFilterResolver resolver =
-                new CommonFilterResolver(
-                        approvalEngine,
-                        sysApprovalChainConfigApi,
-                        configApi,
-                        openRolePermissionApi,
-                        dataApi);
-
-        var filterItem = resolver.resolveApprovalFilters(1001L, 3, companyModuleTree);
-        assertNotNull(filterItem);
-        assertFalse(filterItem.shortCircuitEmpty());
-
-        // 验证三者取并集：business_no IN ('CR001', 'CR002', 'CR003') AND active = 1
-        List<com.jdec.platform.data.api.dto.request.FilterItem> filters = filterItem.filters();
-        assertEquals(2, filters.size());
-
-        var bFilter = filters.get(0);
-        assertEquals("info", bFilter.getTableName());
-        assertEquals("business_no", bFilter.getColumnName());
-        assertEquals("IN", bFilter.getOperator());
-        @SuppressWarnings("unchecked")
-        List<String> allNos = (List<String>) bFilter.getValue();
-        assertTrue(allNos.containsAll(List.of("CR001", "CR002", "CR003")));
-
-        var aFilter = filters.get(1);
-        assertEquals("info", aFilter.getTableName());
-        assertEquals("active", aFilter.getColumnName());
-        assertEquals("EQ", aFilter.getOperator());
-        assertEquals(1, aFilter.getValue());
+        // 验证 CommonAggregateServiceImpl 精准向 CommonFilterResolver 编排传递语义化全部方法
+        verify(commonFilterResolver)
+                .resolveAllFilters(
+                        eq(companyModuleTree), eq(companyRelations), eq(List.of("CR001")));
     }
 
     @Test
@@ -1445,7 +1442,7 @@ class CompanyMenuQueryContractTest {
         // CR001 只保留最大版本 v3 (id=1103)
         assertEquals(1103L, recordList.get(0).getRow().get("info.id"));
         assertEquals("CR001", recordList.get(0).getRow().get("info.business_no"));
-        assertEquals("阿里", recordList.get(0).getRow().get("info.company_name"));
+        assertEquals("企业001-v3(启用)", recordList.get(0).getRow().get("info.company_name"));
         // 核心断言：未在 MenuTableSpec.columns 中请求的 version_no 不返回
         assertNull(recordList.get(0).getRow().get("info.version_no"));
 

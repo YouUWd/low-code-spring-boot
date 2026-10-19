@@ -1,5 +1,8 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
+import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.FieldSortItem;
 import com.jdec.platform.common.api.dto.request.MenuFlatFieldFilterItem;
@@ -8,6 +11,7 @@ import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.response.*;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
+import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.common.*;
@@ -43,13 +47,21 @@ import org.springframework.util.CollectionUtils;
 @RequiredArgsConstructor
 public class CommonAggregateServiceImpl implements CommonAggregateService {
 
+    // 标准业务操作按钮定义 (单例共享，避免每行重复分配 Map 对象)
+    private static final List<Map<String, Object>> HANDLE_BUTTONS =
+            List.of(Map.of("buttonKey", "handle", "buttonName", "办理"));
+    private static final List<Map<String, Object>> VIEW_BUTTONS =
+            List.of(Map.of("buttonKey", "view", "buttonName", "查阅"));
+
     private final UserMenuHeaderApi userMenuHeaderApi;
     private final OpenMenuApi openMenuApi;
     private final ConfigApi configApi;
     private final DataApi dataApi;
-    private final CommonFilterResolver approvalFilterResolver;
+    private final CommonFilterResolver commonFilterResolver;
     private final SysUserApi sysUserApi;
     private final SysStatusApi sysStatusApi;
+    private final IApprovalEngine approvalEngine;
+    private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
 
     @Override
     public MenuDataResp queryByMenu(Long menuId, MenuQueryReq req) {
@@ -57,8 +69,21 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new IllegalArgumentException("菜单 ID 不能为空");
         }
 
+        long queryStart = System.currentTimeMillis();
         Long userId = getEffectiveUserId();
         Long roleId = UserContext.getRoleId();
+        Integer approvalType = req != null ? req.getApprovalType() : null;
+        int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
+        int pageSize = (req != null && req.getPageSize() != null) ? req.getPageSize() : 20;
+
+        log.info(
+                "[PageQuery-Start] 接收菜单分页查询请求: menuId={}, pageNo={}, pageSize={}, approvalType={}, userId={}, roleId={}",
+                menuId,
+                pageNo,
+                pageSize,
+                approvalType,
+                userId,
+                roleId);
 
         // 1. 获取用户在该菜单下的个性化表头展示配置 (用于提取已勾选字段与多级表头)
         MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
@@ -86,8 +111,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 branchCache);
 
         // 2. 将菜单元数据 fieldId 转换为 data-api 的物理表/列请求
-        int pageNo = (req != null && req.getPageNo() != null) ? req.getPageNo() : 1;
-        int pageSize = (req != null && req.getPageSize() != null) ? req.getPageSize() : 20;
         List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
         List<com.jdec.platform.data.api.dto.request.FilterItem> finalFilters =
                 req != null
@@ -104,12 +127,25 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         : null;
 
         // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
-        Integer approvalType = req != null ? req.getApprovalType() : null;
-        CommonFilterResolver.ApprovalFilterItem approvalFilter =
-                approvalFilterResolver.resolveApprovalFilters(
-                        rootModuleId, approvalType, moduleTree);
+        boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
+        Long currentUserId = getEffectiveUserId();
 
-        if (approvalFilter.shortCircuitEmpty()) {
+        log.info(
+                "[PageQuery-Context] 菜单关联根模块及主表: menuId={}, rootModuleId={}, primaryTable={}, approvalEnabled={}",
+                menuId,
+                rootModuleId,
+                primaryTable,
+                approvalEnabled);
+
+        CommonFilterResolver.PrimaryFilterResult filterResult =
+                resolveFiltersForQuery(moduleTree, projectRelations, approvalType, approvalEnabled);
+
+        if (filterResult.isEmpty()) {
+            log.info(
+                    "[PageQuery-ShortCircuit] 主表权限/审批过滤结果为空，短路直接返回空页面: menuId={}, rootModuleId={}, primaryTable={}",
+                    menuId,
+                    rootModuleId,
+                    primaryTable);
             ModuleDataNode emptyNode =
                     ModuleDataNode.builder()
                             .moduleId(rootModuleId)
@@ -119,17 +155,18 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             .build();
 
             List<ApprovalRowItem> emptyApprovalRows =
-                    approvalFilter.btnMap() != null ? Collections.emptyList() : null;
+                    approvalEnabled ? Collections.emptyList() : null;
 
             return assembleMenuDataResp(
                     headerRoot, menuId, rootModuleId, roleId, emptyNode, emptyApprovalRows);
         }
 
-        if (!approvalFilter.filters().isEmpty()) {
-            finalFilters.addAll(approvalFilter.filters());
+        if (!filterResult.filters().isEmpty()) {
+            finalFilters.addAll(filterResult.filters());
         }
 
         // 4. 调用底层低代码数据引擎进行分页查询
+        long queryPageStart = System.currentTimeMillis();
         DataPage<DataBlock> rawDataPage =
                 dataApi.queryPage(
                         PageQueryReq.builder()
@@ -140,12 +177,28 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 .pageNo(pageNo)
                                 .pageSize(pageSize)
                                 .build());
+        long queryPageCost = System.currentTimeMillis() - queryPageStart;
 
         // 5. 将 DataRow 数据集结构转换为自相似同构树节点 ModuleDataNode 与 ApprovalRowItem 列表
         Long total =
                 (rawDataPage != null && rawDataPage.getTotal() != null)
                         ? rawDataPage.getTotal()
                         : 0L;
+        int rowCount =
+                (rawDataPage != null && rawDataPage.getRecords() != null)
+                        ? rawDataPage.getRecords().size()
+                        : 0;
+
+        log.info(
+                "[PageQuery-Execute] 底层低代码数据引擎分页查询完成: menuId={}, rootModuleId={}, 耗时={}ms, total={}, 当前页行数={}, pageNo={}, pageSize={}",
+                menuId,
+                rootModuleId,
+                queryPageCost,
+                total,
+                rowCount,
+                pageNo,
+                pageSize);
+
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
@@ -154,11 +207,19 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .record(new ArrayList<>())
                         .build();
 
-        List<ApprovalRowItem> approvalRows =
-                approvalFilter.btnMap() != null ? new ArrayList<>() : null;
+        List<ApprovalRowItem> approvalRows = approvalEnabled ? new ArrayList<>() : null;
 
         if (rawDataPage != null && rawDataPage.getRecords() != null) {
             enhanceDataRows(rawDataPage.getRecords(), rootModuleId, primaryTable);
+
+            // 若为全部(type=3)，预先拉取待办列表以准确区分每行是“办理”还是“查阅”
+            Set<String> todoNos = null;
+            Set<Long> todoIds = null;
+            if (approvalEnabled && approvalType != null && approvalType == 3) {
+                todoNos = new HashSet<>(getApprovalBusinessNos(rootModuleId, 1));
+                todoIds = new HashSet<>(getApprovalRecordIds(rootModuleId, 1));
+            }
+
             for (DataRow rawRow : rawDataPage.getRecords()) {
                 if (rawRow == null) {
                     continue;
@@ -173,24 +234,48 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         businessNo = rawRow.getString(primaryTable, "businessNo");
                     }
                     if (recordId != null || (businessNo != null && !businessNo.isBlank())) {
-                        List<Map<String, Object>> btns = null;
-                        if (businessNo != null && !businessNo.isBlank()) {
-                            btns = approvalFilter.btnMap().get(businessNo);
+                        List<Map<String, Object>> btns;
+                        if (approvalType != null && approvalType == 1) {
+                            // 待办全为办理
+                            btns = HANDLE_BUTTONS;
+                        } else if (approvalType != null && approvalType == 2) {
+                            // 已办全为查阅
+                            btns = VIEW_BUTTONS;
+                        } else {
+                            // 全部 (type=3) 或默认：
+                            // 若记录在待办单据中，或者是由当前登录人创建的草稿 (business_status=1)，则为办理(handle)，否则为查阅(view)
+                            boolean isTodoRecord =
+                                    (businessNo != null
+                                                    && todoNos != null
+                                                    && todoNos.contains(businessNo))
+                                            || (recordId != null
+                                                    && todoIds != null
+                                                    && todoIds.contains(recordId));
+                            Object rawStatus = rawRow.getValue(primaryTable, "business_status");
+                            Integer bStatus = null;
+                            if (rawStatus instanceof Number) {
+                                bStatus = ((Number) rawStatus).intValue();
+                            } else if (rawStatus instanceof StatusSimpleResp) {
+                                bStatus = ((StatusSimpleResp) rawStatus).getStatusValue();
+                            }
+
+                            Object rawCreator = rawRow.getValue(primaryTable, "created_by");
+                            Long creator = null;
+                            if (rawCreator instanceof Number) {
+                                creator = ((Number) rawCreator).longValue();
+                            } else if (rawCreator instanceof UserSimpleResp) {
+                                creator = ((UserSimpleResp) rawCreator).getUserId();
+                            }
+
+                            boolean isMyDraft =
+                                    creator != null
+                                            && creator.equals(currentUserId)
+                                            && bStatus != null
+                                            && bStatus == 1;
+
+                            btns = (isTodoRecord || isMyDraft) ? HANDLE_BUTTONS : VIEW_BUTTONS;
                         }
-                        if (CollectionUtils.isEmpty(btns) && recordId != null) {
-                            btns = approvalFilter.btnMap().get(String.valueOf(recordId));
-                        }
-                        if (CollectionUtils.isEmpty(btns)) {
-                            boolean isHandle =
-                                    approvalType != null
-                                            && (approvalType == 1 || approvalType == 3);
-                            String buttonKey = isHandle ? "handle" : "view";
-                            String buttonName = isHandle ? "办理" : "查阅";
-                            Map<String, Object> defaultBtn = new LinkedHashMap<>();
-                            defaultBtn.put("buttonKey", buttonKey);
-                            defaultBtn.put("buttonName", buttonName);
-                            btns = Collections.singletonList(defaultBtn);
-                        }
+
                         Map<String, Object> rowPayload = new LinkedHashMap<>();
                         if (recordId != null) {
                             rowPayload.put("id", recordId);
@@ -206,6 +291,15 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         // 6. 组装并返回复合响应
+        log.info(
+                "[PageQuery-Finish] 分页查询组装完成: menuId={}, rootModuleId={}, 总耗时={}ms, total={}, 返回记录数={}, 审批行数={}",
+                menuId,
+                rootModuleId,
+                System.currentTimeMillis() - queryStart,
+                total,
+                rootNode.getRecord().size(),
+                approvalRows != null ? approvalRows.size() : "null(未启用审批)");
+
         return assembleMenuDataResp(
                 headerRoot, menuId, rootModuleId, roleId, rootNode, approvalRows);
     }
@@ -365,9 +459,12 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         moduleTree);
 
         // 5. 审批流与数据权限过滤注入 (默认查询全部集合: 3)
-        CommonFilterResolver.ApprovalFilterItem approvalFilter =
-                approvalFilterResolver.resolveApprovalFilters(rootModuleId, 3, moduleTree);
-        if (approvalFilter.shortCircuitEmpty()) {
+        boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
+        ProjectTableRelationsDTO projectRelations =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
+        CommonFilterResolver.PrimaryFilterResult filterResult =
+                resolveFiltersForQuery(moduleTree, projectRelations, 3, approvalEnabled);
+        if (filterResult.isEmpty()) {
             return ModuleDataNode.builder()
                     .moduleId(targetModuleId)
                     .menuId(targetMenuId)
@@ -375,8 +472,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                     .record(Collections.emptyList())
                     .build();
         }
-        if (!approvalFilter.filters().isEmpty()) {
-            finalFilters.addAll(approvalFilter.filters());
+        if (!filterResult.filters().isEmpty()) {
+            finalFilters.addAll(filterResult.filters());
         }
 
         // 6. 阶段 1：轻量级调用底层数据引擎查询主表数据，收集符合条件的 business_no 集合
@@ -882,19 +979,21 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<com.jdec.platform.data.api.dto.request.FilterItem> finalFilters =
                 PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters());
 
-        // 3. 审批流过滤注入 (1-待办, 2-已办, 3-全部)
+        // 3. 审批流与数据权限过滤注入 (1-待办, 2-已办, 3-全部)
         Integer approvalType = req.getApprovalType();
-        CommonFilterResolver.ApprovalFilterItem approvalFilter =
-                approvalFilterResolver.resolveApprovalFilters(
-                        rootModuleId, approvalType, moduleTree);
+        boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
+        ProjectTableRelationsDTO projectRelations =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
+        CommonFilterResolver.PrimaryFilterResult filterResult =
+                resolveFiltersForQuery(moduleTree, projectRelations, approvalType, approvalEnabled);
 
-        if (approvalFilter.shortCircuitEmpty()) {
+        if (filterResult.isEmpty()) {
             // 审批过滤无候选匹配时短路直接返回空候选项列表
             return Collections.emptyList();
         }
 
-        if (!approvalFilter.filters().isEmpty()) {
-            finalFilters.addAll(approvalFilter.filters());
+        if (!filterResult.filters().isEmpty()) {
+            finalFilters.addAll(filterResult.filters());
         }
 
         // 4. 构建 OptionReq 并调用底层低代码数据引擎
@@ -1635,64 +1734,284 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
         ModuleTreeDTO moduleTree =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        ProjectTableRelationsDTO projectRelations =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
 
         Long todoCount = 0L;
         Long doneCount = 0L;
         Long totalCount = 0L;
 
         // 2. 根据模块是否启用审批链分支统计
-        if (approvalFilterResolver.isApprovalChainEnabled(rootModuleId)) {
-            CommonFilterResolver.AllApprovalCountFilters countFilters =
-                    approvalFilterResolver.resolveAllApprovalCountsFilters(
-                            rootModuleId, moduleTree);
+        String primaryTable =
+                (moduleTree != null && moduleTree.getRootModule() != null)
+                        ? moduleTree.getRootModule().getPrimaryTable()
+                        : null;
+        long countStart = System.currentTimeMillis();
+        Long currentUserId = getEffectiveUserId();
 
-            // 待办 (type = 1)
-            if (countFilters.todoFilter() != null
-                    && !countFilters.todoFilter().shortCircuitEmpty()) {
+        log.info(
+                "[ApprovalCount-Start] 开始统计菜单审批角标: menuId={}, rootModuleId={}, primaryTable={}, currentUserId={}",
+                menuId,
+                rootModuleId,
+                primaryTable,
+                currentUserId);
+
+        if (isApprovalChainEnabled(rootModuleId)) {
+            ApprovalIdButtonListResp resp = null;
+            try {
+                resp = approvalEngine.getApprovalListButton(rootModuleId);
+            } catch (Exception ex) {
+                log.warn(
+                        "[ApprovalCount] 统计审批角标获取审批单据失败: rootModuleId={}, err={}",
+                        rootModuleId,
+                        ex.getMessage());
+            }
+
+            List<String> todoNos =
+                    resp != null ? extractBusinessNos(resp.getToDoList()) : Collections.emptyList();
+            List<String> doneNos =
+                    resp != null ? extractBusinessNos(resp.getDoneList()) : Collections.emptyList();
+            List<String> allNos =
+                    resp != null ? extractBusinessNos(resp.getAllList()) : Collections.emptyList();
+
+            log.info(
+                    "[ApprovalCount] 审批引擎原始单据数据: rootModuleId={}, 待办单据数={}, 已办单据数={}, 全部单据数={}",
+                    rootModuleId,
+                    todoNos.size(),
+                    doneNos.size(),
+                    allNos.size());
+
+            // 待办 (type = 1): [审批待办] OR [当前人草稿 (business_status = 1)]
+            CommonFilterResolver.PrimaryFilterResult todoResult =
+                    commonFilterResolver.resolveTodoFilters(moduleTree, projectRelations, todoNos);
+            if (!todoResult.isEmpty()) {
                 todoCount =
                         dataApi.count(
                                 QueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countFilters.todoFilter().filters())
+                                        .filters(todoResult.filters())
                                         .build());
             }
+            log.info(
+                    "[ApprovalCount-Todo] 待办角标统计完成: rootModuleId={}, 匹配主表ID数={}, 最终count={}",
+                    rootModuleId,
+                    todoResult.matchedIds().size(),
+                    todoCount);
 
-            // 已办 (type = 2)
-            if (countFilters.doneFilter() != null
-                    && !countFilters.doneFilter().shortCircuitEmpty()) {
-                doneCount =
-                        dataApi.count(
-                                QueryReq.builder()
-                                        .moduleId(rootModuleId)
-                                        .filters(countFilters.doneFilter().filters())
-                                        .build());
+            // 已办 (type = 2): 仅已办单据
+            if (!doneNos.isEmpty()) {
+                CommonFilterResolver.PrimaryFilterResult doneResult =
+                        commonFilterResolver.resolveDoneFilters(moduleTree, doneNos);
+                if (!doneResult.isEmpty()) {
+                    doneCount =
+                            dataApi.count(
+                                    QueryReq.builder()
+                                            .moduleId(rootModuleId)
+                                            .filters(doneResult.filters())
+                                            .build());
+                }
             }
+            log.info(
+                    "[ApprovalCount-Done] 已办角标统计完成: rootModuleId={}, 已办单据数={}, 最终count={}",
+                    rootModuleId,
+                    doneNos.size(),
+                    doneCount);
 
-            // 全部 (type = 3)
-            if (countFilters.allFilter() != null && !countFilters.allFilter().shortCircuitEmpty()) {
+            // 全部 (type = 3): [审批全部] OR [当前人单据] OR [数据权限]
+            CommonFilterResolver.PrimaryFilterResult allResult =
+                    commonFilterResolver.resolveAllFilters(moduleTree, projectRelations, allNos);
+            if (!allResult.isEmpty()) {
                 totalCount =
                         dataApi.count(
                                 QueryReq.builder()
                                         .moduleId(rootModuleId)
-                                        .filters(countFilters.allFilter().filters())
+                                        .filters(allResult.filters())
                                         .build());
             }
+            log.info(
+                    "[ApprovalCount-All] 全部角标统计完成: rootModuleId={}, 匹配主表ID数={}, 最终count={}",
+                    rootModuleId,
+                    allResult.matchedIds().size(),
+                    totalCount);
         } else {
-            // 未启用审批流：仅统计数据权限约束下的全部数据
-            List<com.jdec.platform.data.api.dto.request.FilterItem> dataPermFilters =
-                    approvalFilterResolver.buildDataPermissionFilters(moduleTree);
-            totalCount =
-                    dataApi.count(
-                            QueryReq.builder()
-                                    .moduleId(rootModuleId)
-                                    .filters(dataPermFilters)
-                                    .build());
+            // 未启用审批流：[当前人单据] OR [数据权限]
+            log.info(
+                    "[ApprovalCount-NoApproval] 模块未启用审批流，仅统计个人创建及数据权限: rootModuleId={}, primaryTable={}, currentUserId={}",
+                    rootModuleId,
+                    primaryTable,
+                    currentUserId);
+            CommonFilterResolver.PrimaryFilterResult noApprovalResult =
+                    commonFilterResolver.resolveDefaultFilters(moduleTree, projectRelations);
+            if (!noApprovalResult.isEmpty()) {
+                totalCount =
+                        dataApi.count(
+                                QueryReq.builder()
+                                        .moduleId(rootModuleId)
+                                        .filters(noApprovalResult.filters())
+                                        .build());
+            }
+            log.info(
+                    "[ApprovalCount-NoApproval] 全部角标统计完成: rootModuleId={}, 匹配主表ID数={}, 最终count={}",
+                    rootModuleId,
+                    noApprovalResult.matchedIds().size(),
+                    totalCount);
         }
+
+        long cost = System.currentTimeMillis() - countStart;
+        log.info(
+                "[ApprovalCount-Finish] 菜单审批角标统计完成: menuId={}, rootModuleId={}, 耗时={}ms, 统计结果=[待办:{}, 已办:{}, 全部:{}]",
+                menuId,
+                rootModuleId,
+                cost,
+                todoCount,
+                doneCount,
+                totalCount);
 
         return List.of(
                 MenuApprovalCountResp.of("待办", 1, todoCount),
                 MenuApprovalCountResp.of("已办", 2, doneCount),
                 MenuApprovalCountResp.of("全部", 3, totalCount));
+    }
+
+    // ==================== 审批流与权限业务编排辅助逻辑 ====================
+
+    /** 检查根模块是否启用了审批流 */
+    public boolean isApprovalChainEnabled(Long rootModuleId) {
+        if (rootModuleId == null) {
+            return false;
+        }
+        try {
+            return Boolean.TRUE.equals(
+                    sysApprovalChainConfigApi.getApprovalStatus(
+                            Collections.singletonList(rootModuleId)));
+        } catch (Exception ex) {
+            log.warn("查询模块审批链状态失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
+            return false;
+        }
+    }
+
+    /** 业务编排：根据 moduleTree 的审批链状态及请求的 approvalType，决策调用语义化的 CommonFilterResolver 方法 */
+    private CommonFilterResolver.PrimaryFilterResult resolveFiltersForQuery(
+            ModuleTreeDTO moduleTree,
+            ProjectTableRelationsDTO projectRelations,
+            Integer approvalType,
+            boolean approvalEnabled) {
+
+        Long rootModuleId = moduleTree != null ? moduleTree.getRootModuleId() : null;
+        String primaryTable =
+                (moduleTree != null && moduleTree.getRootModule() != null)
+                        ? moduleTree.getRootModule().getPrimaryTable()
+                        : null;
+
+        log.info(
+                "[PageQuery-Filter] 开始解析分页过滤条件: rootModuleId={}, primaryTable={}, approvalType={}, approvalEnabled={}",
+                rootModuleId,
+                primaryTable,
+                approvalType,
+                approvalEnabled);
+
+        // 1. 无审批链或未指定审批类型：默认无审批流场景 (个人单据 + 行级数据权限)
+        if (!approvalEnabled || approvalType == null) {
+            return commonFilterResolver.resolveDefaultFilters(moduleTree, projectRelations);
+        }
+
+        // 2. 有审批链：按审批类型拉取审批引擎单据号
+        List<String> approvalNos = getApprovalBusinessNos(rootModuleId, approvalType);
+        log.info(
+                "[PageQuery-Filter] 从审批引擎获取单据完成: rootModuleId={}, approvalType={}, 单据数={}, 单据样例={}",
+                rootModuleId,
+                approvalType,
+                approvalNos.size(),
+                CommonFilterResolver.formatSample(approvalNos, 5));
+
+        // 2.1 已办 (type = 2)：仅已办单据
+        if (approvalType == 2) {
+            if (approvalNos.isEmpty()) {
+                log.info(
+                        "[PageQuery-Filter] 已办类型且审批引擎未返回任何单据，短路返回空过滤结果: rootModuleId={}, approvalType=2",
+                        rootModuleId);
+                return CommonFilterResolver.PrimaryFilterResult.empty();
+            }
+            return commonFilterResolver.resolveDoneFilters(moduleTree, approvalNos);
+        }
+
+        // 2.2 待办 (type = 1)：[审批待办] OR [当前人草稿 (business_status = 1)]
+        if (approvalType == 1) {
+            return commonFilterResolver.resolveTodoFilters(
+                    moduleTree, projectRelations, approvalNos);
+        }
+
+        // 2.3 全部 (type = 3)：[审批全部] OR [当前人单据 (不限状态)] OR [行级数据权限]
+        return commonFilterResolver.resolveAllFilters(moduleTree, projectRelations, approvalNos);
+    }
+
+    /** 从审批引擎获取指定审批类型的单据编号集合 */
+    private List<String> getApprovalBusinessNos(Long rootModuleId, Integer approvalType) {
+        if (rootModuleId == null || approvalType == null) {
+            return Collections.emptyList();
+        }
+        try {
+            ApprovalIdButtonListResp resp = approvalEngine.getApprovalListButton(rootModuleId);
+            if (resp == null) {
+                return Collections.emptyList();
+            }
+            List<ApprpvalIdButton> list =
+                    switch (approvalType) {
+                        case 1 -> resp.getToDoList();
+                        case 2 -> resp.getDoneList();
+                        default -> resp.getAllList();
+                    };
+            return extractBusinessNos(list);
+        } catch (Exception ex) {
+            log.warn(
+                    "获取审批单据失败: rootModuleId={}, type={}, err={}",
+                    rootModuleId,
+                    approvalType,
+                    ex.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /** 从审批引擎获取指定审批类型的物理记录 ID 集合 (用于辅助按钮决策) */
+    private List<Long> getApprovalRecordIds(Long rootModuleId, Integer approvalType) {
+        if (rootModuleId == null || approvalType == null) {
+            return Collections.emptyList();
+        }
+        try {
+            ApprovalIdButtonListResp resp = approvalEngine.getApprovalListButton(rootModuleId);
+            if (resp == null) {
+                return Collections.emptyList();
+            }
+            List<ApprpvalIdButton> list =
+                    switch (approvalType) {
+                        case 1 -> resp.getToDoList();
+                        case 2 -> resp.getDoneList();
+                        default -> resp.getAllList();
+                    };
+            if (CollectionUtils.isEmpty(list)) {
+                return Collections.emptyList();
+            }
+            return list.stream()
+                    .map(ApprpvalIdButton::getRecordId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+        } catch (Exception ex) {
+            return Collections.emptyList();
+        }
+    }
+
+    /** 提取审批单据对象中的 business_no 列表 */
+    private List<String> extractBusinessNos(List<ApprpvalIdButton> list) {
+        if (CollectionUtils.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        return list.stream()
+                .map(ApprpvalIdButton::getBusinessNo)
+                .filter(no -> no != null && !no.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
     }
 
     private MenuHeaderColumnResp getHeaderDisplayOrThrow(Long userId, Long menuId, Long roleId) {
