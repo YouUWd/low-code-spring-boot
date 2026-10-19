@@ -17,6 +17,7 @@ import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.ProjectProperties;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     private final SysStatusApi sysStatusApi;
     private final ObjectMapper objectMapper;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+    private final ProjectProperties projectProperties;
 
     // 审批单据
     @Override
