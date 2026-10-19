@@ -1,13 +1,13 @@
 package com.jdec.platform.common.biz.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.third.WordApiClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -18,40 +18,43 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping({"/api/common/word", "/api/config/word"})
-@RequiredArgsConstructor
 @Tag(name = "Word 外部服务", description = "Word 外部 API 的关系查询、绑定/取消绑定接口")
 public class WordApiController {
 
     private final WordApiClient wordApiClient;
 
+    public WordApiController(WordApiClient wordApiClient) {
+        this.wordApiClient = wordApiClient;
+    }
+
     @GetMapping("/relation/all")
     @Operation(summary = "获取所有关系")
-    public ApiResponse<Object> getAllRelation() {
-        Object data = wordApiClient.getAllRelation(new TypeReference<>() {});
+    public ApiResponse<JsonNode> getAllRelation() {
+        JsonNode data = wordApiClient.getAllRelation(new TypeReference<>() {});
         return ApiResponse.success(data);
     }
 
     @GetMapping("/relation/info")
     @Operation(summary = "获取关系详情")
-    public ApiResponse<Object> getRelationInfo(
+    public ApiResponse<JsonNode> getRelationInfo(
             @Parameter(description = "业务编号", required = true) @RequestParam String businessNo) {
-        Object data = wordApiClient.getRelationInfo(businessNo, new TypeReference<>() {});
+        JsonNode data = wordApiClient.getRelationInfo(businessNo, new TypeReference<>() {});
         return ApiResponse.success(data);
     }
 
     @GetMapping("/relation/info/tree")
     @Operation(summary = "获取关系详情树")
-    public ApiResponse<Object> getRelationInfoTree(
+    public ApiResponse<JsonNode> getRelationInfoTree(
             @Parameter(description = "业务编号", required = true) @RequestParam String businessNo) {
-        Object data = wordApiClient.getRelationInfoTree(businessNo, new TypeReference<>() {});
+        JsonNode data = wordApiClient.getRelationInfoTree(businessNo, new TypeReference<>() {});
         return ApiResponse.success(data);
     }
 
     @GetMapping("/relation/word")
     @Operation(summary = "获取关系词列表")
-    public ApiResponse<Object> getRelationWord(
+    public ApiResponse<JsonNode> getRelationWord(
             @Parameter(description = "业务编号", required = true) @RequestParam String businessNo) {
-        Object data = wordApiClient.getRelationWord(businessNo, new TypeReference<>() {});
+        JsonNode data = wordApiClient.getRelationWord(businessNo, new TypeReference<>() {});
         return ApiResponse.success(data);
     }
 
