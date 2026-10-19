@@ -89,8 +89,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         Map<String, Object> result = new HashMap<>();
         // 模块是否挂审批链
         boolean approvalEnable = sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModuleId));
-        if (!approvalEnable && recordId == 0) {
-            result.put("approvalEnable", false);
+        if (recordId == 0) {
+            result.put("approvalEnable", approvalEnable);
             return result;
         }
         result.put("approvalEnable", approvalEnable);
