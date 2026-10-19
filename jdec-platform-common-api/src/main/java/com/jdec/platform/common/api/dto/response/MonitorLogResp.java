@@ -69,7 +69,7 @@ public class MonitorLogResp implements Serializable {
     private MonitorContentBase content;
 
     @Schema(description = "备注（自由结构 JSON）")
-    private Object remark;
+    private Object description;
 
     @Schema(description = "日志记录时间", example = "2026-09-17 10:00:00")
     private LocalDateTime recordTime;

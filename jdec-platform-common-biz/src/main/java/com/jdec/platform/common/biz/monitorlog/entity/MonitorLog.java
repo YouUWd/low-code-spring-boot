@@ -59,7 +59,7 @@ public class MonitorLog implements Serializable {
     private String content;
 
     @Schema(description = "备注(JSON 字符串)")
-    private String remark;
+    private String description;
 
     @Schema(description = "日志记录时间")
     private LocalDateTime recordTime;
