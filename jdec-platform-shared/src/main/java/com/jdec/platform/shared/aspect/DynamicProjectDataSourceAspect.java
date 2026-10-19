@@ -25,6 +25,7 @@ public class DynamicProjectDataSourceAspect {
 
     @Around(
             "execution(* com.jdec.platform.common.biz.service.impl.CommonApprovalServiceImpl.businessSave(..))"
+                    + " || execution(* com.jdec.platform.common.biz.service.impl.CommonApprovalServiceImpl.businessSubmit(..))"
                     + " || execution(* com.jdec.platform.approval.biz.service.impl.ApprovalEngineImpl.*(..))") // 按需调整包路径
     public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
         log.debug(
