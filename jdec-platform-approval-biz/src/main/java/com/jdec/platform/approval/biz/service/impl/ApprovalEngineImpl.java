@@ -76,15 +76,51 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness = approvalBusinessMapper.selectOne(wrapper);
         boolean approvalEnable =
                 sysApprovalChainConfigApi.getApprovalStatus(List.of(event.getModuleId()));
+        if (!approvalEnable || Objects.isNull(approvalBusiness)) {
+            throw new BusinessException(610, "审批链未启用");
+        } else if (approvalBusiness.getStatusValue() == 99
+                || approvalBusiness.getStatusValue() == -99) {
+            throw new BusinessException(605, "审批链当前状态不为完结状态");
+        }
+
+        switch (approvalProcessDTO.getButton()) {
+            case "pass" -> businessApprove(approvalProcessDTO);
+            case "reject" -> businessReject(approvalProcessDTO);
+            case "cancel" -> businessRevoke(approvalProcessDTO);
+            case null, default -> throw new BusinessException(603, "审批操作异常");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void handleApproval(ApprovalEvent event) {
+        if (Objects.isNull(event.getBusinessNumber()) || event.getBusinessNumber().isEmpty()) {
+            throw new BusinessException(604, "缺少审批单据编号");
+        }
+        log.info("收到提交请求: eventType={}, moduleId={}", event.getButton(), event.getModuleId());
+        ApprovalProcessDTO approvalProcessDTO = convertApprovalDTO(event);
+        LambdaQueryWrapper<ApprovalBusiness> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber());
+        wrapper.in(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId()).last("LIMIT 1");
+        ApprovalBusiness approvalBusiness = approvalBusinessMapper.selectOne(wrapper);
+        boolean approvalEnable =
+                sysApprovalChainConfigApi.getApprovalStatus(List.of(event.getModuleId()));
         if (!approvalEnable) {
             if (Objects.isNull(approvalBusiness)) businessSaveSubmit(approvalProcessDTO);
-            return;
+            throw new BusinessException(610, "审批链未启用");
+        }
+        if (Objects.nonNull(approvalBusiness)
+                && (!approvalBusiness.getStatusValue().equals(99)
+                        && !approvalBusiness.getStatusValue().equals(-99))) {
+            throw new BusinessException(605, "审批链当前状态不为完结状态");
         }
         if (Objects.nonNull(event.getButton()) && "submit".equals(approvalProcessDTO.getButton())) {
             if (Objects.isNull(approvalBusiness)) {
                 approvalProcessDTO.setButton("create");
+                businessCreate(approvalProcessDTO);
             } else {
                 approvalProcessDTO.setButton("submit");
+                businessSubmit(approvalProcessDTO);
             }
         } else if (Objects.isNull(event.getButton())
                 || "save".equals(approvalProcessDTO.getButton())) {
@@ -93,25 +129,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             } else {
                 if (approvalBusiness.getCurrentStep().equals(0)
                         && approvalBusiness.getStatusValue() == 1) {
-                    return;
+                    throw new BusinessException(609, "审批业务已经存在");
                 }
                 businessSubmitDraft(approvalProcessDTO);
             }
-            return;
-        }
-
-        if (List.of("submit", "edit", "change").contains(approvalProcessDTO.getButton())) {
-            businessSubmit(approvalProcessDTO);
-        } else if ("create".equals(approvalProcessDTO.getButton())) {
-            businessCreate(approvalProcessDTO);
-        } else if ("pass".equals(approvalProcessDTO.getButton())) {
-            businessApprove(approvalProcessDTO);
-        } else if ("reject".equals(approvalProcessDTO.getButton())) {
-            businessReject(approvalProcessDTO);
-        } else if ("cancel".equals(approvalProcessDTO.getButton())) {
-            businessRevoke(approvalProcessDTO);
-        } else {
-            throw new BusinessException(603, "审批操作异常");
         }
     }
 

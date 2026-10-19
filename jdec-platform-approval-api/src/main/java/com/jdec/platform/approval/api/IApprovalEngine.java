@@ -1,6 +1,7 @@
 package com.jdec.platform.approval.api;
 
 import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
+import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
@@ -34,6 +35,9 @@ public interface IApprovalEngine {
 
     // 查询已经审批的步骤
     List<Map<String, Object>> getApprovalStep(Long moduleId, Long recordId);
+
+    // 保存或者提交单据处理
+    void handleApproval(ApprovalEvent event);
 
     // 查询当前步骤是否可编辑
     boolean getCanEdit(Long moduleId, Long recordId, String btnType);
