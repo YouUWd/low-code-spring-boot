@@ -62,10 +62,13 @@ public class SaveOperateLogService {
     /** 操作动作：删除 */
     public static final String OPERATION_DELETE = "删除";
 
-    /** 审批动作图标（修改/删除共用，前端按动作取对应图标） */
-    private static final String APPROVE_PATH =
-            "修改:http://192.168.60.8:9001/jdec-platform/image/submit.svg；"
-                    + "删除:http://192.168.60.8:9001/jdec-platform/image/reject.svg";
+    /** 修改动作图标 */
+    private static final String APPROVE_PATH_UPDATE =
+            "http://192.168.60.8:9001/jdec-platform/image/submit.svg";
+
+    /** 删除动作图标 */
+    private static final String APPROVE_PATH_DELETE =
+            "http://192.168.60.8:9001/jdec-platform/image/reject.svg";
 
     /** 无审批链时为手动操作 */
     private static final Integer APPROVAL_TYPE_MANUAL = 1;
@@ -319,10 +322,21 @@ public class SaveOperateLogService {
         MonitorApproveOperation approve = new MonitorApproveOperation();
         approve.setLogSubType(MonitorLogConstant.OPERATION_LOG);
         approve.setName((menuName != null ? menuName : "") + operation);
-        approve.setPath(APPROVE_PATH);
+        approve.setPath(resolveApprovePath(operation));
         approve.setResult(operationResult);
         approve.setApprovalType(APPROVAL_TYPE_MANUAL);
         return approve;
+    }
+
+    /** 按操作动作选择图标：修改取提交图标、删除取驳回图标，首次保存无图标 */
+    private String resolveApprovePath(String operation) {
+        if (OPERATION_DELETE.equals(operation)) {
+            return APPROVE_PATH_DELETE;
+        }
+        if (OPERATION_UPDATE.equals(operation)) {
+            return APPROVE_PATH_UPDATE;
+        }
+        return null;
     }
 
     /** 日志内容：系统日志子类型，承载最外层菜单名称/参数与业务编码 */
