@@ -253,11 +253,10 @@ public class ModuleSnapShotDataServiceImpl implements ModuleSnapShotDataService 
                 DynamicSaveReqContext.builder()
                         .nestedModuleData(context.getModuleDataDTO())
                         .parentModuleId(null)
-                        .parentModulePrimaryTableId(null)
+                        .parentModuleMainTableDataId(null)
                         .rootModuleId(rootModuleId) //
                         .rootModuleMainTableDataId(rootTableDataId)
                         .rootModuleMainTableDataVersion(rootTableDataVersion)
-                        .rootModuleMainTableDataStatus(null)
                         .build());
         boolean first = true;
 

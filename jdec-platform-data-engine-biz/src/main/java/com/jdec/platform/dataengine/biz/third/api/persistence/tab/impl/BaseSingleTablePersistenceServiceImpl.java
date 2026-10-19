@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.tab.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.util.StrUtil;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
@@ -9,6 +10,7 @@ import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
+import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataChangeContent;
 import com.jdec.platform.dataengine.biz.entity.ModuleDataFieldChangeContent;
@@ -16,7 +18,6 @@ import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.IModuleDataFieldChangeContentService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
-import com.jdec.platform.dataengine.biz.third.api.persistence.check.ModuleDataSaveCheckFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
@@ -42,8 +43,6 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
     private final ModuleDataSaveNecessaryFieldFillFactoryService
             moduleDataSaveNecessaryFieldFillFactoryService;
-
-    private final ModuleDataSaveCheckFactoryService moduleDataSaveCheckFactoryService;
 
     private final JooqDataContextFactory jooqDataContextFactory;
 
@@ -144,6 +143,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     @Override
     public DataSaveResult updateRecord(RecordSaveContext context) {
         Long id = DataPersistenceUtil.getTableRowId(context.getRecord());
+
         // 表单数据只有ID ，不用更新
         if (DataPersistenceUtil.isOnlyHasId(context.getRecord())) {
             return DataSaveResult.builder().dataId(id).build();
@@ -155,56 +155,35 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (deletedField != null && Integer.valueOf(1).equals(deletedField)) {
             deletedFalg = true;
         }
-
-        Record oldMap =
-                context.getDsl()
-                        .select(DSL.asterisk())
-                        .from(DSL.table(DSL.name(context.getTableName())))
-                        .where(
-                                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
-                                        .eq(id))
-                        .fetchOne();
-        if (oldMap == null) {
-            throw new BusinessException(
-                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
-                    "您要编辑的数据表【" + context.getTableName() + "】的数据【" + id + "】不存在");
-        }
-
-        // 变更保存 需要读取旧数据
-        context.setReadOutRecord(DataPersistenceUtil.convertRecordToMap(oldMap));
-
-        // 权限校验
-        //        if (deletedFalg) {
-        //            // 删除校验 申请权限
-        //            if
-        // (CollectionUtil.isEmpty(context.getSysModuleCompleteResp().getWriteFields())) {
-        //                throw new BusinessException(
-        //                        ApiResponseCodeEnum.BAD_MODULE_FIELD_APPLY_RIGHT_ERROR.getCode(),
-        //                        "您没有表【" + context.getTableName() + "】的数据删除权限");
-        //            }
-        //        } else {
-        //            // 校验字段权限, 校验不通过 直接抛异常
-        //            moduleDataSaveCheckFactoryService.check(context);
-        //        }
-
         // 直接删除
         if (deletedFalg) {
-            context.getDsl()
-                    .update(DSL.table(DSL.name(context.getTableName())))
-                    .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_DELETED_FIELD)), (byte) 1)
-                    .set(
-                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
-                            context.getUserId())
-                    .set(
-                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
-                            LocalDateTime.now())
-                    .where(
-                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
-                                    .eq(id))
-                    .and(
-                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_DELETED_FIELD))
-                                    .eq((byte) 0))
-                    .execute();
+            //            context.getDsl()
+            //                    .update(DSL.table(DSL.name(context.getTableName())))
+            //
+            // .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_DELETED_FIELD)), (byte) 1)
+            //                    .set(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+            //                            context.getUserId())
+            //                    .set(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+            //                            LocalDateTime.now())
+            //                    .where(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
+            //                                    .eq(id))
+            //                    .and(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_DELETED_FIELD))
+            //                                    .eq((byte) 0))
+            //                    .execute();
+            // todo 还需要删除子模块子表的数据
+            deleteOrphanModuleData(
+                    ListUtil.of(id),
+                    context.getSysModuleCompleteResp().getModuleInfo().getModuleId(),
+                    context.getModuleCacheMap(),
+                    context.getDsl());
         } else {
             context.setDefaultExcludeFields(UPDATE_DEFAULT_EXCLUDE_FIELD);
             moduleDataSaveNecessaryFieldFillFactoryService.fillData(context);
@@ -222,23 +201,103 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         if (context.getRootModuleMainTableDataId() == null) {
             context.setRootModuleMainTableDataId(id);
         }
-        RowChangeDTO rowChange = null;
-        // 非审批链业务 正常保存 记录下变更日志
-        if (!context.getIsApproval() && SaveType.SAVE.equals(context.getSaveType())) {
-            rowChange =
-                    DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
-                            DataPersistenceUtil.convertRecordToMap(oldMap),
-                            context.getRecord(),
-                            context.getTableName(),
-                            context.getSysModuleCompleteResp()
-                                    .getFieldMapByTable()
-                                    .get(context.getTableName()),
-                            DataPersistenceUtil.getModuleTableUniqueNameField(
-                                    context.getSysModuleCompleteResp().getModuleInfo().getFields(),
-                                    context.getTableName()),
-                            deletedFalg);
+        return DataSaveResult.builder().dataId(id).build();
+    }
+
+    private void deleteOrphanModuleData(
+            List<Long> dataIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        // 先删除 当前模块主表数据
+        deleteByIds(dslContext, sysModuleCombineInfo.getModuleInfo().getPrimaryTable(), dataIds);
+        // 删除关联表数据
+        deleteRelatedModuleData(dataIds, moduleId, moduleCacheMap, dslContext);
+        // 递归删除子模块 子表的数据
+        List<Long> childrenModuleIds =
+                sysModuleCombineInfo.getModuleTree().getChildModuleIds(moduleId);
+        if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+            for (Long childModuleId : childrenModuleIds) {
+                deleteChildrenModuleDataByParentIdsRecursion(
+                        dataIds, childModuleId, moduleCacheMap, dslContext);
+            }
         }
-        return DataSaveResult.builder().dataId(id).rowChange(rowChange).build();
+    }
+
+    private void deleteChildrenModuleDataByParentIdsRecursion(
+            List<Long> parentIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        // 子模块ID
+        List<Long> childrenModuleIds =
+                sysModuleCombineInfo.getModuleTree().getChildModuleIds(moduleId);
+
+        // 虚拟模块 直接透传到下级模块删除
+        if (StrUtil.isEmpty(sysModuleCombineInfo.getModuleInfo().getPrimaryTable())) {
+            if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+                for (Long childModuleId : childrenModuleIds) {
+                    deleteChildrenModuleDataByParentIdsRecursion(
+                            parentIds, childModuleId, moduleCacheMap, dslContext);
+                }
+            }
+        }
+        // 子表 待删除的 数据ID
+        List<Long> dataIds =
+                getRecordIdsByFk(
+                        dslContext,
+                        sysModuleCombineInfo.getModuleInfo().getPrimaryTable(),
+                        sysModuleCombineInfo.getMainTableRelationDTO().getJoinField(),
+                        parentIds);
+        if (CollectionUtil.isNotEmpty(dataIds)) {
+            // 删除子表数据
+            deleteByIds(
+                    dslContext, sysModuleCombineInfo.getModuleInfo().getPrimaryTable(), dataIds);
+            deleteRelatedModuleData(dataIds, moduleId, moduleCacheMap, dslContext);
+            if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+                for (Long childModuleId : childrenModuleIds) {
+                    deleteChildrenModuleDataByParentIdsRecursion(
+                            dataIds, childModuleId, moduleCacheMap, dslContext);
+                }
+            }
+        }
+    }
+
+    /**
+     * 删除模块关联表的数据
+     *
+     * @param mainDataIds 模块主表的数据ID
+     * @param moduleId
+     * @param moduleCacheMap
+     * @param dslContext
+     */
+    private void deleteRelatedModuleData(
+            List<Long> mainDataIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        if (CollectionUtil.isNotEmpty(sysModuleCombineInfo.getSubTables())) {
+            for (String subTable : sysModuleCombineInfo.getSubTables()) {
+                // 子表中关联的字段
+                com.jdec.platform.config.api.dto.common.TableRelationDTO subTableRelationDTO =
+                        sysModuleCombineInfo.getSubTableRelationMap().get(subTable);
+                if (subTableRelationDTO != null) {
+                    // 子表的ID
+                    List<Long> subTabDataIds =
+                            getRecordIdsByFk(
+                                    dslContext,
+                                    subTable,
+                                    subTableRelationDTO.getJoinField(),
+                                    mainDataIds);
+                    if (CollectionUtil.isNotEmpty(subTabDataIds)) {
+                        deleteByIds(dslContext, subTable, subTabDataIds);
+                    }
+                }
+            }
+        }
     }
 
     @Override
@@ -447,9 +506,6 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     }
 
     private Map<Field<Object>, Object> getUpdateRecordFieldValues(RecordSaveContext context) {
-
-        Map<String, ModuleFieldDTO> fieldMap =
-                context.getSysModuleCompleteResp().getFieldMapByTable().get(context.getTableName());
         Map<String, SysFieldResp> allFields =
                 context.getSysModuleCompleteResp()
                         .getAllFieldsByTable()

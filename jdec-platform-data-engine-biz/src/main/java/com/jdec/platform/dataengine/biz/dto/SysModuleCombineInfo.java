@@ -17,7 +17,7 @@ public class SysModuleCombineInfo implements Serializable {
     private ModuleInfo moduleInfo;
 
     // 模块子表
-    private Set<String> subTables;
+    private Set<String> subTables = new HashSet<>();
 
     // 模块字段信息 按表名称分组
     private Map<String, Map<String, ModuleFieldDTO>> fieldMapByTable = new HashMap<>();

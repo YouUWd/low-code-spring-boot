@@ -29,17 +29,24 @@ public class ModuleDataStoreDTO {
     @Schema(description = "整体是否插入,还是新增")
     private Boolean isOverallInsert;
 
+    @Schema(description = "根模块的ID")
     private Long rootModuleId;
 
+    @Schema(description = "保存结构中的根模块ID")
     private Long structureRootModuleId;
 
+    @Schema(description = "根模块主表的业务编码")
     private String mainTableBusinessNo;
 
+    @Schema(description = "跟模块主表的版本号")
     private Integer mainTableVersionNo;
 
+    @Schema(description = "根模块主表的ID")
     private Long mainTableDataId;
 
+    @Schema(description = "变更保存时，根模块主表的原始版本号")
     private Integer mainTableSourceVersionNo;
 
+    @Schema(description = "变更保存时,根模块主表原始ID")
     private Long mainTableDataSourceId;
 }

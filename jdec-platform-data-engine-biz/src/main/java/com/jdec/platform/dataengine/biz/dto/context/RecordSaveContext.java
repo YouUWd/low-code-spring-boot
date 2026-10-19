@@ -26,6 +26,9 @@ public class RecordSaveContext extends BasicSaveModel {
     // 当前模块的完整信息
     private SysModuleCombineInfo sysModuleCompleteResp;
 
+    // 模块缓存
+    private Map<Long, SysModuleCombineInfo> moduleCacheMap;
+
     // 表名
     private String tableName;
 

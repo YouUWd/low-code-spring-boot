@@ -25,7 +25,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     "id",
                     "subject_id",
                     "business_no",
-                    "version",
+                    "version_no",
                     "business_status",
                     "created_by",
                     "updated_by",
@@ -159,7 +159,12 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                 DataPersistenceUtil.getTableRowIdWithTabName(
                         recordDataDTO.getRow(),
                         moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
-        checkRow(recordDataDTO, dataMap, sysModuleCombineInfo, result);
+        checkRow(
+                recordDataDTO,
+                dataMap,
+                sysModuleCombineInfo,
+                dataId == null || dataId <= 0,
+                result);
         if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
             for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                 // 如果 父节点是一个新增的行，那么子节点 都是新增的行
@@ -270,7 +275,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                                         .getModuleInfo()
                                         .getPrimaryTable());
                 boolean isInsert = isOverAllInsert || (dataId == null || dataId <= 0);
-                checkRow(recordDataDTO, dataMap, sysModuleCombineInfo, result);
+                checkRow(recordDataDTO, dataMap, sysModuleCombineInfo, isOverAllInsert, result);
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                     for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                         checkNestedDataPermission(
@@ -293,10 +298,16 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             RecordDataDTO recordDataDTO,
             Map<Long, Map<Long, Map<String, Object>>> dataMap,
             SysModuleCombineInfo sysModuleCombineInfo,
+            Boolean isInsert,
             Map<Long, Map<String, Set<String>>> result) {
         if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
             Set<String> uncheckedFields = new HashSet<>();
-            for (String table : sysModuleCombineInfo.getSubTableRelationMap().keySet()) {
+            Set<String> tabs = new HashSet<>();
+            tabs.add(sysModuleCombineInfo.getModuleInfo().getPrimaryTable());
+            if (CollectionUtil.isNotEmpty(sysModuleCombineInfo.getSubTables())) {
+                tabs.addAll(sysModuleCombineInfo.getSubTables());
+            }
+            for (String table : tabs) {
                 // 模块所有表的 忽略的字段
                 for (String f : UNCHECK_PERMISSION_FIELDS) {
                     uncheckedFields.add(table + "." + f);
@@ -317,13 +328,13 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                             recordDataDTO.getRow(),
                             sysModuleCombineInfo.getModuleInfo().getPrimaryTable());
             // 新增的行数据
-            if (dataId == null || dataId <= 0) {
+            if (isInsert || (dataId == null || dataId <= 0)) {
                 // 插入
                 for (String key : recordDataDTO.getRow().keySet()) {
                     if (uncheckedFields.contains(key)) {
                         continue;
                     }
-                    String[] field = key.split(".");
+                    String[] field = key.split("\\.");
                     boolean canWrite =
                             sysModuleCombineInfo
                                     .getWriteFields()
