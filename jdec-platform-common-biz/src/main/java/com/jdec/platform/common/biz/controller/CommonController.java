@@ -70,6 +70,48 @@ public class CommonController {
         }
     }
 
+    @PostMapping("/business/save")
+    @Operation(summary = "保存数据", description = "保存数据")
+    public ApiResponse<Long> businessSave(@RequestBody DynamicSaveReq req) {
+        try {
+            DynamicSaveResp result = dataEngineApi.save(req);
+            ApprovalReq approvalReq = new ApprovalReq();
+            approvalReq.setRecordId(result.getDataId());
+            approvalReq.setBusinessNumber(result.getBusinessNo());
+            approvalReq.setButton("save");
+            commonApprovalService.approvalSave(result.getModuleId(), approvalReq);
+            return ApiResponse.success(result.getDataId());
+        } catch (Exception ex) {
+            log.error(
+                    "Common DataEngine save failed: moduleId={},err={}",
+                    req.getNestedModuleData().getModuleId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/business/submit")
+    @Operation(summary = "提交数据", description = "提交数据")
+    public ApiResponse<Long> businessSubmit(@RequestBody DynamicSaveReq req) {
+        try {
+            DynamicSaveResp result = dataEngineApi.save(req);
+            ApprovalReq approvalReq = new ApprovalReq();
+            approvalReq.setRecordId(result.getDataId());
+            approvalReq.setBusinessNumber(result.getBusinessNo());
+            approvalReq.setButton("submit");
+            commonApprovalService.approvalSave(result.getModuleId(), approvalReq);
+            return ApiResponse.success(result.getDataId());
+        } catch (Exception ex) {
+            log.error(
+                    "Common DataEngine save failed: moduleId={},err={}",
+                    req.getNestedModuleData().getModuleId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
     @GetMapping("/detailHead")
     @Operation(summary = "查询详情头部信息", description = "查询详情头部信息")
     public ApiResponse<Map<String, Object>> getDetailHead(
