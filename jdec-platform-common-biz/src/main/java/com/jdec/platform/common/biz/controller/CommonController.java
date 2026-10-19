@@ -50,26 +50,6 @@ public class CommonController {
         return ApiResponse.success(userService.getUserTreeList(userType, userName));
     }
 
-    @PostMapping("/approval/save")
-    @Operation(summary = "提交数据审批申请", description = "提交数据审批申请")
-    public ApiResponse<Long> approvalSave(@RequestBody DynamicSaveReq req) {
-        try {
-            DynamicSaveResp result = dataEngineApi.save(req);
-            ApprovalReq approvalReq = new ApprovalReq();
-            approvalReq.setRecordId(result.getDataId());
-            approvalReq.setBusinessNumber(result.getBusinessNo());
-            commonApprovalService.approvalSave(result.getModuleId(), approvalReq);
-            return ApiResponse.success(result.getDataId());
-        } catch (Exception ex) {
-            log.error(
-                    "Common DataEngine save failed: moduleId={},err={}",
-                    req.getNestedModuleData().getModuleId(),
-                    ex.getMessage(),
-                    ex);
-            throw ex;
-        }
-    }
-
     @PostMapping("/business/save")
     @Operation(summary = "保存数据", description = "保存数据")
     public ApiResponse<Long> businessSave(@RequestBody DynamicSaveReq req) {
