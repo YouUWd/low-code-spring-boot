@@ -76,11 +76,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalBusiness approvalBusiness = approvalBusinessMapper.selectOne(wrapper);
         boolean approvalEnable =
                 sysApprovalChainConfigApi.getApprovalStatus(List.of(event.getModuleId()));
-        if (!approvalEnable
-                && Objects.nonNull(event.getButton())
-                && "save".equals(approvalProcessDTO.getButton())
-                && Objects.isNull(approvalBusiness)) {
-            businessSaveSubmit(approvalProcessDTO);
+        if (!approvalEnable) {
+            if (Objects.isNull(approvalBusiness)) businessSaveSubmit(approvalProcessDTO);
             return;
         }
         if (Objects.nonNull(event.getButton()) && "submit".equals(approvalProcessDTO.getButton())) {
