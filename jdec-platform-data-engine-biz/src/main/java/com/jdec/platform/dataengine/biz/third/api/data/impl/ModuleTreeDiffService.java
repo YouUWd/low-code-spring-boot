@@ -29,7 +29,7 @@ import org.springframework.util.CollectionUtils;
 public class ModuleTreeDiffService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
     private final DataModuleConfigService dataModuleConfigService;
 
@@ -306,7 +306,7 @@ public class ModuleTreeDiffService {
             }
         }
         // ---------------------- Date ----------------------
-        if (Date.class.equals(sourceCls)) {
+        if (java.sql.Date.class.equals(sourceCls)) {
             return compareDate((Date) source, target);
         }
         // ---------------------- LocalDateTime ----------------------
