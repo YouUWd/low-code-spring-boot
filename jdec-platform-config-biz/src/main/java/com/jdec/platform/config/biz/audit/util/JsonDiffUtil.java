@@ -413,16 +413,22 @@ public class JsonDiffUtil {
                     relationFieldQueryService.queryNameByIds(
                             metadata.target, metadata.idField, metadata.nameField, ids);
 
+            List<String> names = new ArrayList<>();
+            for (Long id : ids) {
+                names.add(nameMap.getOrDefault(id, id.toString()));
+            }
+
+            // 原值为数组时保持数组结构，不做逗号拼接
+            if (isArrayValue(value)) {
+                return names;
+            }
+
             // 如果只有一个ID，返回单个名称
             if (ids.size() == 1) {
                 return nameMap.getOrDefault(ids.get(0), value.toString());
             }
 
             // 多个ID，返回中文名列表（逗号分隔）
-            List<String> names = new ArrayList<>();
-            for (Long id : ids) {
-                names.add(nameMap.getOrDefault(id, id.toString()));
-            }
             return String.join(",", names);
 
         } catch (Exception e) {
@@ -552,16 +558,22 @@ public class JsonDiffUtil {
                     dictFieldQueryService.queryLabelsByValues(
                             metadata.dictCategoryAlias, values, metadata.nameField);
 
+            List<String> labels = new ArrayList<>();
+            for (String val : values) {
+                labels.add(labelMap.getOrDefault(val, val));
+            }
+
+            // 原值为数组时保持数组结构，不做逗号拼接
+            if (isArrayValue(value)) {
+                return labels;
+            }
+
             // 如果只有一个值，返回单个label
             if (values.size() == 1) {
                 return labelMap.getOrDefault(values.get(0), value.toString());
             }
 
             // 多个值，返回中文label列表（逗号分隔）
-            List<String> labels = new ArrayList<>();
-            for (String val : values) {
-                labels.add(labelMap.getOrDefault(val, val));
-            }
             return String.join(",", labels);
 
         } catch (Exception e) {
@@ -805,6 +817,11 @@ public class JsonDiffUtil {
                     e);
             return value;
         }
+    }
+
+    /** 判断字段原值是否为数组（JSON 数组解析后为集合，兼容 Java 数组） */
+    private boolean isArrayValue(Object value) {
+        return value instanceof Collection<?> || value.getClass().isArray();
     }
 
     /** 从字段值中提取ID列表 */

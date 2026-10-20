@@ -25,13 +25,14 @@ public class GlobalExceptionHandler {
      * 处理业务异常
      *
      * @param e 业务异常
-     * @return 200 OK 响应，业务错误码在 response.status 中
+     * @return 200 OK 响应，业务错误码在 response.status 中；异常携带的数据原样放入 response.data
      */
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
+    public ResponseEntity<ApiResponse<Object>> handleBusinessException(BusinessException e) {
         log.warn("业务异常: code={}, message={}", e.getCode(), e.getMessage());
 
-        ApiResponse<Void> response = ApiResponse.error(e.getCode(), e.getMessage());
+        ApiResponse<Object> response =
+                ApiResponse.customResponse(e.getCode(), e.getMessage(), e.getData());
 
         return ResponseEntity.status(HttpStatus.OK).body(response);
     }

@@ -2,8 +2,10 @@ package com.jdec.platform.config.biz.audit.util;
 
 import com.jdec.platform.config.biz.audit.dto.*;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -159,14 +161,19 @@ public class AuditLogFormatter {
     }
 
     /**
-     * 格式化值为字符串
+     * 格式化字段值：数组/对象保持原样，避免被逗号拼接或转成字符串；标量转字符串
      *
      * @param value 原始值
-     * @return 格式化后的字符串
+     * @return 格式化后的值
      */
-    private String formatValue(Object value) {
+    private Object formatValue(Object value) {
         if (value == null) {
             return "";
+        }
+        if (value instanceof Collection<?>
+                || value instanceof Map<?, ?>
+                || value.getClass().isArray()) {
+            return value;
         }
         return value.toString();
     }

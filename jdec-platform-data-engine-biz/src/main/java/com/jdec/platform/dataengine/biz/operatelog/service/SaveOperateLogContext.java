@@ -14,9 +14,6 @@ public class SaveOperateLogContext {
     /** 用户正在操作的模块ID（结构根，可能不是根模块） */
     private Long structureRootModuleId;
 
-    /** 菜单ID（取变更项名称用） */
-    private Long menuId;
-
     /** 操作模块主表名（取业务编号用） */
     private String primaryTable;
 

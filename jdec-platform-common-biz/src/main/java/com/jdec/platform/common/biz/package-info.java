@@ -35,6 +35,7 @@
             "approval.api",
             "data.api",
             "dataengine.api",
+            "validation",
             "shared"
         })
 package com.jdec.platform.common.biz;

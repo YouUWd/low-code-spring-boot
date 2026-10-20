@@ -84,19 +84,15 @@ public class RoleApprovalLogService {
             columns.add(buildColumn("角色名称", oldRoleName, request.getRoleName(), "roleName"));
         }
 
-        // 授权主体对比（简单字符串拼接，不对齐）
+        // 授权主体对比（数组格式，不做逗号拼接）
         List<String> oldSubjectDisplayNames =
                 buildSubjectDisplayNames(oldRoleSubjects, subjectNameMap);
         List<String> newSubjectDisplayNames =
                 buildSubjectDisplayNames(request.getSubjectList(), subjectNameMap);
 
-        String oldSubjectStr =
-                oldSubjectDisplayNames.isEmpty() ? "" : String.join(",", oldSubjectDisplayNames);
-        String newSubjectStr =
-                newSubjectDisplayNames.isEmpty() ? "" : String.join(",", newSubjectDisplayNames);
-
-        if (!oldSubjectStr.equals(newSubjectStr)) {
-            columns.add(buildColumn("授权主体", oldSubjectStr, newSubjectStr, "subject"));
+        if (!oldSubjectDisplayNames.equals(newSubjectDisplayNames)) {
+            columns.add(
+                    buildColumn("授权主体", oldSubjectDisplayNames, newSubjectDisplayNames, "subject"));
         }
 
         // 指定成员对比（对齐显示，返回数组格式）
@@ -158,11 +154,10 @@ public class RoleApprovalLogService {
         // 角色名称
         columns.add(buildColumn("角色名称", "", request.getRoleName(), "roleName"));
 
-        // 授权主体
+        // 授权主体（数组格式，不做逗号拼接）
         List<String> subjectDisplayNames =
                 buildSubjectDisplayNames(request.getSubjectList(), subjectNameMap);
-        String subjectDisplayStr = String.join(",", subjectDisplayNames);
-        columns.add(buildColumn("授权主体", "", subjectDisplayStr, "subject"));
+        columns.add(buildColumn("授权主体", "", subjectDisplayNames, "subject"));
 
         // 指定成员（数组格式）
         List<String> userDisplayNames = buildUserDisplayNames(request.getUsers(), hrUserMap);
