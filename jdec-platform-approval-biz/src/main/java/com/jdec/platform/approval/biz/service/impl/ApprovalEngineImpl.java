@@ -22,6 +22,7 @@ import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
+import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.enums.ChangeType;
@@ -916,6 +917,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         String businessNumber = approvalProcessDTO.getBusinessNumber();
         String serialNumber = businessNumber + "@1";
         // 初始化审批链
+        approvalProcessDTO.setCurrentStatusTitle("创建");
         approvalProcessDTO.setSerialNumber(serialNumber);
         approvalProcessDTO.setSerialNo(1);
         initApprovalChainForModule(approvalProcessDTO);
@@ -1173,6 +1175,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
+        approvalProcessDTO.setCurrentStatusTitle(approvalBusiness.getStatusTitle());
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
         asyncTaskService.sendWechatMessageAsync(
@@ -1193,6 +1196,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.isNull(approvalBusiness)) {
             throw new BusinessException(601, "单据记录异常");
         }
+        approvalProcessDTO.setCurrentStatusTitle(approvalBusiness.getStatusTitle());
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
@@ -1387,6 +1391,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.isNull(approvalBusiness)) {
             throw new BusinessException(601, "单据记录异常");
         }
+        approvalProcessDTO.setCurrentStatusTitle(approvalBusiness.getStatusTitle());
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
@@ -1467,7 +1472,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     ApprovalChain::getCurrentStep, specifyStep, approvalBusiness.getCurrentStep());
             updateWrapper.set(ApprovalChain::getApproved, false);
             updateWrapper.set(ApprovalChain::getApproverIdList, null);
-            // updateWrapper.set(ApprovalChain::getApprovalUids, null);
             updateWrapper.set(ApprovalChain::getApprovalUid, null);
             approvalChainMapper.update(updateWrapper);
 
@@ -1528,10 +1532,12 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setReason(approvalProcessDTO.getReason().toString());
         backReq.setIsTermination(false);
-        dataEngineApi.processApprovalStatus(backReq);
-        approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
+        ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setReason(resultResp.getRemark());
         // 写入日志
+        approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
         LambdaQueryWrapper<ApprovalChainButton> buttonWrapper = new LambdaQueryWrapper<>();
@@ -1564,6 +1570,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             throw new BusinessException(601, "单据记录异常");
         }
         // 查询单据详情记录
+        approvalProcessDTO.setCurrentStatusTitle(approvalBusiness.getStatusTitle());
         approvalProcessDTO.setSerialNo(approvalBusiness.getSerialNo());
         approvalProcessDTO.setSerialNumber(approvalBusiness.getSerialNumber());
         LambdaQueryWrapper<ApprovalVersionRecord> approvalRecordWrapper =
@@ -1656,9 +1663,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setReason(approvalProcessDTO.getReason().toString());
         backReq.setIsTermination(false);
-        dataEngineApi.processApprovalStatus(backReq);
+        ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
+        approvalProcessDTO.setReason(resultResp.getRemark());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
