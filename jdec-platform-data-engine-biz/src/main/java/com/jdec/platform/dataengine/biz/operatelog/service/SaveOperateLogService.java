@@ -2,7 +2,6 @@ package com.jdec.platform.dataengine.biz.operatelog.service;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.common.api.MonitorLogApi;
 import com.jdec.platform.common.api.dto.log.MonitorApproveOperation;
 import com.jdec.platform.common.api.dto.log.MonitorContentSystem;
@@ -10,9 +9,7 @@ import com.jdec.platform.common.api.dto.log.MonitorLoginInfo;
 import com.jdec.platform.common.api.dto.log.MonitorMockInfo;
 import com.jdec.platform.common.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.config.api.SysMenuApi;
-import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
-import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -30,12 +27,7 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.RequestContextSnapshot;
 import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.context.UserContext;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -76,27 +68,6 @@ public class SaveOperateLogService {
     /** 无审批链时为手动操作 */
     private static final Integer APPROVAL_TYPE_MANUAL = 1;
 
-    /** remark 中字段明细数组的键名 */
-    private static final String COLUMNS_KEY = "columns";
-
-    /** 字段明细中的字段英文名键名（表名.列名） */
-    private static final String FIELD_KEY = "field";
-
-    /** 字段明细中的词云标记键名 */
-    private static final String CLOUD_KEY = "cloud";
-
-    /** 字段明细中的旧值键名（原始类型，不再向下递归） */
-    private static final String OLD_KEY = "old";
-
-    /** 字段明细中的新值键名（原始类型，不再向下递归） */
-    private static final String NEWER_KEY = "newer";
-
-    /** 词云标记：来自词云 */
-    private static final Integer CLOUD_YES = 1;
-
-    /** 词云标记：非词云 */
-    private static final Integer CLOUD_NO = 0;
-
     private final ModuleMetaDataService moduleMetaDataService;
 
     private final ModuleBizDataService moduleBizDataService;
@@ -106,8 +77,6 @@ public class SaveOperateLogService {
     private final MonitorLogApi monitorLogApi;
 
     private final SysMenuApi sysMenuApi;
-
-    private final ConfigApi configApi;
 
     private final OpenMenuApi openMenuApi;
 
@@ -238,74 +207,10 @@ public class SaveOperateLogService {
         logReq.setDataId(resp != null ? resp.getDataId() : null);
         // remark 直接以 JSON 结构落库，避免监控日志侧二次序列化变成转义字符串
         if (remark != null) {
-            // 字段明细补充词云标记：sys_field.relation_business_no 有值视为来自词云
-            fillCloudFlags(remark);
             logReq.setRemark(remark);
         }
 
         monitorLogApi.saveLog(logReq);
-    }
-
-    /** 给 remark 中所有 columns 明细补充 cloud 标记（1-来自词云，0-否） */
-    private void fillCloudFlags(JsonNode node) {
-        fillCloudFlags(node, loadCloudFieldIndexes());
-    }
-
-    private void fillCloudFlags(JsonNode node, Set<String> cloudFieldIndexes) {
-        if (node == null) {
-            return;
-        }
-        if (node.isObject()) {
-            ObjectNode object = (ObjectNode) node;
-            JsonNode columns = object.get(COLUMNS_KEY);
-            if (columns != null && columns.isArray()) {
-                for (JsonNode element : columns) {
-                    if (!(element instanceof ObjectNode column)) {
-                        continue;
-                    }
-                    JsonNode field = column.get(FIELD_KEY);
-                    boolean cloud =
-                            field != null
-                                    && field.isTextual()
-                                    && cloudFieldIndexes.contains(field.asText());
-                    column.put(CLOUD_KEY, cloud ? CLOUD_YES : CLOUD_NO);
-                }
-            }
-            List<String> names = new ArrayList<>();
-            object.fieldNames().forEachRemaining(names::add);
-            for (String name : names) {
-                // old/newer 为字段值原文（可能是数组/对象），不做词云标记的递归
-                if (OLD_KEY.equals(name) || NEWER_KEY.equals(name)) {
-                    continue;
-                }
-                fillCloudFlags(object.get(name), cloudFieldIndexes);
-            }
-        } else if (node.isArray()) {
-            for (JsonNode element : node) {
-                fillCloudFlags(element, cloudFieldIndexes);
-            }
-        }
-    }
-
-    /** 查询配置中心词云字段索引（表名.列名）；查询失败按无词云字段处理，不阻断日志记录 */
-    private Set<String> loadCloudFieldIndexes() {
-        try {
-            List<FieldWordCloudDTO> fields =
-                    configApi.getWordCloudFields(
-                            AppContext.getProjectNo(), AppContext.getSubjectId());
-            Set<String> indexes = new HashSet<>();
-            for (FieldWordCloudDTO field : fields) {
-                if (StringUtils.isNotBlank(field.getRelationBusinessNo())
-                        && field.getTableName() != null
-                        && field.getColumnName() != null) {
-                    indexes.add(field.getTableName() + "." + field.getColumnName());
-                }
-            }
-            return indexes;
-        } catch (Exception e) {
-            log.warn("操作日志词云字段查询失败，全部标记为非词云", e);
-            return Collections.emptySet();
-        }
     }
 
     // ==================== 动作与展示信息 ====================

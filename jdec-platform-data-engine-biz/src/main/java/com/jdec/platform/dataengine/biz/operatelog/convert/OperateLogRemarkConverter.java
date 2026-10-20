@@ -15,6 +15,8 @@ import com.jdec.platform.dataengine.biz.operatelog.dto.ModuleChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.OperateLogRemarkDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.RowChangeLogDTO;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -374,26 +376,57 @@ public class OperateLogRemarkConverter {
         }
     }
 
-    /** 比较字段值：标量按文本比较，数组/对象按 JSON 结构比较 */
+    /**
+     * 比较字段值：null 与空白视为相同；数组/对象按 JSON 结构比较（忽略对象键顺序）； 其余标量按字面值比较——同为数字时按数值比较（100 无论
+     * BigDecimal/double/int 均相等），否则按文本比较。
+     */
     private boolean isSameValue(Object oldValue, Object newerValue) {
-        return Objects.equals(compareKey(oldValue), compareKey(newerValue));
-    }
-
-    private String compareKey(Object value) {
-        Object normalized = normalizeValue(value);
-        if (normalized == null) {
-            return null;
+        Object oldNormalized = normalizeValue(oldValue);
+        Object newerNormalized = normalizeValue(newerValue);
+        boolean oldBlank = isBlankValue(oldNormalized);
+        boolean newerBlank = isBlankValue(newerNormalized);
+        if (oldBlank || newerBlank) {
+            return oldBlank && newerBlank;
         }
-        if (normalized instanceof Collection<?>
-                || normalized instanceof Map<?, ?>
-                || normalized.getClass().isArray()) {
+        if (isContainerValue(oldNormalized) || isContainerValue(newerNormalized)) {
+            return objectMapper
+                    .valueToTree(oldNormalized)
+                    .equals(objectMapper.valueToTree(newerNormalized));
+        }
+        if (oldNormalized instanceof Number oldNumber
+                && newerNormalized instanceof Number newerNumber) {
             try {
-                return objectMapper.writeValueAsString(normalized);
-            } catch (Exception e) {
-                return String.valueOf(normalized);
+                return toBigDecimal(oldNumber).compareTo(toBigDecimal(newerNumber)) == 0;
+            } catch (NumberFormatException ignored) {
+                // NaN/Infinity 等无法转 BigDecimal，退回文本比较
             }
         }
-        return DataPersistenceUtil.getFieldTxtValue(normalized);
+        return Objects.equals(
+                DataPersistenceUtil.getFieldTxtValue(oldNormalized),
+                DataPersistenceUtil.getFieldTxtValue(newerNormalized));
+    }
+
+    /** 数字统一转 BigDecimal 比较：忽略类型与精度差异（100、100.0、100.00 视为同一值） */
+    private BigDecimal toBigDecimal(Number number) {
+        if (number instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (number instanceof BigInteger integer) {
+            return new BigDecimal(integer);
+        }
+        // Double/Float 用 toString 构造，避免二进制精度误差（100.0 → "100.0"）
+        return new BigDecimal(number.toString());
+    }
+
+    /** null 与空白字符串视为同一空值，避免未改动字段因 null/"" 差异进入 remark */
+    private boolean isBlankValue(Object value) {
+        return value == null || (value instanceof CharSequence text && StringUtils.isBlank(text));
+    }
+
+    private boolean isContainerValue(Object value) {
+        return value instanceof Collection<?>
+                || value instanceof Map<?, ?>
+                || value.getClass().isArray();
     }
 
     private RowChangeLogDTO buildDeleteRow(
