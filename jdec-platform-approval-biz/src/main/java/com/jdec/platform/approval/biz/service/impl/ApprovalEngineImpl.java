@@ -110,11 +110,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(approvalBusiness)) businessSaveSubmit(approvalProcessDTO);
             return;
         }
-        if (Objects.nonNull(approvalBusiness)
-                && (!approvalBusiness.getStatusValue().equals(99)
-                        && !approvalBusiness.getStatusValue().equals(-99))) {
-            return;
-        }
         if (Objects.nonNull(event.getButton()) && "submit".equals(approvalProcessDTO.getButton())) {
             if (Objects.isNull(approvalBusiness)) {
                 approvalProcessDTO.setButton("create");
@@ -130,7 +125,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             } else {
                 if (approvalBusiness.getCurrentStep().equals(0)
                         && approvalBusiness.getStatusValue() == 1) {
-                    throw new BusinessException(609, "审批业务已经存在");
+                    return;
                 }
                 businessSubmitDraft(approvalProcessDTO);
             }
