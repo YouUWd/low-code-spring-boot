@@ -107,7 +107,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 sysApprovalChainConfigApi.getApprovalStatus(List.of(event.getModuleId()));
         if (!approvalEnable) {
             if (Objects.isNull(approvalBusiness)) businessSaveSubmit(approvalProcessDTO);
-            throw new BusinessException(610, "审批链未启用");
+            return;
         }
         if (Objects.nonNull(approvalBusiness)
                 && (!approvalBusiness.getStatusValue().equals(99)
