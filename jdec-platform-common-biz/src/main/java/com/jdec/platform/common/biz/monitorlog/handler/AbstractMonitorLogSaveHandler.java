@@ -39,7 +39,7 @@ public abstract class AbstractMonitorLogSaveHandler implements MonitorLogSaveHan
         entity.setLoginInfo(toJson(req.getLoginInfo(), "loginInfo"));
         entity.setMockInfo(toJson(req.getMockInfo(), "mockInfo"));
         entity.setContent(toJson(req.getContent(), "content"));
-        entity.setRemark(toJson(req.getRemark(), "remark"));
+        entity.setDescription(toJson(req.getRemark(), "remark"));
         return entity;
     }
 

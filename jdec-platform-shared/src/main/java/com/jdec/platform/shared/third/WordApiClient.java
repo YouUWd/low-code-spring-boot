@@ -1,6 +1,7 @@
 package com.jdec.platform.shared.third;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.net.http.HttpClient;
@@ -96,18 +97,26 @@ public class WordApiClient extends BaseApiClient {
         invoke("getBindOrCancel", params, new TypeReference<Void>() {});
     }
 
-    // ==================== 内部方法 ====================
-
     /** 发送带签名的 POST 请求 */
     private <R> R invoke(String action, Object body, TypeReference<R> typeReference) {
+        return invoke(action, body, getObjectMapper().constructType(typeReference.getType()));
+    }
+
+    private <R> R invoke(String action, Object body, JavaType javaType) {
         Map<String, Object> signedBody =
                 signatureProvider.buildSignedRequest(action, convertToMap(body));
-        return post("/invoke", signedBody, typeReference);
+        return post("/invoke", signedBody, javaType);
     }
 
     /** 调用接口并自动剥离 InnerApiResponse 包装 */
-    private <T> T invokeAndUnwrap(String action, Object body, TypeReference<T> ignoredDataType) {
-        var response = this.invoke(action, body, new TypeReference<InnerApiResponse<T>>() {});
+    private <T> T invokeAndUnwrap(String action, Object body, TypeReference<T> dataType) {
+        var javaType =
+                getObjectMapper()
+                        .getTypeFactory()
+                        .constructParametricType(
+                                InnerApiResponse.class,
+                                getObjectMapper().constructType(dataType.getType()));
+        InnerApiResponse<T> response = this.invoke(action, body, javaType);
         if (response == null || !response.isSuccess()) {
             String errorMsg =
                     (response != null && response.getMsg() != null && !response.getMsg().isBlank())

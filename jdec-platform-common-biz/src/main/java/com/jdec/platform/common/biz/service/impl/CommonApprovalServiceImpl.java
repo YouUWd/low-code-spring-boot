@@ -10,11 +10,14 @@ import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
+import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.ProjectProperties;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** 审批与流程公共聚合服务实现 */
 @Slf4j
@@ -36,7 +40,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
     private final SysStatusApi sysStatusApi;
     private final ObjectMapper objectMapper;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+    private final ProjectProperties projectProperties;
 
+    // 审批单据
     @Override
     public void approvalBusiness(Long menuId, ApprovalReq req) {
         if (menuId == null) {
@@ -62,7 +68,33 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         eventPublisher.publishEvent(approvalEvent);
     }
 
+    // 保存草稿
     @Override
+    @Transactional
+    public Long businessSave(DynamicSaveReq req) {
+        DynamicSaveResp result = dataEngineApi.save(req);
+        ApprovalReq approvalReq = new ApprovalReq();
+        approvalReq.setRecordId(result.getDataId());
+        approvalReq.setBusinessNumber(result.getBusinessNo());
+        approvalReq.setButton("save");
+        approvalSave(result.getModuleId(), approvalReq);
+        return result.getDataId();
+    }
+
+    // 提交单据
+    @Override
+    @Transactional
+    public Long businessSubmit(DynamicSaveReq req) {
+        DynamicSaveResp result = dataEngineApi.save(req);
+        ApprovalReq approvalReq = new ApprovalReq();
+        approvalReq.setRecordId(result.getDataId());
+        approvalReq.setBusinessNumber(result.getBusinessNo());
+        approvalReq.setButton("submit");
+        approvalSave(result.getModuleId(), approvalReq);
+        return result.getDataId();
+    }
+
+    @Transactional
     public void approvalSave(Long moduleId, ApprovalReq req) {
         ApprovalEvent approvalEvent = new ApprovalEvent();
         BeanUtils.copyProperties(req, approvalEvent);
@@ -72,8 +104,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         approvalEvent.setSubjectId(AppContext.getSubjectId());
         approvalEvent.setModuleId(moduleId);
         approvalEvent.setOldRecordId(req.getRecordId());
-
-        eventPublisher.publishEvent(approvalEvent);
+        approvalEngine.handleApproval(approvalEvent);
     }
 
     @Override
@@ -89,8 +120,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         Map<String, Object> result = new HashMap<>();
         // 模块是否挂审批链
         boolean approvalEnable = sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModuleId));
-        if (!approvalEnable && recordId == 0) {
-            result.put("approvalEnable", false);
+        if (recordId == 0) {
+            result.put("approvalEnable", approvalEnable);
             return result;
         }
         result.put("approvalEnable", approvalEnable);

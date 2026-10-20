@@ -17,6 +17,12 @@ public class SaveOperateLogContext {
     /** 菜单ID（取变更项名称用） */
     private Long menuId;
 
+    /** 操作模块主表名（取业务编号用） */
+    private String primaryTable;
+
+    /** 保存动作：保存-首次新增，修改-已有数据更新，删除-提交了删除标记 */
+    private String operation;
+
     /** 模块元数据 */
     private Map<Long, SysModuleCombineInfo> moduleCacheMap;
 

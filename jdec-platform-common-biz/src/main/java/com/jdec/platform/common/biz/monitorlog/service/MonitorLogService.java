@@ -73,7 +73,7 @@ public class MonitorLogService implements MonitorLogApi {
                     DSL.field(DSL.name("browser"), String.class).as("browser"),
                     DSL.field(DSL.name("plat_form"), String.class).as("platForm"),
                     DSL.field(DSL.name("content"), String.class).as("content"),
-                    DSL.field(DSL.name("remark"), String.class).as("remark"),
+                    DSL.field(DSL.name("remark"), String.class).as("description"),
                     DSL.field(DSL.name("record_time"), LocalDateTime.class).as("recordTime"),
                     DSL.field(DSL.name("created_date"), LocalDateTime.class).as("createdDate"));
 
@@ -195,6 +195,9 @@ public class MonitorLogService implements MonitorLogApi {
      * null），其子类型标识必须存在且与日志类型对应。
      *
      * <p>系统日志（type=2）的 content 只要提交，其子类型标识必须为 systemLog（不传 content 时不校验）。
+     *
+     * <p>操作日志（type=0）的 content 允许 {@code operationLog} 或 {@code systemLog}：无审批链保存日志的 content 使用
+     * systemLog，其余操作日志仍使用 operationLog。
      */
     private void validateLogSubType(MonitorLogSaveReq req) {
         if (MonitorLogConstant.TYPE_OPERATION_LOG.equals(req.getType())) {
@@ -208,7 +211,8 @@ public class MonitorLogService implements MonitorLogApi {
                 checkLogSubType(
                         "content",
                         req.getContent().getLogSubType(),
-                        MonitorLogConstant.OPERATION_LOG);
+                        MonitorLogConstant.OPERATION_LOG,
+                        MonitorLogConstant.SYSTEM_LOG);
             }
         } else if (MonitorLogConstant.TYPE_MESSAGE_LOG.equals(req.getType())) {
             if (req.getContent() != null) {
@@ -225,17 +229,18 @@ public class MonitorLogService implements MonitorLogApi {
         }
     }
 
-    /** 子类型标识校验：必须与日志类型对应的取值一致 */
-    private void checkLogSubType(String field, String logSubType, String expected) {
+    /** 子类型标识校验：必须为日志类型允许的取值之一 */
+    private void checkLogSubType(String field, String logSubType, String... expected) {
+        String expectedText = String.join(" 或 ", expected);
         if (logSubType == null) {
-            throw new BusinessException("监控日志 " + field + " 缺少子类型标识 logSubType，应为：" + expected);
+            throw new BusinessException("监控日志 " + field + " 缺少子类型标识 logSubType，应为：" + expectedText);
         }
-        if (!expected.equals(logSubType)) {
+        if (!Arrays.asList(expected).contains(logSubType)) {
             throw new BusinessException(
                     "监控日志 "
                             + field
                             + " 的子类型标识 logSubType 与日志类型不匹配，应为："
-                            + expected
+                            + expectedText
                             + "，实际："
                             + logSubType);
         }
@@ -324,9 +329,9 @@ public class MonitorLogService implements MonitorLogApi {
         if (readableFieldIndexes != null) {
             records.forEach(
                     resp ->
-                            resp.setRemark(
+                            resp.setDescription(
                                     monitorLogFieldPermissionService.filterRemark(
-                                            resp.getRemark(), readableFieldIndexes)));
+                                            resp.getDescription(), readableFieldIndexes)));
         }
         return records;
     }
@@ -390,7 +395,7 @@ public class MonitorLogService implements MonitorLogApi {
         values.put(DSL.field(DSL.name("browser")), entity.getBrowser());
         values.put(DSL.field(DSL.name("plat_form")), entity.getPlatForm());
         values.put(DSL.field(DSL.name("content")), entity.getContent());
-        values.put(DSL.field(DSL.name("remark")), entity.getRemark());
+        values.put(DSL.field(DSL.name("remark")), entity.getDescription());
         values.put(DSL.field(DSL.name("record_time")), entity.getRecordTime());
         values.put(DSL.field(DSL.name("created_date")), entity.getCreatedDate());
         return values;
@@ -413,7 +418,7 @@ public class MonitorLogService implements MonitorLogApi {
                 .browser(entity.getBrowser())
                 .platForm(entity.getPlatForm())
                 .content(parse(entity.getContent(), MonitorContentBase.class, "content"))
-                .remark(parse(entity.getRemark(), Object.class, "remark"))
+                .description(parse(entity.getDescription(), Object.class, "remark"))
                 .recordTime(entity.getRecordTime())
                 .createdDate(entity.getCreatedDate())
                 .build();

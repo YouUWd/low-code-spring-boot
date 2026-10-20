@@ -35,6 +35,8 @@
         <module>jdec-platform-approval-api</module>
         <module>jdec-platform-approval-biz</module>
         <module>jdec-platform-app</module>
+        <module>jdec-platform-external-object-biz</module>
+        <module>jdec-platform-external-object-api</module>
     </modules>
 
     <properties>
@@ -151,6 +153,17 @@
             <dependency>
                 <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-approval-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-external-object-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-external-object-biz</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

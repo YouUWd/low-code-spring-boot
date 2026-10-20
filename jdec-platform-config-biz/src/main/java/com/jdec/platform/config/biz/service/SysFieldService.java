@@ -71,6 +71,12 @@ public class SysFieldService implements SysFieldApi {
                         SELECT TABLE_NAME, TABLE_COMMENT
                         FROM INFORMATION_SCHEMA.TABLES
                         WHERE TABLE_SCHEMA = ?
+                          AND TABLE_NAME NOT LIKE 'approval_%'
+                          AND TABLE_NAME NOT LIKE 'module_data_%'
+                          AND TABLE_NAME NOT LIKE 'data_engine_%'
+                          AND TABLE_NAME NOT LIKE 'monitor_%'
+                          AND TABLE_NAME NOT LIKE 'sys_%'
+                          AND TABLE_NAME NOT IN ('user_menu_header', 'table_change_log', 'personalized_user_column', 'com_personalized_user_column')
                         ORDER BY TABLE_NAME
                         """;
 
@@ -107,6 +113,12 @@ public class SysFieldService implements SysFieldApi {
                             ON t.TABLE_SCHEMA = c.TABLE_SCHEMA
                            AND t.TABLE_NAME = c.TABLE_NAME
                         WHERE t.TABLE_SCHEMA = ?
+                          AND t.TABLE_NAME NOT LIKE 'approval_%'
+                          AND t.TABLE_NAME NOT LIKE 'module_data_%'
+                          AND t.TABLE_NAME NOT LIKE 'data_engine_%'
+                          AND t.TABLE_NAME NOT LIKE 'monitor_%'
+                          AND t.TABLE_NAME NOT LIKE 'sys_%'
+                          AND t.TABLE_NAME NOT IN ('user_menu_header', 'table_change_log', 'personalized_user_column', 'com_personalized_user_column')
                         ORDER BY t.TABLE_NAME, c.ORDINAL_POSITION
                         """;
 

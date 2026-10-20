@@ -1,6 +1,7 @@
 package com.jdec.platform.shared.third;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.net.URI;
@@ -51,6 +52,18 @@ public abstract class BaseApiClient {
      * @return 反序列化后的响应
      */
     protected <R> R post(String path, Object body, TypeReference<R> typeReference) {
+        return post(path, body, objectMapper.constructType(typeReference.getType()));
+    }
+
+    /**
+     * 发送 POST 请求（基于 JavaType）。
+     *
+     * @param path 请求路径（相对于 baseUrl）
+     * @param body 请求体对象（会被序列化为 JSON）
+     * @param javaType 响应 JavaType
+     * @return 反序列化后的响应
+     */
+    protected <R> R post(String path, Object body, JavaType javaType) {
         try {
             String jsonBody = objectMapper.writeValueAsString(body);
             String url = baseUrl + path;
@@ -82,13 +95,17 @@ public abstract class BaseApiClient {
                                 clientName, response.statusCode(), response.body()));
             }
 
-            return objectMapper.readValue(response.body(), typeReference);
+            return objectMapper.readValue(response.body(), javaType);
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             log.error("[{}] 请求异常", clientName, e);
             throw new BusinessException(500, "[" + clientName + "] 请求异常: " + e.getMessage(), e);
         }
+    }
+
+    protected ObjectMapper getObjectMapper() {
+        return objectMapper;
     }
 
     /**

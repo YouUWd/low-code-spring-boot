@@ -57,6 +57,11 @@
             <artifactId>jdec-platform-data-engine-biz</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-external-object-biz</artifactId>
+        </dependency>
+
         <!-- Spring Modulith 核心与事件持久化 -->
         <dependency>
             <groupId>org.springframework.modulith</groupId>

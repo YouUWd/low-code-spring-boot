@@ -29,7 +29,12 @@ public class SysSchemaService implements SysSchemaApi {
                 SELECT TABLE_NAME, TABLE_COMMENT
                 FROM INFORMATION_SCHEMA.TABLES
                 WHERE TABLE_SCHEMA = ?
+                  AND TABLE_NAME NOT LIKE 'approval_%'
+                  AND TABLE_NAME NOT LIKE 'module_data_%'
+                  AND TABLE_NAME NOT LIKE 'data_engine_%'
+                  AND TABLE_NAME NOT LIKE 'monitor_%'
                   AND TABLE_NAME NOT LIKE 'sys_%'
+                  AND TABLE_NAME NOT IN ('user_menu_header', 'table_change_log', 'personalized_user_column', 'com_personalized_user_column')
                 ORDER BY TABLE_NAME
                 """;
 
