@@ -20,11 +20,11 @@ public class ColumnChangeLogDTO implements Serializable {
     @Schema(description = "字段中文名")
     private String name;
 
-    @Schema(description = "字段旧值")
-    private String old;
+    @Schema(description = "字段旧值（保持原始类型，数组/对象不做字符串化）")
+    private Object old;
 
-    @Schema(description = "字段新值")
-    private String newer;
+    @Schema(description = "字段新值（保持原始类型，数组/对象不做字符串化）")
+    private Object newer;
 
     @Schema(description = "字段英文名（表名.列名）")
     private String field;

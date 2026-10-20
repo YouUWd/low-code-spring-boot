@@ -24,6 +24,7 @@
         <module>jdec-platform-auth-biz</module>
         <module>jdec-platform-config-api</module>
         <module>jdec-platform-config-biz</module>
+        <module>jdec-platform-validation</module>
         <module>jdec-platform-hr-api</module>
         <module>jdec-platform-hr-biz</module>
         <module>jdec-platform-common-api</module>
@@ -99,6 +100,11 @@
             <dependency>
                 <groupId>com.jdec</groupId>
                 <artifactId>jdec-platform-config-biz</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.jdec</groupId>
+                <artifactId>jdec-platform-validation</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

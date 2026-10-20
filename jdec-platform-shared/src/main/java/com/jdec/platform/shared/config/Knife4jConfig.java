@@ -76,4 +76,13 @@ public class Knife4jConfig {
                 .packagesToScan("com.jdec.platform.dataengine.biz.controller")
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi externalObjectApi() {
+        return GroupedOpenApi.builder()
+                .group("EXTERNAL_OBJECT")
+                .displayName("外部对象")
+                .packagesToScan("com.jdec.platform.externalobject.biz.controller")
+                .build();
+    }
 }

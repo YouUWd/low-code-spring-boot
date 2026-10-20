@@ -18,6 +18,9 @@ public class BusinessException extends RuntimeException {
     /** 错误码 */
     private final int code;
 
+    /** 附带给前端的业务数据，可为 null */
+    private final transient Object data;
+
     /**
      * 构造方法 - 使用 code 和 message
      *
@@ -27,6 +30,20 @@ public class BusinessException extends RuntimeException {
     public BusinessException(int code, String message) {
         super(message);
         this.code = code;
+        this.data = null;
+    }
+
+    /**
+     * 构造方法 - 使用 code、message 和业务数据
+     *
+     * @param code 错误码
+     * @param message 错误消息
+     * @param data 随响应返回给前端的数据
+     */
+    public BusinessException(int code, String message, Object data) {
+        super(message);
+        this.code = code;
+        this.data = data;
     }
 
     /**
@@ -39,6 +56,7 @@ public class BusinessException extends RuntimeException {
     public BusinessException(int code, String message, Throwable cause) {
         super(message, cause);
         this.code = code;
+        this.data = null;
     }
 
     /**
@@ -49,6 +67,7 @@ public class BusinessException extends RuntimeException {
     public BusinessException(String message) {
         super(message);
         this.code = ApiCodeEnum.WARNING.getCode();
+        this.data = null;
     }
 
     /**
@@ -60,5 +79,6 @@ public class BusinessException extends RuntimeException {
     public BusinessException(String message, Throwable cause) {
         super(message, cause);
         this.code = ApiCodeEnum.WARNING.getCode();
+        this.data = null;
     }
 }

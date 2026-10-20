@@ -274,23 +274,27 @@ public class SysWechatTemplateLogService {
     }
 
     /**
-     * 将字典配置ID（单个或集合）解析为中文label，集合以逗号拼接
+     * 将字典配置ID（单个或集合）解析为中文label；原值为集合时保持数组结构，不做逗号拼接
      *
      * @param categoryAlias 字典分类别名
      * @param value 配置ID或配置ID集合
-     * @return 中文label（集合为逗号拼接），未匹配到字典时回退为原始值
+     * @return 中文label（集合返回列表），未匹配到字典时回退为原始值
      */
     private Object resolveDictLabel(String categoryAlias, Object value) {
         if (value == null) {
             return null;
         }
+        boolean arrayValue = value instanceof Collection<?>;
         List<String> values = toStringList(value);
         if (values.isEmpty()) {
-            return "";
+            return arrayValue ? Collections.emptyList() : "";
         }
         try {
             Map<String, String> labelMap =
                     dictFieldQueryService.queryLabelsByValues(categoryAlias, values, null);
+            if (arrayValue) {
+                return values.stream().map(v -> labelMap.getOrDefault(v, v)).toList();
+            }
             if (values.size() == 1) {
                 return labelMap.getOrDefault(values.get(0), values.get(0));
             }
@@ -299,7 +303,7 @@ public class SysWechatTemplateLogService {
                     .collect(Collectors.joining(","));
         } catch (Exception e) {
             log.warn("解析字典label失败: categoryAlias={}, value={}", categoryAlias, value, e);
-            return String.join(",", values);
+            return arrayValue ? values : String.join(",", values);
         }
     }
 
