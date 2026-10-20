@@ -1,7 +1,6 @@
 package com.jdec.platform.dataengine.biz.operatelog.service;
 
 import cn.hutool.core.collection.CollectionUtil;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.common.api.MonitorLogApi;
@@ -26,7 +25,6 @@ import com.jdec.platform.dataengine.biz.operatelog.util.OperateLogRemarkUtil;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
-import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.constant.MonitorLogConstant;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.RequestContextSnapshot;
@@ -189,15 +187,15 @@ public class SaveOperateLogService {
         }
         Long menuId = resolveMenuId(ctx.getStructureRootModuleId());
         // 首次保存不记录 remark；后续保存有旧数据时生成变更明细，无变更不记录日志
-        String remarkJson = null;
+        JsonNode remark = null;
         if (ctx.getOldData() != null) {
-            remarkJson =
+            remark =
                     operateLogRemarkUtil.buildRemark(
                             ctx.getOldData(),
                             req.getNestedModuleData(),
                             ctx.getModuleCacheMap(),
                             menuId);
-            if (StringUtils.isBlank(remarkJson)) {
+            if (remark == null) {
                 return;
             }
         }
@@ -238,18 +236,11 @@ public class SaveOperateLogService {
         // moduleId + dataId：monitor_operate_index 需要，用于按单据查询操作日志
         logReq.setModuleId(resp != null ? resp.getModuleId() : null);
         logReq.setDataId(resp != null ? resp.getDataId() : null);
-        // remark 为 JSON 串，需解析回对象再落库，避免监控日志侧二次序列化变成转义字符串
-        if (StringUtils.isNotBlank(remarkJson)) {
-            JsonNode remarkNode;
-            try {
-                remarkNode = JsonUtil.json2Node(remarkJson);
-            } catch (JsonProcessingException e) {
-                log.warn("操作日志 remark 解析失败，跳过日志记录", e);
-                return;
-            }
+        // remark 直接以 JSON 结构落库，避免监控日志侧二次序列化变成转义字符串
+        if (remark != null) {
             // 字段明细补充词云标记：sys_field.relation_business_no 有值视为来自词云
-            fillCloudFlags(remarkNode);
-            logReq.setRemark(remarkNode);
+            fillCloudFlags(remark);
+            logReq.setRemark(remark);
         }
 
         monitorLogApi.saveLog(logReq);

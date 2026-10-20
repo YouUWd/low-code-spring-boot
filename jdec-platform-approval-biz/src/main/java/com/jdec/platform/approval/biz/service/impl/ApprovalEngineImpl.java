@@ -1036,6 +1036,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.isNull(approvalBusiness)) {
             throw new BusinessException(601, "单据记录异常");
         }
+
+        approvalProcessDTO.setCurrentStatusTitle(approvalBusiness.getStatusTitle());
+
         if (!approvalBusiness.getCreatedBy().equals(approvalProcessDTO.getApplicantId())) {
             throw new BusinessException(602, "申请人与操作人不一致");
         }
@@ -1172,7 +1175,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
-        approvalProcessDTO.setCurrentStatusTitle(approvalBusiness.getStatusTitle());
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
         // 发送消息
         asyncTaskService.sendWechatMessageAsync(

@@ -1,6 +1,7 @@
 package com.jdec.platform.validation.externalobject.external;
 
 import com.jdec.platform.shared.validation.dynamic.AlwaysApplicable;
+import com.jdec.platform.shared.validation.dynamic.AnyOf;
 import com.jdec.platform.shared.validation.dynamic.ApplicabilityPolicy;
 import com.jdec.platform.shared.validation.dynamic.Condition;
 import com.jdec.platform.shared.validation.dynamic.ConditionApplicability;
@@ -38,11 +39,11 @@ import java.util.List;
  *
  * <p>规则来源：{@code docs/external/外部对象字段校验.xlsx}（登记单、变更申请单）、 {@code docs/external/外部对象表单校验.md}。
  *
- * <p>静态定义只覆盖可由请求数据判定的规则；依赖数据库的规则不在本类实现：
+ * <p>本类只定义可由请求数据判定的规则；依赖数据库的规则由 {@link ExternalObjectDuplicateChecker} 补充：
  *
  * <ul>
- *   <li>外部对象全称、简称、英文名称、统一社会信用代码的查重；
- *   <li>人员手机号、证件号与已保存外部对象数据的查重（本次仅校验同一请求内的重复）；
+ *   <li>外部对象全称、简称、英文全称/简称、统一社会信用代码与已保存数据的查重；
+ *   <li>人员手机号、证件号与已保存外部对象数据的查重（本类只校验同一请求内的重复）；
  *   <li>词云配置项是否为最新生效版本（仅校验是否填写）；
  *   <li>父级外部对象是否启用、人员/联系人/产线负责人是否为生效数据；
  *   <li>外部部门号按 W+5 位自动生成（由保存侧生成，不属于校验）；
@@ -233,12 +234,17 @@ public class ExternalObjectValidationDefinition implements ValidationDefinitionP
                         true,
                         AlwaysApplicable.INSTANCE,
                         List.of(new IdentityNoRule(), MemberDuplicateRule.identityNo())),
+                // 对象性质非个人且人员类型非员工（部门）时，不校验手机号。
                 new FieldDefinition(
                         MEMBER,
                         "member.mobile_phone_no",
                         ValueType.STRING,
                         true,
-                        AlwaysApplicable.INSTANCE,
+                        new ConditionApplicability(
+                                new AnyOf(
+                                        List.of(
+                                                NatureCondition.in(INDIVIDUAL),
+                                                MemberTypeCondition.employee()))),
                         List.of(
                                 new RequiredRule(),
                                 new MobileNumberRule(),

@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
@@ -142,7 +143,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                             .build());
         }
         // todo  result   tmpSnapshot 要构建 版本间的字段 对比 返回给审批链
-        String remark =
+        JsonNode remark =
                 operateLogRemarkUtil.buildRemark(
                         tmpSnapshot, result, moduleCacheMap, req.getMenuId(), req.getReason());
         ApprovalProcessResultResp resp =
