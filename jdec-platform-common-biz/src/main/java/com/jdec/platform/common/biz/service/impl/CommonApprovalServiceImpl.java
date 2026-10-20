@@ -70,7 +70,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
     // 保存草稿
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Long businessSave(DynamicSaveReq req) {
         DynamicSaveResp result = dataEngineApi.save(req);
         ApprovalReq approvalReq = new ApprovalReq();
@@ -83,7 +83,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
 
     // 提交单据
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Long businessSubmit(DynamicSaveReq req) {
         DynamicSaveResp result = dataEngineApi.save(req);
         ApprovalReq approvalReq = new ApprovalReq();
@@ -94,7 +94,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService {
         return result.getDataId();
     }
 
-    @Transactional
     public void approvalSave(Long moduleId, ApprovalReq req) {
         ApprovalEvent approvalEvent = new ApprovalEvent();
         BeanUtils.copyProperties(req, approvalEvent);
