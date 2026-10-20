@@ -200,7 +200,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .or()
                                 .nested(
                                         wp2 ->
-                                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                                wp2.eq(ApprovalBusiness::getApproverId, 0)
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
                                                                 approvalProcessReq.getRoleId())
@@ -322,7 +322,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .or()
                                 .nested(
                                         wp2 ->
-                                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                                wp2.eq(ApprovalBusiness::getApproverId, 0)
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
                                                                 approvalListReq.getRoleId())
