@@ -18,6 +18,8 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 数据引擎专属的模块元数据读取服务
@@ -37,6 +39,7 @@ public class DataModuleConfigService {
     private final DataSysTableRelationMapper tableRelationMapper;
 
     /** 根据模块ID获取模块元数据 (纯数据引擎视角，仅提取必要配置) */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SysModuleInfo getModuleCompleteById(String projectNo, Long subjectId, Long moduleId) {
         if (moduleId == null) {
             return null;
@@ -194,6 +197,7 @@ public class DataModuleConfigService {
     }
 
     /** 根据字段ID列表批量获取字段元数据 */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<ModuleFieldDTO> listFieldsByIds(List<Long> fieldIds) {
         if (fieldIds == null || fieldIds.isEmpty()) {
             return Collections.emptyList();
@@ -216,6 +220,7 @@ public class DataModuleConfigService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<ModuleFieldDTO> listFieldsByModuleIds(List<Long> moduleIds) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             return Collections.emptyList();

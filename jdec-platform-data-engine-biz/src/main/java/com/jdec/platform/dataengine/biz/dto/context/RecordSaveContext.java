@@ -23,6 +23,8 @@ public class RecordSaveContext extends BasicSaveModel {
     // 根模块对应的主表数据版本
     private Integer rootModuleMainTableDataVersion;
 
+    private Long structureRootModuleId; // 结构根模块ID
+
     // 当前模块的完整信息
     private SysModuleCombineInfo sysModuleCompleteResp;
 
@@ -32,11 +34,20 @@ public class RecordSaveContext extends BasicSaveModel {
     // 表名
     private String tableName;
 
-    // 关联的上级表
-    private String parentLevelTable;
+    // 外键
+    private String tableFk;
 
-    // 关联的上级表 数据 ID
-    private Long parentLevelTableId;
+    // 模块主表
+    private Boolean isModuleMainTable;
+
+    // 关联的上级表
+    private String parentTable;
+
+    // 父模块ID
+    private Long parentModuleId;
+
+    // 父模块主表ID
+    private Long parentModuleMainTableDataId;
 
     // 表记录
     private Map<String, Object> record;
@@ -58,11 +69,8 @@ public class RecordSaveContext extends BasicSaveModel {
 
     private Boolean isInsert;
 
+    private Boolean isApproval;
+
     // 模块定义上 跟模块主表
     private Boolean isRootModuleMainTable;
-
-    // 结构上的  根模块主表
-    private Boolean isTreeRoot;
-
-    private Boolean isApproval;
 }

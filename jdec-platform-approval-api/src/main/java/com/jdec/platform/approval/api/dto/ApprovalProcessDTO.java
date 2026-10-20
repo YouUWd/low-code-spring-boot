@@ -56,6 +56,9 @@ public class ApprovalProcessDTO {
     // 当前节点
     private Integer currentStep;
 
+    // 当前状态标题
+    private String currentStatusTitle;
+
     // 驳回原因、取消原因
     private Object reason;
 

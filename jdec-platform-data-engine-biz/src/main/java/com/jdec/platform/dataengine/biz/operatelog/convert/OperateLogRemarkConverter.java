@@ -1,13 +1,13 @@
 package com.jdec.platform.dataengine.biz.operatelog.convert;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
-import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
+import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ActionChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ColumnChangeLogDTO;
@@ -16,12 +16,16 @@ import com.jdec.platform.dataengine.biz.operatelog.dto.OperateLogRemarkDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.RowChangeLogDTO;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.jooq.JSON;
+import org.jooq.JSONB;
 import org.springframework.stereotype.Service;
 
 /**
@@ -37,7 +41,11 @@ public class OperateLogRemarkConverter {
 
     private final SysMenuApi sysMenuApi;
 
+    private final ObjectMapper objectMapper;
+
     /**
+     * 字段值保持原始类型：数组仍是数组、JSON 对象仍是 JSON 对象，不做字符串化。
+     *
      * @param oldData 保存前的旧数据（详情查询结果），纯新增时为 null
      * @param newData 本次保存提交的数据
      * @param moduleCacheMap 模块元数据（含字段、唯一标识、子表、模块名）
@@ -74,7 +82,6 @@ public class OperateLogRemarkConverter {
         if (module == null || module.getModuleInfo() == null) {
             return null;
         }
-        Long effectiveMenuId = newNode.getMenuId() != null ? newNode.getMenuId() : menuId;
         String primaryTable = module.getModuleInfo().getPrimaryTable();
 
         ActionChangeLogDTO actions =
@@ -87,11 +94,10 @@ public class OperateLogRemarkConverter {
         // 虚模块（无主表）不做行级对比，仅递归子模块
         if (StringUtils.isBlank(primaryTable)) {
             buildVirtualModuleChanges(
-                    oldNode, newNode, moduleCacheMap, effectiveMenuId, menuNameCache, actions);
-            return finalizeModule(moduleId, module, effectiveMenuId, menuNameCache, actions);
+                    oldNode, newNode, moduleCacheMap, menuId, menuNameCache, actions);
+            return finalizeModule(moduleId, module, menuId, menuNameCache, actions);
         }
 
-        Map<String, ModuleFieldDTO> fieldMap = module.getFieldMapByTable().get(primaryTable);
         List<String> uniqueFields = module.getUniqueNameFields();
 
         // 旧数据按主键索引
@@ -114,13 +120,13 @@ public class OperateLogRemarkConverter {
                     // 更新
                     RecordDataDTO oldRec = oldById.remove(id);
                     RowChangeLogDTO rowLog =
-                            buildUpdateRow(oldRec, newRec, module, fieldMap, uniqueFields);
+                            buildPreserveUpdateRow(oldRec, newRec, module, uniqueFields);
                     List<ModuleChangeLogDTO> children =
                             buildChildren(
                                     oldRec.getChildren(),
                                     newRec.getChildren(),
                                     moduleCacheMap,
-                                    effectiveMenuId,
+                                    menuId,
                                     menuNameCache);
                     if (rowLog != null) {
                         if (!children.isEmpty()) {
@@ -144,13 +150,13 @@ public class OperateLogRemarkConverter {
                     }
                 } else {
                     // 新增
-                    RowChangeLogDTO rowLog = buildInsertRow(newRec, module, fieldMap, uniqueFields);
+                    RowChangeLogDTO rowLog = buildPreserveInsertRow(newRec, module, uniqueFields);
                     List<ModuleChangeLogDTO> children =
                             buildChildren(
                                     null,
                                     newRec.getChildren(),
                                     moduleCacheMap,
-                                    effectiveMenuId,
+                                    menuId,
                                     menuNameCache);
                     if (rowLog == null) {
                         rowLog =
@@ -179,7 +185,7 @@ public class OperateLogRemarkConverter {
             actions.getD().add(buildDeleteRow(oldRec, module, primaryTable, uniqueFields));
         }
 
-        return finalizeModule(moduleId, module, effectiveMenuId, menuNameCache, actions);
+        return finalizeModule(moduleId, module, menuId, menuNameCache, actions);
     }
 
     /** 虚模块：无主表，仅递归子模块（旧/新记录按顺序对应） */
@@ -237,48 +243,157 @@ public class OperateLogRemarkConverter {
                 .build();
     }
 
-    private RowChangeLogDTO buildUpdateRow(
+    /** 保持原始类型生成更新行明细（数组/对象不做字符串化） */
+    private RowChangeLogDTO buildPreserveUpdateRow(
             RecordDataDTO oldRec,
             RecordDataDTO newRec,
             SysModuleCombineInfo module,
-            Map<String, ModuleFieldDTO> fieldMap,
             List<String> uniqueFields) {
         String primaryTable = module.getModuleInfo().getPrimaryTable();
-        RowChangeDTO rowChange =
-                DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
-                        DataPersistenceUtil.getTableRowMapFromWideRow(
-                                oldRec.getRow(), primaryTable),
-                        DataPersistenceUtil.getTableRowMapFromWideRow(
-                                newRec.getRow(), primaryTable),
-                        primaryTable,
-                        fieldMap,
-                        uniqueFields,
-                        false);
-        RowChangeDTO combined =
-                DataPersistenceUtil.combineRowChanges(
-                        rowChange,
-                        buildSubTableChanges(oldRec, newRec, module, uniqueFields, false, false));
-        return toRowChangeLog(combined, module);
+        Map<String, Object> oldRow =
+                DataPersistenceUtil.getTableRowMapFromWideRow(oldRec.getRow(), primaryTable);
+        Map<String, Object> newRow =
+                DataPersistenceUtil.getTableRowMapFromWideRow(newRec.getRow(), primaryTable);
+        List<ColumnChangeLogDTO> columns =
+                buildPreserveColumns(module, primaryTable, oldRow, newRow);
+        columns.addAll(buildPreserveSubTableColumns(module, oldRec.getRow(), newRec.getRow()));
+        if (columns.isEmpty()) {
+            return null;
+        }
+        return RowChangeLogDTO.builder()
+                .name(DataPersistenceUtil.getUniqueName(newRow, uniqueFields))
+                .columns(columns)
+                .build();
     }
 
-    private RowChangeLogDTO buildInsertRow(
-            RecordDataDTO newRec,
-            SysModuleCombineInfo module,
-            Map<String, ModuleFieldDTO> fieldMap,
-            List<String> uniqueFields) {
+    /** 保持原始类型生成新增行明细（数组/对象不做字符串化） */
+    private RowChangeLogDTO buildPreserveInsertRow(
+            RecordDataDTO newRec, SysModuleCombineInfo module, List<String> uniqueFields) {
         String primaryTable = module.getModuleInfo().getPrimaryTable();
-        RowChangeDTO rowChange =
-                DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
-                        DataPersistenceUtil.getTableRowMapFromWideRow(
-                                newRec.getRow(), primaryTable),
-                        primaryTable,
-                        fieldMap,
-                        uniqueFields);
-        RowChangeDTO combined =
-                DataPersistenceUtil.combineRowChanges(
-                        rowChange,
-                        buildSubTableChanges(null, newRec, module, uniqueFields, true, false));
-        return toRowChangeLog(combined, module);
+        Map<String, Object> newRow =
+                DataPersistenceUtil.getTableRowMapFromWideRow(newRec.getRow(), primaryTable);
+        List<ColumnChangeLogDTO> columns = buildPreserveColumns(module, primaryTable, null, newRow);
+        columns.addAll(buildPreserveSubTableColumns(module, null, newRec.getRow()));
+        if (columns.isEmpty()) {
+            return null;
+        }
+        return RowChangeLogDTO.builder()
+                .name(DataPersistenceUtil.getUniqueName(newRow, uniqueFields))
+                .columns(columns)
+                .build();
+    }
+
+    private List<ColumnChangeLogDTO> buildPreserveSubTableColumns(
+            SysModuleCombineInfo module,
+            Map<String, Object> oldWideRow,
+            Map<String, Object> newWideRow) {
+        List<ColumnChangeLogDTO> columns = new ArrayList<>();
+        if (CollectionUtil.isEmpty(module.getSubTables())) {
+            return columns;
+        }
+        for (String subTable : module.getSubTables()) {
+            Map<String, Object> oldRow =
+                    oldWideRow != null
+                            ? DataPersistenceUtil.getTableRowMapFromWideRow(oldWideRow, subTable)
+                            : null;
+            Map<String, Object> newRow =
+                    DataPersistenceUtil.getTableRowMapFromWideRow(newWideRow, subTable);
+            columns.addAll(buildPreserveColumns(module, subTable, oldRow, newRow));
+        }
+        return columns;
+    }
+
+    /**
+     * 字段明细生成：old/newer 保持原始类型，数组/对象直接落 remark，不再字符串化。
+     *
+     * <p>oldRow 为 null 表示新增：只记录非空新值；否则仅记录发生变化的字段。
+     */
+    private List<ColumnChangeLogDTO> buildPreserveColumns(
+            SysModuleCombineInfo module,
+            String table,
+            Map<String, Object> oldRow,
+            Map<String, Object> newRow) {
+        List<ColumnChangeLogDTO> columns = new ArrayList<>();
+        if (CollectionUtil.isEmpty(newRow)) {
+            return columns;
+        }
+        Map<String, ModuleFieldDTO> fieldMap = module.getFieldMapByTable().get(table);
+        boolean insert = oldRow == null;
+        for (String column : newRow.keySet()) {
+            if (CommonConstant.NONE_DIFF_FIELD_SET.contains(column)) {
+                continue;
+            }
+            Object oldValue = insert ? null : normalizeValue(oldRow.get(column));
+            Object newerValue = normalizeValue(newRow.get(column));
+            if (insert) {
+                // 新增行不记录空值（与既有规则一致）
+                if (newerValue == null) {
+                    continue;
+                }
+            } else if (isSameValue(oldValue, newerValue)) {
+                continue;
+            }
+            ModuleFieldDTO field = fieldMap != null ? fieldMap.get(column) : null;
+            String fullFieldName = DataPersistenceUtil.getFullFieldName(table, column);
+            columns.add(
+                    ColumnChangeLogDTO.builder()
+                            .name(field != null ? field.getDisplayName() : null)
+                            .old(oldValue)
+                            .newer(newerValue)
+                            .field(fullFieldName)
+                            .fieldId(fieldIdByFullName(module, fullFieldName))
+                            .build());
+        }
+        return columns;
+    }
+
+    /** 归一化字段值：jOOQ JSON / JSON 字符串转为结构化对象，其余保持原样 */
+    private Object normalizeValue(Object value) {
+        String json;
+        if (value instanceof JSON jooqJson) {
+            json = jooqJson.data();
+        } else if (value instanceof JSONB jooqJsonb) {
+            json = jooqJsonb.data();
+        } else if (value instanceof String str) {
+            String trimmed = str.trim();
+            if (!((trimmed.startsWith("{") && trimmed.endsWith("}"))
+                    || (trimmed.startsWith("[") && trimmed.endsWith("]")))) {
+                return value;
+            }
+            json = trimmed;
+        } else {
+            return value;
+        }
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, Object.class);
+        } catch (Exception e) {
+            return value;
+        }
+    }
+
+    /** 比较字段值：标量按文本比较，数组/对象按 JSON 结构比较 */
+    private boolean isSameValue(Object oldValue, Object newerValue) {
+        return Objects.equals(compareKey(oldValue), compareKey(newerValue));
+    }
+
+    private String compareKey(Object value) {
+        Object normalized = normalizeValue(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (normalized instanceof Collection<?>
+                || normalized instanceof Map<?, ?>
+                || normalized.getClass().isArray()) {
+            try {
+                return objectMapper.writeValueAsString(normalized);
+            } catch (Exception e) {
+                return String.valueOf(normalized);
+            }
+        }
+        return DataPersistenceUtil.getFieldTxtValue(normalized);
     }
 
     private RowChangeLogDTO buildDeleteRow(
@@ -295,7 +410,7 @@ public class OperateLogRemarkConverter {
                 if (!rowMap.containsKey(column)) {
                     continue;
                 }
-                String oldValue = DataPersistenceUtil.getFieldTxtValue(rowMap.get(column));
+                Object oldValue = normalizeValue(rowMap.get(column));
                 if (oldValue == null) {
                     continue;
                 }
@@ -314,49 +429,6 @@ public class OperateLogRemarkConverter {
                 .name(DataPersistenceUtil.getUniqueName(rowMap, uniqueFields))
                 .columns(columns.isEmpty() ? null : columns)
                 .build();
-    }
-
-    private List<RowChangeDTO> buildSubTableChanges(
-            RecordDataDTO oldRec,
-            RecordDataDTO newRec,
-            SysModuleCombineInfo module,
-            List<String> uniqueFields,
-            boolean insert,
-            boolean isDelete) {
-        List<RowChangeDTO> subChanges = new ArrayList<>();
-        if (CollectionUtil.isEmpty(module.getSubTables())) {
-            return subChanges;
-        }
-        for (String subTable : module.getSubTables()) {
-            Map<String, Object> oldRow =
-                    oldRec != null
-                            ? DataPersistenceUtil.getTableRowMapFromWideRow(
-                                    oldRec.getRow(), subTable)
-                            : null;
-            Map<String, Object> newRow =
-                    newRec != null
-                            ? DataPersistenceUtil.getTableRowMapFromWideRow(
-                                    newRec.getRow(), subTable)
-                            : null;
-            RowChangeDTO sub =
-                    insert
-                            ? DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
-                                    newRow,
-                                    subTable,
-                                    module.getFieldMapByTable().get(subTable),
-                                    uniqueFields)
-                            : DataPersistenceUtil.convertUpdateRecordToRowChangeDTO(
-                                    oldRow,
-                                    newRow,
-                                    subTable,
-                                    module.getFieldMapByTable().get(subTable),
-                                    uniqueFields,
-                                    isDelete);
-            if (sub != null && CollectionUtil.isNotEmpty(sub.getColumns())) {
-                subChanges.add(sub);
-            }
-        }
-        return subChanges;
     }
 
     private List<ModuleChangeLogDTO> buildChildren(
@@ -390,24 +462,6 @@ public class OperateLogRemarkConverter {
             }
         }
         return null;
-    }
-
-    private RowChangeLogDTO toRowChangeLog(RowChangeDTO rowChange, SysModuleCombineInfo module) {
-        if (rowChange == null || CollectionUtil.isEmpty(rowChange.getColumns())) {
-            return null;
-        }
-        List<ColumnChangeLogDTO> columns = new ArrayList<>();
-        for (FieldChangeDTO fieldChange : rowChange.getColumns()) {
-            columns.add(
-                    ColumnChangeLogDTO.builder()
-                            .name(fieldChange.getName())
-                            .old(fieldChange.getOld())
-                            .newer(fieldChange.getNewer())
-                            .field(fieldChange.getField())
-                            .fieldId(fieldIdByFullName(module, fieldChange.getField()))
-                            .build());
-        }
-        return RowChangeLogDTO.builder().name(rowChange.getName()).columns(columns).build();
     }
 
     private String fieldIdByFullName(SysModuleCombineInfo module, String fullFieldName) {

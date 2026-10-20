@@ -33,7 +33,9 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     "updated_date",
                     "deleted",
                     "active",
-                    "source_id");
+                    "source_id",
+                    "node_id",
+                    "parent_node_id");
 
     @Override
     public Boolean prePermissionCheck(
@@ -42,7 +44,9 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             Boolean isOverAllInsert,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         Map<Long, Map<Long, Map<String, Object>>> dataMap = new HashMap<>();
-        Map<Long, Map<Long, Set<Long>>> parentToChildDataMap = new HashMap<>();
+
+        // 父模块 1001 的记录 123  对应子模块 1002 的 数据 134,156
+        Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap = new HashMap<>();
         if (!isOverAllInsert) {
             covertDataMap(base, 0L, 0L, dataMap, parentToChildDataMap, moduleCacheMap);
         }
@@ -81,7 +85,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             Long parentModuleId,
             Long parentDataId,
             Map<Long, Map<Long, Map<String, Object>>> dataMap,
-            Map<Long, Map<Long, Set<Long>>> parentToChildDataMap,
+            Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         if (base == null) {
             return;
@@ -107,7 +111,8 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     // 收集父子ID关系
                     parentToChildDataMap
                             .computeIfAbsent(parentModuleId, k -> new HashMap<>())
-                            .computeIfAbsent(parentDataId, k -> new HashSet<>())
+                            .computeIfAbsent(parentDataId, k -> new HashMap<>())
+                            .computeIfAbsent(currentModuleId, k -> new HashSet<>())
                             .add(dataId);
 
                     if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
@@ -122,7 +127,8 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                         }
                     }
                 } else {
-                    // 没有行数据 向下递归
+
+                    // 没有行数据 包含虚模块  向下递归
                     if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                         for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                             covertDataMap(
@@ -142,7 +148,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
     private Map<Long, Map<String, Set<String>>> checkPermission(
             NestedModuleDataDTO param,
             Map<Long, Map<Long, Map<String, Object>>> dataMap,
-            Map<Long, Map<Long, Set<Long>>> parentToChildDataMap,
+            Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         Map<Long, Map<String, Set<String>>> result = new HashMap<>();
         if (param == null) {
@@ -185,7 +191,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
     private void checkNestedDataPermission(
             NestedModuleDataDTO param,
             Map<Long, Map<Long, Map<String, Object>>> dataMap,
-            Map<Long, Map<Long, Set<Long>>> parentToChildDataMap,
+            Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
             Long parentModuleId,
             Long parentDataId,
             Boolean isOverAllInsert,
@@ -197,7 +203,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
         Long currentModuleId = param.getModuleId();
         SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(currentModuleId);
 
-        // 虚模块 直接向下递归
+        // 虚模块 直接向下递归 处理完就结束
         if (StringUtils.isEmpty(sysModuleCombineInfo.getModuleInfo().getPrimaryTable())) {
             if (CollectionUtil.isNotEmpty(param.getRecord())) {
                 for (RecordDataDTO recordDataDTO : param.getRecord()) {
@@ -216,6 +222,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     }
                 }
             }
+            return;
         }
 
         // 收集当前 模块 需要更新的ID
@@ -238,7 +245,8 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
         Set<Long> dbIds =
                 parentToChildDataMap
                         .getOrDefault(parentModuleId, new HashMap<>())
-                        .getOrDefault(parentDataId, new HashSet<>());
+                        .getOrDefault(parentDataId, new HashMap<>())
+                        .getOrDefault(currentModuleId, new HashSet<Long>());
         // 找出 需要删除的 ID
         Set<Long> deleteIds =
                 dbIds.stream()
@@ -334,7 +342,17 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     if (uncheckedFields.contains(key)) {
                         continue;
                     }
+                    // 字段格式不正确
+                    if (!key.contains(".")) {
+                        continue;
+                    }
                     String[] field = key.split("\\.");
+
+                    // 字段上表名 不正确
+                    if (!tabs.contains(field[0])) {
+                        continue;
+                    }
+
                     boolean canWrite =
                             sysModuleCombineInfo
                                     .getWriteFields()
@@ -356,6 +374,18 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     if (uncheckedFields.contains(key)) {
                         continue;
                     }
+                    // 字段格式不正确
+                    if (!key.contains(".")) {
+                        continue;
+                    }
+                    // 修改了
+                    String[] field = key.split("\\.");
+
+                    // 字段上表名 不正确
+                    if (!tabs.contains(field[0])) {
+                        continue;
+                    }
+
                     Object newValue = recordDataDTO.getRow().get(key);
                     Object dbValue =
                             dataMap.get(sysModuleCombineInfo.getModuleInfo().getModuleId())
@@ -367,8 +397,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     if (isEqual) {
                         continue;
                     }
-                    // 修改了
-                    String[] field = key.split("\\.");
+
                     boolean canUpdate =
                             sysModuleCombineInfo
                                     .getUpdateFields()

@@ -14,6 +14,7 @@ import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
@@ -62,6 +63,10 @@ public class SaveOperateLogService {
     /** 操作动作：删除 */
     public static final String OPERATION_DELETE = "删除";
 
+    /** 首次保存动作图标 */
+    private static final String APPROVE_PATH_SAVE =
+            "http://192.168.60.8:9001/jdec-platform/image/pass.svg";
+
     /** 修改动作图标 */
     private static final String APPROVE_PATH_UPDATE =
             "http://192.168.60.8:9001/jdec-platform/image/submit.svg";
@@ -82,6 +87,12 @@ public class SaveOperateLogService {
     /** 字段明细中的词云标记键名 */
     private static final String CLOUD_KEY = "cloud";
 
+    /** 字段明细中的旧值键名（原始类型，不再向下递归） */
+    private static final String OLD_KEY = "old";
+
+    /** 字段明细中的新值键名（原始类型，不再向下递归） */
+    private static final String NEWER_KEY = "newer";
+
     /** 词云标记：来自词云 */
     private static final Integer CLOUD_YES = 1;
 
@@ -99,6 +110,8 @@ public class SaveOperateLogService {
     private final SysMenuApi sysMenuApi;
 
     private final ConfigApi configApi;
+
+    private final OpenMenuApi openMenuApi;
 
     /** 保存前：判断是否需要记录日志并取旧数据；不需要（非普通保存 / 有审批链 / 参数缺失）返回 null。 */
     public SaveOperateLogContext prepare(DynamicSaveReq req) {
@@ -162,7 +175,6 @@ public class SaveOperateLogService {
         }
         return SaveOperateLogContext.builder()
                 .structureRootModuleId(structureRootModuleId)
-                .menuId(req.getNestedModuleData().getMenuId())
                 .primaryTable(primaryTable)
                 .operation(operation)
                 .moduleCacheMap(moduleCacheMap)
@@ -175,6 +187,7 @@ public class SaveOperateLogService {
         if (ctx == null || req == null || req.getNestedModuleData() == null) {
             return;
         }
+        Long menuId = resolveMenuId(ctx.getStructureRootModuleId());
         // 首次保存不记录 remark；后续保存有旧数据时生成变更明细，无变更不记录日志
         String remarkJson = null;
         if (ctx.getOldData() != null) {
@@ -183,13 +196,13 @@ public class SaveOperateLogService {
                             ctx.getOldData(),
                             req.getNestedModuleData(),
                             ctx.getModuleCacheMap(),
-                            ctx.getMenuId());
+                            menuId);
             if (StringUtils.isBlank(remarkJson)) {
                 return;
             }
         }
 
-        SysMenuResp menu = queryMenu(ctx.getMenuId());
+        SysMenuResp menu = queryMenu(menuId);
         String menuName =
                 menu != null && StringUtils.isNotBlank(menu.getTitle())
                         ? menu.getTitle()
@@ -270,6 +283,10 @@ public class SaveOperateLogService {
             List<String> names = new ArrayList<>();
             object.fieldNames().forEachRemaining(names::add);
             for (String name : names) {
+                // old/newer 为字段值原文（可能是数组/对象），不做词云标记的递归
+                if (OLD_KEY.equals(name) || NEWER_KEY.equals(name)) {
+                    continue;
+                }
                 fillCloudFlags(object.get(name), cloudFieldIndexes);
             }
         } else if (node.isArray()) {
@@ -328,8 +345,11 @@ public class SaveOperateLogService {
         return approve;
     }
 
-    /** 按操作动作选择图标：修改取提交图标、删除取驳回图标，首次保存无图标 */
+    /** 按操作动作选择图标：首次保存取通过图标、修改取提交图标、删除取驳回图标 */
     private String resolveApprovePath(String operation) {
+        if (OPERATION_SAVE.equals(operation)) {
+            return APPROVE_PATH_SAVE;
+        }
         if (OPERATION_DELETE.equals(operation)) {
             return APPROVE_PATH_DELETE;
         }
@@ -370,6 +390,19 @@ public class SaveOperateLogService {
         return module != null && module.getModuleInfo() != null
                 ? module.getModuleInfo().getModuleName()
                 : null;
+    }
+
+    /** 按模块解析绑定菜单，失败时返回 null 不影响日志落库 */
+    private Long resolveMenuId(Long moduleId) {
+        if (moduleId == null) {
+            return null;
+        }
+        try {
+            return openMenuApi.getMenuIdByModuleId(moduleId);
+        } catch (Exception e) {
+            log.warn("查询模块绑定菜单失败，moduleId={}", moduleId, e);
+            return null;
+        }
     }
 
     /** 查询菜单（取名称与菜单参数），失败时返回 null 不影响日志落库 */

@@ -242,6 +242,22 @@ public class ModuleSnapShotDataServiceImpl implements ModuleSnapShotDataService 
     }
 
     @Override
+    public int deleteModuleDataTempSnapshot(ModuleSnapShotDataContext context) {
+        String tableName = CommonConstant.TABLE_NAME_MODULE_DATA_TMP_SNAPSHOT_CONTENT;
+        DSLContext dslContext =
+                context.getDslContext() != null
+                        ? context.getDslContext()
+                        : jooqDataContextFactory.getContext();
+        int effect =
+                dslContext
+                        .deleteFrom(DSL.table(tableName))
+                        .where(DSL.field(DSL.name("root_module_id")).eq(context.getRootModuleId()))
+                        .and(DSL.field(DSL.name("root_table_data_id")).eq(context.getDataId()))
+                        .execute();
+        return effect;
+    }
+
+    @Override
     public Long saveModuleFieldDataSnapshot(ModuleSnapShotDataContext context) {
         Long rootModuleId = context.getRootModuleId();
         Long rootTableDataId = context.getDataId();
@@ -302,6 +318,22 @@ public class ModuleSnapShotDataServiceImpl implements ModuleSnapShotDataService 
             }
         }
         return null;
+    }
+
+    @Override
+    public int deleteModuleFieldDataSnapshot(ModuleSnapShotDataContext context) {
+        String tableName = CommonConstant.TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT;
+        DSLContext dslContext =
+                context.getDslContext() != null
+                        ? context.getDslContext()
+                        : jooqDataContextFactory.getContext();
+        int effect =
+                dslContext
+                        .deleteFrom(DSL.table(tableName))
+                        .where(DSL.field(DSL.name("root_module_id")).eq(context.getRootModuleId()))
+                        .and(DSL.field(DSL.name("root_table_data_id")).eq(context.getDataId()))
+                        .execute();
+        return effect;
     }
 
     private Object saveModuleFieldValueSnapshot(

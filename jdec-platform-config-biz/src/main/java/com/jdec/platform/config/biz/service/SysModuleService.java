@@ -887,6 +887,7 @@ public class SysModuleService implements SysModuleApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<SysModuleSimpleTreeResp> getAvailableModuleTree(
             Integer category, String projectNo, Long subjectId) {
         LambdaQueryWrapper<SysModule> wrapper = new LambdaQueryWrapper<>();

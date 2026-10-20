@@ -69,6 +69,8 @@ mybatis-plus:
 # ===== 日志配置 =====
 logging:
   level:
+    org.jooq: DEBUG
+    org.jooq.tools.LoggerListener: DEBUG
     com.jdec.platform: DEBUG
     org.springframework.modulith: DEBUG
 
