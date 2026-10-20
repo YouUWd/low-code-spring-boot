@@ -33,7 +33,9 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     "updated_date",
                     "deleted",
                     "active",
-                    "source_id");
+                    "source_id",
+                    "node_id",
+                    "parent_node_id");
 
     @Override
     public Boolean prePermissionCheck(

@@ -337,28 +337,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
             DynamicSaveReqContext currentReq,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
 
-        Map<String, Object> parentLevelTableAssociationMap = new HashMap<>();
-        boolean isRootModule = false;
-        boolean isTreeRootModule = false;
-        com.jdec.platform.config.api.dto.common.TableRelationDTO relationDTO = null;
-
-        // 如果没有父模块ID 说明时是模块定义上时根模块
-        if (sysModuleCompleteResp.getModuleInfo().getParentId() == null
-                || Long.valueOf(0L).equals(sysModuleCompleteResp.getModuleInfo().getParentId())) {
-            isRootModule = true;
-        }
-
-        // 首先获取父模块主表 与当前模块的主表 之间的关联关系，一般来说 父模块主表的主键字段 关联子模块的主表某个字段
-        // currentReq.getParentModuleId() ==null 说明 在结构上是个根模块,不需要设置 父模块的 主表的ID 为外键
-        if (currentReq.getParentModuleId() == null) {
-            // 没有父模块，说明是根模块
-            isTreeRootModule = true;
-        } else {
-            relationDTO = sysModuleCompleteResp.getMainTableRelationDTO();
-            parentLevelTableAssociationMap.put(
-                    relationDTO.getJoinField(), currentReq.getParentModuleMainTableDataId());
-        }
-
         Map<String, Object> dataMap = recordDataDTO.getRow();
 
         if (CollectionUtil.isEmpty(dataMap)) {
@@ -373,30 +351,88 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         if (CollectionUtil.isEmpty(primaryTableRowMap)) {
             return DataSaveResult.builder().dataId(0L).build();
         }
-
         Long primaryTableId = DataPersistenceUtil.getTableRowId(primaryTableRowMap);
+
+        boolean isInsert = primaryTableId == null || primaryTableId <= 0;
+
+        Map<String, Object> parentLevelTableAssociationMap = new HashMap<>();
+        com.jdec.platform.config.api.dto.common.TableRelationDTO relationDTO = null;
+
+        boolean isStructureRootModule = true;
+        // 如果是根模块 或者是 结构上的根模块 是拿不到 当前模块 主表的 外键的
+        // 不是结构上的根节点，那么他一定有父节点 一定有 父数据的 ID
+        if (!sysModuleCompleteResp
+                .getModuleInfo()
+                .getModuleId()
+                .equals(currentReq.getStructureRootModuleId())) {
+            relationDTO = sysModuleCompleteResp.getMainTableRelationDTO();
+            // 无论是更新还是 插入, 非头节点 需要检查外键
+            if (relationDTO == null
+                    || relationDTO.getJoinField() == null
+                    || currentReq.getParentModuleMainTableDataId() == null) {
+                throw new BusinessException(
+                        ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                        "插入数据时,非根模块["
+                                + sysModuleCompleteResp.getModuleInfo().getModuleName()
+                                + "],缺少外键");
+            }
+            parentLevelTableAssociationMap.put(
+                    relationDTO.getJoinField(), currentReq.getParentModuleMainTableDataId());
+            isStructureRootModule = false;
+        } else {
+            // 是结构上的头节点
+            boolean isRootModule =
+                    sysModuleCompleteResp
+                            .getModuleInfo()
+                            .getModuleId()
+                            .equals(currentReq.getRootModuleId());
+            // 是根模块
+            // insert 时候 不要 外键
+            // update 时候 不要 外键 parentLevelTableAssociationMap 为空
+            if (!isRootModule && isInsert) {
+                relationDTO = sysModuleCompleteResp.getMainTableRelationDTO();
+                // 插入需要 需要检查外键
+                if (relationDTO == null
+                        || relationDTO.getJoinField() == null
+                        || currentReq.getParentModuleMainTableDataId() == null) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                            "插入数据时,非根模块["
+                                    + sysModuleCompleteResp.getModuleInfo().getModuleName()
+                                    + "],缺少外键");
+                }
+                parentLevelTableAssociationMap.put(
+                        relationDTO.getJoinField(), currentReq.getParentModuleMainTableDataId());
+            }
+        }
 
         RecordSaveContext recordSaveContext =
                 RecordSaveContext.builder()
                         .dsl(currentReq.getTxDsl())
-                        .tableName(sysModuleCompleteResp.getModuleInfo().getPrimaryTable())
-                        .parentLevelTable(null)
-                        .record(primaryTableRowMap)
-                        .bizDataMap(null)
-                        .parentLevelTableAssociationDataMap(parentLevelTableAssociationMap)
-                        .parentLevelTableId(currentReq.getParentModuleMainTableDataId())
-                        .defaultUserContextDataMap(null)
-                        .isInsert(primaryTableId == null || primaryTableId <= 0)
-                        .isRootModuleMainTable(isRootModule ? true : false)
-                        .isTreeRoot(isTreeRootModule)
                         .rootModuleId(currentReq.getRootModuleId())
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
+                        .rootModuleMainTableDataVersion(
+                                currentReq.getRootModuleMainTableDataVersion())
+                        .structureRootModuleId(currentReq.getStructureRootModuleId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
                         .moduleCacheMap(moduleCacheMap)
+                        .tableName(sysModuleCompleteResp.getModuleInfo().getPrimaryTable())
+                        .tableFk(relationDTO == null ? null : relationDTO.getJoinField())
+                        .isModuleMainTable(true)
+                        .parentModuleId(sysModuleCompleteResp.getModuleInfo().getParentId())
+                        .parentModuleMainTableDataId(currentReq.getParentModuleMainTableDataId())
+                        .record(primaryTableRowMap)
+                        .parentLevelTableAssociationDataMap(parentLevelTableAssociationMap)
+                        .isInsert(isInsert)
+                        .isApproval(currentReq.isApproval())
+                        .isRootModuleMainTable(
+                                sysModuleCompleteResp
+                                        .getModuleInfo()
+                                        .getModuleId()
+                                        .equals(currentReq.getRootModuleId())) // 是否是根模块
                         .userId(UserContext.getUserId())
                         .subjectId(AppContext.getSubjectId())
                         .saveType(currentReq.getSaveType())
-                        .isApproval(currentReq.isApproval())
                         .build();
         // 首先 写入当前 模块 主表的数据
         DataSaveResult dataSaveResult =
@@ -409,7 +445,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                     sysModuleCompleteResp.getModuleInfo().getPrimaryTable(),
                     CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD,
                     primaryTableId);
-            if (!isTreeRootModule) {
+            if (!isStructureRootModule) {
                 DataPersistenceUtil.fillTableRowFieldInWideRow(
                         dataMap,
                         sysModuleCompleteResp.getModuleInfo().getPrimaryTable(),
@@ -417,7 +453,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         currentReq.getParentModuleMainTableDataId());
             }
         } else {
-            if (!isTreeRootModule
+            if (!isStructureRootModule
                     && !DataPersistenceUtil.isExistFiledInInWideRow(
                             dataMap,
                             sysModuleCompleteResp.getModuleInfo().getPrimaryTable(),
@@ -429,14 +465,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         currentReq.getParentModuleMainTableDataId());
             }
         }
-        //        if (dataSaveResult.getRowChange() != null) {
-        //            if (recordDataDTO.getRowChanges() == null) {
-        //                recordDataDTO.setRowChanges(new ArrayList<>());
-        //                recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
-        //            } else {
-        //                recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
-        //            }
-        //        }
 
         if (primaryTableId == null) {
             log.error(
@@ -488,19 +516,9 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                     sysModuleCompleteResp,
                                     relationDTO,
                                     modulePrimaryTableId,
-                                    currentReq.getTxDsl(),
-                                    currentReq);
+                                    currentReq,
+                                    moduleCacheMap);
                     dataSaveResultList.add(dataSaveResult);
-                    //                    if (dataSaveResult.getRowChange() != null) {
-                    //                        if (recordDataDTO.getRowChanges() == null) {
-                    //                            recordDataDTO.setRowChanges(new ArrayList<>());
-                    //
-                    // recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
-                    //                        } else {
-                    //
-                    // recordDataDTO.getRowChanges().add(dataSaveResult.getRowChange());
-                    //                        }
-                    //                    }
                 }
                 case ONE_TO_MANY -> {
                     // 1:N
@@ -548,8 +566,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
             SysModuleCombineInfo sysModuleCompleteResp,
             com.jdec.platform.config.api.dto.common.TableRelationDTO relationDTO,
             Long modulePrimaryTableId,
-            DSLContext dslContext,
-            DynamicSaveReqContext currentReq) {
+            DynamicSaveReqContext currentReq,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
 
         Map<String, Object> dataMap = recordDataDTO.getRow();
 
@@ -564,30 +582,49 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         Long subTableId = DataPersistenceUtil.getTableRowId(primaryTableRowMap);
         boolean isInsert = subTableId == null || subTableId <= 0;
         Map<String, Object> subTableParentLevelTableAssociationMap = new HashMap<>();
-        if (isInsert) {
-            subTableParentLevelTableAssociationMap.put(
-                    relationDTO.getJoinField(), modulePrimaryTableId);
+        if (relationDTO == null
+                || relationDTO.getJoinField() == null
+                || modulePrimaryTableId == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                    "模块["
+                            + sysModuleCompleteResp.getModuleInfo().getModuleId()
+                            + "]关联表["
+                            + relationDTO.getJoinTable()
+                            + "]"
+                            + "]缺少关联字段");
         }
+        subTableParentLevelTableAssociationMap.put(
+                relationDTO.getJoinField(), modulePrimaryTableId);
+
         RecordSaveContext subRecordSaveContext =
                 RecordSaveContext.builder()
-                        .dsl(dslContext)
-                        .tableName(relationDTO.getJoinTable())
-                        .parentLevelTable(relationDTO.getMainTable())
-                        .record(primaryTableRowMap)
-                        .bizDataMap(null)
-                        .parentLevelTableAssociationDataMap(subTableParentLevelTableAssociationMap)
-                        .parentLevelTableId(modulePrimaryTableId)
-                        .defaultUserContextDataMap(null)
-                        .isInsert(subTableId == null || subTableId <= 0)
-                        .isRootModuleMainTable(false)
+                        .dsl(currentReq.getTxDsl())
                         .rootModuleId(currentReq.getRootModuleId())
                         .rootModuleMainTableDataId(currentReq.getRootModuleMainTableDataId())
+                        .rootModuleMainTableDataVersion(
+                                currentReq.getRootModuleMainTableDataVersion())
+                        .structureRootModuleId(currentReq.getStructureRootModuleId())
                         .sysModuleCompleteResp(sysModuleCompleteResp)
-                        .saveType(currentReq.getSaveType())
+                        .moduleCacheMap(moduleCacheMap)
+                        .tableName(relationDTO.getJoinTable())
+                        .tableFk(relationDTO == null ? null : relationDTO.getJoinField())
+                        .isModuleMainTable(false)
+                        .parentModuleId(sysModuleCompleteResp.getModuleInfo().getParentId())
+                        .parentModuleMainTableDataId(currentReq.getParentModuleMainTableDataId())
+                        .record(primaryTableRowMap)
+                        .parentLevelTableAssociationDataMap(subTableParentLevelTableAssociationMap)
+                        .isInsert(isInsert)
+                        .isApproval(currentReq.isApproval())
+                        .isRootModuleMainTable(
+                                sysModuleCompleteResp
+                                        .getModuleInfo()
+                                        .getModuleId()
+                                        .equals(currentReq.getRootModuleId())) // 是否是根模块
                         .userId(UserContext.getUserId())
                         .subjectId(AppContext.getSubjectId())
+                        .saveType(currentReq.getSaveType())
                         .build();
-        // moduleDataSaveNecessaryFieldFillFactoryService.fillData(subRecordSaveContext);
         //// 首先 写入子表数据
         DataSaveResult dataSaveResult =
                 baseSingleTablePersistenceService.saveRecord(subRecordSaveContext);
