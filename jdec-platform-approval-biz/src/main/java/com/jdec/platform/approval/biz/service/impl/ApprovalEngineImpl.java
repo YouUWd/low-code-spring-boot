@@ -113,7 +113,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.nonNull(approvalBusiness)
                 && (!approvalBusiness.getStatusValue().equals(99)
                         && !approvalBusiness.getStatusValue().equals(-99))) {
-            throw new BusinessException(605, "审批链当前状态不为完结状态");
+            return;
         }
         if (Objects.nonNull(event.getButton()) && "submit".equals(approvalProcessDTO.getButton())) {
             if (Objects.isNull(approvalBusiness)) {
