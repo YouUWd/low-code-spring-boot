@@ -6,7 +6,6 @@ import com.jdec.platform.dataengine.api.dto.request.DynamicDeleteReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicInsertReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
-import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
@@ -31,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Service
@@ -40,6 +40,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
 
     private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
 
+    @Transactional(rollbackFor = Exception.class)
     public Long save(ModuleDataStoreDTO req) {
 
         boolean isRelatedApproval = req.getIsApproval();
@@ -55,109 +56,92 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         Long structureRootModuleId = req.getStructureRootModuleId();
 
         AtomicReference<Long> rootModuleMainTableDataId = new AtomicReference<>();
-        Long actionId = null;
+
         try {
-            ModuleDataSaveContextHolder.openDataChangeFlag(finalSaveType);
-            actionId = ModuleDataSaveContextHolder.getContextActionId();
             DSLContext txDsl = jooqContextFactory.getContext();
-            try {
 
-                Queue<DynamicSaveReqContext> saveReqQueue = new LinkedList<>();
+            Queue<DynamicSaveReqContext> saveReqQueue = new LinkedList<>();
 
-                // 根模块数据 没有父模块和父模块主表ID
-                saveReqQueue.add(
-                        DynamicSaveReqContext.builder()
-                                .nestedModuleData(nestedStoreData)
-                                .parentModuleId(null)
-                                .parentModuleMainTableDataId(null)
-                                .rootModuleId(rootModuleId) // 第一层的 根模块就是自己的模块ID
-                                .structureRootModuleId(structureRootModuleId)
-                                .rootModuleMainTableDataId(null)
-                                .rootModuleMainTableDataVersion(null)
-                                .txDsl(txDsl)
-                                .saveType(finalSaveType)
-                                .isApproval(isRelatedApproval)
-                                .build());
-                boolean first = true;
+            // 根模块数据 没有父模块和父模块主表ID
+            saveReqQueue.add(
+                    DynamicSaveReqContext.builder()
+                            .nestedModuleData(nestedStoreData)
+                            .parentModuleId(null)
+                            .parentModuleMainTableDataId(null)
+                            .rootModuleId(rootModuleId) // 第一层的 根模块就是自己的模块ID
+                            .structureRootModuleId(structureRootModuleId)
+                            .rootModuleMainTableDataId(null)
+                            .rootModuleMainTableDataVersion(null)
+                            .txDsl(txDsl)
+                            .saveType(finalSaveType)
+                            .isApproval(isRelatedApproval)
+                            .build());
+            boolean first = true;
 
-                while (!saveReqQueue.isEmpty()) {
-                    DynamicSaveReqContext currentReq = saveReqQueue.poll();
+            while (!saveReqQueue.isEmpty()) {
+                DynamicSaveReqContext currentReq = saveReqQueue.poll();
 
-                    // 模块数据为空
-                    if (currentReq == null
-                            || currentReq.getNestedModuleData() == null
-                            || CollectionUtil.isEmpty(
-                                    currentReq.getNestedModuleData().getRecord())) {
-                        continue;
+                // 模块数据为空
+                if (currentReq == null
+                        || currentReq.getNestedModuleData() == null
+                        || CollectionUtil.isEmpty(currentReq.getNestedModuleData().getRecord())) {
+                    continue;
+                }
+
+                // 保存当前 模块数据 第一次进来  NestedModuleDataDTO.record 只有一条数据
+                for (RecordDataDTO recordDataDTO : currentReq.getNestedModuleData().getRecord()) {
+
+                    // 保存 当前模块一行数据 主表数据只有一行
+                    Long resultId = saveModuleData(recordDataDTO, currentReq, moduleCacheMap);
+
+                    // 捕获根模块的 主表记录ID
+                    if (first) {
+                        rootModuleMainTableDataId.set(resultId);
                     }
 
-                    // 保存当前 模块数据 第一次进来  NestedModuleDataDTO.record 只有一条数据
-                    for (RecordDataDTO recordDataDTO :
-                            currentReq.getNestedModuleData().getRecord()) {
-
-                        // 保存 当前模块一行数据 主表数据只有一行
-                        Long resultId = saveModuleData(recordDataDTO, currentReq, moduleCacheMap);
-
-                        // 捕获根模块的 主表记录ID
-                        if (first) {
-                            rootModuleMainTableDataId.set(resultId);
-                        }
-
-                        // 如果当前模块有子模块的数据
-                        if ((resultId != null && resultId > 0)
-                                && CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
-                            recordDataDTO.getChildren().stream()
-                                    .forEach(
-                                            subModule -> {
-                                                // 构造保存子模的数据的上下文
-                                                saveReqQueue.add(
-                                                        DynamicSaveReqContext.builder()
-                                                                .nestedModuleData(subModule)
-                                                                .parentModuleId(
-                                                                        currentReq
-                                                                                .getNestedModuleData()
-                                                                                .getModuleId())
-                                                                .parentModuleMainTableDataId(
-                                                                        resultId)
-                                                                .rootModuleId(rootModuleId)
-                                                                .rootModuleMainTableDataId(
-                                                                        rootModuleMainTableDataId
-                                                                                .get())
-                                                                .txDsl(txDsl)
-                                                                .saveType(finalSaveType)
-                                                                .build());
-                                            });
-                        }
-                        first = false;
+                    // 如果当前模块有子模块的数据
+                    if ((resultId != null && resultId > 0)
+                            && CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                        recordDataDTO.getChildren().stream()
+                                .forEach(
+                                        subModule -> {
+                                            // 构造保存子模的数据的上下文
+                                            saveReqQueue.add(
+                                                    DynamicSaveReqContext.builder()
+                                                            .nestedModuleData(subModule)
+                                                            .parentModuleId(
+                                                                    currentReq
+                                                                            .getNestedModuleData()
+                                                                            .getModuleId())
+                                                            .parentModuleMainTableDataId(resultId)
+                                                            .rootModuleId(rootModuleId)
+                                                            .rootModuleMainTableDataId(
+                                                                    rootModuleMainTableDataId.get())
+                                                            .txDsl(txDsl)
+                                                            .saveType(finalSaveType)
+                                                            .build());
+                                        });
                     }
+                    first = false;
                 }
-                // 变更保存 把上根表 上一个版本的数据 标记非活跃
-                if (SaveType.APPROVAL_CHANGE.equals(finalSaveType)) {
-                    baseSingleTablePersistenceService.inactiveRecordById(
-                            txDsl,
-                            moduleCacheMap
-                                    .get(req.getRootModuleId())
-                                    .getModuleInfo()
-                                    .getPrimaryTable(),
-                            req.getMainTableDataSourceId());
-                }
-                // 其他sql
-            } catch (Exception e) {
-                // 抛出异常，jooq自动回滚
-                throw new RuntimeException(e);
             }
-
+            // 变更保存 把上根表 上一个版本的数据 标记非活跃
+            if (SaveType.APPROVAL_CHANGE.equals(finalSaveType)) {
+                baseSingleTablePersistenceService.inactiveRecordById(
+                        txDsl,
+                        moduleCacheMap.get(req.getRootModuleId()).getModuleInfo().getPrimaryTable(),
+                        req.getMainTableDataSourceId());
+            }
+            // 其他sql
         } catch (Exception e) {
-            throw e;
-        } finally {
-            ModuleDataSaveContextHolder.clear();
+            // 抛出异常，jooq自动回滚
+            throw new RuntimeException(e);
         }
         try {
             log.info("=======" + "\n");
             log.info("=======" + JsonUtil.obj2Json(req.getParamData()));
         } catch (Exception e) {
         }
-
         return rootModuleMainTableDataId.get();
     }
 
