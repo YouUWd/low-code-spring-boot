@@ -12,5 +12,9 @@ public interface ModuleSnapShotDataService {
 
     public Long saveModuleDataTempSnapshot(ModuleSnapShotDataContext context);
 
+    public int deleteModuleDataTempSnapshot(ModuleSnapShotDataContext context);
+
     public Long saveModuleFieldDataSnapshot(ModuleSnapShotDataContext context);
+
+    public int deleteModuleFieldDataSnapshot(ModuleSnapShotDataContext context);
 }

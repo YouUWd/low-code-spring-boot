@@ -39,8 +39,6 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
     private final ModuleSnapShotDataService moduleSnapShotDataService;
 
-    private final ModuleDataChangeRowConvertService moduleDataChangeRowConvertService;
-
     private final OperateLogRemarkUtil operateLogRemarkUtil;
 
     /**
@@ -65,9 +63,11 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
         }
+        Boolean isApproval =
+                moduleMetaDataService.getApprovalStatusByModuleIdAsync(req.getModuleId());
         DSLContext context = jooqDataContextFactory.getContext();
 
-        Long rootModuleMainTableId = saveModuleApprovalData(req, rootModule, context);
+        Long rootModuleMainTableId = saveModuleApprovalData(req, rootModule, isApproval, context);
         if (rootModuleMainTableId == null || rootModuleMainTableId.equals(0L)) {
             throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
@@ -86,7 +86,10 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 .loginUser(UserContext.getLoginUser())
                                 .build());
 
-        // 如果是终态 保存模块数据的 版本快照
+        // 不带审批链的 业务 不处理 快照
+        if (!isApproval) {
+            return ApprovalProcessResultResp.builder().nestedModuleData(result).build();
+        }
 
         // 获取上一个状态的 快照数据
         NestedModuleDataDTO tmpSnapshot =
@@ -98,31 +101,46 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 .rootModuleInfo(rootModule)
                                 .rootModuleId(rootModule.getModuleInfo().getModuleId())
                                 .build());
-
-        // 保存每个状态的快照，用于计算 审批的 操作日志
-        moduleSnapShotDataService.saveModuleDataTempSnapshot(
-                ModuleSnapShotDataContext.builder()
-                        .dataId(req.getDataId())
-                        .versionNo(req.getVersionNo())
-                        .dslContext(context)
-                        .moduleDataDTO(result)
-                        .rootModuleInfo(rootModule)
-                        .rootModuleId(rootModule.getModuleInfo().getModuleId())
-                        .build());
-
-        // 保存字段快照
-        //
-        moduleSnapShotDataService.saveModuleFieldDataSnapshot(
-                ModuleSnapShotDataContext.builder()
-                        .dataId(req.getDataId())
-                        .versionNo(req.getVersionNo())
-                        .dslContext(context)
-                        .moduleDataDTO(result)
-                        .rootModuleInfo(rootModule)
-                        .rootModuleId(rootModule.getModuleInfo().getModuleId())
-                        .moudleCacheMap(moduleCacheMap)
-                        .build());
-
+        if (req.getBusinessStatus() == 99 || req.getBusinessStatus() == -99) {
+            // 终态时候 删除快照数据
+            moduleSnapShotDataService.deleteModuleDataTempSnapshot(
+                    ModuleSnapShotDataContext.builder()
+                            .dataId(req.getDataId())
+                            .versionNo(req.getVersionNo())
+                            .dslContext(context)
+                            .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                            .build());
+            moduleSnapShotDataService.deleteModuleFieldDataSnapshot(
+                    ModuleSnapShotDataContext.builder()
+                            .dataId(req.getDataId())
+                            .versionNo(req.getVersionNo())
+                            .dslContext(context)
+                            .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                            .build());
+        } else {
+            // 保存每个状态的快照，用于计算 审批的 操作日志
+            moduleSnapShotDataService.saveModuleDataTempSnapshot(
+                    ModuleSnapShotDataContext.builder()
+                            .dataId(req.getDataId())
+                            .versionNo(req.getVersionNo())
+                            .dslContext(context)
+                            .moduleDataDTO(result)
+                            .rootModuleInfo(rootModule)
+                            .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                            .build());
+            // 保存字段快照
+            //
+            moduleSnapShotDataService.saveModuleFieldDataSnapshot(
+                    ModuleSnapShotDataContext.builder()
+                            .dataId(req.getDataId())
+                            .versionNo(req.getVersionNo())
+                            .dslContext(context)
+                            .moduleDataDTO(result)
+                            .rootModuleInfo(rootModule)
+                            .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                            .moudleCacheMap(moduleCacheMap)
+                            .build());
+        }
         // todo  result   tmpSnapshot 要构建 版本间的字段 对比 返回给审批链
         String remark =
                 operateLogRemarkUtil.buildRemark(
@@ -133,7 +151,10 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
     }
 
     private Long saveModuleApprovalData(
-            ApprovalStatusCallBackReq req, SysModuleCombineInfo rootModule, DSLContext dslContext) {
+            ApprovalStatusCallBackReq req,
+            SysModuleCombineInfo rootModule,
+            Boolean isApproval,
+            DSLContext dslContext) {
 
         Record r =
                 dslContext
@@ -146,49 +167,77 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                     ApiResponseCodeEnum.BAD_REQUEST.getCode(),
                     "审批状态回调数据ID[" + req.getDataId() + "]无此记录");
         }
+        // 带有审批链的状态回调
+        if (isApproval) {
+            Long sourceId = r.get(DSL.field(DSL.name("source_id")), Long.class);
 
-        Long sourceId = r.get(DSL.field(DSL.name("source_id")), Long.class);
-
-        Map<Field<Object>, Object> fieldValues = new HashMap<>();
-        fieldValues.put(
-                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD)),
-                req.getBusinessStatus());
-        fieldValues.put(
-                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
-                UserContext.getUserId());
-        fieldValues.put(
-                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
-                LocalDateTime.now());
-        if (req.getIsFirstSubmit() != null
-                && req.getIsFirstSubmit()
-                && req.getRegistrationTime() != null) {
+            Map<Field<Object>, Object> fieldValues = new HashMap<>();
             fieldValues.put(
-                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
-                    req.getRegistrationTime());
-        }
-        // 如果是 取消状态  而且有上一个版本的数据
-        if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
-            // 当前版本 要设置成 非活跃
-            fieldValues.put(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0);
-        }
-        dslContext
-                .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
-                .set(fieldValues)
-                .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
-                .execute();
-        // 如果是 取消状态  而且有上一个版本的数据
-        if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
-            // 上一个版本 要活跃
+                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD)),
+                    req.getBusinessStatus());
+            fieldValues.put(
+                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+                    UserContext.getUserId());
+            fieldValues.put(
+                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+                    LocalDateTime.now());
+            if (req.getIsFirstSubmit() != null
+                    && req.getIsFirstSubmit()
+                    && req.getRegistrationTime() != null) {
+                fieldValues.put(
+                        DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
+                        req.getRegistrationTime());
+            }
+            // 如果是 取消状态  而且有上一个版本的数据
+            if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
+                // 当前版本 要设置成 非活跃
+                fieldValues.put(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0);
+            }
             dslContext
                     .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
-                    .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0)
-                    .set(
-                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
-                            UserContext.getUserId())
-                    .set(
-                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
-                            LocalDateTime.now())
-                    .where(DSL.field(DSL.name("id")).eq(sourceId))
+                    .set(fieldValues)
+                    .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
+                    .execute();
+            // 如果是 取消状态  而且有上一个版本的数据
+            if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
+                // 上一个版本 要活跃
+                dslContext
+                        .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
+                        .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0)
+                        .set(
+                                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+                                UserContext.getUserId())
+                        .set(
+                                DSL.field(
+                                        DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+                                LocalDateTime.now())
+                        .where(DSL.field(DSL.name("id")).eq(sourceId))
+                        .execute();
+            }
+        } else {
+            // 不带审批链 的状态 不用 回调  貌似状态不用 回调
+
+            Map<Field<Object>, Object> fieldValues = new HashMap<>();
+            fieldValues.put(
+                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD)),
+                    req.getBusinessStatus());
+            fieldValues.put(
+                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+                    UserContext.getUserId());
+            fieldValues.put(
+                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+                    LocalDateTime.now());
+            if (req.getIsFirstSubmit() != null
+                    && req.getIsFirstSubmit()
+                    && req.getRegistrationTime() != null) {
+                fieldValues.put(
+                        DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
+                        req.getRegistrationTime());
+            }
+            dslContext
+                    .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
+                    .set(fieldValues)
+                    .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
                     .execute();
         }
         return req.getDataId();
