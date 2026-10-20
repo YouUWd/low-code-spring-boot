@@ -336,7 +336,17 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     if (uncheckedFields.contains(key)) {
                         continue;
                     }
+                    // 字段格式不正确
+                    if (!key.contains(".")) {
+                        continue;
+                    }
                     String[] field = key.split("\\.");
+
+                    // 字段上表名 不正确
+                    if (!tabs.contains(field[0])) {
+                        continue;
+                    }
+
                     boolean canWrite =
                             sysModuleCombineInfo
                                     .getWriteFields()
@@ -358,6 +368,18 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     if (uncheckedFields.contains(key)) {
                         continue;
                     }
+                    // 字段格式不正确
+                    if (!key.contains(".")) {
+                        continue;
+                    }
+                    // 修改了
+                    String[] field = key.split("\\.");
+
+                    // 字段上表名 不正确
+                    if (!tabs.contains(field[0])) {
+                        continue;
+                    }
+
                     Object newValue = recordDataDTO.getRow().get(key);
                     Object dbValue =
                             dataMap.get(sysModuleCombineInfo.getModuleInfo().getModuleId())
@@ -369,8 +391,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     if (isEqual) {
                         continue;
                     }
-                    // 修改了
-                    String[] field = key.split("\\.");
+
                     boolean canUpdate =
                             sysModuleCombineInfo
                                     .getUpdateFields()
