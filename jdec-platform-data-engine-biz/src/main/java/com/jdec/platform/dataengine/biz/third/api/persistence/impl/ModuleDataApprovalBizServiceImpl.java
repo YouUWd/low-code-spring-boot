@@ -76,7 +76,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
 
         // 获取当前模块数据的快照
         NestedModuleDataDTO result =
-                moduleBizDataService.getModuleDetailDataAsync(
+                moduleBizDataService.getModuleDetailData(
                         ModuleDetailQueryContext.builder()
                                 .moduleId(req.getModuleId())
                                 .dataId(req.getDataId())
