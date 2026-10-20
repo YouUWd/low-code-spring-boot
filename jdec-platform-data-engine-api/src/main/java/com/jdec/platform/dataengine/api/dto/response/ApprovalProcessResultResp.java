@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.api.dto.response;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.jdec.platform.dataengine.api.dto.model.ModuleChangeDTO;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import java.io.Serializable;
@@ -14,5 +15,5 @@ public class ApprovalProcessResultResp implements Serializable {
 
     private ModuleChangeDTO moduleChange;
 
-    private String remark;
+    private JsonNode remark;
 }

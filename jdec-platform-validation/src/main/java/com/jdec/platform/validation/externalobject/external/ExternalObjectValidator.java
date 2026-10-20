@@ -3,6 +3,7 @@ package com.jdec.platform.validation.externalobject.external;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.shared.validation.dynamic.DynamicRequestValidator;
 import com.jdec.platform.shared.validation.dynamic.ModuleDefinitionRegistry;
+import com.jdec.platform.shared.validation.dynamic.ValidationError;
 import com.jdec.platform.shared.validation.dynamic.ValidationMode;
 import com.jdec.platform.shared.validation.dynamic.ValidationOptions;
 import com.jdec.platform.shared.validation.dynamic.ValidationResult;
@@ -10,6 +11,7 @@ import com.jdec.platform.validation.SystemValidator;
 import com.jdec.platform.validation.SystemValidatorKey;
 import com.jdec.platform.validation.ValidationRequest;
 import com.jdec.platform.validation.externalobject.ExternalObjectFieldLabels;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -32,12 +34,15 @@ public class ExternalObjectValidator implements SystemValidator {
 
     private final SystemValidatorKey key = SystemValidatorKey.of(PROJECT_NO, MODULE_ID);
     private final DynamicRequestValidator validator;
+    private final ExternalObjectDuplicateChecker duplicateChecker;
 
-    public ExternalObjectValidator(ObjectMapper objectMapper) {
+    public ExternalObjectValidator(
+            ObjectMapper objectMapper, ExternalObjectDuplicateChecker duplicateChecker) {
         ModuleDefinitionRegistry registry =
                 ModuleDefinitionRegistry.of(
                         new ExternalObjectValidationDefinition().moduleDefinitions());
         this.validator = new DynamicRequestValidator(registry, objectMapper);
+        this.duplicateChecker = duplicateChecker;
     }
 
     @Override
@@ -47,7 +52,15 @@ public class ExternalObjectValidator implements SystemValidator {
 
     @Override
     public ValidationResult validate(ValidationRequest request) {
-        return validator.validate(request.payload(), OPTIONS);
+        ValidationResult result = validator.validate(request.payload(), OPTIONS);
+        List<ValidationError> duplicateErrors =
+                duplicateChecker.check(request.payload(), request.subjectId());
+        if (duplicateErrors.isEmpty()) {
+            return result;
+        }
+        List<ValidationError> errors = new ArrayList<>(result.errors());
+        errors.addAll(duplicateErrors);
+        return ValidationResult.of(errors);
     }
 
     @Override

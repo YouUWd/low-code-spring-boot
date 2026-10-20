@@ -293,15 +293,14 @@ class ExternalObjectValidationDefinitionTest {
                             "record": [
                               {
                                 "row": {
-                                  "member.type": "DEPT",
-                                  "member.mobile_phone_no": "123"
+                                  "member.type": "DEPT"
                                 }
                               },
                               {
                                 "row": {
                                   "member.type": "EMPLOYEE",
                                   "member.name": "李四",
-                                  "member.mobile_phone_no": "13800138000"
+                                  "member.mobile_phone_no": "123"
                                 }
                               }
                             ]
@@ -329,6 +328,58 @@ class ExternalObjectValidationDefinitionTest {
                                         "member.mobile_phone_no".equals(e.fieldKey())
                                                 && ValidationErrorCodes.PATTERN_INVALID.equals(
                                                         e.code())));
+        // 部门节点不校验手机号，也不要求必填。
+        assertFalse(
+                result.errors().stream()
+                        .anyMatch(
+                                e ->
+                                        "member.mobile_phone_no".equals(e.fieldKey())
+                                                && ValidationErrorCodes.REQUIRED.equals(e.code())));
+    }
+
+    @Test
+    void departmentMemberSkipsMobileValidation() throws Exception {
+        String request =
+                """
+                {
+                  "nestedModuleData": {
+                    "moduleId": 1001,
+                    "record": [
+                      {
+                        "row": %s,
+                        "children": [
+                          {
+                            "moduleId": 1003,
+                            "record": [
+                              {
+                                "row": {
+                                  "member.type": "DEPT",
+                                  "member.name": "研发部",
+                                  "member.mobile_phone_no": "123"
+                                }
+                              },
+                              {
+                                "row": {
+                                  "member.type": "DEPT",
+                                  "member.name": "测试部"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+                """
+                        .formatted(validInfoRow());
+
+        ValidationResult result = validate(OBJECT_MAPPER.readTree(request));
+
+        assertTrue(result.valid(), result.summary());
+        assertTrue(
+                result.errors().stream()
+                        .noneMatch(e -> "member.mobile_phone_no".equals(e.fieldKey())));
     }
 
     @Test
