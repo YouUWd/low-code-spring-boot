@@ -649,7 +649,8 @@ public class ModuleTreeDataUtils {
         if (rootDataId == null) {
             return;
         }
-        Map<Long, Map<Long, Set<Long>>> parentToChildDataMap =
+        // 从详情页中收集 数据 父子及级关系 , 父模块 1001 的数据 1233 ---> 子模块 1002的数据 1234,2345
+        Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap =
                 collectParentToChildDataMap(detail, moduleCacheMap);
         if (CollectionUtil.isNotEmpty(rootRecord.getChildren())) {
             for (NestedModuleDataDTO child : rootRecord.getChildren()) {
@@ -663,7 +664,7 @@ public class ModuleTreeDataUtils {
             NestedModuleDataDTO nestedStoreData,
             Long parentModuleId,
             Long parentDataId,
-            Map<Long, Map<Long, Set<Long>>> parentToChildDataMap,
+            Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         if (nestedStoreData == null) {
             return;
@@ -673,6 +674,7 @@ public class ModuleTreeDataUtils {
             return;
         }
         Long currentModuleId = nestedStoreData.getModuleId();
+        // 虚拟模块处理完直接 返回
         if (StringUtils.isEmpty(
                 moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable())) {
             for (RecordDataDTO recordDataDTO : nestedStoreData.getRecord()) {
@@ -687,6 +689,7 @@ public class ModuleTreeDataUtils {
                     }
                 }
             }
+            return;
         }
 
         // 显示更新的 ID
@@ -700,11 +703,12 @@ public class ModuleTreeDataUtils {
                 updateIds.add(dataId);
             }
         }
-        // 详情页中的所有的ID
+        // 详情页中的所有的ID  这个模块 所在父模块parentModuleId的父数据parentDataId 下所有子模块的数据ID
         Set<Long> dbIds =
                 parentToChildDataMap
                         .getOrDefault(parentModuleId, new HashMap<>())
-                        .getOrDefault(parentDataId, new HashSet<>());
+                        .getOrDefault(parentDataId, new HashMap<>())
+                        .getOrDefault(currentModuleId, new HashSet<>());
 
         // 隐士删除的ID
         Set<Long> deletionIds =
@@ -734,6 +738,8 @@ public class ModuleTreeDataUtils {
                 }
             }
         }
+
+        /// 处理子数据 完成后 补充 删除的数据ID
         if (CollectionUtil.isNotEmpty(deletionIds)) {
             for (Long dataId : deletionIds) {
                 Map<String, Object> row = new LinkedHashMap<>();
@@ -755,9 +761,9 @@ public class ModuleTreeDataUtils {
         }
     }
 
-    public static Map<Long, Map<Long, Set<Long>>> collectParentToChildDataMap(
+    public static Map<Long, Map<Long, Map<Long, Set<Long>>>> collectParentToChildDataMap(
             NestedModuleDataDTO detail, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
-        Map<Long, Map<Long, Set<Long>>> result = new HashMap<>();
+        Map<Long, Map<Long, Map<Long, Set<Long>>>> result = new HashMap<>();
         collectDataMap(detail, 0L, 0L, moduleCacheMap, result);
         return result;
     }
@@ -767,7 +773,7 @@ public class ModuleTreeDataUtils {
             Long parentModuleId,
             Long parentDataId,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
-            Map<Long, Map<Long, Set<Long>>> parentToChildDataMap) {
+            Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap) {
         if (base == null) {
             return;
         }
@@ -788,7 +794,8 @@ public class ModuleTreeDataUtils {
                     // 收集父子ID关系
                     parentToChildDataMap
                             .computeIfAbsent(parentModuleId, k -> new HashMap<>())
-                            .computeIfAbsent(parentDataId, k -> new HashSet<>())
+                            .computeIfAbsent(parentDataId, k -> new HashMap<>())
+                            .computeIfAbsent(currentModuleId, k -> new HashSet<>())
                             .add(dataId);
 
                     if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
@@ -802,7 +809,7 @@ public class ModuleTreeDataUtils {
                         }
                     }
                 } else {
-                    // 没有行数据 向下递归
+                    // 没有行数据 包含许模块的情况  向下递归
                     if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                         for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                             collectDataMap(
