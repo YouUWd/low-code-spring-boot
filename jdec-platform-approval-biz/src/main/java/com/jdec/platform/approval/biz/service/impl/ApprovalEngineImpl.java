@@ -123,8 +123,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(approvalBusiness)) {
                 businessCreateDraft(approvalProcessDTO);
             } else {
-                if (approvalBusiness.getCurrentStep().equals(0)
-                        && approvalBusiness.getStatusValue() == 1) {
+                if ((approvalBusiness.getCurrentStep().equals(0)
+                                && approvalBusiness.getStatusValue() == 1)
+                        || (approvalBusiness.getStatusValue() != 99
+                                && approvalBusiness.getStatusValue() != -99)) {
                     return;
                 }
                 businessSubmitDraft(approvalProcessDTO);
@@ -200,7 +202,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .or()
                                 .nested(
                                         wp2 ->
-                                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                                wp2.eq(ApprovalBusiness::getApproverId, 0)
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
                                                                 approvalProcessReq.getRoleId())
@@ -322,7 +324,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .or()
                                 .nested(
                                         wp2 ->
-                                                wp2.isNull(ApprovalBusiness::getApproverId)
+                                                wp2.eq(ApprovalBusiness::getApproverId, 0)
                                                         .eq(
                                                                 ApprovalBusiness::getApproveRoleId,
                                                                 approvalListReq.getRoleId())
@@ -1344,7 +1346,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else {
             backReq.setIsTermination(false);
         }
-        dataEngineApi.processApprovalStatus(backReq);
+        ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setReason(resultResp.getRemark());
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
