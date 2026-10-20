@@ -14,9 +14,9 @@ import org.springframework.jdbc.datasource.lookup.AbstractRoutingDataSource;
  *
  * <p>根据 {@link DataSourceContextHolder} 中当前线程绑定的数据源 key 决定实际使用哪个物理 DataSource。
  *
- * <p><b>实现 {@link DisposableBean} 的原因：</b> {@link DynamicDataSourceConfig#dataSource()} 中手工 new 的
- * {@code HikariDataSource} 并没有注册为 Spring Bean（只放进了 {@code targetDataSources} Map）， 容器关闭时 Spring
- * 不会主动调用它们的 {@code close()}。 结果就是：Tomcat 线程池停止后，Hikari 后台线程还在，JVM 可能 hang 住不退出， MySQL
+ * <p><b>实现 {@link DisposableBean} 的原因：</b> {@link DynamicDataSourceConfig} 中手工 new 的 {@code
+ * HikariDataSource} 并没有注册为 Spring Bean（只放进了 {@code targetDataSources} Map）， 容器关闭时 Spring 不会主动调用它们的
+ * {@code close()}。 结果就是：Tomcat 线程池停止后，Hikari 后台线程还在，JVM 可能 hang 住不退出， MySQL
  * 侧也会残留连接。这里统一在容器关闭时关闭所有物理数据源。
  */
 @Slf4j
