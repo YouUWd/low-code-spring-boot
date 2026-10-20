@@ -48,7 +48,7 @@ public class OperateLogRemarkUtil {
             NestedModuleDataDTO newData,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId) {
-        return buildRemark(oldData, newData, moduleCacheMap, menuId, null, true);
+        return buildRemark(oldData, newData, moduleCacheMap, menuId, null);
     }
 
     /**
@@ -67,22 +67,8 @@ public class OperateLogRemarkUtil {
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId,
             String comment) {
-        return buildRemark(oldData, newData, moduleCacheMap, menuId, comment, false);
-    }
-
-    /**
-     * @param preserveJsonValues 是否保持字段值的原始类型（数组/对象不再字符串化）；无审批链为 true
-     */
-    private String buildRemark(
-            NestedModuleDataDTO oldData,
-            NestedModuleDataDTO newData,
-            Map<Long, SysModuleCombineInfo> moduleCacheMap,
-            Long menuId,
-            String comment,
-            boolean preserveJsonValues) {
         OperateLogRemarkDTO remark =
-                operateLogRemarkConverter.convert(
-                        oldData, newData, moduleCacheMap, menuId, preserveJsonValues);
+                operateLogRemarkConverter.convert(oldData, newData, moduleCacheMap, menuId);
         if (remark == null || CollectionUtil.isEmpty(remark.getChange())) {
             return null;
         }
