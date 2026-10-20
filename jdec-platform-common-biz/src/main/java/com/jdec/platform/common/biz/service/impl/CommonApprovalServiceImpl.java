@@ -80,6 +80,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     public Long businessSave(DynamicSaveReq req) {
         validateBeforeSave(req);
         DynamicSaveResp result = dataEngineApi.save(req);
+        if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
+            return result.getDataId();
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());
@@ -94,6 +96,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     public Long businessSubmit(DynamicSaveReq req) {
         validateBeforeSubmit(req);
         DynamicSaveResp result = dataEngineApi.save(req);
+        if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
+            return result.getDataId();
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());
