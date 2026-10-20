@@ -123,8 +123,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             if (Objects.isNull(approvalBusiness)) {
                 businessCreateDraft(approvalProcessDTO);
             } else {
-                if (approvalBusiness.getCurrentStep().equals(0)
-                        && approvalBusiness.getStatusValue() == 1) {
+                if ((approvalBusiness.getCurrentStep().equals(0)
+                                && approvalBusiness.getStatusValue() == 1)
+                        || (approvalBusiness.getStatusValue() != 99
+                                && approvalBusiness.getStatusValue() != -99)) {
                     return;
                 }
                 businessSubmitDraft(approvalProcessDTO);
