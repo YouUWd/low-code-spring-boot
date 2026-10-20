@@ -5,22 +5,14 @@ import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.util.StrUtil;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
-import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
-import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
-import com.jdec.platform.dataengine.biz.context.ModuleDataSaveContextHolder;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
-import com.jdec.platform.dataengine.biz.entity.ModuleDataChangeContent;
-import com.jdec.platform.dataengine.biz.entity.ModuleDataFieldChangeContent;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
-import com.jdec.platform.dataengine.biz.enums.SaveType;
-import com.jdec.platform.dataengine.biz.service.IModuleDataFieldChangeContentService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
-import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -38,8 +30,6 @@ import org.springframework.stereotype.Service;
 @Slf4j
 @RequiredArgsConstructor
 public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePersistenceService {
-
-    private final IModuleDataFieldChangeContentService iModuleDataFieldChangeContentService;
 
     private final ModuleDataSaveNecessaryFieldFillFactoryService
             moduleDataSaveNecessaryFieldFillFactoryService;
@@ -123,21 +113,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
             context.setRootModuleMainTableDataId(num.longValue());
         }
 
-        RowChangeDTO rowChange = null;
-        // 非审批链业务 正常保存 记录下变更日志
-        if (!context.getIsApproval() && SaveType.SAVE.equals(context.getSaveType())) {
-            rowChange =
-                    DataPersistenceUtil.convertInsertRecordToRowChangeDTO(
-                            context.getRecord(),
-                            context.getTableName(),
-                            context.getSysModuleCompleteResp()
-                                    .getFieldMapByTable()
-                                    .get(context.getTableName()),
-                            DataPersistenceUtil.getModuleTableUniqueNameField(
-                                    context.getSysModuleCompleteResp().getModuleInfo().getFields(),
-                                    context.getTableName()));
-        }
-        return DataSaveResult.builder().dataId(num.longValue()).rowChange(rowChange).build();
+        return DataSaveResult.builder().dataId(num.longValue()).build();
     }
 
     @Override
@@ -185,8 +161,25 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     context.getModuleCacheMap(),
                     context.getDsl());
         } else {
-            context.setDefaultExcludeFields(UPDATE_DEFAULT_EXCLUDE_FIELD);
+
+            Set<String> defaultExcludeFields = new HashSet<>();
+            defaultExcludeFields.addAll(UPDATE_DEFAULT_EXCLUDE_FIELD);
+            // 结构上 根模块节点 但 不是 root节点
+            if (!context.getSysModuleCompleteResp()
+                            .getModuleInfo()
+                            .getModuleId()
+                            .equals(context.getRootModuleId())
+                    && context.getSysModuleCompleteResp()
+                            .getModuleInfo()
+                            .getModuleId()
+                            .equals(context.getStructureRootModuleId())
+                    && context.getIsModuleMainTable()) {
+                // 更新时去掉 关联外键
+                defaultExcludeFields.add(context.getTableFk());
+            }
+            context.setDefaultExcludeFields(defaultExcludeFields);
             moduleDataSaveNecessaryFieldFillFactoryService.fillData(context);
+
             Map<Field<Object>, Object> fieldValues = getUpdateRecordFieldValues(context);
             // Update 不返回任何字段
             context.getDsl()
@@ -565,173 +558,5 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         }
 
         return fieldValues;
-    }
-
-    private void saveModuleDataChangeContent(
-            RecordSaveContext context, Record before, Record after, Long dataId) {
-        ModuleDataChangeContent changeContent = new ModuleDataChangeContent();
-        changeContent.setId(null);
-        changeContent.setActionId(ModuleDataSaveContextHolder.getContextActionId());
-        changeContent.setRootModuleId(context.getRootModuleId());
-        changeContent.setMainTableDataId(context.getRootModuleMainTableDataId());
-        changeContent.setMainTableDataVersion(context.getRootModuleMainTableDataVersion());
-        changeContent.setModuleId(context.getSysModuleCompleteResp().getModuleInfo().getModuleId());
-        changeContent.setTableName(context.getTableName());
-        changeContent.setDataId(dataId);
-        changeContent.setParentDataId(context.getParentLevelTableId());
-        Map dataMap = new HashMap();
-        dataMap.put("before", DataPersistenceUtil.convertRecordToMap(before));
-        dataMap.put("after", DataPersistenceUtil.convertRecordToMap(after));
-        try {
-            String jsonStr = JsonUtil.obj2Json(dataMap);
-            changeContent.setContent(jsonStr);
-        } catch (Exception e) {
-            throw new BusinessException(
-                    ApiResponseCodeEnum.SERVER_ERROR.getCode(),
-                    ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
-                    e);
-        }
-        changeContent.setApprovalFlag(1);
-        changeContent.setActionType(context.getIsInsert() ? 1 : 2);
-        changeContent.setCreateDate(LocalDateTime.now());
-
-        Map<Field<Object>, Object> fieldValues = new HashMap<>();
-
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("action_id"))),
-                changeContent.getActionId());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("root_module_id"))),
-                changeContent.getRootModuleId());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("main_table_data_id"))),
-                changeContent.getMainTableDataId());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("main_table_data_version"))),
-                changeContent.getMainTableDataVersion());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("module_id"))),
-                changeContent.getModuleId());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("table_name"))),
-                changeContent.getTableName());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("data_id"))), changeContent.getDataId());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("parent_data_id"))),
-                changeContent.getParentDataId());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("content"))),
-                changeContent.getContent());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("approval_flag"))),
-                changeContent.getApprovalFlag());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("action_type"))),
-                changeContent.getActionType());
-        fieldValues.put(
-                DSL.field(DSL.name(StrUtil.toUnderlineCase("create_date"))),
-                changeContent.getCreateDate());
-
-        String tableName = context.getTableName();
-        // 手动定义表和主键字段，标记IDENTITY
-        // 1. 构造【带自增标记】的数据类型
-        DataType<Long> autoIncLong = SQLDataType.BIGINT.identity(true);
-
-        // 2. 用这个DataType创建field，等价旧版 .identity(true)
-        Field<Long> pkField =
-                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD), autoIncLong);
-
-        Table<?> dynamicTable = DSL.table(DSL.name("module_data_change_content"));
-        // Insert 并获取自增主键
-        Record inserted =
-                context.getDsl()
-                        .insertInto(dynamicTable)
-                        .set(fieldValues)
-                        .returning(pkField)
-                        .fetchOne();
-    }
-
-    private void saveModuleDataFieldChangeContent(
-            RecordSaveContext context, RowChangeDTO rowChange, Long dataId) {
-        if (rowChange == null) {
-            return;
-        }
-
-        if (CollectionUtil.isNotEmpty(rowChange.getColumns())) {
-
-            List<ModuleDataFieldChangeContent> insertList = new ArrayList<>();
-            List<ModuleDataFieldChangeContent> updateList = new ArrayList<>();
-
-            for (FieldChangeDTO fieldChangeDTO : rowChange.getColumns()) {
-                //                LambdaQueryWrapper<ModuleDataFieldChangeContent> queryWrapper =
-                //                        new LambdaQueryWrapper<>();
-                //                queryWrapper.eq(ModuleDataFieldChangeContent::getDataId, dataId);
-                //                queryWrapper.eq(ModuleDataFieldChangeContent::getTableName,
-                // context.getTableName());
-                //                queryWrapper.eq(
-                //                        ModuleDataFieldChangeContent::getFieldId,
-                // fieldChangeDTO.getField());
-                //
-                //                ModuleDataFieldChangeContent old =
-                //
-                // iModuleDataFieldChangeContentService.queryOne(queryWrapper);
-
-                //                if (old == null) {
-                //
-                //                } else {
-                //                    Map dataMap = new HashMap();
-                //                    dataMap.put("old", fieldChangeDTO.getOld());
-                //                    dataMap.put("newer", fieldChangeDTO.getNewer());
-                //                    try {
-                //                        String jsonStr = JsonUtil.obj2Json(dataMap);
-                //                        old.setContent(jsonStr);
-                //                    } catch (Exception e) {
-                //                        throw new BusinessException(
-                //                                ApiResponseCodeEnum.SERVER_ERROR.getCode(),
-                //                                ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
-                //                                e);
-                //                    }
-                //                    old.setCreateDate(LocalDateTime.now());
-                //                    updateList.add(old);
-                //                }
-                ModuleDataFieldChangeContent changeContent = new ModuleDataFieldChangeContent();
-                changeContent.setId(null);
-                changeContent.setActionId(ModuleDataSaveContextHolder.getContextActionId());
-                changeContent.setRootModuleId(context.getRootModuleId());
-                changeContent.setRootTableDataId(context.getRootModuleMainTableDataId());
-                changeContent.setRootTableDataVersion(context.getRootModuleMainTableDataVersion());
-                changeContent.setModuleId(
-                        context.getSysModuleCompleteResp().getModuleInfo().getModuleId());
-                changeContent.setTableName(context.getTableName());
-                changeContent.setDataId(dataId);
-                changeContent.setFieldId(fieldChangeDTO.getField());
-                // changeContent.setContent(null);
-
-                Map dataMap = new HashMap();
-                dataMap.put("old", fieldChangeDTO.getOld());
-                dataMap.put("newer", fieldChangeDTO.getNewer());
-                try {
-                    String jsonStr = JsonUtil.obj2Json(dataMap);
-                    changeContent.setContent(jsonStr);
-                } catch (Exception e) {
-                    throw new BusinessException(
-                            ApiResponseCodeEnum.SERVER_ERROR.getCode(),
-                            ApiResponseCodeEnum.SERVER_ERROR.getMessage(),
-                            e);
-                }
-                changeContent.setApprovalFlag(1);
-                changeContent.setActionType(context.getIsInsert() ? 1 : 2);
-                changeContent.setCreatedDate(LocalDateTime.now());
-                insertList.add(changeContent);
-            }
-
-            if (CollectionUtil.isNotEmpty(insertList)) {
-                iModuleDataFieldChangeContentService.batchInsert(insertList);
-            }
-            if (CollectionUtil.isNotEmpty(updateList)) {
-                iModuleDataFieldChangeContentService.batchUpdate(updateList);
-            }
-        }
     }
 }
