@@ -42,6 +42,9 @@ public class SysFieldResp {
     @Schema(description = "关联关系名称")
     private String relationName;
 
+    @Schema(description = "业务类型编码")
+    private String businessTypeCode;
+
     @Schema(description = "是否加密存储: 0-否, 1-是")
     private Integer encrypted;
 
