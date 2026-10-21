@@ -359,6 +359,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
             resp.setRelationWord(node.getRelationWord());
             resp.setBusinessTypeCode(node.getBusinessTypeCode());
+            resp.setBusinessTypeName(node.getBusinessTypeName());
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -539,6 +540,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                             : RELATION_WORD_NO);
             fieldResp.setBusinessTypeCode(
                     fieldConfig != null ? fieldConfig.getBusinessTypeCode() : null);
+            fieldResp.setBusinessTypeName(
+                    fieldConfig != null ? fieldConfig.getBusinessTypeName() : null);
             fieldResp.setSorted(SORTED_YES);
             fieldResp.setEllipsis(ELLIPSIS_NO);
             fieldResp.setChecked(CHECKED_NO);
@@ -618,8 +621,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         resp.setModuleId(generated.getModuleId());
         resp.setLabel(generated.getLabel());
         resp.setRelationWord(generated.getRelationWord());
-        // 业务类型编码取 sys_field 关联配置（生成侧实时解析），不取库中存储值
+        // 业务类型编码/名称取 sys_field 关联配置（生成侧实时解析），不取库中存储值
         resp.setBusinessTypeCode(generated.getBusinessTypeCode());
+        resp.setBusinessTypeName(generated.getBusinessTypeName());
         // 展示项：表中非空优先，否则回退生成侧默认值
         resp.setDataIndex(
                 stripModulePrefix(

@@ -17,8 +17,8 @@ public interface SysBusinessTypeApi {
     /**
      * 根据业务类型查询搜索配置项
      *
-     * @param businessTypeCode 业务类型标识，如 descriptionText
-     * @return 该业务类型支持的搜索配置项集合
+     * @param businessTypeCode 业务类型标识，如 descriptionText；为空时返回空集合
+     * @return 该业务类型支持的搜索配置项集合；业务类型不存在或未配置时返回空集合
      */
     List<SearchConfigItemResp> listSearchConfigByBusinessType(String businessTypeCode);
 }
