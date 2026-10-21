@@ -1223,7 +1223,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalIdList =
                     new ArrayList<>(Arrays.asList(approvalChain.getApproverIdList().split(",")));
         }
-        if (StringUtils.isNotBlank(approvalChain.getApprovalUids())) {
+        if (StringUtils.isNotBlank(approvalBusiness.getApprovalUids())) {
             approvalUidList =
                     new ArrayList<>(Arrays.asList(approvalBusiness.getApprovalUids().split(",")));
         }
