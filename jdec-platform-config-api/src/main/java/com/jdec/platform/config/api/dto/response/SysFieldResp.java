@@ -45,6 +45,9 @@ public class SysFieldResp {
     @Schema(description = "业务类型编码")
     private String businessTypeCode;
 
+    @Schema(description = "业务类型名称")
+    private String businessTypeName;
+
     @Schema(description = "是否加密存储: 0-否, 1-是")
     private Integer encrypted;
 

@@ -20,7 +20,6 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.ProjectProperties;
 import com.jdec.platform.shared.exception.BusinessException;
-import com.jdec.platform.validation.SystemValidationService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +45,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     private final ObjectMapper objectMapper;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final ProjectProperties projectProperties;
-    private final SystemValidationService systemValidationService;
 
     // 审批单据
     @Override
@@ -78,7 +76,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSave(DynamicSaveReq req) {
-        validateBeforeSave(req);
         DynamicSaveResp result = dataEngineApi.save(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
             return result.getDataId();
@@ -94,7 +91,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSubmit(DynamicSaveReq req) {
-        validateBeforeSubmit(req);
         DynamicSaveResp result = dataEngineApi.save(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
             return result.getDataId();
@@ -104,33 +100,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalReq.setButton("submit");
         approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
-    }
-
-    /**
-     * 草稿保存：仅当模块未配置审批链时执行业务校验。
-     *
-     * <p>配置了审批链的模块在草稿阶段允许不完整的业务数据，正式校验由提交接口统一负责。
-     */
-    private void validateBeforeSave(DynamicSaveReq req) {
-        if (req == null || req.getNestedModuleData() == null) {
-            return;
-        }
-        Long moduleId = req.getNestedModuleData().getModuleId();
-        boolean approvalEnabled =
-                moduleId != null
-                        && Boolean.TRUE.equals(
-                                sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId)));
-        if (!approvalEnabled) {
-            systemValidationService.validateOrThrow(moduleId, req);
-        }
-    }
-
-    /** 正式提交：统一执行业务校验。 */
-    private void validateBeforeSubmit(DynamicSaveReq req) {
-        if (req == null || req.getNestedModuleData() == null) {
-            return;
-        }
-        systemValidationService.validateOrThrow(req.getNestedModuleData().getModuleId(), req);
     }
 
     public void approvalSave(Long moduleId, ApprovalReq req) {
