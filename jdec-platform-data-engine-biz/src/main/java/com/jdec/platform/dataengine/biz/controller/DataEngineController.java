@@ -51,18 +51,6 @@ public class DataEngineController {
         return ApiResponse.success(dataEngineApi.save(req).getDataId());
     }
 
-    @PostMapping("/insertAndGetId")
-    @Operation(summary = "保存模块数据", description = "保存模块数据")
-    public ApiResponse<Long> insertAndGetId(@RequestBody DynamicInsertReq req) {
-        return ApiResponse.success(dataEngineApi.insertAndGetId(req));
-    }
-
-    @PostMapping("/deleteById")
-    @Operation(summary = "保存模块数据", description = "保存模块数据")
-    public ApiResponse<Long> deleteById(@RequestBody DynamicDeleteReq req) {
-        return ApiResponse.success(dataEngineApi.deleteById(req));
-    }
-
     @PostMapping("/process")
     @Operation(summary = "审批状态回调", description = "用于测试")
     public ApiResponse<Object> save(@RequestBody ApprovalStatusCallBackReq req) {

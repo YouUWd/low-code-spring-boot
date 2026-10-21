@@ -1,7 +1,5 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
-import com.jdec.platform.dataengine.api.dto.request.DynamicDeleteReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicInsertReq;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import java.util.List;
@@ -9,11 +7,7 @@ import java.util.Map;
 
 public interface ModuleDataPersistenceService {
 
-    public Long save(ModuleDataStoreDTO req);
-
-    Long insertAndGetId(DynamicInsertReq req);
-
-    Long deleteById(DynamicDeleteReq req);
+    Long save(ModuleDataStoreDTO req);
 
     // 查询主表最大的版本号
     Integer getMaxVersionNoByBusinessNo(String tableName, String businessNo);

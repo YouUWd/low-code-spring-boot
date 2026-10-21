@@ -103,7 +103,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             if (!rootModuleId.equals(structureRootModuleId)) {
                 rootModuleMainTableDataId =
                         moduleDataPersistenceService.getRootModuleMainTableDataId(
-                                structureRootModuleId, structureRootDataId, moduleCacheMap);
+                                structureRootDataId, structureRootModuleId, moduleCacheMap);
             } else {
                 rootModuleMainTableDataId = structureRootDataId;
             }

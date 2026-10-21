@@ -60,16 +60,6 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    public Long insertAndGetId(DynamicInsertReq req) {
-        return moduleDataPersistenceService.insertAndGetId(req);
-    }
-
-    @Override
-    public Long deleteById(DynamicDeleteReq req) {
-        return moduleDataPersistenceService.deleteById(req);
-    }
-
-    @Override
     public CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo) {
         return dynamicQueryService.getCreatedUserInfo(moduleId, id, businessNo);
     }

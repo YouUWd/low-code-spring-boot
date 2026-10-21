@@ -2,9 +2,6 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.dataengine.api.dto.model.*;
-import com.jdec.platform.dataengine.api.dto.request.DynamicDeleteReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicInsertReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
@@ -13,7 +10,6 @@ import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.RelationType;
-import com.jdec.platform.dataengine.biz.enums.SaveButtonType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
@@ -146,46 +142,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
     }
 
     @Override
-    public Long insertAndGetId(DynamicInsertReq req) {
-        DynamicSaveReq saveReq = new DynamicSaveReq();
-        saveReq.setBtnType(SaveButtonType.INSERT_AND_GET_ID.getKey());
-        NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
-        nestedModuleDataDTO.setModuleId(req.getModuleId());
-        RecordDataDTO recordDataDTO = new RecordDataDTO();
-        recordDataDTO.setRow(req.getRow());
-        nestedModuleDataDTO.setRecord(Collections.singletonList(recordDataDTO));
-        saveReq.setNestedModuleData(nestedModuleDataDTO);
-        // return save(saveReq);
-        return 0L;
-    }
-
-    @Override
-    public Long deleteById(DynamicDeleteReq req) {
-        Set<String> tableNames = DataPersistenceUtil.getTableNameFromWideRow(req.getRow());
-        if (CollectionUtil.isEmpty(tableNames)) {
-            throw new BusinessException(
-                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
-                    ApiResponseCodeEnum.BAD_REQUEST.getMessage());
-        }
-        for (String table : tableNames) {
-            DataPersistenceUtil.putTableRowDeletedField(
-                    req.getRow(),
-                    DataPersistenceUtil.getFullFieldName(
-                            table, CommonConstant.TABLE_DEFAULT_DELETED_FIELD));
-        }
-        DynamicSaveReq saveReq = new DynamicSaveReq();
-        saveReq.setBtnType(SaveButtonType.DELETE_BY_ID.getKey());
-        NestedModuleDataDTO nestedModuleDataDTO = new NestedModuleDataDTO();
-        nestedModuleDataDTO.setModuleId(req.getModuleId());
-        RecordDataDTO recordDataDTO = new RecordDataDTO();
-        recordDataDTO.setRow(req.getRow());
-        nestedModuleDataDTO.setRecord(Collections.singletonList(recordDataDTO));
-        saveReq.setNestedModuleData(nestedModuleDataDTO);
-        // return save(saveReq);
-        return 0L;
-    }
-
-    @Override
     public Integer getMaxVersionNoByBusinessNo(String tableName, String businessNo) {
         return baseSingleTablePersistenceService.getMaxVersionNoByBusinessNo(
                 null, tableName, businessNo);
@@ -194,18 +150,19 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
     @Override
     public Long getRootModuleMainTableDataId(
             Long id, Long currentModuleId, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
-        if (id == null || id <= 0) {
+        if (id == null || id <= 0 || currentModuleId == null) {
             return null;
         }
-        Long parentId = moduleCacheMap.get(currentModuleId).getModuleInfo().getParentId();
-        // 根模块直接返回
-        if (parentId == null || parentId <= 0) {
-            return id;
-        }
-        // 不是根模块
         Long tempId = id;
         Long tempModuleId = currentModuleId;
         while (tempModuleId != null && tempModuleId > 0) {
+
+            Long parentId = moduleCacheMap.get(tempModuleId).getModuleInfo().getParentId();
+            // 根模块直接返回
+            if (parentId == null || parentId <= 0) {
+                break;
+            }
+
             // 虚拟模块直接 往上找
             if (StringUtils.isEmpty(
                     moduleCacheMap.get(tempModuleId).getModuleInfo().getPrimaryTable())) {
@@ -346,6 +303,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                     relationDTO.getJoinField(), currentReq.getParentModuleMainTableDataId());
             isStructureRootModule = false;
         } else {
+            relationDTO = sysModuleCompleteResp.getMainTableRelationDTO();
             // 是结构上的头节点
             boolean isRootModule =
                     sysModuleCompleteResp
@@ -356,7 +314,6 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
             // insert 时候 不要 外键
             // update 时候 不要 外键 parentLevelTableAssociationMap 为空
             if (!isRootModule && isInsert) {
-                relationDTO = sysModuleCompleteResp.getMainTableRelationDTO();
                 // 插入需要 需要检查外键
                 if (relationDTO == null
                         || relationDTO.getJoinField() == null

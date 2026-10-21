@@ -102,7 +102,8 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 .rootModuleInfo(rootModule)
                                 .rootModuleId(rootModule.getModuleInfo().getModuleId())
                                 .build());
-        if (req.getBusinessStatus() == 99 || req.getBusinessStatus() == -99) {
+        if (req.getIsCurrentStepFinish()
+                && (req.getBusinessStatus() == 99 || req.getBusinessStatus() == -99)) {
             // 终态时候 删除快照数据
             moduleSnapShotDataService.deleteModuleDataTempSnapshot(
                     ModuleSnapShotDataContext.builder()
@@ -130,17 +131,19 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                             .rootModuleId(rootModule.getModuleInfo().getModuleId())
                             .build());
             // 保存字段快照
-            //
-            moduleSnapShotDataService.saveModuleFieldDataSnapshot(
-                    ModuleSnapShotDataContext.builder()
-                            .dataId(req.getDataId())
-                            .versionNo(req.getVersionNo())
-                            .dslContext(context)
-                            .moduleDataDTO(result)
-                            .rootModuleInfo(rootModule)
-                            .rootModuleId(rootModule.getModuleInfo().getModuleId())
-                            .moudleCacheMap(moduleCacheMap)
-                            .build());
+            // 只有当前步骤完结 才会切分字段快照
+            if (req.getIsCurrentStepFinish()) {
+                moduleSnapShotDataService.saveModuleFieldDataSnapshot(
+                        ModuleSnapShotDataContext.builder()
+                                .dataId(req.getDataId())
+                                .versionNo(req.getVersionNo())
+                                .dslContext(context)
+                                .moduleDataDTO(result)
+                                .rootModuleInfo(rootModule)
+                                .rootModuleId(rootModule.getModuleInfo().getModuleId())
+                                .moudleCacheMap(moduleCacheMap)
+                                .build());
+            }
         }
         // todo  result   tmpSnapshot 要构建 版本间的字段 对比 返回给审批链
         JsonNode remark =

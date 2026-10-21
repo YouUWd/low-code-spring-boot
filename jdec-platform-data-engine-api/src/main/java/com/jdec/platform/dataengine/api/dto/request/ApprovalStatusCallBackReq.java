@@ -30,6 +30,9 @@ public class ApprovalStatusCallBackReq implements Serializable {
     @Schema(description = "是否第一次提交")
     private Boolean isFirstSubmit;
 
+    @Schema(description = "是否当前步骤状态完成")
+    private Boolean isCurrentStepFinish;
+
     @Schema(description = "菜单ID")
     private Long menuId;
 
