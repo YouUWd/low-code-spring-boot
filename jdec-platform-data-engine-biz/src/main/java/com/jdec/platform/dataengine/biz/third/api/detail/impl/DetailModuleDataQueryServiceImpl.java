@@ -231,7 +231,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                 return null;
             }
             try {
-                return objectMapper.readValue(jsonStr, Object.class);
+                return objectMapper.readTree(jsonStr);
             } catch (Exception e) {
                 return jsonStr;
             }
@@ -241,7 +241,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
             if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
                     || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
                 try {
-                    return objectMapper.readValue(trimmed, Object.class);
+                    return objectMapper.readTree(trimmed);
                 } catch (Exception ignored) {
                     return val;
                 }

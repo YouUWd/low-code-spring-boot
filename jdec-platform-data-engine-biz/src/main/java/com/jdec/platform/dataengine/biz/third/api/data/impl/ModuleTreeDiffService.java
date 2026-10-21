@@ -218,8 +218,8 @@ public class ModuleTreeDiffService {
                                 if (!isEqual(newVal, changeObj.getFirstSnapshot())) {
                                     if (isJsonStr(changeObj.getFirstSnapshot())) {
                                         Object currentOld =
-                                                OBJECT_MAPPER.readValue(
-                                                        changeObj.getFirstSnapshot(), Object.class);
+                                                OBJECT_MAPPER.readTree(
+                                                        changeObj.getFirstSnapshot());
                                         versionCompareItem.currentOld(currentOld);
                                     }
                                     versionCompareItem.current(newVal);
@@ -228,8 +228,7 @@ public class ModuleTreeDiffService {
                             } else {
                                 if (isJsonStr(changeObj.getSecondSnapshot())) {
                                     Object currentOld =
-                                            OBJECT_MAPPER.readValue(
-                                                    changeObj.getSecondSnapshot(), Object.class);
+                                            OBJECT_MAPPER.readTree(changeObj.getSecondSnapshot());
                                     versionCompareItem.currentOld(currentOld);
                                 }
                                 versionCompareItem.current(newVal);
@@ -239,8 +238,7 @@ public class ModuleTreeDiffService {
                             if (!isEqual(newVal, changeObj.getFirstSnapshot())) {
                                 if (isJsonStr(changeObj.getFirstSnapshot())) {
                                     Object currentOld =
-                                            OBJECT_MAPPER.readValue(
-                                                    changeObj.getFirstSnapshot(), Object.class);
+                                            OBJECT_MAPPER.readTree(changeObj.getFirstSnapshot());
                                     versionCompareItem.currentOld(currentOld);
                                 }
 
@@ -413,11 +411,11 @@ public class ModuleTreeDiffService {
     private static boolean compareAnyJsonSide(Object source, Object target) {
         try {
             if (source instanceof String && isJsonStr((String) source)) {
-                source = OBJECT_MAPPER.readValue((String) source, Object.class);
+                source = OBJECT_MAPPER.readTree((String) source);
             }
 
             if (target instanceof String && isJsonStr((String) target)) {
-                target = OBJECT_MAPPER.readValue((String) target, Object.class);
+                target = OBJECT_MAPPER.readTree((String) target);
             }
 
             return source.equals(target);

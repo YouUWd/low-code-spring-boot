@@ -1,7 +1,11 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
@@ -36,6 +40,7 @@ import com.jdec.platform.dataengine.biz.referencequery.*;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
+import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import java.sql.Timestamp;
@@ -433,9 +438,16 @@ public class DynamicQueryService {
                                                         })
                                                 .collect(Collectors.toList());
 
+                                JsonNode wordNode;
+                                try {
+                                    wordNode = OBJECT_MAPPER.readTree(JsonUtil.obj2Json(wordList));
+                                } catch (JsonProcessingException e) {
+                                    throw new RuntimeException(e);
+                                }
+
                                 // 新版本数据回填
                                 rowData.put(
-                                        ele.getTableName() + "." + ele.getFieldName(), wordList);
+                                        ele.getTableName() + "." + ele.getFieldName(), wordNode);
                             });
 
                     // 内部数据
@@ -782,20 +794,26 @@ public class DynamicQueryService {
                                             nameToWorldConfMap.get(ele);
 
                                     if (Objects.nonNull(row.get(ele))) {
-                                        List<Map<String, Object>> words =
-                                                (List<Map<String, Object>>) row.get(ele);
+                                        JsonNode words = (JsonNode) row.get(ele);
 
-                                        Set<String> wordIds =
-                                                words.stream()
-                                                        .filter(
-                                                                value ->
-                                                                        Objects.nonNull(
-                                                                                value.get("uuid")))
-                                                        .map(
-                                                                item ->
-                                                                        String.valueOf(
-                                                                                item.get("uuid")))
-                                                        .collect(Collectors.toSet());
+                                        Set<String> wordIds = new HashSet<>();
+
+                                        if (words instanceof ArrayNode) {
+                                            for (JsonNode word : words) {
+                                                JsonNode uuidNode = word.get("uuid");
+                                                if (Objects.nonNull(uuidNode)
+                                                        && StringUtils.isNotBlank(
+                                                                uuidNode.asText())) {
+                                                    wordIds.add(uuidNode.asText());
+                                                }
+                                            }
+                                        } else if (words instanceof ObjectNode) {
+                                            JsonNode uuidNode = words.get("uuid");
+                                            if (Objects.nonNull(uuidNode)
+                                                    && StringUtils.isNotBlank(uuidNode.asText())) {
+                                                wordIds.add(uuidNode.asText());
+                                            }
+                                        }
 
                                         ReferenceQueryParam referenceQueryParam =
                                                 WordCloudRefQueryParam.builder()
