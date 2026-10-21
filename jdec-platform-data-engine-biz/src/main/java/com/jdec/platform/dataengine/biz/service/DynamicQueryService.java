@@ -1,7 +1,9 @@
 package com.jdec.platform.dataengine.biz.service;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.*;
+import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
@@ -18,6 +20,7 @@ import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicQueryResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
+import com.jdec.platform.dataengine.biz.context.VersionDataQueryContext;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
@@ -28,6 +31,8 @@ import com.jdec.platform.dataengine.biz.dto.ModuleTableHeaderDTO;
 import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
+import com.jdec.platform.dataengine.biz.enums.ReferenceBizType;
+import com.jdec.platform.dataengine.biz.referencequery.*;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
@@ -55,6 +60,8 @@ import org.springframework.util.CollectionUtils;
 @RequiredArgsConstructor
 public class DynamicQueryService {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final MetadataCacheService metadataCacheService;
     private final PermissionFilterService permissionFilterService;
     private final FieldTransformService fieldTransformService;
@@ -75,6 +82,8 @@ public class DynamicQueryService {
     private final ConfigApi configApi;
 
     private final SysUserApi sysUserApi;
+
+    private final VersionDataQueryStrategyFactory versionDataQueryStrategyFactory;
 
     /** 一体化列表分页查询 */
     public DynamicQueryResp query(DynamicQueryReq req) {
@@ -326,6 +335,135 @@ public class DynamicQueryService {
         return resultList;
     }
 
+    private void assembleLatestVersionData(
+            ModuleTreeDTO moduleTreeDTO,
+            NestedModuleDataDTO moduleData,
+            Map<Long, Map<Long, List<ReferenceQueryParam>>> referenceQueryParamMap,
+            Map<String, List<Map<String, Object>>> relationNoWordMap) {
+        Long moduleId = moduleData.getModuleId();
+        ModuleInfo moduleInfo = moduleTreeDTO.getModule(moduleId);
+
+        String tableName = moduleInfo.getPrimaryTable();
+
+        if (referenceQueryParamMap.containsKey(moduleId)) {
+            List<String> businessNos = new ArrayList<>();
+
+            // 搜集模块数据的所有business_no集合，批量查询
+            for (RecordDataDTO recordDataDTO : moduleData.getRecord()) {
+                Map<String, Object> rowData = recordDataDTO.getRow();
+                if (Objects.nonNull(rowData)) {
+                    Long primaryId =
+                            Long.parseLong(String.valueOf(rowData.get(tableName + "." + "id")));
+                    List<ReferenceQueryParam> referenceQueryParams =
+                            referenceQueryParamMap.get(moduleId).get(primaryId);
+
+                    // 内部数据
+                    List<InternalRefQueryParam> internalVersionData =
+                            referenceQueryParams.stream()
+                                    .filter(ele -> ele instanceof InternalRefQueryParam)
+                                    .map(item -> (InternalRefQueryParam) item)
+                                    .collect(Collectors.toList());
+                    businessNos.addAll(
+                            internalVersionData.stream()
+                                    .map(InternalRefQueryParam::getBusinessNo)
+                                    .collect(Collectors.toSet()));
+                }
+            }
+
+            Map<String, Object> businessNoMap;
+
+            if (!CollectionUtils.isEmpty(businessNos)) {
+                VersionDataQueryContext versionDataQueryContext =
+                        VersionDataQueryContext.builder()
+                                .tableName(tableName)
+                                .businessNos(businessNos)
+                                .bizType(ReferenceBizType.INTERNAL_REF.getType())
+                                .build();
+
+                VersionDataQueryStrategy versionDataQueryStrategy =
+                        versionDataQueryStrategyFactory.getVersionDataQueryStrategy(
+                                versionDataQueryContext);
+
+                List<Map<String, Object>> versionData =
+                        versionDataQueryStrategy.queryVersionDatas(versionDataQueryContext);
+
+                businessNoMap =
+                        versionData.stream()
+                                .collect(
+                                        Collectors.toMap(
+                                                ele -> String.valueOf(ele.get("business_no")),
+                                                k -> k,
+                                                (a, b) -> b));
+            } else {
+                businessNoMap = new HashMap<>();
+            }
+
+            // 回填版本数据
+            for (RecordDataDTO recordDataDTO : moduleData.getRecord()) {
+                Map<String, Object> rowData = recordDataDTO.getRow();
+                if (Objects.nonNull(rowData)) {
+                    Long primaryId =
+                            Long.parseLong(String.valueOf(rowData.get(tableName + "." + "id")));
+                    List<ReferenceQueryParam> referenceQueryParams =
+                            referenceQueryParamMap.get(moduleId).get(primaryId);
+
+                    List<WordCloudRefQueryParam> wordCloudVersionData =
+                            referenceQueryParams.stream()
+                                    .filter(ele -> ele instanceof WordCloudRefQueryParam)
+                                    .map(item -> (WordCloudRefQueryParam) item)
+                                    .collect(Collectors.toList());
+
+                    wordCloudVersionData.forEach(
+                            ele -> {
+                                // 字段用到的词数据最新版本
+                                List<Object> wordList =
+                                        ele.getWordUUUIDs().stream()
+                                                .map(
+                                                        item -> {
+                                                            return relationNoWordMap
+                                                                    .get(ele.getRelationNo())
+                                                                    .stream()
+                                                                    .filter(
+                                                                            v ->
+                                                                                    item.equals(
+                                                                                            v.get(
+                                                                                                    "uuid")))
+                                                                    .findFirst()
+                                                                    .orElse(null);
+                                                        })
+                                                .collect(Collectors.toList());
+
+                                // 新版本数据回填
+                                rowData.put(
+                                        ele.getTableName() + "." + ele.getFieldName(), wordList);
+                            });
+
+                    // 内部数据
+                    List<InternalRefQueryParam> internalVersionData =
+                            referenceQueryParams.stream()
+                                    .filter(ele -> ele instanceof InternalRefQueryParam)
+                                    .map(item -> (InternalRefQueryParam) item)
+                                    .collect(Collectors.toList());
+
+                    // 将新版本数据填入对应字段 TODO 需要构造统一数据类型
+                    internalVersionData.forEach(
+                            ele ->
+                                    rowData.put(
+                                            ele.getTableName() + "." + ele.getFieldName(),
+                                            businessNoMap.get(ele.getBusinessNo())));
+                }
+
+                // 处理子模块数据
+                if (!CollectionUtils.isEmpty(recordDataDTO.getChildren())) {
+                    for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                        assembleLatestVersionData(
+                                moduleTreeDTO, child, referenceQueryParamMap, relationNoWordMap);
+                    }
+                }
+            }
+        }
+    }
+
     private Record getPreVersion(SysModuleSimpleTreeResp rootNode, Long id) {
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
@@ -463,6 +601,18 @@ public class DynamicQueryService {
         ModuleTreeDTO moduleTreeDTO =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootNode.getId());
 
+        Map<Long, Map<Long, List<ReferenceQueryParam>>> referenceQueryParamMap = new HashMap<>();
+
+        List<FieldWordCloudDTO> worldCloudConfigs =
+                configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
+
+        Map<String, FieldWordCloudDTO> nameToWorldConfMap =
+                worldCloudConfigs.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        ele -> ele.getTableName() + "." + ele.getColumnName(),
+                                        v -> v));
+
         NestedModuleDataDTO moduleData =
                 queryModule(
                         singleQueryDTO,
@@ -470,17 +620,124 @@ public class DynamicQueryService {
                         true,
                         topQuery,
                         moduleIdToFieldMap,
-                        moduleTreeDTO);
+                        moduleTreeDTO,
+                        referenceQueryParamMap,
+                        nameToWorldConfMap);
+
+        // 更新引用为最新版本
+        Boolean hasApproval =
+                sysApprovalChainConfigApi.getApprovalStatus(List.of(rootNode.getId()));
+
+        if (Objects.nonNull(moduleData) && !CollectionUtils.isEmpty(moduleData.getRecord())) {
+            if (hasApproval) {
+                Long businessStatusValue =
+                        moduleData
+                                                .getRecord()
+                                                .get(0)
+                                                .getRow()
+                                                .get(
+                                                        moduleTreeDTO
+                                                                        .getModule(rootNode.getId())
+                                                                        .getPrimaryTable()
+                                                                + "."
+                                                                + "business_status")
+                                        == null
+                                ? 0L
+                                : Long.parseLong(
+                                        String.valueOf(
+                                                moduleData
+                                                        .getRecord()
+                                                        .get(0)
+                                                        .getRow()
+                                                        .get(
+                                                                moduleTreeDTO
+                                                                                .getModule(
+                                                                                        rootNode
+                                                                                                .getId())
+                                                                                .getPrimaryTable()
+                                                                        + "."
+                                                                        + "business_status")));
+                if (businessStatusValue != 99) {
+                    Map<String, Set<String>> relationNoWordUUIDMap = new HashMap<>();
+
+                    for (Map.Entry<Long, Map<Long, List<ReferenceQueryParam>>> moduleEntry :
+                            referenceQueryParamMap.entrySet()) {
+                        for (Map.Entry<Long, List<ReferenceQueryParam>> rowEntry :
+                                moduleEntry.getValue().entrySet()) {
+                            // wordNo按的relateBusinessNo分组
+                            rowEntry.getValue().stream()
+                                    .filter(ele -> ele instanceof WordCloudRefQueryParam)
+                                    .forEach(
+                                            ele ->
+                                                    relationNoWordUUIDMap
+                                                            .computeIfAbsent(
+                                                                    ((WordCloudRefQueryParam) ele)
+                                                                            .getRelationNo(),
+                                                                    k -> new HashSet<>())
+                                                            .addAll(
+                                                                    ((WordCloudRefQueryParam) ele)
+                                                                            .getWordUUUIDs()));
+                        }
+                    }
+
+                    Map<String, List<Map<String, Object>>> wordNoMap = new HashMap<>();
+
+                    if (!CollectionUtils.isEmpty(relationNoWordUUIDMap)) {
+                        VersionDataQueryContext versionDataQueryContext =
+                                VersionDataQueryContext.builder()
+                                        .relationNoWordUUIDMap(relationNoWordUUIDMap)
+                                        .bizType(ReferenceBizType.WORD_CLOUD.getType())
+                                        .build();
+
+                        VersionDataQueryStrategy versionDataQueryStrategy =
+                                versionDataQueryStrategyFactory.getVersionDataQueryStrategy(
+                                        versionDataQueryContext);
+
+                        List<Map<String, Object>> wordVersionData =
+                                versionDataQueryStrategy.queryVersionDatas(versionDataQueryContext);
+
+                        wordNoMap =
+                                wordVersionData.stream()
+                                        .collect(
+                                                Collectors.toMap(
+                                                        ele ->
+                                                                String.valueOf(
+                                                                        ele.get("business_no")),
+                                                        v ->
+                                                                (List<Map<String, Object>>)
+                                                                        v.get("paths"),
+                                                        (a, b) -> a));
+                    }
+
+                    assembleLatestVersionData(
+                            moduleTreeDTO, moduleData, referenceQueryParamMap, wordNoMap);
+                }
+            }
+        }
+
         resultList.add(moduleData);
     }
 
+    /**
+     * @param queryReq 查询参数
+     * @param moduleNode 当前模块
+     * @param recursive 是否递归查询
+     * @param topQUery 是否顶层模块查询
+     * @param moduleIdToFieldMap 模块->字段映射Map
+     * @param moduleTreeDTO 模块信息树
+     * @param referenceQueryParamMap 模块ID->数据ID->引用参数映射Map
+     * @param nameToWorldConfMap 字段名称->词云配置映射Map
+     * @return
+     */
     private NestedModuleDataDTO queryModule(
             DynamicQueryReq queryReq,
-            SysModuleSimpleTreeResp rootNode,
+            SysModuleSimpleTreeResp moduleNode,
             Boolean recursive,
             Boolean topQUery,
             Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap,
-            ModuleTreeDTO moduleTreeDTO) {
+            ModuleTreeDTO moduleTreeDTO,
+            Map<Long, Map<Long, List<ReferenceQueryParam>>> referenceQueryParamMap,
+            Map<String, FieldWordCloudDTO> nameToWorldConfMap) {
         NestedModuleDataDTO.NestedModuleDataDTOBuilder builder = NestedModuleDataDTO.builder();
 
         // 非顶层模块查询，需要设置关联键作为查询条件
@@ -497,38 +754,141 @@ public class DynamicQueryService {
 
         List<RecordDataDTO> currentModuleData = new ArrayList<>();
 
-        currentModuleData = querySingleModule(rootNode, queryReq, queryReq.getQueryType());
+        currentModuleData = querySingleModule(moduleNode, queryReq, queryReq.getQueryType());
 
         // 填充parent_id字段
         if (topQUery) {
             fillParentData(
-                    rootNode.getId(), moduleTreeDTO, currentModuleData, queryReq.getFields());
+                    moduleNode.getId(), moduleTreeDTO, currentModuleData, queryReq.getFields());
         }
 
-        if (!recursive || rootNode.getChildren() == null || rootNode.getChildren().isEmpty()) {
-            return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
+        // 模块信息
+        ModuleInfo moduleInfo = moduleTreeDTO.getModule(moduleNode.getId());
+
+        for (RecordDataDTO recordDataDTO : currentModuleData) {
+            if (Objects.nonNull(recordDataDTO.getRow())) {
+                Map<String, Object> row = recordDataDTO.getRow();
+
+                Long primaryId =
+                        Long.parseLong(
+                                String.valueOf(row.get(moduleInfo.getPrimaryTable() + "." + "id")));
+
+                // 词云查询参数构造
+                row.keySet().stream()
+                        .filter(key -> nameToWorldConfMap.containsKey(key))
+                        .forEach(
+                                ele -> {
+                                    FieldWordCloudDTO targetFieldWorldCloud =
+                                            nameToWorldConfMap.get(ele);
+
+                                    if (Objects.nonNull(row.get(ele))) {
+                                        List<Map<String, Object>> words =
+                                                (List<Map<String, Object>>) row.get(ele);
+
+                                        Set<String> wordIds =
+                                                words.stream()
+                                                        .filter(
+                                                                value ->
+                                                                        Objects.nonNull(
+                                                                                value.get("uuid")))
+                                                        .map(
+                                                                item ->
+                                                                        String.valueOf(
+                                                                                item.get("uuid")))
+                                                        .collect(Collectors.toSet());
+
+                                        ReferenceQueryParam referenceQueryParam =
+                                                WordCloudRefQueryParam.builder()
+                                                        .bizType(
+                                                                ReferenceBizType.WORD_CLOUD
+                                                                        .getType())
+                                                        .relationNo(
+                                                                targetFieldWorldCloud
+                                                                        .getRelationBusinessNo())
+                                                        .relationName(
+                                                                targetFieldWorldCloud
+                                                                        .getRelationName())
+                                                        .wordUUUIDs(wordIds)
+                                                        .tableName(moduleInfo.getPrimaryTable())
+                                                        .fieldName(ele.split("\\.")[1])
+                                                        .build();
+
+                                        referenceQueryParamMap
+                                                .computeIfAbsent(
+                                                        moduleNode.getId(), k -> new HashMap<>())
+                                                .computeIfAbsent(primaryId, v -> new ArrayList<>())
+                                                .add(referenceQueryParam);
+                                    }
+                                });
+
+                // 内部引用参数构造
+                row.keySet().stream()
+                        .filter(key -> key.equals(moduleInfo.getPrimaryTable() + "." + "parent_id"))
+                        .forEach(
+                                ele -> {
+                                    if (Objects.nonNull(row.get(ele))) {
+                                        List<Map<String, Object>> parentObject = new ArrayList<>();
+                                        //                                        List<Map<String,
+                                        // Object>> parentObject =
+                                        //
+                                        // (List<Map<String, Object>>) row.get(ele);
+                                        if (!CollectionUtils.isEmpty(parentObject)) {
+
+                                            Map<String, Object> parentDataMap = parentObject.get(0);
+
+                                            ReferenceQueryParam referenceQueryParam =
+                                                    InternalRefQueryParam.builder()
+                                                            .bizType(
+                                                                    ReferenceBizType.INTERNAL_REF
+                                                                            .getType())
+                                                            .businessNo(
+                                                                    String.valueOf(
+                                                                            parentDataMap.get(
+                                                                                    "business_no")))
+                                                            .tableName(moduleInfo.getPrimaryTable())
+                                                            .fieldName(ele.split("\\.")[1])
+                                                            .build();
+
+                                            referenceQueryParamMap
+                                                    .computeIfAbsent(
+                                                            moduleNode.getId(),
+                                                            k -> new HashMap<>())
+                                                    .computeIfAbsent(
+                                                            primaryId, v -> new ArrayList<>())
+                                                    .add(referenceQueryParam);
+                                        }
+                                    }
+                                });
+            }
         }
 
-        Set<Long> primaryIds = getPrimaryIdSet(currentModuleData, rootNode.getId());
+        if (!recursive || moduleNode.getChildren() == null || moduleNode.getChildren().isEmpty()) {
+            return builder.moduleId(moduleNode.getId()).record(currentModuleData).build();
+        }
+
+        Set<Long> primaryIds = getPrimaryIdSet(currentModuleData, moduleNode.getId());
 
         SysModuleInfo sysModuleInfo =
                 dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), rootNode.getId());
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleNode.getId());
 
         Boolean virtualModule = false;
 
         if (StringUtils.isBlank(sysModuleInfo.getPrimaryTable())
                 && CollectionUtils.isEmpty(primaryIds)) {
-            log.debug("模块id:{},模块名称:{}为虚模块", rootNode.getId(), rootNode.getModuleName());
+            log.debug("模块id:{},模块名称:{}为虚模块", moduleNode.getId(), moduleNode.getModuleName());
             primaryIds.addAll(queryReq.getRelateIds());
             currentModuleData.add(RecordDataDTO.builder().children(new ArrayList<>()).build());
             virtualModule = true;
         } else if (CollectionUtils.isEmpty(primaryIds)) {
-            log.debug("模块id:{},模块名称:{}不是虚模块,但没有模块数据。", rootNode.getId(), rootNode.getModuleName());
-            return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
+            log.debug(
+                    "模块id:{},模块名称:{}不是虚模块,但没有模块数据。",
+                    moduleNode.getId(),
+                    moduleNode.getModuleName());
+            return builder.moduleId(moduleNode.getId()).record(currentModuleData).build();
         }
 
-        for (SysModuleSimpleTreeResp childNode : rootNode.getChildren()) {
+        for (SysModuleSimpleTreeResp childNode : moduleNode.getChildren()) {
             List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
             if (moduleIdToFieldMap.containsKey(childNode.getId())) {
                 log.debug("模块id:{},模块名称:{}有字段在查询列表,", childNode.getId(), childNode.getModuleName());
@@ -570,7 +930,9 @@ public class DynamicQueryService {
                             true,
                             false,
                             moduleIdToFieldMap,
-                            moduleTreeDTO);
+                            moduleTreeDTO,
+                            referenceQueryParamMap,
+                            nameToWorldConfMap);
 
             ProjectTableRelationsDTO projectTableRelationsDTO =
                     configApi.getProjectTableRelations(AppContext.getProjectNo());
@@ -616,7 +978,7 @@ public class DynamicQueryService {
             }
         }
 
-        return builder.moduleId(rootNode.getId()).record(currentModuleData).build();
+        return builder.moduleId(moduleNode.getId()).record(currentModuleData).build();
     }
 
     /**
