@@ -782,6 +782,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
+        backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
     }
@@ -904,6 +905,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
+        backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
     }
@@ -1012,6 +1014,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
+        backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
@@ -1171,6 +1174,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
+        backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
@@ -1343,6 +1347,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
+        backReq.setIsCurrentStepFinish(approved);
         if (approvalBusiness.getStatusValue().equals(99)) {
             backReq.setIsTermination(true);
         } else {
@@ -1533,6 +1538,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setReason(approvalProcessDTO.getReason().toString());
+        backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setReason(resultResp.getRemark());
@@ -1664,6 +1670,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setReason(approvalProcessDTO.getReason().toString());
+        backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
