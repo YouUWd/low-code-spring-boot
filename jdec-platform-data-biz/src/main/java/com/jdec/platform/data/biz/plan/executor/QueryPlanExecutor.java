@@ -339,7 +339,7 @@ public class QueryPlanExecutor {
 
     /** 物理表驱动的字段候选值去重查询 (直接基于物理表名与列名，脱离 fieldId) */
     public List<Object> executeDistinctOptions(
-            QueryPlan plan, String tableName, String columnName, String direction, Integer limit) {
+            QueryPlan plan, String tableName, String columnName, String direction) {
         if (plan == null || plan.getRootNodePlan() == null) {
             return Collections.emptyList();
         }
@@ -367,8 +367,6 @@ public class QueryPlanExecutor {
 
         DSLContext dsl = jooqDataContextFactory.getContext();
         Field<Object> distinctField = DSL.field(DSL.name(targetTable, column));
-
-        int maxLimit = (limit != null && limit > 0) ? Math.min(limit, 500) : 100;
 
         // 目标节点即根节点时 (pathResult 为空或仅含根) targetNode == rootPlan
         SelectJoinStep<?> selectStep =
@@ -445,10 +443,10 @@ public class QueryPlanExecutor {
         if (direction != null && !direction.isBlank()) {
             records =
                     "DESC".equalsIgnoreCase(direction.trim())
-                            ? conditionStep.orderBy(distinctField.desc()).limit(maxLimit).fetch()
-                            : conditionStep.orderBy(distinctField.asc()).limit(maxLimit).fetch();
+                            ? conditionStep.orderBy(distinctField.desc()).fetch()
+                            : conditionStep.orderBy(distinctField.asc()).fetch();
         } else {
-            records = conditionStep.limit(maxLimit).fetch();
+            records = conditionStep.fetch();
         }
         return extractDistinctOptionValues(records, direction);
     }
