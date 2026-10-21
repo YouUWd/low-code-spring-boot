@@ -1223,7 +1223,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             approvalIdList =
                     new ArrayList<>(Arrays.asList(approvalChain.getApproverIdList().split(",")));
         }
-        if (StringUtils.isNotBlank(approvalChain.getApprovalUids())) {
+        if (StringUtils.isNotBlank(approvalBusiness.getApprovalUids())) {
             approvalUidList =
                     new ArrayList<>(Arrays.asList(approvalBusiness.getApprovalUids().split(",")));
         }
@@ -1511,7 +1511,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusiness.setApproveRoleId(businessApprovalChain.getApproveRoleId());
         approvalBusiness.setApproverIdList(null);
         approvalBusiness.setApprovalUids(
-                String.join(",", approvalProcessDTO.getApplicantId().toString()));
+                approvalBusiness.getApprovalUids() + "," + approvalProcessDTO.getApplicantId());
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
 
