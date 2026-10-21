@@ -398,7 +398,6 @@ public class TableQueryEngineTest {
                         .tableName("company_info")
                         .columnName("company_name")
                         .direction("ASC")
-                        .limit(50)
                         .build();
 
         List<DataOptionResp> options = dataQueryService.getOptions(req);

@@ -358,6 +358,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             resp.setFieldId(node.getSourceId());
             resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
             resp.setRelationWord(node.getRelationWord());
+            resp.setBusinessTypeCode(node.getBusinessTypeCode());
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -455,8 +456,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         Map<Long, List<SysModuleField>> fieldsByModule =
                 selectFieldsGroupByModule(moduleIds, roleId, scope);
 
-        // 生成侧节点已带齐展示所需的源头数据：菜单标题、模块字段显示名、是否关联字段（sys_field）
-        Set<String> relationFieldIndexes = selectRelationFieldIndexes(fieldsByModule);
+        // 生成侧节点已带齐展示所需的源头数据：菜单标题、模块字段显示名、关联字段标记与业务类型编码（sys_field）
+        Map<String, SysField> fieldConfigs = selectFieldConfigs(fieldsByModule);
 
         // 仅在按字段权限过滤（roleId 非空，即数据引擎侧调用）时裁剪「既无字段节点也无子级菜单」的空菜单：
         // config 管理端不传 roleId，保持不裁剪、返回完整菜单树
@@ -468,7 +469,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                         ROOT_PARENT_ID,
                         childrenByPid,
                         fieldsByModule,
-                        relationFieldIndexes,
+                        fieldConfigs,
                         SORT_VALUE_FIRST,
                         pruneEmptyMenus);
         if (root == null) {
@@ -485,7 +486,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * @param menu 当前菜单
      * @param rootMenuId 最顶层菜单ID（所有节点的 menu_id 均取该值）
      * @param parentVirId 父节点虚拟id（顶层为 {@code 0}）
-     * @param relationFieldIndexes 关联字段索引集合（sys_field 中配置了 relation_business_no 的 表名.字段名）
+     * @param fieldConfigs sys_field 配置（{@code 表名.字段名 → SysField}），提供关联字段标记与业务类型编码
      * @param sortValue 当前节点在同级中的排序值
      * @param pruneEmptyMenus 是否裁剪「既无字段也无子级菜单」的空菜单节点（仅字段权限过滤时 {@code true}）
      * @return 生成的菜单节点；{@code pruneEmptyMenus=true} 且该菜单无任何子节点时返回 {@code null}
@@ -496,7 +497,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             String parentVirId,
             Map<Long, List<SysMenu>> childrenByPid,
             Map<Long, List<SysModuleField>> fieldsByModule,
-            Set<String> relationFieldIndexes,
+            Map<String, SysField> fieldConfigs,
             Integer sortValue,
             boolean pruneEmptyMenus) {
         String currentVirId = menuVirId(menu.getId());
@@ -522,6 +523,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                 fieldsByModule.getOrDefault(menu.getModuleId(), Collections.emptyList());
         for (SysModuleField field : fields) {
             String dataIndex = buildDataIndex(field);
+            SysField fieldConfig = fieldConfigs.get(dataIndex);
             SysMenuHeaderResp fieldResp = new SysMenuHeaderResp();
             fieldResp.setMenuId(rootMenuId);
             fieldResp.setNodeType(NODE_TYPE_FIELD);
@@ -532,9 +534,11 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             fieldResp.setDataIndex(dataIndex);
             fieldResp.setLabel(firstNotBlank(field.getDisplayName(), field.getColumnName()));
             fieldResp.setRelationWord(
-                    relationFieldIndexes.contains(dataIndex)
+                    fieldConfig != null && StringUtils.hasText(fieldConfig.getRelationBusinessNo())
                             ? RELATION_WORD_YES
                             : RELATION_WORD_NO);
+            fieldResp.setBusinessTypeCode(
+                    fieldConfig != null ? fieldConfig.getBusinessTypeCode() : null);
             fieldResp.setSorted(SORTED_YES);
             fieldResp.setEllipsis(ELLIPSIS_NO);
             fieldResp.setChecked(CHECKED_NO);
@@ -552,7 +556,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                             currentVirId,
                             childrenByPid,
                             fieldsByModule,
-                            relationFieldIndexes,
+                            fieldConfigs,
                             childSortValue++,
                             pruneEmptyMenus);
             if (subNode != null) {
@@ -614,6 +618,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         resp.setModuleId(generated.getModuleId());
         resp.setLabel(generated.getLabel());
         resp.setRelationWord(generated.getRelationWord());
+        // 业务类型编码取 sys_field 关联配置（生成侧实时解析），不取库中存储值
+        resp.setBusinessTypeCode(generated.getBusinessTypeCode());
         // 展示项：表中非空优先，否则回退生成侧默认值
         resp.setDataIndex(
                 stripModulePrefix(
@@ -832,12 +838,13 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     // ==================== 小工具 ====================
 
     /**
-     * 查询「已配置关联业务编号」的字段索引集合（{@code 表名.字段名}）
+     * 按模块字段的物理表名查询 {@code sys_field} 配置，返回 {@code 表名.字段名 → SysField}
      *
-     * <p>用模块字段的物理表名/列名到 {@code sys_field} 匹配（数据隔离：{@code subject_id + project_no}，仅未删除）， {@code
-     * relation_business_no} 有值即为关联字段。
+     * <p>数据隔离：{@code subject_id + project_no}，仅未删除。配置用于生成节点的关联字段标记 （{@code relation_business_no}
+     * 有值）与业务类型编码（{@code business_type_code}）。
      */
-    private Set<String> selectRelationFieldIndexes(Map<Long, List<SysModuleField>> fieldsByModule) {
+    private Map<String, SysField> selectFieldConfigs(
+            Map<Long, List<SysModuleField>> fieldsByModule) {
         Set<String> tableNames = new HashSet<>();
         for (List<SysModuleField> fields : fieldsByModule.values()) {
             for (SysModuleField field : fields) {
@@ -846,8 +853,13 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                 }
             }
         }
-        if (tableNames.isEmpty()) {
-            return Collections.emptySet();
+        return selectFieldConfigsByTables(tableNames);
+    }
+
+    /** 按物理表名批量查询 {@code sys_field} 配置，返回 {@code 表名.字段名 → SysField}（同键保留首条） */
+    private Map<String, SysField> selectFieldConfigsByTables(Collection<String> tableNames) {
+        if (tableNames == null || tableNames.isEmpty()) {
+            return Collections.emptyMap();
         }
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
@@ -858,15 +870,14 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                                 .eq(SysField::getDeleted, FIELD_DELETED_NO)
                                 .eq(subjectId != null, SysField::getSubjectId, subjectId)
                                 .eq(projectNo != null, SysField::getProjectNo, projectNo));
-        Set<String> indexes = new HashSet<>();
+        Map<String, SysField> configs = new HashMap<>();
         for (SysField field : fields) {
-            if (StringUtils.hasText(field.getRelationBusinessNo())
-                    && field.getTableName() != null
-                    && field.getColumnName() != null) {
-                indexes.add(field.getTableName() + DATA_INDEX_SEPARATOR + field.getColumnName());
+            if (field.getTableName() != null && field.getColumnName() != null) {
+                configs.putIfAbsent(
+                        field.getTableName() + DATA_INDEX_SEPARATOR + field.getColumnName(), field);
             }
         }
-        return indexes;
+        return configs;
     }
 
     /** 菜单节点虚拟id：MENU_{菜单ID} */

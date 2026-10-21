@@ -36,6 +36,9 @@ public class SysFieldSaveReq {
     @AuditField(name = "关系名称")
     private String relationName;
 
+    @Schema(description = "业务类型编码")
+    private String businessTypeCode;
+
     @Schema(description = "是否加密存储: 0-否, 1-是")
     @AuditField(name = "字段存储是否加密", type = FieldType.ENUM, enumClass = YesNoEnum.class)
     private Integer encrypted;

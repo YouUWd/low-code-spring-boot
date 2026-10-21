@@ -576,6 +576,8 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             resp.setFieldId(source != null ? source.getSourceId() : node.getSourceId());
             resp.setDataIndex(stripModulePrefix(node.getDataIndex()));
             resp.setRelationWord(source != null ? source.getRelationWord() : null);
+            // 业务类型编码实时取自 sys_field 关联配置（默认树已解析），不从用户表读取
+            resp.setBusinessTypeCode(source != null ? source.getBusinessTypeCode() : null);
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -650,6 +652,7 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         merged.setModuleId(node.getModuleId());
         merged.setLabel(node.getLabel());
         merged.setRelationWord(node.getRelationWord());
+        merged.setBusinessTypeCode(node.getBusinessTypeCode());
         merged.setColors(node.getColors());
         merged.setWidth(node.getWidth());
         merged.setDataIndex(node.getDataIndex());
