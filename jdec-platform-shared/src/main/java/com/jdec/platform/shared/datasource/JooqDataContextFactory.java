@@ -35,11 +35,6 @@ public class JooqDataContextFactory {
 
     private final DSLContext dslContext;
 
-    /** 供单元测试 Mock 或子类扩展的保护构造函数 */
-    protected JooqDataContextFactory() {
-        this.dslContext = null;
-    }
-
     public JooqDataContextFactory(DynamicRoutingDataSource dynamicRoutingDataSource) {
         if (dynamicRoutingDataSource == null) {
             this.dslContext = null;
