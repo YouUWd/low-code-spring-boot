@@ -206,7 +206,6 @@ public class ModuleTreeDiffService {
             if (Objects.nonNull(oldRow) && !isEqual(newVal, oldVal)) {
                 versionCompareItem.pre(oldVal).current(newVal);
                 addVersionItem = true;
-                //                    continue;
             }
             if (Objects.nonNull(currentChangeMap.get(fieldKey))) {
                 VersionSnapShot changeObj = currentChangeMap.get(fieldKey);
@@ -217,22 +216,35 @@ public class ModuleTreeDiffService {
                         if (Objects.nonNull(changeObj.getSecondSnapshot())) {
                             if (isEqual(newVal, changeObj.getSecondSnapshot())) {
                                 if (!isEqual(newVal, changeObj.getFirstSnapshot())) {
-                                    versionCompareItem
-                                            .currentOld(changeObj.getFirstSnapshot())
-                                            .current(newVal);
+                                    if (isJsonStr(changeObj.getFirstSnapshot())) {
+                                        Object currentOld =
+                                                OBJECT_MAPPER.readValue(
+                                                        changeObj.getFirstSnapshot(), Object.class);
+                                        versionCompareItem.currentOld(currentOld);
+                                    }
+                                    versionCompareItem.current(newVal);
                                     addVersionItem = true;
                                 }
                             } else {
-                                versionCompareItem
-                                        .currentOld(changeObj.getSecondSnapshot())
-                                        .current(newVal);
+                                if (isJsonStr(changeObj.getSecondSnapshot())) {
+                                    Object currentOld =
+                                            OBJECT_MAPPER.readValue(
+                                                    changeObj.getSecondSnapshot(), Object.class);
+                                    versionCompareItem.currentOld(currentOld);
+                                }
+                                versionCompareItem.current(newVal);
                                 addVersionItem = true;
                             }
                         } else {
                             if (!isEqual(newVal, changeObj.getFirstSnapshot())) {
-                                versionCompareItem
-                                        .currentOld(changeObj.getFirstSnapshot())
-                                        .current(newVal);
+                                if (isJsonStr(changeObj.getFirstSnapshot())) {
+                                    Object currentOld =
+                                            OBJECT_MAPPER.readValue(
+                                                    changeObj.getFirstSnapshot(), Object.class);
+                                    versionCompareItem.currentOld(currentOld);
+                                }
+
+                                versionCompareItem.current(newVal);
                                 addVersionItem = true;
                             }
                         }
