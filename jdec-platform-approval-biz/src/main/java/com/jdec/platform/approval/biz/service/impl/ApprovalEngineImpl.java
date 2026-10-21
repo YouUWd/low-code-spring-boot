@@ -1511,7 +1511,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalBusiness.setApproveRoleId(businessApprovalChain.getApproveRoleId());
         approvalBusiness.setApproverIdList(null);
         approvalBusiness.setApprovalUids(
-                String.join(",", approvalProcessDTO.getApplicantId().toString()));
+                approvalBusiness.getApprovalUids() + "," + approvalProcessDTO.getApplicantId());
         approvalBusinessMapper.updateById(approvalBusiness);
         approvalVersionRecordMapper.updateById(approvalVersionRecord);
 
