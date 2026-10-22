@@ -183,6 +183,21 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             monitorControlLogReq.setContent(contentBase);
             monitorControlLogReq.setRemark(approvalProcessDTO.getReason());
             monitorLogApi.saveLog(monitorControlLogReq);
+
+            if (Objects.nonNull(approvalProcessDTO.getAutoRemark())) {
+                MonitorContentOperation autoContentBase = new MonitorContentOperation();
+                autoContentBase.setLogSubType("operationLog");
+                autoContentBase.setModuleName(module.getModule().getModuleName());
+                autoContentBase.setVersion(approvalProcessDTO.getVersionNo());
+                autoContentBase.setLinkName(approvalProcessDTO.getBusinessNumber());
+                autoContentBase.setOperation("系统自动更新");
+                autoContentBase.setResult("成功");
+                autoContentBase.setFontColor("");
+                monitorControlLogReq.setContent(autoContentBase);
+                monitorControlLogReq.setSysType("autoUpdate");
+                monitorLogApi.saveLog(monitorControlLogReq);
+            }
+
             log.info(
                     "审批操作日志保存成功: businessNumber={}, businessId={}, action={}",
                     approvalProcessDTO.getBusinessNumber(),

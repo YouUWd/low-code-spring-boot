@@ -1364,6 +1364,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setReason(resultResp.getRemark());
+        approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
@@ -1551,6 +1552,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setIsTermination(false);
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setReason(resultResp.getRemark());
+        approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
         // 写入日志
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
