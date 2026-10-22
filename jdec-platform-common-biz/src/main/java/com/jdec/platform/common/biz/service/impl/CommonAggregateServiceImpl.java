@@ -16,12 +16,12 @@ import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
-import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
-import com.jdec.platform.common.api.dto.response.UserSimpleResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
+import com.jdec.platform.common.biz.service.QueryResultEnhanceService;
 import com.jdec.platform.common.biz.service.impl.CommonFilterResolver.FilterSpec;
 import com.jdec.platform.common.biz.service.impl.CommonFilterResolver.PrimaryFilterResult;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
+import com.jdec.platform.config.api.SysFileApi;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -29,11 +29,8 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
-import com.jdec.platform.config.api.dto.request.QueryUsersByIdsReq;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
-import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
-import com.jdec.platform.config.api.dto.response.SysUserPageResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
@@ -54,15 +51,14 @@ import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -76,11 +72,11 @@ import org.springframework.util.CollectionUtils;
  *   <li>{@link ApprovalConditionResolver}：审批单据提取与行级操作按钮（办理 / 查阅）组装。
  *   <li>{@link PhysicalQueryMapper}：1:N 模块分支冲突校验、表头字段收集、物理表/过滤/排序消歧映射与 {@link DataRow} 同构树转换。
  *   <li>{@link ModuleTreeDTO}：模块树层级深度计算、1:N 顶层分支拓扑推导与物理表归属检索。
+ *   <li>{@link QueryResultEnhanceService}：查询结果与候选项数据增强（用户信息、业务状态、文件/图片等）。
  * </ul>
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private static final int ENABLED_BUSINESS_STATUS = 99;
@@ -90,10 +86,74 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private final ConfigApi configApi;
     private final DataApi dataApi;
     private final CommonFilterResolver commonFilterResolver;
-    private final SysUserApi sysUserApi;
-    private final SysStatusApi sysStatusApi;
     private final IApprovalEngine approvalEngine;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+    private final QueryResultEnhanceService queryResultEnhanceService;
+
+    @Autowired
+    public CommonAggregateServiceImpl(
+            UserMenuHeaderApi userMenuHeaderApi,
+            OpenMenuApi openMenuApi,
+            ConfigApi configApi,
+            DataApi dataApi,
+            CommonFilterResolver commonFilterResolver,
+            IApprovalEngine approvalEngine,
+            SysApprovalChainConfigApi sysApprovalChainConfigApi,
+            QueryResultEnhanceService queryResultEnhanceService) {
+        this.userMenuHeaderApi = userMenuHeaderApi;
+        this.openMenuApi = openMenuApi;
+        this.configApi = configApi;
+        this.dataApi = dataApi;
+        this.commonFilterResolver = commonFilterResolver;
+        this.approvalEngine = approvalEngine;
+        this.sysApprovalChainConfigApi = sysApprovalChainConfigApi;
+        this.queryResultEnhanceService = queryResultEnhanceService;
+    }
+
+    public CommonAggregateServiceImpl(
+            UserMenuHeaderApi userMenuHeaderApi,
+            OpenMenuApi openMenuApi,
+            ConfigApi configApi,
+            DataApi dataApi,
+            CommonFilterResolver commonFilterResolver,
+            SysUserApi sysUserApi,
+            SysStatusApi sysStatusApi,
+            IApprovalEngine approvalEngine,
+            SysApprovalChainConfigApi sysApprovalChainConfigApi,
+            SysFileApi sysFileApi) {
+        this(
+                userMenuHeaderApi,
+                openMenuApi,
+                configApi,
+                dataApi,
+                commonFilterResolver,
+                approvalEngine,
+                sysApprovalChainConfigApi,
+                new QueryResultEnhanceServiceImpl(sysUserApi, sysStatusApi, sysFileApi));
+    }
+
+    public CommonAggregateServiceImpl(
+            UserMenuHeaderApi userMenuHeaderApi,
+            OpenMenuApi openMenuApi,
+            ConfigApi configApi,
+            DataApi dataApi,
+            CommonFilterResolver commonFilterResolver,
+            SysUserApi sysUserApi,
+            SysStatusApi sysStatusApi,
+            IApprovalEngine approvalEngine,
+            SysApprovalChainConfigApi sysApprovalChainConfigApi) {
+        this(
+                userMenuHeaderApi,
+                openMenuApi,
+                configApi,
+                dataApi,
+                commonFilterResolver,
+                sysUserApi,
+                sysStatusApi,
+                approvalEngine,
+                sysApprovalChainConfigApi,
+                null);
+    }
 
     // ==================== 1. 核心公开业务接口实现 ====================
 
@@ -219,7 +279,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         // 5. 增强主表字典字段并委托 PhysicalQueryMapper 与 ApprovalConditionResolver 组装响应
         List<DataRecordItem> recordItems = new ArrayList<>(rawRecords.size());
         if (!rawRecords.isEmpty()) {
-            enhanceDataRows(rawRecords, rootModuleId, primaryTable);
+            queryResultEnhanceService.enhanceDataRows(
+                    rawRecords, rootModuleId, primaryTable, headerRoot);
             for (DataRow rawRow : rawRecords) {
                 if (rawRow != null) {
                     recordItems.add(PhysicalQueryMapper.toDataRecordItem(rawRow));
@@ -341,7 +402,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         // 6. 委托 PhysicalQueryMapper 转换为自相似同构树记录列表，并按目标模块层级裁剪提取
         List<DataRecordItem> recordList = new ArrayList<>(finalRows.size());
         if (!finalRows.isEmpty()) {
-            enhanceDataRows(finalRows, rootModuleId, primaryTable);
+            MenuHeaderColumnResp headerRoot = queryHeaderRootQuietly(rootMenuId, roleId);
+            queryResultEnhanceService.enhanceDataRows(
+                    finalRows, rootModuleId, primaryTable, headerRoot);
             for (DataRow rawRow : finalRows) {
                 if (rawRow != null) {
                     recordList.add(
@@ -408,7 +471,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         if (dataBlock != null && dataBlock.hasRecords()) {
             String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
-            enhanceDataRows(dataBlock.getRecords(), rootModuleId, primaryTable);
+            queryResultEnhanceService.enhanceDataRows(
+                    dataBlock.getRecords(), rootModuleId, primaryTable, headerRoot);
             DataRow rawRow = dataBlock.getFirstRecord();
             if (rawRow != null) {
                 dataTree.getRecord().add(PhysicalQueryMapper.toDataRecordItem(rawRow));
@@ -478,7 +542,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         List<DataOptionResp> rawOptions = dataApi.getOptions(optionReq);
-        return enhanceOptions(rawOptions, targetField.columnName(), rootModuleId);
+        MenuHeaderColumnResp headerRoot = queryHeaderRootQuietly(menuId, roleId);
+        return queryResultEnhanceService.enhanceOptions(
+                rawOptions, targetField.columnName(), rootModuleId, headerRoot, req.getFieldId());
     }
 
     @Override
@@ -930,170 +996,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 .build();
     }
 
-    private void enhanceDataRows(List<DataRow> records, Long rootModuleId, String primaryTable) {
-        if (CollectionUtils.isEmpty(records) || primaryTable == null || primaryTable.isBlank()) {
-            return;
-        }
-
-        Set<Long> userIds = new HashSet<>();
-        Set<Integer> statusValues = new HashSet<>();
-        for (DataRow row : records) {
-            if (row == null) {
-                continue;
-            }
-            Long uid = row.getLong(primaryTable, "created_by");
-            if (uid != null) {
-                userIds.add(uid);
-            }
-            Integer sv = row.getInteger(primaryTable, "business_status");
-            if (sv != null) {
-                statusValues.add(sv);
-            }
-        }
-
-        Map<Long, UserSimpleResp> userMap = queryUserMap(userIds);
-        Map<Integer, StatusSimpleResp> statusMap = queryStatusMap(statusValues, rootModuleId);
-
-        for (DataRow row : records) {
-            if (row == null) {
-                continue;
-            }
-            Long uid = row.getLong(primaryTable, "created_by");
-            if (uid != null) {
-                UserSimpleResp userResp = userMap.get(uid);
-                row.putValue(
-                        primaryTable,
-                        "created_by",
-                        userResp != null ? userResp : UserSimpleResp.builder().userId(uid).build());
-            }
-            Integer sv = row.getInteger(primaryTable, "business_status");
-            if (sv != null) {
-                StatusSimpleResp statusResp = statusMap.get(sv);
-                row.putValue(
-                        primaryTable,
-                        "business_status",
-                        statusResp != null
-                                ? statusResp
-                                : StatusSimpleResp.builder().statusValue(sv).build());
-            }
-        }
-    }
-
-    private List<DataOptionResp> enhanceOptions(
-            List<DataOptionResp> rawOptions, String columnName, Long rootModuleId) {
-        if (CollectionUtils.isEmpty(rawOptions) || columnName == null || columnName.isBlank()) {
-            return rawOptions != null ? rawOptions : Collections.emptyList();
-        }
-
-        String col = columnName.trim();
-        if ("created_by".equalsIgnoreCase(col)) {
-            Set<Long> userIds = new LinkedHashSet<>();
-            for (DataOptionResp opt : rawOptions) {
-                if (opt != null && opt.getValue() instanceof Number n) {
-                    userIds.add(n.longValue());
-                }
-            }
-            Map<Long, UserSimpleResp> userMap = queryUserMap(userIds);
-            for (DataOptionResp opt : rawOptions) {
-                if (opt != null && opt.getValue() instanceof Number n) {
-                    Long uid = n.longValue();
-                    UserSimpleResp finalUser =
-                            userMap.getOrDefault(uid, UserSimpleResp.builder().userId(uid).build());
-                    opt.setValue(finalUser);
-                    opt.setLabel(finalUser);
-                }
-            }
-            return rawOptions;
-        }
-
-        if ("business_status".equalsIgnoreCase(col)) {
-            Set<Integer> statusValues = new LinkedHashSet<>();
-            for (DataOptionResp opt : rawOptions) {
-                if (opt != null && opt.getValue() instanceof Number n) {
-                    statusValues.add(n.intValue());
-                }
-            }
-            Map<Integer, StatusSimpleResp> statusMap = queryStatusMap(statusValues, rootModuleId);
-            for (DataOptionResp opt : rawOptions) {
-                if (opt != null && opt.getValue() instanceof Number n) {
-                    Integer sv = n.intValue();
-                    StatusSimpleResp finalStatus =
-                            statusMap.getOrDefault(
-                                    sv, StatusSimpleResp.builder().statusValue(sv).build());
-                    opt.setValue(finalStatus);
-                    opt.setLabel(finalStatus);
-                }
-            }
-            return rawOptions;
-        }
-
-        return rawOptions;
-    }
-
-    private Map<Long, UserSimpleResp> queryUserMap(Set<Long> userIds) {
-        Map<Long, UserSimpleResp> userMap = new HashMap<>();
-        if (CollectionUtils.isEmpty(userIds)) {
-            return userMap;
+    private MenuHeaderColumnResp queryHeaderRootQuietly(Long menuId, Long roleId) {
+        if (menuId == null) {
+            return null;
         }
         try {
-            QueryUsersByIdsReq queryReq = new QueryUsersByIdsReq();
-            queryReq.setUserIds(new ArrayList<>(userIds));
-            List<SysUserPageResp> userList = sysUserApi.getUsersByUserIds(queryReq);
-            if (userList != null) {
-                for (SysUserPageResp u : userList) {
-                    if (u == null) {
-                        continue;
-                    }
-                    UserSimpleResp resp =
-                            UserSimpleResp.builder()
-                                    .userId(u.getUserId())
-                                    .userName(u.getUserName())
-                                    .userAvatar(u.getUserAvatar())
-                                    .workNumber(u.getWorkNumber())
-                                    .build();
-                    if (u.getUserId() != null) {
-                        userMap.put(u.getUserId(), resp);
-                    }
-                    if (u.getId() != null) {
-                        userMap.putIfAbsent(u.getId(), resp);
-                    }
-                }
-            }
+            Long userId = getEffectiveUserId();
+            return getHeaderDisplayOrThrow(userId, menuId, roleId);
         } catch (Exception ex) {
-            log.warn("批量查询用户信息失败: userIds={}, err={}", userIds, ex.getMessage());
+            log.debug("获取菜单列头配置失败: menuId={}, roleId={}, err={}", menuId, roleId, ex.getMessage());
+            return null;
         }
-        return userMap;
-    }
-
-    private Map<Integer, StatusSimpleResp> queryStatusMap(
-            Set<Integer> statusValues, Long rootModuleId) {
-        Map<Integer, StatusSimpleResp> statusMap = new HashMap<>();
-        if (CollectionUtils.isEmpty(statusValues) || rootModuleId == null) {
-            return statusMap;
-        }
-        for (Integer sv : statusValues) {
-            try {
-                ModuleApprovalChainConfigResp.StatusNode node =
-                        sysStatusApi.getStatusByValue(sv, rootModuleId);
-                if (node != null) {
-                    statusMap.put(
-                            sv,
-                            StatusSimpleResp.builder()
-                                    .title(node.getTitle())
-                                    .statusValue(node.getStatusValue())
-                                    .statusBackground(node.getStatusBackground())
-                                    .statusFontColor(node.getStatusFontColor())
-                                    .build());
-                }
-            } catch (Exception ex) {
-                log.warn(
-                        "获取模块状态信息失败: moduleId={}, statusValue={}, err={}",
-                        rootModuleId,
-                        sv,
-                        ex.getMessage());
-            }
-        }
-        return statusMap;
     }
 
     // ==================== 5. 公共基础辅助方法 ====================

@@ -76,7 +76,7 @@ public class SysFieldService implements SysFieldApi {
                           AND TABLE_NAME NOT LIKE 'data_engine_%'
                           AND TABLE_NAME NOT LIKE 'monitor_%'
                           AND TABLE_NAME NOT LIKE 'sys_%'
-                          AND TABLE_NAME NOT IN ('user_menu_header', 'table_change_log', 'personalized_user_column', 'com_personalized_user_column')
+                          AND TABLE_NAME NOT IN ('user_menu_header', 'table_change_log', 'personalized_user_column', 'com_personalized_user_column', 'business_file')
                         ORDER BY TABLE_NAME
                         """;
 

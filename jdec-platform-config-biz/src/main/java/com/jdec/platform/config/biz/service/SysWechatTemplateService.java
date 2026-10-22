@@ -540,7 +540,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         // 2. 批量查询 DB
         Map<Long, String> moduleNameMap = new HashMap<>();
         if (!moduleIds.isEmpty()) {
-            List<SysModule> modules = sysModuleMapper.selectBatchIds(moduleIds);
+            List<SysModule> modules = sysModuleMapper.selectByIds(moduleIds);
             if (modules != null) {
                 modules.forEach(m -> moduleNameMap.put(m.getId(), m.getModuleName()));
             }
@@ -548,7 +548,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
 
         Map<Long, String> fieldNameMap = new HashMap<>();
         if (!fieldIds.isEmpty()) {
-            List<SysModuleField> fields = sysModuleFieldMapper.selectBatchIds(fieldIds);
+            List<SysModuleField> fields = sysModuleFieldMapper.selectByIds(fieldIds);
             if (fields != null) {
                 fields.forEach(
                         f ->
