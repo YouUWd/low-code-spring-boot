@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.controller;
 
+import com.jdec.platform.common.biz.constant.IndustryConstants;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.common.biz.service.UserService;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
@@ -46,6 +47,17 @@ public class CommonController {
             @Schema(description = "筛选用户名称") @RequestParam(defaultValue = "", required = false)
                     String userName) {
         return ApiResponse.success(userService.getUserTreeList(userType, userName));
+    }
+
+    /**
+     * 获取完整国民经济行业分类树
+     *
+     * @return 完整行业分类树结构列表
+     */
+    @GetMapping("/industry-tree")
+    @Operation(summary = "获取国民经济行业分类树", description = "获取完整的国民经济行业分类树结构数据")
+    public ApiResponse<List<Map<String, Object>>> getIndustryTree() {
+        return ApiResponse.success(IndustryConstants.INDUSTRY_TREE);
     }
 
     @PostMapping("/business/save")

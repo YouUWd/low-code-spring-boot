@@ -15,12 +15,12 @@ import org.springframework.stereotype.Service;
  * <p>以主单ID（{@code info.id}，即 companyId）加载整单数据后依次执行：
  *
  * <ol>
- *   <li>必填校验：命中第一个未填项即抛出异常；
+ *   <li>必填校验：按模块树遍历并收集全部未填项，拼接后一次性抛出异常；
  *   <li>业务规则校验：合作类型、登记状态、证件号格式、参保人数、人员信息一致性；
  *   <li>查重校验：外部对象全称、基本信息、人员手机号与证件号。
  * </ol>
  *
- * <p>三步均不做错误收集，任意一步不通过即抛出 {@link BusinessException} 返回前端。
+ * <p>任意一步不通过即抛出 {@link BusinessException} 返回前端。
  */
 @Service
 @RequiredArgsConstructor

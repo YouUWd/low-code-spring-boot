@@ -212,6 +212,7 @@ class CompanyMenuQueryContractTest {
         addField(moduleMap, fieldMap, fieldToModuleMap, 10004L, 1001L, "info", "business_status");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10005L, 1001L, "info", "reg_status");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10006L, 1001L, "info", "cooperation_types");
+        addField(moduleMap, fieldMap, fieldToModuleMap, 10008L, 1001L, "info", "industry_types");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10021L, 1002L, "basic_info", "reg_capital");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10071L, 1007L, "address", "detail_address");
         addField(moduleMap, fieldMap, fieldToModuleMap, 10031L, 1003L, "member", "member_name");
@@ -1745,5 +1746,56 @@ class CompanyMenuQueryContractTest {
         Object fileVal = item.getRow().get("info.contract_file");
         assertNotNull(fileVal);
         assertEquals(fileObj, fileVal);
+    }
+
+    @Test
+    @DisplayName(
+            "测试 getOptionsByMenu 查询 info.industry_types 时，过滤 industry.json 树并返回原 JSON 到 label 和 value")
+    @SuppressWarnings("unchecked")
+    void testGetOptionsByMenu_industryTypes_filtersAndReturnsStructuredTree() {
+        when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
+
+        List<DataOptionResp> mockDataOptions =
+                List.of(
+                        DataOptionResp.builder()
+                                .label(Map.of("value", "B0610", "label", "烟煤和无烟煤开采洗选"))
+                                .value(Map.of("value", "B0610", "label", "烟煤和无烟煤开采洗选"))
+                                .build(),
+                        DataOptionResp.builder()
+                                .label(Map.of("value", "B0711", "label", "陆地石油开采"))
+                                .value(Map.of("value", "B0711", "label", "陆地石油开采"))
+                                .build(),
+                        DataOptionResp.builder()
+                                .label(Map.of("value", "B0921", "label", "金矿采选"))
+                                .value(Map.of("value", "B0921", "label", "金矿采选"))
+                                .build());
+        when(dataApi.getOptions(any(OptionReq.class))).thenReturn(mockDataOptions);
+
+        MenuOptionReq req =
+                MenuOptionReq.builder().fieldId(10008L).build(); // 10008L = info.industry_types
+        List<DataOptionResp> options = commonAggregateService.getOptionsByMenu(100L, req);
+
+        // 返回单条记录，label 和 value 中存放整棵过滤后的行业树结构
+        assertEquals(1, options.size());
+
+        DataOptionResp singleOption = options.get(0);
+        assertTrue(singleOption.getLabel() instanceof List<?>);
+        assertTrue(singleOption.getValue() instanceof List<?>);
+
+        List<Map<String, Object>> tree = (List<Map<String, Object>>) singleOption.getValue();
+        // 门类只有 B 被保留
+        assertEquals(1, tree.size());
+
+        Map<String, Object> bNode = tree.get(0);
+        assertEquals("B", bNode.get("value"));
+        assertEquals("采矿业", bNode.get("label"));
+
+        List<Map<String, Object>> bChildren = (List<Map<String, Object>>) bNode.get("childrenList");
+        assertNotNull(bChildren);
+        // B 门类下只保留 B06, B07, B09 三个大类
+        assertEquals(3, bChildren.size());
+        List<String> retainedMajorCategories =
+                bChildren.stream().map(c -> (String) c.get("value")).toList();
+        assertTrue(retainedMajorCategories.containsAll(List.of("B06", "B07", "B09")));
     }
 }
