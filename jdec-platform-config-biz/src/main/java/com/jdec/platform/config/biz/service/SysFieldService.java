@@ -1192,4 +1192,218 @@ public class SysFieldService implements SysFieldApi {
                         })
                 .toList();
     }
+
+    @Override
+    public List<SysFieldResp> getValidSysFields(
+            String projectNo, Long subjectId, String tableName) {
+        log.debug("查询项目 {} 主体 {} 的有效字段配置 (tableName={})", projectNo, subjectId, tableName);
+
+        // 1. 获取物理数据库中实际存在的列名及列类型
+        boolean hasTableName = StringUtils.hasText(tableName);
+        String sql =
+                hasTableName
+                        ? """
+                                SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                                ORDER BY ORDINAL_POSITION
+                                """
+                        : """
+                                SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE
+                                FROM INFORMATION_SCHEMA.COLUMNS
+                                WHERE TABLE_SCHEMA = ?
+                                ORDER BY TABLE_NAME, ORDINAL_POSITION
+                                """;
+
+        List<Map<String, Object>> colRows =
+                hasTableName
+                        ? jdbcTemplate.queryForList(sql, projectNo, tableName.trim())
+                        : jdbcTemplate.queryForList(sql, projectNo);
+
+        Map<String, String> dbColumnTypeMap = new HashMap<>();
+        for (Map<String, Object> row : colRows) {
+            String t = (String) row.get("TABLE_NAME");
+            String c = (String) row.get("COLUMN_NAME");
+            String type = (String) row.get("COLUMN_TYPE");
+            if (t != null && c != null) {
+                dbColumnTypeMap.put((t + "#" + c).toLowerCase(), type);
+            }
+        }
+
+        if (dbColumnTypeMap.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 查询 sys_field 表中的配置记录
+        LambdaQueryWrapper<SysField> wrapper =
+                Wrappers.<SysField>lambdaQuery()
+                        .eq(SysField::getProjectNo, projectNo)
+                        .eq(SysField::getDeleted, 0);
+        if (subjectId != null) {
+            wrapper.eq(SysField::getSubjectId, subjectId);
+        }
+        if (hasTableName) {
+            wrapper.eq(SysField::getTableName, tableName.trim());
+        }
+        wrapper.orderByAsc(SysField::getTableName).orderByAsc(SysField::getId);
+
+        List<SysField> allFields = sysFieldMapper.selectList(wrapper);
+        if (CollectionUtils.isEmpty(allFields)) {
+            return Collections.emptyList();
+        }
+
+        // 3. 过滤出在数据库中确实还存在的有效字段配置
+        List<SysField> validFields =
+                allFields.stream()
+                        .filter(f -> f.getTableName() != null && f.getColumnName() != null)
+                        .filter(
+                                f ->
+                                        dbColumnTypeMap.containsKey(
+                                                (f.getTableName() + "#" + f.getColumnName())
+                                                        .toLowerCase()))
+                        .toList();
+
+        if (validFields.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 4. 查询关联的扩展值 (SysFieldValue)
+        List<Long> fieldIds = validFields.stream().map(SysField::getId).toList();
+        List<SysFieldValue> dbValues =
+                sysFieldValueMapper.selectList(
+                        Wrappers.<SysFieldValue>lambdaQuery()
+                                .in(SysFieldValue::getFieldId, fieldIds)
+                                .eq(SysFieldValue::getDeleted, 0));
+
+        Set<Long> chainTypeIds =
+                dbValues.stream()
+                        .map(SysFieldValue::getApprovalChainTypeId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+
+        Map<Long, String> chainTypeMap = Collections.emptyMap();
+        if (!chainTypeIds.isEmpty()) {
+            chainTypeMap =
+                    sysApprovalChainTypeMapper
+                            .selectList(
+                                    Wrappers.<SysApprovalChainType>lambdaQuery()
+                                            .in(SysApprovalChainType::getId, chainTypeIds))
+                            .stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            SysApprovalChainType::getId,
+                                            SysApprovalChainType::getTitle));
+        }
+
+        final Map<Long, String> finalChainTypeMap = chainTypeMap;
+        Map<Long, List<SysFieldValueResp>> valueMap =
+                dbValues.stream()
+                        .map(
+                                v ->
+                                        SysFieldValueResp.builder()
+                                                .id(v.getId())
+                                                .fieldId(v.getFieldId())
+                                                .moduleId(v.getModuleId())
+                                                .moduleName(v.getModuleName())
+                                                .fieldValue(v.getFieldValue())
+                                                .approvalChainTypeId(v.getApprovalChainTypeId())
+                                                .approvalChainTypeName(
+                                                        finalChainTypeMap.get(
+                                                                v.getApprovalChainTypeId()))
+                                                .sortOrder(v.getSortOrder())
+                                                .enabled(v.getEnabled())
+                                                .build())
+                        .collect(Collectors.groupingBy(SysFieldValueResp::getFieldId));
+
+        // 5. 查询关联模块信息 (SysModuleField)
+        Set<String> tableNames =
+                validFields.stream().map(SysField::getTableName).collect(Collectors.toSet());
+        List<SysModuleField> moduleFields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .in(SysModuleField::getTableName, tableNames));
+
+        Map<String, List<SysFieldResp.SysFieldModuleResp>> columnModulesMap =
+                Collections.emptyMap();
+        if (!moduleFields.isEmpty()) {
+            Set<Long> involvedModuleIds =
+                    moduleFields.stream()
+                            .map(SysModuleField::getModuleId)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toSet());
+
+            if (!involvedModuleIds.isEmpty()) {
+                LambdaQueryWrapper<SysModule> moduleWrapper =
+                        Wrappers.<SysModule>lambdaQuery()
+                                .in(SysModule::getId, involvedModuleIds)
+                                .eq(SysModule::getProjectNo, projectNo);
+                if (subjectId != null) {
+                    moduleWrapper.eq(SysModule::getSubjectId, subjectId);
+                }
+                Map<Long, SysModule> moduleMap =
+                        sysModuleMapper.selectList(moduleWrapper).stream()
+                                .collect(
+                                        Collectors.toMap(SysModule::getId, m -> m, (m1, m2) -> m1));
+
+                columnModulesMap =
+                        moduleFields.stream()
+                                .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
+                                .collect(
+                                        Collectors.groupingBy(
+                                                sf ->
+                                                        (sf.getTableName()
+                                                                        + "#"
+                                                                        + sf.getColumnName())
+                                                                .toLowerCase(),
+                                                Collectors.mapping(
+                                                        sf -> {
+                                                            SysModule m =
+                                                                    moduleMap.get(sf.getModuleId());
+                                                            return SysFieldResp.SysFieldModuleResp
+                                                                    .builder()
+                                                                    .moduleId(m.getId())
+                                                                    .moduleName(m.getModuleName())
+                                                                    .build();
+                                                        },
+                                                        Collectors.toList())));
+            }
+        }
+
+        final Map<String, List<SysFieldResp.SysFieldModuleResp>> finalColumnModulesMap =
+                columnModulesMap;
+
+        // 6. 组装响应对象列表
+        return validFields.stream()
+                .map(
+                        field -> {
+                            String colKey =
+                                    (field.getTableName() + "#" + field.getColumnName())
+                                            .toLowerCase();
+                            String columnType = dbColumnTypeMap.get(colKey);
+                            return SysFieldResp.builder()
+                                    .id(field.getId())
+                                    .projectNo(field.getProjectNo())
+                                    .subjectId(field.getSubjectId())
+                                    .tableName(field.getTableName())
+                                    .columnName(field.getColumnName())
+                                    .columnType(columnType)
+                                    .displayName(field.getDisplayName())
+                                    .relationBusinessNo(field.getRelationBusinessNo())
+                                    .relationName(field.getRelationName())
+                                    .businessTypeCode(field.getBusinessTypeCode())
+                                    .businessTypeName(field.getBusinessTypeName())
+                                    .encrypted(field.getEncrypted())
+                                    .refer(field.getRefer())
+                                    .dataRightFlag(field.getDataRightFlag())
+                                    .combineInfo(parseCombineInfoDTO(field.getCombineInfo()))
+                                    .fieldValues(
+                                            valueMap.getOrDefault(
+                                                    field.getId(), Collections.emptyList()))
+                                    .modules(
+                                            finalColumnModulesMap.getOrDefault(
+                                                    colKey, Collections.emptyList()))
+                                    .build();
+                        })
+                .toList();
+    }
 }

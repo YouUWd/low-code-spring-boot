@@ -310,7 +310,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 buildModuleMetaList(
                         rootModule.getId(),
                         null,
-                        roleId,
                         permMap,
                         moduleIdHeaderMap,
                         nameToWorldConfMap,
@@ -403,7 +402,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
     private ModuleMetaDTO buildModuleMetaList(
             Long rootModuleId,
             Long menuId,
-            Long roleId,
             Map<Long, ModulePermissionDTO> permMap,
             Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap,
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
@@ -451,6 +449,10 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                         .get(fullKey)
                                                         .getRelationBusinessNo()
                                                 : null)
+                                .businessTypeName(
+                                        worldCloudConfigMap.containsKey(fullKey)
+                                                ? worldCloudConfigMap.get(fullKey).getRelationName()
+                                                : null)
                                 .build();
 
                 fieldMetaMap.put(fullKey, fMeta);
@@ -486,7 +488,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         buildModuleMetaList(
                                 modId,
                                 null,
-                                roleId,
                                 permMap,
                                 moduleIdHeaderMap,
                                 worldCloudConfigMap,

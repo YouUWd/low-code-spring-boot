@@ -46,4 +46,11 @@ public interface SysFileApi {
         List<SysFileUploadResp> list = listFilesByIds(List.of(id));
         return (list != null && !list.isEmpty()) ? list.get(0) : null;
     }
+
+    /**
+     * 获取文件访问路径前缀 (Base URL / Prefix)
+     *
+     * @return 文件访问路径前缀 (如 http://192.168.60.8:9001/jdec-platform/)
+     */
+    String getPathPrefix();
 }

@@ -26,6 +26,7 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.ProjectProperties;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.validation.SubmitCheckRouter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final ProjectProperties projectProperties;
     private final ConfigApi configApi;
+    private final SubmitCheckRouter submitCheckRouter;
 
     // 审批单据
     @Override
@@ -130,6 +132,12 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         DynamicSaveResp result = dataEngineApi.save(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
             return result.getDataId();
+        // 提交前按根模块执行整单校验，不通过直接中断提交
+        submitCheckRouter.check(
+                result.getModuleId(),
+                result.getDataId(),
+                result.getBusinessNo(),
+                result.getVersionNo());
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());

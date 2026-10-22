@@ -15,7 +15,6 @@ import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuTableSpec;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
-import com.jdec.platform.common.api.dto.response.FileSimpleResp;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
@@ -1700,62 +1699,8 @@ class CompanyMenuQueryContractTest {
     }
 
     @Test
-    @DisplayName("测试业务类型为 image 时，纯图片 URL 字符串自动转换为 FileSimpleResp 对象")
-    void testQueryByMenu_imageFieldUrl_convertsToFileSimpleResp() {
-        MenuHeaderColumnResp headerWithImage =
-                MenuHeaderColumnResp.builder()
-                        .moduleId(1001L)
-                        .label("公司主档")
-                        .children(
-                                List.of(
-                                        col(1001L, 10001L, "ID"),
-                                        col(1001L, 10002L, "企业全称"),
-                                        col(
-                                                1001L,
-                                                10099L,
-                                                "企业Logo",
-                                                "image",
-                                                "info.enterprise_logo")))
-                        .build();
-
-        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
-                        anyLong(), eq(100L), anyLong(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(MenuHeaderDisplayResp.builder().header(headerWithImage).build());
-
-        DataRow row = new DataRow();
-        Map<String, Object> infoData = new HashMap<>();
-        infoData.put("id", 101L);
-        infoData.put("company_name", "测试企业");
-        infoData.put(
-                "enterprise_logo", "http://192.168.60.8:9001/jdec-platform/2026/10/20/logo.png");
-        row.putTable("info", infoData);
-
-        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
-        DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
-        when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
-
-        MenuQueryReq req = MenuQueryReq.builder().build();
-        MenuDataResp resp = commonAggregateService.queryByMenu(100L, req);
-
-        assertNotNull(resp);
-        assertNotNull(resp.getData());
-        assertNotNull(resp.getData().getRecord());
-        assertEquals(1, resp.getData().getRecord().size());
-
-        DataRecordItem item = resp.getData().getRecord().get(0);
-        Object logoVal = item.getRow().get("info.enterprise_logo");
-        assertNotNull(logoVal);
-        assertInstanceOf(FileSimpleResp.class, logoVal);
-
-        FileSimpleResp file = (FileSimpleResp) logoVal;
-        assertEquals("http://192.168.60.8:9001/jdec-platform/2026/10/20/logo.png", file.getUrl());
-        assertEquals("logo", file.getName());
-        assertEquals("png", file.getFileExt());
-    }
-
-    @Test
-    @DisplayName("测试业务类型为 attachment 时，数字文件 ID 批量查询 sys_file 并转换为 FileSimpleResp 对象")
-    void testQueryByMenu_attachmentFieldId_queriesSysFileAndConvertsToFileSimpleResp() {
+    @DisplayName("测试文件/图片字段直接存储完整 JSON 对象时，聚合查询服务直接透传无需额外查询增强")
+    void testQueryByMenu_fileFieldJson_retainsDatabaseValueDirectly() {
         MenuHeaderColumnResp headerWithAttachment =
                 MenuHeaderColumnResp.builder()
                         .moduleId(1001L)
@@ -1775,22 +1720,16 @@ class CompanyMenuQueryContractTest {
                         anyLong(), eq(100L), anyLong(), isNull(), isNull(), isNull(), isNull()))
                 .thenReturn(MenuHeaderDisplayResp.builder().header(headerWithAttachment).build());
 
-        when(sysFileApi.listFilesByIds(eq(List.of(8888L))))
-                .thenReturn(
-                        List.of(
-                                SysFileUploadResp.builder()
-                                        .id(8888L)
-                                        .fileName("contract.pdf")
-                                        .originalName("MasterContract.pdf")
-                                        .url("http://oss.example.com/contract.pdf")
-                                        .fileExt("pdf")
-                                        .size(2048L)
-                                        .build()));
+        Map<String, Object> fileObj = new HashMap<>();
+        fileObj.put("id", 8888L);
+        fileObj.put("name", "MasterContract");
+        fileObj.put("fileExt", "pdf");
+        fileObj.put("objectKey", "2026/10/22/contract.pdf");
 
         DataRow row = new DataRow();
         Map<String, Object> infoData = new HashMap<>();
         infoData.put("id", 101L);
-        infoData.put("contract_file", 8888L);
+        infoData.put("contract_file", fileObj);
         row.putTable("info", infoData);
 
         DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
@@ -1805,202 +1744,6 @@ class CompanyMenuQueryContractTest {
         DataRecordItem item = resp.getData().getRecord().get(0);
         Object fileVal = item.getRow().get("info.contract_file");
         assertNotNull(fileVal);
-        assertInstanceOf(FileSimpleResp.class, fileVal);
-
-        FileSimpleResp file = (FileSimpleResp) fileVal;
-        assertEquals(8888L, file.getId());
-        assertEquals("MasterContract.pdf", file.getName());
-        assertEquals("http://oss.example.com/contract.pdf", file.getUrl());
-        assertEquals("pdf", file.getFileExt());
-    }
-
-    @Test
-    @DisplayName("测试多文件 JSON 数组存储时，转换为 List<FileSimpleResp>")
-    void testQueryByMenu_multiImageJsonArray_convertsToListOfFileSimpleResp() {
-        MenuHeaderColumnResp headerWithMultiImage =
-                MenuHeaderColumnResp.builder()
-                        .moduleId(1001L)
-                        .label("公司主档")
-                        .children(
-                                List.of(
-                                        col(1001L, 10001L, "ID"),
-                                        col(1001L, 10097L, "资质图集", "image", "info.cert_images")))
-                        .build();
-
-        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
-                        anyLong(), eq(100L), anyLong(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(MenuHeaderDisplayResp.builder().header(headerWithMultiImage).build());
-
-        when(sysFileApi.listFilesByIds(any()))
-                .thenReturn(
-                        List.of(
-                                SysFileUploadResp.builder()
-                                        .id(101L)
-                                        .fileName("pic1.png")
-                                        .url("http://oss.example.com/pic1.png")
-                                        .build(),
-                                SysFileUploadResp.builder()
-                                        .id(102L)
-                                        .fileName("pic2.png")
-                                        .url("http://oss.example.com/pic2.png")
-                                        .build()));
-
-        DataRow row = new DataRow();
-        Map<String, Object> infoData = new HashMap<>();
-        infoData.put("id", 101L);
-        infoData.put("cert_images", "[101, 102]");
-        row.putTable("info", infoData);
-
-        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
-        DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
-        when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
-
-        MenuQueryReq req = MenuQueryReq.builder().build();
-        MenuDataResp resp = commonAggregateService.queryByMenu(100L, req);
-
-        assertNotNull(resp);
-        assertNotNull(resp.getData());
-        DataRecordItem item = resp.getData().getRecord().get(0);
-        Object imagesVal = item.getRow().get("info.cert_images");
-        assertNotNull(imagesVal);
-        assertInstanceOf(List.class, imagesVal);
-
-        List<?> list = (List<?>) imagesVal;
-        assertEquals(2, list.size());
-        assertInstanceOf(FileSimpleResp.class, list.get(0));
-        assertEquals(101L, ((FileSimpleResp) list.get(0)).getId());
-        assertEquals(102L, ((FileSimpleResp) list.get(1)).getId());
-    }
-
-    @Test
-    @DisplayName("测试 getOptionsByMenu 当字段业务类型为 image 时，转换为 FileSimpleResp 选项")
-    void testGetOptionsByMenu_imageField_convertsToFileSimpleResp() {
-        MenuHeaderColumnResp headerWithImage =
-                MenuHeaderColumnResp.builder()
-                        .moduleId(1001L)
-                        .label("公司主档")
-                        .children(
-                                List.of(
-                                        col(1001L, 10001L, "ID"),
-                                        col(
-                                                1001L,
-                                                10099L,
-                                                "企业Logo",
-                                                "image",
-                                                "info.enterprise_logo")))
-                        .build();
-
-        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
-                        anyLong(), eq(100L), anyLong(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(MenuHeaderDisplayResp.builder().header(headerWithImage).build());
-
-        when(dataApi.getOptions(any(OptionReq.class)))
-                .thenReturn(
-                        List.of(
-                                DataOptionResp.builder()
-                                        .label("http://oss.example.com/logo.png")
-                                        .value("http://oss.example.com/logo.png")
-                                        .build()));
-
-        MenuOptionReq req = MenuOptionReq.builder().fieldId(10099L).build();
-
-        List<DataOptionResp> options = commonAggregateService.getOptionsByMenu(100L, req);
-        assertNotNull(options);
-        assertEquals(1, options.size());
-
-        DataOptionResp opt = options.get(0);
-        assertEquals("http://oss.example.com/logo.png", opt.getValue());
-        assertEquals("logo.png", opt.getLabel());
-    }
-
-    @Test
-    @DisplayName("测试 getOptionsByMenu 当字段业务类型为 attachment 且候选项为文件 ID 时，value 为 ID，label 为文件名")
-    void testGetOptionsByMenu_attachmentField_setsIdValueAndFileNameLabel() {
-        MenuHeaderColumnResp headerWithAttachment =
-                MenuHeaderColumnResp.builder()
-                        .moduleId(1001L)
-                        .label("公司主档")
-                        .children(
-                                List.of(
-                                        col(1001L, 10001L, "ID"),
-                                        col(
-                                                1001L,
-                                                10098L,
-                                                "合同附件",
-                                                "attachment",
-                                                "info.contract_file")))
-                        .build();
-
-        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
-                        anyLong(), eq(100L), anyLong(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(MenuHeaderDisplayResp.builder().header(headerWithAttachment).build());
-
-        when(sysFileApi.listFilesByIds(eq(List.of(8888L))))
-                .thenReturn(
-                        List.of(
-                                SysFileUploadResp.builder()
-                                        .id(8888L)
-                                        .fileName("uuid.pdf")
-                                        .originalName("MasterContract")
-                                        .url("http://oss.example.com/contract.pdf")
-                                        .fileExt("pdf")
-                                        .size(2048L)
-                                        .build()));
-
-        when(dataApi.getOptions(any(OptionReq.class)))
-                .thenReturn(List.of(DataOptionResp.builder().label(8888L).value(8888L).build()));
-
-        MenuOptionReq req = MenuOptionReq.builder().fieldId(10098L).build();
-
-        List<DataOptionResp> options = commonAggregateService.getOptionsByMenu(100L, req);
-        assertNotNull(options);
-        assertEquals(1, options.size());
-
-        DataOptionResp opt = options.get(0);
-        assertEquals(8888L, opt.getValue());
-        assertEquals("MasterContract.pdf", opt.getLabel());
-    }
-
-    @Test
-    @DisplayName(
-            "测试当字段未配置 image/attachment 等 businessTypeCode 时，即使列名形如 logo_url 也不转换为 FileSimpleResp")
-    void testQueryByMenu_withoutBusinessType_doesNotConvertToFileSimpleResp() {
-        MenuHeaderColumnResp headerWithoutType =
-                MenuHeaderColumnResp.builder()
-                        .moduleId(1001L)
-                        .label("公司主档")
-                        .children(
-                                List.of(
-                                        col(1001L, 10001L, "ID"),
-                                        col(1001L, 10099L, "Logo链接", null, "info.enterprise_logo")))
-                        .build();
-
-        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
-                        anyLong(), eq(100L), anyLong(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(MenuHeaderDisplayResp.builder().header(headerWithoutType).build());
-
-        DataRow row = new DataRow();
-        Map<String, Object> infoData = new HashMap<>();
-        infoData.put("id", 101L);
-        infoData.put(
-                "enterprise_logo", "http://192.168.60.8:9001/jdec-platform/2026/10/20/logo.png");
-        row.putTable("info", infoData);
-
-        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
-        DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
-        when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
-
-        MenuQueryReq req = MenuQueryReq.builder().build();
-        MenuDataResp resp = commonAggregateService.queryByMenu(100L, req);
-
-        assertNotNull(resp);
-        assertNotNull(resp.getData());
-        DataRecordItem item = resp.getData().getRecord().get(0);
-        Object logoVal = item.getRow().get("info.enterprise_logo");
-        assertNotNull(logoVal);
-        // 核心验证：由于 businessTypeCode 为空，不做文件对象转换，保持为原始 String
-        assertInstanceOf(String.class, logoVal);
-        assertFalse(logoVal instanceof FileSimpleResp);
-        assertEquals("http://192.168.60.8:9001/jdec-platform/2026/10/20/logo.png", logoVal);
+        assertEquals(fileObj, fileVal);
     }
 }

@@ -80,4 +80,25 @@ public interface SysFieldApi {
      * @return 数据权限字段列表（dataRightFlag=1）
      */
     List<SysFieldResp> getDataPermissionFields(String projectNo, Long subjectId);
+
+    /**
+     * 查询有效的字段配置列表（在物理数据库中真实存在的字段配置）
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @param tableName 表名（可选，传空则查询该项目/主体下所有表的有效配置）
+     * @return 有效的字段配置列表
+     */
+    List<SysFieldResp> getValidSysFields(String projectNo, Long subjectId, String tableName);
+
+    /**
+     * 查询所有有效的字段配置列表（在物理数据库中真实存在的字段配置）
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @return 有效的字段配置列表
+     */
+    default List<SysFieldResp> getValidSysFields(String projectNo, Long subjectId) {
+        return getValidSysFields(projectNo, subjectId, null);
+    }
 }

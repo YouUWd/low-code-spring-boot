@@ -122,19 +122,11 @@ public class SysFileService implements SysFileApi {
             throw new BusinessException(500, "保存文件记录失败");
         }
 
-        // 3. 动态组装访问 URL 并返回响应
-        String url =
-                ossProperties.getEndpoint() + "/" + ossProperties.getBucketName() + "/" + objectKey;
-
         return SysFileUploadResp.builder()
                 .id(businessFile.getId())
-                .menuId(menuId)
-                .url(url)
-                .objectKey(objectKey)
-                .fileName(newFileName)
-                .originalName(baseName)
+                .name(baseName)
                 .fileExt(ext)
-                .size(file.getSize())
+                .objectKey(objectKey)
                 .build();
     }
 
@@ -154,28 +146,38 @@ public class SysFileService implements SysFileApi {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public String getPathPrefix() {
+        if (ossProperties == null) {
+            return "";
+        }
+        if (StringUtils.hasText(ossProperties.getDomain())) {
+            String domain = ossProperties.getDomain().trim();
+            return domain.endsWith("/") ? domain : domain + "/";
+        }
+        String endpoint = ossProperties.getEndpoint();
+        if (!StringUtils.hasText(endpoint)) {
+            return "";
+        }
+        StringBuilder prefix = new StringBuilder(endpoint.trim());
+        if (prefix.charAt(prefix.length() - 1) == '/') {
+            prefix.deleteCharAt(prefix.length() - 1);
+        }
+        if (StringUtils.hasText(ossProperties.getBucketName())) {
+            prefix.append("/").append(ossProperties.getBucketName().trim());
+        }
+        return prefix.append("/").toString();
+    }
+
     private SysFileUploadResp toUploadResp(BusinessFile businessFile) {
         if (businessFile == null) {
             return null;
         }
-        String url = null;
-        if (StringUtils.hasText(businessFile.getObjectKey()) && ossProperties != null) {
-            url =
-                    ossProperties.getEndpoint()
-                            + "/"
-                            + ossProperties.getBucketName()
-                            + "/"
-                            + businessFile.getObjectKey();
-        }
         return SysFileUploadResp.builder()
                 .id(businessFile.getId())
-                .menuId(businessFile.getMenuId())
-                .url(url)
-                .objectKey(businessFile.getObjectKey())
-                .fileName(businessFile.getFileName())
-                .originalName(businessFile.getOriginalName())
+                .name(businessFile.getOriginalName())
                 .fileExt(businessFile.getFileExt())
-                .size(businessFile.getFileSize())
+                .objectKey(businessFile.getObjectKey())
                 .build();
     }
 }
