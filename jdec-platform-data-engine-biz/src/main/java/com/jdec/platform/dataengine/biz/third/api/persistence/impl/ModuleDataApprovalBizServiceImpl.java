@@ -13,6 +13,7 @@ import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.operatelog.util.OperateLogRemarkUtil;
 import com.jdec.platform.dataengine.biz.service.*;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
+import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleTreeDataUtils;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
@@ -149,8 +150,27 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         JsonNode remark =
                 operateLogRemarkUtil.buildRemark(
                         tmpSnapshot, result, moduleCacheMap, req.getMenuId(), req.getReason());
+
+        NestedModuleDataDTO tmpReferenceData =
+                ModuleTreeDataUtils.copyExternalReferenceData(tmpSnapshot, moduleCacheMap);
+        NestedModuleDataDTO currentReferenceData =
+                ModuleTreeDataUtils.copyExternalReferenceData(result, moduleCacheMap);
+
+        // 引用字段的对比
+        JsonNode remarkReferenceData =
+                operateLogRemarkUtil.buildRemark(
+                        tmpReferenceData,
+                        currentReferenceData,
+                        moduleCacheMap,
+                        req.getMenuId(),
+                        null);
+
         ApprovalProcessResultResp resp =
-                ApprovalProcessResultResp.builder().nestedModuleData(result).remark(remark).build();
+                ApprovalProcessResultResp.builder()
+                        .nestedModuleData(result)
+                        .remark(remark)
+                        .referenceDataRemark(remarkReferenceData)
+                        .build();
         return resp;
     }
 
