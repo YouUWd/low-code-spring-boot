@@ -1,7 +1,9 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.common.api.dto.response.UserSimpleResp;
+import com.jdec.platform.common.biz.constant.IndustryConstants;
 import com.jdec.platform.common.biz.service.QueryResultEnhanceService;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
@@ -26,13 +28,20 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
 
     private final SysUserApi sysUserApi;
     private final SysStatusApi sysStatusApi;
+    private final ObjectMapper objectMapper;
 
     @Autowired
     public QueryResultEnhanceServiceImpl(
             @Autowired(required = false) SysUserApi sysUserApi,
-            @Autowired(required = false) SysStatusApi sysStatusApi) {
+            @Autowired(required = false) SysStatusApi sysStatusApi,
+            @Autowired(required = false) ObjectMapper objectMapper) {
         this.sysUserApi = sysUserApi;
         this.sysStatusApi = sysStatusApi;
+        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+    }
+
+    public QueryResultEnhanceServiceImpl(SysUserApi sysUserApi, SysStatusApi sysStatusApi) {
+        this(sysUserApi, sysStatusApi, new ObjectMapper());
     }
 
     @Override
@@ -123,8 +132,13 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
             return rawOptions;
         }
 
-        if ("created_by".equalsIgnoreCase(columnName)
-                || "create_by".equalsIgnoreCase(columnName)
+        String normalizedCol =
+                columnName != null && columnName.contains(".")
+                        ? columnName.substring(columnName.lastIndexOf('.') + 1).trim()
+                        : (columnName != null ? columnName.trim() : "");
+
+        if ("created_by".equalsIgnoreCase(normalizedCol)
+                || "create_by".equalsIgnoreCase(normalizedCol)
                 || "user".equalsIgnoreCase(businessTypeCode)) {
             Set<Long> userIds = new LinkedHashSet<>();
             for (DataOptionResp opt : rawOptions) {
@@ -145,7 +159,7 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
             return rawOptions;
         }
 
-        if ("business_status".equalsIgnoreCase(columnName)
+        if ("business_status".equalsIgnoreCase(normalizedCol)
                 || "status".equalsIgnoreCase(businessTypeCode)) {
             Set<Integer> statusValues = new LinkedHashSet<>();
             for (DataOptionResp opt : rawOptions) {
@@ -165,6 +179,14 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
                 }
             }
             return rawOptions;
+        }
+
+        if ("industry_types".equalsIgnoreCase(normalizedCol)
+                || "industryTypes".equalsIgnoreCase(normalizedCol)
+                || "industry_type".equalsIgnoreCase(normalizedCol)
+                || "industry".equalsIgnoreCase(businessTypeCode)
+                || "industry_types".equalsIgnoreCase(businessTypeCode)) {
+            return enhanceIndustryOptions(rawOptions);
         }
 
         return rawOptions;
@@ -277,5 +299,99 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
             }
         }
         return statusMap;
+    }
+
+    private List<DataOptionResp> enhanceIndustryOptions(List<DataOptionResp> rawOptions) {
+        if (CollectionUtils.isEmpty(rawOptions)) {
+            return rawOptions;
+        }
+        Set<String> keepSet = extractKeepValues(rawOptions);
+        if (keepSet.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, Object>> tree = IndustryConstants.INDUSTRY_TREE;
+        List<Map<String, Object>> filteredTree = filterIndustryTree(tree, keepSet);
+        if (filteredTree.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return List.of(DataOptionResp.builder().label(filteredTree).value(filteredTree).build());
+    }
+
+    private Set<String> extractKeepValues(List<DataOptionResp> rawOptions) {
+        Set<String> keepSet = new LinkedHashSet<>();
+        for (DataOptionResp opt : rawOptions) {
+            if (opt == null) {
+                continue;
+            }
+            extractKeepValue(opt.getValue(), keepSet);
+            extractKeepValue(opt.getLabel(), keepSet);
+        }
+        return keepSet;
+    }
+
+    private void extractKeepValue(Object obj, Set<String> keepSet) {
+        if (obj == null) {
+            return;
+        }
+        if (obj instanceof Map<?, ?> map) {
+            Object val = map.get("value");
+            if (val == null) {
+                val = map.get("dict_value");
+            }
+            if (val != null) {
+                keepSet.add(val.toString().trim());
+            }
+        } else if (obj instanceof String str) {
+            String s = str.trim();
+            if (s.startsWith("{") && s.endsWith("}")) {
+                try {
+                    Map<?, ?> map = objectMapper.readValue(s, Map.class);
+                    extractKeepValue(map, keepSet);
+                } catch (Exception ignored) {
+                    keepSet.add(s);
+                }
+            } else if (!s.isEmpty()) {
+                keepSet.add(s);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> filterIndustryTree(
+            List<Map<String, Object>> nodes, Set<String> keepSet) {
+        if (CollectionUtils.isEmpty(nodes) || CollectionUtils.isEmpty(keepSet)) {
+            return Collections.emptyList();
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> node : nodes) {
+            if (node == null) {
+                continue;
+            }
+
+            List<Map<String, Object>> childrenList = null;
+            Object rawChildren = node.get("childrenList");
+            if (rawChildren instanceof List<?> rawList) {
+                childrenList = (List<Map<String, Object>>) (List<?>) rawList;
+            }
+
+            List<Map<String, Object>> children =
+                    childrenList != null
+                            ? filterIndustryTree(childrenList, keepSet)
+                            : Collections.emptyList();
+
+            Object valueObj = node.get("value");
+            String val = valueObj != null ? valueObj.toString().trim() : null;
+            boolean selfMatched = val != null && keepSet.contains(val);
+
+            if (selfMatched || !children.isEmpty()) {
+                Map<String, Object> newNode = new LinkedHashMap<>(node);
+                if (childrenList != null) {
+                    newNode.put("childrenList", children);
+                }
+                result.add(newNode);
+            }
+        }
+        return result;
     }
 }
