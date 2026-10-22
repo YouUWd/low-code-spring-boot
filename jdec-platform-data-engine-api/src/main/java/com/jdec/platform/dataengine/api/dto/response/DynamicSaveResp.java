@@ -24,6 +24,9 @@ public class DynamicSaveResp {
     @Schema(description = "根模块数据版本")
     private Integer versionNo;
 
+    @Schema(description = "实时新增时子模块数据ID")
+    private Long childDataId;
+
     @Schema(description = "保存数据")
     private Object data;
 }

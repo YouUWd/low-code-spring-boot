@@ -824,4 +824,195 @@ public class ModuleTreeDataUtils {
             }
         }
     }
+
+    /**
+     * 根据详情数据，拷贝出 引用的外部数据
+     *
+     * @param detail
+     * @return
+     */
+    public static NestedModuleDataDTO copyExternalReferenceData(
+            NestedModuleDataDTO detail, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (detail == null) {
+            return null;
+        }
+        NestedModuleDataDTO copy = new NestedModuleDataDTO();
+        copy.setModuleId(detail.getModuleId());
+        List<RecordDataDTO> recordList = new ArrayList<>();
+        copy.setRecord(recordList);
+        if (CollectionUtil.isEmpty(detail.getRecord())) {
+            return copy;
+        }
+        for (RecordDataDTO recordDataDTO : detail.getRecord()) {
+            RecordDataDTO recordData = new RecordDataDTO();
+
+            // 拷贝数据
+            if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
+                recordData.setRow(
+                        copyReferencDataMap(
+                                recordDataDTO.getRow(), moduleCacheMap.get(copy.getModuleId())));
+            }
+            recordList.add(recordData);
+            // 处理子模块数据
+            if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                List<NestedModuleDataDTO> childrenList = new ArrayList<>();
+                for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                    childrenList.add(copyExternalReferenceData(child, moduleCacheMap));
+                }
+                recordData.setChildren(childrenList);
+            }
+        }
+        return copy;
+    }
+
+    public static Map<String, Object> copyReferencDataMap(
+            Map<String, Object> rowMap, SysModuleCombineInfo moduleInfo) {
+        Map<String, Object> map = new HashMap<>();
+        Set<String> remainFields = new HashSet<>();
+        remainFields.addAll(DataPersistenceUtil.getAllTableIdFields(moduleInfo.getAllTables()));
+        remainFields.addAll(moduleInfo.getExternalReferenceFields());
+        for (Map.Entry<String, Object> entry : rowMap.entrySet()) {
+            if (remainFields.contains(entry.getKey())) {
+                map.put(entry.getKey(), copyObject(entry.getValue()));
+            }
+        }
+        return map;
+    }
+
+    /**
+     * 实时保存时 获取新增的行的 模块数据
+     *
+     * @param newData
+     * @return
+     */
+    public static NestedModuleDataDTO copyNewNestedModuleData(
+            NestedModuleDataDTO newData, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (newData == null) {
+            return null;
+        }
+        Long currentModuleId = newData.getModuleId();
+        if (CollectionUtil.isEmpty(newData.getRecord())) {
+            return null;
+        }
+        RecordDataDTO rootData = newData.getRecord().get(0);
+        if (rootData == null) {
+            return null;
+        }
+        Long dataId =
+                DataPersistenceUtil.getTableRowIdWithTabName(
+                        rootData.getRow(),
+                        moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
+
+        if (dataId == null || dataId <= 0) {
+            return null;
+        }
+        if (CollectionUtil.isEmpty(rootData.getChildren())) {
+            return null;
+        }
+
+        for (NestedModuleDataDTO child : rootData.getChildren()) {
+            return copyNewNestedChildModuleData(child, currentModuleId, dataId, moduleCacheMap);
+        }
+        return null;
+    }
+
+    public static NestedModuleDataDTO copyNewNestedChildModuleData(
+            NestedModuleDataDTO child,
+            Long parentModuleId,
+            Long parentDataId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (child == null) {
+            return null;
+        }
+        Long currentModuleId = child.getModuleId();
+
+        if (CollectionUtil.isEmpty(child.getRecord())) {
+            return null;
+        }
+
+        RecordDataDTO childData = child.getRecord().get(0);
+        if (childData == null) {
+            return null;
+        }
+        if (CollectionUtil.isNotEmpty(childData.getRow())) {
+            Long childDataId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            childData.getRow(),
+                            moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
+            if (childDataId != null && childDataId > 0) {
+                return null;
+            }
+            // 没有ID 新增的行数据
+
+            Map<String, Object> rowMap = new HashMap<>();
+            for (Map.Entry<String, Object> entry : childData.getRow().entrySet()) {
+                rowMap.put(entry.getKey(), copyObject(entry.getValue()));
+            }
+            if (StringUtils.isEmpty(
+                    moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable())) {
+                return null;
+            }
+            if (moduleCacheMap.get(parentModuleId).getMainTableRelationDTO() == null) {
+                return null;
+            }
+            String fk =
+                    moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable()
+                            + "."
+                            + moduleCacheMap
+                                    .get(parentModuleId)
+                                    .getMainTableRelationDTO()
+                                    .getJoinField();
+            rowMap.put(fk, parentDataId);
+
+            RecordDataDTO newChildData = new RecordDataDTO();
+            newChildData.setRow(rowMap);
+            List<RecordDataDTO> records = new ArrayList<>();
+            records.add(newChildData);
+            NestedModuleDataDTO newChild = new NestedModuleDataDTO();
+            newChild.setModuleId(currentModuleId);
+            newChild.setRecord(records);
+            return newChild;
+        } else {
+            for (NestedModuleDataDTO ch : childData.getChildren()) {
+                return copyNewNestedChildModuleData(
+                        ch, currentModuleId, parentDataId, moduleCacheMap);
+            }
+        }
+        return null;
+    }
+
+    public static Long getLeafRowDataId(
+            NestedModuleDataDTO rootData, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        if (rootData == null) {
+            return null;
+        }
+        if (CollectionUtil.isEmpty(rootData.getRecord())) {
+            return null;
+        }
+
+        for (RecordDataDTO recordDataDTO : rootData.getRecord()) {
+            if (recordDataDTO == null) {
+                continue;
+            }
+            // 有子模块
+            Long dataId = null;
+            if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                    dataId = getLeafRowDataId(child, moduleCacheMap);
+                    if (dataId != null && dataId > 0) {
+                        return dataId;
+                    }
+                }
+            }
+            if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
+                return DataPersistenceUtil.getTableRowIdWithTabName(
+                        recordDataDTO.getRow(),
+                        moduleCacheMap
+                                .get(rootData.getModuleId())
+                                .getModuleInfo()
+                                .getPrimaryTable());
+            }
+        }
+        return null;
+    }
 }
