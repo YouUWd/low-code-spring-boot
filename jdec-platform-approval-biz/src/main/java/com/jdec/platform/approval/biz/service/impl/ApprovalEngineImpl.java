@@ -214,7 +214,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .or()
                                 .nested(
                                         wp3 ->
-                                                wp3.isNull(ApprovalBusiness::getApproverId)
+                                                wp3.eq(ApprovalBusiness::getApproverId, 0)
                                                         .eq(
                                                                 ApprovalBusiness::getCreatedBy,
                                                                 approvalProcessReq.getApplicantId())
@@ -301,10 +301,20 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (approvalListReq.getModuleIdList().isEmpty()) {
             return respList;
         }
+        LambdaQueryWrapper<ApprovalBusiness> doWrapper = new LambdaQueryWrapper<>();
+        doWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
+        doWrapper.eq(ApprovalBusiness::getCreatedBy, approvalListReq.getApplicantId());
+        doWrapper.eq(ApprovalBusiness::getCurrentStep, 0);
+        doWrapper.notIn(ApprovalBusiness::getStatusValue, 99, -99);
+        toDoList = approvalBusinessMapper.selectList(doWrapper);
+        for (ApprovalBusiness item : toDoList) {
+            respList.add(convertMapResp(item, 1));
+        }
         List<Long> approvalIds =
                 getApprovalRecordIdList(
                         approvalListReq.getModuleIdList(), approvalListReq.getRoleId());
         if (approvalIds.isEmpty()) {
+            if (approvalListReq.getApprovalType() == 2) respList.clear();
             return respList;
         }
         LambdaQueryWrapper<ApprovalBusiness> todoWrapper = new LambdaQueryWrapper<>();
@@ -335,7 +345,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                 .or()
                                 .nested(
                                         wp3 ->
-                                                wp3.isNull(ApprovalBusiness::getApproverId)
+                                                wp3.eq(ApprovalBusiness::getApproverId, 0)
                                                         .eq(
                                                                 ApprovalBusiness::getCreatedBy,
                                                                 approvalListReq.getApplicantId())
@@ -354,10 +364,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         Set<Long> ids = toDoList.stream().map(ApprovalBusiness::getId).collect(Collectors.toSet());
         if (approvalListReq.getApprovalType() == 1) {
-            respList =
-                    toDoList.stream()
-                            .map(business -> convertMapResp(business, 1))
-                            .collect(Collectors.toList());
+            respList.addAll(
+                    toDoList.stream().map(business -> convertMapResp(business, 1)).toList());
         } else if (approvalListReq.getApprovalType() == 2) {
             LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
             processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
@@ -365,6 +373,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             processWrapper.apply(
                     "FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
             List<ApprovalBusiness> resultList = approvalBusinessMapper.selectList(processWrapper);
+            respList.clear();
             for (ApprovalBusiness item : resultList) {
                 if (!ids.contains(item.getId())) {
                     respList.add(convertMapResp(item, 3));
@@ -1355,6 +1364,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setReason(resultResp.getRemark());
+        approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
@@ -1542,6 +1552,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setIsTermination(false);
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setReason(resultResp.getRemark());
+        approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
         // 写入日志
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
@@ -1827,7 +1838,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         // 加载变更页面时显示提交按钮
         if (Objects.nonNull(btnType)
-                && (btnType.equals("change-change") || btnType.equals("change"))) {
+                && (btnType.equals("change-change") || btnType.equals("change"))
+                && approvalChainBusiness.getCreatedBy().equals(userId)) {
             operations.add(
                     showButtonInfo(
                             "submit",

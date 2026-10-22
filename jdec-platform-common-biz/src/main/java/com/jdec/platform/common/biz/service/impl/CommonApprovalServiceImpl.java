@@ -1,5 +1,7 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import cn.hutool.core.collection.ListUtil;
+import cn.hutool.core.map.MapUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
@@ -8,9 +10,13 @@ import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysStatusApi;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
@@ -45,6 +51,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     private final ObjectMapper objectMapper;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final ProjectProperties projectProperties;
+    private final ConfigApi configApi;
 
     // 审批单据
     @Override
@@ -58,6 +65,17 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         if (rootModuleId == null) {
             throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
         }
+        ModuleTreeDTO moduleTreeDTO =
+                configApi.getModuleTree(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), rootModuleId);
+        NestedModuleDataDTO nestedModuleDataDTO =
+                buildRootNestedModuleData(moduleTreeDTO, req.getRecordId());
+        DynamicSaveReq dynamicSaveReq =
+                DynamicSaveReq.builder()
+                        .nestedModuleData(nestedModuleDataDTO)
+                        .btnType("approval_save")
+                        .build();
+        dataEngineApi.save(dynamicSaveReq);
 
         ApprovalEvent approvalEvent = new ApprovalEvent();
         BeanUtils.copyProperties(req, approvalEvent);
@@ -72,13 +90,31 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         eventPublisher.publishEvent(approvalEvent);
     }
 
+    private NestedModuleDataDTO buildRootNestedModuleData(
+            ModuleTreeDTO moduleTreeDTO, Long dataId) {
+        return NestedModuleDataDTO.builder()
+                .moduleId(moduleTreeDTO.getRootModuleId())
+                .record(
+                        ListUtil.of(
+                                RecordDataDTO.builder()
+                                        .row(
+                                                MapUtil.of(
+                                                        moduleTreeDTO
+                                                                        .getRootModule()
+                                                                        .getPrimaryTable()
+                                                                + ".id",
+                                                        dataId))
+                                        .build()))
+                .build();
+    }
+
     // 保存草稿
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSave(DynamicSaveReq req) {
         DynamicSaveResp result = dataEngineApi.save(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
-            return result.getDataId();
+            return result.getChildDataId();
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());

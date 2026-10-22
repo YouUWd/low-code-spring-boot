@@ -1,7 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.post.impl;
 
 import com.jdec.platform.dataengine.biz.decoupleprocess.event.ModuleDataChangeEvent;
-import com.jdec.platform.dataengine.biz.decoupleprocess.publisher.ModuleDataSavePublisher;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDataPostContext;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.post.BaseDataSavePost;
@@ -14,13 +13,10 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class DataSaveChangeLogPostImpl implements BaseDataSavePost {
 
-    private final ModuleDataSavePublisher moduleDataSavePublisher;
-
     @Override
     public Boolean postProcess(ModuleDataPostContext context) {
         ModuleDataChangeEvent event = new ModuleDataChangeEvent(context);
         event.setModuleDataPostContext(context);
-        moduleDataSavePublisher.publishModuleDataChangeEvent(event);
         return true;
     }
 

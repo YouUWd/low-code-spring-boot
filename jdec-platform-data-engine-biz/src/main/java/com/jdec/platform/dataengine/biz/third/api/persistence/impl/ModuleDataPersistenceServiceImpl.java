@@ -128,6 +128,10 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         moduleCacheMap.get(req.getRootModuleId()).getModuleInfo().getPrimaryTable(),
                         req.getMainTableDataSourceId());
             }
+
+            // 审批保存，刷新了引用字段，需要记录日志
+            if (SaveType.APPROVAL_SAVE.equals(finalSaveType)) {}
+
             // 其他sql
         } catch (Exception e) {
             // 抛出异常，jooq自动回滚

@@ -6,10 +6,8 @@ import lombok.Getter;
 public enum SaveType {
     SAVE("save"),
     APPROVAL_CHANGE("change_save"),
-    APPROVAL_REALTIME("realtime_save"),
-    INSERT_AND_GET_ID("insert_and_get_id"),
-    DELETE_BY_ID("delete_by_id"),
-    ;
+    APPROVAL_REALTIME_SAVE("realtime_save"),
+    APPROVAL_SAVE("approval_save");
 
     private String btn;
 
@@ -33,14 +31,11 @@ public enum SaveType {
                 // 提交
                 saveType = SaveType.APPROVAL_CHANGE;
             }
-            case REAL_TIME_CHANGE -> {
-                saveType = SaveType.APPROVAL_REALTIME;
+            case REAL_TIME_SAVE -> {
+                saveType = SaveType.APPROVAL_REALTIME_SAVE;
             }
-            case INSERT_AND_GET_ID -> {
-                saveType = SaveType.INSERT_AND_GET_ID;
-            }
-            case DELETE_BY_ID -> {
-                saveType = SaveType.DELETE_BY_ID;
+            case APPROVAL_SAVE -> {
+                saveType = SaveType.APPROVAL_SAVE;
             }
         }
         return saveType;

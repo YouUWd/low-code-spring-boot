@@ -464,4 +464,13 @@ public class DataPersistenceUtil {
                         .collect(Collectors.joining());
         return ToolUtils.nextNoWithFixedLen(prefix.toUpperCase());
     }
+
+    public static Set<String> getAllTableIdFields(Set<String> tableNames) {
+        if (CollectionUtil.isNotEmpty(tableNames)) {
+            return tableNames.stream()
+                    .map(x -> x + "." + CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD)
+                    .collect(Collectors.toSet());
+        }
+        return Collections.emptySet();
+    }
 }

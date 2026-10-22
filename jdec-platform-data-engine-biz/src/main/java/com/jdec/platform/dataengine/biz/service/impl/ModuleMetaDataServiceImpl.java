@@ -62,6 +62,7 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
 
             ModuleInfo moduleInfo = entry.getValue();
             moduleCombineInfo.setModuleInfo(moduleInfo);
+            moduleCombineInfo.setProjectTableRelations(projectTableRelationsDTO);
 
             if (CollectionUtil.isNotEmpty(moduleInfo.getFields())) {
                 Set<String> subTables =
@@ -74,6 +75,10 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                                 .map(x -> x.getTableName())
                                 .collect(Collectors.toSet());
                 moduleCombineInfo.setSubTables(subTables);
+                moduleCombineInfo.getAllTables().add(moduleInfo.getPrimaryTable());
+                if (CollectionUtil.isNotEmpty(subTables)) {
+                    moduleCombineInfo.getAllTables().addAll(subTables);
+                }
                 moduleInfo.getFields().stream()
                         .forEach(
                                 x -> {
@@ -103,7 +108,6 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                 }
             }
             // 构建主表关联 关系
-            moduleCombineInfo.setProjectTableRelations(projectTableRelationsDTO);
             moduleCombineInfo.setMainTableRelationDTO(
                     projectTableRelationsDTO.getAllRelations().stream()
                             .filter(

@@ -67,4 +67,7 @@ public class ApprovalProcessDTO {
 
     // 操作时间
     private LocalDateTime createdDate;
+
+    // 系统自动更新记录
+    private Object autoRemark;
 }
