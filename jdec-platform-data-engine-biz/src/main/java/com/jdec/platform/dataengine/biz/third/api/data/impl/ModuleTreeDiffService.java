@@ -221,6 +221,8 @@ public class ModuleTreeDiffService {
                                                 OBJECT_MAPPER.readTree(
                                                         changeObj.getFirstSnapshot());
                                         versionCompareItem.currentOld(currentOld);
+                                    } else {
+                                        versionCompareItem.currentOld(changeObj.getFirstSnapshot());
                                     }
                                     versionCompareItem.current(newVal);
                                     addVersionItem = true;
@@ -230,6 +232,8 @@ public class ModuleTreeDiffService {
                                     Object currentOld =
                                             OBJECT_MAPPER.readTree(changeObj.getSecondSnapshot());
                                     versionCompareItem.currentOld(currentOld);
+                                } else {
+                                    versionCompareItem.currentOld(changeObj.getSecondSnapshot());
                                 }
                                 versionCompareItem.current(newVal);
                                 addVersionItem = true;
@@ -240,6 +244,8 @@ public class ModuleTreeDiffService {
                                     Object currentOld =
                                             OBJECT_MAPPER.readTree(changeObj.getFirstSnapshot());
                                     versionCompareItem.currentOld(currentOld);
+                                } else {
+                                    versionCompareItem.currentOld(changeObj.getFirstSnapshot());
                                 }
 
                                 versionCompareItem.current(newVal);
