@@ -5,8 +5,6 @@ import cn.hutool.core.collection.ListUtil;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
-import com.jdec.platform.dataengine.biz.decoupleprocess.event.ApprovalSaveEvent;
-import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
@@ -270,21 +268,6 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 rootModule.getModuleInfo().getPrimaryTable());
                 moduleDataStoreDTO.setMainTableBusinessNo(businessNo);
                 moduleDataStoreDTO.setMainTableVersionNo(versionNo);
-
-                ApprovalSaveEvent event = new ApprovalSaveEvent(null);
-                event.setBasicSaveModel(
-                        BasicSaveModel.builder()
-                                .subjectId(AppContext.getSubjectId())
-                                .projectNo(AppContext.getProjectNo())
-                                .loginUser(UserContext.getLoginUser())
-                                .saveType(saveType)
-                                .build());
-                event.setDetailData(detailData);
-                event.setRootModuleId(rootModuleId);
-                event.setRootModuleDataId(rootModuleMainTableDataId);
-                event.setBusinessNo(businessNo);
-                event.setVersionNo(versionNo);
-                applicationEventPublisher.publishEvent(event);
             }
         }
 
