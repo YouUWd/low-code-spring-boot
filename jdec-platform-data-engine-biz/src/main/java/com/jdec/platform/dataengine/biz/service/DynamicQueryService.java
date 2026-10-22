@@ -421,22 +421,22 @@ public class DynamicQueryService {
                     wordCloudVersionData.forEach(
                             ele -> {
                                 // 字段用到的词数据最新版本
-                                List<Object> wordList =
-                                        ele.getWordUUUIDs().stream()
-                                                .map(
-                                                        item -> {
-                                                            return relationNoWordMap
-                                                                    .get(ele.getRelationNo())
-                                                                    .stream()
-                                                                    .filter(
-                                                                            v ->
-                                                                                    item.equals(
-                                                                                            v.get(
-                                                                                                    "uuid")))
-                                                                    .findFirst()
-                                                                    .orElse(null);
-                                                        })
-                                                .collect(Collectors.toList());
+                                List<Object> wordList = new ArrayList<>();
+
+                                for (String wordUUID : ele.getWordUUUIDs()) {
+                                    if (relationNoWordMap.containsKey(ele.getRelationNo())
+                                            && !CollectionUtils.isEmpty(
+                                                    relationNoWordMap.get(ele.getRelationNo()))) {
+                                        Map<String, Object> targetWord =
+                                                relationNoWordMap.get(ele.getRelationNo()).stream()
+                                                        .filter(v -> wordUUID.equals(v.get("uuid")))
+                                                        .findFirst()
+                                                        .orElse(null);
+                                        if (Objects.nonNull(targetWord)) {
+                                            wordList.add(targetWord);
+                                        }
+                                    }
+                                }
 
                                 JsonNode wordNode;
                                 try {
@@ -465,6 +465,17 @@ public class DynamicQueryService {
                                             businessNoMap.get(ele.getBusinessNo())));
                 }
 
+                // 处理子模块数据
+                if (!CollectionUtils.isEmpty(recordDataDTO.getChildren())) {
+                    for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
+                        assembleLatestVersionData(
+                                moduleTreeDTO, child, referenceQueryParamMap, relationNoWordMap);
+                    }
+                }
+            }
+        } else {
+            // 处理子模块数据
+            for (RecordDataDTO recordDataDTO : moduleData.getRecord()) {
                 // 处理子模块数据
                 if (!CollectionUtils.isEmpty(recordDataDTO.getChildren())) {
                     for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {

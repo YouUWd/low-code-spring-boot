@@ -8,6 +8,7 @@ import com.jdec.platform.shared.third.WordApiClient;
 import java.util.*;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 // 词云数据查询实现类
 @Service
@@ -21,21 +22,24 @@ public class WordCloudRefVersionDataQueryStrategy implements VersionDataQueryStr
             VersionDataQueryContext versionDataQueryContext) {
         List<RelationWordParam> params = new ArrayList<>();
 
-        versionDataQueryContext
-                .getRelationNoWordUUIDMap()
-                .entrySet()
+        versionDataQueryContext.getRelationNoWordUUIDMap().entrySet().stream()
+                .filter(entry -> !CollectionUtils.isEmpty(entry.getValue()))
                 .forEach(
                         entry -> {
                             params.add(new RelationWordParam(entry.getKey(), entry.getValue()));
                         });
 
-        Map<String, Object> paramMap = new HashMap<>();
-        paramMap.put("param", params);
+        if (CollectionUtils.isEmpty(params)) {
+            return Collections.emptyList();
+        } else {
+            Map<String, Object> paramMap = new HashMap<>();
+            paramMap.put("param", params);
 
-        List<Map<String, Object>> wordResult =
-                wordApiClient.getRelationWordEdit(paramMap, new TypeReference<>() {});
+            List<Map<String, Object>> wordResult =
+                    wordApiClient.getRelationWordEdit(paramMap, new TypeReference<>() {});
 
-        return wordResult;
+            return wordResult;
+        }
     }
 
     @Override
