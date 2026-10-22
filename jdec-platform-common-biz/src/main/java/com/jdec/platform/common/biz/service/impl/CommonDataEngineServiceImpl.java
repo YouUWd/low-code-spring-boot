@@ -10,13 +10,11 @@ import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
+import com.jdec.platform.config.api.SysFieldApi;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.SysModuleApi;
 import com.jdec.platform.config.api.dto.common.*;
-import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
-import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
-import com.jdec.platform.config.api.dto.response.SysMenuResp;
-import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
+import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
@@ -48,6 +46,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
     private final SysMenuApi sysMenuApi;
 
     private final SysModuleApi sysModuleApi;
+
+    private final SysFieldApi sysFieldApi;
 
     private final UserMenuHeaderApi userMenuHeaderApi;
 
@@ -150,7 +150,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 Set<Long> modulePermissionFields =
                         permMap
                                 .get(targetMenu.getModuleId())
-                                .getFieldPermissions()
+                                .getModuleFieldPermissions()
                                 .entrySet()
                                 .stream()
                                 .filter(
@@ -305,6 +305,14 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             }
         }
 
+        // 获取SysField列表并按id映射
+        Map<Long, SysFieldResp> fieldIdMap =
+                sysFieldApi
+                        .getValidSysFields(
+                                AppContext.getProjectNo(), AppContext.getSubjectId(), null)
+                        .stream()
+                        .collect(Collectors.toMap(SysFieldResp::getId, v -> v));
+
         // 构建模块元数据配置列表 (ModuleMetaDTO)
         ModuleMetaDTO metaDTO =
                 buildModuleMetaList(
@@ -313,6 +321,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         permMap,
                         moduleIdHeaderMap,
                         nameToWorldConfMap,
+                        fieldIdMap,
                         rootNode,
                         canEdit,
                         canApply);
@@ -405,6 +414,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             Map<Long, ModulePermissionDTO> permMap,
             Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap,
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
+            Map<Long, SysFieldResp> fieldIdMap,
             ModuleTreeDTO moduleTreeDTO,
             Boolean canEdit,
             Boolean canApply) {
@@ -450,8 +460,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                         .getRelationBusinessNo()
                                                 : null)
                                 .businessTypeName(
-                                        worldCloudConfigMap.containsKey(fullKey)
-                                                ? worldCloudConfigMap.get(fullKey).getRelationName()
+                                        fieldIdMap.containsKey(f.getId())
+                                                ? fieldIdMap.get(f.getId()).getBusinessTypeName()
                                                 : null)
                                 .build();
 
@@ -491,6 +501,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 permMap,
                                 moduleIdHeaderMap,
                                 worldCloudConfigMap,
+                                fieldIdMap,
                                 moduleTreeDTO,
                                 canEdit,
                                 canApply));
