@@ -32,6 +32,8 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 统一配置开放接口服务实现
@@ -534,6 +536,7 @@ public class ConfigServiceImpl implements ConfigApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<FieldWordCloudDTO> getWordCloudFields(String projectNo, Long subjectId) {
         log.debug("查询项目 {} 主体 {} 的词云配置字段列表", projectNo, subjectId);
 
