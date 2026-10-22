@@ -187,7 +187,7 @@ public class ModuleTreeDiffService {
             Map<String, Object> newRow,
             Map<String, VersionSnapShot> currentChangeMap) {
         Map<String, VersionCompareItem> changeList = new HashMap<>();
-        if (Objects.isNull(newRow) || Objects.isNull(oldRow)) {
+        if (Objects.isNull(newRow)) {
             return changeList;
         }
 
