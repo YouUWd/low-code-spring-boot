@@ -81,7 +81,10 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
 
         ApprovalEvent approvalEvent = new ApprovalEvent();
         BeanUtils.copyProperties(req, approvalEvent);
-        approvalEvent.setApplicantId(UserContext.getMockUserId());
+        approvalEvent.setApplicantId(
+                Objects.nonNull(UserContext.getMockUserId())
+                        ? UserContext.getMockUserId()
+                        : UserContext.getRealUserId());
         approvalEvent.setCurrentUserId(UserContext.getRealUserId());
         approvalEvent.setRoleId(UserContext.getRoleId());
         approvalEvent.setSubjectId(AppContext.getSubjectId());
