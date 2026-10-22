@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonSerializable;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.FieldChangeDTO;
 import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
@@ -362,6 +363,12 @@ public class DataPersistenceUtil {
                 value = JsonUtil.obj2Json(list);
             } else if (value instanceof Map map) {
                 value = JsonUtil.obj2Json(map);
+            } else if (value instanceof org.jooq.JSON json) {
+                value = json.data();
+            } else if (value instanceof org.jooq.JSONB jsonb) {
+                value = jsonb.data();
+            } else if (value instanceof JsonSerializable js) {
+                value = JsonUtil.obj2Json(js);
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
