@@ -13,4 +13,7 @@ public class OssProperties {
     private String secretKey;
     private String bucketName;
     private boolean pathStyleAccess;
+
+    /** 外部公开访问域名或反代前缀 (可选，配置后优先使用) */
+    private String domain;
 }

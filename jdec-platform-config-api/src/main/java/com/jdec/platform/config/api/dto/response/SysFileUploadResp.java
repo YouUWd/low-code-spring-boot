@@ -16,24 +16,12 @@ public class SysFileUploadResp {
     @Schema(description = "文件主键ID")
     private Long id;
 
-    @Schema(description = "关联菜单ID")
-    private Long menuId;
-
-    @Schema(description = "文件可访问URL")
-    private String url;
-
-    @Schema(description = "存储到OSS的相对路径ObjectKey")
-    private String objectKey;
-
-    @Schema(description = "存储到OSS的新文件名")
-    private String fileName;
-
     @Schema(description = "原始主文件名 (不含后缀)")
-    private String originalName;
+    private String name;
 
     @Schema(description = "文件扩展名")
     private String fileExt;
 
-    @Schema(description = "文件大小(字节)")
-    private Long size;
+    @Schema(description = "存储到OSS的相对路径ObjectKey")
+    private String objectKey;
 }

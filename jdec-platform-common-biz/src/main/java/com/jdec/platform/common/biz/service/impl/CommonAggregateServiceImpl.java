@@ -129,7 +129,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 commonFilterResolver,
                 approvalEngine,
                 sysApprovalChainConfigApi,
-                new QueryResultEnhanceServiceImpl(sysUserApi, sysStatusApi, sysFileApi));
+                new QueryResultEnhanceServiceImpl(sysUserApi, sysStatusApi));
     }
 
     public CommonAggregateServiceImpl(
