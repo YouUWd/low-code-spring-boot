@@ -11,15 +11,10 @@
     <artifactId>jdec-platform-validation</artifactId>
 
     <dependencies>
-        <!-- 动态校验框架、AppContext、BusinessException -->
+        <!-- 统一异常、统一响应、多数据源与 jOOQ -->
         <dependency>
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-shared</artifactId>
-        </dependency>
-        <!-- 外部对象数据查询（查重校验） -->
-        <dependency>
-            <groupId>com.jdec</groupId>
-            <artifactId>jdec-platform-external-object-api</artifactId>
         </dependency>
         <!-- Lombok -->
         <dependency>

@@ -13,13 +13,17 @@ import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.dto.ApprovalProcessDTO;
 import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
-import com.jdec.platform.approval.api.req.*;
+import com.jdec.platform.approval.api.req.ApprovalListReq;
+import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
 import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
 import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
 import com.jdec.platform.config.api.*;
-import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
+import com.jdec.platform.config.api.dto.response.SysButtonResp;
+import com.jdec.platform.config.api.dto.response.SysConfigItemResp;
+import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
@@ -28,6 +32,7 @@ import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
+import com.jdec.platform.validation.SubmitCheckRouter;
 import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -63,6 +68,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final ConfigChangeMessagePublisher messagePublisher;
     private final DataEngineApi dataEngineApi;
     private final AsyncTaskService asyncTaskService; // 注入异步 Service
+    private final SubmitCheckRouter submitCheckRouter;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handleApprovalEvent(ApprovalEvent event) {
@@ -82,6 +88,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else if (approvalBusiness.getStatusValue() == 99
                 || approvalBusiness.getStatusValue() == -99) {
             throw new BusinessException(605, "审批链当前状态不为完结状态");
+        }
+
+        // 通过、驳回前按根模块执行整单校验，不通过直接中断审批操作
+        if ("pass".equals(approvalProcessDTO.getButton())
+                || "reject".equals(approvalProcessDTO.getButton())) {
+            submitCheckRouter.check(
+                    approvalBusiness.getModuleId(),
+                    approvalBusiness.getRecordId(),
+                    approvalBusiness.getBusinessNumber(),
+                    approvalBusiness.getVersionNo());
         }
 
         switch (approvalProcessDTO.getButton()) {

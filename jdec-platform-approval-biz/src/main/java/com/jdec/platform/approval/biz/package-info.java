@@ -10,6 +10,7 @@
             "hr.api",
             "dataengine.api",
             "data.api",
+            "validation",
             "shared"
         })
 package com.jdec.platform.approval.biz;
