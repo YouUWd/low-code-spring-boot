@@ -1836,7 +1836,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         }
         // 加载变更页面时显示提交按钮
         if (Objects.nonNull(btnType)
-                && (btnType.equals("change-change") || btnType.equals("change"))) {
+                && (btnType.equals("change-change") || btnType.equals("change"))
+                && approvalChainBusiness.getCreatedBy().equals(userId)) {
             operations.add(
                     showButtonInfo(
                             "submit",
