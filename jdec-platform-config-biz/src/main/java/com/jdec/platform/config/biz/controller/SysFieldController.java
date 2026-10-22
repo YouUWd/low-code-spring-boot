@@ -114,4 +114,16 @@ public class SysFieldController {
         log.info("查询项目 {} 主体 {} 的数据权限字段列表", projectNo, subjectId);
         return ApiResponse.success(sysFieldApi.getDataPermissionFields(projectNo, subjectId));
     }
+
+    @Operation(summary = "查询有效字段配置列表", description = "查询 sys_field 表中的配置项，仅返回在当前项目物理数据库中确实还存在的字段配置")
+    @GetMapping("/valid-fields")
+    public ApiResponse<List<SysFieldResp>> getValidSysFields(
+            @Parameter(description = "表名（可选，不传则查所有表）", example = "sys_module")
+                    @RequestParam(required = false)
+                    String tableName) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        log.info("查询项目 {} 主体 {} 的有效字段配置列表 (tableName={})", projectNo, subjectId, tableName);
+        return ApiResponse.success(sysFieldApi.getValidSysFields(projectNo, subjectId, tableName));
+    }
 }
