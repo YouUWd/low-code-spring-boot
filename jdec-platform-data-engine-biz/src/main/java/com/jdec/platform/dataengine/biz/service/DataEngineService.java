@@ -26,11 +26,6 @@ public class DataEngineService implements DataEngineApi {
     private final ModuleDataApprovalBizService moduleDataApprovalBizService;
 
     @Override
-    public DynamicQueryResp query(DynamicQueryReq req) {
-        return dynamicQueryService.query(req);
-    }
-
-    @Override
     public NestedModuleDataDTO getDetail(DynamicDetailQueryReq dynamicDetailQueryReq) {
 
         List<NestedModuleDataDTO> detailDatas =

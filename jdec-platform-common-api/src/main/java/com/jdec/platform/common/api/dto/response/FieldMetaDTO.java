@@ -32,4 +32,8 @@ public class FieldMetaDTO implements Serializable {
 
     @Schema(description = "词云关系ID", example = "true")
     private String businessNo;
+
+    /** 业务类型名称 */
+    @Schema(description = "业务类型名称", example = "图片")
+    private String businessTypeName;
 }

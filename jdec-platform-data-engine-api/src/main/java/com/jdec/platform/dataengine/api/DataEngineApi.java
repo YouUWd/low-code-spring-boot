@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 
 public interface DataEngineApi {
-    DynamicQueryResp query(DynamicQueryReq req);
 
     NestedModuleDataDTO getDetail(DynamicDetailQueryReq dynamicDetailQueryReq);
 
