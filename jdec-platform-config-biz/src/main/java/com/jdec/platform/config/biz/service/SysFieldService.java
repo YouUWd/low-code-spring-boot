@@ -1267,112 +1267,7 @@ public class SysFieldService implements SysFieldApi {
             return Collections.emptyList();
         }
 
-        // 4. 查询关联的扩展值 (SysFieldValue)
-        List<Long> fieldIds = validFields.stream().map(SysField::getId).toList();
-        List<SysFieldValue> dbValues =
-                sysFieldValueMapper.selectList(
-                        Wrappers.<SysFieldValue>lambdaQuery()
-                                .in(SysFieldValue::getFieldId, fieldIds)
-                                .eq(SysFieldValue::getDeleted, 0));
-
-        Set<Long> chainTypeIds =
-                dbValues.stream()
-                        .map(SysFieldValue::getApprovalChainTypeId)
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toSet());
-
-        Map<Long, String> chainTypeMap = Collections.emptyMap();
-        if (!chainTypeIds.isEmpty()) {
-            chainTypeMap =
-                    sysApprovalChainTypeMapper
-                            .selectList(
-                                    Wrappers.<SysApprovalChainType>lambdaQuery()
-                                            .in(SysApprovalChainType::getId, chainTypeIds))
-                            .stream()
-                            .collect(
-                                    Collectors.toMap(
-                                            SysApprovalChainType::getId,
-                                            SysApprovalChainType::getTitle));
-        }
-
-        final Map<Long, String> finalChainTypeMap = chainTypeMap;
-        Map<Long, List<SysFieldValueResp>> valueMap =
-                dbValues.stream()
-                        .map(
-                                v ->
-                                        SysFieldValueResp.builder()
-                                                .id(v.getId())
-                                                .fieldId(v.getFieldId())
-                                                .moduleId(v.getModuleId())
-                                                .moduleName(v.getModuleName())
-                                                .fieldValue(v.getFieldValue())
-                                                .approvalChainTypeId(v.getApprovalChainTypeId())
-                                                .approvalChainTypeName(
-                                                        finalChainTypeMap.get(
-                                                                v.getApprovalChainTypeId()))
-                                                .sortOrder(v.getSortOrder())
-                                                .enabled(v.getEnabled())
-                                                .build())
-                        .collect(Collectors.groupingBy(SysFieldValueResp::getFieldId));
-
-        // 5. 查询关联模块信息 (SysModuleField)
-        Set<String> tableNames =
-                validFields.stream().map(SysField::getTableName).collect(Collectors.toSet());
-        List<SysModuleField> moduleFields =
-                sysModuleFieldMapper.selectList(
-                        Wrappers.<SysModuleField>lambdaQuery()
-                                .in(SysModuleField::getTableName, tableNames));
-
-        Map<String, List<SysFieldResp.SysFieldModuleResp>> columnModulesMap =
-                Collections.emptyMap();
-        if (!moduleFields.isEmpty()) {
-            Set<Long> involvedModuleIds =
-                    moduleFields.stream()
-                            .map(SysModuleField::getModuleId)
-                            .filter(Objects::nonNull)
-                            .collect(Collectors.toSet());
-
-            if (!involvedModuleIds.isEmpty()) {
-                LambdaQueryWrapper<SysModule> moduleWrapper =
-                        Wrappers.<SysModule>lambdaQuery()
-                                .in(SysModule::getId, involvedModuleIds)
-                                .eq(SysModule::getProjectNo, projectNo);
-                if (subjectId != null) {
-                    moduleWrapper.eq(SysModule::getSubjectId, subjectId);
-                }
-                Map<Long, SysModule> moduleMap =
-                        sysModuleMapper.selectList(moduleWrapper).stream()
-                                .collect(
-                                        Collectors.toMap(SysModule::getId, m -> m, (m1, m2) -> m1));
-
-                columnModulesMap =
-                        moduleFields.stream()
-                                .filter(sf -> moduleMap.containsKey(sf.getModuleId()))
-                                .collect(
-                                        Collectors.groupingBy(
-                                                sf ->
-                                                        (sf.getTableName()
-                                                                        + "#"
-                                                                        + sf.getColumnName())
-                                                                .toLowerCase(),
-                                                Collectors.mapping(
-                                                        sf -> {
-                                                            SysModule m =
-                                                                    moduleMap.get(sf.getModuleId());
-                                                            return SysFieldResp.SysFieldModuleResp
-                                                                    .builder()
-                                                                    .moduleId(m.getId())
-                                                                    .moduleName(m.getModuleName())
-                                                                    .build();
-                                                        },
-                                                        Collectors.toList())));
-            }
-        }
-
-        final Map<String, List<SysFieldResp.SysFieldModuleResp>> finalColumnModulesMap =
-                columnModulesMap;
-
-        // 6. 组装响应对象列表
+        // 4. 组装响应对象列表（无需关联其他表）
         return validFields.stream()
                 .map(
                         field -> {
@@ -1396,12 +1291,6 @@ public class SysFieldService implements SysFieldApi {
                                     .refer(field.getRefer())
                                     .dataRightFlag(field.getDataRightFlag())
                                     .combineInfo(parseCombineInfoDTO(field.getCombineInfo()))
-                                    .fieldValues(
-                                            valueMap.getOrDefault(
-                                                    field.getId(), Collections.emptyList()))
-                                    .modules(
-                                            finalColumnModulesMap.getOrDefault(
-                                                    colKey, Collections.emptyList()))
                                     .build();
                         })
                 .toList();
