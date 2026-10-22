@@ -2,10 +2,14 @@ package com.jdec.platform.common.biz.controller;
 
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderReq;
+import com.jdec.platform.config.api.SysBusinessTypeApi;
+import com.jdec.platform.config.api.dto.response.SearchConfigItemResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +23,21 @@ import org.springframework.web.bind.annotation.*;
 public class CommonMenuHeaderController {
 
     private final UserMenuHeaderApi userMenuHeaderApi;
+
+    private final SysBusinessTypeApi sysBusinessTypeApi;
+
+    @Operation(
+            summary = "根据业务类型查询搜索配置项",
+            description = "返回 sys_business_type.search_type 中配置的搜索类型集合；业务类型为空或不存在时返回空集合")
+    @GetMapping("/search-config")
+    public ApiResponse<List<SearchConfigItemResp>> listSearchConfigByBusinessType(
+            @Parameter(description = "业务类型标识", example = "descriptionText")
+                    @RequestParam(required = false)
+                    String businessTypeCode) {
+        log.info("查询业务类型 {} 的搜索配置项", businessTypeCode);
+        return ApiResponse.success(
+                sysBusinessTypeApi.listSearchConfigByBusinessType(businessTypeCode));
+    }
 
     @GetMapping
     @Operation(

@@ -85,13 +85,7 @@ class CompanyMenuQueryContractTest {
         CommonFilterResolver.PrimaryFilterResult dummyResult =
                 CommonFilterResolver.PrimaryFilterResult.of(
                         Collections.emptyList(), Collections.emptyList());
-        when(commonFilterResolver.resolveTodoFilters(any(), any(), any())).thenReturn(dummyResult);
-        when(commonFilterResolver.resolveDoneFilters(any(), any())).thenReturn(dummyResult);
-        when(commonFilterResolver.resolveAllFilters(any(), any(), any())).thenReturn(dummyResult);
-        when(commonFilterResolver.resolveDefaultFilters(any(), any())).thenReturn(dummyResult);
-        when(commonFilterResolver.resolvePrimaryFilters(
-                        any(), any(), any(), any(), any(), anyBoolean()))
-                .thenReturn(dummyResult);
+        when(commonFilterResolver.resolve(any(), any())).thenReturn(dummyResult);
 
         commonAggregateService =
                 new CommonAggregateServiceImpl(
@@ -708,21 +702,28 @@ class CompanyMenuQueryContractTest {
     }
 
     @Test
-    @DisplayName("测试待办(approvalType=1)中非审批引擎返回的自建草稿记录，btnList 成功补齐为办理(handle)")
+    @DisplayName("测试待办(approvalType=1)中记录的 btnList 成功组装为办理(handle)")
     void testApprovalButtons_fallbackForNonEngineTodoRecords() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
-        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp emptyResp =
+        com.jdec.platform.approval.api.dto.ApprpvalIdButton todoBtn =
+                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        todoBtn.setBusinessNo("CR999");
+        todoBtn.setButtonKey("handle");
+        todoBtn.setButtonName("办理");
+
+        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp approvalResp =
                 new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
-        emptyResp.setToDoList(Collections.emptyList());
-        emptyResp.setDoneList(Collections.emptyList());
-        emptyResp.setAllList(Collections.emptyList());
-        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(emptyResp);
+        approvalResp.setToDoList(List.of(todoBtn));
+        approvalResp.setDoneList(Collections.emptyList());
+        approvalResp.setAllList(List.of(todoBtn));
+        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(approvalResp);
 
         Map<String, Object> tableData = new HashMap<>();
         tableData.put("id", 999L);
-        tableData.put("created_by", 1L); // 与当前登录用户 UserContext.getUserId() 一致
+        tableData.put("business_no", "CR999");
+        tableData.put("created_by", 1L);
         tableData.put("business_status", 1);
-        tableData.put("company_name", "自建草稿企业");
+        tableData.put("company_name", "待办企业");
         DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
 
         DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
@@ -1251,7 +1252,7 @@ class CompanyMenuQueryContractTest {
     }
 
     @Test
-    @DisplayName("测试待办(approvalType=1)场景：审批待办 business_no 传递至 resolveTodoFilters")
+    @DisplayName("测试待办(approvalType=1)场景：仅启用审批引擎，关闭数据权限与草稿")
     void testApprovalType1_withoutDataPermission() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
@@ -1270,14 +1271,20 @@ class CompanyMenuQueryContractTest {
         // 执行查询
         commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().approvalType(1).build());
 
-        // 验证 CommonAggregateServiceImpl 精准向 CommonFilterResolver 编排传递语义化待办方法
-        verify(commonFilterResolver)
-                .resolveTodoFilters(
-                        eq(companyModuleTree), eq(companyRelations), eq(List.of("CR001")));
+        // 验证 CommonAggregateServiceImpl 精准向 CommonFilterResolver 传递待办组合规格 (仅审批引擎)
+        ArgumentCaptor<CommonFilterResolver.FilterSpec> specCaptor =
+                ArgumentCaptor.forClass(CommonFilterResolver.FilterSpec.class);
+        verify(commonFilterResolver).resolve(eq(companyModuleTree), specCaptor.capture());
+        CommonFilterResolver.FilterSpec spec = specCaptor.getValue();
+        assertTrue(spec.isApprovalEnabled());
+        assertEquals(List.of("CR001"), spec.getBusinessNos());
+        assertFalse(spec.isDraftEnabled());
+        assertNull(spec.getDraftStatus());
+        assertFalse(spec.isDataPermissionEnabled());
     }
 
     @Test
-    @DisplayName("测试全部(approvalType=3)场景：审批全部单据、created_by 与数据权限传递至 resolveAllFilters")
+    @DisplayName("测试全部(approvalType=3)场景：启用审批引擎与数据权限，关闭草稿")
     void testApprovalType3_dataPermissionIdsUnionWithApprovalIds() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
@@ -1296,10 +1303,17 @@ class CompanyMenuQueryContractTest {
         // 执行查询
         commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().approvalType(3).build());
 
-        // 验证 CommonAggregateServiceImpl 精准向 CommonFilterResolver 编排传递语义化全部方法
-        verify(commonFilterResolver)
-                .resolveAllFilters(
-                        eq(companyModuleTree), eq(companyRelations), eq(List.of("CR001")));
+        // 验证 CommonAggregateServiceImpl 精准向 CommonFilterResolver 传递全部组合规格 (审批引擎 + 数据权限，草稿关闭)
+        ArgumentCaptor<CommonFilterResolver.FilterSpec> specCaptor =
+                ArgumentCaptor.forClass(CommonFilterResolver.FilterSpec.class);
+        verify(commonFilterResolver).resolve(eq(companyModuleTree), specCaptor.capture());
+        CommonFilterResolver.FilterSpec spec = specCaptor.getValue();
+        assertTrue(spec.isApprovalEnabled());
+        assertEquals(List.of("CR001"), spec.getBusinessNos());
+        assertFalse(spec.isDraftEnabled());
+        assertNull(spec.getDraftStatus());
+        assertTrue(spec.isDataPermissionEnabled());
+        assertEquals(companyRelations, spec.getProjectRelations());
     }
 
     @Test

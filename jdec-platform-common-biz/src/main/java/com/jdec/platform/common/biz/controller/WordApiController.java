@@ -2,12 +2,16 @@ package com.jdec.platform.common.biz.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.third.WordApiClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -63,5 +67,34 @@ public class WordApiController {
     public ApiResponse<Void> bindOrCancel(@RequestBody Map<String, Object> params) {
         wordApiClient.getBindOrCancel(params);
         return ApiResponse.success();
+    }
+
+    private static final Set<String> REMOVED_FIELDS = Set.of("id", "pid", "relation_no");
+
+    @PostMapping("/relation/word/edit")
+    @Operation(summary = "获取关系词编辑信息")
+    public ApiResponse<JsonNode> getRelationWordEdit(@RequestBody Map<String, Object> params) {
+        JsonNode data = wordApiClient.getRelationWordEdit(params, new TypeReference<>() {});
+        removeFields(data);
+        return ApiResponse.success(data);
+    }
+
+    /** 递归移除节点中的指定字段（如 id、pid、relation_no） */
+    private void removeFields(JsonNode node) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof ObjectNode objectNode) {
+            for (String field : REMOVED_FIELDS) {
+                objectNode.remove(field);
+            }
+            for (Iterator<JsonNode> it = objectNode.elements(); it.hasNext(); ) {
+                removeFields(it.next());
+            }
+        } else if (node instanceof ArrayNode arrayNode) {
+            for (JsonNode item : arrayNode) {
+                removeFields(item);
+            }
+        }
     }
 }

@@ -44,6 +44,12 @@ public class SysField {
     /** 关联关系名称 */
     private String relationName;
 
+    /** 业务类型编码 */
+    private String businessTypeCode;
+
+    /** 业务类型名称 */
+    private String businessTypeName;
+
     /** 是否生成权限节点.0--否,1--是 */
     private Integer dataRightFlag;
 

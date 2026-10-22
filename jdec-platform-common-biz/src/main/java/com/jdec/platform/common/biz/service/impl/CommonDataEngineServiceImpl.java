@@ -431,9 +431,12 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 : col;
 
                 ModulePermissionDTO.FieldPermissionItem fp =
-                        (modPerm != null && modPerm.getFieldPermissions() != null)
-                                ? modPerm.getFieldPermissions().get(f.getId())
-                                : null;
+                        (modPerm != null && modPerm.getModuleFieldPermissions() != null)
+                                ? modPerm.getModuleFieldPermissions().get(f.getId())
+                                : (modPerm != null
+                                                && modPerm.getModuleTreeFieldPermissions() != null)
+                                        ? modPerm.getModuleTreeFieldPermissions().get(f.getId())
+                                        : null;
 
                 FieldMetaDTO fMeta =
                         FieldMetaDTO.builder()

@@ -51,7 +51,7 @@ public class SysBusinessTypeService implements SysBusinessTypeApi {
     @Override
     public List<SearchConfigItemResp> listSearchConfigByBusinessType(String businessTypeCode) {
         if (!StringUtils.hasText(businessTypeCode)) {
-            throw new BusinessException("业务类型标识不能为空");
+            return Collections.emptyList();
         }
         SysBusinessType entity =
                 sysBusinessTypeMapper.selectOne(
@@ -59,7 +59,7 @@ public class SysBusinessTypeService implements SysBusinessTypeApi {
                                 .eq(SysBusinessType::getBusinessTypeCode, businessTypeCode.trim())
                                 .eq(SysBusinessType::getDeleted, 0));
         if (entity == null) {
-            throw new BusinessException("业务类型不存在: " + businessTypeCode);
+            return Collections.emptyList();
         }
         return parseSearchType(entity.getBusinessTypeCode(), entity.getSearchType());
     }

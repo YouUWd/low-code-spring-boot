@@ -34,7 +34,4 @@ public class OptionReq implements Serializable {
 
     @Schema(description = "候选项排序方向: ASC (升序) / DESC (降序)，为 null 或空时默认 ASC", example = "ASC")
     private String direction;
-
-    @Schema(description = "最大返回候选项数量限制，默认为 100", example = "100")
-    private Integer limit;
 }

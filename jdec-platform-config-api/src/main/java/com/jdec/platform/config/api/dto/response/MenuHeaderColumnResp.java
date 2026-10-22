@@ -58,6 +58,12 @@ public class MenuHeaderColumnResp {
     @Schema(description = "搜索控件类型")
     private MenuHeaderSearchTypeResp searchType;
 
+    @Schema(description = "业务类型编码（仅字段节点输出，取自 sys_field 关联配置）", example = "contract")
+    private String businessTypeCode;
+
+    @Schema(description = "业务类型名称（仅字段节点输出，取自 sys_field 关联配置）", example = "合同")
+    private String businessTypeName;
+
     @Schema(description = "文本是否省略：0-否，1-是")
     private Integer ellipsis;
 

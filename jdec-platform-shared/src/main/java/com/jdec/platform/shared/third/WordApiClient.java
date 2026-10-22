@@ -2,10 +2,13 @@ package com.jdec.platform.shared.third;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.net.http.HttpClient;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
@@ -89,6 +92,79 @@ public class WordApiClient extends BaseApiClient {
     }
 
     /**
+     * 获取关系词编辑信息。
+     *
+     * <p>请求参数示例：
+     *
+     * <pre>{@code
+     * {
+     *     "param": [
+     *         {
+     *             "business_no": "GX2608251510391",
+     *             "word_uuid": ["xabsx","xsfew"]
+     *         },
+     *         {
+     *             "business_no": "GX2608251510391",
+     *             "word_uuid": ["xabsx","xsfew"]
+     *         }
+     *     ]
+     * }
+     * }</pre>
+     *
+     * @param params 请求参数（可为包含 "param" 的 Map 或请求对象，亦可直接传入 param 列表）
+     * @param dataType 返回数据类型
+     * @return InnerApiResponse 中的 data
+     */
+    public <T> T getRelationWordEdit(Object params, TypeReference<T> dataType) {
+        Map<String, Object> body = new HashMap<>();
+        Object paramVal = null;
+        if (params instanceof Map<?, ?> map) {
+            if (map.containsKey("param")) {
+                paramVal = map.get("param");
+            } else {
+                paramVal = map;
+            }
+        } else if (params instanceof Collection<?>
+                || (params != null && params.getClass().isArray())) {
+            paramVal = params;
+        } else if (params != null) {
+            Map<String, Object> map = convertToMap(params);
+            if (map.containsKey("param")) {
+                paramVal = map.get("param");
+            } else {
+                paramVal = params;
+            }
+        }
+        // 关键：Word API 约定 param 字段必须为 JSON 字符串参与签名与传输
+        String paramJson = (paramVal instanceof String str) ? str : objectMapperToJson(paramVal);
+        body.put("param", paramJson);
+        return invokeAndUnwrap("getRelationWordEdit", body, dataType);
+    }
+
+    /**
+     * 获取关系词编辑信息（直接传入 param 列表）。
+     *
+     * @param paramList 参数项列表，每项需包含 business_no 和 word_uuid
+     * @param dataType 返回数据类型
+     * @return InnerApiResponse 中的 data
+     */
+    public <T> T getRelationWordEdit(List<?> paramList, TypeReference<T> dataType) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("param", objectMapperToJson(paramList));
+        return invokeAndUnwrap("getRelationWordEdit", body, dataType);
+    }
+
+    /**
+     * 获取关系词编辑信息（默认返回 JsonNode）。
+     *
+     * @param params 请求参数
+     * @return JsonNode 数据节点
+     */
+    public JsonNode getRelationWordEdit(Object params) {
+        return getRelationWordEdit(params, new TypeReference<>() {});
+    }
+
+    /**
      * 绑定或取消绑定。
      *
      * @param params 请求参数
@@ -129,23 +205,11 @@ public class WordApiClient extends BaseApiClient {
 
     /** 将对象序列化为 JSON 字符串（用于 param 字段） */
     private String objectMapperToJson(Object obj) {
+        if (obj == null) {
+            return "[]";
+        }
         try {
-            // 复用父类的 ObjectMapper 不可直接访问，这里通过 convertToMap 间接实现
-            // 对于简单 Map 直接 toString 即可满足原始逻辑
-            var map = convertToMap(obj);
-            StringBuilder sb = new StringBuilder("{");
-            boolean first = true;
-            for (var entry : map.entrySet()) {
-                if (!first) sb.append(",");
-                sb.append("\"")
-                        .append(entry.getKey())
-                        .append("\":\"")
-                        .append(entry.getValue())
-                        .append("\"");
-                first = false;
-            }
-            sb.append("}");
-            return sb.toString();
+            return getObjectMapper().writeValueAsString(obj);
         } catch (Exception e) {
             throw new BusinessException(500, "序列化参数失败: " + e.getMessage(), e);
         }

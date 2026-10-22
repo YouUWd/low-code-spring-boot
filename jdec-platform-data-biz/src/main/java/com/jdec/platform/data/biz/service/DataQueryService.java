@@ -81,11 +81,7 @@ public class DataQueryService {
         QueryPlan plan = queryPlanCompiler.compile(req, planMetaLoader.load(req.getModuleId()));
         List<Object> values =
                 queryPlanExecutor.executeDistinctOptions(
-                        plan,
-                        req.getTableName(),
-                        req.getColumnName(),
-                        req.getDirection(),
-                        req.getLimit());
+                        plan, req.getTableName(), req.getColumnName(), req.getDirection());
 
         return values.stream()
                 .filter(Objects::nonNull)

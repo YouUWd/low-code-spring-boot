@@ -31,11 +31,11 @@ public class SysBusinessTypeController {
 
     @Operation(
             summary = "根据业务类型查询搜索配置项",
-            description = "返回 sys_business_type.search_type 中配置的搜索类型集合")
+            description = "返回 sys_business_type.search_type 中配置的搜索类型集合；业务类型为空或不存在时返回空集合")
     @GetMapping("/search-config")
     public ApiResponse<List<SearchConfigItemResp>> listSearchConfigByBusinessType(
-            @Parameter(description = "业务类型标识", example = "descriptionText", required = true)
-                    @RequestParam
+            @Parameter(description = "业务类型标识", example = "descriptionText")
+                    @RequestParam(required = false)
                     String businessTypeCode) {
         log.info("查询业务类型 {} 的搜索配置项", businessTypeCode);
         return ApiResponse.success(

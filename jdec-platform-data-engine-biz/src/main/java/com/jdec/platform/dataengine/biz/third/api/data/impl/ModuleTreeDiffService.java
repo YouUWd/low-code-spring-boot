@@ -187,7 +187,7 @@ public class ModuleTreeDiffService {
             Map<String, Object> newRow,
             Map<String, VersionSnapShot> currentChangeMap) {
         Map<String, VersionCompareItem> changeList = new HashMap<>();
-        if (Objects.isNull(newRow) || Objects.isNull(oldRow)) {
+        if (Objects.isNull(newRow)) {
             return changeList;
         }
 
@@ -206,7 +206,6 @@ public class ModuleTreeDiffService {
             if (Objects.nonNull(oldRow) && !isEqual(newVal, oldVal)) {
                 versionCompareItem.pre(oldVal).current(newVal);
                 addVersionItem = true;
-                //                    continue;
             }
             if (Objects.nonNull(currentChangeMap.get(fieldKey))) {
                 VersionSnapShot changeObj = currentChangeMap.get(fieldKey);
@@ -217,22 +216,39 @@ public class ModuleTreeDiffService {
                         if (Objects.nonNull(changeObj.getSecondSnapshot())) {
                             if (isEqual(newVal, changeObj.getSecondSnapshot())) {
                                 if (!isEqual(newVal, changeObj.getFirstSnapshot())) {
-                                    versionCompareItem
-                                            .currentOld(changeObj.getFirstSnapshot())
-                                            .current(newVal);
+                                    if (isJsonStr(changeObj.getFirstSnapshot())) {
+                                        Object currentOld =
+                                                OBJECT_MAPPER.readTree(
+                                                        changeObj.getFirstSnapshot());
+                                        versionCompareItem.currentOld(currentOld);
+                                    } else {
+                                        versionCompareItem.currentOld(changeObj.getFirstSnapshot());
+                                    }
+                                    versionCompareItem.current(newVal);
                                     addVersionItem = true;
                                 }
                             } else {
-                                versionCompareItem
-                                        .currentOld(changeObj.getSecondSnapshot())
-                                        .current(newVal);
+                                if (isJsonStr(changeObj.getSecondSnapshot())) {
+                                    Object currentOld =
+                                            OBJECT_MAPPER.readTree(changeObj.getSecondSnapshot());
+                                    versionCompareItem.currentOld(currentOld);
+                                } else {
+                                    versionCompareItem.currentOld(changeObj.getSecondSnapshot());
+                                }
+                                versionCompareItem.current(newVal);
                                 addVersionItem = true;
                             }
                         } else {
                             if (!isEqual(newVal, changeObj.getFirstSnapshot())) {
-                                versionCompareItem
-                                        .currentOld(changeObj.getFirstSnapshot())
-                                        .current(newVal);
+                                if (isJsonStr(changeObj.getFirstSnapshot())) {
+                                    Object currentOld =
+                                            OBJECT_MAPPER.readTree(changeObj.getFirstSnapshot());
+                                    versionCompareItem.currentOld(currentOld);
+                                } else {
+                                    versionCompareItem.currentOld(changeObj.getFirstSnapshot());
+                                }
+
+                                versionCompareItem.current(newVal);
                                 addVersionItem = true;
                             }
                         }
@@ -401,11 +417,11 @@ public class ModuleTreeDiffService {
     private static boolean compareAnyJsonSide(Object source, Object target) {
         try {
             if (source instanceof String && isJsonStr((String) source)) {
-                source = OBJECT_MAPPER.readValue((String) source, Object.class);
+                source = OBJECT_MAPPER.readTree((String) source);
             }
 
             if (target instanceof String && isJsonStr((String) target)) {
-                target = OBJECT_MAPPER.readValue((String) target, Object.class);
+                target = OBJECT_MAPPER.readTree((String) target);
             }
 
             return source.equals(target);
