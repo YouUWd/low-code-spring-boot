@@ -646,7 +646,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         if (Objects.isNull(approvalChainBusiness)) {
             return false;
         }
-        return approvalChainBusiness.getCurrentStep() > 0;
+        return approvalChainBusiness.getCurrentStep() > 0
+                || approvalChainBusiness.getStatusValue() == -99;
     }
 
     // 没有启用审批链时新建业务直接提交------------------------------------------------------------------------
