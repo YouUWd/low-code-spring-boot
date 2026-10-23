@@ -16,6 +16,8 @@ import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
+import com.jdec.platform.common.biz.custom.CustomActionContext;
+import com.jdec.platform.common.biz.custom.RowCustomActionService;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.common.biz.service.QueryResultEnhanceService;
 import com.jdec.platform.common.biz.service.impl.CommonFilterResolver.FilterSpec;
@@ -89,6 +91,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private final IApprovalEngine approvalEngine;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final QueryResultEnhanceService queryResultEnhanceService;
+    private final RowCustomActionService rowCustomActionService;
 
     @Autowired
     public CommonAggregateServiceImpl(
@@ -99,7 +102,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             CommonFilterResolver commonFilterResolver,
             IApprovalEngine approvalEngine,
             SysApprovalChainConfigApi sysApprovalChainConfigApi,
-            QueryResultEnhanceService queryResultEnhanceService) {
+            QueryResultEnhanceService queryResultEnhanceService,
+            RowCustomActionService rowCustomActionService) {
         this.userMenuHeaderApi = userMenuHeaderApi;
         this.openMenuApi = openMenuApi;
         this.configApi = configApi;
@@ -108,6 +112,28 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         this.approvalEngine = approvalEngine;
         this.sysApprovalChainConfigApi = sysApprovalChainConfigApi;
         this.queryResultEnhanceService = queryResultEnhanceService;
+        this.rowCustomActionService = rowCustomActionService;
+    }
+
+    public CommonAggregateServiceImpl(
+            UserMenuHeaderApi userMenuHeaderApi,
+            OpenMenuApi openMenuApi,
+            ConfigApi configApi,
+            DataApi dataApi,
+            CommonFilterResolver commonFilterResolver,
+            IApprovalEngine approvalEngine,
+            SysApprovalChainConfigApi sysApprovalChainConfigApi,
+            QueryResultEnhanceService queryResultEnhanceService) {
+        this(
+                userMenuHeaderApi,
+                openMenuApi,
+                configApi,
+                dataApi,
+                commonFilterResolver,
+                approvalEngine,
+                sysApprovalChainConfigApi,
+                queryResultEnhanceService,
+                new RowCustomActionService(Collections.emptyList()));
     }
 
     public CommonAggregateServiceImpl(
@@ -227,6 +253,26 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 projectRelations,
                                 hasEditPermission));
 
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
+        String moduleCode = rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null;
+        Integer enableActive =
+                (rootModuleInfo != null && rootModuleInfo.getEnableActive() != null)
+                        ? rootModuleInfo.getEnableActive()
+                        : 0;
+        Long changeModuleId = rootModuleInfo != null ? rootModuleInfo.getChangeModuleId() : null;
+
+        CustomActionContext customActionCtx =
+                new CustomActionContext(
+                        AppContext.getProjectNo(),
+                        rootModuleId,
+                        moduleCode,
+                        primaryTable,
+                        enableActive,
+                        changeModuleId,
+                        userId,
+                        roleId,
+                        hasEditPermission);
+
         if (filterResult.isEmpty()) {
             log.info(
                     "[PageQuery-ShortCircuit] 主表权限/审批过滤结果为空，短路直接返回空页面: menuId={}, rootModuleId={}, primaryTable={}",
@@ -236,7 +282,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             ModuleDataNode emptyNode = buildEmptyModuleDataNode(rootModuleId, menuId);
             List<ApprovalRowItem> emptyApprovalRows =
                     approvalEnabled ? Collections.emptyList() : null;
-            return assembleMenuDataResp(headerRoot, rootModulePerm, emptyNode, emptyApprovalRows);
+            List<ApprovalRowItem> emptyCustomActions =
+                    (rowCustomActionService != null
+                                    && rowCustomActionService.hasActiveProviders(customActionCtx))
+                            ? Collections.emptyList()
+                            : null;
+            return assembleMenuDataResp(
+                    headerRoot, rootModulePerm, emptyNode, emptyApprovalRows, emptyCustomActions);
         }
 
         if (!filterResult.filters().isEmpty()) {
@@ -294,6 +346,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 rawRecords, primaryTable, approvalType, approvalResp, userId)
                         : null;
 
+        List<ApprovalRowItem> customActions =
+                rowCustomActionService != null
+                        ? rowCustomActionService.buildCustomActions(rawRecords, customActionCtx)
+                        : null;
+
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
@@ -303,15 +360,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         log.info(
-                "[PageQuery-Finish] 分页查询组装完成: menuId={}, rootModuleId={}, 总耗时={}ms, total={}, 返回记录数={}, 审批行数={}",
+                "[PageQuery-Finish] 分页查询组装完成: menuId={}, rootModuleId={}, 总耗时={}ms, total={}, 返回记录数={}, 审批行数={}, 定制操作行数={}",
                 menuId,
                 rootModuleId,
                 System.currentTimeMillis() - queryStart,
                 total,
                 recordItems.size(),
-                approvalRows != null ? approvalRows.size() : "null(未启用审批)");
+                approvalRows != null ? approvalRows.size() : "null(未启用审批)",
+                customActions != null ? customActions.size() : "null(无定制操作)");
 
-        return assembleMenuDataResp(headerRoot, rootModulePerm, rootNode, approvalRows);
+        return assembleMenuDataResp(
+                headerRoot, rootModulePerm, rootNode, approvalRows, customActions);
     }
 
     @Override
@@ -965,7 +1024,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             MenuHeaderColumnResp headerRoot,
             ModulePermissionDTO rootModulePerm,
             ModuleDataNode dataNode,
-            List<ApprovalRowItem> approvalRows) {
+            List<ApprovalRowItem> approvalRows,
+            List<ApprovalRowItem> customActions) {
         ModuleSimplePermissionDTO permission =
                 ModuleSimplePermissionDTO.builder()
                         .apply(
@@ -992,6 +1052,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 .header(headerRoot)
                 .permission(permission)
                 .approval(approvalRows)
+                .customActions(customActions)
                 .data(dataNode)
                 .build();
     }

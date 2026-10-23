@@ -32,6 +32,9 @@ public class MenuDataResp implements Serializable {
     @Schema(description = "单据审批链列表信息 (row包含id与btnList)")
     private List<ApprovalRowItem> approval;
 
+    @Schema(description = "行级定制扩展操作列表 (包含id与btnList，如启停等定制按钮)")
+    private List<ApprovalRowItem> customActions;
+
     @Schema(description = "模块数据树载荷")
     private ModuleDataNode data;
 }
