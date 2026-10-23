@@ -118,7 +118,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Transactional(rollbackFor = Exception.class)
     public Long businessSave(DynamicSaveReq req) {
         // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
-        checkSaveBeforeStore(req);
+        //        checkSaveBeforeStore(req);
         DynamicSaveResp result = dataEngineApi.save(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
             return result.getChildDataId();
@@ -161,6 +161,12 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
      * <p>主单ID没有值代表新增：有审批链新增保存需要按无审批链保存同样的规则校验，已有主单ID的编辑保存不做校验。 主表名取自模块树配置，取不到时按新增处理。
      */
     private boolean hasMainRecordId(NestedModuleDataDTO nestedModuleData) {
+        return hasMainRecordId(moduleTreeOf(nestedModuleData), nestedModuleData);
+    }
+
+    /** 主模块第一条记录是否已有主单ID（主表 {@code id}）。 */
+    private boolean hasMainRecordId(
+            ModuleTreeDTO moduleTree, NestedModuleDataDTO nestedModuleData) {
         List<RecordDataDTO> records = nestedModuleData.getRecord();
         if (records == null || records.isEmpty() || records.get(0) == null) {
             return false;
@@ -169,16 +175,22 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         if (row == null || row.isEmpty()) {
             return false;
         }
-        ModuleTreeDTO moduleTree =
-                configApi.getModuleTree(
-                        AppContext.getProjectNo(),
-                        AppContext.getSubjectId(),
-                        nestedModuleData.getModuleId());
         String primaryTable = moduleTree == null ? null : moduleTree.getPrimaryTable();
         if (primaryTable == null || primaryTable.isBlank()) {
             return false;
         }
         return isPositiveId(row.get(primaryTable + ".id"));
+    }
+
+    /** 解析前端提交结构对应的模块树；模块ID为空或配置不存在时返回 null。 */
+    private ModuleTreeDTO moduleTreeOf(NestedModuleDataDTO nestedModuleData) {
+        if (nestedModuleData == null || nestedModuleData.getModuleId() == null) {
+            return null;
+        }
+        return configApi.getModuleTree(
+                AppContext.getProjectNo(),
+                AppContext.getSubjectId(),
+                nestedModuleData.getModuleId());
     }
 
     /** 主单ID：空值、空串、非数字或非正数都视为没有值。 */
@@ -204,15 +216,30 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSubmit(DynamicSaveReq req) {
+        boolean realTimeSave =
+                Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
+        // 提交前判断主单ID：有主单ID时保存后按主单ID加载数据库整单数据校验；
+        // 主单ID没有值时从数据库查不到整单数据，改为基于前端提交的模块数据校验
+        ModuleTreeDTO moduleTree = realTimeSave ? null : moduleTreeOf(req.getNestedModuleData());
+        boolean mainRecordExists =
+                moduleTree != null && hasMainRecordId(moduleTree, req.getNestedModuleData());
+        if (!realTimeSave && !mainRecordExists && req.getNestedModuleData() != null) {
+            // 前端未提交的模块按该模块校验全部不通过处理，所有需要校验的模块都通过后才允许提交
+            Long rootModuleId =
+                    moduleTree == null || moduleTree.getRootModuleId() == null
+                            ? req.getNestedModuleData().getModuleId()
+                            : moduleTree.getRootModuleId();
+            submitCheckRouter.checkOnSubmit(rootModuleId, req.getNestedModuleData());
+        }
         DynamicSaveResp result = dataEngineApi.save(req);
-        if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
-            return result.getDataId();
-        // 提交前按根模块执行整单校验，不通过直接中断提交
-        submitCheckRouter.check(
-                result.getModuleId(),
-                result.getDataId(),
-                result.getBusinessNo(),
-                result.getVersionNo());
+        if (realTimeSave) return result.getDataId();
+        if (mainRecordExists) {
+            submitCheckRouter.check(
+                    result.getModuleId(),
+                    result.getDataId(),
+                    result.getBusinessNo(),
+                    result.getVersionNo());
+        }
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());

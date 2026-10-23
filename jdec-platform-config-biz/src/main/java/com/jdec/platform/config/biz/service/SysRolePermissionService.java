@@ -533,7 +533,6 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
         try {
             return BIZ_VALUE_MAPPER.readValue(bizName, Object.class);
         } catch (JsonProcessingException e) {
-            log.debug("业务值不是合法 JSON，按历史纯文本返回: {}", bizName);
             return bizName;
         }
     }

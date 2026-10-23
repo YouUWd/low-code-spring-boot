@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>保存校验（{@link #checkOnSave}）同样按根模块ID分发：无审批链保存直接生效，有审批链的新增保存（主单ID没有值）落库前也执行该校验，
  * 当前单据的数据完全取自前端提交的参数，仅查重会读取其他已保存对象作为比对基准。
+ *
+ * <p>提交校验时如果主单ID没有值，无法按主单加载业务库，改为由 {@link #checkOnSubmit} 使用前端提交的嵌套模块数据校验：
+ * 所有需要校验的模块都参与，未提交数据的模块按该模块校验全部不通过处理，必须全部通过后才能提交。
  */
 @Component
 @RequiredArgsConstructor
@@ -38,6 +41,25 @@ public class SubmitCheckRouter {
         }
         if (EXTERNAL_OBJECT_MODULE_ID.equals(moduleId)) {
             externalObjectSubmitCheckService.check(recordId, businessNo, versionNo);
+            return;
+        }
+        // 后续场地产线：按各自根模块ID在此追加对应提交校验
+    }
+
+    /**
+     * 执行提交校验（提交的主单ID没有值时使用）。
+     *
+     * <p>主单ID没有值时无法按主单加载业务库，改为使用前端提交的模块嵌套数据执行整单校验； 前端未提交数据的模块按该模块校验全部不通过处理，所有需要校验的模块都通过后才允许提交。
+     *
+     * @param moduleId 根模块ID
+     * @param nestedModuleData 提交请求中的模块嵌套数据
+     */
+    public void checkOnSubmit(Long moduleId, NestedModuleDataDTO nestedModuleData) {
+        if (moduleId == null) {
+            return;
+        }
+        if (EXTERNAL_OBJECT_MODULE_ID.equals(moduleId)) {
+            externalObjectSubmitCheckService.checkOnSubmit(nestedModuleData);
             return;
         }
         // 后续场地产线：按各自根模块ID在此追加对应提交校验
