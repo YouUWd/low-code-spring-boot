@@ -16,6 +16,11 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-shared</artifactId>
         </dependency>
+        <!-- 保存请求的模块嵌套数据模型 -->
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-data-engine-api</artifactId>
+        </dependency>
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

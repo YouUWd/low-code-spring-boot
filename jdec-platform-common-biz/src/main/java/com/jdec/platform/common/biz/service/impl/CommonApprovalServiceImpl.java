@@ -117,6 +117,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSave(DynamicSaveReq req) {
+        // 无审批链的保存：落库前基于前端提交的参数执行保存校验，不按主单ID加载业务库
+        checkSaveBeforeStore(req);
         DynamicSaveResp result = dataEngineApi.save(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
             return result.getChildDataId();
@@ -126,6 +128,28 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalReq.setButton("save");
         approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
+    }
+
+    /**
+     * 无审批链保存前的校验。
+     *
+     * <p>有审批链的保存属于草稿，允许数据不完整；无审批链保存直接生效，落库前需要按前端提交的模块数据校验。 实时保存（{@code
+     * realTime_save}）是详情页中暂存子表行，不作为正式保存校验。当前单据的校验数据取自前端参数，查重会读取其他已保存对象作为比对基准。
+     */
+    private void checkSaveBeforeStore(DynamicSaveReq req) {
+        if (req == null
+                || req.getNestedModuleData() == null
+                || req.getNestedModuleData().getModuleId() == null
+                || "realTime_save".equals(req.getBtnType())) {
+            return;
+        }
+        Boolean approvalEnable =
+                sysApprovalChainConfigApi.getApprovalStatus(
+                        List.of(req.getNestedModuleData().getModuleId()));
+        if (Boolean.TRUE.equals(approvalEnable)) {
+            return;
+        }
+        submitCheckRouter.checkOnSave(req.getNestedModuleData());
     }
 
     // 提交单据
