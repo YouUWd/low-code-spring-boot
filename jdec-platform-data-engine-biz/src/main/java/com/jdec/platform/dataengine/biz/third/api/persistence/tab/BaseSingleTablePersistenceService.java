@@ -23,8 +23,12 @@ public interface BaseSingleTablePersistenceService {
 
     Integer inactiveRecordById(DSLContext dslContext, String tableName, Long id);
 
-    Map<String, Object> getRecordById(DSLContext dslContext, String tableName, Long id);
+    int updateRecordByCondition(
+            DSLContext dslContext,
+            String tableName,
+            Map<String, Object> updateMap,
+            Map<String, Object> conditionMap);
 
-    int existRecordInNoneTerminationState(
-            DSLContext dslContext, String tableName, String businessNo, List<Integer> statusList);
+    List<Map<String, Object>> getRecordListByCondition(
+            DSLContext dslContext, String tableName, Map<String, Object> conditionMap);
 }

@@ -12,7 +12,9 @@ import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.utils.JsonValueUtils;
 import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
@@ -145,7 +147,7 @@ public class DataPermissionConditionResolver {
                 Long subjectId = dc.getSubjectId();
                 Integer subjectCheckAll = dc.getSubjectCheckAll();
                 String columnName = dc.getColumnName();
-                List<String> bizNames = dc.getBizNames();
+                List<Object> bizNames = dc.getBizNames();
 
                 if (subjectId != null) {
                     dataPermFilters.add(
@@ -161,8 +163,13 @@ public class DataPermissionConditionResolver {
                 if (!Integer.valueOf(1).equals(subjectCheckAll)
                         && columnName != null
                         && !columnName.isBlank()) {
-                    List<String> effectiveBizNames =
-                            bizNames != null ? bizNames : Collections.emptyList();
+                    // 业务值为 JSON 对象/数组时转为 JSON 文本，避免集合被直接绑定给 JDBC
+                    List<Object> effectiveBizNames =
+                            bizNames == null
+                                    ? Collections.emptyList()
+                                    : bizNames.stream()
+                                            .map(JsonValueUtils::toSqlValue)
+                                            .collect(Collectors.toList());
                     dataPermFilters.add(
                             FilterItem.builder()
                                     .moduleId(modId)

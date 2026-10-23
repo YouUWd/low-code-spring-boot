@@ -1,6 +1,5 @@
 package com.jdec.platform.dataengine.biz.dto;
 
-import com.jdec.platform.dataengine.api.dto.model.RowChangeDTO;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,6 +14,4 @@ public class DataSaveResult implements java.io.Serializable {
     private String businessNo;
 
     private Integer businessStatus;
-
-    private RowChangeDTO rowChange;
 }

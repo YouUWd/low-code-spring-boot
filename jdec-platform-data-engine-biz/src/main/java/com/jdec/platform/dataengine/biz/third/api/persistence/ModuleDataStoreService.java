@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
+import com.jdec.platform.dataengine.api.dto.request.BusinessFormStatusReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 
@@ -13,4 +14,6 @@ public interface ModuleDataStoreService {
      * @return 更模块数据ID
      */
     DynamicSaveResp save(DynamicSaveReq req);
+
+    Integer modifyBusinessFormStatus(BusinessFormStatusReq req);
 }

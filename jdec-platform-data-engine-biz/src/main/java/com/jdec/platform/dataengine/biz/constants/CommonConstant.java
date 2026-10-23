@@ -93,5 +93,9 @@ public interface CommonConstant {
                     "updated_by",
                     "created_date",
                     "updated_date",
-                    "registration_time");
+                    "registration_time",
+                    "active",
+                    "deleted",
+                    "node_id",
+                    "parent_node_id");
 }

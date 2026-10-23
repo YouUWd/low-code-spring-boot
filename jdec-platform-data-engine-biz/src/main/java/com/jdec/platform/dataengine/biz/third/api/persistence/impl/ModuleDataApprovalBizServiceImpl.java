@@ -201,7 +201,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                     req.getBusinessStatus());
             fieldValues.put(
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
-                    UserContext.getUserId());
+                    UserContext.getOperateUserId());
             fieldValues.put(
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
                     LocalDateTime.now());
@@ -230,7 +230,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                         .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0)
                         .set(
                                 DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
-                                UserContext.getUserId())
+                                UserContext.getOperateUserId())
                         .set(
                                 DSL.field(
                                         DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
@@ -247,7 +247,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                     req.getBusinessStatus());
             fieldValues.put(
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
-                    UserContext.getUserId());
+                    UserContext.getOperateUserId());
             fieldValues.put(
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
                     LocalDateTime.now());

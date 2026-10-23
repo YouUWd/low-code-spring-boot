@@ -33,8 +33,8 @@ public class DataRightConfigResp {
         @Schema(description = "主体全选：1=该主体下全部数据，0=按业务名称勾选")
         private Integer subjectCheckAll;
 
-        @Schema(description = "业务名称列表")
-        private List<String> bizNames;
+        @Schema(description = "业务值列表，保持入库前的原始 JSON 类型")
+        private List<Object> bizNames;
 
         @Schema(description = "字段名")
         private String columnName;

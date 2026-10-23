@@ -18,4 +18,7 @@ public interface ModuleDataPersistenceService {
 
     Boolean existRecordInNoneTerminationState(
             String tableName, String businessNo, List<Integer> statusList);
+
+    Integer modifyBusinessFormStatus(
+            String tableName, String businessNo, Integer originalStatus, Integer newStatus);
 }

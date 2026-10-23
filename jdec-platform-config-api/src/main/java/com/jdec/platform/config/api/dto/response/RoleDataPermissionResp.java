@@ -37,7 +37,7 @@ public class RoleDataPermissionResp {
         @Schema(description = "主体全选：1=全选，0=非全选")
         private Integer subjectCheckAll;
 
-        @Schema(description = "业务名称列表")
-        private List<String> bizNames;
+        @Schema(description = "业务值列表，保持入库前的原始 JSON 类型")
+        private List<Object> bizNames;
     }
 }

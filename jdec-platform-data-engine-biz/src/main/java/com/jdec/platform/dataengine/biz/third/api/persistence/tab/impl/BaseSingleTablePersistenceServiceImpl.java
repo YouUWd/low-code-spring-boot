@@ -326,23 +326,17 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
     @Override
     public int deleteByIds(DSLContext dslContext, String tableName, List<Long> ids) {
         if (!ids.isEmpty()) {
-            Long currentUserId = UserContext.getUserId();
-            LocalDateTime now = LocalDateTime.now();
             log.info("1:N 子表 [{}] 执行被动数据记录软删除:Ids={}", tableName, ids);
-            int result =
-                    dslContext
-                            .update(DSL.table(DSL.name(tableName)))
-                            .set(DSL.field(DSL.name(tableName, "deleted")), (byte) 1)
-                            .set(DSL.field(DSL.name(tableName, "updated_by")), currentUserId)
-                            .set(DSL.field(DSL.name(tableName, "updated_date")), now)
-                            .where(
-                                    DSL.field(DSL.name(tableName, "id"))
-                                            .in(ids)
-                                            .and(
-                                                    DSL.field(DSL.name(tableName, "deleted"))
-                                                            .eq((byte) 0)))
-                            .execute();
-            return result;
+            Map<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, ids);
+            conditionMap.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
+
+            Map<String, Object> updateFields = new HashMap<>();
+            updateFields.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 1);
+            updateFields.put(
+                    CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD, UserContext.getOperateUserId());
+            updateFields.put(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD, LocalDateTime.now());
+            return updateRecordByCondition(dslContext, tableName, updateFields, conditionMap);
         }
         return 0;
     }
@@ -367,65 +361,60 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
 
     @Override
     public Integer inactiveRecordById(DSLContext dslContext, String tableName, Long id) {
-        Long currentUserId = UserContext.getUserId();
-        LocalDateTime now = LocalDateTime.now();
+
+        Map<String, Object> conditionMap = new HashMap<>();
+        conditionMap.put(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, id);
+        conditionMap.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
+
+        Map<String, Object> updateFields = new HashMap<>();
+        updateFields.put(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD, (byte) 1);
+        updateFields.put(
+                CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD, UserContext.getOperateUserId());
+        updateFields.put(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD, LocalDateTime.now());
+
+        return updateRecordByCondition(dslContext, tableName, updateFields, conditionMap);
+    }
+
+    @Override
+    public int updateRecordByCondition(
+            DSLContext dslContext,
+            String tableName,
+            Map<String, Object> updateMap,
+            Map<String, Object> conditionMap) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        Map<Field<Object>, Object> updateFields = DataPersistenceUtil.getUpdateFields(updateMap);
+        if (CollectionUtil.isEmpty(updateFields)) {
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "更新字段不能为空");
+        }
+        Condition condition = DataPersistenceUtil.getCondition(conditionMap);
+        if (condition == null) {
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "更新条件不能为空");
+        }
         int result =
                 dslContext
                         .update(DSL.table(DSL.name(tableName)))
-                        .set(DSL.field(DSL.name(tableName, "active")), (byte) 0)
-                        .set(DSL.field(DSL.name(tableName, "updated_by")), currentUserId)
-                        .set(DSL.field(DSL.name(tableName, "updated_date")), now)
-                        .where(
-                                DSL.field(DSL.name(tableName, "id"))
-                                        .eq(id)
-                                        .and(
-                                                DSL.field(DSL.name(tableName, "deleted"))
-                                                        .eq((byte) 0)))
+                        .set(updateFields)
+                        .where(condition)
                         .execute();
         return result;
     }
 
     @Override
-    public Map<String, Object> getRecordById(DSLContext dslContext, String tableName, Long id) {
+    public List<Map<String, Object>> getRecordListByCondition(
+            DSLContext dslContext, String tableName, Map<String, Object> conditionMap) {
         if (dslContext == null) {
             dslContext = jooqDataContextFactory.getContext();
         }
-        Record r =
+        List<Map<String, Object>> result =
                 dslContext
                         .select(DSL.asterisk())
                         .from(DSL.table(DSL.name(tableName)))
-                        .where(
-                                DSL.field(DSL.name(tableName, "id"))
-                                        .eq(id)
-                                        .and(
-                                                DSL.field(DSL.name(tableName, "deleted"))
-                                                        .eq((byte) 0)))
-                        .fetchOne();
-        if (r != null) {
-            return r.intoMap();
-        }
-        return null;
-    }
-
-    @Override
-    public int existRecordInNoneTerminationState(
-            DSLContext dslContext, String tableName, String businessNo, List<Integer> statusList) {
-        if (dslContext == null) {
-            dslContext = jooqDataContextFactory.getContext();
-        }
-        Integer r =
-                dslContext
-                        .select(DSL.count())
-                        .from(DSL.table(DSL.name(tableName)))
-                        .where(
-                                DSL.field(DSL.name(tableName, "business_no"))
-                                        .eq(businessNo)
-                                        .and(DSL.field(DSL.name(tableName, "deleted")).eq((byte) 0))
-                                        .and(
-                                                DSL.field(DSL.name(tableName, "business_status"))
-                                                        .notIn(statusList)))
-                        .fetchOne(0, Integer.class);
-        return r;
+                        .where(DataPersistenceUtil.getCondition(conditionMap))
+                        .fetch()
+                        .intoMaps();
+        return result;
     }
 
     private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {
