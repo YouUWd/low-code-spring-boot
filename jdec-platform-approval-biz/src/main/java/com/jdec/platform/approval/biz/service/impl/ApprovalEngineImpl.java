@@ -560,7 +560,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     // 查询当前步骤是否可编辑
     @Override
     public boolean getCanEdit(Long moduleId, Long recordId, String btnType) {
-        Long userId = UserContext.getUserId();
+        Long userId =
+                Objects.nonNull(UserContext.getMockUserId())
+                        ? UserContext.getMockUserId()
+                        : UserContext.getRealUserId();
         Long roleId = UserContext.getRoleId();
         // 查询单据当前信息
         LambdaQueryWrapper<ApprovalBusiness> businessWrapper = new LambdaQueryWrapper<>();
