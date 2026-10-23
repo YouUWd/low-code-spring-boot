@@ -15,6 +15,6 @@ public class BizDataPermissionResp {
     @Schema(description = "主体ID", example = "3")
     private String subject;
 
-    @Schema(description = "业务数据列表")
-    private List<String> bizNames;
+    @Schema(description = "业务值列表，保持原始 JSON 类型")
+    private List<Object> bizNames;
 }

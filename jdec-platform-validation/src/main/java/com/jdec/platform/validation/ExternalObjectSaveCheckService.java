@@ -10,7 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * 外部对象无审批链保存校验入口。
+ * 外部对象保存校验入口（无审批链保存、有审批链的新增保存）。
  *
  * <p>保存接口只拿到前端提交的 {@code nestedModuleData}，因此当前单据的校验数据完全基于请求参数，不按主单ID加载业务库：
  *

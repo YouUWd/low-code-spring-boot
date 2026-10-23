@@ -7,7 +7,7 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * 外部对象必填校验（提交整单校验与无审批链保存校验共用）。
+ * 外部对象必填校验（提交整单校验与保存校验共用）。
  *
  * <p>规则来源：{@code docs/external/外部对象必填校验.md}。以对象性质（{@code info.nature}）为前置条件，按模块树从上到下、
  * 同级模块从前到后的顺序遍历整单数据，收集全部未填写的必填项后一次性抛出 {@link BusinessException}，提示语之间用换行符分隔。
@@ -16,36 +16,24 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li>对象性质本身最先校验；对象性质无值时，依赖对象性质的必填项按“不适用”处理；
- *   <li>子表（basic_info、member、address、company_contact、financial_account、digital_account、credit_rating）
- *       没有记录时，视为一行所有字段均为空，按该子表的必填规则逐项收集字段级提示，不再提示“数据不存在”；
- *   <li>一对多子表存在明细行时逐行校验行内必填项；无记录的人员按默认员工行处理；
+ *   <li>一对多子表（member、company_contact、financial_account、digital_account）没有记录时不参与必填校验，
+ *       存在记录时逐行校验行内必填项；
+ *   <li>人员构成按类型判断校验字段：部门行只校验部门名称，员工行（类型为空按默认员工）校验手机号码，个人性质只校验手机号码；
+ *   <li>一对一子表（basic_info、address、credit_rating）没有记录时，视为一行所有字段均为空， 按该子表的必填规则逐项收集字段级提示，不再提示“数据不存在”；
  *   <li>三级子表（member_contact）没有记录时不参与必填校验；
- *   <li>手机号码仅校验员工行与个人性质的人员行（部门行不要求手机号）；
  *   <li>contact_name 是“联系人行”的标识：其他联系方式行为空、联系人行有值，因此不再反向要求必填；
- *   <li>无审批链保存校验（{@link #validateOnSave}）只校验前端提交的模块，未提交的模块不产生提示； 无主单ID且未提交基本信息数据时，基本信息的所有必填规则视为未满足。
+ *   <li>保存校验（{@link #validateOnSave}）只校验前端提交的模块，未提交的模块不产生提示； 无主单ID且未提交基本信息数据时，基本信息的所有必填规则视为未满足。
  * </ul>
  */
 @Component
 public class ExternalObjectRequiredValidator {
-    /** 子表无记录时按“一行空值”参与字段级校验，以下为其空行。 */
+    /** 一对一子表无记录时按“一行空值”参与字段级校验，以下为其空行。 */
     private static final ExternalObjectSnapshot.BasicInfoRow EMPTY_BASIC_INFO =
             new ExternalObjectSnapshot.BasicInfoRow(
                     null, null, null, null, null, null, null, null, null, null);
 
-    private static final ExternalObjectSnapshot.MemberRow EMPTY_MEMBER =
-            new ExternalObjectSnapshot.MemberRow(null, null, null, null, null, null);
-
     private static final ExternalObjectSnapshot.AddressRow EMPTY_ADDRESS =
             new ExternalObjectSnapshot.AddressRow(null, null, null, null);
-
-    private static final ExternalObjectSnapshot.CompanyContactRow EMPTY_COMPANY_CONTACT =
-            new ExternalObjectSnapshot.CompanyContactRow(null, null, null, null);
-
-    private static final ExternalObjectSnapshot.FinancialAccountRow EMPTY_FINANCIAL_ACCOUNT =
-            new ExternalObjectSnapshot.FinancialAccountRow(null, null);
-
-    private static final ExternalObjectSnapshot.DigitalAccountRow EMPTY_DIGITAL_ACCOUNT =
-            new ExternalObjectSnapshot.DigitalAccountRow(null, null);
 
     private static final ExternalObjectSnapshot.CreditRatingRow EMPTY_CREDIT_RATING =
             new ExternalObjectSnapshot.CreditRatingRow(null, null);
@@ -90,7 +78,7 @@ public class ExternalObjectRequiredValidator {
     }
 
     /**
-     * 执行必填校验（无审批链保存校验）。
+     * 执行必填校验（保存校验）。
      *
      * <p>保存接口只拿到前端提交的参数，因此只校验本次提交的模块，未提交的模块不产生提示。
      *
@@ -199,22 +187,20 @@ public class ExternalObjectRequiredValidator {
         }
     }
 
+    /** 人员构成：无记录时不校验；有记录时按类型判断需要校验的字段。 */
     private void collectMembers(
             List<ExternalObjectSnapshot.MemberRow> members,
             NatureFlags flags,
             Set<String> missing) {
-        // 无记录时按一个默认员工行的空值处理：类型、手机号视为未填；部门名称仅在部门行校验
-        boolean noRecord = members.isEmpty();
-        List<ExternalObjectSnapshot.MemberRow> rows = noRecord ? List.of(EMPTY_MEMBER) : members;
-        for (ExternalObjectSnapshot.MemberRow member : rows) {
+        for (ExternalObjectSnapshot.MemberRow member : members) {
             if (!flags.individual()) {
                 requireJson(member.type(), "人员构成 - 类型", missing);
-                if (ExternalObjectValues.isDepartmentType(member.type())) {
-                    requireText(member.name(), "人员构成 - 部门名称", missing);
-                }
             }
-            boolean employeeRow = noRecord || ExternalObjectValues.isEmployeeType(member.type());
-            if (flags.individual() || employeeRow) {
+            if (!flags.individual() && ExternalObjectValues.isDepartmentType(member.type())) {
+                // 部门行只校验部门名称
+                requireText(member.name(), "人员构成 - 部门名称", missing);
+            } else {
+                // 员工行（类型为空按默认员工处理）与个人性质的人员行校验手机号码
                 requireText(member.mobilePhoneNo(), "人员构成 - 手机号码", missing);
             }
         }
@@ -237,11 +223,10 @@ public class ExternalObjectRequiredValidator {
         }
     }
 
+    /** 公司联系方式：无记录时不校验；有记录时按行区分“其他联系方式”与“联系人”。 */
     private void collectCompanyContacts(
             List<ExternalObjectSnapshot.CompanyContactRow> contacts, Set<String> missing) {
-        // 无记录时按一个“其他联系方式”的空行处理：联系方式、号码视为未填
-        for (ExternalObjectSnapshot.CompanyContactRow contact :
-                contacts.isEmpty() ? List.of(EMPTY_COMPANY_CONTACT) : contacts) {
+        for (ExternalObjectSnapshot.CompanyContactRow contact : contacts) {
             boolean contactPerson = !ExternalObjectValues.isBlankJson(contact.contactName());
             String prefix = contactPerson ? "联系方式" : "人员构成 - 其他联系方式";
             requireJson(contact.contactType(), prefix + " - 联系方式", missing);
@@ -249,23 +234,19 @@ public class ExternalObjectRequiredValidator {
         }
     }
 
+    /** 银行卡：无记录时不校验，有记录时逐行校验账号状态。 */
     private void collectFinancialAccounts(
             List<ExternalObjectSnapshot.FinancialAccountRow> financialAccounts,
             Set<String> missing) {
-        // 子表无记录时按一行空值处理，账号状态视为未填
-        List<ExternalObjectSnapshot.FinancialAccountRow> rows =
-                financialAccounts.isEmpty() ? List.of(EMPTY_FINANCIAL_ACCOUNT) : financialAccounts;
-        for (ExternalObjectSnapshot.FinancialAccountRow account : rows) {
+        for (ExternalObjectSnapshot.FinancialAccountRow account : financialAccounts) {
             requireJson(account.accountStatus(), "财务信息 - 银行卡 - 账号状态", missing);
         }
     }
 
+    /** 电子账户：无记录时不校验，有记录时逐行校验账号状态。 */
     private void collectDigitalAccounts(
             List<ExternalObjectSnapshot.DigitalAccountRow> digitalAccounts, Set<String> missing) {
-        // 子表无记录时按一行空值处理，账号状态视为未填
-        List<ExternalObjectSnapshot.DigitalAccountRow> rows =
-                digitalAccounts.isEmpty() ? List.of(EMPTY_DIGITAL_ACCOUNT) : digitalAccounts;
-        for (ExternalObjectSnapshot.DigitalAccountRow account : rows) {
+        for (ExternalObjectSnapshot.DigitalAccountRow account : digitalAccounts) {
             requireJson(account.accountStatus(), "财务信息 - 电子账户 - 账号状态", missing);
         }
     }

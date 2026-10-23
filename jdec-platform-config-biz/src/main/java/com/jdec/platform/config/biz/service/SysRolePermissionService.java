@@ -4,6 +4,8 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
@@ -31,6 +33,10 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysRolePermissionService implements SysRolePermissionApi, OpenRolePermissionApi {
+
+    /** 业务值 JSON 序列化/反序列化：仅处理标量/对象/数组，不注册额外模块 */
+    private static final ObjectMapper BIZ_VALUE_MAPPER = new ObjectMapper();
+
     private final SysRoleMenuMapper sysRoleMenuMapper;
     private final SysMenuMapper sysMenuMapper;
     private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
@@ -422,9 +428,17 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                     continue;
                 }
 
+                // 1.3 节点由全选改为非全选：先移除节点级全选记录（主体ID为空），
+                // 否则该记录会让节点回显与鉴权仍按全选处理，导致取消勾选不生效
+                sysRoleDataPermissionMapper.delete(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(SysRoleDataPermission::getRoleId, roleId)
+                                .eq(SysRoleDataPermission::getDataPermissionId, permissionId)
+                                .isNull(SysRoleDataPermission::getSubjectId));
+
                 for (SaveRoleDataPermissionReq.SaveDataSubjectReq subject : subjects) {
                     Long subjectId = subject.getSubjectId();
-                    // 1.3 清空该主体下的数据
+                    // 1.4 清空该主体下的数据
                     sysRoleDataPermissionMapper.delete(
                             Wrappers.<SysRoleDataPermission>lambdaQuery()
                                     .eq(SysRoleDataPermission::getRoleId, roleId)
@@ -432,11 +446,11 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                                     .eq(SysRoleDataPermission::getSubjectId, subjectId));
 
                     if (isCheckAll(subject.getSubjectCheckAll())) {
-                        // 1.4 主体全选：新增一条主体全选标识数据，业务名称置空
+                        // 1.5 主体全选：新增一条主体全选标识数据，业务名称置空
                         toInsert.add(
                                 buildDataPermission(roleId, permissionId, subjectId, 0, 1, null));
                     } else if (CollUtil.isNotEmpty(subject.getBizNames())) {
-                        for (String bizName : subject.getBizNames()) {
+                        for (Object bizName : subject.getBizNames()) {
                             toInsert.add(
                                     buildDataPermission(
                                             roleId, permissionId, subjectId, 0, 0, bizName));
@@ -478,15 +492,50 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
             Long subjectId,
             Integer permissionCheckAll,
             Integer subjectCheckAll,
-            String bizName) {
+            Object bizName) {
         SysRoleDataPermission permission = new SysRoleDataPermission();
         permission.setRoleId(roleId);
         permission.setDataPermissionId(permissionId);
         permission.setSubjectId(subjectId);
         permission.setPermissionCheckAll(permissionCheckAll);
         permission.setSubjectCheckAll(subjectCheckAll == null ? 0 : subjectCheckAll);
-        permission.setBizName(bizName);
+        permission.setBizName(encodeBizName(bizName));
         return permission;
+    }
+
+    /**
+     * 业务值入库：对传入的 Object 本身做 JSON 序列化，保留字符串与数字等类型差异。
+     *
+     * <p>字符串会带双引号存储（如 {@code "123"}），数字、布尔、对象、数组按 JSON 文本存储（如 {@code 123}、{@code
+     * {"a":1}}）；序列化失败时降级按纯文本存储。
+     */
+    private String encodeBizName(Object bizName) {
+        if (bizName == null) {
+            return null;
+        }
+        try {
+            return BIZ_VALUE_MAPPER.writeValueAsString(bizName);
+        } catch (JsonProcessingException e) {
+            log.warn("业务值序列化失败，降级按纯文本存储: {}", bizName, e);
+            return String.valueOf(bizName);
+        }
+    }
+
+    /**
+     * 业务值回显：按 JSON 反序列化还原原始类型。
+     *
+     * <p>历史数据是没有经过序列化的纯文本，解析失败时按原字符串返回。
+     */
+    private Object decodeBizName(String bizName) {
+        if (bizName == null || bizName.isEmpty()) {
+            return bizName;
+        }
+        try {
+            return BIZ_VALUE_MAPPER.readValue(bizName, Object.class);
+        } catch (JsonProcessingException e) {
+            log.debug("业务值不是合法 JSON，按历史纯文本返回: {}", bizName);
+            return bizName;
+        }
     }
 
     @Override
@@ -632,6 +681,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                         subjectRecords.stream()
                                 .map(SysRoleDataPermission::getBizName)
                                 .filter(Objects::nonNull)
+                                .map(this::decodeBizName)
                                 .toList());
                 subjectList.add(subject);
             }
@@ -770,12 +820,13 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
 
             boolean subjectCheckAll =
                     subjectRecords.stream().anyMatch(r -> isCheckAll(r.getSubjectCheckAll()));
-            List<String> bizNames =
+            List<Object> bizNames =
                     subjectCheckAll
                             ? Collections.emptyList()
                             : subjectRecords.stream()
                                     .map(SysRoleDataPermission::getBizName)
                                     .filter(Objects::nonNull)
+                                    .map(this::decodeBizName)
                                     .toList();
 
             dataConfigs.add(

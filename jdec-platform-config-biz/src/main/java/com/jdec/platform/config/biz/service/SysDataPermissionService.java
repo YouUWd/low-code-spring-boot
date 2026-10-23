@@ -12,10 +12,12 @@ import com.jdec.platform.config.api.dto.request.SysDataPermissionSaveReq;
 import com.jdec.platform.config.api.dto.response.SysDataPermissionResp;
 import com.jdec.platform.config.api.dto.response.SysRightResp;
 import com.jdec.platform.config.biz.entity.SysDataPermission;
+import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
 import com.jdec.platform.config.biz.entity.SysProjectSubject;
 import com.jdec.platform.config.biz.mapper.SysDataPermissionMapper;
+import com.jdec.platform.config.biz.mapper.SysFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysProjectSubjectMapper;
@@ -49,6 +51,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
     private final SysProjectSubjectMapper sysProjectSubjectMapper;
     private final SysModuleMapper sysModuleMapper;
     private final SysModuleFieldMapper sysModuleFieldMapper;
+    private final SysFieldMapper sysFieldMapper;
     private final DataSourceResolver dataSourceResolver;
 
     @Override
@@ -158,7 +161,10 @@ public class SysDataPermissionService implements SysDataPermissionApi {
         // 3. 解析每个权限节点关联的主体（模块数据来源主体与项目主体取交集）
         Map<String, List<SysProjectSubject>> codeSubjectMap = resolveNodeSubjects(list, subjects);
 
-        // 4. 按节点关联的主体转换为查询参数（编码形如「表名*字段名」）
+        // 4. 解析每个权限节点的业务类型（按「表名*字段名」匹配 sys_field）
+        Map<String, SysField> codeFieldMap = resolveBusinessTypes(list);
+
+        // 5. 按节点关联的主体转换为查询参数（编码形如「表名*字段名」）
         List<DataPermissionQueryItem> queryItems = new ArrayList<>();
         for (SysDataPermission permission : list) {
             List<SysProjectSubject> nodeSubjects = codeSubjectMap.get(permission.getCode());
@@ -178,13 +184,13 @@ public class SysDataPermissionService implements SysDataPermissionApi {
             queryItems.add(item);
         }
 
-        // 5. 直连项目编码对应的数据源查询，按 主体ID -> 权限编码 缓存业务数据
-        Map<Long, Map<String, List<String>>> subjectBizDataMap =
+        // 6. 直连项目编码对应的数据源查询，按 主体ID -> 权限编码 缓存业务数据
+        Map<Long, Map<String, List<Object>>> subjectBizDataMap =
                 CollUtil.isEmpty(queryItems)
                         ? new HashMap<>()
                         : queryBizData(AppContext.getProjectNo(), queryItems);
 
-        // 6. 层层封装返回：权限节点 -> 主体列表 -> 主体业务数据
+        // 7. 层层封装返回：权限节点 -> 主体列表 -> 主体业务数据
         return list.stream()
                 .map(
                         type -> {
@@ -195,6 +201,11 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                             resp.setDescription(type.getDescription());
                             resp.setSort(type.getSort());
                             resp.setStatus(type.getStatus());
+                            SysField fieldConfig = codeFieldMap.get(type.getCode());
+                            resp.setBusinessTypeCode(
+                                    fieldConfig != null ? fieldConfig.getBusinessTypeCode() : null);
+                            resp.setBusinessTypeName(
+                                    fieldConfig != null ? fieldConfig.getBusinessTypeName() : null);
                             resp.setSubjectInfos(
                                     CollUtil.emptyIfNull(codeSubjectMap.get(type.getCode()))
                                             .stream()
@@ -319,6 +330,51 @@ public class SysDataPermissionService implements SysDataPermissionApi {
         return codeSubjectMap;
     }
 
+    /**
+     * 按权限编码「表名*字段名」批量查询 {@code sys_field}，取得字段配置的业务类型。
+     *
+     * <p>返回 权限编码 -> 字段配置（同键保留首条），编码非法或无匹配配置时返回空。
+     */
+    private Map<String, SysField> resolveBusinessTypes(List<SysDataPermission> permissions) {
+        Map<String, SysField> codeFieldMap = new HashMap<>();
+
+        // 权限编码 -> [表名, 字段名]
+        Map<String, String[]> codePartsMap = new LinkedHashMap<>();
+        for (SysDataPermission permission : permissions) {
+            String[] parts = splitCode(permission.getCode());
+            if (parts != null) {
+                codePartsMap.put(permission.getCode(), parts);
+            }
+        }
+        if (codePartsMap.isEmpty()) {
+            return codeFieldMap;
+        }
+
+        Set<String> tableNames =
+                codePartsMap.values().stream().map(parts -> parts[0]).collect(Collectors.toSet());
+        Set<String> columnNames =
+                codePartsMap.values().stream().map(parts -> parts[1]).collect(Collectors.toSet());
+        List<SysField> fields =
+                sysFieldMapper.selectList(
+                        Wrappers.<SysField>lambdaQuery()
+                                .in(SysField::getTableName, tableNames)
+                                .in(SysField::getColumnName, columnNames)
+                                .eq(SysField::getDeleted, 0)
+                                .eq(SysField::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysField::getSubjectId, AppContext.getSubjectId()));
+
+        for (SysField field : fields) {
+            if (field.getTableName() == null || field.getColumnName() == null) {
+                continue;
+            }
+            String code = field.getTableName() + "*" + field.getColumnName();
+            if (codePartsMap.containsKey(code)) {
+                codeFieldMap.putIfAbsent(code, field);
+            }
+        }
+        return codeFieldMap;
+    }
+
     /** 拆解权限编码「表名*字段名」，非法编码返回 null */
     private String[] splitCode(String code) {
         if (!StringUtils.hasText(code) || !code.contains("*")) {
@@ -334,11 +390,11 @@ public class SysDataPermissionService implements SysDataPermissionApi {
      * 直连项目编码对应的数据源，查询各权限编码下的业务数据。
      *
      * <p>权限编码形如「表名*字段名」，逐项拼接 SQL： {@code SELECT DISTINCT subject_id, 字段名 FROM 表名 WHERE subject_id
-     * IN (主体ID列表)}， 结果按 主体ID -> 权限编码 归集，空值统一记为 "Null"。 单个查询项查询失败时仅记日志，不影响权限节点列表查询。
+     * IN (主体ID列表)}， 结果按 主体ID -> 权限编码 归集，按字段 JDBC 原始类型返回，空值统一记为 "Null"。 单个查询项查询失败时仅记日志，不影响权限节点列表查询。
      */
-    private Map<Long, Map<String, List<String>>> queryBizData(
+    private Map<Long, Map<String, List<Object>>> queryBizData(
             String projectNo, List<DataPermissionQueryItem> queryItems) {
-        Map<Long, Map<String, List<String>>> subjectBizDataMap = new HashMap<>();
+        Map<Long, Map<String, List<Object>>> subjectBizDataMap = new HashMap<>();
         if (CollUtil.isEmpty(queryItems)) {
             return subjectBizDataMap;
         }
@@ -366,7 +422,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
 
             String dataPermissionCode = item.getTableName() + "*" + item.getColumn();
             try {
-                Field<String> valueField = field(name(item.getColumn()), String.class);
+                // 按 JDBC 原始类型读取，前端拿到与业务字段一致的类型（数字不转字符串）
+                Field<Object> valueField = field(name(item.getColumn()), Object.class);
                 var records =
                         dsl.selectDistinct(subjectField, valueField)
                                 .from(table(name(item.getTableName())))
@@ -378,7 +435,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                     if (subjectId == null) {
                         continue;
                     }
-                    String value = record.get(valueField);
+                    Object value = record.get(valueField);
                     // null 统一转换为 "Null"
                     subjectBizDataMap
                             .computeIfAbsent(subjectId, key -> new HashMap<>())

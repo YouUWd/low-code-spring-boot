@@ -27,6 +27,12 @@ public class SysDataPermissionResp {
     @Schema(description = "状态 1:启用 0:禁用")
     private Integer status;
 
+    @Schema(description = "业务类型编码")
+    private String businessTypeCode;
+
+    @Schema(description = "业务类型名称")
+    private String businessTypeName;
+
     @Schema(description = "主体列表")
     private List<SubjectInfo> subjectInfos;
 
@@ -40,7 +46,7 @@ public class SysDataPermissionResp {
         @Schema(description = "主体名称")
         private String subjectName;
 
-        @Schema(description = "主体所拥有的业务数据")
-        private List<String> bizNames;
+        @Schema(description = "主体所拥有的业务数据，保持业务字段的原始类型")
+        private List<Object> bizNames;
     }
 }
