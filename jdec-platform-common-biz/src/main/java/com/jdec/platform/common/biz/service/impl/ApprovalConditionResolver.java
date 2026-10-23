@@ -1,6 +1,6 @@
 package com.jdec.platform.common.biz.service.impl;
 
-import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
+import com.jdec.platform.approval.api.dto.ApprovalIdButton;
 import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
 import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
@@ -57,13 +57,13 @@ public class ApprovalConditionResolver {
     }
 
     /** 提取审批单据列表中的去重业务单据号 (business_no) 集合 */
-    public static List<String> extractBusinessNos(Collection<ApprpvalIdButton> list) {
+    public static List<String> extractBusinessNos(Collection<ApprovalIdButton> list) {
         if (CollectionUtils.isEmpty(list)) {
             return Collections.emptyList();
         }
         return list.stream()
                 .filter(Objects::nonNull)
-                .map(ApprpvalIdButton::getBusinessNo)
+                .map(ApprovalIdButton::getBusinessNo)
                 .filter(no -> no != null && !no.isBlank())
                 .map(String::trim)
                 .distinct()
@@ -71,13 +71,13 @@ public class ApprovalConditionResolver {
     }
 
     /** 提取审批单据列表中的去重物理记录 ID (recordId) 集合 */
-    public static Set<Long> extractRecordIds(Collection<ApprpvalIdButton> list) {
+    public static Set<Long> extractRecordIds(Collection<ApprovalIdButton> list) {
         if (CollectionUtils.isEmpty(list)) {
             return Collections.emptySet();
         }
         return list.stream()
                 .filter(Objects::nonNull)
-                .map(ApprpvalIdButton::getRecordId)
+                .map(ApprovalIdButton::getRecordId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
     }

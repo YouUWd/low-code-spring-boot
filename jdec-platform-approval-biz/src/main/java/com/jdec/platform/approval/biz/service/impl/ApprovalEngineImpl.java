@@ -10,8 +10,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jdec.platform.approval.api.AsyncTaskService;
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.dto.ApprovalIdButton;
 import com.jdec.platform.approval.api.dto.ApprovalProcessDTO;
-import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
@@ -311,8 +311,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 根据用户ID和角色ID查询用户指定业务的代办，已办，全部列表------------------------------------------------
     @Override
-    public List<ApprpvalIdButton> getBusinessList(ApprovalListReq approvalListReq) {
-        List<ApprpvalIdButton> respList = new ArrayList<>();
+    public List<ApprovalIdButton> getBusinessList(ApprovalListReq approvalListReq) {
+        List<ApprovalIdButton> respList = new ArrayList<>();
         if (approvalListReq.getModuleIdList().isEmpty()) {
             return respList;
         }
@@ -429,7 +429,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 根据模块ID及类型查询用户指定业务的代办，已办，全部列表ID及按钮---------------------------------
     @Override
-    public List<ApprpvalIdButton> getListButton(Long moduleId, Integer approvalType) {
+    public List<ApprovalIdButton> getListButton(Long moduleId, Integer approvalType) {
         Long mockUserId = UserContext.getMockUserId();
         ApprovalListReq req = new ApprovalListReq();
         req.setApprovalType(approvalType);
@@ -2315,9 +2315,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     }
 
     // 转换对象--------------------------------------------------------------------------
-    private ApprpvalIdButton convertMapResp(
+    private ApprovalIdButton convertMapResp(
             ApprovalBusiness approvalBusiness, Integer approvalType) {
-        ApprpvalIdButton btnInfo = new ApprpvalIdButton();
+        ApprovalIdButton btnInfo = new ApprovalIdButton();
         String alias = "view";
         String btnName = "查阅";
         if (approvalType == 1) {
@@ -2333,6 +2333,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else {
             btnInfo.setButtonName(btnName);
         }
+        btnInfo.setCanEdit(
+                getCanEdit(approvalBusiness.getModuleId(), approvalBusiness.getRecordId(), ""));
         return btnInfo;
     }
 
