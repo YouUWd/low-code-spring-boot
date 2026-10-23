@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -22,9 +23,7 @@ import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.context.VersionDataQueryContext;
-import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
-import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
 import com.jdec.platform.dataengine.biz.dto.DynamicQueryReq;
 import com.jdec.platform.dataengine.biz.dto.ModuleField;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
@@ -34,7 +33,6 @@ import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.enums.ReferenceBizType;
 import com.jdec.platform.dataengine.biz.referencequery.*;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
-import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -62,14 +60,10 @@ public class DynamicQueryService {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    private final MetadataCacheService metadataCacheService;
-    private final PermissionFilterService permissionFilterService;
-    private final FieldTransformService fieldTransformService;
-    private final JooqContextFactory jooqContextFactory;
-    private final JooqSqlBuilder jooqSqlBuilder;
-    private final JooqConditionBuilder jooqConditionBuilder;
+    private static final Set<String> REMOVED_FIELDS = Set.of("id", "pid", "relation_no");
 
-    private final ListBizQueryService listBizQueryService;
+    private final JooqContextFactory jooqContextFactory;
+
     private final DetailBizQueryService detailBizQueryService;
 
     private final SysModuleApi sysModuleApi;
@@ -292,11 +286,29 @@ public class DynamicQueryService {
                                     }
                                 }
 
-                                JsonNode wordNode = null;
+                                JsonNode newWord = null;
                                 try {
-                                    wordNode = OBJECT_MAPPER.valueToTree(wordList);
+                                    newWord = OBJECT_MAPPER.valueToTree(wordList);
                                 } catch (IllegalArgumentException e) {
                                     log.warn("wordList转为Json对象", wordList);
+                                }
+
+                                // 先去除固定字段
+                                removeFields(newWord);
+
+                                JsonNode oldWord;
+
+                                try {
+                                    oldWord =
+                                            OBJECT_MAPPER.readTree(
+                                                    String.valueOf(
+                                                            rowData.get(
+                                                                    ele.getTableName()
+                                                                            + "."
+                                                                            + ele.getFieldName())));
+                                } catch (JsonProcessingException e) {
+                                    log.warn("wordList转为Json对象", wordList);
+                                    throw new RuntimeException(e);
                                 }
 
                                 // 新版本数据回填
@@ -304,8 +316,12 @@ public class DynamicQueryService {
                                         "字段名称:{} , 主键id:{}更新词云值",
                                         ele.getTableName() + "." + ele.getFieldName(),
                                         primaryId);
+
+                                JsonNode newCopyWord = deepFilterBySourceSchema(oldWord, newWord);
+
+                                // 以原值为模板放入新值
                                 rowData.put(
-                                        ele.getTableName() + "." + ele.getFieldName(), wordNode);
+                                        ele.getTableName() + "." + ele.getFieldName(), newCopyWord);
                             });
 
                     // 内部数据
@@ -1948,5 +1964,75 @@ public class DynamicQueryService {
         }
 
         return resultMaps;
+    }
+
+    /** 递归移除节点中的指定字段（如 id、pid、relation_no） */
+    private void removeFields(JsonNode node) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof ObjectNode objectNode) {
+            for (String field : REMOVED_FIELDS) {
+                objectNode.remove(field);
+            }
+            for (Iterator<JsonNode> it = objectNode.elements(); it.hasNext(); ) {
+                removeFields(it.next());
+            }
+        } else if (node instanceof ArrayNode arrayNode) {
+            for (JsonNode item : arrayNode) {
+                removeFields(item);
+            }
+        }
+    }
+
+    /**
+     * 深度递归过滤：按sourceNode同层级的key白名单过滤targetNode
+     *
+     * @param sourceNode 源模板节点（key白名单）
+     * @param targetNode 待过滤目标节点
+     * @return 过滤后节点（新副本，不修改入参）
+     */
+    public static JsonNode deepFilterBySourceSchema(JsonNode sourceNode, JsonNode targetNode) {
+        // 类型不匹配，直接返回target副本（源是值节点，目标原样保留）
+        if (sourceNode.getNodeType() != targetNode.getNodeType()) {
+            return targetNode.deepCopy();
+        }
+
+        if (sourceNode.isObject()) {
+            ObjectNode sourceObj = (ObjectNode) sourceNode;
+            ObjectNode targetObj = (ObjectNode) targetNode.deepCopy();
+
+            Iterator<String> targetFieldIt = targetObj.fieldNames();
+            while (targetFieldIt.hasNext()) {
+                String field = targetFieldIt.next();
+                // 源不存在该key → 删除
+                if (!sourceObj.has(field)) {
+                    targetFieldIt.remove();
+                } else {
+                    // 源存在该key，递归对子节点过滤
+                    JsonNode sourceChild = sourceObj.get(field);
+                    JsonNode targetChild = targetObj.get(field);
+                    JsonNode filteredChild = deepFilterBySourceSchema(sourceChild, targetChild);
+                    targetObj.set(field, filteredChild);
+                }
+            }
+            return targetObj;
+        } else if (sourceNode.isArray()) {
+            ArrayNode sourceArr = (ArrayNode) sourceNode;
+            ArrayNode targetArr = (ArrayNode) targetNode.deepCopy();
+            // 取数组第一个元素作为模板schema（数组内元素结构一致常规做法）
+            if (sourceArr.size() > 0) {
+                JsonNode itemSchema = sourceArr.get(0);
+                for (int i = 0; i < targetArr.size(); i++) {
+                    JsonNode oldItem = targetArr.get(i);
+                    JsonNode newItem = deepFilterBySourceSchema(itemSchema, oldItem);
+                    targetArr.set(i, newItem);
+                }
+            }
+            return targetArr;
+        } else {
+            // 基础值节点：字符串、数字、布尔、null，直接返回副本
+            return targetNode.deepCopy();
+        }
     }
 }
