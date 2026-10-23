@@ -46,7 +46,7 @@ public class SaveRoleDataPermissionReq {
         @Schema(description = "主体全选：1=全选，0=非全选")
         private Integer subjectCheckAll;
 
-        @Schema(description = "业务名称列表")
-        private List<String> bizNames;
+        @Schema(description = "业务值列表，支持字符串、数字、布尔、JSON 对象/数组，入库时序列化为 JSON 文本")
+        private List<Object> bizNames;
     }
 }

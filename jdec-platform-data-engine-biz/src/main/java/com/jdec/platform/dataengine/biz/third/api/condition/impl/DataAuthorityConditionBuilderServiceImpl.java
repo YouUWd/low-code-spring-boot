@@ -6,6 +6,7 @@ import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.utils.JsonValueUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -99,7 +100,7 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
                             Long subjectId = dataConfig.getSubjectId();
                             Integer subjectCheckAll = dataConfig.getSubjectCheckAll();
                             String columnName = dataConfig.getColumnName();
-                            List<String> bizNames = dataConfig.getBizNames();
+                            List<Object> bizNames = dataConfig.getBizNames();
 
                             if (subjectId != null) {
                                 log.debug("主体不为空，根据主体ID:{}进行数据权限筛选", subjectId);
@@ -109,46 +110,33 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
 
                             if (!Integer.valueOf(1).equals(subjectCheckAll)) {
                                 log.debug("主体数据权限非全选，进行数据权限筛选。");
-                                if (!CollectionUtils.isEmpty(dataConfig.getBizNames())) {
+                                if (!CollectionUtils.isEmpty(bizNames)) {
                                     log.debug("勾选项不为空，进行数据权限筛选。");
-                                    boolean includeNull = dataConfig.getBizNames().contains("Null");
+                                    List<Object> selectableValues = new ArrayList<>(bizNames);
+                                    boolean includeNull = selectableValues.remove("Null");
                                     if (!includeNull) {
                                         conditions.add(
-                                                DSL.field(
-                                                                DSL.name(
-                                                                        tableName,
-                                                                        dataConfig.getColumnName()))
-                                                        .in(dataConfig.getBizNames()));
+                                                DSL.field(DSL.name(tableName, columnName))
+                                                        .in(toSqlValues(selectableValues)));
                                     } else {
                                         log.debug("筛选条件包含空值");
-                                        dataConfig.getBizNames().remove("Null");
-
-                                        if (CollectionUtils.isEmpty(dataConfig.getBizNames())) {
+                                        if (selectableValues.isEmpty()) {
                                             log.debug("筛选为Null的数据");
                                             conditions.add(
-                                                    DSL.field(
-                                                                    DSL.name(
-                                                                            tableName,
-                                                                            dataConfig
-                                                                                    .getColumnName()))
+                                                    DSL.field(DSL.name(tableName, columnName))
                                                             .isNull());
                                         } else {
                                             conditions.add(
-                                                    DSL.field(
-                                                                    DSL.name(
-                                                                            tableName,
-                                                                            dataConfig
-                                                                                    .getColumnName()))
+                                                    DSL.field(DSL.name(tableName, columnName))
                                                             .isNull()
                                                             .or(
                                                                     DSL.field(
                                                                                     DSL.name(
                                                                                             tableName,
-                                                                                            dataConfig
-                                                                                                    .getColumnName()))
+                                                                                            columnName))
                                                                             .in(
-                                                                                    dataConfig
-                                                                                            .getBizNames())));
+                                                                                    toSqlValues(
+                                                                                            selectableValues))));
                                         }
                                     }
                                 } else {
@@ -163,5 +151,10 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
                 }
             }
         }
+    }
+
+    /** 业务值为 JSON 对象/数组时转为 JSON 文本参与比较，避免把集合直接绑定给 JDBC */
+    private List<Object> toSqlValues(List<Object> values) {
+        return values.stream().map(JsonValueUtils::toSqlValue).collect(Collectors.toList());
     }
 }
