@@ -40,4 +40,7 @@ public class DynamicDetailQueryReq implements Serializable {
     private Boolean history;
 
     private String btnType;
+
+    @Schema(description = "是否返回原始词云数据", example = "true")
+    private Boolean latestWordData;
 }
