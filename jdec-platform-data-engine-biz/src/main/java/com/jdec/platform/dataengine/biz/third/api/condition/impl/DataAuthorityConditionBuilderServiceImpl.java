@@ -1,7 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.condition.impl;
 
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
-import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
@@ -28,11 +27,10 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
                     QueryType.DETAIL_APPROVAL_CURRENT,
                     QueryType.DETAIL_SUBMODULE_QUERY);
 
-    private final OpenRolePermissionApi openRolePermissionApi;
-
     @Override
     public Boolean isReferTo(QueryType queryType) {
-        return TYPE_SET.contains(queryType);
+        return false;
+        //        return TYPE_SET.contains(queryType);
     }
 
     @Override
