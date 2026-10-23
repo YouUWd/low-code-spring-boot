@@ -32,10 +32,7 @@ public class DataEngineService implements DataEngineApi {
                 dynamicQueryService.getDetail(
                         dynamicDetailQueryReq, dynamicDetailQueryReq.getBtnType());
 
-        return CollectionUtils.isEmpty(detailDatas)
-                        || CollectionUtils.isEmpty(detailDatas.get(0).getRecord())
-                ? null
-                : detailDatas.get(0);
+        return detailDatas.get(0);
     }
 
     @Override
