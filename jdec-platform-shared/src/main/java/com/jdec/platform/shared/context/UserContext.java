@@ -86,4 +86,12 @@ public class UserContext {
         LoginUser user = USER_THREAD_LOCAL.get();
         return user != null && Boolean.TRUE.equals(user.getIsMockLogin());
     }
+
+    /** 获取操作用户ID（模拟登录时为模拟用户ID，没有模拟用户时为当前登录用户ID，未登录返回 null） */
+    public static Long getOperateUserId() {
+        LoginUser user = USER_THREAD_LOCAL.get();
+        return user != null
+                ? user.getMockUserId() != null ? user.getMockUserId() : user.getUserId()
+                : null;
+    }
 }

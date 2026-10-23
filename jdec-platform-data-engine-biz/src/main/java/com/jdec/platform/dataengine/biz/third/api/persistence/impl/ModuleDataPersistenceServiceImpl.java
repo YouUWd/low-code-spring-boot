@@ -19,6 +19,7 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.RequiredArgsConstructor;
@@ -148,7 +149,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
     @Override
     public Integer getMaxVersionNoByBusinessNo(String tableName, String businessNo) {
         return baseSingleTablePersistenceService.getMaxVersionNoByBusinessNo(
-                null, tableName, businessNo);
+                jooqContextFactory.getContext(), tableName, businessNo);
     }
 
     @Override
@@ -174,12 +175,15 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                 tempModuleId = moduleCacheMap.get(tempModuleId).getModuleInfo().getParentId();
                 continue;
             }
-            Map<String, Object> recordMap =
-                    baseSingleTablePersistenceService.getRecordById(
-                            null,
+            Map<String, Object> condition = new HashMap<>();
+            condition.put(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, tempId);
+            condition.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
+            List<Map<String, Object>> result =
+                    baseSingleTablePersistenceService.getRecordListByCondition(
+                            jooqContextFactory.getContext(),
                             moduleCacheMap.get(tempModuleId).getModuleInfo().getPrimaryTable(),
-                            id);
-
+                            condition);
+            Map<String, Object> recordMap = result.get(0);
             Object fk =
                     recordMap.get(
                             moduleCacheMap
@@ -196,9 +200,32 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
     @Override
     public Boolean existRecordInNoneTerminationState(
             String tableName, String businessNo, List<Integer> statusList) {
-        return baseSingleTablePersistenceService.existRecordInNoneTerminationState(
-                        null, tableName, businessNo, statusList)
-                != 0;
+        Map<String, Object> condition = new HashMap<>();
+        condition.put(CommonConstant.TABLE_DEFAULT_BUSINESS_NO_FIELD, businessNo);
+        condition.put(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD, statusList);
+        condition.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
+        List<Map<String, Object>> result =
+                baseSingleTablePersistenceService.getRecordListByCondition(
+                        jooqContextFactory.getContext(), tableName, condition);
+        return result != null && result.size() != 0;
+    }
+
+    @Override
+    public Integer modifyBusinessFormStatus(
+            String tableName, String businessNo, Integer originalStatus, Integer newStatus) {
+        // 构建条件
+        Map<String, Object> condition = new HashMap<>();
+        condition.put(CommonConstant.TABLE_DEFAULT_BUSINESS_NO_FIELD, businessNo);
+        condition.put(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD, originalStatus);
+        condition.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
+
+        // 构建更新字段
+        Map<String, Object> updateMap = new HashMap<>();
+        updateMap.put(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD, newStatus);
+        updateMap.put(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD, UserContext.getOperateUserId());
+        updateMap.put(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD, LocalDateTime.now());
+        return baseSingleTablePersistenceService.updateRecordByCondition(
+                jooqContextFactory.getContext(), tableName, updateMap, condition);
     }
 
     private Long saveModuleData(
@@ -357,7 +384,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                         .getModuleInfo()
                                         .getModuleId()
                                         .equals(currentReq.getRootModuleId())) // 是否是根模块
-                        .userId(UserContext.getUserId())
+                        .userId(UserContext.getOperateUserId())
                         .subjectId(AppContext.getSubjectId())
                         .saveType(currentReq.getSaveType())
                         .build();
@@ -503,7 +530,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                 DataPersistenceUtil.getTableRowMapFromWideRow(dataMap, relationDTO.getJoinTable());
 
         if (CollectionUtil.isEmpty(primaryTableRowMap)) {
-            return DataSaveResult.builder().rowChange(null).dataId(0L).build();
+            return DataSaveResult.builder().dataId(0L).build();
         }
 
         Long subTableId = DataPersistenceUtil.getTableRowId(primaryTableRowMap);
@@ -548,7 +575,7 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                                         .getModuleInfo()
                                         .getModuleId()
                                         .equals(currentReq.getRootModuleId())) // 是否是根模块
-                        .userId(UserContext.getUserId())
+                        .userId(UserContext.getOperateUserId())
                         .subjectId(AppContext.getSubjectId())
                         .saveType(currentReq.getSaveType())
                         .build();

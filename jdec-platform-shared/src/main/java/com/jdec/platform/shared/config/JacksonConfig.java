@@ -1,6 +1,7 @@
 package com.jdec.platform.shared.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
@@ -45,6 +46,8 @@ public class JacksonConfig {
         objectMapper.setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL);
         objectMapper.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
         objectMapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
+        objectMapper.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+        objectMapper.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
         //        JavaTimeModule module = new JavaTimeModule();
         //        module.addDeserializer(

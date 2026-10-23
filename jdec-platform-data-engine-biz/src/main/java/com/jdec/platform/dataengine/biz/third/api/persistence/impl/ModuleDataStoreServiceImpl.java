@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.collection.ListUtil;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.request.BusinessFormStatusReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
@@ -299,5 +300,33 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         resp.setVersionNo(moduleDataStoreDTO.getMainTableVersionNo());
         resp.setData(moduleDataStoreDTO.getParamData());
         return resp;
+    }
+
+    @Override
+    public Integer modifyBusinessFormStatus(BusinessFormStatusReq req) {
+        if (req == null
+                || req.getModuleId() == null
+                || StringUtils.isEmpty(req.getBusinessNo())
+                || req.getOriginalStatus() == null
+                || req.getTargetStatus() == null) {
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "参数不能为空");
+        }
+        Map<Long, SysModuleCombineInfo> moduleCacheMap =
+                moduleMetaDataService.getModuleMetaDataMapAsync(
+                        ModuleQueryContext.builder()
+                                .moduleId(req.getModuleId())
+                                .projectNo(AppContext.getProjectNo())
+                                .subjectId(AppContext.getSubjectId())
+                                .roleId(UserContext.getRoleId())
+                                .build());
+        String rootMainTable =
+                moduleCacheMap
+                        .get(req.getModuleId())
+                        .getModuleTree()
+                        .getRootModule()
+                        .getPrimaryTable();
+
+        return moduleDataPersistenceService.modifyBusinessFormStatus(
+                rootMainTable, req.getBusinessNo(), req.getOriginalStatus(), req.getTargetStatus());
     }
 }

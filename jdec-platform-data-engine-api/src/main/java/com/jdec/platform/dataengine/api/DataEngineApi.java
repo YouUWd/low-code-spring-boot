@@ -21,4 +21,12 @@ public interface DataEngineApi {
     CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo);
 
     Map<String, Object> getRecordData(Long moduleId, Long id);
+
+    /**
+     * 修改单据状态
+     *
+     * @param req
+     * @return
+     */
+    Integer modifyBusinessFormStatus(BusinessFormStatusReq req);
 }

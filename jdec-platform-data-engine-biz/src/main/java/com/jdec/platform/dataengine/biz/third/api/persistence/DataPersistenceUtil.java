@@ -14,11 +14,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
-import org.jooq.JSON;
-import org.jooq.JSONB;
+import org.jooq.*;
 import org.jooq.Record;
+import org.jooq.impl.DSL;
 
 public class DataPersistenceUtil {
 
@@ -479,5 +480,31 @@ public class DataPersistenceUtil {
                     .collect(Collectors.toSet());
         }
         return Collections.emptySet();
+    }
+
+    public static Condition getCondition(Map<String, Object> conditionMap) {
+        if (CollectionUtil.isEmpty(conditionMap)) {
+            return DSL.falseCondition();
+        }
+        Condition condition = DSL.trueCondition();
+        for (Map.Entry<String, Object> entry : conditionMap.entrySet()) {
+            if (entry.getValue() instanceof Collection) {
+                condition = condition.and(DSL.field(DSL.name(entry.getKey())).in(entry.getValue()));
+            } else {
+                condition = condition.and(DSL.field(DSL.name(entry.getKey())).eq(entry.getValue()));
+            }
+        }
+        return condition;
+    }
+
+    public static Map<Field<Object>, Object> getUpdateFields(Map<String, Object> updateMap) {
+        if (CollectionUtil.isEmpty(updateMap)) {
+            return Collections.emptyMap();
+        }
+        Map<Field<Object>, Object> updateFields = new HashMap<>();
+        for (Map.Entry<String, Object> entry : updateMap.entrySet()) {
+            updateFields.put(DSL.field(DSL.name(entry.getKey())), entry.getValue());
+        }
+        return updateFields;
     }
 }
