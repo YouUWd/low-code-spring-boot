@@ -22,7 +22,9 @@ import org.springframework.stereotype.Component;
  *   <li>一对一子表（basic_info、address、credit_rating）没有记录时，视为一行所有字段均为空， 按该子表的必填规则逐项收集字段级提示，不再提示“数据不存在”；
  *   <li>三级子表（member_contact）没有记录时不参与必填校验；
  *   <li>contact_name 是“联系人行”的标识：其他联系方式行为空、联系人行有值，因此不再反向要求必填；
- *   <li>保存校验（{@link #validateOnSave}）只校验前端提交的模块，未提交的模块不产生提示； 无主单ID且未提交基本信息数据时，基本信息的所有必填规则视为未满足。
+ *   <li>保存校验（{@link #validateOnSave}）只校验前端提交的模块，未提交的模块不产生提示； 无主单ID且未提交基本信息数据时，基本信息的所有必填规则视为未满足；
+ *   <li>提交校验的主单ID没有生成时（{@link #validateOnSubmit}）无法读取业务库，使用前端提交的数据校验：
+ *       所有需要校验的模块都参与，模块没有提交任何数据时该模块的必填项全部不通过，有记录时逐条记录校验。
  * </ul>
  */
 @Component
@@ -55,6 +57,19 @@ public class ExternalObjectRequiredValidator {
 
     private static final String CREDIT_RATING_TABLE = "credit_rating";
 
+    /** 一对多子表模块缺失时按“一行空值”参与校验，以下为其空行。 */
+    private static final ExternalObjectSnapshot.MemberRow EMPTY_MEMBER =
+            new ExternalObjectSnapshot.MemberRow(null, null, null, null, null, null);
+
+    private static final ExternalObjectSnapshot.CompanyContactRow EMPTY_COMPANY_CONTACT =
+            new ExternalObjectSnapshot.CompanyContactRow(null, null, null, null);
+
+    private static final ExternalObjectSnapshot.FinancialAccountRow EMPTY_FINANCIAL_ACCOUNT =
+            new ExternalObjectSnapshot.FinancialAccountRow(null, null);
+
+    private static final ExternalObjectSnapshot.DigitalAccountRow EMPTY_DIGITAL_ACCOUNT =
+            new ExternalObjectSnapshot.DigitalAccountRow(null, null);
+
     /** 提交整单校验时参与校验的全部模块。 */
     private static final Set<String> ALL_TABLES =
             Set.of(
@@ -75,6 +90,58 @@ public class ExternalObjectRequiredValidator {
      */
     public void validate(ExternalObjectSnapshot snapshot) {
         validateOnSave(snapshot, ALL_TABLES, false);
+    }
+
+    /**
+     * 执行必填校验（提交校验的主单ID没有生成时，基于前端提交参数）。
+     *
+     * <p>主单ID没有值时代码无法从业务库查到整单数据，改为使用前端提交的数据构造整单快照。全部需要校验的模块都参与：
+     *
+     * <ul>
+     *   <li>模块没有提交任何数据时，该模块按“一行空值”处理，模块下的必填项全部不通过；
+     *   <li>模块有记录时，逐条记录校验每个需要校验的字段规则。
+     * </ul>
+     *
+     * @param snapshot 由前端提交参数转换得到的整单数据
+     * @param basicInfoAbsentOnCreate 无主单ID且未提交基本信息数据：基本信息的所有校验规则视为不满足
+     * @throws BusinessException 存在未填写的必填项，提示语以换行符拼接
+     */
+    public void validateOnSubmit(ExternalObjectSnapshot snapshot, boolean basicInfoAbsentOnCreate) {
+        Set<String> missing = new LinkedHashSet<>();
+        ExternalObjectSnapshot.InfoRow info = snapshot.info();
+        NatureFlags flags = NatureFlags.of(info.nature());
+
+        collectInfo(info, flags, missing);
+        if (basicInfoAbsentOnCreate) {
+            collectAbsentBasicInfo(info.nature(), flags, missing);
+        } else {
+            collectBasicInfo(snapshot.basicInfo(), flags, missing);
+        }
+        // 一对多子表：模块没有提交数据时按一行空值收集，模块下的必填项全部不通过
+        collectMembers(
+                snapshot.members().isEmpty() ? List.of(EMPTY_MEMBER) : snapshot.members(),
+                flags,
+                missing);
+        collectAddress(snapshot.address(), flags, missing);
+        collectCompanyContacts(
+                snapshot.companyContacts().isEmpty()
+                        ? List.of(EMPTY_COMPANY_CONTACT)
+                        : snapshot.companyContacts(),
+                missing);
+        collectFinancialAccounts(
+                snapshot.financialAccounts().isEmpty()
+                        ? List.of(EMPTY_FINANCIAL_ACCOUNT)
+                        : snapshot.financialAccounts(),
+                missing);
+        collectDigitalAccounts(
+                snapshot.digitalAccounts().isEmpty()
+                        ? List.of(EMPTY_DIGITAL_ACCOUNT)
+                        : snapshot.digitalAccounts(),
+                missing);
+        collectCreditRating(snapshot.creditRating(), flags, missing);
+        if (!missing.isEmpty()) {
+            throw new BusinessException(String.join("\n", missing));
+        }
     }
 
     /**
