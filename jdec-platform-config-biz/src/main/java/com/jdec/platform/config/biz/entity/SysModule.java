@@ -51,6 +51,12 @@ public class SysModule {
     @Reference(target = SysModule.class, name = "子模块", displayField = "moduleName")
     private Long parentId;
 
+    /** 是否开启启停功能: 0-否, 1-是 */
+    @Builder.Default private Integer enableActive = 0;
+
+    /** 变更申请模块 ID */
+    private Long changeModuleId;
+
     /** 排序顺序 */
     private Integer sortOrder;
 

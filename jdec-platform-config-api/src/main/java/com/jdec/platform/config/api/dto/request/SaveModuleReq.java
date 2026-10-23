@@ -76,6 +76,14 @@ public class SaveModuleReq {
         @Schema(description = "主表名称", example = "student")
         private String primaryTable;
 
+        /** 是否开启启停功能: 0-否, 1-是 */
+        @Schema(description = "是否开启启停功能: 0-否, 1-是", example = "0")
+        private Integer enableActive;
+
+        /** 变更申请模块ID */
+        @Schema(description = "变更申请模块ID")
+        private Long changeModuleId;
+
         /** 数据来源主体ID集合 */
         @Schema(description = "数据来源主体ID集合")
         private List<Long> sourceSubjects;

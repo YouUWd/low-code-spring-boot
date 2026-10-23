@@ -58,6 +58,12 @@ public class SysModuleResp {
         @Schema(description = "主表名称", example = "student")
         private String primaryTable;
 
+        @Schema(description = "是否开启启停功能: 0-否, 1-是", example = "0")
+        private Integer enableActive;
+
+        @Schema(description = "变更申请模块ID")
+        private Long changeModuleId;
+
         @Schema(description = "排序顺序", example = "1")
         private Integer sortOrder;
 

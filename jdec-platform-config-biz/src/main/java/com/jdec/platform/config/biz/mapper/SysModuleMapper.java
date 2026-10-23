@@ -17,12 +17,12 @@ public interface SysModuleMapper extends BaseMapper<SysModule> {
      */
     @Insert(
             "INSERT INTO sys_module (id, project_no, subject_id, module_code, module_name, module_desc, category,"
-                    + " source_subjects, parent_id, sort_order, primary_table, created_date, updated_date) "
+                    + " source_subjects, parent_id, enable_active, change_module_id, sort_order, primary_table, created_date, updated_date) "
                     + "VALUES (#{id}, #{projectNo}, #{subjectId}, #{moduleCode}, #{moduleName}, #{moduleDesc},"
                     + " #{category},"
                     + " #{sourceSubjects,"
                     + " typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler,"
                     + " jdbcType=VARCHAR},"
-                    + " #{parentId}, #{sortOrder}, #{primaryTable}, #{createdDate}, #{updatedDate})")
+                    + " #{parentId}, #{enableActive}, #{changeModuleId}, #{sortOrder}, #{primaryTable}, #{createdDate}, #{updatedDate})")
     int insertWithId(SysModule entity);
 }

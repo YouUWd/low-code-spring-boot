@@ -43,6 +43,12 @@ public class ModuleInfo {
     @Schema(description = "物理主表名", example = "student")
     private String primaryTable;
 
+    @Schema(description = "是否开启启停功能: 0-否, 1-是", example = "0")
+    private Integer enableActive;
+
+    @Schema(description = "变更申请模块ID", example = "2001")
+    private Long changeModuleId;
+
     @Schema(description = "物理字段字典列表 (sys_module_field)")
     private List<ModuleFieldDTO> fields;
 }
