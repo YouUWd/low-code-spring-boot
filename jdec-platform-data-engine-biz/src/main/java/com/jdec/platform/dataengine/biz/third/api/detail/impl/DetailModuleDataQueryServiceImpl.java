@@ -74,6 +74,8 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
         StatementContext statementContext = StatementContext.builder().build();
 
+        statementContext.setDataRightConfigResps(context.getDataRightConfigResps());
+
         // 构建 SQL拼装 上下文对象
         BeanUtil.copyProperties(
                 context, statementContext, CopyOptions.create().ignoreError().ignoreNullValue());
@@ -121,12 +123,6 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                 mainTableIdMap.put(statementContext.getId(), mainRow);
             }
 
-            //            Map<String, Object> mainDataMap = new HashMap<>();
-            //            mainDataMap.put("data", mainRow);
-
-            // 放入主表数据
-            //            tableData.put(primaryTable, mainDataMap);
-
             relateIds.add(statementContext.getId());
         } else {
             // 获取查询结果
@@ -164,12 +160,6 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
                 mainRow.add(rowData);
             }
-
-            //            Map<String, Object> mainDataMap = new HashMap<>();
-            //            mainDataMap.put("data", mainRow);
-
-            // 放入主表数据
-            //            tableData.put(primaryTable, mainDataMap);
         }
 
         // 构造子表数据
@@ -272,6 +262,7 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
 
                 StatementContext statementContext = StatementContext.builder().build();
 
+                statementContext.setDataRightConfigResps(context.getDataRightConfigResps());
                 // 构建 SQL拼装 上下文对象
                 BeanUtil.copyProperties(
                         context,

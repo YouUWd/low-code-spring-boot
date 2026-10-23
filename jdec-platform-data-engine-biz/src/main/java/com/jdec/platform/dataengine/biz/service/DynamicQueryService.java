@@ -9,13 +9,14 @@ import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
-import com.jdec.platform.dataengine.api.dto.request.DynamicQueryReq;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
@@ -24,6 +25,7 @@ import com.jdec.platform.dataengine.biz.context.VersionDataQueryContext;
 import com.jdec.platform.dataengine.biz.dsl.JooqConditionBuilder;
 import com.jdec.platform.dataengine.biz.dsl.JooqContextFactory;
 import com.jdec.platform.dataengine.biz.dsl.JooqSqlBuilder;
+import com.jdec.platform.dataengine.biz.dto.DynamicQueryReq;
 import com.jdec.platform.dataengine.biz.dto.ModuleField;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleTable;
@@ -80,6 +82,8 @@ public class DynamicQueryService {
     private final ConfigApi configApi;
 
     private final SysUserApi sysUserApi;
+
+    private final OpenRolePermissionApi openRolePermissionApi;
 
     private final VersionDataQueryStrategyFactory versionDataQueryStrategyFactory;
 
@@ -459,6 +463,9 @@ public class DynamicQueryService {
                                                                                                 .getColumnName())))
                         .collect(Collectors.toList()));
 
+        List<DataRightConfigResp> dataRightconfigs =
+                openRolePermissionApi.getRoleDataPermissionDetail(UserContext.getRoleId());
+
         DynamicQueryReq singleQueryDTO =
                 DynamicQueryReq.builder()
                         .moduleId(rootNode.getId())
@@ -467,6 +474,7 @@ public class DynamicQueryService {
                         .btnType(btnType)
                         .fields(moduleFileds)
                         .queryType(queryType)
+                        .dataRightConfigResps(dataRightconfigs)
                         .build();
 
         ModuleTreeDTO moduleTreeDTO =
@@ -823,6 +831,7 @@ public class DynamicQueryService {
                             .btnType(queryReq.getBtnType())
                             .fields(moduleFileds)
                             .queryType(queryReq.getQueryType())
+                            .dataRightConfigResps(queryReq.getDataRightConfigResps())
                             .build();
             NestedModuleDataDTO childResultList =
                     queryModule(
@@ -1251,6 +1260,7 @@ public class DynamicQueryService {
                         .subjectId(subjectId)
                         .queryType(queryType)
                         .fields(queryReq.getFields())
+                        .dataRightConfigResps(queryReq.getDataRightConfigResps())
                         .build();
 
         List<RecordDataDTO> recordDataDTOList =
