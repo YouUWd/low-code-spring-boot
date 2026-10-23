@@ -5,10 +5,8 @@ import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.third.api.condition.SingleBizConditionBuilderService;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import com.jdec.platform.shared.context.UserContext;
+import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,7 +55,20 @@ public class DataAuthorityConditionBuilderServiceImpl implements SingleBizCondit
         // 主表数据权限筛选条件构造
         applyDataRightFilter(context.getTableName(), tableNameToConfigItems, conditions);
 
-        return DSL.and(conditions);
+        // 顶层模块查询增加创建人筛选条件OR
+        if (context.getQueryType() != QueryType.DETAIL_SUBMODULE_QUERY) {
+            Long userId =
+                    Objects.nonNull(UserContext.getMockUserId())
+                            ? UserContext.getMockUserId()
+                            : UserContext.getRealUserId();
+
+            Condition createdByCondition =
+                    DSL.field(DSL.name(context.getTableName(), "created_by")).eq(userId);
+
+            return DSL.and(conditions).or(createdByCondition);
+        } else {
+            return DSL.and(conditions);
+        }
     }
 
     /**

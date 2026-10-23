@@ -317,9 +317,9 @@ public class DynamicQueryService {
                                         ele.getTableName() + "." + ele.getFieldName(),
                                         primaryId);
 
+                                // 以原值为模板放入新值
                                 JsonNode newCopyWord = deepFilterBySourceSchema(oldWord, newWord);
 
-                                // 以原值为模板放入新值
                                 rowData.put(
                                         ele.getTableName() + "." + ele.getFieldName(), newCopyWord);
                             });
