@@ -184,15 +184,27 @@ public final class FilterConditionCompiler {
                 }
             }
             case "BETWEEN", "RANGE" -> {
+                Object start = null;
+                Object end = null;
                 if (value instanceof Collection<?> coll && coll.size() >= 2) {
                     Iterator<?> it = coll.iterator();
-                    Object start = it.next();
-                    Object end = it.next();
-                    yield field.between(start, end);
+                    start = it.next();
+                    end = it.next();
                 } else if (value instanceof Object[] arr && arr.length >= 2) {
-                    yield field.between(arr[0], arr[1]);
+                    start = arr[0];
+                    end = arr[1];
                 } else {
                     yield field.eq(value);
+                }
+
+                if (start != null && end != null) {
+                    yield field.between(start, end);
+                } else if (start != null) {
+                    yield field.ge(start);
+                } else if (end != null) {
+                    yield field.le(end);
+                } else {
+                    yield DSL.noCondition();
                 }
             }
             default -> field.like("%" + value + "%");
