@@ -10,7 +10,8 @@ import org.springframework.stereotype.Component;
  * <p>单据提交、审批通过、审批驳回共用同一套整单校验，按根模块ID分发到对应业务模块； 模块ID与 {@code config_center.sys_module.id} 对应，在代码中固定。
  * 当前接入外部对象管理，后续场地产线按各自模块ID在此追加。
  *
- * <p>无审批链保存校验（{@link #checkOnSave}）同样按根模块ID分发：当前单据的数据完全取自前端提交的参数，仅查重会读取其他已保存对象作为比对基准。
+ * <p>保存校验（{@link #checkOnSave}）同样按根模块ID分发：无审批链保存直接生效，有审批链的新增保存（主单ID没有值）落库前也执行该校验，
+ * 当前单据的数据完全取自前端提交的参数，仅查重会读取其他已保存对象作为比对基准。
  */
 @Component
 @RequiredArgsConstructor
@@ -43,7 +44,7 @@ public class SubmitCheckRouter {
     }
 
     /**
-     * 执行保存校验（仅无审批链保存）。
+     * 执行保存校验（无审批链保存、有审批链的新增保存）。
      *
      * <p>当前单据的校验数据全部取自前端提交的参数，不按主单ID加载业务库；未提交的模块不参与校验，查重仅读取其他已保存对象。
      *
