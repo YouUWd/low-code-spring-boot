@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
-import com.jdec.platform.dataengine.api.dto.model.VersionCompareItem;
 import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dto.VersionSnapShot;
 import com.jdec.platform.shared.context.AppContext;
@@ -94,7 +93,7 @@ public class ModuleTreeDiffService {
                 }
 
                 // 对比row字段，生成changeList，挂在recordItem（和row平级）
-                Map<String, VersionCompareItem> changeList =
+                Map<String, Map<String, Object>> changeList =
                         buildRowChangeList(oldRow, rowNode, currentChangeMap);
                 if (changeList.size() > 0) {
                     recordItem.setChangeList(changeList);
@@ -182,11 +181,11 @@ public class ModuleTreeDiffService {
      *
      * @return ObjectNode changeList
      */
-    private static Map<String, VersionCompareItem> buildRowChangeList(
+    private static Map<String, Map<String, Object>> buildRowChangeList(
             Map<String, Object> oldRow,
             Map<String, Object> newRow,
             Map<String, VersionSnapShot> currentChangeMap) {
-        Map<String, VersionCompareItem> changeList = new HashMap<>();
+        Map<String, Map<String, Object>> changeList = new HashMap<>();
         if (Objects.isNull(newRow)) {
             return changeList;
         }
@@ -197,14 +196,17 @@ public class ModuleTreeDiffService {
             String fieldKey = entry.getKey();
             Object newVal = entry.getValue();
             Object oldVal = oldRow == null ? null : oldRow.get(fieldKey);
-            VersionCompareItem.VersionCompareItemBuilder versionCompareItem =
-                    VersionCompareItem.builder();
+            //            VersionCompareItem.VersionCompareItemBuilder versionCompareItem =
+            //                    VersionCompareItem.builder();
+
+            Map<String, Object> versionCompareItem = new HashMap<>();
 
             boolean addVersionItem = false;
 
             // 值相同跳过，只记录变更字段
             if (Objects.nonNull(oldRow) && !isEqual(newVal, oldVal)) {
-                versionCompareItem.pre(oldVal).current(newVal);
+                versionCompareItem.put("pre", oldVal);
+                versionCompareItem.put("current", newVal);
                 addVersionItem = true;
             }
             if (Objects.nonNull(currentChangeMap.get(fieldKey))) {
@@ -220,22 +222,24 @@ public class ModuleTreeDiffService {
                                         Object currentOld =
                                                 OBJECT_MAPPER.readTree(
                                                         changeObj.getFirstSnapshot());
-                                        versionCompareItem.currentOld(currentOld);
+                                        versionCompareItem.put("currentOld", currentOld);
                                     } else {
-                                        versionCompareItem.currentOld(changeObj.getFirstSnapshot());
+                                        versionCompareItem.put(
+                                                "currentOld", changeObj.getFirstSnapshot());
                                     }
-                                    versionCompareItem.current(newVal);
+                                    versionCompareItem.put("current", newVal);
                                     addVersionItem = true;
                                 }
                             } else {
                                 if (isJsonStr(changeObj.getSecondSnapshot())) {
                                     Object currentOld =
                                             OBJECT_MAPPER.readTree(changeObj.getSecondSnapshot());
-                                    versionCompareItem.currentOld(currentOld);
+                                    versionCompareItem.put("currentOld", currentOld);
                                 } else {
-                                    versionCompareItem.currentOld(changeObj.getSecondSnapshot());
+                                    versionCompareItem.put(
+                                            "currentOld", changeObj.getSecondSnapshot());
                                 }
-                                versionCompareItem.current(newVal);
+                                versionCompareItem.put("current", newVal);
                                 addVersionItem = true;
                             }
                         } else {
@@ -243,12 +247,12 @@ public class ModuleTreeDiffService {
                                 if (isJsonStr(changeObj.getFirstSnapshot())) {
                                     Object currentOld =
                                             OBJECT_MAPPER.readTree(changeObj.getFirstSnapshot());
-                                    versionCompareItem.currentOld(currentOld);
+                                    versionCompareItem.put("currentOld", currentOld);
                                 } else {
-                                    versionCompareItem.currentOld(changeObj.getFirstSnapshot());
+                                    versionCompareItem.put(
+                                            "currentOld", changeObj.getFirstSnapshot());
                                 }
-
-                                versionCompareItem.current(newVal);
+                                versionCompareItem.put("current", newVal);
                                 addVersionItem = true;
                             }
                         }
@@ -260,7 +264,7 @@ public class ModuleTreeDiffService {
 
             // 构造 {pre:旧值, currentOld:旧值, current:新值}
             if (addVersionItem) {
-                changeList.put(entry.getKey(), versionCompareItem.build());
+                changeList.put(entry.getKey(), versionCompareItem);
             }
         }
         return changeList;
