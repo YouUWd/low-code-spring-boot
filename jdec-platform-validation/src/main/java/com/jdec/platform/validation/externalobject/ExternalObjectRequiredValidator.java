@@ -7,7 +7,7 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
- * 外部对象提交必填校验。
+ * 外部对象必填校验（提交整单校验与无审批链保存校验共用）。
  *
  * <p>规则来源：{@code docs/external/外部对象必填校验.md}。以对象性质（{@code info.nature}）为前置条件，按模块树从上到下、
  * 同级模块从前到后的顺序遍历整单数据，收集全部未填写的必填项后一次性抛出 {@link BusinessException}，提示语之间用换行符分隔。
@@ -17,49 +17,128 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>对象性质本身最先校验；对象性质无值时，依赖对象性质的必填项按“不适用”处理；
  *   <li>子表（basic_info、member、address、company_contact、financial_account、digital_account、credit_rating）
- *       通过关联主单ID未查到任何数据时，该子表的校验规则一律判定为不通过；
- *   <li>一对多子表存在明细行时逐行校验行内必填项；
+ *       没有记录时，视为一行所有字段均为空，按该子表的必填规则逐项收集字段级提示，不再提示“数据不存在”；
+ *   <li>一对多子表存在明细行时逐行校验行内必填项；无记录的人员按默认员工行处理；
+ *   <li>三级子表（member_contact）没有记录时不参与必填校验；
  *   <li>手机号码仅校验员工行与个人性质的人员行（部门行不要求手机号）；
- *   <li>contact_name 是“联系人行”的标识：其他联系方式行为空、联系人行有值，因此不再反向要求必填。
+ *   <li>contact_name 是“联系人行”的标识：其他联系方式行为空、联系人行有值，因此不再反向要求必填；
+ *   <li>无审批链保存校验（{@link #validateOnSave}）只校验前端提交的模块，未提交的模块不产生提示； 无主单ID且未提交基本信息数据时，基本信息的所有必填规则视为未满足。
  * </ul>
  */
 @Component
 public class ExternalObjectRequiredValidator {
+    /** 子表无记录时按“一行空值”参与字段级校验，以下为其空行。 */
+    private static final ExternalObjectSnapshot.BasicInfoRow EMPTY_BASIC_INFO =
+            new ExternalObjectSnapshot.BasicInfoRow(
+                    null, null, null, null, null, null, null, null, null, null);
 
-    /** 子表未查到数据时的提示模块名（按模块树顺序）。 */
-    private static final String MODULE_BASIC_INFO = "基本信息";
+    private static final ExternalObjectSnapshot.MemberRow EMPTY_MEMBER =
+            new ExternalObjectSnapshot.MemberRow(null, null, null, null, null, null);
 
-    private static final String MODULE_MEMBER = "人员构成";
+    private static final ExternalObjectSnapshot.AddressRow EMPTY_ADDRESS =
+            new ExternalObjectSnapshot.AddressRow(null, null, null, null);
 
-    private static final String MODULE_ADDRESS = "联系方式 - 公司地址";
+    private static final ExternalObjectSnapshot.CompanyContactRow EMPTY_COMPANY_CONTACT =
+            new ExternalObjectSnapshot.CompanyContactRow(null, null, null, null);
 
-    private static final String MODULE_COMPANY_CONTACT = "联系方式 - 公司联系方式";
+    private static final ExternalObjectSnapshot.FinancialAccountRow EMPTY_FINANCIAL_ACCOUNT =
+            new ExternalObjectSnapshot.FinancialAccountRow(null, null);
 
-    private static final String MODULE_FINANCIAL_ACCOUNT = "财务信息 - 银行卡";
+    private static final ExternalObjectSnapshot.DigitalAccountRow EMPTY_DIGITAL_ACCOUNT =
+            new ExternalObjectSnapshot.DigitalAccountRow(null, null);
 
-    private static final String MODULE_DIGITAL_ACCOUNT = "财务信息 - 电子账户";
+    private static final ExternalObjectSnapshot.CreditRatingRow EMPTY_CREDIT_RATING =
+            new ExternalObjectSnapshot.CreditRatingRow(null, null);
 
-    private static final String MODULE_CREDIT_RATING = "信用等级";
+    /** 模块表名，用于保存校验时按提交模块收集必填项。 */
+    private static final String INFO_TABLE = "info";
+
+    private static final String BASIC_INFO_TABLE = "basic_info";
+
+    private static final String MEMBER_TABLE = "member";
+
+    private static final String ADDRESS_TABLE = "address";
+
+    private static final String COMPANY_CONTACT_TABLE = "company_contact";
+
+    private static final String FINANCIAL_ACCOUNT_TABLE = "financial_account";
+
+    private static final String DIGITAL_ACCOUNT_TABLE = "digital_account";
+
+    private static final String CREDIT_RATING_TABLE = "credit_rating";
+
+    /** 提交整单校验时参与校验的全部模块。 */
+    private static final Set<String> ALL_TABLES =
+            Set.of(
+                    INFO_TABLE,
+                    BASIC_INFO_TABLE,
+                    MEMBER_TABLE,
+                    ADDRESS_TABLE,
+                    COMPANY_CONTACT_TABLE,
+                    FINANCIAL_ACCOUNT_TABLE,
+                    DIGITAL_ACCOUNT_TABLE,
+                    CREDIT_RATING_TABLE);
 
     /**
-     * 执行必填校验。
+     * 执行必填校验（提交整单校验）。
      *
      * @param snapshot 外部对象整单数据
      * @throws BusinessException 存在未填写的必填项，提示语以换行符拼接
      */
     public void validate(ExternalObjectSnapshot snapshot) {
+        validateOnSave(snapshot, ALL_TABLES, false);
+    }
+
+    /**
+     * 执行必填校验（无审批链保存校验）。
+     *
+     * <p>保存接口只拿到前端提交的参数，因此只校验本次提交的模块，未提交的模块不产生提示。
+     *
+     * @param snapshot 由前端提交参数转换得到的整单数据
+     * @param tables 本次提交且需要校验的模块表名
+     * @param basicInfoAbsentOnCreate 无主单ID且未提交基本信息数据：基本信息的所有校验规则视为不满足
+     * @throws BusinessException 存在未填写的必填项，提示语以换行符拼接
+     */
+    public void validateOnSave(
+            ExternalObjectSnapshot snapshot, Set<String> tables, boolean basicInfoAbsentOnCreate) {
         Set<String> missing = new LinkedHashSet<>();
-        collectMissing(snapshot, missing);
+        ExternalObjectSnapshot.InfoRow info = snapshot.info();
+        NatureFlags flags = NatureFlags.of(info.nature());
+
+        if (tables.contains(INFO_TABLE)) {
+            collectInfo(info, flags, missing);
+        }
+        if (basicInfoAbsentOnCreate) {
+            collectAbsentBasicInfo(info.nature(), flags, missing);
+        } else if (tables.contains(BASIC_INFO_TABLE)) {
+            collectBasicInfo(snapshot.basicInfo(), flags, missing);
+        }
+        if (tables.contains(MEMBER_TABLE)) {
+            collectMembers(snapshot.members(), flags, missing);
+        }
+        if (tables.contains(ADDRESS_TABLE)) {
+            collectAddress(snapshot.address(), flags, missing);
+        }
+        if (tables.contains(COMPANY_CONTACT_TABLE)) {
+            collectCompanyContacts(snapshot.companyContacts(), missing);
+        }
+        if (tables.contains(FINANCIAL_ACCOUNT_TABLE)) {
+            collectFinancialAccounts(snapshot.financialAccounts(), missing);
+        }
+        if (tables.contains(DIGITAL_ACCOUNT_TABLE)) {
+            collectDigitalAccounts(snapshot.digitalAccounts(), missing);
+        }
+        if (tables.contains(CREDIT_RATING_TABLE)) {
+            collectCreditRating(snapshot.creditRating(), flags, missing);
+        }
         if (!missing.isEmpty()) {
             throw new BusinessException(String.join("\n", missing));
         }
     }
 
-    /** 按模块树顺序收集全部未填写的必填项。 */
-    private void collectMissing(ExternalObjectSnapshot snapshot, Set<String> missing) {
-        ExternalObjectSnapshot.InfoRow info = snapshot.info();
-        NatureFlags flags = NatureFlags.of(info.nature());
-
+    /** 主档字段的必填项。 */
+    private void collectInfo(
+            ExternalObjectSnapshot.InfoRow info, NatureFlags flags, Set<String> missing) {
         requireText(info.companyName(), "外部对象全称", missing);
         requireJson(info.nature(), "对象性质", missing);
         if (flags.individual()) {
@@ -72,41 +151,51 @@ public class ExternalObjectRequiredValidator {
             requireJson(info.industryTags(), "行业标签", missing);
         }
         requireJson(info.industryTypes(), "行业类型", missing);
+    }
 
-        collectBasicInfo(snapshot.basicInfo(), flags, missing);
-        collectMembers(snapshot.members(), flags, missing);
-        collectAddress(snapshot.address(), flags, missing);
-        collectCompanyContacts(snapshot.companyContacts(), missing);
-        collectAccounts(snapshot.financialAccounts(), snapshot.digitalAccounts(), missing);
-        collectCreditRating(snapshot.creditRating(), flags, missing);
+    /**
+     * 无主单ID且未提交基本信息数据时的必填项。
+     *
+     * <p>对象性质有值时按该性质的必填规则收集；对象性质也未提交时，基本信息的全部候选必填规则都视为未满足。
+     */
+    private void collectAbsentBasicInfo(String nature, NatureFlags flags, Set<String> missing) {
+        if (!ExternalObjectValues.isBlank(nature)) {
+            collectBasicInfo(EMPTY_BASIC_INFO, flags, missing);
+            return;
+        }
+        missing.add("基本信息 - 统一社会信用代码");
+        missing.add("基本信息 - 身份证号");
+        missing.add("基本信息 - 法定代表人/负责人");
+        missing.add("基本信息 - 参保人数");
+        missing.add("基本信息 - 注册资本");
+        missing.add("基本信息 - 实缴资本");
+        missing.add("基本信息 - 注册登记日期");
     }
 
     private void collectBasicInfo(
             ExternalObjectSnapshot.BasicInfoRow basicInfo, NatureFlags flags, Set<String> missing) {
-        if (basicInfo == null) {
-            missing.add(notFound(MODULE_BASIC_INFO));
-            return;
-        }
+        // 子表无记录时按一行空值处理，由必填规则决定需要提示哪些字段
+        ExternalObjectSnapshot.BasicInfoRow row = basicInfo == null ? EMPTY_BASIC_INFO : basicInfo;
         if (flags.usccRequired()) {
-            requireText(basicInfo.uscc(), "基本信息 - 统一社会信用代码", missing);
+            requireText(row.uscc(), "基本信息 - 统一社会信用代码", missing);
         }
         if (flags.individual()) {
-            requireText(basicInfo.idCardNo(), "基本信息 - 身份证号", missing);
+            requireText(row.idCardNo(), "基本信息 - 身份证号", missing);
         }
         if (flags.legalPersonRequired()) {
-            requireText(basicInfo.legalPerson(), "基本信息 - 法定代表人/负责人", missing);
+            requireText(row.legalPerson(), "基本信息 - 法定代表人/负责人", missing);
         }
         if (flags.enterprise()) {
-            requireNotNull(basicInfo.insuredCount(), "基本信息 - 参保人数", missing);
+            requireNotNull(row.insuredCount(), "基本信息 - 参保人数", missing);
         }
         if (flags.regCapitalRequired()) {
-            requireNotNull(basicInfo.regCapital(), "基本信息 - 注册资本", missing);
+            requireNotNull(row.regCapital(), "基本信息 - 注册资本", missing);
         }
         if (flags.enterprise()) {
-            requireNotNull(basicInfo.paidInCapital(), "基本信息 - 实缴资本", missing);
+            requireNotNull(row.paidInCapital(), "基本信息 - 实缴资本", missing);
         }
         if (flags.regDateRequired()) {
-            requireNotNull(basicInfo.regDate(), "基本信息 - 注册登记日期", missing);
+            requireNotNull(row.regDate(), "基本信息 - 注册登记日期", missing);
         }
     }
 
@@ -114,18 +203,18 @@ public class ExternalObjectRequiredValidator {
             List<ExternalObjectSnapshot.MemberRow> members,
             NatureFlags flags,
             Set<String> missing) {
-        if (members.isEmpty()) {
-            missing.add(notFound(MODULE_MEMBER));
-            return;
-        }
-        for (ExternalObjectSnapshot.MemberRow member : members) {
+        // 无记录时按一个默认员工行的空值处理：类型、手机号视为未填；部门名称仅在部门行校验
+        boolean noRecord = members.isEmpty();
+        List<ExternalObjectSnapshot.MemberRow> rows = noRecord ? List.of(EMPTY_MEMBER) : members;
+        for (ExternalObjectSnapshot.MemberRow member : rows) {
             if (!flags.individual()) {
                 requireJson(member.type(), "人员构成 - 类型", missing);
                 if (ExternalObjectValues.isDepartmentType(member.type())) {
                     requireText(member.name(), "人员构成 - 部门名称", missing);
                 }
             }
-            if (flags.individual() || ExternalObjectValues.isEmployeeType(member.type())) {
+            boolean employeeRow = noRecord || ExternalObjectValues.isEmployeeType(member.type());
+            if (flags.individual() || employeeRow) {
                 requireText(member.mobilePhoneNo(), "人员构成 - 手机号码", missing);
             }
         }
@@ -133,30 +222,26 @@ public class ExternalObjectRequiredValidator {
 
     private void collectAddress(
             ExternalObjectSnapshot.AddressRow address, NatureFlags flags, Set<String> missing) {
-        if (address == null) {
-            missing.add(notFound(MODULE_ADDRESS));
-            return;
-        }
         if (!flags.addressRequired()) {
             return;
         }
-        if (ExternalObjectValues.isBlank(address.commRegion())
-                || ExternalObjectValues.isBlank(address.commDetail())) {
+        // 子表无记录时按一行空值处理，通讯地址、注册地址均视为未填
+        ExternalObjectSnapshot.AddressRow row = address == null ? EMPTY_ADDRESS : address;
+        if (ExternalObjectValues.isBlank(row.commRegion())
+                || ExternalObjectValues.isBlank(row.commDetail())) {
             missing.add("联系方式 - 通讯地址");
         }
-        if (ExternalObjectValues.isBlank(address.regRegion())
-                || ExternalObjectValues.isBlank(address.regDetail())) {
+        if (ExternalObjectValues.isBlank(row.regRegion())
+                || ExternalObjectValues.isBlank(row.regDetail())) {
             missing.add("联系方式 - 注册地址");
         }
     }
 
     private void collectCompanyContacts(
             List<ExternalObjectSnapshot.CompanyContactRow> contacts, Set<String> missing) {
-        if (contacts.isEmpty()) {
-            missing.add(notFound(MODULE_COMPANY_CONTACT));
-            return;
-        }
-        for (ExternalObjectSnapshot.CompanyContactRow contact : contacts) {
+        // 无记录时按一个“其他联系方式”的空行处理：联系方式、号码视为未填
+        for (ExternalObjectSnapshot.CompanyContactRow contact :
+                contacts.isEmpty() ? List.of(EMPTY_COMPANY_CONTACT) : contacts) {
             boolean contactPerson = !ExternalObjectValues.isBlankJson(contact.contactName());
             String prefix = contactPerson ? "联系方式" : "人员构成 - 其他联系方式";
             requireJson(contact.contactType(), prefix + " - 联系方式", missing);
@@ -164,23 +249,24 @@ public class ExternalObjectRequiredValidator {
         }
     }
 
-    private void collectAccounts(
+    private void collectFinancialAccounts(
             List<ExternalObjectSnapshot.FinancialAccountRow> financialAccounts,
-            List<ExternalObjectSnapshot.DigitalAccountRow> digitalAccounts,
             Set<String> missing) {
-        if (financialAccounts.isEmpty()) {
-            missing.add(notFound(MODULE_FINANCIAL_ACCOUNT));
-        } else {
-            for (ExternalObjectSnapshot.FinancialAccountRow account : financialAccounts) {
-                requireJson(account.accountStatus(), "财务信息 - 银行卡 - 账号状态", missing);
-            }
+        // 子表无记录时按一行空值处理，账号状态视为未填
+        List<ExternalObjectSnapshot.FinancialAccountRow> rows =
+                financialAccounts.isEmpty() ? List.of(EMPTY_FINANCIAL_ACCOUNT) : financialAccounts;
+        for (ExternalObjectSnapshot.FinancialAccountRow account : rows) {
+            requireJson(account.accountStatus(), "财务信息 - 银行卡 - 账号状态", missing);
         }
-        if (digitalAccounts.isEmpty()) {
-            missing.add(notFound(MODULE_DIGITAL_ACCOUNT));
-        } else {
-            for (ExternalObjectSnapshot.DigitalAccountRow account : digitalAccounts) {
-                requireJson(account.accountStatus(), "财务信息 - 电子账户 - 账号状态", missing);
-            }
+    }
+
+    private void collectDigitalAccounts(
+            List<ExternalObjectSnapshot.DigitalAccountRow> digitalAccounts, Set<String> missing) {
+        // 子表无记录时按一行空值处理，账号状态视为未填
+        List<ExternalObjectSnapshot.DigitalAccountRow> rows =
+                digitalAccounts.isEmpty() ? List.of(EMPTY_DIGITAL_ACCOUNT) : digitalAccounts;
+        for (ExternalObjectSnapshot.DigitalAccountRow account : rows) {
+            requireJson(account.accountStatus(), "财务信息 - 电子账户 - 账号状态", missing);
         }
     }
 
@@ -188,13 +274,12 @@ public class ExternalObjectRequiredValidator {
             ExternalObjectSnapshot.CreditRatingRow creditRating,
             NatureFlags flags,
             Set<String> missing) {
-        if (creditRating == null) {
-            missing.add(notFound(MODULE_CREDIT_RATING));
-            return;
-        }
-        requireJson(creditRating.internalLevel(), "信用等级 - 内部信用等级", missing);
+        // 子表无记录时按一行空值处理，内部信用等级、企查查评分视为未填
+        ExternalObjectSnapshot.CreditRatingRow row =
+                creditRating == null ? EMPTY_CREDIT_RATING : creditRating;
+        requireJson(row.internalLevel(), "信用等级 - 内部信用等级", missing);
         if (flags.qccScoreRequired()) {
-            requireText(creditRating.qccScore(), "信用等级 - 企查查评分", missing);
+            requireText(row.qccScore(), "信用等级 - 企查查评分", missing);
         }
     }
 
@@ -214,11 +299,6 @@ public class ExternalObjectRequiredValidator {
         if (value == null) {
             missing.add(label);
         }
-    }
-
-    /** 子表通过关联主单ID未查到数据时的提示。 */
-    private static String notFound(String moduleLabel) {
-        return "「" + moduleLabel + "」数据不存在";
     }
 
     /** 对象性质判定结果，避免在各类校验中重复解析词云 JSON。 */
