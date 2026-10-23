@@ -669,10 +669,15 @@ public class ModuleTreeDataUtils {
         if (nestedStoreData == null) {
             return;
         }
-        if (nestedStoreData.getModuleId() == null
-                || CollectionUtil.isEmpty(nestedStoreData.getRecord())) {
+        if (nestedStoreData.getModuleId() == null) {
             return;
         }
+
+        // 这个地方 如果Record 为空 不能直接返回,有可能用户清空了 这个模块的数据，要删除掉
+        //        if(CollectionUtil.isEmpty(nestedStoreData.getRecord())){
+        //
+        //        }
+
         Long currentModuleId = nestedStoreData.getModuleId();
         // 虚拟模块处理完直接 返回
         if (StringUtils.isEmpty(
@@ -691,34 +696,14 @@ public class ModuleTreeDataUtils {
             }
             return;
         }
+        // nestedStoreData.getRecord() 有可能为空
+        List<RecordDataDTO> updatedRecords =
+                nestedStoreData.getRecord() != null
+                        ? nestedStoreData.getRecord()
+                        : Collections.emptyList();
 
-        // 显示更新的 ID
-        Set<Long> updateIds = new HashSet<>();
-        for (RecordDataDTO recordDataDTO : nestedStoreData.getRecord()) {
-            Long dataId =
-                    DataPersistenceUtil.getTableRowIdWithTabName(
-                            recordDataDTO.getRow(),
-                            moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
-            if (dataId != null && dataId > 0) {
-                updateIds.add(dataId);
-            }
-        }
-        // 详情页中的所有的ID  这个模块 所在父模块parentModuleId的父数据parentDataId 下所有子模块的数据ID
-        Set<Long> dbIds =
-                parentToChildDataMap
-                        .getOrDefault(parentModuleId, new HashMap<>())
-                        .getOrDefault(parentDataId, new HashMap<>())
-                        .getOrDefault(currentModuleId, new HashSet<>());
-
-        // 隐士删除的ID
-        Set<Long> deletionIds =
-                dbIds.stream()
-                        .filter(x -> x != null)
-                        .filter(x -> !updateIds.contains(x))
-                        .collect(Collectors.toSet());
-
-        // 处理子数据
-        for (RecordDataDTO recordDataDTO : nestedStoreData.getRecord()) {
+        // 处理子模块数据
+        for (RecordDataDTO recordDataDTO : updatedRecords) {
             Long dataId =
                     DataPersistenceUtil.getTableRowIdWithTabName(
                             recordDataDTO.getRow(),
@@ -738,6 +723,32 @@ public class ModuleTreeDataUtils {
                 }
             }
         }
+
+        // 显示更新的 ID
+        Set<Long> updateIds = new HashSet<>();
+        // 计算 这个模块更新的ID
+        for (RecordDataDTO recordDataDTO : updatedRecords) {
+            Long dataId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            recordDataDTO.getRow(),
+                            moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
+            if (dataId != null && dataId > 0) {
+                updateIds.add(dataId);
+            }
+        }
+        // 详情页中的所有的ID  这个模块 所在父模块parentModuleId的父数据parentDataId 下所有子模块的数据ID
+        Set<Long> dbIds =
+                parentToChildDataMap
+                        .getOrDefault(parentModuleId, new HashMap<>())
+                        .getOrDefault(parentDataId, new HashMap<>())
+                        .getOrDefault(currentModuleId, new HashSet<>());
+
+        // 计算 隐士删除的ID
+        Set<Long> deletionIds =
+                dbIds.stream()
+                        .filter(x -> x != null)
+                        .filter(x -> !updateIds.contains(x))
+                        .collect(Collectors.toSet());
 
         /// 处理子数据 完成后 补充 删除的数据ID
         if (CollectionUtil.isNotEmpty(deletionIds)) {
@@ -809,7 +820,15 @@ public class ModuleTreeDataUtils {
                         }
                     }
                 } else {
-                    // 没有行数据 包含许模块的情况  向下递归
+                    // 没有行数据 包含许模块的情况  也收集下父模块到虚模块的 父子关系 虚模块的数据ID 来自父模块的数据ID
+                    // 收集父子ID关系
+                    parentToChildDataMap
+                            .computeIfAbsent(parentModuleId, k -> new HashMap<>())
+                            .computeIfAbsent(parentDataId, k -> new HashMap<>())
+                            .computeIfAbsent(currentModuleId, k -> new HashSet<>())
+                            .add(parentDataId);
+
+                    // 向下递归,处理子模块
                     if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                         for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                             collectDataMap(

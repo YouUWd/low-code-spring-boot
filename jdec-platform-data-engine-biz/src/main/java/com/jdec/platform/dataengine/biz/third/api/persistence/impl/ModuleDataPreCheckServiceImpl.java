@@ -128,6 +128,12 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     }
                 } else {
 
+                    // 虚模块收集 收集父子ID关系 许模块的ID 为父模块的数据ID
+                    parentToChildDataMap
+                            .computeIfAbsent(parentModuleId, k -> new HashMap<>())
+                            .computeIfAbsent(parentDataId, k -> new HashMap<>())
+                            .computeIfAbsent(currentModuleId, k -> new HashSet<>())
+                            .add(parentDataId);
                     // 没有行数据 包含虚模块  向下递归
                     if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                         for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
@@ -227,7 +233,10 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
 
         // 收集当前 模块 需要更新的ID
         Set<Long> updateDataIds = new HashSet<>();
-        for (RecordDataDTO recordDataDTO : param.getRecord()) {
+        // 有可能为空 param.getRecord()
+        List<RecordDataDTO> updatedRecords =
+                param.getRecord() != null ? param.getRecord() : Collections.emptyList();
+        for (RecordDataDTO recordDataDTO : updatedRecords) {
             if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
                 Long dataId =
                         DataPersistenceUtil.getTableRowIdWithTabName(
