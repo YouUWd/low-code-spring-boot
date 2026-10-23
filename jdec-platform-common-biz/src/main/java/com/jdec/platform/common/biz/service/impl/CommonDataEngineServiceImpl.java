@@ -243,7 +243,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         // 申请权限能否生效
         Boolean canApply = dynamicDetailQueryReq.getId() <= 0 ? true : false;
 
-        if (Objects.nonNull(detailData)) {
+        if (Objects.nonNull(detailData) && !CollectionUtils.isEmpty(detailData.getRecord())) {
             if (hasApproval) {
                 Long businessStatusValue =
                         detailData

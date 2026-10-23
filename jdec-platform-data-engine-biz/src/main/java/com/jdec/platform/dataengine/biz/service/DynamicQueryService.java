@@ -93,6 +93,11 @@ public class DynamicQueryService {
 
         if (CollectionUtils.isEmpty(moduleNodeResps)) {
             log.debug("菜单树查询结果未空，返回空列表。");
+            resultList.add(
+                    NestedModuleDataDTO.builder()
+                            .moduleId(dynamicDetailQueryReq.getModuleId())
+                            .record(new ArrayList<>())
+                            .build());
             return resultList;
         }
 
@@ -151,38 +156,41 @@ public class DynamicQueryService {
         }
 
         // 需要版本对比数据时才进行组装
-        if (Objects.nonNull(dynamicDetailQueryReq.getShowVersionCompare())
-                && dynamicDetailQueryReq.getShowVersionCompare()) {
+        if (!CollectionUtils.isEmpty(resultList)
+                && !CollectionUtils.isEmpty(resultList.get(0).getRecord())) {
+            if (Objects.nonNull(dynamicDetailQueryReq.getShowVersionCompare())
+                    && dynamicDetailQueryReq.getShowVersionCompare()) {
 
-            List<NestedModuleDataDTO> preVersionResultList = new ArrayList<>();
+                List<NestedModuleDataDTO> preVersionResultList = new ArrayList<>();
 
-            // 查找当前数据的上一版本
-            Record preVersionRecord = getPreVersion(rootNode, dynamicDetailQueryReq.getId());
-            if (Objects.nonNull(preVersionRecord)) {
-                // 查找上一版本的详情数据
-                Map<String, Object> preVersionResultMap = preVersionRecord.intoMap();
+                // 查找当前数据的上一版本
+                Record preVersionRecord = getPreVersion(rootNode, dynamicDetailQueryReq.getId());
+                if (Objects.nonNull(preVersionRecord)) {
+                    // 查找上一版本的详情数据
+                    Map<String, Object> preVersionResultMap = preVersionRecord.intoMap();
 
-                recursiveQuery(
-                        pruneMenus,
-                        preVersionResultList,
-                        Long.parseLong(String.valueOf(preVersionResultMap.get("id"))),
-                        btnType,
-                        true,
-                        moduleIdToFieldMap,
-                        queryType);
+                    recursiveQuery(
+                            pruneMenus,
+                            preVersionResultList,
+                            Long.parseLong(String.valueOf(preVersionResultMap.get("id"))),
+                            btnType,
+                            true,
+                            moduleIdToFieldMap,
+                            queryType);
+                }
+
+                DataIntegrationContext dataIntegrationContext =
+                        DataIntegrationContext.builder()
+                                .moduleId(dynamicDetailQueryReq.getModuleId())
+                                .id(dynamicDetailQueryReq.getId())
+                                .version(dynamicDetailQueryReq.getVersion())
+                                .moduleIdToFieldMap(moduleIdToFieldMap)
+                                .queryType(queryType)
+                                .preVersionData(preVersionResultList)
+                                .build();
+
+                detailDataProcessFactory.processData(resultList, dataIntegrationContext);
             }
-
-            DataIntegrationContext dataIntegrationContext =
-                    DataIntegrationContext.builder()
-                            .moduleId(dynamicDetailQueryReq.getModuleId())
-                            .id(dynamicDetailQueryReq.getId())
-                            .version(dynamicDetailQueryReq.getVersion())
-                            .moduleIdToFieldMap(moduleIdToFieldMap)
-                            .queryType(queryType)
-                            .preVersionData(preVersionResultList)
-                            .build();
-
-            detailDataProcessFactory.processData(resultList, dataIntegrationContext);
         }
 
         return resultList;
