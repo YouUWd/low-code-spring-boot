@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
+import com.jdec.platform.approval.api.dto.ApprovalIdButton;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.FieldSortItem;
 import com.jdec.platform.common.api.dto.request.FlatFilterItem;
@@ -725,8 +726,7 @@ class CompanyMenuQueryContractTest {
     @DisplayName("测试待办(approvalType=1)中记录的 btnList 成功组装为办理(handle)")
     void testApprovalButtons_fallbackForNonEngineTodoRecords() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
-        com.jdec.platform.approval.api.dto.ApprpvalIdButton todoBtn =
-                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        ApprovalIdButton todoBtn = new ApprovalIdButton();
         todoBtn.setBusinessNo("CR999");
         todoBtn.setButtonKey("handle");
         todoBtn.setButtonName("办理");
@@ -777,14 +777,12 @@ class CompanyMenuQueryContractTest {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
         // 模拟审批引擎返回：记录 101 为办理(handle)，记录 102 为查阅(view)
-        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
-                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        ApprovalIdButton btn101 = new ApprovalIdButton();
         btn101.setRecordId(101L);
         btn101.setButtonKey("handle");
         btn101.setButtonName("办理");
 
-        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn102 =
-                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        ApprovalIdButton btn102 = new ApprovalIdButton();
         btn102.setRecordId(102L);
         btn102.setButtonKey("view");
         btn102.setButtonName("查阅");
@@ -1277,8 +1275,7 @@ class CompanyMenuQueryContractTest {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
         // 1. 审批引擎返回待办记录 CR001
-        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
-                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        ApprovalIdButton btn101 = new ApprovalIdButton();
         btn101.setBusinessNo("CR001");
         btn101.setButtonKey("handle");
         btn101.setButtonName("办理");
@@ -1309,8 +1306,7 @@ class CompanyMenuQueryContractTest {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
         // 1. 审批引擎返回全部记录 CR001
-        com.jdec.platform.approval.api.dto.ApprpvalIdButton btn101 =
-                new com.jdec.platform.approval.api.dto.ApprpvalIdButton();
+        ApprovalIdButton btn101 = new ApprovalIdButton();
         btn101.setBusinessNo("CR001");
         btn101.setButtonKey("handle");
         btn101.setButtonName("办理");

@@ -117,7 +117,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSave(DynamicSaveReq req) {
-        // 无审批链的保存：落库前基于前端提交的参数执行保存校验，不按主单ID加载业务库
+        // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
         checkSaveBeforeStore(req);
         DynamicSaveResp result = dataEngineApi.save(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
@@ -131,9 +131,10 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     }
 
     /**
-     * 无审批链保存前的校验。
+     * 保存前的校验。
      *
-     * <p>有审批链的保存属于草稿，允许数据不完整；无审批链保存直接生效，落库前需要按前端提交的模块数据校验。 实时保存（{@code
+     * <p>无审批链保存直接生效，落库前需要按前端提交的模块数据校验；有审批链保存属于草稿，编辑草稿（主模块第一条记录已有主单ID）允许数据不完整，
+     * 仅新增（主单ID没有值）时按无审批链保存同样的规则校验。 实时保存（{@code
      * realTime_save}）是详情页中暂存子表行，不作为正式保存校验。当前单据的校验数据取自前端参数，查重会读取其他已保存对象作为比对基准。
      */
     private void checkSaveBeforeStore(DynamicSaveReq req) {
@@ -143,13 +144,60 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 || "realTime_save".equals(req.getBtnType())) {
             return;
         }
+        NestedModuleDataDTO nestedModuleData = req.getNestedModuleData();
         Boolean approvalEnable =
                 sysApprovalChainConfigApi.getApprovalStatus(
-                        List.of(req.getNestedModuleData().getModuleId()));
-        if (Boolean.TRUE.equals(approvalEnable)) {
+                        List.of(nestedModuleData.getModuleId()));
+        // 有审批链保存：编辑草稿允许数据不完整，新增（主单ID没有值）按无审批链保存同样的规则校验
+        if (Boolean.TRUE.equals(approvalEnable) && hasMainRecordId(nestedModuleData)) {
             return;
         }
-        submitCheckRouter.checkOnSave(req.getNestedModuleData());
+        submitCheckRouter.checkOnSave(nestedModuleData);
+    }
+
+    /**
+     * 主模块第一条记录是否已有主单ID（主表 {@code id}）。
+     *
+     * <p>主单ID没有值代表新增：有审批链新增保存需要按无审批链保存同样的规则校验，已有主单ID的编辑保存不做校验。 主表名取自模块树配置，取不到时按新增处理。
+     */
+    private boolean hasMainRecordId(NestedModuleDataDTO nestedModuleData) {
+        List<RecordDataDTO> records = nestedModuleData.getRecord();
+        if (records == null || records.isEmpty() || records.get(0) == null) {
+            return false;
+        }
+        Map<String, Object> row = records.get(0).getRow();
+        if (row == null || row.isEmpty()) {
+            return false;
+        }
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(
+                        AppContext.getProjectNo(),
+                        AppContext.getSubjectId(),
+                        nestedModuleData.getModuleId());
+        String primaryTable = moduleTree == null ? null : moduleTree.getPrimaryTable();
+        if (primaryTable == null || primaryTable.isBlank()) {
+            return false;
+        }
+        return isPositiveId(row.get(primaryTable + ".id"));
+    }
+
+    /** 主单ID：空值、空串、非数字或非正数都视为没有值。 */
+    private static boolean isPositiveId(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue() > 0;
+        }
+        if (value == null) {
+            return false;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty()) {
+            return false;
+        }
+        try {
+            return Long.parseLong(text) > 0;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     // 提交单据

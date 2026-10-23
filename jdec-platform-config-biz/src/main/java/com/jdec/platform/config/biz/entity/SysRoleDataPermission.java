@@ -35,7 +35,7 @@ public class SysRoleDataPermission implements Serializable {
     @Schema(description = "数据权限对应的主体全选：1=全选，0=非全选")
     private Integer subjectCheckAll;
 
-    @Schema(description = "业务名称")
+    @Schema(description = "业务值（JSON 文本，入库时序列化、回显时反序列化还原原始类型）")
     private String bizName;
 
     @Schema(description = "模拟操作用户")

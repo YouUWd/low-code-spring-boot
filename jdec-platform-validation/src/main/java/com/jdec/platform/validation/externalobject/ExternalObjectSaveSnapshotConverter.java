@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 无审批链保存校验的前端参数转换器。
+ * 保存校验的前端参数转换器（无审批链保存、有审批链的新增保存）。
  *
  * <p>保存校验不读取业务库，直接使用前端 {@code nestedModuleData} 的行数据（键为 {@code table.column}）构造整单快照，并记录本次实际提交的模块范围：
  *

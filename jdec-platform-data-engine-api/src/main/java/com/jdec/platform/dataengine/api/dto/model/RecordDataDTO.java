@@ -23,7 +23,8 @@ public class RecordDataDTO implements java.io.Serializable {
     private List<NestedModuleDataDTO> children;
 
     @Schema(description = "版本对比数据")
-    private Map<String, VersionCompareItem> changeList;
+    @JsonInclude(value = JsonInclude.Include.ALWAYS)
+    private Map<String, Map<String, Object>> changeList;
 
     @Schema(description = "新增或修改标识")
     private String changeType;

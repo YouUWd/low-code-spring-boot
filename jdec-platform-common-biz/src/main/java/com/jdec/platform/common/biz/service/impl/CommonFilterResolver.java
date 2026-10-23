@@ -1,6 +1,6 @@
 package com.jdec.platform.common.biz.service.impl;
 
-import com.jdec.platform.approval.api.dto.ApprpvalIdButton;
+import com.jdec.platform.approval.api.dto.ApprovalIdButton;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.data.api.dto.request.FilterItem;
@@ -259,7 +259,7 @@ public class CommonFilterResolver {
         }
 
         /** 组合【审批引擎】过滤：直接从审批引擎单据按钮列表中提取 business_no 集合 */
-        public FilterSpec withApprovalButtons(Collection<ApprpvalIdButton> buttons) {
+        public FilterSpec withApprovalButtons(Collection<ApprovalIdButton> buttons) {
             return withApproval(ApprovalConditionResolver.extractBusinessNos(buttons));
         }
 

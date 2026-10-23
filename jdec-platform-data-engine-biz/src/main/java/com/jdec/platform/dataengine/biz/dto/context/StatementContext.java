@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
+import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -41,4 +42,7 @@ public class StatementContext extends ListQueryContext implements Serializable {
     private List<Long> relateIds;
 
     private List<ModuleFieldDTO> fields;
+
+    @Schema(description = "数据权限配置数据")
+    private List<DataRightConfigResp> dataRightConfigResps;
 }

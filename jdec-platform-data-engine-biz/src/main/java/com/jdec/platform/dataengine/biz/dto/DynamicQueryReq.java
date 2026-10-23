@@ -1,7 +1,10 @@
-package com.jdec.platform.dataengine.api.dto.request;
+package com.jdec.platform.dataengine.biz.dto;
 
+import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
+import com.jdec.platform.dataengine.api.dto.request.OrderItemReq;
+import com.jdec.platform.dataengine.api.dto.request.SearchItemReq;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
@@ -67,4 +70,7 @@ public class DynamicQueryReq implements Serializable {
     private List<ModuleFieldDTO> fields;
 
     private QueryType queryType;
+
+    @Schema(description = "数据权限配置数据")
+    private List<DataRightConfigResp> dataRightConfigResps;
 }
