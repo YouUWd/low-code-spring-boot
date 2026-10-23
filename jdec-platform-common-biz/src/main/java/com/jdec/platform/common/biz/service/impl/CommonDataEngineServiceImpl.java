@@ -216,6 +216,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .history(menuDetailQueryReq.getHistory())
                         .showVersionCompare(
                                 hasApproval && menuDetailQueryReq.getShowVersionCompare())
+                        .latestWordData(
+                                Objects.isNull(menuDetailQueryReq.getLatestWordData())
+                                        || menuDetailQueryReq.getLatestWordData())
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
 

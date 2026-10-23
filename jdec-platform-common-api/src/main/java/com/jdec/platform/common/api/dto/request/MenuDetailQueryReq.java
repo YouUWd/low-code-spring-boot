@@ -35,4 +35,7 @@ public class MenuDetailQueryReq implements Serializable {
 
     @Schema(description = "查询当前模块还是递归查询", example = "view")
     private Boolean flatQuery;
+
+    @Schema(description = "是否返回原始词云数据", example = "false")
+    private Boolean latestWordData;
 }

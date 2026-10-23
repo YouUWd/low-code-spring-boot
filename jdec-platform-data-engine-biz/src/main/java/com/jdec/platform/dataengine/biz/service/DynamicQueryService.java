@@ -143,7 +143,8 @@ public class DynamicQueryService {
                         btnType,
                         true,
                         moduleIdToFieldMap,
-                        queryType);
+                        queryType,
+                        dynamicDetailQueryReq.getLatestWordData());
             }
             case DETAIL_APPROVAL_HISTORY ->
                     getHistoryDetailData(
@@ -176,7 +177,8 @@ public class DynamicQueryService {
                             btnType,
                             true,
                             moduleIdToFieldMap,
-                            queryType);
+                            queryType,
+                            dynamicDetailQueryReq.getLatestWordData());
                 }
 
                 DataIntegrationContext dataIntegrationContext =
@@ -445,7 +447,8 @@ public class DynamicQueryService {
             String btnType,
             Boolean topQuery,
             Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap,
-            QueryType queryType) {
+            QueryType queryType,
+            Boolean latestWordData) {
         // ========= 模式2：树形关联查询，多个模块属于同一棵树 =========
         // 取根模块（moduleCodeList第一个为根节点，其余是树内子模块）
         //        SysModuleSimpleTreeResp rootNode = findSubTreeByValue(moduleTree, topMenuId);
@@ -567,11 +570,15 @@ public class DynamicQueryService {
                 if (businessStatusValue != 99) {
                     log.debug("根模块id:{},单据id：{}带审批链，且状态非启用，执行词云字段更新。", rootNode.getId(), id);
 
-                    Map<String, List<Map<String, Object>>> wordNoMap =
-                            collectRelationWordUUID(referenceQueryParamMap);
+                    if (latestWordData) {
+                        Map<String, List<Map<String, Object>>> wordNoMap =
+                                collectRelationWordUUID(referenceQueryParamMap);
 
-                    assembleLatestVersionData(
-                            moduleTreeDTO, moduleData, referenceQueryParamMap, wordNoMap);
+                        assembleLatestVersionData(
+                                moduleTreeDTO, moduleData, referenceQueryParamMap, wordNoMap);
+                    } else {
+                        log.debug("不需要最新版本数据，跳过获取最新数据并替换更新");
+                    }
                 }
             }
         }
