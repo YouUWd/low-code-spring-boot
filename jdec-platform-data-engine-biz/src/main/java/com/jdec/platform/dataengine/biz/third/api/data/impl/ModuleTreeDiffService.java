@@ -76,30 +76,31 @@ public class ModuleTreeDiffService {
             while (recordIt.hasNext()) {
                 RecordDataDTO recordItem = recordIt.next();
                 Map<String, Object> rowNode = recordItem.getRow();
-                if (Objects.isNull(rowNode)) {
-                    continue;
-                }
-                // 提取row主键：找到 xxx.id 的字段值
-                String rowBusinessNo = extractRowBusinessNo(rowNode, primaryTable);
-                RecordDataDTO oldRecordItem = oldRecordMap.get(rowBusinessNo);
-                Map<String, Object> oldRow = oldRecordItem != null ? oldRecordItem.getRow() : null;
 
-                Long rowPk = extractRowPk(rowNode, primaryTable);
+                if (Objects.nonNull(rowNode)) {
+                    // 提取row主键：找到 xxx.id 的字段值
+                    String rowBusinessNo = extractRowBusinessNo(rowNode, primaryTable);
+                    RecordDataDTO oldRecordItem = oldRecordMap.get(rowBusinessNo);
+                    Map<String, Object> oldRow =
+                            oldRecordItem != null ? oldRecordItem.getRow() : null;
 
-                Map<String, VersionSnapShot> currentChangeMap = new HashMap<>();
-                if (currentVersionMap.containsKey(moduleId)
-                        && currentVersionMap.get(moduleId).containsKey(rowPk)) {
-                    currentChangeMap = currentVersionMap.get(moduleId).get(rowPk);
-                }
+                    Long rowPk = extractRowPk(rowNode, primaryTable);
 
-                // 对比row字段，生成changeList，挂在recordItem（和row平级）
-                Map<String, Map<String, Object>> changeList =
-                        buildRowChangeList(oldRow, rowNode, currentChangeMap);
-                if (changeList.size() > 0) {
-                    recordItem.setChangeList(changeList);
-                    recordItem.setChangeType("改");
-                } else if (Objects.isNull(oldRow) && Objects.nonNull(oldNode)) {
-                    recordItem.setChangeType("新");
+                    Map<String, VersionSnapShot> currentChangeMap = new HashMap<>();
+                    if (currentVersionMap.containsKey(moduleId)
+                            && currentVersionMap.get(moduleId).containsKey(rowPk)) {
+                        currentChangeMap = currentVersionMap.get(moduleId).get(rowPk);
+                    }
+
+                    // 对比row字段，生成changeList，挂在recordItem（和row平级）
+                    Map<String, Map<String, Object>> changeList =
+                            buildRowChangeList(oldRow, rowNode, currentChangeMap);
+                    if (changeList.size() > 0) {
+                        recordItem.setChangeList(changeList);
+                        recordItem.setChangeType("改");
+                    } else if (Objects.isNull(oldRow) && Objects.nonNull(oldNode)) {
+                        recordItem.setChangeType("新");
+                    }
                 }
 
                 // 递归处理当前recordItem的children
