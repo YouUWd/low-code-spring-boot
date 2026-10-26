@@ -144,7 +144,8 @@ public class DynamicQueryService {
                         true,
                         moduleIdToFieldMap,
                         queryType,
-                        dynamicDetailQueryReq.getLatestWordData());
+                        Objects.isNull(dynamicDetailQueryReq.getLatestWordData())
+                                || dynamicDetailQueryReq.getLatestWordData());
             }
             case DETAIL_APPROVAL_HISTORY ->
                     getHistoryDetailData(
@@ -178,7 +179,8 @@ public class DynamicQueryService {
                             true,
                             moduleIdToFieldMap,
                             queryType,
-                            dynamicDetailQueryReq.getLatestWordData());
+                            Objects.isNull(dynamicDetailQueryReq.getLatestWordData())
+                                    || dynamicDetailQueryReq.getLatestWordData());
                 }
 
                 DataIntegrationContext dataIntegrationContext =
