@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "code": "simulate_login",
+    "name": "模拟登陆",
+    "description": "",
+    "sort": 0,
+    "status": 1
+  },
+  {
+    "id": 2,
+    "code": "FORBIDDEND-test",
+    "name": "全局禁用",
+    "description": "一键禁用所有角色权限",
+    "sort": 0,
+    "status": 1
+  }
+]

@@ -1,0 +1,62 @@
+package com.jdec.platform.config.biz.entity;
+
+import com.baomidou.mybatisplus.annotation.*;
+import com.jdec.platform.config.biz.reference.Reference;
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.io.Serializable;
+import java.time.LocalDateTime;
+import lombok.Data;
+
+/** 角色-数据权限关联表 */
+@Data
+@TableName("sys_role_data_permission")
+@Schema(description = "角色-数据权限关联")
+public class SysRoleDataPermission implements Serializable {
+
+    @Schema(description = "主键ID")
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    @Schema(description = "角色ID")
+    @Reference(target = SysRole.class, name = "数据权限关联")
+    private Long roleId;
+
+    @Schema(description = "数据权限类型ID")
+    @Reference(target = SysDataPermission.class, name = "角色数据权限")
+    private Long dataPermissionId;
+
+    @Schema(description = "数据权限全选：1=全选，0=非全选")
+    @TableField("premission_check_all")
+    private Integer permissionCheckAll;
+
+    @Schema(description = "数据权限对应的主体ID")
+    private Long subjectId;
+
+    @Schema(description = "数据权限对应的主体全选：1=全选，0=非全选")
+    private Integer subjectCheckAll;
+
+    @Schema(description = "业务值（JSON 文本，入库时序列化、回显时反序列化还原原始类型）")
+    private String bizName;
+
+    @Schema(description = "模拟操作用户")
+    @TableField(fill = FieldFill.INSERT)
+    private Long createdBy;
+
+    @Schema(description = "模拟操作用户名称")
+    private String createdName;
+
+    @Schema(description = "创建时间")
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createdDate;
+
+    @Schema(description = "更改人")
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private Long updatedBy;
+
+    @Schema(description = "更改人名称")
+    private String updatedName;
+
+    @Schema(description = "更改时间")
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updatedDate;
+}

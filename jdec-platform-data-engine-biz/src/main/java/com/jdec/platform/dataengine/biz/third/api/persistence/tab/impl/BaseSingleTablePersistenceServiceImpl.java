@@ -1,0 +1,551 @@
+package com.jdec.platform.dataengine.biz.third.api.persistence.tab.impl;
+
+import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.collection.ListUtil;
+import cn.hutool.core.util.StrUtil;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
+import com.jdec.platform.dataengine.biz.constants.CommonConstant;
+import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
+import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
+import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
+import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
+import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
+import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
+import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.JooqDataContextFactory;
+import com.jdec.platform.shared.exception.BusinessException;
+import java.time.LocalDateTime;
+import java.util.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jooq.*;
+import org.jooq.Record;
+import org.jooq.impl.DSL;
+import org.jooq.impl.SQLDataType;
+import org.springframework.stereotype.Service;
+
+@Service
+@Slf4j
+@RequiredArgsConstructor
+public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePersistenceService {
+
+    private final ModuleDataSaveNecessaryFieldFillFactoryService
+            moduleDataSaveNecessaryFieldFillFactoryService;
+
+    private final JooqDataContextFactory jooqDataContextFactory;
+
+    private final Set<String> UPDATE_DEFAULT_EXCLUDE_FIELD =
+            Set.of(
+                    "id",
+                    "subject_id",
+                    "business_no",
+                    "version_no",
+                    "business_status",
+                    "created_by",
+                    "created_date",
+                    "active",
+                    "source_id",
+                    "node_id",
+                    "parent_node_id");
+
+    private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
+            Set.of(
+                    "id",
+                    "subject_id",
+                    "created_by",
+                    "updated_by",
+                    "created_date",
+                    "updated_date",
+                    "active");
+
+    @Override
+    public DataSaveResult insertRecord(RecordSaveContext context) {
+
+        if (CollectionUtil.isEmpty(context.getRecord())) {
+            return DataSaveResult.builder().dataId(0L).build();
+        }
+        // 校验字段权限, 校验不通过 直接抛异常
+        // moduleDataSaveCheckFactoryService.check(context);
+
+        // 填充 必要的 业务字段
+        moduleDataSaveNecessaryFieldFillFactoryService.fillData(context);
+
+        // 设置 新增时不需要填充 的字段
+        context.setDefaultExcludeFields(INSERT_DEFAULT_EXCLUDE_FIELD);
+        Map<Field<Object>, Object> fieldValues = getInsertRecordFieldValues(context);
+
+        String tableName = context.getTableName();
+        // 手动定义表和主键字段，标记IDENTITY
+        // 1. 构造【带自增标记】的数据类型
+        DataType<Long> autoIncLong = SQLDataType.BIGINT.identity(true);
+
+        // 2. 用这个DataType创建field，等价旧版 .identity(true)
+        Field<Long> pkField =
+                DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD), autoIncLong);
+
+        Table<?> dynamicTable = DSL.table(DSL.name(tableName));
+        // Insert 并获取自增主键
+        Record inserted =
+                context.getDsl()
+                        .insertInto(dynamicTable)
+                        .set(fieldValues)
+                        .returning(pkField)
+                        .fetchOne();
+
+        if (inserted == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
+        }
+
+        // 获取 插入的ID
+        Object newId = inserted.getValue(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
+
+        if (newId == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
+        }
+        Number num = (Number) newId;
+        if (context.getRootModuleMainTableDataId() == null) {
+            context.setRootModuleMainTableDataId(num.longValue());
+        }
+
+        return DataSaveResult.builder().dataId(num.longValue()).build();
+    }
+
+    @Override
+    public DataSaveResult updateRecord(RecordSaveContext context) {
+        Long id = DataPersistenceUtil.getTableRowId(context.getRecord());
+
+        // 表单数据只有ID ，不用更新
+        if (DataPersistenceUtil.isOnlyHasId(context.getRecord())) {
+            return DataSaveResult.builder().dataId(id).build();
+        }
+
+        // 获取删除 标记
+        Boolean deletedFalg = false;
+        Integer deletedField = DataPersistenceUtil.getTableRowDeletedField(context.getRecord());
+        if (deletedField != null && Integer.valueOf(1).equals(deletedField)) {
+            deletedFalg = true;
+        }
+        // 直接删除
+        if (deletedFalg) {
+            //            context.getDsl()
+            //                    .update(DSL.table(DSL.name(context.getTableName())))
+            //
+            // .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_DELETED_FIELD)), (byte) 1)
+            //                    .set(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+            //                            context.getUserId())
+            //                    .set(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+            //                            LocalDateTime.now())
+            //                    .where(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
+            //                                    .eq(id))
+            //                    .and(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_DELETED_FIELD))
+            //                                    .eq((byte) 0))
+            //                    .execute();
+            // todo 还需要删除子模块子表的数据
+            deleteOrphanModuleData(
+                    ListUtil.of(id),
+                    context.getSysModuleCompleteResp().getModuleInfo().getModuleId(),
+                    context.getModuleCacheMap(),
+                    context.getDsl());
+        } else {
+
+            Set<String> defaultExcludeFields = new HashSet<>();
+            defaultExcludeFields.addAll(UPDATE_DEFAULT_EXCLUDE_FIELD);
+            // 结构上 根模块节点 但 不是 root节点
+            if (!context.getSysModuleCompleteResp()
+                            .getModuleInfo()
+                            .getModuleId()
+                            .equals(context.getRootModuleId())
+                    && context.getSysModuleCompleteResp()
+                            .getModuleInfo()
+                            .getModuleId()
+                            .equals(context.getStructureRootModuleId())
+                    && context.getIsModuleMainTable()) {
+                // 更新时去掉 关联外键
+                defaultExcludeFields.add(context.getTableFk());
+            }
+            context.setDefaultExcludeFields(defaultExcludeFields);
+            moduleDataSaveNecessaryFieldFillFactoryService.fillData(context);
+
+            Map<Field<Object>, Object> fieldValues = getUpdateRecordFieldValues(context);
+            // Update 不返回任何字段
+            context.getDsl()
+                    .update(DSL.table(DSL.name(context.getTableName())))
+                    .set(fieldValues)
+                    .where(
+                            DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD))
+                                    .eq(id))
+                    .execute();
+        }
+
+        if (context.getRootModuleMainTableDataId() == null) {
+            context.setRootModuleMainTableDataId(id);
+        }
+        return DataSaveResult.builder().dataId(id).build();
+    }
+
+    private void deleteOrphanModuleData(
+            List<Long> dataIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        // 先删除 当前模块主表数据
+        deleteByIds(dslContext, sysModuleCombineInfo.getModuleInfo().getPrimaryTable(), dataIds);
+        // 删除关联表数据
+        deleteRelatedModuleData(dataIds, moduleId, moduleCacheMap, dslContext);
+        // 递归删除子模块 子表的数据
+        List<Long> childrenModuleIds =
+                sysModuleCombineInfo.getModuleTree().getChildModuleIds(moduleId);
+        if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+            for (Long childModuleId : childrenModuleIds) {
+                deleteChildrenModuleDataByParentIdsRecursion(
+                        dataIds, childModuleId, moduleCacheMap, dslContext);
+            }
+        }
+    }
+
+    private void deleteChildrenModuleDataByParentIdsRecursion(
+            List<Long> parentIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        // 子模块ID
+        List<Long> childrenModuleIds =
+                sysModuleCombineInfo.getModuleTree().getChildModuleIds(moduleId);
+
+        // 虚拟模块 直接透传到下级模块删除
+        if (StrUtil.isEmpty(sysModuleCombineInfo.getModuleInfo().getPrimaryTable())) {
+            if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+                for (Long childModuleId : childrenModuleIds) {
+                    deleteChildrenModuleDataByParentIdsRecursion(
+                            parentIds, childModuleId, moduleCacheMap, dslContext);
+                }
+            }
+        }
+        // 子表 待删除的 数据ID
+        List<Long> dataIds =
+                getRecordIdsByFk(
+                        dslContext,
+                        sysModuleCombineInfo.getModuleInfo().getPrimaryTable(),
+                        sysModuleCombineInfo.getMainTableRelationDTO().getJoinField(),
+                        parentIds);
+        if (CollectionUtil.isNotEmpty(dataIds)) {
+            // 删除子表数据
+            deleteByIds(
+                    dslContext, sysModuleCombineInfo.getModuleInfo().getPrimaryTable(), dataIds);
+            deleteRelatedModuleData(dataIds, moduleId, moduleCacheMap, dslContext);
+            if (CollectionUtil.isNotEmpty(childrenModuleIds)) {
+                for (Long childModuleId : childrenModuleIds) {
+                    deleteChildrenModuleDataByParentIdsRecursion(
+                            dataIds, childModuleId, moduleCacheMap, dslContext);
+                }
+            }
+        }
+    }
+
+    /**
+     * 删除模块关联表的数据
+     *
+     * @param mainDataIds 模块主表的数据ID
+     * @param moduleId
+     * @param moduleCacheMap
+     * @param dslContext
+     */
+    private void deleteRelatedModuleData(
+            List<Long> mainDataIds,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            DSLContext dslContext) {
+        SysModuleCombineInfo sysModuleCombineInfo = moduleCacheMap.get(moduleId);
+        if (CollectionUtil.isNotEmpty(sysModuleCombineInfo.getSubTables())) {
+            for (String subTable : sysModuleCombineInfo.getSubTables()) {
+                // 子表中关联的字段
+                com.jdec.platform.config.api.dto.common.TableRelationDTO subTableRelationDTO =
+                        sysModuleCombineInfo.getSubTableRelationMap().get(subTable);
+                if (subTableRelationDTO != null) {
+                    // 子表的ID
+                    List<Long> subTabDataIds =
+                            getRecordIdsByFk(
+                                    dslContext,
+                                    subTable,
+                                    subTableRelationDTO.getJoinField(),
+                                    mainDataIds);
+                    if (CollectionUtil.isNotEmpty(subTabDataIds)) {
+                        deleteByIds(dslContext, subTable, subTabDataIds);
+                    }
+                }
+            }
+        }
+    }
+
+    @Override
+    public DataSaveResult saveRecord(RecordSaveContext context) {
+        if (CollectionUtil.isEmpty(context.getRecord())) {
+            return null;
+        }
+        if (context.getIsInsert()) {
+            return insertRecord(context);
+        } else {
+            return updateRecord(context);
+        }
+    }
+
+    @Override
+    public List<Long> getRecordIdsByFk(
+            DSLContext dslContext, String tableName, String relatedField, List<Long> values) {
+        List<Long> dbLiveIds = Collections.emptyList();
+        dbLiveIds =
+                dslContext
+                        .select(DSL.field(DSL.name(tableName, "id"), Long.class))
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(
+                                DSL.field(DSL.name(tableName, relatedField))
+                                        .in(values)
+                                        .and(
+                                                DSL.field(DSL.name(tableName, "deleted"))
+                                                        .eq((byte) 0)))
+                        .fetch(0, Long.class);
+        return dbLiveIds;
+    }
+
+    @Override
+    public int deleteByIds(DSLContext dslContext, String tableName, List<Long> ids) {
+        if (!ids.isEmpty()) {
+            log.info("1:N 子表 [{}] 执行被动数据记录软删除:Ids={}", tableName, ids);
+            Map<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, ids);
+            conditionMap.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
+
+            Map<String, Object> updateFields = new HashMap<>();
+            updateFields.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 1);
+            updateFields.put(
+                    CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD, UserContext.getOperateUserId());
+            updateFields.put(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD, LocalDateTime.now());
+            return updateRecordByCondition(dslContext, tableName, updateFields, conditionMap);
+        }
+        return 0;
+    }
+
+    @Override
+    public Integer getMaxVersionNoByBusinessNo(
+            DSLContext dslContext, String tableName, String businessNo) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        Integer maxVersionNo =
+                dslContext
+                        .select(DSL.max(DSL.field(DSL.name(tableName, "version_no"))))
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(DSL.field(DSL.name(tableName, "business_no")).eq(businessNo))
+                        .fetchOne(0, Integer.class);
+        if (maxVersionNo != null) {
+            return maxVersionNo;
+        }
+        return 0;
+    }
+
+    @Override
+    public Integer inactiveRecordById(DSLContext dslContext, String tableName, Long id) {
+
+        Map<String, Object> conditionMap = new HashMap<>();
+        conditionMap.put(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, id);
+        conditionMap.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
+
+        Map<String, Object> updateFields = new HashMap<>();
+        updateFields.put(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD, (byte) 1);
+        updateFields.put(
+                CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD, UserContext.getOperateUserId());
+        updateFields.put(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD, LocalDateTime.now());
+
+        return updateRecordByCondition(dslContext, tableName, updateFields, conditionMap);
+    }
+
+    @Override
+    public int updateRecordByCondition(
+            DSLContext dslContext,
+            String tableName,
+            Map<String, Object> updateMap,
+            Map<String, Object> conditionMap) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        Map<Field<Object>, Object> updateFields = DataPersistenceUtil.getUpdateFields(updateMap);
+        if (CollectionUtil.isEmpty(updateFields)) {
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "更新字段不能为空");
+        }
+        Condition condition = DataPersistenceUtil.getCondition(conditionMap);
+        if (condition == null) {
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "更新条件不能为空");
+        }
+        int result =
+                dslContext
+                        .update(DSL.table(DSL.name(tableName)))
+                        .set(updateFields)
+                        .where(condition)
+                        .execute();
+        return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> getRecordListByCondition(
+            DSLContext dslContext, String tableName, Map<String, Object> conditionMap) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        List<Map<String, Object>> result =
+                dslContext
+                        .select(DSL.asterisk())
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(DataPersistenceUtil.getCondition(conditionMap))
+                        .fetch()
+                        .intoMaps();
+        return result;
+    }
+
+    private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {
+
+        Map<String, ModuleFieldDTO> fieldMap =
+                context.getSysModuleCompleteResp().getFieldMapByTable().get(context.getTableName());
+        Map<String, SysFieldResp> allFields =
+                context.getSysModuleCompleteResp()
+                        .getAllFieldsByTable()
+                        .get(context.getTableName());
+        Map<Field<Object>, Object> fieldValues = new HashMap<>();
+        // Insert时候 表单数据都要 写入
+        for (Map.Entry<String, Object> entry : context.getRecord().entrySet()) {
+            if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                    && context.getDefaultExcludeFields().contains(entry.getKey())) {
+                continue;
+            }
+            // 非表结构定义字段 不写入
+            if (CollectionUtil.isNotEmpty(allFields) && !allFields.containsKey(entry.getKey())) {
+                continue;
+            }
+            fieldValues.put(
+                    DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                    DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
+        }
+        // 表单数据 共有的 一些业务字段数据 business_no ,business_status等
+        if (CollectionUtil.isNotEmpty(context.getBizDataMap())) {
+            for (Map.Entry<String, Object> entry : context.getBizDataMap().entrySet()) {
+                // 非表结构定义字段 不写入
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
+                    continue;
+                }
+                log.info("fill biz data field {}={}", entry.getKey(), entry.getValue());
+                fieldValues.put(
+                        DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
+            }
+        }
+        // 关联上级表 一些字段 数据
+        if (CollectionUtil.isNotEmpty(context.getParentLevelTableAssociationDataMap())) {
+            for (Map.Entry<String, Object> entry :
+                    context.getParentLevelTableAssociationDataMap().entrySet()) {
+                // 非表结构定义字段 不写入
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
+                    continue;
+                }
+                log.info("fill parent module field {}={}", entry.getKey(), entry.getValue());
+                fieldValues.put(
+                        DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
+            }
+        }
+        // 自动补充默认的字段信息 用户上下文 数据
+        if (CollectionUtil.isNotEmpty(context.getDefaultUserContextDataMap())) {
+            for (Map.Entry<String, Object> entry :
+                    context.getDefaultUserContextDataMap().entrySet()) {
+                // 非表结构定义字段 不写入
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
+                    continue;
+                }
+                log.info("fill user context field {}={}", entry.getKey(), entry.getValue());
+                fieldValues.put(
+                        DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
+            }
+        }
+        return fieldValues;
+    }
+
+    private Map<Field<Object>, Object> getUpdateRecordFieldValues(RecordSaveContext context) {
+        Map<String, SysFieldResp> allFields =
+                context.getSysModuleCompleteResp()
+                        .getAllFieldsByTable()
+                        .get(context.getTableName());
+        Map<Field<Object>, Object> fieldValues = new HashMap<>();
+        // 表单数据 都是要更新的
+        for (Map.Entry<String, Object> entry : context.getRecord().entrySet()) {
+            // 非 update 字段 不更新
+            if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                    && context.getDefaultExcludeFields().contains(entry.getKey())) {
+                continue;
+            }
+            // 非表结构定义字段 不写入
+            if (CollectionUtil.isNotEmpty(allFields) && !allFields.containsKey(entry.getKey())) {
+                continue;
+            }
+
+            fieldValues.put(
+                    DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                    DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
+        }
+        // 插入的时候已经建立关联字段，更新写入？？？
+        if (CollectionUtil.isNotEmpty(context.getParentLevelTableAssociationDataMap())) {
+            for (Map.Entry<String, Object> entry :
+                    context.getParentLevelTableAssociationDataMap().entrySet()) {
+                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
+                    continue;
+                }
+                log.info("fill parent module field {}={}", entry.getKey(), entry.getValue());
+                fieldValues.put(
+                        DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
+            }
+        }
+        // 自动补充默认的字段信息 用户上下文 数据
+        if (CollectionUtil.isNotEmpty(context.getDefaultUserContextDataMap())) {
+            for (Map.Entry<String, Object> entry :
+                    context.getDefaultUserContextDataMap().entrySet()) {
+                if (CollectionUtil.isNotEmpty(allFields)
+                        && !allFields.containsKey(entry.getKey())) {
+                    log.info(
+                            "fill user context table={} has no field={}",
+                            context.getTableName(),
+                            entry.getKey());
+                    continue;
+                }
+                if (CollectionUtil.isNotEmpty(context.getDefaultExcludeFields())
+                        && context.getDefaultExcludeFields().contains(entry.getKey())) {
+                    continue;
+                }
+                log.info("fill user context field {}={}", entry.getKey(), entry.getValue());
+                fieldValues.put(
+                        DSL.field(DSL.name(StrUtil.toUnderlineCase(entry.getKey()))),
+                        DataPersistenceUtil.getFieldWriteValue(entry.getValue()));
+            }
+        }
+
+        return fieldValues;
+    }
+}

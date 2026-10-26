@@ -1,0 +1,23 @@
+[
+  {
+    "subjectName": "环保",
+    "companyName": "襄阳九鼎昊天环保设备有限公司",
+    "alias": "",
+    "subjectId": 1,
+    "projectNo": "company"
+  },
+  {
+    "subjectName": "电气",
+    "companyName": "襄阳九鼎电气有限公司",
+    "alias": "",
+    "subjectId": 2,
+    "projectNo": "company"
+  },
+  {
+    "subjectName": "能化",
+    "companyName": "襄阳九鼎昊天能化技术有限公司",
+    "alias": "",
+    "subjectId": 3,
+    "projectNo": "company"
+  }
+]

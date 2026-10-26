@@ -1,0 +1,236 @@
+[
+  {
+    "label": "审批规则类型",
+    "categoryAlias": "approvalRule",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "单人审批", "value": "single_approval", "sort": 0, "status": 1 },
+      { "label": "角色组单选办理", "value": "one_of_role_group", "sort": 0, "status": 1 },
+      { "label": "所有组员同办", "value": "all_members_done", "sort": 0, "status": 1 },
+      { "label": "按组审批比例办理", "value": "percent_of_group", "sort": 0, "status": 1 },
+      { "label": "子审批链全部审批", "value": "child_all", "sort": 0, "status": 1 },
+      { "label": "待定", "value": "waiting_for_a_decision", "sort": 0, "status": 1 }
+    ]
+  },
+  {
+    "label": "日志状态图标",
+    "categoryAlias": "logStateIcon",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      {
+        "label": "创建",
+        "value": "create",
+        "description": "已创建",
+        "extra": "http://192.168.60.8:9001/jdec-platform/image/create.svg",
+        "sort": 0,
+        "status": 1
+      },
+      {
+        "label": "通过",
+        "value": "pass",
+        "description": "已通过",
+        "extra": "http://192.168.60.8:9001/jdec-platform/image/pass.svg",
+        "sort": 0,
+        "status": 1
+      },
+      {
+        "label": "提交",
+        "value": "submit",
+        "description": "已提交",
+        "extra": "http://192.168.60.8:9001/jdec-platform/image/submit.svg",
+        "sort": 0,
+        "status": 1
+      },
+      {
+        "label": "驳回",
+        "value": "reject",
+        "description": "已驳回",
+        "extra": "http://192.168.60.8:9001/jdec-platform/image/reject.svg",
+        "sort": 0,
+        "status": 1
+      },
+      {
+        "label": "取消",
+        "value": "cancel",
+        "description": "已取消",
+        "extra": "http://192.168.60.8:9001/jdec-platform/image/cancel.svg",
+        "sort": 0,
+        "status": 1
+      }
+    ]
+  },
+  {
+    "label": "操作类型",
+    "categoryAlias": "ButtonStyle",
+    "description": "原按钮样式",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "通过", "value": "pass", "extra": "approvalList", "sort": 0, "status": 1 },
+      { "label": "驳回", "value": "reject", "extra": "approvalList", "sort": 1, "status": 1 },
+      { "label": "待定-通过", "value": "wait-agree", "extra": "approvalList", "sort": 2, "status": 1 },
+      { "label": "待定-未通过", "value": "wait-disagree", "extra": "approvalList", "sort": 3, "status": 1 },
+      { "label": "提交", "value": "submit", "sort": 4, "status": 1 },
+      { "label": "取消", "value": "cancel", "sort": 5, "status": 1 },
+      { "label": "变更", "value": "change", "sort": 6, "status": 1 }
+    ]
+  },
+  {
+    "label": "企业消息接收类型",
+    "categoryAlias": "wxAcceptType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "审批链下一步审批人", "value": "next_approval_person", "sort": 0, "status": 1 },
+      { "label": "审批链中已接收消息的人", "value": "approved_person", "sort": 0, "status": 1 },
+      { "label": "审批状态变化区间所有人", "value": "status_change_related", "sort": 0, "status": 1 },
+      { "label": "申请人", "value": "apply_person", "sort": 0, "status": 1 },
+      { "label": "额外接收人", "value": "extra_receiver", "sort": 0, "status": 1 },
+      { "label": "当前登录人", "value": "login_user", "sort": 0, "status": 1 },
+      { "label": "审批链上一步审批人", "value": "prev_approval_person", "sort": 0, "status": 1 }
+    ]
+  },
+  {
+    "label": "消息发送类型",
+    "categoryAlias": "wxSendType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "一次性所有人发送", "value": "send_all_once", "sort": 0, "status": 1 },
+      { "label": "循环单人发送", "value": "loop_single_send", "sort": 0, "status": 1 }
+    ]
+  },
+  {
+    "label": "触发类型",
+    "categoryAlias": "wxTriggerType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "提交", "value": "submit", "sort": 0, "status": 1 },
+      { "label": "审批", "value": "pass", "sort": 1, "status": 1 },
+      { "label": "驳回", "value": "reject", "sort": 2, "status": 1 },
+      { "label": "撤销", "value": "revoke", "sort": 3, "status": 1 },
+      { "label": "关闭", "value": "close", "sort": 4, "status": 1 },
+      { "label": "登录", "value": "login", "sort": 5, "status": 1 },
+      { "label": "启用", "value": "enable", "sort": 6, "status": 1 },
+      { "label": "取消", "value": "cancel", "sort": 7, "status": 1 },
+      { "label": "短信登录", "value": "sms_login", "sort": 8, "status": 1 }
+    ]
+  },
+  {
+    "label": "菜单类型",
+    "categoryAlias": "MenuType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "导航", "value": "1", "sort": 0, "status": 1 },
+      { "label": "页面", "value": "2", "sort": 1, "status": 1 },
+      { "label": "标签", "value": "3", "sort": 2, "status": 1 },
+      { "label": "表", "value": "4", "sort": 3, "status": 1 },
+      { "label": "弹窗", "value": "5", "sort": 4, "status": 1 }
+    ]
+  },
+  {
+    "label": "日志类型",
+    "categoryAlias": "monitorLogType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "系统日志", "value": "systemLog", "sort": 0, "status": 1 },
+      { "label": "消息日志", "value": "messageLog", "sort": 1, "status": 1 },
+      { "label": "操作日志", "value": "operationLog", "sort": 2, "status": 1 }
+    ]
+  },
+  {
+    "label": "驳回类型",
+    "categoryAlias": "approvelBackType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "逐步驳回", "value": "rejectOne", "sort": 0, "status": 1 },
+      { "label": "驳回到指定状态", "value": "rejectSpecify", "sort": 1, "status": 1 },
+      { "label": "直接驳回至申请人", "value": "rejectStart", "sort": 2, "status": 1 }
+    ]
+  },
+  {
+    "label": "消息模板参数转换方法",
+    "categoryAlias": "MSG_PARAM_TRANSFER",
+    "description": "消息模板参数转换方法",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      {
+        "label": "组合",
+        "value": "CONCAT",
+        "description": "多个字段组合在一起",
+        "extra": "",
+        "sort": 0,
+        "status": 1
+      }
+    ]
+  },
+  {
+    "label": "按钮类型",
+    "categoryAlias": "buttonType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "保存", "value": "save", "sort": 0, "status": 1 },
+      { "label": "新增", "value": "add", "sort": 1, "status": 1 },
+      { "label": "取消", "value": "cancel", "sort": 2, "status": 1 },
+      { "label": "关闭窗口", "value": "close", "sort": 3, "status": 1 },
+      { "label": "消息模板参数设置", "value": "messageParms", "sort": 4, "status": 1 },
+      { "label": "添加消息配置", "value": "addMessage", "sort": 5, "status": 1 }
+    ]
+  },
+  {
+    "label": "菜单结构类型",
+    "categoryAlias": "structuralType",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "列表", "value": "1", "sort": 0, "status": 1 },
+      { "label": "详情", "value": "2", "sort": 1, "status": 1 },
+      { "label": "树结构", "value": "3", "sort": 2, "status": 1 }
+    ]
+  },
+  {
+    "label": "组合字段转换方法",
+    "categoryAlias": "unionChangeMethod",
+    "format": "list",
+    "source": 1,
+    "sort": 0,
+    "status": 1,
+    "items": [
+      { "label": "组合", "value": "CONCAT", "description": "组合拼接", "sort": 0, "status": 1 },
+      { "label": "乘法", "value": "MULTIPY", "description": "用乘号组合拼接，列入长X宽", "sort": 1, "status": 1 },
+      { "label": "配置子项", "value": "33", "sort": 2, "status": 1 }
+    ]
+  }
+]

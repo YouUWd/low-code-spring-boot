@@ -1,0 +1,1808 @@
+package com.jdec.platform.config.biz.service;
+
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.config.api.SysRolePermissionApi;
+import com.jdec.platform.config.api.dto.request.*;
+import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.entity.*;
+import com.jdec.platform.config.biz.mapper.*;
+import com.jdec.platform.config.open.api.OpenRolePermissionApi;
+import com.jdec.platform.shared.annotation.ConfigChangeNotify;
+import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.ConfigChangeContext;
+import com.jdec.platform.shared.datasource.DataSource;
+import com.jdec.platform.shared.datasource.DataSourceConstants;
+import com.jdec.platform.shared.enums.ChangeType;
+import com.jdec.platform.shared.enums.CommonStatusEnum;
+import com.jdec.platform.shared.enums.EffectiveTypeEnum;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@DataSource(DataSourceConstants.CONFIG_CENTER)
+public class SysRolePermissionService implements SysRolePermissionApi, OpenRolePermissionApi {
+
+    /** 业务值 JSON 序列化/反序列化：仅处理标量/对象/数组，不注册额外模块 */
+    private static final ObjectMapper BIZ_VALUE_MAPPER = new ObjectMapper();
+
+    private final SysRoleMenuMapper sysRoleMenuMapper;
+    private final SysMenuMapper sysMenuMapper;
+    private final SysRoleInteractionPermissionMapper sysRoleInteractionPermissionMapper;
+    private final SysInteractionPermissionMapper sysInteractionPermissionMapper;
+    private final SysRoleDataPermissionMapper sysRoleDataPermissionMapper;
+    private final SysDataPermissionMapper sysDataPermissionMapper;
+    private final SysRoleSpecialPermissionMapper sysRoleSpecialPermissionMapper;
+    private final SysSpecialPermissionMapper sysSpecialPermissionMapper;
+    private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
+    private final SysRoleUserMapper sysRoleUserMapper;
+    private final SysRoleSubjectMapper sysRoleSubjectMapper;
+    private final com.jdec.platform.config.biz.util.AuditLogHelper auditLogHelper;
+    private final SysRoleMapper sysRoleMapper;
+
+    @Override
+    public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
+        // 查询角色菜单关联
+        List<SysRoleMenu> roleMenus =
+                sysRoleMenuMapper.selectList(
+                        Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
+
+        if (roleMenus.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 获取菜单ID列表
+        List<Long> menuIds = roleMenus.stream().map(SysRoleMenu::getMenuId).toList();
+
+        // 查询菜单信息
+        LambdaQueryWrapper<SysMenu> menuWrapper =
+                new LambdaQueryWrapper<SysMenu>()
+                        .in(SysMenu::getId, menuIds)
+                        .eq(SysMenu::getEnabled, true)
+                        .eq(SysMenu::getSubjectId, subjectId)
+                        .eq(SysMenu::getProjectNo, projectNo);
+        List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
+
+        // 构建响应，包含所有菜单字段
+        return menus.stream()
+                .map(
+                        menu -> {
+                            RoleMenuResp resp = new RoleMenuResp();
+                            resp.setMenuId(menu.getId());
+                            resp.setMenuTitle(menu.getTitle());
+                            resp.setPid(menu.getPid());
+                            resp.setParam(menu.getParam());
+                            resp.setMenuType(menu.getMenuType());
+                            resp.setCategory(menu.getCategory());
+                            resp.setImgDefault(menu.getImgDefault());
+                            resp.setImgActive(menu.getImgActive());
+                            resp.setModuleId(menu.getModuleId());
+                            resp.setSortOrder(menu.getSortOrder());
+                            resp.setShowed(menu.getShowed());
+                            resp.setEnabled(menu.getEnabled());
+                            resp.setDocUrl(menu.getDocUrl());
+                            resp.setDocName(menu.getDocName());
+                            resp.setVideoUrl(menu.getVideoUrl());
+                            resp.setVideoName(menu.getVideoName());
+                            return resp;
+                        })
+                .sorted(
+                        Comparator.comparing(
+                                RoleMenuResp::getSortOrder,
+                                Comparator.nullsLast(Integer::compareTo)))
+                .toList();
+    }
+
+    @Override
+    public List<RoleMenuResp> getRoleMenuByCategory(
+            Long roleId, Integer category, Long subjectId, String projectNo) {
+        // 查询角色菜单关联
+        List<SysRoleMenu> roleMenus =
+                sysRoleMenuMapper.selectList(
+                        Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
+
+        if (roleMenus.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 获取菜单ID列表
+        List<Long> menuIds = roleMenus.stream().map(SysRoleMenu::getMenuId).toList();
+
+        // 查询菜单信息，增加菜单分类过滤
+        LambdaQueryWrapper<SysMenu> menuWrapper =
+                new LambdaQueryWrapper<SysMenu>()
+                        .in(SysMenu::getId, menuIds)
+                        .eq(SysMenu::getSubjectId, subjectId)
+                        .eq(SysMenu::getProjectNo, projectNo)
+                        .eq(category != null, SysMenu::getCategory, category);
+        List<SysMenu> menus = sysMenuMapper.selectList(menuWrapper);
+
+        // 构建响应，包含所有菜单字段
+        return menus.stream()
+                .map(
+                        menu -> {
+                            RoleMenuResp resp = new RoleMenuResp();
+                            resp.setMenuId(menu.getId());
+                            resp.setMenuTitle(menu.getTitle());
+                            resp.setPid(menu.getPid());
+                            resp.setParam(menu.getParam());
+                            resp.setMenuType(menu.getMenuType());
+                            resp.setStructuralType(menu.getStructuralType());
+                            resp.setCategory(menu.getCategory());
+                            resp.setImgDefault(menu.getImgDefault());
+                            resp.setImgActive(menu.getImgActive());
+                            resp.setModuleId(menu.getModuleId());
+                            resp.setSortOrder(menu.getSortOrder());
+                            resp.setShowed(menu.getShowed());
+                            resp.setEnabled(menu.getEnabled());
+                            resp.setDocUrl(menu.getDocUrl());
+                            resp.setDocName(menu.getDocName());
+                            resp.setVideoUrl(menu.getVideoUrl());
+                            resp.setVideoName(menu.getVideoName());
+                            return resp;
+                        })
+                .sorted(
+                        Comparator.comparing(
+                                RoleMenuResp::getSortOrder,
+                                Comparator.nullsLast(Integer::compareTo)))
+                .toList();
+    }
+
+    @Override
+    @ConfigChangeNotify(changeType = ChangeType.ROLE_MENU_CHANGED, roleIdExpr = "#request.roleId")
+    public void saveRoleMenu(SaveRoleMenuReq request) {
+        Long roleId = request.getRoleId();
+        List<Long> menuIds = request.getMenuIds();
+
+        // 删除旧的角色菜单关联
+        sysRoleMenuMapper.delete(
+                Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
+
+        // 批量插入新的角色菜单关联
+        if (CollUtil.isNotEmpty(menuIds)) {
+            List<SysRoleMenu> roleMenus =
+                    menuIds.stream()
+                            .map(
+                                    menuId -> {
+                                        SysRoleMenu roleMenu = new SysRoleMenu();
+                                        roleMenu.setRoleId(roleId);
+                                        roleMenu.setMenuId(menuId);
+                                        return roleMenu;
+                                    })
+                            .toList();
+            sysRoleMenuMapper.insert(roleMenus);
+        }
+
+        // 编程式审计日志：记录菜单权限变更
+        logMenuPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
+
+        setAffectedContext(roleId);
+    }
+
+    @Override
+    public List<RoleInteractionPermissionResp> getRoleInteractionPermission(Long roleId) {
+        // 查询角色交互权限关联
+        List<SysRoleInteractionPermission> rolePermissions =
+                sysRoleInteractionPermissionMapper.selectList(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(SysRoleInteractionPermission::getRoleId, roleId));
+
+        if (rolePermissions.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 获取交互权限ID列表
+        List<Long> permissionIds =
+                rolePermissions.stream()
+                        .map(SysRoleInteractionPermission::getPermissionId)
+                        .toList();
+
+        // 查询交互权限信息
+        List<SysInteractionPermission> permissions =
+                sysInteractionPermissionMapper.selectList(
+                        Wrappers.<SysInteractionPermission>lambdaQuery()
+                                .in(SysInteractionPermission::getId, permissionIds));
+
+        // 构建响应
+        return permissions.stream()
+                .map(
+                        permission -> {
+                            RoleInteractionPermissionResp resp =
+                                    new RoleInteractionPermissionResp();
+                            resp.setPermissionId(permission.getId());
+                            resp.setPermissionName(permission.getName());
+                            resp.setPermissionCode(permission.getCode());
+                            resp.setModuleId(permission.getModuleId());
+                            resp.setType(permission.getType());
+                            return resp;
+                        })
+                .toList();
+    }
+
+    @Override
+    public RoleInteractionPermissionByModuleResp getRoleInteractionPermissionByModule(
+            Long roleId, Long moduleId) {
+        // 1. 查询角色交互权限关联
+        List<SysRoleInteractionPermission> rolePermissions =
+                sysRoleInteractionPermissionMapper.selectList(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(SysRoleInteractionPermission::getRoleId, roleId));
+
+        if (rolePermissions.isEmpty()) {
+            return buildEmptyResponse();
+        }
+
+        // 2. 获取交互权限ID列表
+        List<Long> permissionIds =
+                rolePermissions.stream()
+                        .map(SysRoleInteractionPermission::getPermissionId)
+                        .toList();
+
+        // 3. 查询交互权限信息，过滤指定模块ID
+        List<SysInteractionPermission> permissions =
+                sysInteractionPermissionMapper.selectList(
+                        Wrappers.<SysInteractionPermission>lambdaQuery()
+                                .in(SysInteractionPermission::getId, permissionIds)
+                                .eq(SysInteractionPermission::getModuleId, moduleId)
+                                .orderByAsc(SysInteractionPermission::getSort));
+
+        if (permissions.isEmpty()) {
+            return buildEmptyResponse();
+        }
+
+        // 4. 按类型分组
+        RoleInteractionPermissionByModuleResp response =
+                new RoleInteractionPermissionByModuleResp();
+
+        List<RoleInteractionPermissionByModuleResp.InteractionPermissionItem> applyList =
+                new ArrayList<>();
+        List<RoleInteractionPermissionByModuleResp.InteractionPermissionItem> editList =
+                new ArrayList<>();
+        List<RoleInteractionPermissionByModuleResp.InteractionPermissionItem> viewList =
+                new ArrayList<>();
+
+        for (SysInteractionPermission permission : permissions) {
+            RoleInteractionPermissionByModuleResp.InteractionPermissionItem item =
+                    new RoleInteractionPermissionByModuleResp.InteractionPermissionItem();
+            item.setPermissionId(permission.getId());
+            item.setPermissionName(permission.getName());
+            item.setPermissionCode(permission.getCode());
+            item.setModuleId(permission.getModuleId());
+            item.setType(permission.getType());
+            item.setSort(permission.getSort());
+
+            Integer type = permission.getType();
+            if (type != null) {
+                switch (type) {
+                    case 1 -> applyList.add(item); // 申请
+                    case 2 -> editList.add(item); // 编辑
+                    case 3 -> viewList.add(item); // 查看
+                }
+            }
+        }
+
+        response.setApplyPermissions(applyList);
+        response.setEditPermissions(editList);
+        response.setViewPermissions(viewList);
+
+        return response;
+    }
+
+    private RoleInteractionPermissionByModuleResp buildEmptyResponse() {
+        RoleInteractionPermissionByModuleResp response =
+                new RoleInteractionPermissionByModuleResp();
+        response.setApplyPermissions(Collections.emptyList());
+        response.setEditPermissions(Collections.emptyList());
+        response.setViewPermissions(Collections.emptyList());
+        return response;
+    }
+
+    @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_INTERACTION_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId")
+    public void saveRoleInteractionPermission(SaveRoleInteractionPermissionReq request) {
+        Long roleId = request.getRoleId();
+        List<SaveRoleInteractionPermissionReq.PermissionItem> permissions =
+                request.getPermissions();
+
+        // 1. 提取受影响的模块 ID 列表
+        List<Long> affectedModuleIds = Collections.emptyList();
+        if (CollUtil.isNotEmpty(permissions)) {
+            affectedModuleIds =
+                    permissions.stream()
+                            .map(SaveRoleInteractionPermissionReq.PermissionItem::getModuleId)
+                            .filter(java.util.Objects::nonNull)
+                            .distinct()
+                            .toList();
+        }
+
+        // 2. 删除该角色下 request 中模块列表的旧交互权限记录
+        if (CollUtil.isNotEmpty(affectedModuleIds)) {
+            // 查询这些模块下的所有交互权限ID
+            List<SysInteractionPermission> interactionPermissions =
+                    sysInteractionPermissionMapper.selectList(
+                            Wrappers.<SysInteractionPermission>lambdaQuery()
+                                    .in(SysInteractionPermission::getModuleId, affectedModuleIds));
+
+            if (CollUtil.isNotEmpty(interactionPermissions)) {
+                List<Long> permissionIdsToDelete =
+                        interactionPermissions.stream()
+                                .map(SysInteractionPermission::getId)
+                                .toList();
+
+                // 只删除这些模块范围内的角色交互权限
+                sysRoleInteractionPermissionMapper.delete(
+                        Wrappers.<SysRoleInteractionPermission>lambdaQuery()
+                                .eq(SysRoleInteractionPermission::getRoleId, roleId)
+                                .in(
+                                        SysRoleInteractionPermission::getPermissionId,
+                                        permissionIdsToDelete));
+            }
+        }
+
+        // 3. 批量插入新的角色交互权限关联
+        if (CollUtil.isNotEmpty(permissions)) {
+            List<SysRoleInteractionPermission> rolePermissions = new ArrayList<>();
+            for (SaveRoleInteractionPermissionReq.PermissionItem permission : permissions) {
+                if (CollUtil.isNotEmpty(permission.getPermissionIds())) {
+                    for (Long permissionId : permission.getPermissionIds()) {
+                        SysRoleInteractionPermission rp = new SysRoleInteractionPermission();
+                        rp.setRoleId(roleId);
+                        rp.setPermissionId(permissionId);
+                        rolePermissions.add(rp);
+                    }
+                }
+            }
+            if (CollUtil.isNotEmpty(rolePermissions)) {
+                sysRoleInteractionPermissionMapper.insert(rolePermissions);
+            }
+        }
+
+        // 4. 记录审计日志（编程式）
+        logInteractionPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
+
+        // 5. 设置受影响的上下文（用户、主体、模块）
+        setAffectedContext(roleId, affectedModuleIds);
+    }
+
+    @Transactional
+    @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_DATA_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId")
+    public void saveRoleDataPermission(SaveRoleDataPermissionReq request) {
+        Long roleId = request.getRoleId();
+        List<SaveRoleDataPermissionReq.SaveDataPermissionReq> saveDataPermissions =
+                request.getDataPermissions();
+
+        // 1. 按权限节点/主体精准清空并重建关联
+        List<SysRoleDataPermission> toInsert = new ArrayList<>();
+        if (CollUtil.isNotEmpty(saveDataPermissions)) {
+            for (SaveRoleDataPermissionReq.SaveDataPermissionReq saveDataPermission :
+                    saveDataPermissions) {
+                Long permissionId = saveDataPermission.getPermissionId();
+                if (permissionId == null) {
+                    continue;
+                }
+                boolean permissionCheckAll = isCheckAll(saveDataPermission.getPermissionCheckAll());
+
+                if (permissionCheckAll) {
+                    // 1.1 数据权限全选：清空该权限节点下的所有数据，仅新增一条节点级全选记录
+                    // （主体ID为空，表示该权限节点下所有主体均全选）
+                    sysRoleDataPermissionMapper.delete(
+                            Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                    .eq(SysRoleDataPermission::getRoleId, roleId)
+                                    .eq(SysRoleDataPermission::getDataPermissionId, permissionId));
+                    toInsert.add(buildDataPermission(roleId, permissionId, null, 1, 0, null));
+                    continue;
+                }
+
+                List<SaveRoleDataPermissionReq.SaveDataSubjectReq> subjects =
+                        nullToEmpty(saveDataPermission.getSubjects());
+                if (subjects.isEmpty()) {
+                    // 1.2 权限节点未勾选：清空该权限节点下的所有数据
+                    sysRoleDataPermissionMapper.delete(
+                            Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                    .eq(SysRoleDataPermission::getRoleId, roleId)
+                                    .eq(SysRoleDataPermission::getDataPermissionId, permissionId));
+                    continue;
+                }
+
+                // 1.3 节点由全选改为非全选：先移除节点级全选记录（主体ID为空），
+                // 否则该记录会让节点回显与鉴权仍按全选处理，导致取消勾选不生效
+                sysRoleDataPermissionMapper.delete(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(SysRoleDataPermission::getRoleId, roleId)
+                                .eq(SysRoleDataPermission::getDataPermissionId, permissionId)
+                                .isNull(SysRoleDataPermission::getSubjectId));
+
+                for (SaveRoleDataPermissionReq.SaveDataSubjectReq subject : subjects) {
+                    Long subjectId = subject.getSubjectId();
+                    // 1.4 清空该主体下的数据
+                    sysRoleDataPermissionMapper.delete(
+                            Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                    .eq(SysRoleDataPermission::getRoleId, roleId)
+                                    .eq(SysRoleDataPermission::getDataPermissionId, permissionId)
+                                    .eq(SysRoleDataPermission::getSubjectId, subjectId));
+
+                    if (isCheckAll(subject.getSubjectCheckAll())) {
+                        // 1.5 主体全选：新增一条主体全选标识数据，业务名称置空
+                        toInsert.add(
+                                buildDataPermission(roleId, permissionId, subjectId, 0, 1, null));
+                    } else if (CollUtil.isNotEmpty(subject.getBizNames())) {
+                        for (Object bizName : subject.getBizNames()) {
+                            toInsert.add(
+                                    buildDataPermission(
+                                            roleId, permissionId, subjectId, 0, 0, bizName));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. 批量插入新的权限关联
+        if (CollUtil.isNotEmpty(toInsert)) {
+            sysRoleDataPermissionMapper.insert(toInsert);
+        }
+
+        // 3. 记录审计日志（编程式）
+        logDataPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
+
+        setAffectedContext(roleId);
+    }
+
+    /** 判断全选标识是否为1 */
+    private boolean isCheckAll(Integer checkAll) {
+        return Integer.valueOf(1).equals(checkAll);
+    }
+
+    /** 集合为null时返回空集合 */
+    private <T> List<T> nullToEmpty(List<T> list) {
+        return list == null ? Collections.emptyList() : list;
+    }
+
+    /** 构建角色数据权限关联实体 */
+    private SysRoleDataPermission buildDataPermission(
+            Long roleId,
+            Long permissionId,
+            Long subjectId,
+            Integer permissionCheckAll,
+            Integer subjectCheckAll,
+            Object bizName) {
+        SysRoleDataPermission permission = new SysRoleDataPermission();
+        permission.setRoleId(roleId);
+        permission.setDataPermissionId(permissionId);
+        permission.setSubjectId(subjectId);
+        permission.setPermissionCheckAll(permissionCheckAll);
+        permission.setSubjectCheckAll(subjectCheckAll == null ? 0 : subjectCheckAll);
+        permission.setBizName(encodeBizName(bizName));
+        return permission;
+    }
+
+    /**
+     * 业务值入库：对传入的 Object 本身做 JSON 序列化，保留字符串与数字等类型差异。
+     *
+     * <p>字符串会带双引号存储（如 {@code "123"}），数字、布尔、对象、数组按 JSON 文本存储（如 {@code 123}、{@code
+     * {"a":1}}）；序列化失败时降级按纯文本存储。
+     */
+    private String encodeBizName(Object bizName) {
+        if (bizName == null) {
+            return null;
+        }
+        try {
+            return BIZ_VALUE_MAPPER.writeValueAsString(bizName);
+        } catch (JsonProcessingException e) {
+            log.warn("业务值序列化失败，降级按纯文本存储: {}", bizName, e);
+            return String.valueOf(bizName);
+        }
+    }
+
+    /**
+     * 业务值回显：按 JSON 反序列化还原原始类型。
+     *
+     * <p>历史数据是没有经过序列化的纯文本，解析失败时按原字符串返回。
+     */
+    private Object decodeBizName(String bizName) {
+        if (bizName == null || bizName.isEmpty()) {
+            return bizName;
+        }
+        try {
+            return BIZ_VALUE_MAPPER.readValue(bizName, Object.class);
+        } catch (JsonProcessingException e) {
+            return bizName;
+        }
+    }
+
+    @Override
+    public List<RoleSpecialPermissionResp> getRoleSpecialPermission(Long roleId) {
+        // 1. 查询角色特殊权限关联
+        List<SysRoleSpecialPermission> roleSpecialPermissions =
+                sysRoleSpecialPermissionMapper.selectList(
+                        Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                                .eq(SysRoleSpecialPermission::getRoleId, roleId));
+
+        if (roleSpecialPermissions.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 获取特殊权限ID列表
+        List<Long> specialPermissionIds =
+                roleSpecialPermissions.stream()
+                        .map(SysRoleSpecialPermission::getSpecialPermissionId)
+                        .toList();
+
+        // 3. 查询特殊权限信息
+        List<SysSpecialPermission> specialPermissions =
+                sysSpecialPermissionMapper.selectList(
+                        Wrappers.<SysSpecialPermission>lambdaQuery()
+                                .in(SysSpecialPermission::getId, specialPermissionIds));
+
+        // 4. 构建响应
+        return specialPermissions.stream()
+                .map(
+                        permission -> {
+                            RoleSpecialPermissionResp resp = new RoleSpecialPermissionResp();
+                            resp.setSpecialPermissionId(permission.getId());
+                            resp.setCode(permission.getCode());
+                            resp.setName(permission.getName());
+                            resp.setDescription(permission.getDescription());
+                            return resp;
+                        })
+                .toList();
+    }
+
+    @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_SPECIAL_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId")
+    public void saveRoleSpecialPermission(SaveRoleSpecialPermissionReq request) {
+        Long roleId = request.getRoleId();
+        List<Long> specialPermissionIds = request.getSpecialPermissionIds();
+
+        // 删除旧的角色特殊权限关联
+        sysRoleSpecialPermissionMapper.delete(
+                Wrappers.<SysRoleSpecialPermission>lambdaQuery()
+                        .eq(SysRoleSpecialPermission::getRoleId, roleId));
+
+        // 批量插入新的角色特殊权限关联
+        if (CollUtil.isNotEmpty(specialPermissionIds)) {
+            List<SysRoleSpecialPermission> roleSpecialPermissions =
+                    specialPermissionIds.stream()
+                            .map(
+                                    specialPermissionId -> {
+                                        SysRoleSpecialPermission rsp =
+                                                new SysRoleSpecialPermission();
+                                        rsp.setRoleId(roleId);
+                                        rsp.setSpecialPermissionId(specialPermissionId);
+                                        return rsp;
+                                    })
+                            .toList();
+            sysRoleSpecialPermissionMapper.insert(roleSpecialPermissions);
+        }
+
+        // 记录审计日志（编程式）
+        logSpecialPermissionAudit(
+                roleId,
+                request.getCheckFlag(),
+                request.getPermissionPaths(),
+                request.getPermissionTypeName());
+
+        setAffectedContext(roleId);
+    }
+
+    @Override
+    public RoleDataPermissionResp getRoleDataPermission(Long roleId) {
+        RoleDataPermissionResp permissionResp = new RoleDataPermissionResp();
+        permissionResp.setRoleId(roleId);
+
+        // 查询角色数据权限关联
+        List<SysRoleDataPermission> roleDataPermissions =
+                sysRoleDataPermissionMapper.selectList(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(SysRoleDataPermission::getRoleId, roleId)
+                                .orderByAsc(SysRoleDataPermission::getId));
+
+        if (roleDataPermissions.isEmpty()) {
+            permissionResp.setDataPermission(Collections.emptyList());
+            return permissionResp;
+        }
+
+        // 按 dataPermissionId 分组
+        Map<Long, List<SysRoleDataPermission>> groupedByPermission =
+                roleDataPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        LinkedHashMap::new,
+                                        Collectors.toList()));
+
+        // 构建响应：权限节点 -> 主体 -> 业务名称
+        List<RoleDataPermissionResp.DataPermissionItem> dataPermissionItems = new ArrayList<>();
+        for (Map.Entry<Long, List<SysRoleDataPermission>> permissionEntry :
+                groupedByPermission.entrySet()) {
+            List<SysRoleDataPermission> permissionRecords = permissionEntry.getValue();
+
+            RoleDataPermissionResp.DataPermissionItem dataPermissionItem =
+                    new RoleDataPermissionResp.DataPermissionItem();
+            dataPermissionItem.setPermissionId(permissionEntry.getKey());
+            dataPermissionItem.setPermissionCheckAll(
+                    permissionRecords.stream().anyMatch(r -> isCheckAll(r.getPermissionCheckAll()))
+                            ? 1
+                            : 0);
+
+            // 节点级全选记录 subjectId 为空，不属于任何主体，不参与主体维度分组
+            Map<Long, List<SysRoleDataPermission>> groupedBySubject =
+                    permissionRecords.stream()
+                            .filter(r -> r.getSubjectId() != null)
+                            .collect(
+                                    Collectors.groupingBy(
+                                            SysRoleDataPermission::getSubjectId,
+                                            LinkedHashMap::new,
+                                            Collectors.toList()));
+
+            List<RoleDataPermissionResp.DataPermissionSubject> subjectList = new ArrayList<>();
+            for (Map.Entry<Long, List<SysRoleDataPermission>> subjectEntry :
+                    groupedBySubject.entrySet()) {
+                List<SysRoleDataPermission> subjectRecords = subjectEntry.getValue();
+
+                RoleDataPermissionResp.DataPermissionSubject subject =
+                        new RoleDataPermissionResp.DataPermissionSubject();
+                subject.setSubjectId(subjectEntry.getKey());
+                subject.setSubjectCheckAll(
+                        subjectRecords.stream().anyMatch(r -> isCheckAll(r.getSubjectCheckAll()))
+                                ? 1
+                                : 0);
+                subject.setBizNames(
+                        subjectRecords.stream()
+                                .map(SysRoleDataPermission::getBizName)
+                                .filter(Objects::nonNull)
+                                .map(this::decodeBizName)
+                                .toList());
+                subjectList.add(subject);
+            }
+
+            dataPermissionItem.setSubjects(subjectList);
+            dataPermissionItems.add(dataPermissionItem);
+        }
+
+        permissionResp.setDataPermission(dataPermissionItems);
+        return permissionResp;
+    }
+
+    @Override
+    public List<DataRightConfigResp> getRoleDataPermissionDetail(Long roleId) {
+        // 1. 以当前项目+主体下启用的数据权限节点定义（sys_data_permission）为骨架，
+        //    保证「角色未配置」的权限节点也一并返回
+        List<SysDataPermission> dataPermissions =
+                sysDataPermissionMapper.selectList(
+                        Wrappers.<SysDataPermission>lambdaQuery()
+                                .eq(SysDataPermission::getProjectNo, AppContext.getProjectNo())
+                                .eq(SysDataPermission::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysDataPermission::getStatus, CommonStatusEnum.ENABLE.getCode())
+                                .orderByAsc(SysDataPermission::getSort)
+                                .orderByAsc(SysDataPermission::getId));
+
+        // 2. 查询该角色在 sys_role_data_permission 中的配置记录
+        List<SysRoleDataPermission> roleDataPermissions =
+                sysRoleDataPermissionMapper.selectList(
+                        Wrappers.<SysRoleDataPermission>lambdaQuery()
+                                .eq(SysRoleDataPermission::getRoleId, roleId)
+                                .orderByAsc(SysRoleDataPermission::getId));
+
+        // 3. 按数据权限节点ID分组（保持插入顺序）
+        Map<Long, List<SysRoleDataPermission>> groupedByPermission =
+                roleDataPermissions.stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getDataPermissionId,
+                                        LinkedHashMap::new,
+                                        Collectors.toList()));
+
+        // 4. 遍历全部数据权限节点：有角色记录的取角色配置，无记录的返回默认（仅字段名）
+        Map<String, List<DataRightConfigResp.DataConfig>> tableDataConfigMap =
+                new LinkedHashMap<>();
+        for (SysDataPermission dataPermission : dataPermissions) {
+            String code = dataPermission.getCode();
+            if (code == null) {
+                continue;
+            }
+            String[] parts = code.split("\\*");
+            if (parts.length != 2) {
+                continue; // 跳过格式不正确的 code
+            }
+
+            String tableName = parts[0];
+            String columnName = parts[1];
+
+            List<SysRoleDataPermission> records = groupedByPermission.get(dataPermission.getId());
+            List<DataRightConfigResp.DataConfig> dataConfigs =
+                    (records == null || records.isEmpty())
+                            ? List.of(buildDefaultDataConfig(columnName))
+                            : buildDataConfigs(columnName, records);
+            if (dataConfigs.isEmpty()) {
+                continue;
+            }
+            tableDataConfigMap
+                    .computeIfAbsent(tableName, k -> new ArrayList<>())
+                    .addAll(dataConfigs);
+        }
+
+        // 5. 转换成最终结果：按表名分组
+        List<DataRightConfigResp> result = new ArrayList<>();
+        for (Map.Entry<String, List<DataRightConfigResp.DataConfig>> tableEntry :
+                tableDataConfigMap.entrySet()) {
+            result.add(
+                    DataRightConfigResp.builder()
+                            .tableName(tableEntry.getKey())
+                            .dataList(tableEntry.getValue())
+                            .build());
+        }
+
+        return result;
+    }
+
+    /** 角色未配置某数据权限节点时的默认配置：仅填充字段名，不带任何业务名称勾选值。 */
+    private DataRightConfigResp.DataConfig buildDefaultDataConfig(String columnName) {
+        return DataRightConfigResp.DataConfig.builder()
+                .columnName(columnName)
+                .permissionCheckAll(0)
+                .subjectId(null)
+                .subjectCheckAll(0)
+                .bizNames(Collections.emptyList())
+                .build();
+    }
+
+    /**
+     * 将同一数据权限节点（表名*列名）下的记录，转换为业务方配置列表
+     *
+     * <p>两种全选逻辑：
+     *
+     * <ul>
+     *   <li>节点级全选（premission_check_all=1）：整个节点全部主体全选，输出单条配置，主体ID为空
+     *   <li>主体级全选（subject_check_all=1）：该主体下全部数据，输出该主体一条配置、业务名称为空
+     * </ul>
+     *
+     * 其余情况按主体拆分，业务名称取该主体的勾选值。
+     */
+    private List<DataRightConfigResp.DataConfig> buildDataConfigs(
+            String columnName, List<SysRoleDataPermission> records) {
+        // 节点级全选：该节点下所有主体全选
+        if (records.stream().anyMatch(r -> isCheckAll(r.getPermissionCheckAll()))) {
+            return List.of(
+                    DataRightConfigResp.DataConfig.builder()
+                            .columnName(columnName)
+                            .permissionCheckAll(1)
+                            .subjectId(null)
+                            .subjectCheckAll(0)
+                            .bizNames(Collections.emptyList())
+                            .build());
+        }
+
+        // 按主体拆分（节点级全选记录 subjectId 为空，已在上方返回）
+        Map<Long, List<SysRoleDataPermission>> groupedBySubject =
+                records.stream()
+                        .filter(r -> r.getSubjectId() != null)
+                        .collect(
+                                Collectors.groupingBy(
+                                        SysRoleDataPermission::getSubjectId,
+                                        LinkedHashMap::new,
+                                        Collectors.toList()));
+
+        List<DataRightConfigResp.DataConfig> dataConfigs = new ArrayList<>();
+        for (Map.Entry<Long, List<SysRoleDataPermission>> subjectEntry :
+                groupedBySubject.entrySet()) {
+            List<SysRoleDataPermission> subjectRecords = subjectEntry.getValue();
+
+            boolean subjectCheckAll =
+                    subjectRecords.stream().anyMatch(r -> isCheckAll(r.getSubjectCheckAll()));
+            List<Object> bizNames =
+                    subjectCheckAll
+                            ? Collections.emptyList()
+                            : subjectRecords.stream()
+                                    .map(SysRoleDataPermission::getBizName)
+                                    .filter(Objects::nonNull)
+                                    .map(this::decodeBizName)
+                                    .toList();
+
+            dataConfigs.add(
+                    DataRightConfigResp.DataConfig.builder()
+                            .columnName(columnName)
+                            .permissionCheckAll(0)
+                            .subjectId(subjectEntry.getKey())
+                            .subjectCheckAll(subjectCheckAll ? 1 : 0)
+                            .bizNames(bizNames)
+                            .build());
+        }
+
+        return dataConfigs;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    @Override
+    @ConfigChangeNotify(
+            changeType = ChangeType.ROLE_MODULE_PERMISSION_CHANGED,
+            roleIdExpr = "#request.roleId")
+    public void saveRoleModuleFieldPermission(SaveRoleModuleFieldPermissionReq request) {
+        Long roleId = request.getRoleId();
+
+        // 1. 提取受影响的模块 ID 列表
+        List<Long> affectedModuleIds = Collections.emptyList();
+        if (CollUtil.isNotEmpty(request.getFields())) {
+            affectedModuleIds =
+                    request.getFields().stream()
+                            .map(
+                                    SaveRoleModuleFieldPermissionReq.ModuleFieldPermissionItem
+                                            ::getModuleId)
+                            .filter(java.util.Objects::nonNull)
+                            .distinct()
+                            .toList();
+        }
+
+        // 2. 删除该角色下 request 中模块列表的旧字段权限记录
+        if (CollUtil.isNotEmpty(affectedModuleIds)) {
+            sysRoleModuleFieldPermissionMapper.delete(
+                    Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                            .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                            .in(SysRoleModuleFieldPermission::getModuleId, affectedModuleIds));
+        }
+
+        // 3. 解析并批量插入新数据
+        if (CollUtil.isNotEmpty(request.getFields())) {
+            List<SysRoleModuleFieldPermission> allEntities = new ArrayList<>();
+            for (SaveRoleModuleFieldPermissionReq.ModuleFieldPermissionItem item :
+                    request.getFields()) {
+                Long moduleId = item.getModuleId();
+                if (moduleId == null) {
+                    continue;
+                }
+
+                // 收集当前模块下所有涉及的 fieldId（过滤 null）
+                Set<Long> fieldIds = new HashSet<>();
+                if (CollUtil.isNotEmpty(item.getViewFields())) {
+                    item.getViewFields().stream().filter(Objects::nonNull).forEach(fieldIds::add);
+                }
+                if (CollUtil.isNotEmpty(item.getApplyFields())) {
+                    item.getApplyFields().stream().filter(Objects::nonNull).forEach(fieldIds::add);
+                }
+                if (CollUtil.isNotEmpty(item.getEditFields())) {
+                    item.getEditFields().stream().filter(Objects::nonNull).forEach(fieldIds::add);
+                }
+
+                if (fieldIds.isEmpty()) {
+                    continue;
+                }
+
+                Set<Long> viewSet =
+                        item.getViewFields() != null
+                                ? new HashSet<>(item.getViewFields())
+                                : Collections.emptySet();
+                Set<Long> applySet =
+                        item.getApplyFields() != null
+                                ? new HashSet<>(item.getApplyFields())
+                                : Collections.emptySet();
+                Set<Long> editSet =
+                        item.getEditFields() != null
+                                ? new HashSet<>(item.getEditFields())
+                                : Collections.emptySet();
+
+                for (Long fieldId : fieldIds) {
+                    allEntities.add(
+                            SysRoleModuleFieldPermission.builder()
+                                    .roleId(roleId)
+                                    .moduleId(moduleId)
+                                    .moduleFieldId(fieldId)
+                                    .view(viewSet.contains(fieldId) ? 1 : 0)
+                                    .apply(applySet.contains(fieldId) ? 1 : 0)
+                                    .edit(editSet.contains(fieldId) ? 1 : 0)
+                                    .build());
+                }
+            }
+
+            if (CollUtil.isNotEmpty(allEntities)) {
+                sysRoleModuleFieldPermissionMapper.insert(allEntities);
+            }
+        }
+
+        // 4. 审计日志记录（编程式）
+        /* logModuleFieldPermissionAudit(
+                        roleId,
+                        request.getCheckFlag(),
+                        request.getPermissionPaths(),
+                        request.getPermissionTypeName());
+        */
+        // 5. 设置受影响的上下文（用户、主体、模块）
+        setAffectedContext(request.getRoleId(), affectedModuleIds);
+    }
+
+    @Override
+    public List<RoleModuleFieldPermissionResp> getRoleModuleFieldPermission(
+            Long roleId, Integer category) {
+        // 0. 根据角色有效期更新已失效的关联状态，若角色已失效则直接返回空集合
+        updateExpiredRelationsByRoleId(roleId);
+        if (isRoleExpired(roleId)) {
+            return Collections.emptyList();
+        }
+
+        // 1. 查询该角色已分配的模块字段权限配置列表（若指定了 category，则通过 EXISTS 关联 sys_module 过滤）
+        LambdaQueryWrapper<SysRoleModuleFieldPermission> query = Wrappers.lambdaQuery();
+        query.eq(SysRoleModuleFieldPermission::getRoleId, roleId);
+        if (category != null) {
+            query.apply(
+                    "EXISTS (SELECT 1 FROM sys_module m WHERE m.id = sys_role_module_field_permission.module_id AND m.category = {0})",
+                    category);
+        }
+
+        List<SysRoleModuleFieldPermission> allocatedList =
+                sysRoleModuleFieldPermissionMapper.selectList(query);
+
+        if (CollUtil.isEmpty(allocatedList)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 按 moduleId 分组聚合各维度的字段 ID 列表
+        Map<Long, List<SysRoleModuleFieldPermission>> groupMap =
+                allocatedList.stream()
+                        .filter(p -> p.getModuleFieldId() != null)
+                        .collect(Collectors.groupingBy(SysRoleModuleFieldPermission::getModuleId));
+
+        return groupMap.entrySet().stream()
+                .map(
+                        entry -> {
+                            Long moduleId = entry.getKey();
+                            List<SysRoleModuleFieldPermission> perms = entry.getValue();
+
+                            List<Long> viewFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getView()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+                            List<Long> applyFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getApply()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+                            List<Long> editFields =
+                                    perms.stream()
+                                            .filter(p -> Integer.valueOf(1).equals(p.getEdit()))
+                                            .map(SysRoleModuleFieldPermission::getModuleFieldId)
+                                            .toList();
+
+                            return RoleModuleFieldPermissionResp.builder()
+                                    .moduleId(moduleId)
+                                    .viewFields(viewFields)
+                                    .applyFields(applyFields)
+                                    .editFields(editFields)
+                                    .build();
+                        })
+                .toList();
+    }
+
+    /**
+     * 根据角色ID更新关联状态：将已失效的置为1（失效），将已到期的待生效置为0（生效）
+     *
+     * <p>处理两种状态转换：
+     *
+     * <ul>
+     *   <li>已失效：当前时间超出有效期，status 0→1
+     *   <li>待生效→生效：当前时间符合生效条件，status 2→0
+     * </ul>
+     *
+     * @param roleId 角色ID
+     */
+    private void updateExpiredRelationsByRoleId(Long roleId) {
+        LocalDate today = LocalDate.now();
+
+        // 1. 处理用户关联表
+        // 1.1 查询生效和待生效的记录
+        List<SysRoleUser> activeAndPendingUsers =
+                sysRoleUserMapper.selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getRoleId, roleId)
+                                .in(SysRoleUser::getStatus, 0, 2));
+
+        List<Long> expiredUserIds = new ArrayList<>();
+        List<Long> activatedUserIds = new ArrayList<>();
+
+        for (SysRoleUser roleUser : activeAndPendingUsers) {
+            Integer currentStatus = roleUser.getStatus();
+            Integer newStatus =
+                    calculateCurrentStatus(
+                            roleUser.getEffectiveType(),
+                            roleUser.getEffectiveStartDate(),
+                            roleUser.getEffectiveEndDate(),
+                            today);
+
+            // 状态 0→1：已失效
+            if (currentStatus == 0 && newStatus == 1) {
+                expiredUserIds.add(roleUser.getId());
+            }
+            // 状态 2→0：待生效→生效
+            else if (currentStatus == 2 && newStatus == 0) {
+                activatedUserIds.add(roleUser.getId());
+            }
+        }
+
+        // 批量更新为失效
+        if (!expiredUserIds.isEmpty()) {
+            SysRoleUser updateEntity = new SysRoleUser();
+            updateEntity.setStatus(1);
+            sysRoleUserMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleUser>lambdaQuery().in(SysRoleUser::getId, expiredUserIds));
+        }
+
+        // 批量更新为生效
+        if (!activatedUserIds.isEmpty()) {
+            SysRoleUser updateEntity = new SysRoleUser();
+            updateEntity.setStatus(0);
+            sysRoleUserMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleUser>lambdaQuery().in(SysRoleUser::getId, activatedUserIds));
+        }
+
+        // 2. 处理主体关联表
+        // 2.1 查询生效和待生效的记录
+        List<SysRoleSubject> activeAndPendingSubjects =
+                sysRoleSubjectMapper.selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getRoleId, roleId)
+                                .in(SysRoleSubject::getStatus, 0, 2));
+
+        List<Long> expiredSubjectIds = new ArrayList<>();
+        List<Long> activatedSubjectIds = new ArrayList<>();
+
+        for (SysRoleSubject roleSubject : activeAndPendingSubjects) {
+            Integer currentStatus = roleSubject.getStatus();
+            Integer newStatus =
+                    calculateCurrentStatus(
+                            roleSubject.getEffectiveType(),
+                            roleSubject.getEffectiveStartDate(),
+                            roleSubject.getEffectiveEndDate(),
+                            today);
+
+            // 状态 0→1：已失效
+            if (currentStatus == 0 && newStatus == 1) {
+                expiredSubjectIds.add(roleSubject.getId());
+            }
+            // 状态 2→0：待生效→生效
+            else if (currentStatus == 2 && newStatus == 0) {
+                activatedSubjectIds.add(roleSubject.getId());
+            }
+        }
+
+        // 批量更新为失效
+        if (!expiredSubjectIds.isEmpty()) {
+            SysRoleSubject updateEntity = new SysRoleSubject();
+            updateEntity.setStatus(1);
+            sysRoleSubjectMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleSubject>lambdaQuery()
+                            .in(SysRoleSubject::getId, expiredSubjectIds));
+        }
+
+        // 批量更新为生效
+        if (!activatedSubjectIds.isEmpty()) {
+            SysRoleSubject updateEntity = new SysRoleSubject();
+            updateEntity.setStatus(0);
+            sysRoleSubjectMapper.update(
+                    updateEntity,
+                    Wrappers.<SysRoleSubject>lambdaQuery()
+                            .in(SysRoleSubject::getId, activatedSubjectIds));
+        }
+    }
+
+    /**
+     * 判断角色是否已失效
+     *
+     * <p>角色在用户关联和主体关联中均无有效（status=0）记录时视为失效
+     *
+     * @param roleId 角色ID
+     * @return true-角色已失效
+     */
+    private boolean isRoleExpired(Long roleId) {
+        long validUserCount =
+                sysRoleUserMapper.selectCount(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .eq(SysRoleUser::getRoleId, roleId)
+                                .eq(SysRoleUser::getStatus, 0));
+        long validSubjectCount =
+                sysRoleSubjectMapper.selectCount(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .eq(SysRoleSubject::getRoleId, roleId)
+                                .eq(SysRoleSubject::getStatus, 0));
+        return validUserCount == 0 && validSubjectCount == 0;
+    }
+
+    /**
+     * 计算当前应该处于的状态
+     *
+     * @param effectiveType 有效期类型：1-永久，2-自定义
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param today 当前日期
+     * @return 0-生效，1-失效，2-待生效
+     */
+    private Integer calculateCurrentStatus(
+            Integer effectiveType, LocalDate startDate, LocalDate endDate, LocalDate today) {
+        // 永久有效，直接生效
+        if (EffectiveTypeEnum.PERMANENT.getCode().equals(effectiveType)) {
+            return 0;
+        }
+
+        // 自定义时间
+        if (EffectiveTypeEnum.CUSTOM.getCode().equals(effectiveType)) {
+            // 开始时间和结束时间都为空，视为永久有效
+            if (startDate == null && endDate == null) {
+                return 0;
+            }
+
+            // 只有开始时间：今天 < 开始时间 → 待生效，否则 → 生效
+            if (startDate != null && endDate == null) {
+                return today.isBefore(startDate) ? 2 : 0;
+            }
+
+            // 只有结束时间：今天 > 结束时间 → 失效，否则 → 生效
+            if (startDate == null && endDate != null) {
+                return today.isAfter(endDate) ? 1 : 0;
+            }
+
+            // 开始时间和结束时间都有
+            if (today.isBefore(startDate)) {
+                return 2; // 待生效
+            } else if (today.isAfter(endDate)) {
+                return 1; // 失效
+            } else {
+                return 0; // 生效
+            }
+        }
+
+        // 其他情况视为失效
+        return 1;
+    }
+
+    /**
+     * 校验时间有效期（仅判断是否在有效期内，不区分待生效）
+     *
+     * @param effectiveType 有效期类型：1-永久，2-自定义
+     * @param startDate 开始日期
+     * @param endDate 结束日期
+     * @param today 当前日期
+     * @return true-有效，false-无效
+     */
+    private boolean isEffectiveDateValid(
+            Integer effectiveType, LocalDate startDate, LocalDate endDate, LocalDate today) {
+        Integer status = calculateCurrentStatus(effectiveType, startDate, endDate, today);
+        return status == 0; // 只有生效状态才算有效
+    }
+
+    @Override
+    public boolean checkRoleHasPermission(Long roleId, Long subjectId, String projectNo) {
+        // 查询该角色在 sys_role_module_field_permission 表中是否有记录
+        long count =
+                sysRoleModuleFieldPermissionMapper.selectCount(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId));
+
+        return count > 0;
+    }
+
+    @Override
+    public boolean checkRoleHasModuleWrite(Long roleId, Long moduleId) {
+        // 查询该角色在 sys_role_module_field_permission 表中是否有写入权限记录
+        long count =
+                sysRoleModuleFieldPermissionMapper.selectCount(
+                        Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                                .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+                                .eq(SysRoleModuleFieldPermission::getModuleId, moduleId)
+                                .eq(SysRoleModuleFieldPermission::getApply, 1));
+
+        return count > 0;
+    }
+
+    /**
+     * 查询角色关联的用户/主体 ID，写入 ConfigChangeContext，供 Aspect 追加到 payload
+     *
+     * <p>所有权限变更方法（菜单、交互权限、数据权限、特殊权限、模块字段权限）在操作完成后统一调用此方法
+     */
+    private void setAffectedContext(Long roleId) {
+        List<Long> affectedUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .eq(SysRoleUser::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleSubject>()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds);
+    }
+
+    /**
+     * 查询角色关联的用户/主体 ID，并携带自定义 payload，写入 ConfigChangeContext
+     *
+     * @param roleId 角色ID
+     * @param customPayload 自定义 payload 数据
+     */
+    private void setAffectedContext(Long roleId, Map<String, Object> customPayload) {
+        List<Long> affectedUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .eq(SysRoleUser::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleSubject>()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, customPayload);
+    }
+
+    /**
+     * 查询角色关联的用户/主体 ID，并携带受影响的模块 ID 列表，写入 ConfigChangeContext
+     *
+     * @param roleId 角色ID
+     * @param affectedModuleIds 受影响的模块 ID 列表
+     */
+    private void setAffectedContext(Long roleId, List<Long> affectedModuleIds) {
+        List<Long> affectedUserIds =
+                sysRoleUserMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleUser>()
+                                        .eq(SysRoleUser::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleUser::getUserId)
+                        .distinct()
+                        .toList();
+        List<Long> affectedSubjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                new LambdaQueryWrapper<SysRoleSubject>()
+                                        .eq(SysRoleSubject::getRoleId, roleId))
+                        .stream()
+                        .map(SysRoleSubject::getSubjectId)
+                        .distinct()
+                        .toList();
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, affectedModuleIds);
+    }
+
+    @Override
+    public List<PersonalSettingResp> getPersonalSettingByRole(Long roleId, Long moduleId) {
+        // // 1. 根据 roleId 查询 sys_role_module_field_permission
+        // LambdaQueryWrapper<SysRoleModuleFieldPermission> query =
+        // Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+        // .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
+        // .eq(moduleId != null, SysRoleModuleFieldPermission::getModuleId,
+        // moduleId);
+        //
+        // String projectNo = AppContext.getProjectNo();
+        // Long subjectId = AppContext.getSubjectId();
+        // List<SysModule> modules =
+        // sysModuleMapper.selectList(
+        // Wrappers.<SysModule>lambdaQuery()
+        // .eq(SysModule::getProjectNo, projectNo)
+        // .eq(SysModule::getSubjectId, subjectId));
+        // if (modules.isEmpty()) {
+        // return Collections.emptyList();
+        // }
+        // List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
+        // query.in(SysRoleModuleFieldPermission::getModuleId, moduleIds);
+        //
+        // List<SysRoleModuleFieldPermission> roleFieldPermissions =
+        // sysRoleModuleFieldPermissionMapper.selectList(query);
+        //
+        // if (CollUtil.isEmpty(roleFieldPermissions)) {
+        // return Collections.emptyList();
+        // }
+        //
+        // // 2. 获取模块ID列表
+        // List<Long> activeModuleIds =
+        // roleFieldPermissions.stream()
+        // .map(SysRoleModuleFieldPermission::getModuleId)
+        // .distinct()
+        // .toList();
+        //
+        // // 3. 查询模块表
+        // List<SysModule> listModules =
+        // sysModuleMapper.selectList(
+        // Wrappers.<SysModule>lambdaQuery()
+        // .in(SysModule::getId, activeModuleIds)
+        // .eq(SysModule::getSubjectId, AppContext.getSubjectId())
+        // .eq(SysModule::getProjectNo, AppContext.getProjectNo()));
+        //
+        // if (CollUtil.isEmpty(listModules)) {
+        // return Collections.emptyList();
+        // }
+        //
+        // // 4. 获取模块ID集合
+        // Set<Long> listModuleIds =
+        // listModules.stream().map(SysModule::getId).collect(Collectors.toSet());
+        //
+        // // 5. 过滤出字段权限
+        // List<SysRoleModuleFieldPermission> filteredPermissions =
+        // roleFieldPermissions.stream()
+        // .filter(p -> listModuleIds.contains(p.getModuleId()))
+        // .toList();
+        //
+        // // 6. 构造 moduleId -> 角色有权限的 (tableName_columnName) 集合
+        // Map<Long, Set<String>> modulePermittedFieldKeys =
+        // filteredPermissions.stream()
+        // .filter(p -> p.getTableName() != null && p.getColumnName() !=
+        // null)
+        // .collect(
+        // Collectors.groupingBy(
+        // SysRoleModuleFieldPermission::getModuleId,
+        // Collectors.mapping(
+        // p ->
+        // (p.getTableName() + "_" +
+        // p.getColumnName())
+        // .toLowerCase(),
+        // Collectors.toSet())));
+        //
+        // // 7. 直接用 moduleId 查询字段表（sys_module_field）
+        // List<SysModuleField> moduleFields =
+        // sysModuleFieldMapper.selectList(
+        // Wrappers.<SysModuleField>lambdaQuery()
+        // .in(SysModuleField::getModuleId, listModuleIds));
+        //
+        // // 8. 构造 (moduleId + table + column) -> SysModuleField 的映射，便于快速查找
+        // Map<String, SysModuleField> fieldMap =
+        // moduleFields.stream()
+        // .collect(
+        // Collectors.toMap(
+        // f ->
+        // f.getModuleId()
+        // + "_"
+        // + f.getTableName().toLowerCase()
+        // + "_"
+        // + f.getColumnName().toLowerCase(),
+        // f -> f,
+        // (f1, f2) -> f1));
+        //
+        // // 9. 批量查询表头配置 sys_module_header
+        // List<SysModuleHeader> allHeaders =
+        // sysModuleHeaderMapper.selectList(
+        // Wrappers.<SysModuleHeader>lambdaQuery()
+        // .in(SysModuleHeader::getModuleId, listModuleIds)
+        // .orderByAsc(SysModuleHeader::getSortOrder));
+        // Map<Long, List<SysModuleHeader>> headersByModule =
+        //
+        // allHeaders.stream().collect(Collectors.groupingBy(SysModuleHeader::getModuleId));
+        //
+        // // 10. 批量查询表注释
+        // Map<String, String> tableCommentMap = batchQueryTableComments(allHeaders);
+        //
+        // // 11. 构造响应体
+        // List<PersonalSettingResp> result = new ArrayList<>();
+        //
+        // for (SysModule module : listModules) {
+        // List<SysModuleHeader> tableHeaders =
+        // headersByModule.getOrDefault(module.getId(), Collections.emptyList());
+        //
+        // // 获取该模块有权限的字段 Key 集合
+        // Set<String> permittedKeys =
+        // modulePermittedFieldKeys.getOrDefault(module.getId(),
+        // Collections.emptySet());
+        // if (permittedKeys.isEmpty()) {
+        // continue; // 该模块没有字段权限，跳过
+        // }
+        //
+        // // 构造 personalSettingColumns
+        // List<PersonalSettingResp.PersonalSettingColumn> columns = new ArrayList<>();
+        //
+        // for (SysModuleHeader header : tableHeaders) {
+        // // 使用复合 key 快速查找字段
+        // String lookupKey =
+        // module.getId()
+        // + "_"
+        // + (header.getTableName() != null
+        // ? header.getTableName().toLowerCase()
+        // : "")
+        // + "_"
+        // + (header.getColumnName() != null
+        // ? header.getColumnName().toLowerCase()
+        // : "");
+        // SysModuleField moduleField = fieldMap.get(lookupKey);
+        //
+        // String permKey =
+        // ((header.getTableName() != null ? header.getTableName() : "")
+        // + "_"
+        // + (header.getColumnName() != null
+        // ? header.getColumnName()
+        // : ""))
+        // .toLowerCase();
+        //
+        // // 检查该字段是否存在且有权限
+        // if (moduleField != null && permittedKeys.contains(permKey)) {
+        // PersonalSettingResp.PersonalSettingColumn column =
+        // new PersonalSettingResp.PersonalSettingColumn();
+        // column.setId(moduleField.getId());
+        // column.setName(header.getHeaderName());
+        // column.setTable(header.getTableName());
+        // // 设置表中文名：优先从 tableCommentMap 获取，否则使用英文表名
+        // String tableName =
+        // tableCommentMap.getOrDefault(
+        // header.getTableName().toLowerCase(),
+        // header.getTableName());
+        // column.setTableName(tableName);
+        // column.setField(header.getColumnName());
+        // column.setWidth(header.getWidth());
+        // column.setFixed(header.getFixed());
+        // column.setSearchType(header.getSearchType());
+        // column.setEllipsis(header.getEllipsis());
+        // column.setSortable(header.getSortable());
+        // column.setSortOrder(header.getSortOrder());
+        //
+        // columns.add(column);
+        // }
+        // }
+        //
+        // // 只有当有权限的字段不为空时，才添加到结果列表
+        // if (!columns.isEmpty()) {
+        // PersonalSettingResp resp = new PersonalSettingResp();
+        // resp.setId(module.getId());
+        // resp.setModuleName(module.getModuleName());
+        // resp.setPersonalSettingColumns(columns);
+        // result.add(resp);
+        // }
+        // }
+        //
+        // return result;
+        return null;
+    }
+
+    // /**
+    // * 批量查询表注释
+    // *
+    // * <p>根据项目编码从配置中获取对应的数据源，然后查询 information_schema 获取表注释
+    // *
+    // * @param allHeaders 表头列表
+    // * @return 表名 -> 表注释的映射（表名统一转小写）
+    // */
+    // private Map<String, String> batchQueryTableComments(List<SysModuleHeader>
+    // allHeaders) {
+    // Map<String, String> tableCommentMap = new HashMap<>();
+    //
+    // if (allHeaders == null || allHeaders.isEmpty()) {
+    // return tableCommentMap;
+    // }
+    //
+    // // 1. 收集所有表名
+    // Set<String> allTableNames =
+    // allHeaders.stream()
+    // .map(SysModuleHeader::getTableName)
+    // .filter(t -> t != null && !t.trim().isEmpty() && !"*".equals(t))
+    // .collect(Collectors.toSet());
+    //
+    // if (allTableNames.isEmpty()) {
+    // return tableCommentMap;
+    // }
+    //
+    // try {
+    // // 1. 获取项目编码
+    // String projectNo = AppContext.getProjectNo();
+    // if (projectNo == null || projectNo.trim().isEmpty()) {
+    // log.warn("项目编码为空，无法查询表注释");
+    // return tableCommentMap;
+    // }
+    //
+    // // 2. 根据项目编码解析对应的数据源
+    // javax.sql.DataSource targetDataSource =
+    // dataSourceResolver.resolve(projectNo);
+    //
+    // // 3. 使用目标数据源创建 JdbcTemplate
+    // org.springframework.jdbc.core.JdbcTemplate targetJdbcTemplate =
+    // new org.springframework.jdbc.core.JdbcTemplate(targetDataSource);
+    //
+    // // 4. 获取数据库 schema 名称（优先从连接获取，降级使用 projectNo）
+    // String tableSchema =
+    // targetJdbcTemplate.execute(
+    // (Connection conn) -> {
+    // String catalog = conn.getCatalog();
+    // return (catalog != null && !catalog.trim().isEmpty())
+    // ? catalog
+    // : projectNo;
+    // });
+    //
+    // // 5. 构造 SQL 查询表注释
+    // String tableInSql =
+    // allTableNames.stream().map(t -> "?").collect(Collectors.joining(","));
+    // String tableCommentSql =
+    // String.format(
+    // "SELECT TABLE_NAME, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES
+    // WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN (%s)",
+    // tableInSql);
+    //
+    // // 6. 准备参数
+    // List<Object> tableParams = new ArrayList<>();
+    // tableParams.add(tableSchema);
+    // tableParams.addAll(allTableNames);
+    //
+    // // 7. 执行查询
+    // List<Map<String, Object>> tableRows =
+    // targetJdbcTemplate.queryForList(tableCommentSql, tableParams.toArray());
+    //
+    // // 8. 构造返回结果（表名统一转小写）
+    // for (Map<String, Object> row : tableRows) {
+    // String tName = (String) row.get("TABLE_NAME");
+    // String tComment = (String) row.get("TABLE_COMMENT");
+    // if (tName != null) {
+    // tableCommentMap.put(tName.toLowerCase(), tComment);
+    // }
+    // }
+    //
+    // log.debug(
+    // "批量查询表注释成功: projectNo={}, schema={}, 查询{}个表，返回{}条结果",
+    // projectNo,
+    // tableSchema,
+    // allTableNames.size(),
+    // tableCommentMap.size());
+    //
+    // } catch (Exception e) {
+    // log.warn("批量获取表注释失败，将使用表英文名", e);
+    // }
+    //
+    // return tableCommentMap;
+    // }
+
+    /**
+     * 通用权限审计日志记录
+     *
+     * <p>构建标准审计日志格式：
+     *
+     * <pre>
+     * {"change":[{"name":"角色名","mId":"","actions":[{"i/d":[{"name":"前缀-权限类型","columns":[{"name":"","old":"","newer":"permissionPaths拼接","field":""}]}]}]}]}
+     * </pre>
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"、"系统菜单权限"）
+     * @param subModuleStr 子模块字符串（如："角色菜单权限"）
+     * @param tableName 表名（如："sys_role_menu"）
+     * @param recordNamePrefix 记录名称前缀（如："菜单显示"、"模块权限"），硬编码
+     * @param suffixFromPath 是否从permissionPaths取后缀（特殊权限用true，此时permissionTypeName传null）
+     */
+    private void logPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName,
+            String subModuleStr,
+            String tableName,
+            String recordNamePrefix,
+            boolean suffixFromPath) {
+        if (checkFlag == null || CollUtil.isEmpty(permissionPaths)) {
+            return;
+        }
+
+        try {
+            // 1. 查询角色名称
+            SysRole role = sysRoleMapper.selectById(roleId);
+            if (role == null) {
+                log.warn("角色不存在，无法记录审计日志: roleId={}", roleId);
+                return;
+            }
+            String roleName = role.getRoleName();
+
+            // 2. 构建记录名称：前缀-权限类型
+            String suffix;
+            if (suffixFromPath) {
+                // 其它权限从permissionPaths取
+                suffix = permissionPaths.getFirst();
+            } else {
+                suffix = permissionTypeName != null ? permissionTypeName : "";
+            }
+            String recordName = recordNamePrefix + "-" + suffix;
+
+            // 3. 构建permissionPath字符串（用-拼接）
+            String permissionPathStr = String.join("-", permissionPaths);
+
+            // 4. 构建审计日志结构
+            // RecordChange
+            Map<String, Object> recordChange = new LinkedHashMap<>();
+            recordChange.put("name", recordName);
+
+            // 其它权限不需要 columns
+            if (!suffixFromPath) {
+                // ColumnChange: 新增放newer，删除放old
+                Map<String, Object> column = new LinkedHashMap<>();
+                column.put("name", "");
+                if (checkFlag == 1) {
+                    column.put("old", "");
+                    column.put("newer", permissionPathStr);
+                } else {
+                    column.put("old", permissionPathStr);
+                    column.put("newer", "");
+                }
+                column.put("field", "");
+
+                recordChange.put("columns", Collections.singletonList(column));
+            }
+
+            // ActionDetail: checkFlag=1 -> i(新增), checkFlag=0 -> d(取消)
+            Map<String, Object> actionDetail = new LinkedHashMap<>();
+            String actionKey = (checkFlag == 1) ? "i" : "d";
+            actionDetail.put(actionKey, Collections.singletonList(recordChange));
+
+            // ModuleAction: name=角色名
+            Map<String, Object> moduleAction = new LinkedHashMap<>();
+            moduleAction.put("name", roleName);
+            moduleAction.put("mId", "");
+            moduleAction.put("actions", actionDetail);
+
+            // 构建完整的 logRemark
+            Map<String, Object> remarkMap = new LinkedHashMap<>();
+            remarkMap.put("change", Collections.singletonList(moduleAction));
+            String remarkJson = JSONUtil.toJsonStr(remarkMap);
+
+            // 5. 发送审计日志
+            String operation = (checkFlag == 1) ? "新增" : "取消";
+            auditLogHelper.logWithCustomRemark(
+                    subModuleStr, tableName, operation, roleId, remarkJson);
+
+        } catch (Exception e) {
+            log.error("记录{}审计日志失败: roleId={}, checkFlag={}", subModuleStr, roleId, checkFlag, e);
+        }
+    }
+
+    /**
+     * 处理菜单权限审计日志
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
+     */
+    private void logMenuPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色菜单权限",
+                "sys_role_menu",
+                "菜单显示",
+                false);
+    }
+
+    /**
+     * 处理交互权限审计日志
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
+     */
+    private void logInteractionPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色交互权限",
+                "sys_role_interaction_permission",
+                "互动权限",
+                false);
+    }
+
+    /**
+     * 处理数据权限审计日志
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
+     */
+    private void logDataPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色数据权限",
+                "sys_role_data_permission",
+                "数据权限",
+                false);
+    }
+
+    /**
+     * 处理模块字段权限审计日志
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型后缀（如："业务菜单权限"）
+     */
+    private void logModuleFieldPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                permissionTypeName,
+                "角色模块字段权限",
+                "sys_role_module_field_permission",
+                "模块权限",
+                false);
+    }
+
+    /**
+     * 处理特殊权限审计日志
+     *
+     * @param roleId 角色ID
+     * @param checkFlag 是否勾选（1=勾选新增，0=取消勾选）
+     * @param permissionPaths 权限路径列表
+     * @param permissionTypeName 权限类型名称（传null，取permissionPaths[0]）
+     */
+    private void logSpecialPermissionAudit(
+            Long roleId,
+            Integer checkFlag,
+            List<String> permissionPaths,
+            String permissionTypeName) {
+        logPermissionAudit(
+                roleId,
+                checkFlag,
+                permissionPaths,
+                null,
+                "角色特殊权限",
+                "sys_role_special_permission",
+                "其它权限",
+                true);
+    }
+}

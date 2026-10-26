@@ -1,0 +1,52 @@
+package com.jdec.platform.config.api.dto.response;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import java.util.List;
+import lombok.Data;
+
+/** 数据权限类型列表响应 */
+@Data
+@Schema(description = "数据权限类型列表响应")
+public class SysDataPermissionResp {
+
+    @Schema(description = "类型ID")
+    private Long id;
+
+    @Schema(description = "类型编码")
+    private String code;
+
+    @Schema(description = "类型名称")
+    private String name;
+
+    @Schema(description = "类型描述")
+    private String description;
+
+    @Schema(description = "排序")
+    private Integer sort;
+
+    @Schema(description = "状态 1:启用 0:禁用")
+    private Integer status;
+
+    @Schema(description = "业务类型编码")
+    private String businessTypeCode;
+
+    @Schema(description = "业务类型名称")
+    private String businessTypeName;
+
+    @Schema(description = "主体列表")
+    private List<SubjectInfo> subjectInfos;
+
+    @Data
+    @Schema(description = "数据权限主体信息")
+    public static class SubjectInfo {
+
+        @Schema(description = "主体id")
+        private Long subjectId;
+
+        @Schema(description = "主体名称")
+        private String subjectName;
+
+        @Schema(description = "主体所拥有的业务数据，保持业务字段的原始类型")
+        private List<Object> bizNames;
+    }
+}
