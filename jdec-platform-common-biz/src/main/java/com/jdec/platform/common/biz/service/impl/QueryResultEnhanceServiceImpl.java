@@ -1,6 +1,9 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.common.api.dto.response.UserSimpleResp;
 import com.jdec.platform.common.biz.constant.IndustryConstants;
@@ -189,6 +192,10 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
             return enhanceIndustryOptions(rawOptions);
         }
 
+        if (isWordCloudType(businessTypeCode)) {
+            return enhanceWordCloudOptions(rawOptions);
+        }
+
         return rawOptions;
     }
 
@@ -205,30 +212,147 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
             Long rootModuleId,
             MenuHeaderColumnResp headerRoot,
             Long fieldId) {
-        String businessTypeCode = findBusinessTypeCodeInHeader(headerRoot, fieldId, columnName);
+        MenuHeaderColumnResp node = findHeaderNode(headerRoot, fieldId, columnName);
+        if (node != null
+                && (node.getRelationWord() != null
+                        || isWordCloudType(node.getBusinessTypeCode()))) {
+            return enhanceWordCloudOptions(rawOptions);
+        }
+        String businessTypeCode = node != null ? node.getBusinessTypeCode() : null;
         return enhanceOptions(rawOptions, columnName, rootModuleId, businessTypeCode);
     }
 
-    private String findBusinessTypeCodeInHeader(
+    private boolean isWordCloudType(String businessTypeCode) {
+        return "word".equalsIgnoreCase(businessTypeCode)
+                || "word_cloud".equalsIgnoreCase(businessTypeCode)
+                || "wordCloud".equalsIgnoreCase(businessTypeCode);
+    }
+
+    private static final Set<String> WORD_CLOUD_REMOVED_FIELDS = Set.of("id", "pid", "relation_no");
+
+    /**
+     * 针对词云配置字段的下拉候选项进行增强过滤与 JSON 语义去重： 1. 统一转为 JsonNode 树结构 2. 递归剔除内部结构字段 (id, pid, relation_no) 3.
+     * 利用 JsonNode 原生 equals/hashCode（忽略 Key 顺序）进行严格的 JSON 语义去重 4. 转回 Map 结构保持对前端的兼容完整信息
+     */
+    private List<DataOptionResp> enhanceWordCloudOptions(List<DataOptionResp> rawOptions) {
+        if (CollectionUtils.isEmpty(rawOptions)) {
+            return rawOptions;
+        }
+        List<DataOptionResp> result = new ArrayList<>();
+        // 利用 LinkedHashSet + JsonNode 原生 equals/hashCode 实现忽略 Key 声明顺序的语义去重
+        Set<JsonNode> seenNodes = new LinkedHashSet<>();
+
+        for (DataOptionResp opt : rawOptions) {
+            if (opt == null) {
+                continue;
+            }
+            JsonNode valNode = toJsonNode(opt.getValue());
+            JsonNode labelNode = toJsonNode(opt.getLabel());
+
+            // 递归移除指定的元数据字段
+            removeWordCloudFields(valNode);
+            removeWordCloudFields(labelNode);
+
+            JsonNode targetNode =
+                    (valNode != null && !valNode.isNull() && !valNode.isMissingNode())
+                            ? valNode
+                            : labelNode;
+            if (targetNode == null || targetNode.isNull() || targetNode.isMissingNode()) {
+                continue;
+            }
+
+            // 语义等价去重（ObjectNode.equals 天然忽略 key 顺序）
+            if (seenNodes.add(targetNode)) {
+                // 转为 Map/List 结构，保持过滤后的完整信息
+                Object finalVal = toObjectValue(targetNode);
+                Object finalLabel =
+                        (labelNode != null && !labelNode.isNull() && !labelNode.isMissingNode())
+                                ? toObjectValue(labelNode)
+                                : finalVal;
+                result.add(DataOptionResp.builder().label(finalLabel).value(finalVal).build());
+            }
+        }
+        return result;
+    }
+
+    /** 统一将 Object / String / Map 转换为 JsonNode */
+    private JsonNode toJsonNode(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof JsonNode node) {
+            return node.deepCopy();
+        }
+        if (obj instanceof String str) {
+            String trimmed = str.trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
+                    || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                try {
+                    return objectMapper.readTree(trimmed);
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+            return null;
+        }
+        try {
+            return objectMapper.valueToTree(obj);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** 递归剔除 id, pid, relation_no（与 WordApiController / DynamicQueryService 规范统一） */
+    private void removeWordCloudFields(JsonNode node) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof ObjectNode objectNode) {
+            for (String field : WORD_CLOUD_REMOVED_FIELDS) {
+                objectNode.remove(field);
+            }
+            for (Iterator<JsonNode> it = objectNode.elements(); it.hasNext(); ) {
+                removeWordCloudFields(it.next());
+            }
+        } else if (node instanceof ArrayNode arrayNode) {
+            for (JsonNode item : arrayNode) {
+                removeWordCloudFields(item);
+            }
+        }
+    }
+
+    /** 将 JsonNode 转换回通用 Map/List/标量对象 */
+    private Object toObjectValue(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        try {
+            return objectMapper.treeToValue(node, Object.class);
+        } catch (Exception e) {
+            return node.toString();
+        }
+    }
+
+    private MenuHeaderColumnResp findHeaderNode(
             MenuHeaderColumnResp node, Long fieldId, String columnName) {
         if (node == null) {
             return null;
         }
         if (fieldId != null && fieldId.equals(node.getFieldId())) {
-            return node.getBusinessTypeCode();
+            return node;
         }
         if (StringUtils.hasText(columnName) && StringUtils.hasText(node.getDataIndex())) {
-            String di = node.getDataIndex().trim().toLowerCase();
-            String col = columnName.trim().toLowerCase();
+            String di = node.getDataIndex().trim().toLowerCase(Locale.ROOT);
+            String col = columnName.trim().toLowerCase(Locale.ROOT);
             if (di.equals(col) || di.endsWith("." + col)) {
-                return node.getBusinessTypeCode();
+                return node;
             }
         }
         if (!CollectionUtils.isEmpty(node.getChildren())) {
             for (MenuHeaderColumnResp child : node.getChildren()) {
-                String code = findBusinessTypeCodeInHeader(child, fieldId, columnName);
-                if (code != null) {
-                    return code;
+                MenuHeaderColumnResp target = findHeaderNode(child, fieldId, columnName);
+                if (target != null) {
+                    return target;
                 }
             }
         }
