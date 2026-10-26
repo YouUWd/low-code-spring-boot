@@ -360,6 +360,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             resp.setRelationWord(node.getRelationWord());
             resp.setBusinessTypeCode(node.getBusinessTypeCode());
             resp.setBusinessTypeName(node.getBusinessTypeName());
+            resp.setUnitDataIndex(stripModulePrefix(node.getUnitDataIndex()));
             resp.setWidth(node.getWidth());
             resp.setSorted(node.getSorted());
             resp.setSearchType(parseSearchType(node.getSearchType()));
@@ -487,7 +488,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * @param menu 当前菜单
      * @param rootMenuId 最顶层菜单ID（所有节点的 menu_id 均取该值）
      * @param parentVirId 父节点虚拟id（顶层为 {@code 0}）
-     * @param fieldConfigs sys_field 配置（{@code 表名.字段名 → SysField}），提供关联字段标记与业务类型编码
+     * @param fieldConfigs sys_field 配置映射，提供字段关联标记、业务类型及单位字段映射
      * @param sortValue 当前节点在同级中的排序值
      * @param pruneEmptyMenus 是否裁剪「既无字段也无子级菜单」的空菜单节点（仅字段权限过滤时 {@code true}）
      * @return 生成的菜单节点；{@code pruneEmptyMenus=true} 且该菜单无任何子节点时返回 {@code null}
@@ -522,6 +523,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         // 当前菜单绑定模块下的全部字段
         List<SysModuleField> fields =
                 fieldsByModule.getOrDefault(menu.getModuleId(), Collections.emptyList());
+
         for (SysModuleField field : fields) {
             String dataIndex = buildDataIndex(field);
             SysField fieldConfig = fieldConfigs.get(dataIndex);
@@ -542,6 +544,19 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
                     fieldConfig != null ? fieldConfig.getBusinessTypeCode() : null);
             fieldResp.setBusinessTypeName(
                     fieldConfig != null ? fieldConfig.getBusinessTypeName() : null);
+
+            // 单位字段（业务类型为数字带单位时指定同表字段）：无需反查数据库，直接从 fieldConfig 取同表列名，按 dataIndex 规则组装
+            String unitDataIndex = null;
+            if (fieldConfig != null && StringUtils.hasText(fieldConfig.getUnitColumnName())) {
+                String rawUnit = fieldConfig.getUnitColumnName().trim();
+                if (!rawUnit.contains(".")) {
+                    unitDataIndex = field.getTableName() + DATA_INDEX_SEPARATOR + rawUnit;
+                } else {
+                    unitDataIndex = rawUnit;
+                }
+            }
+            fieldResp.setUnitDataIndex(unitDataIndex);
+
             fieldResp.setSorted(SORTED_YES);
             fieldResp.setEllipsis(ELLIPSIS_NO);
             fieldResp.setChecked(CHECKED_NO);
@@ -621,9 +636,10 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         resp.setModuleId(generated.getModuleId());
         resp.setLabel(generated.getLabel());
         resp.setRelationWord(generated.getRelationWord());
-        // 业务类型编码/名称取 sys_field 关联配置（生成侧实时解析），不取库中存储值
+        // 业务类型编码/名称/单位字段ID 取 sys_field 关联配置（生成侧实时解析），不取库中存储值
         resp.setBusinessTypeCode(generated.getBusinessTypeCode());
         resp.setBusinessTypeName(generated.getBusinessTypeName());
+        resp.setUnitDataIndex(generated.getUnitDataIndex());
         // 展示项：表中非空优先，否则回退生成侧默认值
         resp.setDataIndex(
                 stripModulePrefix(
@@ -841,12 +857,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     // ==================== 小工具 ====================
 
-    /**
-     * 按模块字段的物理表名查询 {@code sys_field} 配置，返回 {@code 表名.字段名 → SysField}
-     *
-     * <p>数据隔离：{@code subject_id + project_no}，仅未删除。配置用于生成节点的关联字段标记 （{@code relation_business_no}
-     * 有值）与业务类型编码（{@code business_type_code}）。
-     */
+    /** 按模块字段的物理表名查询 {@code sys_field} 配置，返回 {@code 表名.字段名 → SysField} */
     private Map<String, SysField> selectFieldConfigs(
             Map<Long, List<SysModuleField>> fieldsByModule) {
         Set<String> tableNames = new HashSet<>();
@@ -878,7 +889,7 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         for (SysField field : fields) {
             if (field.getTableName() != null && field.getColumnName() != null) {
                 configs.putIfAbsent(
-                        field.getTableName() + DATA_INDEX_SEPARATOR + field.getColumnName(), field);
+                        buildDataIndex(field.getTableName(), field.getColumnName()), field);
             }
         }
         return configs;
@@ -896,7 +907,11 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     /** 字段索引：表名.字段名，如 info.company_name（不带模块ID） */
     private String buildDataIndex(SysModuleField field) {
-        return field.getTableName() + DATA_INDEX_SEPARATOR + field.getColumnName();
+        return buildDataIndex(field.getTableName(), field.getColumnName());
+    }
+
+    private String buildDataIndex(String tableName, String columnName) {
+        return tableName + DATA_INDEX_SEPARATOR + columnName;
     }
 
     /** 字段索引去掉前缀模块ID：1006.company_contact.id → company_contact.id（无数字前缀时原样返回） */

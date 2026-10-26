@@ -220,7 +220,7 @@ public class DynamicQueryService {
                     Long primaryId =
                             Long.parseLong(String.valueOf(rowData.get(tableName + "." + "id")));
                     List<ReferenceQueryParam> referenceQueryParams =
-                            referenceQueryParamMap.get(moduleId).get(primaryId);
+                            referenceQueryParamMap.get(moduleId).getOrDefault(primaryId, List.of());
 
                     // 内部数据
                     List<InternalRefQueryParam> internalVersionData =
@@ -270,7 +270,7 @@ public class DynamicQueryService {
                     Long primaryId =
                             Long.parseLong(String.valueOf(rowData.get(tableName + "." + "id")));
                     List<ReferenceQueryParam> referenceQueryParams =
-                            referenceQueryParamMap.get(moduleId).get(primaryId);
+                            referenceQueryParamMap.get(moduleId).getOrDefault(primaryId, List.of());
 
                     List<WordCloudRefQueryParam> wordCloudVersionData =
                             referenceQueryParams.stream()
