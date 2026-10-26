@@ -701,6 +701,132 @@ public class DynamicQueryService {
         // 模块信息
         ModuleInfo moduleInfo = moduleTreeDTO.getModule(moduleNode.getId());
 
+        // 模块没有子模块，构造模块数据返回
+        if (!recursive || moduleNode.getChildren() == null || moduleNode.getChildren().isEmpty()) {
+            return builder.moduleId(moduleNode.getId()).record(currentModuleData).build();
+        }
+
+        Set<Long> primaryIds = getPrimaryIdSet(currentModuleData, moduleNode.getId());
+
+        ModuleInfo sysModuleInfo = moduleTreeDTO.getModule(moduleNode.getId());
+
+        Boolean virtualModule = false;
+
+        if (StringUtils.isBlank(sysModuleInfo.getPrimaryTable())
+                && CollectionUtils.isEmpty(primaryIds)) {
+            log.debug("模块id:{},模块名称:{}为虚模块", moduleNode.getId(), moduleNode.getModuleName());
+            primaryIds.addAll(queryReq.getRelateIds());
+            currentModuleData.add(RecordDataDTO.builder().children(new ArrayList<>()).build());
+            virtualModule = true;
+        } else if (CollectionUtils.isEmpty(primaryIds)) {
+            log.debug(
+                    "模块id:{},模块名称:{}不是虚模块,但没有模块数据。",
+                    moduleNode.getId(),
+                    moduleNode.getModuleName());
+            return builder.moduleId(moduleNode.getId()).record(currentModuleData).build();
+        }
+
+        for (SysModuleSimpleTreeResp childNode : moduleNode.getChildren()) {
+            List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
+            if (moduleIdToFieldMap.containsKey(childNode.getId())) {
+                log.debug("模块id:{},模块名称:{}有字段在查询列表,", childNode.getId(), childNode.getModuleName());
+                moduleFileds = moduleIdToFieldMap.get(childNode.getId());
+            }
+
+            List<ModuleFieldDTO> finalModuleFileds = moduleFileds;
+            moduleFileds.addAll(
+                    getIdAndRelateIdField(childNode.getId()).stream()
+                            .filter(
+                                    ele ->
+                                            !finalModuleFileds.stream()
+                                                    .anyMatch(
+                                                            item ->
+                                                                    item.getTableName()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getTableName())
+                                                                            && item.getColumnName()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getColumnName())))
+                            .collect(Collectors.toList()));
+
+            // 组装当前模块查询参数
+            DynamicQueryReq singleQueryDTO =
+                    DynamicQueryReq.builder()
+                            .moduleId(childNode.getId())
+                            .mainDataId(queryReq.getMainDataId())
+                            .relateIds(new ArrayList<>(primaryIds))
+                            .btnType(queryReq.getBtnType())
+                            .fields(moduleFileds)
+                            .queryType(queryReq.getQueryType())
+                            .dataRightConfigResps(queryReq.getDataRightConfigResps())
+                            .build();
+            NestedModuleDataDTO childResultList =
+                    queryModule(
+                            singleQueryDTO,
+                            childNode,
+                            true,
+                            false,
+                            moduleIdToFieldMap,
+                            moduleTreeDTO,
+                            referenceQueryParamMap,
+                            nameToWorldConfMap,
+                            projectTableRelationsDTO);
+
+            // 根据子模块是否有数据，决定父模块是否返回
+            //            if (CollectionUtils.isEmpty(childResultList.getRecord())) {
+            //                log.debug(
+            //                        "子模块id:{} , 模块名称:{}无数据，主模块数据清空返回",
+            //                        childNode.getId(),
+            //                        childNode.getModuleName());
+            //                return builder.moduleId(moduleNode.getId()).record(new
+            // ArrayList<>()).build();
+            //            }
+
+            if (virtualModule) {
+                currentModuleData
+                        .get(0)
+                        .getChildren()
+                        .addAll(
+                                filterSubModuleList(
+                                        List.of(childResultList),
+                                        primaryIds,
+                                        moduleTreeDTO,
+                                        sysModuleInfo,
+                                        projectTableRelationsDTO));
+            } else {
+                if (CollectionUtils.isEmpty(currentModuleData)) {
+                    currentModuleData.add(
+                            RecordDataDTO.builder()
+                                    .row(new HashMap<>())
+                                    .children(new ArrayList<>())
+                                    .build());
+                }
+                for (RecordDataDTO vo : currentModuleData) {
+                    if (vo.getRow().isEmpty()) {
+                        log.debug(
+                                "子模块id:{},模块名称:{}是虚模块",
+                                childNode.getId(),
+                                childNode.getModuleName());
+                        vo.getChildren().add(childResultList);
+                    } else {
+                        Long primaryId =
+                                extractFieldValue(
+                                        vo.getRow(), "id", sysModuleInfo.getPrimaryTable());
+                        vo.getChildren()
+                                .addAll(
+                                        filterSubModuleList(
+                                                List.of(childResultList),
+                                                Set.of(primaryId),
+                                                moduleTreeDTO,
+                                                sysModuleInfo,
+                                                projectTableRelationsDTO));
+                    }
+                }
+            }
+        }
+
         for (RecordDataDTO recordDataDTO : currentModuleData) {
             if (Objects.nonNull(recordDataDTO.getRow())) {
                 Map<String, Object> row = recordDataDTO.getRow();
@@ -801,121 +927,6 @@ public class DynamicQueryService {
                                         }
                                     }
                                 });
-            }
-        }
-
-        if (!recursive || moduleNode.getChildren() == null || moduleNode.getChildren().isEmpty()) {
-            return builder.moduleId(moduleNode.getId()).record(currentModuleData).build();
-        }
-
-        Set<Long> primaryIds = getPrimaryIdSet(currentModuleData, moduleNode.getId());
-
-        SysModuleInfo sysModuleInfo =
-                dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleNode.getId());
-
-        Boolean virtualModule = false;
-
-        if (StringUtils.isBlank(sysModuleInfo.getPrimaryTable())
-                && CollectionUtils.isEmpty(primaryIds)) {
-            log.debug("模块id:{},模块名称:{}为虚模块", moduleNode.getId(), moduleNode.getModuleName());
-            primaryIds.addAll(queryReq.getRelateIds());
-            currentModuleData.add(RecordDataDTO.builder().children(new ArrayList<>()).build());
-            virtualModule = true;
-        } else if (CollectionUtils.isEmpty(primaryIds)) {
-            log.debug(
-                    "模块id:{},模块名称:{}不是虚模块,但没有模块数据。",
-                    moduleNode.getId(),
-                    moduleNode.getModuleName());
-            return builder.moduleId(moduleNode.getId()).record(currentModuleData).build();
-        }
-
-        for (SysModuleSimpleTreeResp childNode : moduleNode.getChildren()) {
-            List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
-            if (moduleIdToFieldMap.containsKey(childNode.getId())) {
-                log.debug("模块id:{},模块名称:{}有字段在查询列表,", childNode.getId(), childNode.getModuleName());
-                moduleFileds = moduleIdToFieldMap.get(childNode.getId());
-            }
-
-            List<ModuleFieldDTO> finalModuleFileds = moduleFileds;
-            moduleFileds.addAll(
-                    getIdAndRelateIdField(childNode.getId()).stream()
-                            .filter(
-                                    ele ->
-                                            !finalModuleFileds.stream()
-                                                    .anyMatch(
-                                                            item ->
-                                                                    item.getTableName()
-                                                                                    .equals(
-                                                                                            ele
-                                                                                                    .getTableName())
-                                                                            && item.getColumnName()
-                                                                                    .equals(
-                                                                                            ele
-                                                                                                    .getColumnName())))
-                            .collect(Collectors.toList()));
-
-            // 组装当前模块查询参数
-            DynamicQueryReq singleQueryDTO =
-                    DynamicQueryReq.builder()
-                            .moduleId(childNode.getId())
-                            .mainDataId(queryReq.getMainDataId())
-                            .relateIds(new ArrayList<>(primaryIds))
-                            .btnType(queryReq.getBtnType())
-                            .fields(moduleFileds)
-                            .queryType(queryReq.getQueryType())
-                            .dataRightConfigResps(queryReq.getDataRightConfigResps())
-                            .build();
-            NestedModuleDataDTO childResultList =
-                    queryModule(
-                            singleQueryDTO,
-                            childNode,
-                            true,
-                            false,
-                            moduleIdToFieldMap,
-                            moduleTreeDTO,
-                            referenceQueryParamMap,
-                            nameToWorldConfMap,
-                            projectTableRelationsDTO);
-
-            if (virtualModule) {
-                currentModuleData
-                        .get(0)
-                        .getChildren()
-                        .addAll(
-                                filterSubModuleList(
-                                        List.of(childResultList),
-                                        primaryIds,
-                                        sysModuleInfo,
-                                        projectTableRelationsDTO));
-            } else {
-                if (CollectionUtils.isEmpty(currentModuleData)) {
-                    currentModuleData.add(
-                            RecordDataDTO.builder()
-                                    .row(new HashMap<>())
-                                    .children(new ArrayList<>())
-                                    .build());
-                }
-                for (RecordDataDTO vo : currentModuleData) {
-                    if (vo.getRow().isEmpty()) {
-                        log.debug(
-                                "子模块id:{},模块名称:{}是虚模块",
-                                childNode.getId(),
-                                childNode.getModuleName());
-                        vo.getChildren().add(childResultList);
-                    } else {
-                        Long primaryId =
-                                extractFieldValue(
-                                        vo.getRow(), "id", sysModuleInfo.getPrimaryTable());
-                        vo.getChildren()
-                                .addAll(
-                                        filterSubModuleList(
-                                                List.of(childResultList),
-                                                Set.of(primaryId),
-                                                sysModuleInfo,
-                                                projectTableRelationsDTO));
-                    }
-                }
             }
         }
 
@@ -1126,7 +1137,8 @@ public class DynamicQueryService {
     public List<NestedModuleDataDTO> filterSubModuleList(
             List<NestedModuleDataDTO> subModuleList,
             Set<Long> parentPkSet,
-            SysModuleInfo parentModuleInfo,
+            ModuleTreeDTO moduleTreeDTO,
+            ModuleInfo parentModuleInfo,
             ProjectTableRelationsDTO tableRelationsDTO) {
         if (subModuleList == null
                 || subModuleList.isEmpty()
@@ -1140,15 +1152,11 @@ public class DynamicQueryService {
             NestedModuleDataDTO newSubModule = new NestedModuleDataDTO();
             newSubModule.setModuleId(subModule.getModuleId());
 
-            SysModuleInfo sysModuleInfo =
-                    dataModuleConfigService.getModuleCompleteById(
-                            AppContext.getProjectNo(),
-                            AppContext.getSubjectId(),
-                            subModule.getModuleId());
+            ModuleInfo childModuleInfo = moduleTreeDTO.getModule(subModule.getModuleId());
 
             com.jdec.platform.config.api.dto.common.TableRelationDTO tableRelationDTO =
                     tableRelationsDTO.findDirectRelation(
-                            parentModuleInfo.getPrimaryTable(), sysModuleInfo.getPrimaryTable());
+                            parentModuleInfo.getPrimaryTable(), childModuleInfo.getPrimaryTable());
 
             if (Objects.isNull(tableRelationDTO)) {
                 newSubModule.setRecord(subModule.getRecord());
@@ -1163,7 +1171,7 @@ public class DynamicQueryService {
                                                     extractFieldValue(
                                                             record.getRow(),
                                                             tableRelationDTO.getJoinField(),
-                                                            sysModuleInfo.getPrimaryTable());
+                                                            childModuleInfo.getPrimaryTable());
                                             if (fkVal == null) {
                                                 return false;
                                             }
@@ -1179,14 +1187,15 @@ public class DynamicQueryService {
                                                     extractFieldValue(
                                                             record.getRow(),
                                                             "id",
-                                                            sysModuleInfo.getPrimaryTable());
+                                                            childModuleInfo.getPrimaryTable());
                                             Set<Long> childPkSet = Collections.singleton(currentPk);
                                             // 下一层外键固定 member_id
                                             List<NestedModuleDataDTO> childSub =
                                                     filterSubModuleList(
                                                             record.getChildren(),
                                                             childPkSet,
-                                                            sysModuleInfo,
+                                                            moduleTreeDTO,
+                                                            childModuleInfo,
                                                             tableRelationsDTO);
                                             newRecord.setChildren(childSub);
                                             return newRecord;
@@ -1656,7 +1665,7 @@ public class DynamicQueryService {
         if (!CollectionUtils.isEmpty(recordsResult)) {
 
             // 变更时返回虚拟版本
-            if ("change".equals(versionListQueryReq.getBtnType())) {
+            if (versionListQueryReq.getBtnType().contains("change")) {
 
                 Integer lastVersion = getMaxVersion(moduleId, businessNo);
                 Integer fakeVersionNo = lastVersion == null ? 0 : lastVersion + 1;
@@ -1691,7 +1700,10 @@ public class DynamicQueryService {
                                     .version(versionNo)
                                     .id(id)
                                     .history(true)
-                                    .btnType("view")
+                                    .btnType(
+                                            versionListQueryReq.getBtnType().contains("change")
+                                                    ? "change-view"
+                                                    : "view")
                                     .statusValue(businessStatus);
 
                     // 除了第一版，其他版本设置preVersion为上一版本号
