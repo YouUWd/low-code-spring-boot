@@ -214,7 +214,7 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
             Long fieldId) {
         MenuHeaderColumnResp node = findHeaderNode(headerRoot, fieldId, columnName);
         if (node != null
-                && (node.getRelationWord() != null
+                && ((Integer.valueOf(1).equals(node.getRelationWord()))
                         || isWordCloudType(node.getBusinessTypeCode()))) {
             return enhanceWordCloudOptions(rawOptions);
         }

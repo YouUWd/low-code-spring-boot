@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml" />
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml" />
+
+    <!-- 性能打点日志输出路径 -->
+    <springProperty scope="context" name="LOG_DIR" source="logging.file.path" defaultValue="./logs" />
+    <property name="PERF_LOG_PATH" value="${LOG_DIR}/perf" />
+
+    <!-- 专用性能日志 RollingFileAppender -->
+    <appender name="PERF_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${PERF_LOG_PATH}/common-aggregate-perf.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 每日归档性能打点日志，保留 30 天 -->
+            <fileNamePattern>${PERF_LOG_PATH}/common-aggregate-perf.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 专用性能 Logger：additivity="false" 保证只输出到独立的性能日志文件，不污染主日志与控制台 -->
+    <logger name="COMMON_PERF_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="PERF_FILE" />
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+    </root>
+</configuration>
