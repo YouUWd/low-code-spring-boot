@@ -1044,6 +1044,84 @@ class CompanyMenuQueryContractTest {
     }
 
     @Test
+    @DisplayName("测试 getOptionsByMenu 查询词云配置字段时，过滤掉 id/pid/relation_no 并保留完整信息及去重")
+    void testGetOptionsByMenu_wordCloudField_filtersRemovedFieldsAndRetainsCompleteInfo() {
+        when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
+
+        // 构建词云字段的表头树节点 (relationWord = 1)
+        MenuHeaderColumnResp fieldNode =
+                MenuHeaderColumnResp.builder()
+                        .fieldId(10006L)
+                        .moduleId(1001L)
+                        .dataIndex("1001.info.cooperation_types")
+                        .relationWord(1)
+                        .build();
+        MenuHeaderColumnResp headerRoot =
+                MenuHeaderColumnResp.builder().moduleId(1001L).children(List.of(fieldNode)).build();
+        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
+                        anyLong(), eq(100L), anyLong(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(MenuHeaderDisplayResp.builder().header(headerRoot).build());
+
+        // 模拟底层数据引擎返回包含 id, pid, relation_no 等元数据的词项（模拟多选拆分后的对象）
+        // map1 与 map3 的业务信息一致，但属性插入顺序完全颠倒（测试 JSON 语义忽略 Key 顺序去重），剔除内部元数据后应成功去重
+        Map<String, Object> map1 = new LinkedHashMap<>();
+        map1.put("id", 101);
+        map1.put("pid", 0);
+        map1.put("relation_no", "REL_001");
+        map1.put("alias_value_title", "战略合作");
+        map1.put("uuid", "u-001");
+
+        Map<String, Object> map2 = new LinkedHashMap<>();
+        map2.put("id", 102);
+        map2.put("pid", 101);
+        map2.put("relation_no", "REL_001");
+        map2.put("alias_value_title", "生态伙伴");
+        map2.put("uuid", "u-002");
+
+        // map3 特意采用与 map1 完全相反的 Key 顺序 (uuid 在前，alias_value_title 在后)
+        Map<String, Object> map3 = new LinkedHashMap<>();
+        map3.put("relation_no", "REL_999");
+        map3.put("uuid", "u-001");
+        map3.put("alias_value_title", "战略合作");
+        map3.put("pid", 0);
+        map3.put("id", 999);
+
+        List<DataOptionResp> mockDataOptions =
+                List.of(
+                        DataOptionResp.builder().label(map1).value(map1).build(),
+                        DataOptionResp.builder().label(map2).value(map2).build(),
+                        DataOptionResp.builder().label(map3).value(map3).build());
+        when(dataApi.getOptions(any(OptionReq.class))).thenReturn(mockDataOptions);
+
+        MenuOptionReq req = MenuOptionReq.builder().fieldId(10006L).build();
+        List<DataOptionResp> options = commonAggregateService.getOptionsByMenu(100L, req);
+
+        assertNotNull(options);
+        // map1 和 map3 在过滤掉 id, pid, relation_no 后结构相同，去重后剩下 2 项
+        assertEquals(2, options.size());
+
+        DataOptionResp opt1 = options.get(0);
+        assertTrue(opt1.getValue() instanceof Map<?, ?>);
+        Map<?, ?> valMap1 = (Map<?, ?>) opt1.getValue();
+        // 1. 验证 id, pid, relation_no 已被剔除
+        assertFalse(valMap1.containsKey("id"));
+        assertFalse(valMap1.containsKey("pid"));
+        assertFalse(valMap1.containsKey("relation_no"));
+        // 2. 验证保留了过滤后的完整信息
+        assertEquals("战略合作", valMap1.get("alias_value_title"));
+        assertEquals("u-001", valMap1.get("uuid"));
+
+        DataOptionResp opt2 = options.get(1);
+        assertTrue(opt2.getValue() instanceof Map<?, ?>);
+        Map<?, ?> valMap2 = (Map<?, ?>) opt2.getValue();
+        assertFalse(valMap2.containsKey("id"));
+        assertFalse(valMap2.containsKey("pid"));
+        assertFalse(valMap2.containsKey("relation_no"));
+        assertEquals("生态伙伴", valMap2.get("alias_value_title"));
+        assertEquals("u-002", valMap2.get("uuid"));
+    }
+
+    @Test
     @DisplayName("测试 getOptionsByMenu 查询 business_status 时，转换为 StatusSimpleResp 对象")
     void testGetOptionsByMenu_businessStatus_convertsToStatusSimpleResp() {
         when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
