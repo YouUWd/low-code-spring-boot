@@ -316,6 +316,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 approvalStatus.put("title", statusNode.getTitle());
                 approvalStatus.put("statusBackground", statusNode.getStatusBackground());
                 approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+                // 当前版本号
+                result.put("versionNo", versionList.getFirst().getVersion());
             } else {
                 ModuleApprovalChainConfigResp.StatusNode statusNode =
                         sysStatusApi.getStatusByValue(
@@ -325,9 +327,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 approvalStatus.put("title", statusNode.getTitle());
                 approvalStatus.put("statusBackground", statusNode.getStatusBackground());
                 approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+                // 当前版本号
+                result.put("versionNo", recordData.get("version_no"));
             }
-            // 当前版本号
-            result.put("versionNo", recordData.get("version_no"));
             result.put("approvalStatus", approvalStatus);
             // 是否草稿
             result.put("approvalChainStatus", approvalChainStatus);
