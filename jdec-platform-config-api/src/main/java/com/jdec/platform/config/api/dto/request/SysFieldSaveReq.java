@@ -42,6 +42,18 @@ public class SysFieldSaveReq {
     @Schema(description = "业务类型名称")
     private String businessTypeName;
 
+    @Schema(description = "单位字段列名（业务类型为数字带单位时指定同表列名）")
+    @AuditField(name = "单位字段列名")
+    private String unitColumnName;
+
+    public String getUnitFieldName() {
+        return unitColumnName;
+    }
+
+    public void setUnitFieldName(String unitFieldName) {
+        this.unitColumnName = unitFieldName;
+    }
+
     @Schema(description = "是否加密存储: 0-否, 1-是")
     @AuditField(name = "字段存储是否加密", type = FieldType.ENUM, enumClass = YesNoEnum.class)
     private Integer encrypted;

@@ -50,6 +50,18 @@ public class SysField {
     /** 业务类型名称 */
     private String businessTypeName;
 
+    /** 单位字段列名（业务类型为数字带单位时指定同表列名） */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String unitColumnName;
+
+    public String getUnitFieldName() {
+        return unitColumnName;
+    }
+
+    public void setUnitFieldName(String unitFieldName) {
+        this.unitColumnName = unitFieldName;
+    }
+
     /** 是否生成权限节点.0--否,1--是 */
     private Integer dataRightFlag;
 
