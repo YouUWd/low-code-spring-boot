@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -694,6 +695,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<DataRightConfigResp> getRoleDataPermissionDetail(Long roleId) {
         // 1. 以当前项目+主体下启用的数据权限节点定义（sys_data_permission）为骨架，
         //    保证「角色未配置」的权限节点也一并返回
