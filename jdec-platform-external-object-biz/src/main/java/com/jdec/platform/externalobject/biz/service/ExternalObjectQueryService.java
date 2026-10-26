@@ -3,12 +3,8 @@ package com.jdec.platform.externalobject.biz.service;
 import com.jdec.platform.externalobject.api.ExternalObjectQueryApi;
 import com.jdec.platform.externalobject.api.dto.ExternalObjectQueryField;
 import com.jdec.platform.externalobject.api.dto.request.ExternalObjectFieldQuery;
-import com.jdec.platform.externalobject.api.dto.request.ExternalObjectMemberQuery;
-import com.jdec.platform.externalobject.api.dto.response.ExternalObjectMemberMatch;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -17,7 +13,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
-import org.jooq.Record;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
@@ -41,8 +36,6 @@ public class ExternalObjectQueryService implements ExternalObjectQueryApi {
     private static final Table<?> INFO_ALIAS = DSL.table(DSL.name("info")).as("i");
 
     private static final Table<?> BASIC_INFO_ALIAS = DSL.table(DSL.name("basic_info")).as("b");
-
-    private static final Table<?> MEMBER_ALIAS = DSL.table(DSL.name("member")).as("m");
 
     private final DataSourceResolver dataSourceResolver;
 
@@ -91,67 +84,6 @@ public class ExternalObjectQueryService implements ExternalObjectQueryApi {
             if (StringUtils.isNotBlank(value)) {
                 result.add(value);
             }
-        }
-        return result;
-    }
-
-    @Override
-    public List<ExternalObjectMemberMatch> findDuplicateMembers(ExternalObjectMemberQuery query) {
-        if (query == null || (query.mobilePhoneNos().isEmpty() && query.identityNos().isEmpty())) {
-            return List.of();
-        }
-        List<String> mobiles = nonBlank(query.mobilePhoneNos());
-        List<String> identities = nonBlank(query.identityNos());
-        if (mobiles.isEmpty() && identities.isEmpty()) {
-            return List.of();
-        }
-
-        DSLContext dsl = dsl();
-        List<Condition> conditions = new ArrayList<>();
-        conditions.add(intField("m", "deleted").eq(0));
-        conditions.add(infoActiveCondition());
-        conditions.add(
-                scopeCondition(
-                        dsl,
-                        query.subjectId(),
-                        query.excludeCompanyId(),
-                        query.excludeBusinessNo()));
-
-        Condition numberMatch = null;
-        if (!mobiles.isEmpty()) {
-            numberMatch = field("m", "mobile_phone_no").in(mobiles);
-        }
-        if (!identities.isEmpty()) {
-            Condition identityMatch = field("m", "identity_no").in(identities);
-            numberMatch = numberMatch == null ? identityMatch : numberMatch.or(identityMatch);
-        }
-        conditions.add(numberMatch);
-
-        var records =
-                dsl.select(
-                                field("m", "mobile_phone_no").as("mobilePhoneNo"),
-                                field("m", "identity_no").as("identityNo"),
-                                field("m", "name").as("memberName"),
-                                field("m", "member_name").as("memberNickName"),
-                                field("i", "company_name").as("companyName"))
-                        .from(MEMBER_ALIAS)
-                        .join(INFO_ALIAS)
-                        .on(longField("m", "company_id").eq(longField("i", "id")))
-                        .where(conditions.toArray(new Condition[0]))
-                        .fetch();
-
-        List<ExternalObjectMemberMatch> result = new ArrayList<>(records.size());
-        for (Record record : records) {
-            String memberName = record.get("memberName", String.class);
-            if (StringUtils.isBlank(memberName)) {
-                memberName = record.get("memberNickName", String.class);
-            }
-            result.add(
-                    new ExternalObjectMemberMatch(
-                            record.get("mobilePhoneNo", String.class),
-                            record.get("identityNo", String.class),
-                            memberName,
-                            record.get("companyName", String.class)));
         }
         return result;
     }
@@ -205,10 +137,6 @@ public class ExternalObjectQueryService implements ExternalObjectQueryApi {
             case EN_FULL_NAME -> "en_full_name";
             case EN_SHORT_NAME -> "en_short_name";
         };
-    }
-
-    private static List<String> nonBlank(Collection<String> values) {
-        return values.stream().filter(StringUtils::isNotBlank).toList();
     }
 
     private DSLContext dsl() {

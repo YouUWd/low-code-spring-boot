@@ -114,6 +114,20 @@ public final class ExternalObjectWordValues {
         return false;
     }
 
+    /** 人员类型是否为部门（兼容 DEPT/department/部门）。 */
+    public static boolean isDepartmentType(String type) {
+        if (isBlank(type)) {
+            return false;
+        }
+        for (String title : titles(type)) {
+            String upper = title.toUpperCase(Locale.ROOT);
+            if (title.contains("部门") || upper.contains("DEPT") || upper.contains("DEPARTMENT")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 对象性质是否为个人。 */
     public static boolean isIndividualNature(String nature) {
         return containsTitle(nature, "个人");
@@ -132,6 +146,11 @@ public final class ExternalObjectWordValues {
     /** 去除全部空白；用于手机号、证件号等允许输入空格的字段。 */
     public static String compact(String value) {
         return trim(value).replaceAll("\\s+", "");
+    }
+
+    /** 去除全部空白并转大写；用于证件号。 */
+    public static String compactUpper(String value) {
+        return compact(value).toUpperCase(Locale.ROOT);
     }
 
     private static JsonNode parse(String text) {

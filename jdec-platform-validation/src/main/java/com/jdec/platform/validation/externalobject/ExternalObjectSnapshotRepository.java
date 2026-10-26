@@ -268,6 +268,25 @@ public class ExternalObjectSnapshotRepository {
         }
     }
 
+    /**
+     * 读取指定外部对象已保存的人员行。
+     *
+     * <p>保存校验只拿得到前端提交的人员行，需要与库中同一主单已保存的人员行合并后再做组合查重。 查询失败时记录日志并返回空列表， 不阻断保存。
+     *
+     * @param companyId 外部对象主单ID（info.id）
+     */
+    public List<ExternalObjectSnapshot.MemberRow> findMembersOfCompany(Long companyId) {
+        if (companyId == null || companyId <= 0) {
+            return List.of();
+        }
+        try {
+            return findMembers(dsl(), companyId);
+        } catch (Exception e) {
+            log.warn("外部对象人员行查询失败，已跳过与库中数据合并", e);
+            return List.of();
+        }
+    }
+
     private ExternalObjectSnapshot.BasicInfoRow findBasicInfo(DSLContext dsl, Long companyId) {
         Record record =
                 dsl.selectFrom(BASIC_INFO)

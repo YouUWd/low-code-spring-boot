@@ -15,6 +15,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>提交校验时如果主单ID没有值，无法按主单加载业务库，改为由 {@link #checkOnSubmit} 使用前端提交的嵌套模块数据校验：
  * 所有需要校验的模块都参与，未提交数据的模块按该模块校验全部不通过处理，必须全部通过后才能提交。
+ *
+ * <p>三个入口的校验逻辑都会交给 {@link SubmitCheckTaskExecutor} 在独立线程执行后同步等待结果：业务接口自带事务，
+ * 事务内连接已锁定在开启事务时所用的库，校验再按业务库名取连接时切不过去；放到独立线程后可以重新路由到目标库， 而调用线程仍然拿得到校验结果，校验不通过照常中断业务。
  */
 @Component
 @RequiredArgsConstructor
@@ -26,6 +29,8 @@ public class SubmitCheckRouter {
     private final ExternalObjectSubmitCheckService externalObjectSubmitCheckService;
 
     private final ExternalObjectSaveCheckService externalObjectSaveCheckService;
+
+    private final SubmitCheckTaskExecutor submitCheckTaskExecutor;
 
     /**
      * 执行提交校验。
@@ -40,7 +45,9 @@ public class SubmitCheckRouter {
             return;
         }
         if (EXTERNAL_OBJECT_MODULE_ID.equals(moduleId)) {
-            externalObjectSubmitCheckService.check(recordId, businessNo, versionNo);
+            submitCheckTaskExecutor.runAndWait(
+                    "外部对象提交校验",
+                    () -> externalObjectSubmitCheckService.check(recordId, businessNo, versionNo));
             return;
         }
         // 后续场地产线：按各自根模块ID在此追加对应提交校验
@@ -59,7 +66,9 @@ public class SubmitCheckRouter {
             return;
         }
         if (EXTERNAL_OBJECT_MODULE_ID.equals(moduleId)) {
-            externalObjectSubmitCheckService.checkOnSubmit(nestedModuleData);
+            submitCheckTaskExecutor.runAndWait(
+                    "外部对象提交校验",
+                    () -> externalObjectSubmitCheckService.checkOnSubmit(nestedModuleData));
             return;
         }
         // 后续场地产线：按各自根模块ID在此追加对应提交校验
@@ -77,7 +86,8 @@ public class SubmitCheckRouter {
             return;
         }
         if (EXTERNAL_OBJECT_MODULE_ID.equals(nestedModuleData.getModuleId())) {
-            externalObjectSaveCheckService.check(nestedModuleData);
+            submitCheckTaskExecutor.runAndWait(
+                    "外部对象保存校验", () -> externalObjectSaveCheckService.check(nestedModuleData));
             return;
         }
         // 后续场地产线：按各自根模块ID在此追加对应保存校验

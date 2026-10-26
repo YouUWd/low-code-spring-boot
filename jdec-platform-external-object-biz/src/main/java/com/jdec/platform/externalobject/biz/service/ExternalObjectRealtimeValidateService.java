@@ -4,7 +4,6 @@ import com.jdec.platform.externalobject.api.ExternalObjectRealtimeValidateApi;
 import com.jdec.platform.externalobject.api.dto.request.ExternalObjectRealtimeValidateReq;
 import com.jdec.platform.externalobject.api.dto.response.ExternalObjectRealtimeValidateResp;
 import com.jdec.platform.externalobject.biz.service.support.ExternalObjectRealtimeRepository;
-import com.jdec.platform.externalobject.biz.service.support.ExternalObjectRealtimeRepository.MemberRow;
 import com.jdec.platform.externalobject.biz.service.support.ExternalObjectTable;
 import com.jdec.platform.externalobject.biz.service.support.ExternalObjectWordValues;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -23,7 +22,7 @@ import org.springframework.stereotype.Service;
  *   <li>来自词云的字段值取 {@code alias_value_title}；
  *   <li>依赖 {@code info.nature} 的校验，在对象性质无值时跳过；
  *   <li>关联字段一律按 {@code companyId}/{@code subId} 从数据库读取，前端只传当前字段与值；
- *   <li>查重由 {@link ExternalObjectDuplicateCheckService} 独立提供。
+ *   <li>查重（含同一主单内人员重复与跨外部对象重复）由 {@link ExternalObjectDuplicateCheckService} 独立提供。
  * </ul>
  *
  * <p>字段以 {@code table.field} 标识，未配置规则的字段默认通过。
@@ -73,8 +72,6 @@ public class ExternalObjectRealtimeValidateService implements ExternalObjectReal
             case "basic_info.id_card_no" ->
                     validateIdCardNo(resolveNature(req, table), req.value());
             case "basic_info.insured_count" -> validateInsuredCount(req.value());
-            case "member.name", "member.mobile_phone_no", "member.identity_no" ->
-                    validateMemberConsistency(req);
             default -> ExternalObjectRealtimeValidateResp.ok();
         };
     }
@@ -237,79 +234,6 @@ public class ExternalObjectRealtimeValidateService implements ExternalObjectReal
                 : ExternalObjectRealtimeValidateResp.fail("参保人数必须为正整数");
     }
 
-    /**
-     * 同一主单下人员信息一致性校验。
-     *
-     * <p>当前人员的姓名、手机号、证件号三者都有值时才校验；与同一主单下其它员工逐一比对， 命中“两者相同、第三者不同”时给出提示，并排除当前记录。
-     */
-    private ExternalObjectRealtimeValidateResp validateMemberConsistency(
-            ExternalObjectRealtimeValidateReq req) {
-        Long companyId =
-                repository.resolveInfoId(ExternalObjectTable.MEMBER, req.companyId(), req.subId());
-        if (companyId == null) {
-            return ExternalObjectRealtimeValidateResp.ok();
-        }
-        String type = memberType(req);
-        if (!ExternalObjectWordValues.isBlank(type)
-                && !ExternalObjectWordValues.isEmployeeType(type)) {
-            return ExternalObjectRealtimeValidateResp.ok();
-        }
-        String name = memberValue(req, "name");
-        String mobilePhoneNo = memberValue(req, "mobile_phone_no");
-        String identityNo = memberValue(req, "identity_no");
-        if (name.isEmpty() || mobilePhoneNo.isEmpty() || identityNo.isEmpty()) {
-            return ExternalObjectRealtimeValidateResp.ok();
-        }
-        String normalizedMobile = normalizePhone(mobilePhoneNo);
-        String normalizedIdentity = normalizeIdentity(identityNo);
-        for (MemberRow other : repository.findEmployees(companyId, req.subId())) {
-            String otherName = ExternalObjectWordValues.trim(other.name());
-            String otherMobile = normalizePhone(other.mobilePhoneNo());
-            String otherIdentity = normalizeIdentity(other.identityNo());
-            if (otherName.isEmpty() || otherMobile.isEmpty() || otherIdentity.isEmpty()) {
-                continue;
-            }
-            boolean sameName = name.equals(otherName);
-            boolean sameMobile = normalizedMobile.equals(otherMobile);
-            boolean sameIdentity = normalizedIdentity.equals(otherIdentity);
-            if (sameName && sameMobile && !sameIdentity) {
-                return ExternalObjectRealtimeValidateResp.fail("姓名和手机号相同，证件号不同！");
-            }
-            if (sameName && sameIdentity && !sameMobile) {
-                return ExternalObjectRealtimeValidateResp.fail("姓名和证件号相同，手机号不同！");
-            }
-            if (sameMobile && sameIdentity && !sameName) {
-                return ExternalObjectRealtimeValidateResp.fail("手机号和证件号相同，姓名不同！");
-            }
-        }
-        return ExternalObjectRealtimeValidateResp.ok();
-    }
-
-    /** 从数据库读取当前人员类型；记录不存在时返回 null。 */
-    private String memberType(ExternalObjectRealtimeValidateReq req) {
-        MemberRow member = repository.findMember(req.subId());
-        return member == null ? null : member.type();
-    }
-
-    /** 读取当前人员字段值：当前编辑字段取请求值，其余从数据库人员行补齐。 */
-    private String memberValue(ExternalObjectRealtimeValidateReq req, String column) {
-        String fieldKey = "member." + column;
-        if (fieldKey.equalsIgnoreCase(ExternalObjectWordValues.trim(req.field()))) {
-            return ExternalObjectWordValues.trim(ExternalObjectWordValues.toText(req.value()));
-        }
-        MemberRow member = repository.findMember(req.subId());
-        if (member == null) {
-            return "";
-        }
-        return ExternalObjectWordValues.trim(
-                switch (column) {
-                    case "name" -> member.name();
-                    case "mobile_phone_no" -> member.mobilePhoneNo();
-                    case "identity_no" -> member.identityNo();
-                    default -> "";
-                });
-    }
-
     /** 取字段真实值：词云 JSON 取 {@code alias_value_title}，普通文本取原值。 */
     private static String firstValue(Object value) {
         List<String> titles =
@@ -319,14 +243,6 @@ public class ExternalObjectRealtimeValidateService implements ExternalObjectReal
 
     private static String compactUpperCase(String value) {
         return value.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
-    }
-
-    private static String normalizePhone(String value) {
-        return ExternalObjectWordValues.compact(value);
-    }
-
-    private static String normalizeIdentity(String value) {
-        return ExternalObjectWordValues.compact(value).toUpperCase(Locale.ROOT);
     }
 
     /**

@@ -2,18 +2,25 @@ package com.jdec.platform.externalobject.biz.service.support;
 
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.Record;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Component;
 
 /**
  * 外部对象实时校验/查重的数据库读取入口。
  *
- * <p>直连 {@code company} 业务库，按主单（info）读取对象性质、业务编号，按人员ID读取人员关键字段。
+ * <p>直连 {@code company} 业务库，按主单（info）读取对象性质与业务编号，按人员ID读取人员关键字段， 并为人员组合查重收集比对人员。
  */
 @Component
 @RequiredArgsConstructor
@@ -37,6 +44,34 @@ public class ExternalObjectRealtimeRepository {
                 .where(ExternalObjectTable.INFO.longField("id").eq(infoId))
                 .and(ExternalObjectTable.INFO.intField("deleted").eq(0))
                 .fetchOne(ExternalObjectTable.INFO.textField("nature"));
+    }
+
+    /** 读取外部对象业务编号；不存在或已删除返回 {@code null}。 */
+    public String findBusinessNo(Long infoId) {
+        return findInfoText(infoId, "business_no");
+    }
+
+    /** 同一业务编号下的全部主单ID（含历史版本），用于排除自身外部对象。 */
+    public Set<Long> findInfoIdsByBusinessNo(String businessNo) {
+        if (StringUtils.isBlank(businessNo)) {
+            return Set.of();
+        }
+        return new LinkedHashSet<>(
+                dsl().select(ExternalObjectTable.INFO.longField("id"))
+                        .from(ExternalObjectTable.INFO.table())
+                        .where(ExternalObjectTable.INFO.textField("business_no").eq(businessNo))
+                        .fetch(ExternalObjectTable.INFO.longField("id")));
+    }
+
+    private String findInfoText(Long infoId, String column) {
+        if (infoId == null) {
+            return null;
+        }
+        return dsl().select(ExternalObjectTable.INFO.textField(column))
+                .from(ExternalObjectTable.INFO.table())
+                .where(ExternalObjectTable.INFO.longField("id").eq(infoId))
+                .and(ExternalObjectTable.INFO.intField("deleted").eq(0))
+                .fetchOne(ExternalObjectTable.INFO.textField(column));
     }
 
     /**
@@ -96,34 +131,85 @@ public class ExternalObjectRealtimeRepository {
         return record == null ? null : toMember(record);
     }
 
-    /** 查询同一主单下的全部人员（排除指定记录），用于同一单内人员一致性校验。 */
-    public List<MemberRow> findEmployees(Long companyId, Long excludeId) {
-        if (companyId == null) {
+    /**
+     * 在给定人员行范围内，按姓名、手机号、证件号任一命中收集比对人员。
+     *
+     * <p>组合判断在调用方完成，这里只做数据库侧预筛；空值字段不参与预筛条件。姓名同时匹配 {@code name} 与 {@code
+     * member_name}，与保存校验的人员比对口径保持一致。
+     *
+     * @param memberIds 人员行范围（已按查重范围收集）
+     * @param name 姓名
+     * @param mobilePhoneNo 手机号
+     * @param identityNo 证件号
+     */
+    public List<MemberCandidate> findMemberCandidates(
+            Collection<Long> memberIds, String name, String mobilePhoneNo, String identityNo) {
+        if (memberIds == null || memberIds.isEmpty()) {
             return List.of();
         }
-        DSLContext dsl = dsl();
-        Condition condition =
-                ExternalObjectTable.MEMBER
-                        .longField("company_id")
-                        .eq(companyId)
-                        .and(ExternalObjectTable.MEMBER.intField("deleted").eq(0));
-        if (excludeId != null) {
-            condition = condition.and(ExternalObjectTable.MEMBER.longField("id").ne(excludeId));
+        Condition anyMatch = null;
+        if (StringUtils.isNotBlank(name)) {
+            anyMatch =
+                    DSL.trim(memberField("name"))
+                            .eq(name)
+                            .or(DSL.trim(memberField("member_name")).eq(name));
         }
-        return dsl
+        if (StringUtils.isNotBlank(mobilePhoneNo)) {
+            Condition mobileMatch = DSL.trim(memberField("mobile_phone_no")).eq(mobilePhoneNo);
+            anyMatch = anyMatch == null ? mobileMatch : anyMatch.or(mobileMatch);
+        }
+        if (StringUtils.isNotBlank(identityNo)) {
+            Condition identityMatch =
+                    DSL.upper(DSL.trim(memberField("identity_no")))
+                            .eq(identityNo.toUpperCase(Locale.ROOT));
+            anyMatch = anyMatch == null ? identityMatch : anyMatch.or(identityMatch);
+        }
+        if (anyMatch == null) {
+            return List.of();
+        }
+
+        Table<?> member = ExternalObjectTable.MEMBER.table().as("m");
+        Table<?> info = ExternalObjectTable.INFO.table().as("i");
+        return dsl()
                 .select(
-                        ExternalObjectTable.MEMBER.longField("id"),
-                        ExternalObjectTable.MEMBER.textField("name"),
-                        ExternalObjectTable.MEMBER.textField("mobile_phone_no"),
-                        ExternalObjectTable.MEMBER.textField("identity_no"),
-                        ExternalObjectTable.MEMBER.textField("type"))
-                .from(ExternalObjectTable.MEMBER.table())
-                .where(condition)
+                        DSL.field(DSL.name("m", "id"), Long.class).as("row_id"),
+                        DSL.field(DSL.name("m", "company_id"), Long.class).as("row_company_id"),
+                        DSL.field(DSL.name("i", "company_name"), String.class).as("info_name"),
+                        DSL.field(DSL.name("m", "name"), String.class).as("row_name"),
+                        DSL.field(DSL.name("m", "member_name"), String.class).as("row_member_name"),
+                        DSL.field(DSL.name("m", "mobile_phone_no"), String.class).as("row_mobile"),
+                        DSL.field(DSL.name("m", "identity_no"), String.class).as("row_identity"),
+                        DSL.field(DSL.name("m", "type"), String.class).as("row_type"))
+                .from(member)
+                .join(info)
+                .on(
+                        DSL.field(DSL.name("m", "company_id"), Long.class)
+                                .eq(DSL.field(DSL.name("i", "id"), Long.class)))
+                .where(DSL.field(DSL.name("m", "id"), Long.class).in(memberIds))
+                .and(DSL.field(DSL.name("m", "deleted"), Integer.class).eq(0))
+                .and(anyMatch)
                 .fetch()
                 .stream()
-                .map(ExternalObjectRealtimeRepository::toMember)
-                .filter(member -> ExternalObjectWordValues.isEmployeeType(member.type()))
+                .map(
+                        record ->
+                                new MemberCandidate(
+                                        record.get("row_id", Long.class),
+                                        record.get("row_company_id", Long.class),
+                                        record.get("info_name", String.class),
+                                        StringUtils.trimToEmpty(
+                                                record.get("row_name", String.class)),
+                                        StringUtils.trimToEmpty(
+                                                record.get("row_member_name", String.class)),
+                                        StringUtils.trimToEmpty(
+                                                record.get("row_mobile", String.class)),
+                                        StringUtils.trimToEmpty(
+                                                record.get("row_identity", String.class)),
+                                        record.get("row_type", String.class)))
                 .toList();
+    }
+
+    private static Field<String> memberField(String column) {
+        return DSL.field(DSL.name("m", column), String.class);
     }
 
     private static MemberRow toMember(Record record) {
@@ -148,4 +234,26 @@ public class ExternalObjectRealtimeRepository {
      */
     public record MemberRow(
             Long id, String name, String mobilePhoneNo, String identityNo, String type) {}
+
+    /**
+     * 人员查重的比对人员。
+     *
+     * @param id 人员记录ID
+     * @param companyId 所属外部对象主单ID
+     * @param companyName 所属外部对象全称
+     * @param name 姓名（{@code name} 列）
+     * @param memberName 姓名兼称（{@code member_name} 列，{@code name} 为空时使用）
+     * @param mobilePhoneNo 手机号
+     * @param identityNo 证件号
+     * @param type 节点类型（EMPLOYEE/DEPT 或 员工/部门）
+     */
+    public record MemberCandidate(
+            Long id,
+            Long companyId,
+            String companyName,
+            String name,
+            String memberName,
+            String mobilePhoneNo,
+            String identityNo,
+            String type) {}
 }

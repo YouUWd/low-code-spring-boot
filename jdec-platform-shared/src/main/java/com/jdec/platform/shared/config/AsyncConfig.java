@@ -40,4 +40,29 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * 业务校验专用线程池。
+     *
+     * <p>校验会穿插在别人的接口（提交、保存、审批）里执行，这些接口本身带事务：事务一旦开启，连接就被锁定在开启事务时
+     * 的那个库，校验需要读取业务库时切不过去。校验放到独立线程执行可以拿到新连接、重新按 {@code AppContext.projectNo} 路由到目标库，调用线程仍然同步等待校验结果。
+     *
+     * <p>与 {@link #jdecAsyncExecutor()} 的区别：这里<b>不使用</b> {@code CallerRunsPolicy}。线程池满时若退回调用方线程执行，
+     * 又会落回调用方的事务里，“切库切不走”的问题会重新出现，因此直接拒绝，由调用方提示稍后重试。
+     */
+    @Bean(name = "validationCheckExecutor")
+    public Executor validationCheckExecutor() {
+        int corePoolSize = Math.max(2, Runtime.getRuntime().availableProcessors());
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(corePoolSize);
+        executor.setMaxPoolSize(corePoolSize * 2);
+        executor.setQueueCapacity(200);
+        executor.setKeepAliveSeconds(60);
+        executor.setThreadNamePrefix("jdec-check-");
+        // 拒绝策略：直接拒绝，绝不能在调用方线程执行（否则仍在调用方事务里，数据源切不走）
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+
+        executor.initialize();
+        return executor;
+    }
 }
