@@ -31,4 +31,10 @@ public interface BaseSingleTablePersistenceService {
 
     List<Map<String, Object>> getRecordListByCondition(
             DSLContext dslContext, String tableName, Map<String, Object> conditionMap);
+
+    List<Map<String, Object>> getRecordListNotInStatusList(
+            DSLContext dslContext,
+            String tableName,
+            Map<String, Object> conditionMap,
+            List<Integer> statusList);
 }

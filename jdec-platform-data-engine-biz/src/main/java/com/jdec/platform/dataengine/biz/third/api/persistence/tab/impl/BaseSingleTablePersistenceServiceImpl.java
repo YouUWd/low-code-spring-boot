@@ -417,6 +417,29 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         return result;
     }
 
+    @Override
+    public List<Map<String, Object>> getRecordListNotInStatusList(
+            DSLContext dslContext,
+            String tableName,
+            Map<String, Object> conditionMap,
+            List<Integer> statusList) {
+        if (dslContext == null) {
+            dslContext = jooqDataContextFactory.getContext();
+        }
+        Condition condition = DataPersistenceUtil.getCondition(conditionMap);
+        if (condition != null) {
+            condition = condition.and(DSL.field("business_status").notIn(statusList));
+        }
+        List<Map<String, Object>> result =
+                dslContext
+                        .select(DSL.asterisk())
+                        .from(DSL.table(DSL.name(tableName)))
+                        .where(condition)
+                        .fetch()
+                        .intoMaps();
+        return result;
+    }
+
     private Map<Field<Object>, Object> getInsertRecordFieldValues(RecordSaveContext context) {
 
         Map<String, ModuleFieldDTO> fieldMap =

@@ -202,11 +202,10 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
             String tableName, String businessNo, List<Integer> statusList) {
         Map<String, Object> condition = new HashMap<>();
         condition.put(CommonConstant.TABLE_DEFAULT_BUSINESS_NO_FIELD, businessNo);
-        condition.put(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD, statusList);
         condition.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
         List<Map<String, Object>> result =
-                baseSingleTablePersistenceService.getRecordListByCondition(
-                        jooqContextFactory.getContext(), tableName, condition);
+                baseSingleTablePersistenceService.getRecordListNotInStatusList(
+                        jooqContextFactory.getContext(), tableName, condition, statusList);
         return result != null && result.size() != 0;
     }
 
