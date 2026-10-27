@@ -46,7 +46,7 @@ public class SysDataPermissionResp {
         @Schema(description = "主体名称")
         private String subjectName;
 
-        @Schema(description = "主体所拥有的业务数据，保持业务字段的原始类型")
+        @Schema(description = "主体所拥有的业务数据，保持业务字段的原始类型；字段值存数组时按元素拆分，每个元素一条")
         private List<Object> bizNames;
     }
 }

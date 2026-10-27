@@ -64,6 +64,9 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     private final ApprovalChainMapper approvalChainMapper;
     private final ProjectProperties projectProperties;
 
+    /** 取消按钮：取消不产生业务变更，不记录操作日志 */
+    private static final String BUTTON_CANCEL = "cancel";
+
     // ==================== 企业微信消息（无事务，纯 IO） ====================
     @Override
     @Async("taskAsyncExecutor") // 指定专用线程池
@@ -126,6 +129,15 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     // =========================================================================
     // 保存操作日志-----------------------------------------------------------------------
     private void saveActionLog(ApprovalProcessDTO approvalProcessDTO) {
+        // 取消（cancel）按钮只回退单据状态，不产生业务变更，不记录操作日志
+        if (BUTTON_CANCEL.equals(approvalProcessDTO.getButton())) {
+            log.info(
+                    "取消操作不记录操作日志: projectNo={}, dataId={}, businessNumber={}",
+                    AppContext.getProjectNo(),
+                    approvalProcessDTO.getRecordId(),
+                    approvalProcessDTO.getBusinessNumber());
+            return;
+        }
         try {
             // 日志记录
             MonitorLogSaveReq monitorControlLogReq = new MonitorLogSaveReq();
