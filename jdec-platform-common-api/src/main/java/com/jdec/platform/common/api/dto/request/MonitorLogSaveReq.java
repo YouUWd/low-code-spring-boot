@@ -45,7 +45,7 @@ public class MonitorLogSaveReq implements Serializable {
     @Schema(description = "模拟信息")
     private MonitorMockInfo mockInfo;
 
-    @Schema(description = "请求IP")
+    @Schema(description = "请求IP（为空时由日志侧从当前请求上下文补全）")
     private String ip;
 
     @Schema(description = "模块id")
@@ -54,10 +54,10 @@ public class MonitorLogSaveReq implements Serializable {
     @Schema(description = "单据id")
     private Long dataId;
 
-    @Schema(description = "浏览器信息")
+    @Schema(description = "浏览器信息（为空时由日志侧从当前请求上下文补全）")
     private String browser;
 
-    @Schema(description = "平台信息")
+    @Schema(description = "平台信息（为空时由日志侧从当前请求上下文补全）")
     private String platForm;
 
     @Schema(description = "日志内容")
