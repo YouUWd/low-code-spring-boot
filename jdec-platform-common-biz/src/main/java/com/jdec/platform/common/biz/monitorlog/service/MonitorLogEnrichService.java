@@ -3,6 +3,8 @@ package com.jdec.platform.common.biz.monitorlog.service;
 import com.jdec.platform.common.api.dto.log.MonitorLoginInfo;
 import com.jdec.platform.common.api.dto.log.MonitorMockInfo;
 import com.jdec.platform.common.api.dto.request.MonitorLogSaveReq;
+import com.jdec.platform.shared.context.RequestContextSnapshot;
+import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
  * <p>调用方只传 id，其余展示信息由本服务跨库查回后填充：
  *
  * <ul>
+ *   <li><b>请求上下文</b>：ip、浏览器、平台为空时从当前请求快照补全（调用方显式传值优先）。
  *   <li><b>人力库（hr_manage）</b>：按用户id 查 {@code user} 表，补全登录用户与被模拟用户的姓名、头像、工号、部门、岗位。
  *   <li><b>配置中心（config_center）</b>：按主体id 查 {@code sys_project_subject} 补主体名称；按角色id 查 {@code
  *       sys_role} 补角色名称。
@@ -52,9 +55,33 @@ public class MonitorLogEnrichService {
         if (req == null) {
             return;
         }
+        fillRequestInfo(req);
         fillSubjectName(projectNo, req);
         fillLoginInfo(req.getLoginInfo());
         fillMockInfo(req.getMockInfo());
+    }
+
+    // ==================== 请求信息 ====================
+
+    /**
+     * 请求基础信息：ip、浏览器、平台为空时从当前请求上下文快照补全。
+     *
+     * <p>快照由请求拦截器在 HTTP 请求进入时写入线程上下文；调用方显式传入的值优先，异步线程等无快照场景直接跳过。
+     */
+    private void fillRequestInfo(MonitorLogSaveReq req) {
+        RequestContextSnapshot snapshot = RequestContextSnapshotHolder.get();
+        if (snapshot == null) {
+            return;
+        }
+        if (!isNotBlank(req.getIp()) && isNotBlank(snapshot.getClientIp())) {
+            req.setIp(snapshot.getClientIp());
+        }
+        if (!isNotBlank(req.getBrowser()) && isNotBlank(snapshot.getBrowser())) {
+            req.setBrowser(snapshot.getBrowser());
+        }
+        if (!isNotBlank(req.getPlatForm()) && isNotBlank(snapshot.getPlatform())) {
+            req.setPlatForm(snapshot.getPlatform());
+        }
     }
 
     // ==================== 主体 ====================
