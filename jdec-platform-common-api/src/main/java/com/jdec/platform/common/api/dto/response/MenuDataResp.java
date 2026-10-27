@@ -35,6 +35,9 @@ public class MenuDataResp implements Serializable {
     @Schema(description = "行级定制扩展操作列表 (包含id与btnList，如启停等定制按钮)")
     private List<ApprovalRowItem> customActions;
 
+    @Schema(description = "角色交互权限互动按钮列表 (row中无id为全局操作，包含id为行级操作)")
+    private List<ApprovalRowItem> interactionActions;
+
     @Schema(description = "模块数据树载荷")
     private ModuleDataNode data;
 }
