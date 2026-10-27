@@ -2,11 +2,12 @@ package com.jdec.platform.approval.biz.controller;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
-import com.jdec.platform.approval.api.resp.ApprovalButtonListResp;
+import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -71,7 +72,7 @@ public class ApprovalController {
 
     @GetMapping("/getListButton/{moduleId}")
     @Operation(summary = "查询单据列表按钮", description = "查询查询单据列表按钮")
-    public ApiResponse<ApprovalButtonListResp> getListButton(@PathVariable Long moduleId) {
+    public ApiResponse<List<ApprovalBusinessNoResp>> getListButton(@PathVariable Long moduleId) {
         return ApiResponse.success(approvalService.getApprovalBusinessNo(moduleId));
     }
 

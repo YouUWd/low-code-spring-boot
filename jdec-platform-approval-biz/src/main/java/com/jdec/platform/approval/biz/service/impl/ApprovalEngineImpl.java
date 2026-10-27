@@ -16,7 +16,7 @@ import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
 import com.jdec.platform.approval.api.resp.ActionLogResp;
-import com.jdec.platform.approval.api.resp.ApprovalButtonListResp;
+import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
 import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
@@ -555,7 +555,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
 
     // 根据模块ID及类型查询用户指定业务的代办，已办，全部列表ID及按钮---------------------------------
     @Override
-    public ApprovalButtonListResp getApprovalBusinessNo(Long moduleId) {
+    public List<ApprovalBusinessNoResp> getApprovalBusinessNo(Long moduleId) {
         Long mockUserId =
                 Objects.nonNull(UserContext.getMockUserId())
                         ? UserContext.getMockUserId()
@@ -648,11 +648,19 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                                         ArrayList::new));
         List<String> allRespList =
                 new ArrayList<>(allList.stream().map(ApprovalBusiness::getBusinessNumber).toList());
-
-        ApprovalButtonListResp result = new ApprovalButtonListResp();
-        result.setToDoList(toDoRespList);
-        result.setDoneList(doneRespList);
-        result.setAllList(allRespList);
+        List<ApprovalBusinessNoResp> result = new ArrayList<>();
+        for (String item : allRespList) {
+            ApprovalBusinessNoResp resp = new ApprovalBusinessNoResp();
+            resp.setBusinessNumber(item);
+            if (toDoRespList.contains(item)) {
+                resp.setApprovalType(1);
+            } else if (doneRespList.contains(item)) {
+                resp.setApprovalType(2);
+            } else {
+                resp.setApprovalType(3);
+            }
+            result.add(resp);
+        }
         return result;
     }
 
