@@ -316,6 +316,17 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .stream()
                         .collect(Collectors.toMap(SysFieldResp::getId, v -> v));
 
+        // 按字段名映射
+        Map<String, SysFieldResp> fieldNameMap =
+                fieldIdMap.entrySet().stream()
+                        .collect(
+                                Collectors.toMap(
+                                        e ->
+                                                e.getValue().getTableName()
+                                                        + "."
+                                                        + e.getValue().getColumnName(),
+                                        Map.Entry::getValue));
+
         // 构建模块元数据配置列表 (ModuleMetaDTO)
         ModuleMetaDTO metaDTO =
                 buildModuleMetaList(
@@ -324,7 +335,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         permMap,
                         moduleIdHeaderMap,
                         nameToWorldConfMap,
-                        fieldIdMap,
+                        fieldNameMap,
                         rootNode,
                         canEdit,
                         canApply);
@@ -417,7 +428,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             Map<Long, ModulePermissionDTO> permMap,
             Map<Long, MenuHeaderColumnResp> moduleIdHeaderMap,
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
-            Map<Long, SysFieldResp> fieldIdMap,
+            Map<String, SysFieldResp> fieldNameMap,
             ModuleTreeDTO moduleTreeDTO,
             Boolean canEdit,
             Boolean canApply) {
@@ -463,8 +474,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                         .getRelationBusinessNo()
                                                 : null)
                                 .businessTypeName(
-                                        fieldIdMap.containsKey(f.getId())
-                                                ? fieldIdMap.get(f.getId()).getBusinessTypeName()
+                                        fieldNameMap.containsKey(fullKey)
+                                                ? fieldNameMap.get(fullKey).getBusinessTypeName()
                                                 : null)
                                 .build();
 
@@ -504,7 +515,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 permMap,
                                 moduleIdHeaderMap,
                                 worldCloudConfigMap,
-                                fieldIdMap,
+                                fieldNameMap,
                                 moduleTreeDTO,
                                 canEdit,
                                 canApply));
