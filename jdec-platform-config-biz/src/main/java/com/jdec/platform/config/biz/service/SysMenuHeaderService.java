@@ -120,12 +120,21 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         // 菜单不做权限过滤；仅字段按角色权限过滤（effectiveRoleId 非空时生效）
         Long effectiveRoleId = ROLE_PERMISSION_FILTER_ENABLED ? roleId : null;
 
-        // 入参为列表菜单ID，表头记录归属其绑定的详情菜单
-        Long headerMenuId = resolveHeaderMenuId(menuId);
+        // 入参为列表菜单ID，表头记录归属其绑定的详情菜单；菜单实体一并加载并透传给生成侧，避免生成侧重复查库
+        SysMenu menu = selectMenuById(menuId);
+        if (menu == null) {
+            throw new BusinessException("菜单不存在");
+        }
+        Long headerMenuId = resolveHeaderMenuId(menu);
+        SysMenu headerMenu =
+                headerMenuId.equals(menu.getId()) ? menu : selectMenuById(headerMenuId);
+        if (headerMenu == null) {
+            throw new BusinessException("菜单不存在");
+        }
 
         // 生成侧：以表头归属菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段（effectiveRoleId 非空时按字段权限过滤）
         List<SysMenuHeaderResp> generatedNodes =
-                buildGeneratedNodes(headerMenuId, effectiveRoleId, scope);
+                buildGeneratedNodes(headerMenu, effectiveRoleId, scope);
 
         // 整树裁剪后为空（菜单下面没挂任何东西）：整树丢弃，返回 null
         if (generatedNodes.isEmpty()) {
@@ -281,7 +290,11 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
         // 展示结构由生成侧动态给出：取「菜单/字段生成 + sys_menu_header 已保存展示配置」合并后的完整树，
         // 再只保留已勾选（checked=1）的列及其祖先菜单节点，不依赖表记录中的父子关系
-        SysMenuHeaderResp tree = getMenuHeaderTree(menuId, roleId, scope);
+        return buildMenuHeaderDisplay(getMenuHeaderTree(menuId, roleId, scope));
+    }
+
+    @Override
+    public MenuHeaderDisplayResp buildMenuHeaderDisplay(SysMenuHeaderResp tree) {
         if (tree == null) {
             return new MenuHeaderDisplayResp();
         }
@@ -433,11 +446,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
      * <p>{@code roleId} 为空（config 管理端调用）时不做任何过滤，返回完整菜单树（空菜单也保留）。
      */
     private List<SysMenuHeaderResp> buildGeneratedNodes(
-            Long menuId, Long roleId, MenuFieldPermissionScope scope) {
-        SysMenu menu = selectMenuById(menuId);
-        if (menu == null) {
-            throw new BusinessException("菜单不存在");
-        }
+            SysMenu menu, Long roleId, MenuFieldPermissionScope scope) {
+        // 表头归属菜单实体由调用方已加载，此处直接复用，不再查库
+        Long menuId = menu.getId();
 
         // 收集菜单及其全部子级菜单（树形）；不做菜单权限过滤，一律按最大权限返回
         Map<Long, List<SysMenu>> childrenByPid = new LinkedHashMap<>();
@@ -726,15 +737,42 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     // ==================== 通用查询工具 ====================
 
-    /** 递归收集该菜单下的全部子级菜单（树形，pid → children），不做菜单权限过滤 */
+    /**
+     * 收集该菜单下的全部子级菜单（树形，pid → children），不做菜单权限过滤
+     *
+     * <p>一次性查出当前主体/项目下的全部菜单（与原逐层查询相同的过滤与排序条件），在内存中按 pid 分组后 从 {@code parentId}
+     * 出发做宽度优先遍历、仅保留其子孙节点：结果与原逐层递归查询完全一致，但把 N+1 次查询合并为 1 次。
+     */
     private void collectChildren(Map<Long, List<SysMenu>> childrenByPid, Long parentId) {
-        List<SysMenu> children = selectChildrenByPid(parentId);
-        if (children.isEmpty()) {
-            return;
+        Long subjectId = AppContext.getSubjectId();
+        String projectNo = AppContext.getProjectNo();
+        List<SysMenu> menus =
+                sysMenuMapper.selectList(
+                        new LambdaQueryWrapper<SysMenu>()
+                                .eq(subjectId != null, SysMenu::getSubjectId, subjectId)
+                                .eq(projectNo != null, SysMenu::getProjectNo, projectNo)
+                                .orderByAsc(SysMenu::getSortOrder)
+                                .orderByAsc(SysMenu::getId));
+
+        // 全部菜单按父节点ID 分组（保持全局排序，各组内顺序与原按 pid 查询一致）
+        Map<Long, List<SysMenu>> byPid = new LinkedHashMap<>();
+        for (SysMenu menu : menus) {
+            byPid.computeIfAbsent(menu.getPid(), k -> new ArrayList<>()).add(menu);
         }
-        childrenByPid.put(parentId, children);
-        for (SysMenu child : children) {
-            collectChildren(childrenByPid, child.getId());
+
+        // 从目标菜单出发宽度优先遍历，只收集其子孙节点
+        Deque<Long> queue = new ArrayDeque<>();
+        queue.add(parentId);
+        while (!queue.isEmpty()) {
+            Long pid = queue.poll();
+            List<SysMenu> children = byPid.get(pid);
+            if (children == null) {
+                continue;
+            }
+            childrenByPid.put(pid, children);
+            for (SysMenu child : children) {
+                queue.add(child.getId());
+            }
         }
     }
 
@@ -760,8 +798,10 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         }
         MenuFieldPermissionScope effectiveScope =
                 scope != null ? scope : MenuFieldPermissionScope.VIEW_ONLY;
+        // 只取判定用到的模块字段ID 列，减少行宽与传输开销
         LambdaQueryWrapper<SysRoleModuleFieldPermission> wrapper =
                 Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                        .select(SysRoleModuleFieldPermission::getModuleFieldId)
                         .eq(SysRoleModuleFieldPermission::getRoleId, roleId)
                         .in(SysRoleModuleFieldPermission::getModuleFieldId, fieldIds);
         applyPermissionScope(wrapper, effectiveScope);
@@ -799,18 +839,6 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         }
     }
 
-    private List<SysMenu> selectChildrenByPid(Long pid) {
-        Long subjectId = AppContext.getSubjectId();
-        String projectNo = AppContext.getProjectNo();
-        return sysMenuMapper.selectList(
-                new LambdaQueryWrapper<SysMenu>()
-                        .eq(SysMenu::getPid, pid)
-                        .eq(subjectId != null, SysMenu::getSubjectId, subjectId)
-                        .eq(projectNo != null, SysMenu::getProjectNo, projectNo)
-                        .orderByAsc(SysMenu::getSortOrder)
-                        .orderByAsc(SysMenu::getId));
-    }
-
     private SysMenu selectMenuById(Long menuId) {
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
@@ -828,9 +856,17 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         if (moduleIds == null || moduleIds.isEmpty()) {
             return Collections.emptyMap();
         }
+        // 只取生成侧用到的列，减少行宽与传输开销
         List<SysModuleField> fields =
                 sysModuleFieldMapper.selectList(
                         Wrappers.<SysModuleField>lambdaQuery()
+                                .select(
+                                        SysModuleField::getId,
+                                        SysModuleField::getModuleId,
+                                        SysModuleField::getTableName,
+                                        SysModuleField::getColumnName,
+                                        SysModuleField::getDisplayName,
+                                        SysModuleField::getSortOrder)
                                 .in(SysModuleField::getModuleId, moduleIds)
                                 .eq(SysModuleField::getStatus, MODULE_FIELD_STATUS_ENABLED)
                                 .orderByAsc(SysModuleField::getSortOrder)
@@ -878,9 +914,17 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         }
         Long subjectId = AppContext.getSubjectId();
         String projectNo = AppContext.getProjectNo();
+        // 只取展示组装用到的列（表名/列名/关联与业务类型/单位字段），combine_info 等大字段不拉取
         List<SysField> fields =
                 sysFieldMapper.selectList(
                         Wrappers.<SysField>lambdaQuery()
+                                .select(
+                                        SysField::getTableName,
+                                        SysField::getColumnName,
+                                        SysField::getRelationBusinessNo,
+                                        SysField::getBusinessTypeCode,
+                                        SysField::getBusinessTypeName,
+                                        SysField::getUnitColumnName)
                                 .in(SysField::getTableName, tableNames)
                                 .eq(SysField::getDeleted, FIELD_DELETED_NO)
                                 .eq(subjectId != null, SysField::getSubjectId, subjectId)

@@ -108,4 +108,16 @@ public interface OpenMenuHeaderApi {
      */
     MenuHeaderDisplayResp getMenuHeaderDisplay(
             Long menuId, Long roleId, MenuFieldPermissionScope scope);
+
+    /**
+     * 由已构建的表头树组装多级列头展示结构（不重新查库）
+     *
+     * <p>与 {@link #getMenuHeaderDisplay(Long, Long, MenuFieldPermissionScope)} 同一套展示组装逻辑：
+     * 只输出已勾选（{@code checked=1}）的列并保留其祖先菜单节点；区别是不再重新生成表头树，而是直接复用调用方已持有的 {@code tree} （由 {@link
+     * #getMenuHeaderTree(Long, Long, MenuFieldPermissionScope)} 返回），供调用方在同一棵树的基础上做二次组装， 避免重复建树查询。
+     *
+     * @param tree 已按权限过滤生成的表头树（可为 null）
+     * @return 多级列头展示结构；树为空或无已勾选节点时返回空（{@code header} 为 null）
+     */
+    MenuHeaderDisplayResp buildMenuHeaderDisplay(SysMenuHeaderResp tree);
 }

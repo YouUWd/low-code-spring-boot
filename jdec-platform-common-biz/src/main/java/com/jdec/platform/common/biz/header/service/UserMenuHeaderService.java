@@ -148,9 +148,10 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
                         .filter(node -> sourceByVirId.containsKey(node.getVirId()))
                         .collect(Collectors.toList());
 
-        // 该用户在该菜单下没有任何有效个性化配置：回退 config 侧默认表头配置（同样按角色权限过滤）
+        // 该用户在该菜单下没有任何有效个性化配置：回退 config 侧默认表头配置（同样按角色权限过滤）。
+        // 默认树已在上面构建完成，直接复用同一棵树组装展示结构，避免 config 侧重复建树查询
         if (stored.isEmpty()) {
-            return openMenuHeaderApi.getMenuHeaderDisplay(menuId, roleId, scope);
+            return openMenuHeaderApi.buildMenuHeaderDisplay(sourceTree);
         }
 
         // 展示只输出已勾选的列，并保留其祖先菜单节点用于组装多级列头；层级关系取默认树动态结构
