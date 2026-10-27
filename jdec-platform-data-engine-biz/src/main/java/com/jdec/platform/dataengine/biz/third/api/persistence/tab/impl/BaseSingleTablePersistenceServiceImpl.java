@@ -367,7 +367,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         conditionMap.put(CommonConstant.TABLE_DEFAULT_DELETED_FIELD, (byte) 0);
 
         Map<String, Object> updateFields = new HashMap<>();
-        updateFields.put(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD, (byte) 1);
+        updateFields.put(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD, (byte) 0);
         updateFields.put(
                 CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD, UserContext.getOperateUserId());
         updateFields.put(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD, LocalDateTime.now());

@@ -28,7 +28,8 @@ public class CommonMonitorLogController {
             summary = "监控日志保存",
             description =
                     "按日志类型（0-操作日志、1-消息日志、2-系统日志）分发到对应保存处理器；approve、content 等字段"
-                            + "由调用方以对象提交，落库前序列化为 JSON 字符串；数据源按 X-Project-No 请求头动态切换")
+                            + "由调用方以对象提交，落库前序列化为 JSON 字符串；ip、browser、platForm 等请求基础信息"
+                            + "调用方可不传，由日志侧从当前请求上下文自动补全；数据源按 X-Project-No 请求头动态切换")
     public ApiResponse<Void> saveMonitorLog(@RequestBody MonitorLogSaveReq req) {
         try {
             monitorLogApi.saveLog(req);

@@ -1801,9 +1801,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCreatedDate(approvalBusiness.getCreatedDate());
         // 回调更新业务状态
         ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
-        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
+        backReq.setBusinessStatus(statusNode.getStatusValue());
         backReq.setVersionNo(approvalBusiness.getVersionNo());
-        backReq.setDataId(approvalBusiness.getRecordId());
+        backReq.setDataId(approvalVersionRecord.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setReason(approvalProcessDTO.getReason().toString());
         backReq.setIsCurrentStepFinish(false);

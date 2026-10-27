@@ -4,7 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
+import com.jdec.platform.config.api.dto.common.FieldColumnExtrasDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
@@ -29,7 +29,8 @@ import org.springframework.stereotype.Component;
  *   <li>有审批链：{@code {"comment":"审批原因","change":[...]}}（comment 为空时退化为无审批链结构）
  * </ul>
  *
- * <p>字段明细会补充 {@code cloud} 标记（1-来自词云，0-否）。无任何变更时返回 {@code null}，调用方据此跳过日志记录。
+ * <p>字段明细会补充 {@code cloud} 标记（1-来自词云，0-否）与 {@code businessTypeCode}（sys_field 配置的业务类型编码，未配置时不输出）。
+ * 无任何变更时返回 {@code null}，调用方据此跳过日志记录。
  */
 @Slf4j
 @Component
@@ -44,6 +45,9 @@ public class OperateLogRemarkUtil {
 
     /** 字段明细中的词云标记键名 */
     private static final String CLOUD_KEY = "cloud";
+
+    /** 字段明细中的业务类型编码键名（sys_field.business_type_code） */
+    private static final String BUSINESS_TYPE_CODE_KEY = "businessTypeCode";
 
     /** 字段明细中的旧值键名（原始类型，不再向下递归） */
     private static final String OLD_KEY = "old";
@@ -111,17 +115,17 @@ public class OperateLogRemarkUtil {
             log.error("操作日志 remark 转换失败", e);
             throw new BusinessException("操作日志生成失败：remark 格式不正确");
         }
-        // 字段明细补充词云标记：sys_field.relation_business_no 有值视为来自词云
-        fillCloudFlags(remarkNode);
+        // 字段明细补充词云标记与业务类型编码：均取自 sys_field 配置
+        fillColumnExtras(remarkNode);
         return remarkNode;
     }
 
-    /** 给 remark 中所有 columns 明细补充 cloud 标记（1-来自词云，0-否） */
-    private void fillCloudFlags(JsonNode node) {
-        fillCloudFlags(node, loadCloudFieldIndexes());
+    /** 给 remark 中所有 columns 明细补充 cloud 标记（1-来自词云，0-否）与 businessTypeCode */
+    private void fillColumnExtras(JsonNode node) {
+        fillColumnExtras(node, loadFieldColumnExtras());
     }
 
-    private void fillCloudFlags(JsonNode node, Set<String> cloudFieldIndexes) {
+    private void fillColumnExtras(JsonNode node, FieldColumnExtras extras) {
         if (node == null) {
             return;
         }
@@ -134,53 +138,76 @@ public class OperateLogRemarkUtil {
                         continue;
                     }
                     JsonNode field = column.get(FIELD_KEY);
+                    String fieldIndex = field != null && field.isTextual() ? field.asText() : null;
                     boolean cloud =
-                            field != null
-                                    && field.isTextual()
-                                    && cloudFieldIndexes.contains(field.asText());
+                            fieldIndex != null && extras.cloudFieldIndexes().contains(fieldIndex);
                     column.put(CLOUD_KEY, cloud ? CLOUD_YES : CLOUD_NO);
+                    String businessTypeCode =
+                            fieldIndex != null ? extras.businessTypeCodes().get(fieldIndex) : null;
+                    if (StringUtils.isNotBlank(businessTypeCode)) {
+                        column.put(BUSINESS_TYPE_CODE_KEY, businessTypeCode);
+                    }
                 }
             }
             List<String> names = new ArrayList<>();
             object.fieldNames().forEachRemaining(names::add);
             for (String name : names) {
-                // old/newer 为字段值原文（可能是数组/对象），不做词云标记的递归
+                // old/newer 为字段值原文（可能是数组/对象），不做字段扩展信息的递归
                 if (OLD_KEY.equals(name) || NEWER_KEY.equals(name)) {
                     continue;
                 }
-                fillCloudFlags(object.get(name), cloudFieldIndexes);
+                fillColumnExtras(object.get(name), extras);
             }
         } else if (node.isArray()) {
             for (JsonNode element : node) {
-                fillCloudFlags(element, cloudFieldIndexes);
+                fillColumnExtras(element, extras);
             }
         }
     }
 
-    /** 查询配置中心词云字段索引（表名.列名）；查询失败按无词云字段处理，不阻断日志记录 */
-    private Set<String> loadCloudFieldIndexes() {
+    /** 查询配置中心字段列扩展配置（词云标记 + 业务类型编码）；查询失败按无扩展信息处理，不阻断日志记录 */
+    private FieldColumnExtras loadFieldColumnExtras() {
         // 审批回调运行在审批引擎事务内，事务连接已绑定业务库，@DataSource 切换失效；
         // 配置中心查询需换到事务外线程执行，否则会命中业务库连接导致查不到 sys_field
         // （与 ModuleMetaDataServiceImpl 的 getModuleMetaDataMapAsync 同一思路）
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
         try {
-            List<FieldWordCloudDTO> fields =
+            List<FieldColumnExtrasDTO> fields =
                     CompletableFuture.supplyAsync(
-                                    () -> configApi.getWordCloudFields(projectNo, subjectId))
+                                    () -> configApi.getFieldColumnExtras(projectNo, subjectId))
                             .get();
-            Set<String> indexes = new HashSet<>();
-            for (FieldWordCloudDTO field : fields) {
-                if (StringUtils.isNotBlank(field.getRelationBusinessNo())
-                        && field.getTableName() != null
-                        && field.getColumnName() != null) {
-                    indexes.add(field.getTableName() + "." + field.getColumnName());
+            Set<String> cloudFieldIndexes = new HashSet<>();
+            Map<String, String> businessTypeCodes = new HashMap<>();
+            for (FieldColumnExtrasDTO field : fields) {
+                if (field.getTableName() == null || field.getColumnName() == null) {
+                    continue;
+                }
+                String fieldIndex = field.getTableName() + "." + field.getColumnName();
+                if (StringUtils.isNotBlank(field.getRelationBusinessNo())) {
+                    cloudFieldIndexes.add(fieldIndex);
+                }
+                if (StringUtils.isNotBlank(field.getBusinessTypeCode())) {
+                    businessTypeCodes.put(fieldIndex, field.getBusinessTypeCode());
                 }
             }
-            return indexes;
+            return new FieldColumnExtras(cloudFieldIndexes, businessTypeCodes);
         } catch (Exception e) {
-            log.warn("操作日志词云字段查询失败，全部标记为非词云", e);
-            return Collections.emptySet();
+            log.warn("操作日志字段扩展配置查询失败，全部标记为非词云且不记录业务类型编码", e);
+            return FieldColumnExtras.EMPTY;
         }
+    }
+
+    /**
+     * 字段列扩展配置索引。
+     *
+     * @param cloudFieldIndexes 词云字段索引（表名.列名）
+     * @param businessTypeCodes 业务类型编码映射（表名.列名 → businessTypeCode）
+     */
+    private record FieldColumnExtras(
+            Set<String> cloudFieldIndexes, Map<String, String> businessTypeCodes) {
+
+        private static final FieldColumnExtras EMPTY =
+                new FieldColumnExtras(Collections.emptySet(), Collections.emptyMap());
     }
 }

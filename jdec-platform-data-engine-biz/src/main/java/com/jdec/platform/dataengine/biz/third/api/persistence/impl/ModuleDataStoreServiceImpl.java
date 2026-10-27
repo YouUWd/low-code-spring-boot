@@ -284,10 +284,14 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         Long dataId = moduleDataPersistenceService.save(moduleDataStoreDTO);
 
         DynamicSaveResp resp = new DynamicSaveResp();
-        if (rootModuleMainTableDataId == null) {
+        if (saveType == SaveType.APPROVAL_CHANGE) {
             resp.setDataId(dataId);
         } else {
-            resp.setDataId(rootModuleMainTableDataId);
+            if (rootModuleMainTableDataId == null) {
+                resp.setDataId(dataId);
+            } else {
+                resp.setDataId(rootModuleMainTableDataId);
+            }
         }
         if (saveType == SaveType.APPROVAL_REALTIME_SAVE) {
             Long data =

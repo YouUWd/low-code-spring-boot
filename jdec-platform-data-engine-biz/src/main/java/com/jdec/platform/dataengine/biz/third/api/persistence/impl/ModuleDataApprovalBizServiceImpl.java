@@ -227,7 +227,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                 // 上一个版本 要活跃
                 dslContext
                         .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
-                        .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 0)
+                        .set(DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_ACTIVE_FIELD)), 1)
                         .set(
                                 DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
                                 UserContext.getOperateUserId())

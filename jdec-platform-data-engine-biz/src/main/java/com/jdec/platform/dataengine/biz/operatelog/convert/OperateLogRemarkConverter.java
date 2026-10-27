@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.operatelog.convert;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -20,9 +21,11 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -377,10 +380,14 @@ public class OperateLogRemarkConverter {
     }
 
     /**
-     * 比较字段值：null 与空白视为相同；数组/对象按 JSON 结构比较（忽略对象键顺序）； 其余标量按字面值比较——同为数字时按数值比较（100 无论
-     * BigDecimal/double/int 均相等），否则按文本比较。
+     * 比较字段值：null 与空白视为相同；数组/对象按 JSON 语义比较；其余标量按字面值比较——同为数字时按数值比较 （100 无论 BigDecimal/double/int
+     * 均相等），否则按文本比较。
+     *
+     * <p>旧数据来自快照反序列化（Map/List），新数据来自详情查询（可能是 JsonNode，且引用/词云回填会增删值为 null
+     * 的键），直接按节点相等比较会把未变更字段记成变更，而落库序列化又会隐藏 null 值，导致 old 与 newer 看起来一模一样； 因此统一转成 JSON
+     * 树后按业务语义比较：忽略对象键顺序、忽略 null 值键的有无、数字按数值比较。
      */
-    private boolean isSameValue(Object oldValue, Object newerValue) {
+    boolean isSameValue(Object oldValue, Object newerValue) {
         Object oldNormalized = normalizeValue(oldValue);
         Object newerNormalized = normalizeValue(newerValue);
         boolean oldBlank = isBlankValue(oldNormalized);
@@ -388,10 +395,8 @@ public class OperateLogRemarkConverter {
         if (oldBlank || newerBlank) {
             return oldBlank && newerBlank;
         }
-        if (isContainerValue(oldNormalized) || isContainerValue(newerNormalized)) {
-            return objectMapper
-                    .valueToTree(oldNormalized)
-                    .equals(objectMapper.valueToTree(newerNormalized));
+        if (isStructuredValue(oldNormalized) || isStructuredValue(newerNormalized)) {
+            return isSameJson(toJsonNode(oldNormalized), toJsonNode(newerNormalized));
         }
         if (oldNormalized instanceof Number oldNumber
                 && newerNormalized instanceof Number newerNumber) {
@@ -406,6 +411,80 @@ public class OperateLogRemarkConverter {
                 DataPersistenceUtil.getFieldTxtValue(newerNormalized));
     }
 
+    /** JSON 树比较：null/缺失/空白等价，对象忽略值为 null 的键，数组逐项比较，数字按数值比较 */
+    private boolean isSameJson(JsonNode oldNode, JsonNode newerNode) {
+        boolean oldEmpty = isEmptyJsonNode(oldNode);
+        boolean newerEmpty = isEmptyJsonNode(newerNode);
+        if (oldEmpty || newerEmpty) {
+            return oldEmpty && newerEmpty;
+        }
+        if (oldNode.isNumber() && newerNode.isNumber()) {
+            return toBigDecimal(oldNode.decimalValue())
+                            .compareTo(toBigDecimal(newerNode.decimalValue()))
+                    == 0;
+        }
+        if (oldNode.isObject() && newerNode.isObject()) {
+            Set<String> fieldNames = new LinkedHashSet<>();
+            oldNode.fieldNames().forEachRemaining(fieldNames::add);
+            newerNode.fieldNames().forEachRemaining(fieldNames::add);
+            for (String fieldName : fieldNames) {
+                if (!isSameJson(oldNode.get(fieldName), newerNode.get(fieldName))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (oldNode.isArray() && newerNode.isArray()) {
+            if (oldNode.size() != newerNode.size()) {
+                return false;
+            }
+            for (int i = 0; i < oldNode.size(); i++) {
+                if (!isSameJson(oldNode.get(i), newerNode.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        // 结构与标量互比、对象与数组互比均视为不同值
+        if (oldNode.isContainerNode() || newerNode.isContainerNode()) {
+            return false;
+        }
+        return oldNode.asText().equals(newerNode.asText());
+    }
+
+    /** 空值节点：节点缺失、JSON null、空白文本 */
+    private boolean isEmptyJsonNode(JsonNode node) {
+        return node == null
+                || node.isNull()
+                || node.isMissingNode()
+                || (node.isTextual() && StringUtils.isBlank(node.asText()));
+    }
+
+    /** Map/List/数组/JsonNode(Object、Array) 视为结构化值，需要按 JSON 语义比较 */
+    private boolean isStructuredValue(Object value) {
+        if (value instanceof Collection<?>
+                || value instanceof Map<?, ?>
+                || value.getClass().isArray()) {
+            return true;
+        }
+        return value instanceof JsonNode node && (node.isObject() || node.isArray());
+    }
+
+    /** 统一转 JSON 树：JsonNode 原样使用，Map/List/数组转节点，其余标量转值节点 */
+    private JsonNode toJsonNode(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof JsonNode node) {
+            return node;
+        }
+        try {
+            return objectMapper.valueToTree(value);
+        } catch (Exception e) {
+            return objectMapper.getNodeFactory().textNode(String.valueOf(value));
+        }
+    }
+
     /** 数字统一转 BigDecimal 比较：忽略类型与精度差异（100、100.0、100.00 视为同一值） */
     private BigDecimal toBigDecimal(Number number) {
         if (number instanceof BigDecimal decimal) {
@@ -418,15 +497,12 @@ public class OperateLogRemarkConverter {
         return new BigDecimal(number.toString());
     }
 
-    /** null 与空白字符串视为同一空值，避免未改动字段因 null/"" 差异进入 remark */
+    /** null、空白字符串、JSON null/空白文本视为同一空值，避免未改动字段因 null/"" 差异进入 remark */
     private boolean isBlankValue(Object value) {
+        if (value instanceof JsonNode node) {
+            return isEmptyJsonNode(node);
+        }
         return value == null || (value instanceof CharSequence text && StringUtils.isBlank(text));
-    }
-
-    private boolean isContainerValue(Object value) {
-        return value instanceof Collection<?>
-                || value instanceof Map<?, ?>
-                || value.getClass().isArray();
     }
 
     private RowChangeLogDTO buildDeleteRow(
