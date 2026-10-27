@@ -4,6 +4,7 @@ import com.jdec.platform.approval.api.dto.ApprovalIdButton;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.approval.api.req.ApprovalListReq;
 import com.jdec.platform.approval.api.req.ApprovalProcessReq;
+import com.jdec.platform.approval.api.resp.ApprovalButtonListResp;
 import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,8 @@ public interface IApprovalEngine {
 
     // 根据模块ID及类型查询用户指定业务的代办，已办，全部列表ID
     ApprovalIdButtonListResp getApprovalListButton(Long moduleId);
+
+    ApprovalButtonListResp getApprovalBusinessNo(Long moduleId);
 
     // 根据用户ID和角色ID查询用户指定业务的下一单ID------------------------------------------------
     Long getBusinessNextId(Long moduleId);

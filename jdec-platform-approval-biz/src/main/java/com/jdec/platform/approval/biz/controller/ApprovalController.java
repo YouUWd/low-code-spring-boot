@@ -2,7 +2,7 @@ package com.jdec.platform.approval.biz.controller;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
-import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
+import com.jdec.platform.approval.api.resp.ApprovalButtonListResp;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -71,8 +71,8 @@ public class ApprovalController {
 
     @GetMapping("/getListButton/{moduleId}")
     @Operation(summary = "查询单据列表按钮", description = "查询查询单据列表按钮")
-    public ApiResponse<ApprovalIdButtonListResp> getListButton(@PathVariable Long moduleId) {
-        return ApiResponse.success(approvalService.getApprovalListButton(moduleId));
+    public ApiResponse<ApprovalButtonListResp> getListButton(@PathVariable Long moduleId) {
+        return ApiResponse.success(approvalService.getApprovalBusinessNo(moduleId));
     }
 
     @GetMapping("/detail/{moduleId}/{recordId}")
