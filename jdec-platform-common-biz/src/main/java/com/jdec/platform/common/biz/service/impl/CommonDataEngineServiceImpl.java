@@ -473,9 +473,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                         .get(fullKey)
                                                         .getRelationBusinessNo()
                                                 : null)
-                                .businessTypeName(
+                                .businessTypeCode(
                                         fieldNameMap.containsKey(fullKey)
-                                                ? fieldNameMap.get(fullKey).getBusinessTypeName()
+                                                ? fieldNameMap.get(fullKey).getBusinessTypeCode()
                                                 : null)
                                 .build();
 
