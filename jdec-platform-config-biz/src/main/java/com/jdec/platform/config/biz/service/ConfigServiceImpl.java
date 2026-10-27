@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jdec.platform.config.api.dto.common.FieldColumnExtrasDTO;
 import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
@@ -572,6 +573,52 @@ public class ConfigServiceImpl implements ConfigApi {
                                         .columnName(field.getColumnName())
                                         .relationBusinessNo(field.getRelationBusinessNo())
                                         .relationName(field.getRelationName())
+                                        .build())
+                .toList();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<FieldColumnExtrasDTO> getFieldColumnExtras(String projectNo, Long subjectId) {
+        log.debug("查询项目 {} 主体 {} 的字段列扩展配置", projectNo, subjectId);
+
+        // 仅查询配置了词云关联或业务类型编码的字段，且只查询关注的列
+        List<SysField> fields =
+                sysFieldMapper.selectList(
+                        new LambdaQueryWrapper<SysField>()
+                                .select(
+                                        SysField::getTableName,
+                                        SysField::getColumnName,
+                                        SysField::getRelationBusinessNo,
+                                        SysField::getBusinessTypeCode)
+                                .eq(
+                                        projectNo != null && !projectNo.isBlank(),
+                                        SysField::getProjectNo,
+                                        projectNo)
+                                .eq(subjectId != null, SysField::getSubjectId, subjectId)
+                                .isNotNull(SysField::getTableName)
+                                .isNotNull(SysField::getColumnName)
+                                .and(
+                                        wrapper ->
+                                                wrapper.isNotNull(SysField::getRelationBusinessNo)
+                                                        .ne(SysField::getRelationBusinessNo, "")
+                                                        .or()
+                                                        .isNotNull(SysField::getBusinessTypeCode)
+                                                        .ne(SysField::getBusinessTypeCode, ""))
+                                .eq(SysField::getDeleted, 0));
+
+        if (fields == null || fields.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return fields.stream()
+                .map(
+                        field ->
+                                FieldColumnExtrasDTO.builder()
+                                        .tableName(field.getTableName())
+                                        .columnName(field.getColumnName())
+                                        .relationBusinessNo(field.getRelationBusinessNo())
+                                        .businessTypeCode(field.getBusinessTypeCode())
                                         .build())
                 .toList();
     }

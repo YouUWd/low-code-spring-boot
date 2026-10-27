@@ -1,5 +1,6 @@
 package com.jdec.platform.config.open.api;
 
+import com.jdec.platform.config.api.dto.common.FieldColumnExtrasDTO;
 import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
@@ -70,6 +71,15 @@ public interface ConfigApi {
      * @return 字段词云配置列表
      */
     List<FieldWordCloudDTO> getWordCloudFields(String projectNo, Long subjectId);
+
+    /**
+     * 查询项目及主体下配置了词云关联关系或业务类型编码的字段列扩展信息
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体 ID
+     * @return 字段列扩展配置列表
+     */
+    List<FieldColumnExtrasDTO> getFieldColumnExtras(String projectNo, Long subjectId);
 
     // ================= 5. 元数据缓存管理 (Cache Eviction) =============
 
