@@ -33,6 +33,8 @@ public class SysDataPermissionController {
             summary = "查询数据权限节点列表",
             description = "查询当前主体和项目编码下的数据权限节点，按节点关联模块的数据来源主体与项目主体取交集，并查询关联的业务数据")
     public ApiResponse<List<SysDataPermissionResp>> list(QuerySysDataPermissionReq request) {
-        return ApiResponse.success(sysDataPermissionApi.listDataPermission(request));
+        List<SysDataPermissionResp> sysDataPermissionResps =
+                sysDataPermissionApi.listDataPermission(request);
+        return ApiResponse.success(sysDataPermissionResps);
     }
 }

@@ -33,6 +33,11 @@ public class SysDataPermissionResp {
     @Schema(description = "业务类型名称")
     private String businessTypeName;
 
+    @Schema(
+            description = "是否来自词云：0-否，1-是（sys_field 中该表名+列名配置了 relation_business_no）",
+            example = "0")
+    private Integer cloud;
+
     @Schema(description = "主体列表")
     private List<SubjectInfo> subjectInfos;
 
@@ -46,7 +51,9 @@ public class SysDataPermissionResp {
         @Schema(description = "主体名称")
         private String subjectName;
 
-        @Schema(description = "主体所拥有的业务数据，保持业务字段的原始类型；字段值存数组时按元素拆分，每个元素一条")
+        @Schema(
+                description =
+                        "主体所拥有的业务数据，尽量保持业务字段的原始类型：JSON 字段返回 JSON 对象/数组，数字不转字符串；字段值存数组时按元素拆分，每个元素一条")
         private List<Object> bizNames;
     }
 }
