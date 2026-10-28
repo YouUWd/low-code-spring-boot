@@ -12,6 +12,7 @@ import java.util.Set;
  * <p>每层校验把全部不通过项写入同一个收集器，层内收集完成后由 {@link #throwIfNotEmpty()} 一次性抛出：
  *
  * <ul>
+ *   <li>{@code status}：校验不通过统一使用 {@link ApiCodeEnum#WARNING_EXISTS}（702），与其它业务异常区分；
  *   <li>{@code message}：换行拼接的提示语，沿用现有前端展示方式；
  *   <li>{@code data}：{@link ExternalObjectValidationFailure}，包含校验层级与提示列表，便于前端按层分组展示。
  * </ul>
@@ -52,7 +53,7 @@ public class ExternalObjectValidationMessages {
         }
         List<String> errors = List.copyOf(messages);
         throw new BusinessException(
-                ApiCodeEnum.WARNING.getCode(),
+                ApiCodeEnum.WARNING_EXISTS.getCode(),
                 String.join("\n", errors),
                 new ExternalObjectValidationFailure(stage.name(), stage.title(), errors));
     }

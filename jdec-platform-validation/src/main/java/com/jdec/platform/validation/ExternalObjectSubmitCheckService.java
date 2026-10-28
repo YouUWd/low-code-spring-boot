@@ -1,6 +1,7 @@
 package com.jdec.platform.validation;
 
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.validation.externalobject.ExternalObjectSaveData;
 import com.jdec.platform.validation.externalobject.ExternalObjectSaveSnapshotConverter;
@@ -25,6 +26,8 @@ import org.springframework.stereotype.Service;
  * #checkOnSubmit}）：所有需要校验的模块都参与校验，前端未提交数据的模块按该模块校验全部不通过处理， 全部通过后才允许提交。
  *
  * <p>三层校验递进执行：前一层存在不通过提示时立即一次性返回该层全部提示，后续层级不再执行， 避免“字段没填却提示重复”这类相互矛盾的提示。
+ *
+ * <p>校验不通过（含校验参数缺失）统一返回 {@link ApiCodeEnum#WARNING_EXISTS}（702），与其它业务异常的 700 区分。
  */
 @Service
 @RequiredArgsConstructor
@@ -63,7 +66,7 @@ public class ExternalObjectSubmitCheckService {
         } else if (companyId != null && companyId > 0) {
             snapshot = snapshotRepository.load(companyId);
         } else {
-            throw new BusinessException("外部对象ID不能为空");
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "外部对象ID不能为空");
         }
         validationPipeline.check(snapshot);
     }
@@ -84,7 +87,7 @@ public class ExternalObjectSubmitCheckService {
      */
     public void checkOnSubmit(NestedModuleDataDTO nestedModuleData) {
         if (nestedModuleData == null) {
-            throw new BusinessException("外部对象数据不能为空");
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "外部对象数据不能为空");
         }
         ExternalObjectSaveData data = snapshotConverter.convert(nestedModuleData);
         validationPipeline.checkOnSubmit(data.snapshot(), data.basicInfoAbsentOnCreate());
