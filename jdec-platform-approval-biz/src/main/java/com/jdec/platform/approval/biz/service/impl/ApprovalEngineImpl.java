@@ -1815,6 +1815,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 查询单据记录
         LambdaQueryWrapper<ApprovalBusiness> approvalBusinessWrapper = new LambdaQueryWrapper<>();
         approvalBusinessWrapper.eq(ApprovalBusiness::getModuleId, approvalProcessDTO.getModuleId());
+        approvalBusinessWrapper.eq(
+                ApprovalBusiness::getCreatedBy, approvalProcessDTO.getApplicantId());
         approvalBusinessWrapper
                 .eq(ApprovalBusiness::getBusinessNumber, approvalProcessDTO.getBusinessNumber())
                 .last("LIMIT 1");
