@@ -303,6 +303,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
             List<VersionListResp> versionList = dataEngineApi.getVersionList(versionListQueryReq);
             result.put("versionList", versionList);
             // 当前状态
+            Integer versionNo = 0;
             Map<String, Object> approvalStatus = new HashMap<>();
             if (Objects.nonNull(btnType)
                     && (btnType.equals("change") || btnType.equals("change-change"))) {
@@ -317,7 +318,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 approvalStatus.put("statusBackground", statusNode.getStatusBackground());
                 approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
                 // 当前版本号
-                result.put("versionNo", versionList.getFirst().getVersion());
+                versionNo = versionList.getFirst().getVersion();
+
             } else {
                 ModuleApprovalChainConfigResp.StatusNode statusNode =
                         sysStatusApi.getStatusByValue(
@@ -328,8 +330,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 approvalStatus.put("statusBackground", statusNode.getStatusBackground());
                 approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
                 // 当前版本号
-                result.put("versionNo", recordData.get("version_no"));
+                versionNo = (Integer) recordData.get("version_no");
             }
+            result.put("versionNo", versionNo);
             result.put("approvalStatus", approvalStatus);
             // 是否草稿
             result.put("approvalChainStatus", approvalChainStatus);
@@ -350,9 +353,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                             .max(Integer::compareTo)
                             .orElse(null);
             if (Objects.nonNull(userId)
-                    && userId.equals(userInfoResp.getCreateUser().getId())
+                    && !userId.equals(userInfoResp.getCreateUser().getId())
                     && Objects.nonNull(lastVersion)
-                    && recordData.get("version_no").equals(lastVersion)) {
+                    && versionNo.equals(lastVersion)) {
                 result.put("requestChange", true);
             } else {
                 result.put("requestChange", false);
