@@ -1,6 +1,6 @@
 package com.jdec.platform.common.biz.action;
 
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import java.util.Collections;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -24,10 +24,10 @@ import lombok.Getter;
 public class MenuActionBundle {
 
     /** 独立输出的定制操作列表 (如启停) */
-    private final List<ApprovalRowItem> customActions;
+    private final List<ActionRowItem> customActions;
 
     /** 独立输出的互动权限操作列表 (全局申请+行级业务操作) */
-    private final List<ApprovalRowItem> interactionActions;
+    private final List<ActionRowItem> interactionActions;
 
     /** 构建空的按钮承载包 */
     public static MenuActionBundle empty() {

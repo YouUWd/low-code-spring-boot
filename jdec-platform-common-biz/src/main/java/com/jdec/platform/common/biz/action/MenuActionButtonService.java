@@ -1,6 +1,6 @@
 package com.jdec.platform.common.biz.action;
 
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.common.biz.custom.CustomActionContext;
 import com.jdec.platform.common.biz.custom.RowCustomActionService;
 import com.jdec.platform.common.biz.interaction.InteractionActionContext;
@@ -57,10 +57,10 @@ public class MenuActionButtonService {
         }
 
         // 1. 集中处理定制操作 (如启用/停用按钮)
-        List<ApprovalRowItem> customActions = resolveCustomActions(rawRecords, ctx);
+        List<ActionRowItem> customActions = resolveCustomActions(rawRecords, ctx);
 
         // 2. 集中处理互动权限操作 (如申请类全局按钮、业务操作类行级按钮)
-        List<ApprovalRowItem> interactionActions = resolveInteractionActions(rawRecords, ctx);
+        List<ActionRowItem> interactionActions = resolveInteractionActions(rawRecords, ctx);
 
         return new MenuActionBundle(customActions, interactionActions);
     }
@@ -76,14 +76,14 @@ public class MenuActionButtonService {
         }
 
         CustomActionContext customActionCtx = toCustomActionContext(ctx);
-        List<ApprovalRowItem> emptyCustomActions =
+        List<ActionRowItem> emptyCustomActions =
                 (rowCustomActionService != null
                                 && rowCustomActionService.hasActiveProviders(customActionCtx))
                         ? Collections.emptyList()
                         : null;
 
         InteractionActionContext interactionCtx = buildInteractionActionContext(ctx);
-        List<ApprovalRowItem> emptyInteractionActions =
+        List<ActionRowItem> emptyInteractionActions =
                 (interactionActionService != null
                                 && interactionActionService.hasActiveProviders(interactionCtx))
                         ? interactionActionService.buildInteractionActions(
@@ -95,7 +95,7 @@ public class MenuActionButtonService {
 
     // ==================== 内部集中处理实现 ====================
 
-    private List<ApprovalRowItem> resolveCustomActions(
+    private List<ActionRowItem> resolveCustomActions(
             List<DataRow> rawRecords, MenuActionContext ctx) {
         if (rowCustomActionService == null) {
             return null;
@@ -104,7 +104,7 @@ public class MenuActionButtonService {
         return rowCustomActionService.buildCustomActions(rawRecords, customActionCtx);
     }
 
-    private List<ApprovalRowItem> resolveInteractionActions(
+    private List<ActionRowItem> resolveInteractionActions(
             List<DataRow> rawRecords, MenuActionContext ctx) {
         if (interactionActionService == null) {
             return null;

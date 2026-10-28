@@ -1,7 +1,7 @@
 package com.jdec.platform.common.biz.interaction;
 
 import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +13,7 @@ import org.springframework.util.CollectionUtils;
 /**
  * 互动权限操作分发服务 (InteractionActionService)
  *
- * <p>聚合所有生效的 {@link InteractionButtonProvider}，编排生成包含全局与行级绑定的 {@link ApprovalRowItem} 列表。
+ * <p>聚合所有生效的 {@link InteractionButtonProvider}，编排生成包含全局与行级绑定的 {@link ActionRowItem} 列表。
  */
 @Slf4j
 @Service
@@ -37,7 +37,7 @@ public class InteractionActionService {
      * @param ctx 互动操作上下文
      * @return 互动按钮行项列表，若无有效按钮则返回 null 或空列表
      */
-    public List<ApprovalRowItem> buildInteractionActions(
+    public List<ActionRowItem> buildInteractionActions(
             List<DataRow> rawRecords, InteractionActionContext ctx) {
         if (ctx == null || CollectionUtils.isEmpty(providers)) {
             return null;
@@ -50,7 +50,7 @@ public class InteractionActionService {
             return null;
         }
 
-        List<ApprovalRowItem> result = new ArrayList<>();
+        List<ActionRowItem> result = new ArrayList<>();
 
         // 2. 收集全局互动操作按钮 (与行无关)
         List<ActionButtonDTO> globalBtns = new ArrayList<>();
@@ -59,7 +59,7 @@ public class InteractionActionService {
         }
 
         if (!globalBtns.isEmpty()) {
-            result.add(ApprovalRowItem.ofGlobal(globalBtns));
+            result.add(ActionRowItem.ofGlobal(globalBtns));
         }
 
         // 3. 逐行收集行相关互动操作按钮 (与行数据字段状态关联)
@@ -88,7 +88,7 @@ public class InteractionActionService {
                 }
 
                 if (!rowBtns.isEmpty()) {
-                    result.add(ApprovalRowItem.ofRow(recordId, businessNo, rowBtns));
+                    result.add(ActionRowItem.ofRow(recordId, businessNo, rowBtns));
                 }
             }
         }
