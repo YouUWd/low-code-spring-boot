@@ -31,7 +31,6 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.CommonStatusEnum;
 import com.jdec.platform.shared.exception.BusinessException;
-import com.jdec.platform.shared.utils.JsonValueUtils;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,6 +56,12 @@ public class SysDataPermissionService implements SysDataPermissionApi {
 
     /** 业务数据为空时的统一占位值 */
     private static final String NULL_VALUE = "Null";
+
+    /** 是否来自词云：是（sys_field.relation_business_no 有值） */
+    private static final Integer CLOUD_YES = 1;
+
+    /** 是否来自词云：否 */
+    private static final Integer CLOUD_NO = 0;
 
     private final SysDataPermissionMapper sysDataPermissionMapper;
     private final SysProjectSubjectMapper sysProjectSubjectMapper;
@@ -217,6 +222,13 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                                     fieldConfig != null ? fieldConfig.getBusinessTypeCode() : null);
                             resp.setBusinessTypeName(
                                     fieldConfig != null ? fieldConfig.getBusinessTypeName() : null);
+                            // 是否来自词云：按权限编码「表名*字段名」在 sys_field 的关联关系业务编号判定
+                            resp.setCloud(
+                                    fieldConfig != null
+                                                    && StringUtils.hasText(
+                                                            fieldConfig.getRelationBusinessNo())
+                                            ? CLOUD_YES
+                                            : CLOUD_NO);
                             resp.setSubjectInfos(
                                     CollUtil.emptyIfNull(codeSubjectMap.get(type.getCode()))
                                             .stream()
@@ -342,7 +354,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
     }
 
     /**
-     * 按权限编码「表名*字段名」批量查询 {@code sys_field}，取得字段配置的业务类型。
+     * 按权限编码「表名*字段名」批量查询 {@code sys_field}，取得字段配置的业务类型与关联关系业务编号（用于词云标识）。
      *
      * <p>返回 权限编码 -> 字段配置（同键保留首条），编码非法或无匹配配置时返回空。
      */
@@ -401,8 +413,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
      * 直连项目编码对应的数据源，查询各权限编码下的业务数据。
      *
      * <p>权限编码形如「表名*字段名」，逐项拼接 SQL： {@code SELECT DISTINCT subject_id, 字段名 FROM 表名 WHERE subject_id
-     * IN (主体ID列表)}， 结果按 主体ID -> 权限编码 归集，按字段 JDBC 原始类型返回，空值统一记为 "Null"。 字段值存数组时按
-     * 元素打散拆分，每项元素各算一条业务数据，同一主体下重复的数据只保留一条（去重口径见 {@link #dedupKey(Object)}）；
+     * IN (主体ID列表)}， 结果按 主体ID -> 权限编码 归集，保持字段原始类型返回：标量原样返回，JSON 字段返回 JSON 结构而非 JSON 文本，空值记为 "Null"。
+     * 字段值存数组时按元素打散拆分，每项元素各算一条业务数据，同一主体下重复的数据只保留一条 （去重口径见 {@link #dedupKey(Object)}）；
      * 单个查询项查询失败时仅记日志，不影响权限节点列表查询。
      */
     private Map<Long, Map<String, List<Object>>> queryBizData(
@@ -480,8 +492,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
     /**
      * 将字段值打散拆分，返回「去重键 -> 展示值」映射，保持元素出现顺序。
      *
-     * <p>数组按元素逐个展开，非数组按单值返回；元素为对象/数组时展示值转为 JSON 文本，避免把 {@code Map}/{@code Collection}
-     * 直接给到前端；字段值为空时保留占位 {@link #NULL_VALUE}，数组内的空元素直接忽略。
+     * <p>数组按元素逐个展开，非数组按单值返回；展示值尽量保留业务字段原始类型，JSON 文本与 jOOQ JSON/JSONB 对象解析为 {@code Map}/{@code List}
+     * 后返回，前端拿到的是 JSON 结构而不是 JSON 文本，标量（字符串、数字、布尔）原样返回； 字段值为空时保留占位 {@link #NULL_VALUE}，数组内的空元素直接忽略。
      */
     private Map<Object, Object> flattenBizNames(Object value) {
         Map<Object, Object> bizNames = new LinkedHashMap<>();
@@ -491,10 +503,51 @@ public class SysDataPermissionService implements SysDataPermissionApi {
         }
         for (Object element : toElements(value)) {
             if (element != null) {
-                bizNames.putIfAbsent(dedupKey(element), JsonValueUtils.toSqlValue(element));
+                Object displayValue = toDisplayValue(element);
+                bizNames.putIfAbsent(
+                        dedupKey(displayValue), displayValue == null ? NULL_VALUE : displayValue);
             }
         }
         return bizNames;
+    }
+
+    /**
+     * 业务数据的展示值：尽量保留业务字段的原始类型。
+     *
+     * <p>jOOQ JSON/JSONB 包装类型先取出 JSON 文本，再按 JSON 结构解析为 {@code Map}/{@code List}；字符串、数字、布尔等
+     * 标量原样返回，解析失败时按原始文本返回。
+     */
+    private Object toDisplayValue(Object element) {
+        Object value = unwrapJson(element);
+        if (value instanceof CharSequence text) {
+            String content = text.toString().trim();
+            if (isJsonContainer(content)) {
+                try {
+                    return OBJECT_MAPPER.readValue(content, Object.class);
+                } catch (Exception e) {
+                    log.debug("字段值不是合法的 JSON，按单值处理: {}", content);
+                    return value;
+                }
+            }
+        }
+        return value;
+    }
+
+    /** 判断文本是否形如 JSON 对象或数组 */
+    private boolean isJsonContainer(String content) {
+        return (content.startsWith("{") && content.endsWith("}"))
+                || (content.startsWith("[") && content.endsWith("]"));
+    }
+
+    /** 解包 jOOQ 的 JSON/JSONB 包装类型，其余类型原样返回 */
+    private Object unwrapJson(Object value) {
+        if (value instanceof JSON jooqJson) {
+            return jooqJson.data();
+        }
+        if (value instanceof JSONB jooqJsonb) {
+            return jooqJsonb.data();
+        }
+        return value;
     }
 
     /**
@@ -523,11 +576,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
 
     /** 识别并展开数组值：jOOQ JSON、集合、Java 数组、JSON 数组文本，其余按单值返回 */
     private List<Object> toElements(Object value) {
-        if (value instanceof JSON jooqJson) {
-            value = jooqJson.data();
-        } else if (value instanceof JSONB jooqJsonb) {
-            value = jooqJsonb.data();
-        }
+        value = unwrapJson(value);
         if (value instanceof Collection<?> collection) {
             return new ArrayList<>(collection);
         }
