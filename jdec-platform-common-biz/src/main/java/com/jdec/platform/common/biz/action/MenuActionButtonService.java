@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.action;
 
+import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
 import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.common.biz.custom.CustomActionContext;
 import com.jdec.platform.common.biz.custom.RowCustomActionService;
@@ -23,7 +24,8 @@ import org.springframework.stereotype.Service;
  *
  * <ul>
  *   <li><b>集中调度与代码收敛</b>：统一汇集定制操作 (如启停) 与业务互动权限的生成逻辑，避免业务层到处散落注入与装配代码；
- *   <li><b>数据独立输出</b>：分别独立生成 {@code customActions} 与 {@code interactionActions}，保证前后端契约清晰且完全解耦。
+ *   <li><b>全局与行级物理隔离</b>：独立产出全局工具栏操作 ({@code globalActions})、纯行级定制操作 ({@code customActions})
+ *       与纯行级交互操作 ({@code interactionActions})。
  * </ul>
  */
 @Slf4j
@@ -45,35 +47,40 @@ public class MenuActionButtonService {
     }
 
     /**
-     * 为数据行集中处理并构建所有操作按钮 (分别产出独立的 customActions 与 interactionActions)
+     * 为数据行集中处理并构建所有操作按钮 (分别产出独立的 globalActions、customActions 与 interactionActions)
      *
      * @param rawRecords 分页物理数据行
      * @param ctx 菜单按钮集中上下文
-     * @return 包含独立 customActions 与 interactionActions 的承载包
+     * @return 包含独立全局与行级操作的承载包
      */
     public MenuActionBundle buildActions(List<DataRow> rawRecords, MenuActionContext ctx) {
         if (ctx == null) {
             return MenuActionBundle.none();
         }
 
-        // 1. 集中处理定制操作 (如启用/停用按钮)
+        // 1. 集中处理全局工具栏操作 (如申请类全局操作)
+        List<ActionButtonDTO> globalActions = resolveGlobalActions(ctx);
+
+        // 2. 集中处理定制操作 (如启用/停用按钮，纯行级)
         List<ActionRowItem> customActions = resolveCustomActions(rawRecords, ctx);
 
-        // 2. 集中处理互动权限操作 (如申请类全局按钮、业务操作类行级按钮)
-        List<ActionRowItem> interactionActions = resolveInteractionActions(rawRecords, ctx);
+        // 3. 集中处理互动权限行级操作 (纯行级)
+        List<ActionRowItem> interactionActions = resolveInteractionRowActions(rawRecords, ctx);
 
-        return new MenuActionBundle(customActions, interactionActions);
+        return new MenuActionBundle(globalActions, customActions, interactionActions);
     }
 
     /**
      * 当分页查询短路 (无数据) 时集中构建按钮承载包
      *
-     * <p>注：定制操作无数据时为空列表或 null，互动操作可能存在与行无关的全局按钮需要独立呈现。
+     * <p>注：定制操作与行级交互操作无数据时为空列表或 null，全局操作依然正常独立呈现给页面工具栏。
      */
     public MenuActionBundle buildEmptyActions(MenuActionContext ctx) {
         if (ctx == null) {
             return MenuActionBundle.none();
         }
+
+        List<ActionButtonDTO> globalActions = resolveGlobalActions(ctx);
 
         CustomActionContext customActionCtx = toCustomActionContext(ctx);
         List<ActionRowItem> emptyCustomActions =
@@ -86,14 +93,21 @@ public class MenuActionButtonService {
         List<ActionRowItem> emptyInteractionActions =
                 (interactionActionService != null
                                 && interactionActionService.hasActiveProviders(interactionCtx))
-                        ? interactionActionService.buildInteractionActions(
-                                Collections.emptyList(), interactionCtx)
+                        ? Collections.emptyList()
                         : null;
 
-        return new MenuActionBundle(emptyCustomActions, emptyInteractionActions);
+        return new MenuActionBundle(globalActions, emptyCustomActions, emptyInteractionActions);
     }
 
     // ==================== 内部集中处理实现 ====================
+
+    private List<ActionButtonDTO> resolveGlobalActions(MenuActionContext ctx) {
+        if (interactionActionService == null) {
+            return null;
+        }
+        InteractionActionContext interactionCtx = buildInteractionActionContext(ctx);
+        return interactionActionService.buildGlobalActions(interactionCtx);
+    }
 
     private List<ActionRowItem> resolveCustomActions(
             List<DataRow> rawRecords, MenuActionContext ctx) {
@@ -104,13 +118,13 @@ public class MenuActionButtonService {
         return rowCustomActionService.buildCustomActions(rawRecords, customActionCtx);
     }
 
-    private List<ActionRowItem> resolveInteractionActions(
+    private List<ActionRowItem> resolveInteractionRowActions(
             List<DataRow> rawRecords, MenuActionContext ctx) {
         if (interactionActionService == null) {
             return null;
         }
         InteractionActionContext interactionCtx = buildInteractionActionContext(ctx);
-        return interactionActionService.buildInteractionActions(rawRecords, interactionCtx);
+        return interactionActionService.buildRowActions(rawRecords, interactionCtx);
     }
 
     private CustomActionContext toCustomActionContext(MenuActionContext ctx) {

@@ -7,6 +7,7 @@ import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuTableSpec;
+import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
 import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
@@ -318,6 +319,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                     headerRoot,
                     rootModulePerm,
                     emptyNode,
+                    emptyActions.getGlobalActions(),
                     emptyApprovalRows,
                     emptyActions.getCustomActions(),
                     emptyActions.getInteractionActions());
@@ -410,6 +412,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 headerRoot,
                 rootModulePerm,
                 rootNode,
+                actions.getGlobalActions(),
                 approvalRows,
                 actions.getCustomActions(),
                 actions.getInteractionActions());
@@ -1074,6 +1077,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             MenuHeaderColumnResp headerRoot,
             ModulePermissionDTO rootModulePerm,
             ModuleDataNode dataNode,
+            List<ActionButtonDTO> globalActions,
             List<ActionRowItem> approvalRows,
             List<ActionRowItem> customActions,
             List<ActionRowItem> interactionActions) {
@@ -1102,6 +1106,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return MenuDataResp.builder()
                 .header(headerRoot)
                 .modulePermission(permission)
+                .globalActions(globalActions)
                 .approvalActions(approvalRows)
                 .customActions(customActions)
                 .interactionActions(interactionActions)
@@ -1116,7 +1121,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             List<ActionRowItem> approvalRows,
             List<ActionRowItem> customActions) {
         return assembleMenuDataResp(
-                headerRoot, rootModulePerm, dataNode, approvalRows, customActions, null);
+                headerRoot, rootModulePerm, dataNode, null, approvalRows, customActions, null);
     }
 
     private MenuHeaderColumnResp queryHeaderRootQuietly(Long menuId, Long roleId) {

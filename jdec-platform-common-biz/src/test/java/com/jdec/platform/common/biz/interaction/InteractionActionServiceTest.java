@@ -56,24 +56,21 @@ class InteractionActionServiceTest {
         InteractionActionService service =
                 new InteractionActionService(List.of(new DefaultInteractionButtonProvider()));
 
-        List<ActionRowItem> actions = service.buildInteractionActions(List.of(row1, row2), ctx);
+        List<ActionButtonDTO> globalActions = service.buildGlobalActions(ctx);
+        assertNotNull(globalActions);
+        // 默认全部为全局项：3 个互动按钮直接以 ActionButtonDTO 形式输出给全局工具栏
+        assertEquals(3, globalActions.size());
+        assertTrue(globalActions.stream().anyMatch(b -> "company_apply".equals(b.getButtonKey())));
+        assertTrue(
+                globalActions.stream()
+                        .anyMatch(b -> "update_company_info".equals(b.getButtonKey())));
+        assertTrue(
+                globalActions.stream()
+                        .anyMatch(b -> "edit_company_reg_status".equals(b.getButtonKey())));
 
-        assertNotNull(actions);
-        // 默认全部为全局项：因此仅有 1 个全局 row (无 id 与 businessNo)，包含全部 3 个互动按钮
-        assertEquals(1, actions.size());
-
-        ActionRowItem globalAction = actions.get(0);
-        assertNotNull(globalAction.getRow());
-        assertNull(globalAction.getRow().getId());
-        assertNull(globalAction.getRow().getBusinessNo());
-
-        List<ActionButtonDTO> btns = globalAction.getRow().getBtnList();
-        assertEquals(3, btns.size());
-
-        String json = objectMapper.writeValueAsString(actions);
-        assertTrue(json.contains("\"buttonKey\":\"company_apply\""));
-        assertTrue(json.contains("\"buttonKey\":\"update_company_info\""));
-        assertTrue(json.contains("\"buttonKey\":\"edit_company_reg_status\""));
+        // 默认无行级项：返回 null
+        List<ActionRowItem> rowActions = service.buildRowActions(List.of(row1, row2), ctx);
+        assertNull(rowActions);
     }
 
     @Test
@@ -126,27 +123,31 @@ class InteractionActionServiceTest {
                 new InteractionActionService(
                         List.of(new DefaultInteractionButtonProvider(), customCompanyProvider));
 
-        List<ActionRowItem> actions = service.buildInteractionActions(List.of(row1, row2), ctx);
-
-        assertNotNull(actions);
-        // 预期共 3 项：第 1 项为全局操作 (2个按钮)；第 2 项为 301L 行绑定操作；第 3 项为 302L 行绑定操作
-        assertEquals(3, actions.size());
-
         // 1. 全局项：应包含申请和修改信息 (不含被移至行级的修改登记状态)
-        ActionRowItem globalAction = actions.get(0);
-        assertNull(globalAction.getRow().getId());
-        List<ActionButtonDTO> globalBtns = globalAction.getRow().getBtnList();
-        assertEquals(2, globalBtns.size());
+        List<ActionButtonDTO> globalActions = service.buildGlobalActions(ctx);
+        assertNotNull(globalActions);
+        assertEquals(2, globalActions.size());
+        assertTrue(globalActions.stream().anyMatch(b -> "company_apply".equals(b.getButtonKey())));
+        assertTrue(
+                globalActions.stream()
+                        .anyMatch(b -> "update_company_info".equals(b.getButtonKey())));
+        assertFalse(
+                globalActions.stream()
+                        .anyMatch(b -> "edit_company_reg_status".equals(b.getButtonKey())));
 
-        // 2. 行级项：行 301L 与 302L 应分别输出行级互动按钮 (修改登记状态)
-        ActionRowItem rowAction1 = actions.get(1);
+        // 2. 纯行级项：行 301L 与 302L 应分别输出行级互动按钮 (修改登记状态)
+        List<ActionRowItem> rowActions = service.buildRowActions(List.of(row1, row2), ctx);
+        assertNotNull(rowActions);
+        assertEquals(2, rowActions.size());
+
+        ActionRowItem rowAction1 = rowActions.get(0);
         assertEquals(301L, rowAction1.getRow().getId());
         assertEquals("CR20261027001", rowAction1.getRow().getBusinessNo());
         List<ActionButtonDTO> rowBtns1 = rowAction1.getRow().getBtnList();
         assertEquals(1, rowBtns1.size());
         assertEquals("edit_company_reg_status", rowBtns1.get(0).getButtonKey());
 
-        ActionRowItem rowAction2 = actions.get(2);
+        ActionRowItem rowAction2 = rowActions.get(1);
         assertEquals(302L, rowAction2.getRow().getId());
         assertEquals("CR20261027002", rowAction2.getRow().getBusinessNo());
     }
@@ -186,40 +187,34 @@ class InteractionActionServiceTest {
                                 new DefaultInteractionButtonProvider(),
                                 new CompanyInteractionButtonProvider()));
 
-        List<ActionRowItem> actions =
-                service.buildInteractionActions(
-                        List.of(rowActive, rowCancel, rowDeactive, rowDraft), ctx);
-
-        assertNotNull(actions);
-        // 预期共 3 项：
-        // 1. 全局项 (包含申请和修改信息)
-        // 2. 行 101L (启用状态 99，包含 edit_company_reg_status)
-        // 3. 行 102L (取消状态 -99，包含 edit_company_reg_status)
-        // 行 103L 与 104L 不满足状态条件，不产生行级操作项
-        assertEquals(3, actions.size());
-
-        // 1. 验证全局项
-        ActionRowItem globalAction = actions.get(0);
-        assertNull(globalAction.getRow().getId());
-        List<ActionButtonDTO> globalBtns = globalAction.getRow().getBtnList();
-        assertEquals(2, globalBtns.size());
-        assertTrue(globalBtns.stream().anyMatch(b -> "company_apply".equals(b.getButtonKey())));
+        // 1. 验证全局项 (包含申请和修改信息，不含行级登记状态)
+        List<ActionButtonDTO> globalActions = service.buildGlobalActions(ctx);
+        assertNotNull(globalActions);
+        assertEquals(2, globalActions.size());
+        assertTrue(globalActions.stream().anyMatch(b -> "company_apply".equals(b.getButtonKey())));
         assertTrue(
-                globalBtns.stream().anyMatch(b -> "update_company_info".equals(b.getButtonKey())));
+                globalActions.stream()
+                        .anyMatch(b -> "update_company_info".equals(b.getButtonKey())));
         assertFalse(
-                globalBtns.stream()
+                globalActions.stream()
                         .anyMatch(b -> "edit_company_reg_status".equals(b.getButtonKey())));
 
-        // 2. 验证启用状态行 (101L)
-        ActionRowItem activeAction = actions.get(1);
+        // 2. 验证纯行级项 (仅 101L 与 102L 满足状态条件，103L 与 104L 不产生操作)
+        List<ActionRowItem> rowActions =
+                service.buildRowActions(List.of(rowActive, rowCancel, rowDeactive, rowDraft), ctx);
+        assertNotNull(rowActions);
+        assertEquals(2, rowActions.size());
+
+        // 2.1 验证启用状态行 (101L)
+        ActionRowItem activeAction = rowActions.get(0);
         assertEquals(101L, activeAction.getRow().getId());
         assertEquals("CR-ACTIVE", activeAction.getRow().getBusinessNo());
         List<ActionButtonDTO> activeBtns = activeAction.getRow().getBtnList();
         assertEquals(1, activeBtns.size());
         assertEquals("edit_company_reg_status", activeBtns.get(0).getButtonKey());
 
-        // 3. 验证取消状态行 (102L)
-        ActionRowItem cancelAction = actions.get(2);
+        // 2.2 验证取消状态行 (102L)
+        ActionRowItem cancelAction = rowActions.get(1);
         assertEquals(102L, cancelAction.getRow().getId());
         assertEquals("CR-CANCEL", cancelAction.getRow().getBusinessNo());
         List<ActionButtonDTO> cancelBtns = cancelAction.getRow().getBtnList();

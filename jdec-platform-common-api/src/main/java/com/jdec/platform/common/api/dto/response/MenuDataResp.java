@@ -30,13 +30,16 @@ public class MenuDataResp implements Serializable {
     @Schema(description = "模块权限汇总 (1-有权限, 0-无权限)")
     private ModuleSimplePermissionDTO modulePermission;
 
-    @Schema(description = "单据审批流操作列表 (row包含id与btnList)")
+    @Schema(description = "页面全局操作按钮列表 (供页面顶部工具栏直接渲染)")
+    private List<ActionButtonDTO> globalActions;
+
+    @Schema(description = "单据审批流行级操作列表 (纯行级，包含id与btnList)")
     private List<ActionRowItem> approvalActions;
 
-    @Schema(description = "行级定制扩展操作列表 (包含id与btnList，如启停等定制按钮)")
+    @Schema(description = "行级定制扩展操作列表 (纯行级，如启停等定制按钮)")
     private List<ActionRowItem> customActions;
 
-    @Schema(description = "角色交互权限互动按钮列表 (row中无id为全局操作，包含id为行级操作)")
+    @Schema(description = "角色交互权限行级操作列表 (纯行级，如修改登记状态等按钮)")
     private List<ActionRowItem> interactionActions;
 
     @Schema(description = "模块数据树载荷")
