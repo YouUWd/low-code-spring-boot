@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 @Schema(description = "操作日志数据行变更")
 public class RowChangeLogDTO implements Serializable {
 
-    @Schema(description = "唯一值（由模块配置的唯一标识字段拼接）")
+    @Schema(description = "唯一值（模块配置的「代表业务唯一性字段」取旧数据中的值，按「【字段1-字段2-字段3】」拼接）")
     private String name;
 
     @Schema(description = "本次变更的字段明细")
