@@ -491,9 +491,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             ModulePermissionDTO p = permMap.get(rootModuleId);
             permission =
                     ModuleSimplePermissionDTO.builder()
-                            .apply(Boolean.TRUE.equals(p.getApply()) && canApply ? 1 : 0)
+                            .apply(Boolean.TRUE.equals(p.getApply()) ? 1 : 0)
                             .view(Boolean.TRUE.equals(p.getView()) ? 1 : 0)
-                            .edit(Boolean.TRUE.equals(p.getEdit()) && canEdit ? 1 : 0)
+                            .edit(Boolean.TRUE.equals(p.getEdit()) ? 1 : 0)
                             .build();
         }
 
