@@ -13,7 +13,8 @@ import lombok.NoArgsConstructor;
 /**
  * 菜单动态数据响应模型 (与 MenuQueryReq 呼应，面向前端 UI 隔离层)
  *
- * <p>顶层包含全局菜单多级列头展示配置 (header)、根模块及子模块汇总权限 (permission)、单据审批链列表 (approval) 与自相似模块数据树载荷 (data)。
+ * <p>顶层包含全局菜单多级列头展示配置 (header)、模块权限汇总 (modulePermission)、单据审批流操作列表 (approvalActions)、 行级定制操作列表
+ * (customActions)、角色交互权限操作列表 (interactionActions) 与自相似模块数据树载荷 (data)。
  */
 @Data
 @Builder
@@ -27,16 +28,16 @@ public class MenuDataResp implements Serializable {
     private MenuHeaderColumnResp header;
 
     @Schema(description = "模块权限汇总 (1-有权限, 0-无权限)")
-    private ModuleSimplePermissionDTO permission;
+    private ModuleSimplePermissionDTO modulePermission;
 
-    @Schema(description = "单据审批链列表信息 (row包含id与btnList)")
-    private List<ApprovalRowItem> approval;
+    @Schema(description = "单据审批流操作列表 (row包含id与btnList)")
+    private List<ActionRowItem> approvalActions;
 
     @Schema(description = "行级定制扩展操作列表 (包含id与btnList，如启停等定制按钮)")
-    private List<ApprovalRowItem> customActions;
+    private List<ActionRowItem> customActions;
 
     @Schema(description = "角色交互权限互动按钮列表 (row中无id为全局操作，包含id为行级操作)")
-    private List<ApprovalRowItem> interactionActions;
+    private List<ActionRowItem> interactionActions;
 
     @Schema(description = "模块数据树载荷")
     private ModuleDataNode data;

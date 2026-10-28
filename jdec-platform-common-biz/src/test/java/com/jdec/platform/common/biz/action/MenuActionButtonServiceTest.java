@@ -3,7 +3,8 @@ package com.jdec.platform.common.biz.action;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.common.biz.custom.ActiveToggleButtonProvider;
 import com.jdec.platform.common.biz.custom.RowCustomActionService;
 import com.jdec.platform.common.biz.interaction.DefaultInteractionButtonProvider;
@@ -111,29 +112,28 @@ class MenuActionButtonServiceTest {
         assertNotNull(bundle);
 
         // 1. 验证 customActions (独立输出启停操作：99状态输出停用按钮)
-        List<ApprovalRowItem> customActions = bundle.getCustomActions();
+        List<ActionRowItem> customActions = bundle.getCustomActions();
         assertNotNull(customActions);
         assertEquals(1, customActions.size());
-        assertEquals(888L, customActions.get(0).getRow().get("id"));
-        assertEquals("CR8888", customActions.get(0).getRow().get("businessNo"));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> customBtns =
-                (List<Map<String, Object>>) customActions.get(0).getRow().get("btnList");
-        assertEquals("deactivate", customBtns.get(0).get("buttonKey"));
-        assertEquals("停用", customBtns.get(0).get("buttonName"));
+        assertEquals(888L, customActions.get(0).getId());
+        assertEquals("CR8888", customActions.get(0).getBusinessNo());
+        List<ActionButtonDTO> customBtns = customActions.get(0).getBtnList();
+        assertNotNull(customBtns);
+        assertEquals("deactivate", customBtns.get(0).getButtonKey());
+        assertEquals("停用", customBtns.get(0).getButtonName());
 
         // 2. 验证 interactionActions (独立输出互动权限：1项全局申请 + 1项行级修改登记状态)
-        List<ApprovalRowItem> interactionActions = bundle.getInteractionActions();
+        List<ActionRowItem> interactionActions = bundle.getInteractionActions();
         assertNotNull(interactionActions);
         assertEquals(2, interactionActions.size());
 
         // 第 1 项：全局申请操作 (无 id/businessNo)
-        assertNull(interactionActions.get(0).getRow().get("id"));
-        assertNull(interactionActions.get(0).getRow().get("businessNo"));
+        assertNull(interactionActions.get(0).getId());
+        assertNull(interactionActions.get(0).getBusinessNo());
 
         // 第 2 项：行级登记状态修改操作 (带 id/businessNo)
-        assertEquals(888L, interactionActions.get(1).getRow().get("id"));
-        assertEquals("CR8888", interactionActions.get(1).getRow().get("businessNo"));
+        assertEquals(888L, interactionActions.get(1).getId());
+        assertEquals("CR8888", interactionActions.get(1).getBusinessNo());
     }
 
     @Test

@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionByModuleResp;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.Collections;
@@ -56,19 +56,18 @@ class InteractionActionServiceTest {
         InteractionActionService service =
                 new InteractionActionService(List.of(new DefaultInteractionButtonProvider()));
 
-        List<ApprovalRowItem> actions = service.buildInteractionActions(List.of(row1, row2), ctx);
+        List<ActionRowItem> actions = service.buildInteractionActions(List.of(row1, row2), ctx);
 
         assertNotNull(actions);
         // 默认全部为全局项：因此仅有 1 个全局 row (无 id 与 businessNo)，包含全部 3 个互动按钮
         assertEquals(1, actions.size());
 
-        ApprovalRowItem globalAction = actions.get(0);
+        ActionRowItem globalAction = actions.get(0);
         assertNotNull(globalAction.getRow());
-        assertNull(globalAction.getRow().get("id"));
-        assertNull(globalAction.getRow().get("businessNo"));
+        assertNull(globalAction.getRow().getId());
+        assertNull(globalAction.getRow().getBusinessNo());
 
-        @SuppressWarnings("unchecked")
-        List<ActionButtonDTO> btns = (List<ActionButtonDTO>) globalAction.getRow().get("btnList");
+        List<ActionButtonDTO> btns = globalAction.getRow().getBtnList();
         assertEquals(3, btns.size());
 
         String json = objectMapper.writeValueAsString(actions);
@@ -127,32 +126,29 @@ class InteractionActionServiceTest {
                 new InteractionActionService(
                         List.of(new DefaultInteractionButtonProvider(), customCompanyProvider));
 
-        List<ApprovalRowItem> actions = service.buildInteractionActions(List.of(row1, row2), ctx);
+        List<ActionRowItem> actions = service.buildInteractionActions(List.of(row1, row2), ctx);
 
         assertNotNull(actions);
         // 预期共 3 项：第 1 项为全局操作 (2个按钮)；第 2 项为 301L 行绑定操作；第 3 项为 302L 行绑定操作
         assertEquals(3, actions.size());
 
         // 1. 全局项：应包含申请和修改信息 (不含被移至行级的修改登记状态)
-        ApprovalRowItem globalAction = actions.get(0);
-        assertNull(globalAction.getRow().get("id"));
-        @SuppressWarnings("unchecked")
-        List<ActionButtonDTO> globalBtns =
-                (List<ActionButtonDTO>) globalAction.getRow().get("btnList");
+        ActionRowItem globalAction = actions.get(0);
+        assertNull(globalAction.getRow().getId());
+        List<ActionButtonDTO> globalBtns = globalAction.getRow().getBtnList();
         assertEquals(2, globalBtns.size());
 
         // 2. 行级项：行 301L 与 302L 应分别输出行级互动按钮 (修改登记状态)
-        ApprovalRowItem rowAction1 = actions.get(1);
-        assertEquals(301L, rowAction1.getRow().get("id"));
-        assertEquals("CR20261027001", rowAction1.getRow().get("businessNo"));
-        @SuppressWarnings("unchecked")
-        List<ActionButtonDTO> rowBtns1 = (List<ActionButtonDTO>) rowAction1.getRow().get("btnList");
+        ActionRowItem rowAction1 = actions.get(1);
+        assertEquals(301L, rowAction1.getRow().getId());
+        assertEquals("CR20261027001", rowAction1.getRow().getBusinessNo());
+        List<ActionButtonDTO> rowBtns1 = rowAction1.getRow().getBtnList();
         assertEquals(1, rowBtns1.size());
         assertEquals("edit_company_reg_status", rowBtns1.get(0).getButtonKey());
 
-        ApprovalRowItem rowAction2 = actions.get(2);
-        assertEquals(302L, rowAction2.getRow().get("id"));
-        assertEquals("CR20261027002", rowAction2.getRow().get("businessNo"));
+        ActionRowItem rowAction2 = actions.get(2);
+        assertEquals(302L, rowAction2.getRow().getId());
+        assertEquals("CR20261027002", rowAction2.getRow().getBusinessNo());
     }
 
     @Test
@@ -190,7 +186,7 @@ class InteractionActionServiceTest {
                                 new DefaultInteractionButtonProvider(),
                                 new CompanyInteractionButtonProvider()));
 
-        List<ApprovalRowItem> actions =
+        List<ActionRowItem> actions =
                 service.buildInteractionActions(
                         List.of(rowActive, rowCancel, rowDeactive, rowDraft), ctx);
 
@@ -203,11 +199,9 @@ class InteractionActionServiceTest {
         assertEquals(3, actions.size());
 
         // 1. 验证全局项
-        ApprovalRowItem globalAction = actions.get(0);
-        assertNull(globalAction.getRow().get("id"));
-        @SuppressWarnings("unchecked")
-        List<ActionButtonDTO> globalBtns =
-                (List<ActionButtonDTO>) globalAction.getRow().get("btnList");
+        ActionRowItem globalAction = actions.get(0);
+        assertNull(globalAction.getRow().getId());
+        List<ActionButtonDTO> globalBtns = globalAction.getRow().getBtnList();
         assertEquals(2, globalBtns.size());
         assertTrue(globalBtns.stream().anyMatch(b -> "company_apply".equals(b.getButtonKey())));
         assertTrue(
@@ -217,22 +211,18 @@ class InteractionActionServiceTest {
                         .anyMatch(b -> "edit_company_reg_status".equals(b.getButtonKey())));
 
         // 2. 验证启用状态行 (101L)
-        ApprovalRowItem activeAction = actions.get(1);
-        assertEquals(101L, activeAction.getRow().get("id"));
-        assertEquals("CR-ACTIVE", activeAction.getRow().get("businessNo"));
-        @SuppressWarnings("unchecked")
-        List<ActionButtonDTO> activeBtns =
-                (List<ActionButtonDTO>) activeAction.getRow().get("btnList");
+        ActionRowItem activeAction = actions.get(1);
+        assertEquals(101L, activeAction.getRow().getId());
+        assertEquals("CR-ACTIVE", activeAction.getRow().getBusinessNo());
+        List<ActionButtonDTO> activeBtns = activeAction.getRow().getBtnList();
         assertEquals(1, activeBtns.size());
         assertEquals("edit_company_reg_status", activeBtns.get(0).getButtonKey());
 
         // 3. 验证取消状态行 (102L)
-        ApprovalRowItem cancelAction = actions.get(2);
-        assertEquals(102L, cancelAction.getRow().get("id"));
-        assertEquals("CR-CANCEL", cancelAction.getRow().get("businessNo"));
-        @SuppressWarnings("unchecked")
-        List<ActionButtonDTO> cancelBtns =
-                (List<ActionButtonDTO>) cancelAction.getRow().get("btnList");
+        ActionRowItem cancelAction = actions.get(2);
+        assertEquals(102L, cancelAction.getRow().getId());
+        assertEquals("CR-CANCEL", cancelAction.getRow().getBusinessNo());
+        List<ActionButtonDTO> cancelBtns = cancelAction.getRow().getBtnList();
         assertEquals(1, cancelBtns.size());
         assertEquals("edit_company_reg_status", cancelBtns.get(0).getButtonKey());
     }
