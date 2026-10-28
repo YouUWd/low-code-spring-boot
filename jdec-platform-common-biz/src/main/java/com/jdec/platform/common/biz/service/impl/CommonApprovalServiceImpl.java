@@ -334,6 +334,29 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
             // 是否草稿
             result.put("approvalChainStatus", approvalChainStatus);
             result.putAll(approvalEngine.getApprovalData(rootModuleId, recordId, btnType));
+            Long userId =
+                    Objects.nonNull(UserContext.getMockUserId())
+                            ? UserContext.getMockUserId()
+                            : UserContext.getRealUserId();
+            Integer lastVersion =
+                    versionList.stream()
+                            .filter(
+                                    v ->
+                                            v != null
+                                                    && Integer.valueOf(99)
+                                                            .equals(v.getStatusValue()))
+                            .map(VersionListResp::getVersion)
+                            .filter(Objects::nonNull)
+                            .max(Integer::compareTo)
+                            .orElse(null);
+            if (Objects.nonNull(userId)
+                    && userId.equals(userInfoResp.getCreateUser().getId())
+                    && Objects.nonNull(lastVersion)
+                    && recordData.get("version_no").equals(lastVersion)) {
+                result.put("requestChange", true);
+            } else {
+                result.put("requestChange", false);
+            }
         }
         return result;
     }
