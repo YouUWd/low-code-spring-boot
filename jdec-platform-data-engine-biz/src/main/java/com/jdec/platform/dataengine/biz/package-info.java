@@ -7,7 +7,6 @@
             "config.api",
             "config.open",
             "auth.api",
-            "approval.api",
             "shared"
         })
 package com.jdec.platform.dataengine.biz;
