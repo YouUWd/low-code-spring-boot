@@ -122,23 +122,42 @@ class MenuActionButtonServiceTest {
         assertEquals("deactivate", customBtns.get(0).getButtonKey());
         assertEquals("停用", customBtns.get(0).getButtonName());
 
-        // 2. 验证 interactionActions (独立输出互动权限：1项全局申请 + 1项行级修改登记状态)
+        // 2. 验证 globalActions (独立输出全局工具栏操作：1项全局申请)
+        List<ActionButtonDTO> globalActions = bundle.getGlobalActions();
+        assertNotNull(globalActions);
+        assertEquals(1, globalActions.size());
+        assertEquals("company_apply", globalActions.get(0).getButtonKey());
+        assertEquals("外部对象申请", globalActions.get(0).getButtonName());
+
+        // 3. 验证 interactionActions (独立输出纯行级互动权限：1项行级修改登记状态)
         List<ActionRowItem> interactionActions = bundle.getInteractionActions();
         assertNotNull(interactionActions);
-        assertEquals(2, interactionActions.size());
-
-        // 第 1 项：全局申请操作 (无 id/businessNo)
-        assertNull(interactionActions.get(0).getId());
-        assertNull(interactionActions.get(0).getBusinessNo());
-
-        // 第 2 项：行级登记状态修改操作 (带 id/businessNo)
-        assertEquals(888L, interactionActions.get(1).getId());
-        assertEquals("CR8888", interactionActions.get(1).getBusinessNo());
+        assertEquals(1, interactionActions.size());
+        assertEquals(888L, interactionActions.get(0).getId());
+        assertEquals("CR8888", interactionActions.get(0).getBusinessNo());
+        assertEquals(
+                "edit_company_reg_status",
+                interactionActions.get(0).getBtnList().get(0).getButtonKey());
     }
 
     @Test
     @DisplayName("测试短路查询时集中输出空包")
     void testBuildEmptyActions() {
+        RoleInteractionPermissionByModuleResp.InteractionPermissionItem applyItem =
+                new RoleInteractionPermissionByModuleResp.InteractionPermissionItem();
+        applyItem.setPermissionCode("company_apply");
+        applyItem.setPermissionName("外部对象申请");
+        applyItem.setType(1);
+
+        RoleInteractionPermissionByModuleResp permResp =
+                new RoleInteractionPermissionByModuleResp();
+        permResp.setApplyPermissions(List.of(applyItem));
+        permResp.setEditPermissions(Collections.emptyList());
+        permResp.setViewPermissions(Collections.emptyList());
+
+        when(sysRolePermissionApi.getRoleInteractionPermissionByModule(10L, 1001L))
+                .thenReturn(permResp);
+
         MenuActionContext ctx =
                 MenuActionContext.builder()
                         .projectNo("company")
@@ -155,5 +174,8 @@ class MenuActionButtonServiceTest {
         assertNotNull(bundle);
         assertNotNull(bundle.getCustomActions());
         assertTrue(bundle.getCustomActions().isEmpty());
+        assertNotNull(bundle.getGlobalActions());
+        assertEquals(1, bundle.getGlobalActions().size());
+        assertEquals("company_apply", bundle.getGlobalActions().get(0).getButtonKey());
     }
 }
