@@ -2,6 +2,7 @@ package com.jdec.platform.validation.externalobject;
 
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -31,6 +32,8 @@ import org.springframework.stereotype.Component;
  *   <li>整单数据：info、basic_info、member、address、company_contact、financial_account、digital_account、credit_rating；
  *   <li>查重候选：{@code active=1} 的外部对象；尚未终结（业务状态不是 99/-99）的，再补充同业务编号下最后一个启用版本。
  * </ul>
+ *
+ * <p>定位不到校验对象时返回 {@link ApiCodeEnum#WARNING_EXISTS}（702），与其它业务异常的 700 区分。
  */
 @Slf4j
 @Component
@@ -68,7 +71,7 @@ public class ExternalObjectSnapshotRepository {
                         .and(intField("info", "deleted").eq(0))
                         .fetchOne();
         if (infoRecord == null) {
-            throw new BusinessException("外部对象不存在或已删除");
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "外部对象不存在或已删除");
         }
         return toSnapshot(dsl, infoRecord);
     }
@@ -85,7 +88,7 @@ public class ExternalObjectSnapshotRepository {
      */
     public ExternalObjectSnapshot load(String businessNo, Integer versionNo) {
         if (businessNo == null || businessNo.isBlank() || versionNo == null) {
-            throw new BusinessException("外部对象业务编号或版本号不能为空");
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "外部对象业务编号或版本号不能为空");
         }
         DSLContext dsl = dsl();
         Record infoRecord =
@@ -97,7 +100,7 @@ public class ExternalObjectSnapshotRepository {
                         .limit(1)
                         .fetchOne();
         if (infoRecord == null) {
-            throw new BusinessException("外部对象不存在或已删除");
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "外部对象不存在或已删除");
         }
         return toSnapshot(dsl, infoRecord);
     }

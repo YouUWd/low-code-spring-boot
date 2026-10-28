@@ -4,6 +4,7 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.RequestContextSnapshot;
 import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.security.model.LoginUser;
 import java.util.Map;
@@ -32,6 +33,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>注意：独立线程拿到的是另一条连接且不在调用方事务内，只能读到已提交的数据，读不到调用方尚未提交的改动。因此校验应依赖
  * 前端提交的参数或上一笔已落库的数据，不要在“本事务刚写完、还没提交”的数据上做校验。
+ *
+ * <p>执行器自身失败（线程池已满、超时、中断等）同样按校验失败返回 {@link ApiCodeEnum#WARNING_EXISTS}（702）。
  */
 @Slf4j
 @Component
@@ -85,7 +88,7 @@ public class SubmitCheckTaskExecutor {
             executor.execute(future);
         } catch (RejectedExecutionException e) {
             log.error("校验任务[{}]提交失败：校验线程池已满", taskName, e);
-            throw new BusinessException("系统繁忙，请稍后重试", e);
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "系统繁忙，请稍后重试", e);
         }
 
         try {
@@ -94,11 +97,11 @@ public class SubmitCheckTaskExecutor {
             future.cancel(true);
             Thread.currentThread().interrupt();
             log.error("校验任务[{}]等待结果时被中断", taskName, e);
-            throw new BusinessException("校验被中断，请稍后重试", e);
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "校验被中断，请稍后重试", e);
         } catch (TimeoutException e) {
             future.cancel(true);
             log.error("校验任务[{}]执行超时（{}秒）", taskName, TIMEOUT_SECONDS, e);
-            throw new BusinessException("校验超时，请稍后重试", e);
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "校验超时，请稍后重试", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             if (cause instanceof RuntimeException runtimeException) {
@@ -108,7 +111,7 @@ public class SubmitCheckTaskExecutor {
                 throw error;
             }
             log.error("校验任务[{}]执行失败", taskName, cause);
-            throw new BusinessException("校验执行失败", cause);
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "校验执行失败", cause);
         }
     }
 
