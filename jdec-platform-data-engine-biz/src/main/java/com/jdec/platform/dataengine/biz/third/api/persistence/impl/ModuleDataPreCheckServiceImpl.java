@@ -5,6 +5,7 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
+import com.jdec.platform.dataengine.biz.enums.PermissionType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPreCheckService;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -41,17 +42,18 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
     public Boolean prePermissionCheck(
             NestedModuleDataDTO param,
             NestedModuleDataDTO base,
-            Boolean isOverAllInsert,
+            PermissionType permissionType,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         Map<Long, Map<Long, Map<String, Object>>> dataMap = new HashMap<>();
 
         // 父模块 1001 的记录 123  对应子模块 1002 的 数据 134,156
         Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap = new HashMap<>();
-        if (!isOverAllInsert) {
+        if (base != null) {
             covertDataMap(base, 0L, 0L, dataMap, parentToChildDataMap, moduleCacheMap);
         }
         Map<Long, Map<String, Set<String>>> result =
-                checkPermission(param, dataMap, parentToChildDataMap, moduleCacheMap);
+                checkPermission(
+                        param, dataMap, parentToChildDataMap, permissionType, moduleCacheMap);
         if (CollectionUtil.isEmpty(result)) {
             return true;
         }
@@ -155,6 +157,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             NestedModuleDataDTO param,
             Map<Long, Map<Long, Map<String, Object>>> dataMap,
             Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
+            PermissionType permissionType,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         Map<Long, Map<String, Set<String>>> result = new HashMap<>();
         if (param == null) {
@@ -176,6 +179,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                 dataMap,
                 sysModuleCombineInfo,
                 dataId == null || dataId <= 0,
+                permissionType,
                 result);
         if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
             for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
@@ -187,6 +191,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                         currentModuleId,
                         dataId,
                         dataId == null || dataId <= 0,
+                        permissionType,
                         moduleCacheMap,
                         result);
             }
@@ -201,6 +206,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             Long parentModuleId,
             Long parentDataId,
             Boolean isOverAllInsert,
+            PermissionType permissionType,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Map<Long, Map<String, Set<String>>> result) {
         if (param == null) {
@@ -222,6 +228,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                                     currentModuleId,
                                     parentDataId,
                                     isOverAllInsert,
+                                    permissionType,
                                     moduleCacheMap,
                                     result);
                         }
@@ -265,19 +272,35 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
         // 有删除的数据 要有写字段权限
         if (deleteIds.size() > 0) {
             // 这个模块 下 有数据要删除，需要有写字段权限
-            Boolean canWrite =
-                    sysModuleCombineInfo
-                                    .getWriteFields()
-                                    .getOrDefault(
-                                            sysModuleCombineInfo.getModuleInfo().getPrimaryTable(),
-                                            new HashSet<>())
-                                    .size()
-                            > 0;
+            Boolean canWrite = false;
+            if (permissionType == PermissionType.APPLY) {
+                canWrite =
+                        sysModuleCombineInfo
+                                        .getWriteFields()
+                                        .getOrDefault(
+                                                sysModuleCombineInfo
+                                                        .getModuleInfo()
+                                                        .getPrimaryTable(),
+                                                new HashSet<>())
+                                        .size()
+                                > 0;
+            } else if (permissionType == PermissionType.EDIT) {
+                canWrite =
+                        sysModuleCombineInfo
+                                        .getUpdateFields()
+                                        .getOrDefault(
+                                                sysModuleCombineInfo
+                                                        .getModuleInfo()
+                                                        .getPrimaryTable(),
+                                                new HashSet<>())
+                                        .size()
+                                > 0;
+            }
             if (!canWrite) {
                 result.computeIfAbsent(
                                 sysModuleCombineInfo.getModuleInfo().getModuleId(),
                                 k -> new HashMap<>())
-                        .computeIfAbsent("apply", k -> new HashSet<>())
+                        .computeIfAbsent(permissionType.name(), k -> new HashSet<>())
                         .add(sysModuleCombineInfo.getModuleInfo().getPrimaryTable() + ".deleted");
             }
         }
@@ -292,7 +315,13 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                                         .getModuleInfo()
                                         .getPrimaryTable());
                 boolean isInsert = isOverAllInsert || (dataId == null || dataId <= 0);
-                checkRow(recordDataDTO, dataMap, sysModuleCombineInfo, isOverAllInsert, result);
+                checkRow(
+                        recordDataDTO,
+                        dataMap,
+                        sysModuleCombineInfo,
+                        isOverAllInsert,
+                        permissionType,
+                        result);
                 if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
                     for (NestedModuleDataDTO child : recordDataDTO.getChildren()) {
                         checkNestedDataPermission(
@@ -302,6 +331,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                                 currentModuleId,
                                 dataId,
                                 isInsert,
+                                permissionType,
                                 moduleCacheMap,
                                 result);
                     }
@@ -316,6 +346,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             Map<Long, Map<Long, Map<String, Object>>> dataMap,
             SysModuleCombineInfo sysModuleCombineInfo,
             Boolean isInsert,
+            PermissionType permissionType,
             Map<Long, Map<String, Set<String>>> result) {
         if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
             Set<String> uncheckedFields = new HashSet<>();
@@ -340,6 +371,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                                             .getJoinField());
                 }
             }
+
             Long dataId =
                     DataPersistenceUtil.getTableRowIdWithTabName(
                             recordDataDTO.getRow(),
@@ -363,16 +395,14 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     }
 
                     boolean canWrite =
-                            sysModuleCombineInfo
-                                    .getWriteFields()
-                                    .getOrDefault(field[0], new HashSet<>())
-                                    .contains(field[1]);
+                            checkFieldPermission(
+                                    permissionType, field[0], field[1], sysModuleCombineInfo);
                     if (!canWrite) {
                         // 没有写权限字段
                         result.computeIfAbsent(
                                         sysModuleCombineInfo.getModuleInfo().getModuleId(),
                                         k -> new HashMap<>())
-                                .computeIfAbsent("apply", k -> new HashSet<>())
+                                .computeIfAbsent(permissionType.name(), k -> new HashSet<>())
                                 .add(key);
                     }
                 }
@@ -407,18 +437,16 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                         continue;
                     }
 
-                    boolean canUpdate =
-                            sysModuleCombineInfo
-                                    .getUpdateFields()
-                                    .getOrDefault(field[0], new HashSet<>())
-                                    .contains(field[1]);
-                    if (!canUpdate) {
+                    boolean canWrite =
+                            checkFieldPermission(
+                                    permissionType, field[0], field[1], sysModuleCombineInfo);
+                    if (!canWrite) {
                         //
                         // 没有编辑 权限字段
                         result.computeIfAbsent(
                                         sysModuleCombineInfo.getModuleInfo().getModuleId(),
                                         k -> new HashMap<>())
-                                .computeIfAbsent("edit", k -> new HashSet<>())
+                                .computeIfAbsent(permissionType.name(), k -> new HashSet<>())
                                 .add(key);
                     }
                 }
@@ -426,5 +454,24 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             }
         }
         return true;
+    }
+
+    private Boolean checkFieldPermission(
+            PermissionType permissionType,
+            String table,
+            String field,
+            SysModuleCombineInfo sysModuleCombineInfo) {
+        if (permissionType == PermissionType.APPLY) {
+            return sysModuleCombineInfo
+                    .getWriteFields()
+                    .getOrDefault(table, new HashSet<>())
+                    .contains(field);
+        } else if (permissionType == PermissionType.EDIT) {
+            return sysModuleCombineInfo
+                    .getUpdateFields()
+                    .getOrDefault(table, new HashSet<>())
+                    .contains(field);
+        }
+        return false;
     }
 }

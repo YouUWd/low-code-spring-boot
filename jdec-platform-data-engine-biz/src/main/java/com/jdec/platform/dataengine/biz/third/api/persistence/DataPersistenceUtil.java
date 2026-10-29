@@ -58,6 +58,16 @@ public class DataPersistenceUtil {
         return businessNo;
     }
 
+    public static Integer getTableRowBusinessStatusWithTabName(
+            Map<String, Object> record, String tabName) {
+        Object obj =
+                record.get(
+                        getFullFieldName(
+                                tabName, CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD));
+        Integer status = obj instanceof Number num ? num.intValue() : null;
+        return status;
+    }
+
     public static Boolean getTableRowDeletedFlagWithTabName(
             Map<String, Object> record, String tabName) {
         Object obj =

@@ -3,6 +3,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.collection.ListUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.BusinessFormStatusReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -14,6 +15,7 @@ import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
+import com.jdec.platform.dataengine.biz.enums.PermissionType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
@@ -133,12 +135,16 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         }
 
         ModuleDataStoreDTO moduleDataStoreDTO = ModuleDataStoreDTO.builder().build();
+        PermissionType permissionType =
+                computePermissionType(
+                        isApproval, isOverallInsert, detailData, rootModule.getModuleInfo());
         switch (saveType) {
             case SAVE -> {
                 // 普通保存,
                 // todo 校验字段权限是否可编辑可写入
+                // 计算使用编辑权限还是使用申请权限
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, isOverallInsert, moduleCacheMap);
+                        nestedSaveData, detailData, permissionType, moduleCacheMap);
                 // 全局插入
                 if (isOverallInsert) {
                     Integer versionNo = 1;
@@ -177,7 +183,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                 // 实时新增,修改 // 实时新增 是个全局更新 必须要有 detailData
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, isOverallInsert, moduleCacheMap);
+                        nestedSaveData, detailData, permissionType, moduleCacheMap);
 
                 // 全局更新数据,先从主表拿出 版本号
                 String businessNo =
@@ -197,7 +203,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             case APPROVAL_CHANGE -> {
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, isOverallInsert, moduleCacheMap);
+                        nestedSaveData, detailData, PermissionType.APPLY, moduleCacheMap);
                 // 变更插入 根模块 主表的业务编号
                 String businessNo =
                         DataPersistenceUtil.getTableRowBusinessNoWithTabName(
@@ -340,6 +346,31 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
 
         return moduleDataPersistenceService.modifyBusinessFormStatus(
                 rootMainTable, req.getBusinessNo(), req.getOriginalStatus(), req.getTargetStatus());
+    }
+
+    private PermissionType computePermissionType(
+            Boolean isApproval,
+            Boolean isOverallInsert,
+            NestedModuleDataDTO detailData,
+            ModuleInfo rootModule) {
+        // 从根节点新增
+        if (isOverallInsert) {
+            return PermissionType.APPLY;
+        }
+        // 保存
+        if (isApproval) {
+            Integer status =
+                    DataPersistenceUtil.getTableRowBusinessStatusWithTabName(
+                            detailData.getRecord().get(0).getRow(), rootModule.getPrimaryTable());
+            if (status != null && status != 1) {
+                return PermissionType.EDIT;
+            } else {
+                return PermissionType.APPLY;
+            }
+        } else {
+            // 不带审批链的保存
+            return PermissionType.EDIT;
+        }
     }
 
     @Override
