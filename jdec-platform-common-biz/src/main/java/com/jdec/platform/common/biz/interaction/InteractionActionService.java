@@ -1,7 +1,7 @@
 package com.jdec.platform.common.biz.interaction;
 
 import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +13,7 @@ import org.springframework.util.CollectionUtils;
 /**
  * 互动权限操作分发服务 (InteractionActionService)
  *
- * <p>聚合所有生效的 {@link InteractionButtonProvider}，编排生成包含全局与行级绑定的 {@link ApprovalRowItem} 列表。
+ * <p>聚合所有生效的 {@link InteractionButtonProvider}，编排生成包含全局与行级绑定的 {@link ActionRowItem} 列表。
  */
 @Slf4j
 @Service
@@ -31,65 +31,73 @@ public class InteractionActionService {
     }
 
     /**
-     * 构建模块的互动操作列表 (全局无绑定 + 行绑定操作)
+     * 收集模块的全局互动操作按钮 (供页面顶部工具栏直接渲染)
      *
-     * @param rawRecords 当前页原始物理数据行列表
      * @param ctx 互动操作上下文
-     * @return 互动按钮行项列表，若无有效按钮则返回 null 或空列表
+     * @return 全局互动按钮列表，若无有效按钮则返回 null
      */
-    public List<ApprovalRowItem> buildInteractionActions(
-            List<DataRow> rawRecords, InteractionActionContext ctx) {
+    public List<ActionButtonDTO> buildGlobalActions(InteractionActionContext ctx) {
         if (ctx == null || CollectionUtils.isEmpty(providers)) {
             return null;
         }
 
-        // 1. 过滤当前上下文生效的 Providers (优先采用特定定制 Provider，若无则使用全局兜底 Provider)
         List<InteractionButtonProvider> activeProviders = resolveActiveProviders(ctx);
-
         if (activeProviders.isEmpty()) {
             return null;
         }
 
-        List<ApprovalRowItem> result = new ArrayList<>();
-
-        // 2. 收集全局互动操作按钮 (与行无关)
         List<ActionButtonDTO> globalBtns = new ArrayList<>();
         for (InteractionButtonProvider provider : activeProviders) {
             provider.addGlobalButtons(ctx, globalBtns);
         }
 
-        if (!globalBtns.isEmpty()) {
-            result.add(ApprovalRowItem.ofGlobal(globalBtns));
+        return globalBtns.isEmpty() ? null : globalBtns;
+    }
+
+    /**
+     * 收集模块的行级互动操作列表 (纯行级单据操作，严格保证包含 id 与 businessNo)
+     *
+     * @param rawRecords 当前页原始物理数据行列表
+     * @param ctx 互动操作上下文
+     * @return 纯行级互动按钮行项列表，若无有效按钮则返回 null
+     */
+    public List<ActionRowItem> buildRowActions(
+            List<DataRow> rawRecords, InteractionActionContext ctx) {
+        if (ctx == null
+                || CollectionUtils.isEmpty(providers)
+                || CollectionUtils.isEmpty(rawRecords)) {
+            return null;
         }
 
-        // 3. 逐行收集行相关互动操作按钮 (与行数据字段状态关联)
-        if (!CollectionUtils.isEmpty(rawRecords)) {
-            String primaryTable = ctx.getPrimaryTable();
-            for (DataRow rawRow : rawRecords) {
-                if (rawRow == null) {
-                    continue;
-                }
-                Long recordId = primaryTable != null ? rawRow.getLong(primaryTable, "id") : null;
-                String businessNo =
-                        primaryTable != null ? rawRow.getString(primaryTable, "business_no") : null;
-                if (businessNo == null || businessNo.isBlank()) {
-                    businessNo =
-                            primaryTable != null
-                                    ? rawRow.getString(primaryTable, "businessNo")
-                                    : null;
-                }
-                if (recordId == null && (businessNo == null || businessNo.isBlank())) {
-                    continue;
-                }
+        List<InteractionButtonProvider> activeProviders = resolveActiveProviders(ctx);
+        if (activeProviders.isEmpty()) {
+            return null;
+        }
 
-                List<ActionButtonDTO> rowBtns = new ArrayList<>();
-                for (InteractionButtonProvider provider : activeProviders) {
-                    provider.addRowButtons(rawRow, ctx, rowBtns);
-                }
+        List<ActionRowItem> result = new ArrayList<>();
+        String primaryTable = ctx.getPrimaryTable();
+        for (DataRow rawRow : rawRecords) {
+            if (rawRow == null) {
+                continue;
+            }
+            Long recordId = primaryTable != null ? rawRow.getLong(primaryTable, "id") : null;
+            String businessNo =
+                    primaryTable != null ? rawRow.getString(primaryTable, "business_no") : null;
+            if (businessNo == null || businessNo.isBlank()) {
+                businessNo =
+                        primaryTable != null ? rawRow.getString(primaryTable, "businessNo") : null;
+            }
+            if (recordId == null && (businessNo == null || businessNo.isBlank())) {
+                continue;
+            }
 
-                if (!rowBtns.isEmpty()) {
-                    result.add(ApprovalRowItem.ofRow(recordId, businessNo, rowBtns));
-                }
+            List<ActionButtonDTO> rowBtns = new ArrayList<>();
+            for (InteractionButtonProvider provider : activeProviders) {
+                provider.addRowButtons(rawRow, ctx, rowBtns);
+            }
+
+            if (!rowBtns.isEmpty()) {
+                result.add(ActionRowItem.ofRow(recordId, businessNo, rowBtns));
             }
         }
 

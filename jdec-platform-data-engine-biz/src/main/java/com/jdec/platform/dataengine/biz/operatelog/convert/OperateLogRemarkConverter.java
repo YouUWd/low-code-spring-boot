@@ -38,11 +38,29 @@ import org.springframework.stereotype.Service;
  *
  * <p>按模块树并行下降：模块按 {@code moduleId} 对齐，数据行按主键 {@code id} 对齐；新行无主键视为新增，
  * 旧行在新数据中不存在视为删除（删除只记录唯一标识字段）。主子模块变更挂到对应父行的 {@code children} 下。
+ *
+ * <p>数据行名称 {@code name} 取自模块配置的「代表业务唯一性字段」（sys_module_field.biz_key_order）：
+ * 优先取旧数据中的字段值，旧数据中缺失时退回本次提交的新值，多字段按「【字段1-字段2-字段3】」拼接。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class OperateLogRemarkConverter {
+
+    /** 数据行名称中唯一标识字段的拼接分隔符 */
+    private static final String UNIQUE_NAME_SEPARATOR = "-";
+
+    /** 数据行名称的前缀、后缀（整体包裹唯一标识字段拼接结果，如【W001-张三】） */
+    private static final String UNIQUE_NAME_PREFIX = "【";
+
+    private static final String UNIQUE_NAME_SUFFIX = "】";
+
+    /** 多值字段（数组）展示文本的拼接分隔符 */
+    private static final String MULTI_VALUE_SEPARATOR = ",";
+
+    /** 结构化字段值（引用/词云回填的对象）取展示文本时按顺序匹配的名称属性 */
+    private static final List<String> DISPLAY_TEXT_KEYS =
+            List.of("name", "displayName", "display_name", "label", "text", "title", "value");
 
     private final SysMenuApi sysMenuApi;
 
@@ -144,11 +162,9 @@ public class OperateLogRemarkConverter {
                                 .add(
                                         RowChangeLogDTO.builder()
                                                 .name(
-                                                        DataPersistenceUtil.getUniqueName(
-                                                                DataPersistenceUtil
-                                                                        .getTableRowMapFromWideRow(
-                                                                                newRec.getRow(),
-                                                                                primaryTable),
+                                                        buildRowName(
+                                                                getRowMap(oldRec, primaryTable),
+                                                                getRowMap(newRec, primaryTable),
                                                                 uniqueFields))
                                                 .children(children)
                                                 .build());
@@ -167,11 +183,9 @@ public class OperateLogRemarkConverter {
                         rowLog =
                                 RowChangeLogDTO.builder()
                                         .name(
-                                                DataPersistenceUtil.getUniqueName(
-                                                        DataPersistenceUtil
-                                                                .getTableRowMapFromWideRow(
-                                                                        newRec.getRow(),
-                                                                        primaryTable),
+                                                buildRowName(
+                                                        null,
+                                                        getRowMap(newRec, primaryTable),
                                                         uniqueFields))
                                         .build();
                     }
@@ -266,7 +280,7 @@ public class OperateLogRemarkConverter {
             return null;
         }
         return RowChangeLogDTO.builder()
-                .name(DataPersistenceUtil.getUniqueName(newRow, uniqueFields))
+                .name(buildRowName(oldRow, newRow, uniqueFields))
                 .columns(columns)
                 .build();
     }
@@ -283,7 +297,7 @@ public class OperateLogRemarkConverter {
             return null;
         }
         return RowChangeLogDTO.builder()
-                .name(DataPersistenceUtil.getUniqueName(newRow, uniqueFields))
+                .name(buildRowName(null, newRow, uniqueFields))
                 .columns(columns)
                 .build();
     }
@@ -535,9 +549,89 @@ public class OperateLogRemarkConverter {
             }
         }
         return RowChangeLogDTO.builder()
-                .name(DataPersistenceUtil.getUniqueName(rowMap, uniqueFields))
+                .name(buildRowName(rowMap, null, uniqueFields))
                 .columns(columns.isEmpty() ? null : columns)
                 .build();
+    }
+
+    /**
+     * 数据行名称：按模块配置的「代表业务唯一性字段」取值，字段值优先取旧数据，旧数据中缺失（新增行或旧详情未返回该字段）时退回新值，按「【字段1-字段2-字段3】」拼接；字段值均为空时返回空串。
+     *
+     * @param oldRow 旧数据行，新增行为 null
+     * @param newRow 本次提交的数据行，删除行为 null
+     * @param uniqueFields 模块配置的代表业务唯一性字段（按 biz_key_order 排序）
+     */
+    private String buildRowName(
+            Map<String, Object> oldRow, Map<String, Object> newRow, List<String> uniqueFields) {
+        if (CollectionUtil.isEmpty(uniqueFields)) {
+            return "";
+        }
+        List<String> values = new ArrayList<>();
+        for (String uniqueField : uniqueFields) {
+            String value = getDisplayText(oldRow, uniqueField);
+            if (StringUtils.isBlank(value)) {
+                value = getDisplayText(newRow, uniqueField);
+            }
+            if (StringUtils.isNotBlank(value)) {
+                values.add(value);
+            }
+        }
+        if (values.isEmpty()) {
+            return "";
+        }
+        return UNIQUE_NAME_PREFIX + String.join(UNIQUE_NAME_SEPARATOR, values) + UNIQUE_NAME_SUFFIX;
+    }
+
+    private Map<String, Object> getRowMap(RecordDataDTO rec, String primaryTable) {
+        if (rec == null || rec.getRow() == null) {
+            return null;
+        }
+        return DataPersistenceUtil.getTableRowMapFromWideRow(rec.getRow(), primaryTable);
+    }
+
+    private String getDisplayText(Map<String, Object> row, String field) {
+        if (row == null || !row.containsKey(field)) {
+            return null;
+        }
+        return toDisplayText(normalizeValue(row.get(field)));
+    }
+
+    /** 字段值转展示文本：结构化值（引用/词云回填的对象或数组）取名称类属性，避免把 JSON 原文拼进数据行名称 */
+    private String toDisplayText(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (isStructuredValue(value)) {
+            return toDisplayText(toJsonNode(value));
+        }
+        String text = DataPersistenceUtil.getFieldTxtValue(value);
+        return StringUtils.isBlank(text) ? null : text;
+    }
+
+    private String toDisplayText(JsonNode node) {
+        if (isEmptyJsonNode(node)) {
+            return null;
+        }
+        if (node.isValueNode()) {
+            return node.asText();
+        }
+        if (node.isArray()) {
+            List<String> parts = new ArrayList<>();
+            for (JsonNode item : node) {
+                String text = toDisplayText(item);
+                if (StringUtils.isNotBlank(text)) {
+                    parts.add(text);
+                }
+            }
+            return String.join(MULTI_VALUE_SEPARATOR, parts);
+        }
+        for (String key : DISPLAY_TEXT_KEYS) {
+            String text = toDisplayText(node.get(key));
+            if (StringUtils.isNotBlank(text)) {
+                return text;
+            }
+        }
+        return null;
     }
 
     private List<ModuleChangeLogDTO> buildChildren(

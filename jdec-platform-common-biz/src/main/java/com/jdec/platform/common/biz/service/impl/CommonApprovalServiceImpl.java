@@ -303,6 +303,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
             List<VersionListResp> versionList = dataEngineApi.getVersionList(versionListQueryReq);
             result.put("versionList", versionList);
             // 当前状态
+            Integer versionNo = 0;
             Map<String, Object> approvalStatus = new HashMap<>();
             if (Objects.nonNull(btnType)
                     && (btnType.equals("change") || btnType.equals("change-change"))) {
@@ -317,7 +318,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 approvalStatus.put("statusBackground", statusNode.getStatusBackground());
                 approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
                 // 当前版本号
-                result.put("versionNo", versionList.getFirst().getVersion());
+                versionNo = versionList.getFirst().getVersion();
+
             } else {
                 ModuleApprovalChainConfigResp.StatusNode statusNode =
                         sysStatusApi.getStatusByValue(
@@ -328,12 +330,36 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 approvalStatus.put("statusBackground", statusNode.getStatusBackground());
                 approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
                 // 当前版本号
-                result.put("versionNo", recordData.get("version_no"));
+                versionNo = (Integer) recordData.get("version_no");
             }
+            result.put("versionNo", versionNo);
             result.put("approvalStatus", approvalStatus);
             // 是否草稿
             result.put("approvalChainStatus", approvalChainStatus);
             result.putAll(approvalEngine.getApprovalData(rootModuleId, recordId, btnType));
+            Long userId =
+                    Objects.nonNull(UserContext.getMockUserId())
+                            ? UserContext.getMockUserId()
+                            : UserContext.getRealUserId();
+            Integer lastVersion =
+                    versionList.stream()
+                            .filter(
+                                    v ->
+                                            v != null
+                                                    && Integer.valueOf(99)
+                                                            .equals(v.getStatusValue()))
+                            .map(VersionListResp::getVersion)
+                            .filter(Objects::nonNull)
+                            .max(Integer::compareTo)
+                            .orElse(null);
+            if (Objects.nonNull(userId)
+                    && !userId.equals(userInfoResp.getCreateUser().getId())
+                    && Objects.nonNull(lastVersion)
+                    && versionNo.equals(lastVersion)) {
+                result.put("requestChange", true);
+            } else {
+                result.put("requestChange", false);
+            }
         }
         return result;
     }

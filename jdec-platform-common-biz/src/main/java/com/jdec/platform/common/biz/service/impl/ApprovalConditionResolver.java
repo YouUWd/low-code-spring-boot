@@ -1,8 +1,10 @@
 package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.dto.ApprovalIdButton;
+import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.common.api.dto.response.UserSimpleResp;
 import com.jdec.platform.data.api.dto.common.DataRow;
@@ -10,9 +12,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -29,8 +29,9 @@ import org.springframework.util.CollectionUtils;
  *
  * <ul>
  *   <li>构建针对审批链单据编号列表的过滤条件（{@code business_no IN (:businessNos)}）。
- *   <li>从审批引擎响应中提取去重的业务单据号（{@code business_no}）与记录主键（{@code recordId}）。
- *   <li>根据审批类型（1-待办、2-已办、3-全部）与草稿状态组装数据行级审批操作按钮（办理 / 查阅）。
+ *   <li>从轻量级审批引擎响应 (ApprovalBusinessNoResp) 中提取去重的业务单据号（{@code business_no}）。
+ *   <li>根据审批类型（1-待办、2-已办、3-全部）与草稿状态组装面向对象的强类型审批操作按钮： 待办为 {buttonKey: "handle", buttonName:
+ *       "办理"}，已办为 {buttonKey: "view", buttonName: "查阅"}。
  * </ul>
  */
 @Component
@@ -38,10 +39,11 @@ public class ApprovalConditionResolver {
 
     public static final String BUSINESS_NO_COLUMN = "business_no";
 
-    private static final List<Map<String, Object>> HANDLE_BUTTONS =
-            List.of(Map.of("buttonKey", "handle", "buttonName", "办理"));
-    private static final List<Map<String, Object>> VIEW_BUTTONS =
-            List.of(Map.of("buttonKey", "view", "buttonName", "查阅"));
+    public static final ActionButtonDTO HANDLE_BUTTON = ActionButtonDTO.of("handle", "办理");
+    public static final ActionButtonDTO VIEW_BUTTON = ActionButtonDTO.of("view", "查阅");
+
+    private static final List<ActionButtonDTO> HANDLE_BUTTONS = List.of(HANDLE_BUTTON);
+    private static final List<ActionButtonDTO> VIEW_BUTTONS = List.of(VIEW_BUTTON);
 
     /**
      * 构建审批单据号匹配的 jOOQ 条件分支
@@ -82,8 +84,69 @@ public class ApprovalConditionResolver {
                 .collect(Collectors.toSet());
     }
 
-    /** 构建分页列表每行对应的审批操作按钮列表 */
-    public static List<ApprovalRowItem> buildApprovalRows(
+    /**
+     * 构建分页列表每行对应的审批操作按钮列表 (基于轻量级 ApprovalBusinessNoResp，面向对象强类型)
+     *
+     * <ul>
+     *   <li>1-待办：每行装配【办理】按钮 {buttonKey: "handle", buttonName: "办理"}
+     *   <li>2-已办：每行装配【查阅】按钮 {buttonKey: "view", buttonName: "查阅"}
+     *   <li>3-全部：属于待办单号或本人草稿装配【办理】，其余装配【查阅】
+     * </ul>
+     */
+    public static List<ActionRowItem> buildApprovalRows(
+            List<DataRow> rawRecords,
+            String primaryTable,
+            Integer approvalType,
+            List<ApprovalBusinessNoResp> approvalResp,
+            Long currentUserId) {
+        if (CollectionUtils.isEmpty(rawRecords)) {
+            return Collections.emptyList();
+        }
+        List<ActionRowItem> approvalRows = new ArrayList<>(rawRecords.size());
+
+        Set<String> todoNos = Collections.emptySet();
+        if ((approvalType == null || approvalType == 3) && !CollectionUtils.isEmpty(approvalResp)) {
+            todoNos =
+                    approvalResp.stream()
+                            .filter(Objects::nonNull)
+                            .filter(item -> Integer.valueOf(1).equals(item.getApprovalType()))
+                            .map(ApprovalBusinessNoResp::getBusinessNumber)
+                            .filter(no -> no != null && !no.isBlank())
+                            .map(String::trim)
+                            .collect(Collectors.toSet());
+        }
+
+        for (DataRow rawRow : rawRecords) {
+            if (rawRow == null) {
+                continue;
+            }
+            Long recordId = rawRow.getLong(primaryTable, "id");
+            String businessNo = rawRow.getString(primaryTable, BUSINESS_NO_COLUMN);
+            if (businessNo == null || businessNo.isBlank()) {
+                businessNo = rawRow.getString(primaryTable, "businessNo");
+            }
+            if (recordId == null && (businessNo == null || businessNo.isBlank())) {
+                continue;
+            }
+
+            List<ActionButtonDTO> btns =
+                    resolveRowButtons(
+                            rawRow,
+                            primaryTable,
+                            recordId,
+                            businessNo,
+                            approvalType,
+                            todoNos,
+                            Collections.emptySet(),
+                            currentUserId);
+
+            approvalRows.add(ActionRowItem.ofRow(recordId, businessNo, btns));
+        }
+        return approvalRows;
+    }
+
+    /** 兼容历史基于 ApprovalIdButtonListResp 的重载方法 */
+    public static List<ActionRowItem> buildApprovalRows(
             List<DataRow> rawRecords,
             String primaryTable,
             Integer approvalType,
@@ -92,7 +155,7 @@ public class ApprovalConditionResolver {
         if (CollectionUtils.isEmpty(rawRecords)) {
             return Collections.emptyList();
         }
-        List<ApprovalRowItem> approvalRows = new ArrayList<>(rawRecords.size());
+        List<ActionRowItem> approvalRows = new ArrayList<>(rawRecords.size());
 
         Set<String> todoNos = Collections.emptySet();
         Set<Long> todoIds = Collections.emptySet();
@@ -114,7 +177,7 @@ public class ApprovalConditionResolver {
                 continue;
             }
 
-            List<Map<String, Object>> btns =
+            List<ActionButtonDTO> btns =
                     resolveRowButtons(
                             rawRow,
                             primaryTable,
@@ -125,20 +188,12 @@ public class ApprovalConditionResolver {
                             todoIds,
                             currentUserId);
 
-            Map<String, Object> rowPayload = new LinkedHashMap<>();
-            if (recordId != null) {
-                rowPayload.put("id", recordId);
-            }
-            if (businessNo != null && !businessNo.isBlank()) {
-                rowPayload.put("businessNo", businessNo);
-            }
-            rowPayload.put("btnList", btns);
-            approvalRows.add(ApprovalRowItem.builder().row(rowPayload).build());
+            approvalRows.add(ActionRowItem.ofRow(recordId, businessNo, btns));
         }
         return approvalRows;
     }
 
-    private static List<Map<String, Object>> resolveRowButtons(
+    private static List<ActionButtonDTO> resolveRowButtons(
             DataRow rawRow,
             String primaryTable,
             Long recordId,

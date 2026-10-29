@@ -1,12 +1,11 @@
 package com.jdec.platform.common.biz.custom;
 
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -15,7 +14,7 @@ import org.springframework.util.CollectionUtils;
 /**
  * 行级定制操作分发器 (RowCustomActionService)
  *
- * <p>自动发现并聚合所有注入的 {@link CustomButtonProvider}，按行执行按钮收集并组装为 {@link ApprovalRowItem} 列表。
+ * <p>自动发现并聚合所有注入的 {@link CustomButtonProvider}，按行执行按钮收集并组装为面向对象的 {@link ActionRowItem} 列表。
  */
 @Slf4j
 @Component
@@ -39,7 +38,7 @@ public class RowCustomActionService {
      * @param ctx 定制操作上下文
      * @return 包含 id 与 btnList 的定制行操作列表，若无有效按钮则返回 null 或空列表
      */
-    public List<ApprovalRowItem> buildCustomActions(
+    public List<ActionRowItem> buildCustomActions(
             List<DataRow> rawRecords, CustomActionContext ctx) {
         if (ctx == null || CollectionUtils.isEmpty(providers)) {
             log.info(
@@ -74,7 +73,7 @@ public class RowCustomActionService {
         }
 
         // 2. 逐行装配定制按钮
-        List<ApprovalRowItem> result = new ArrayList<>(rawRecords.size());
+        List<ActionRowItem> result = new ArrayList<>(rawRecords.size());
         String primaryTable = ctx.primaryTable();
 
         for (DataRow rawRow : rawRecords) {
@@ -92,21 +91,13 @@ public class RowCustomActionService {
                 continue;
             }
 
-            List<Map<String, Object>> btns = new ArrayList<>();
+            List<ActionButtonDTO> btns = new ArrayList<>();
             for (CustomButtonProvider provider : activeProviders) {
                 provider.addButtons(rawRow, ctx, btns);
             }
 
             if (!btns.isEmpty()) {
-                Map<String, Object> rowPayload = new LinkedHashMap<>();
-                if (recordId != null) {
-                    rowPayload.put("id", recordId);
-                }
-                if (businessNo != null && !businessNo.isBlank()) {
-                    rowPayload.put("businessNo", businessNo);
-                }
-                rowPayload.put("btnList", btns);
-                result.add(ApprovalRowItem.builder().row(rowPayload).build());
+                result.add(ActionRowItem.ofRow(recordId, businessNo, btns));
             }
         }
         return result;

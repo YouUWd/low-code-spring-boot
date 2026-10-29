@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.custom;
 
+import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.List;
@@ -33,10 +34,10 @@ public class ActiveToggleButtonProvider implements CustomButtonProvider {
     /** 业务状态：停用 (11) */
     public static final int STATUS_DEACTIVE = 11;
 
-    private static final Map<String, Object> ACTIVATE_BUTTON =
-            Map.of("buttonKey", BTN_KEY_ACTIVATE, "buttonName", BTN_NAME_ACTIVATE);
-    private static final Map<String, Object> DEACTIVATE_BUTTON =
-            Map.of("buttonKey", BTN_KEY_DEACTIVATE, "buttonName", BTN_NAME_DEACTIVATE);
+    public static final ActionButtonDTO ACTIVATE_BUTTON =
+            ActionButtonDTO.of(BTN_KEY_ACTIVATE, BTN_NAME_ACTIVATE);
+    public static final ActionButtonDTO DEACTIVATE_BUTTON =
+            ActionButtonDTO.of(BTN_KEY_DEACTIVATE, BTN_NAME_DEACTIVATE);
 
     @Override
     public String target() {
@@ -51,7 +52,7 @@ public class ActiveToggleButtonProvider implements CustomButtonProvider {
     }
 
     @Override
-    public void addButtons(DataRow row, CustomActionContext ctx, List<Map<String, Object>> btns) {
+    public void addButtons(DataRow row, CustomActionContext ctx, List<ActionButtonDTO> btns) {
         if (row == null) {
             return;
         }
