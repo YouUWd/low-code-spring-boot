@@ -40,8 +40,8 @@ public class SysModuleListResp {
     @Schema(description = "是否开启启停功能: 0-否, 1-是", example = "0")
     private Integer enableActive;
 
-    @Schema(description = "变更申请模块ID")
-    private Long changeModuleId;
+    @Schema(description = "是否启用变更申请: 0-否, 1-是", example = "0")
+    private Integer enableChange;
 
     @Schema(
             description = "模块类型",

@@ -287,7 +287,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 (rootModuleInfo != null && rootModuleInfo.getEnableActive() != null)
                         ? rootModuleInfo.getEnableActive()
                         : 0;
-        Long changeModuleId = rootModuleInfo != null ? rootModuleInfo.getChangeModuleId() : null;
+        Integer enableChange =
+                (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
+                        ? rootModuleInfo.getEnableChange()
+                        : 0;
 
         MenuActionContext actionCtx =
                 MenuActionContext.builder()
@@ -296,7 +299,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .moduleCode(moduleCode)
                         .primaryTable(primaryTable)
                         .enableActive(enableActive)
-                        .changeModuleId(changeModuleId)
+                        .enableChange(enableChange)
                         .userId(userId)
                         .roleId(roleId)
                         .hasEditPermission(hasEditPermission)
@@ -318,6 +321,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             return assembleMenuDataResp(
                     headerRoot,
                     rootModulePerm,
+                    enableChange,
                     emptyNode,
                     emptyActions.getGlobalActions(),
                     emptyApprovalRows,
@@ -411,6 +415,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return assembleMenuDataResp(
                 headerRoot,
                 rootModulePerm,
+                enableChange,
                 rootNode,
                 actions.getGlobalActions(),
                 approvalRows,
@@ -1076,6 +1081,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private MenuDataResp assembleMenuDataResp(
             MenuHeaderColumnResp headerRoot,
             ModulePermissionDTO rootModulePerm,
+            Integer enableChange,
             ModuleDataNode dataNode,
             List<ActionButtonDTO> globalActions,
             List<ActionRowItem> approvalRows,
@@ -1106,6 +1112,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return MenuDataResp.builder()
                 .header(headerRoot)
                 .modulePermission(permission)
+                .enableChange(enableChange != null ? enableChange : 0)
                 .globalActions(globalActions)
                 .approvalActions(approvalRows)
                 .customActions(customActions)
@@ -1121,7 +1128,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             List<ActionRowItem> approvalRows,
             List<ActionRowItem> customActions) {
         return assembleMenuDataResp(
-                headerRoot, rootModulePerm, dataNode, null, approvalRows, customActions, null);
+                headerRoot, rootModulePerm, 0, dataNode, null, approvalRows, customActions, null);
     }
 
     private MenuHeaderColumnResp queryHeaderRootQuietly(Long menuId, Long roleId) {

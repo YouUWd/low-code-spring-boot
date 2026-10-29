@@ -13,6 +13,7 @@ import com.jdec.platform.data.biz.plan.model.SavePlan;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -176,14 +177,18 @@ public class SavePlanCompiler {
             }
         }
 
-        // 1. 如果包含主表名子对象，展平合并到当前行并移除主表嵌套对象
-        if (primaryTable != null && cleanRow.get(primaryTable) instanceof Map<?, ?> tableMap) {
-            for (Map.Entry<?, ?> entry : tableMap.entrySet()) {
-                if (entry.getKey() != null) {
-                    cleanRow.putIfAbsent(String.valueOf(entry.getKey()), entry.getValue());
+        // 1. 如果包含主表名子对象（支持大小写无关匹配），展平合并到当前行并移除主表嵌套对象
+        if (primaryTable != null && !primaryTable.isBlank()) {
+            String matchedPrimaryKey = findMatchingKeyIgnoreCase(cleanRow, primaryTable);
+            if (matchedPrimaryKey != null
+                    && cleanRow.get(matchedPrimaryKey) instanceof Map<?, ?> tableMap) {
+                for (Map.Entry<?, ?> entry : tableMap.entrySet()) {
+                    if (entry.getKey() != null) {
+                        cleanRow.putIfAbsent(String.valueOf(entry.getKey()), entry.getValue());
+                    }
                 }
+                cleanRow.remove(matchedPrimaryKey);
             }
-            cleanRow.remove(primaryTable);
         }
 
         // 1.1 提取同一模块下的 1:1 伴生表 (垂直拆分表，未被模块树单独认领为模块主表)
@@ -199,19 +204,13 @@ public class SavePlanCompiler {
                         String compTable = rel.getJoinTable();
                         if (compTable != null && !compTable.isBlank()) {
                             String trimmedCompTable = compTable.trim();
-                            Object compVal = cleanRow.get(trimmedCompTable);
-                            if (compVal == null) {
-                                // 尝试忽略大小写查找
-                                for (Map.Entry<String, Object> e : cleanRow.entrySet()) {
-                                    if (trimmedCompTable.equalsIgnoreCase(e.getKey())) {
-                                        compVal = e.getValue();
-                                        break;
-                                    }
-                                }
-                            }
+                            String matchedCompKey =
+                                    findMatchingKeyIgnoreCase(cleanRow, trimmedCompTable);
+                            Object compVal =
+                                    matchedCompKey != null ? cleanRow.get(matchedCompKey) : null;
                             if (compVal instanceof Map<?, ?> compMap) {
-                                cleanRow.remove(trimmedCompTable);
-                                Map<String, Object> compRecord = new HashMap<>();
+                                cleanRow.remove(matchedCompKey);
+                                Map<String, Object> compRecord = new LinkedHashMap<>();
                                 for (Map.Entry<?, ?> e : compMap.entrySet()) {
                                     if (e.getKey() != null) {
                                         compRecord.put(String.valueOf(e.getKey()), e.getValue());
@@ -233,6 +232,31 @@ public class SavePlanCompiler {
                                                 .sourceDataRows(List.of(rawRow))
                                                 .build();
                                 companionPlans.add(compPlan);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 1.2 剥离同一模块下的 N:1 上游只读表 (例如 getDetail 查询出的 teacher/clazz 字典表空间)，
+        //     保证 getDetail 返回值原样回写 save 时不会把上游表 Map 当作主表列写入
+        if (primaryTable != null
+                && !primaryTable.isBlank()
+                && projectRelations != null
+                && projectRelations.getReverseRelations() != null) {
+            List<TableRelationDTO> revRels =
+                    projectRelations.getReverseRelations().get(primaryTable.toLowerCase());
+            if (revRels != null) {
+                for (TableRelationDTO rel : revRels) {
+                    if (ModuleRelationResolver.isUpstreamRelation(rel, primaryTable, tree)) {
+                        String upTable = rel.getMainTable();
+                        if (upTable != null && !upTable.isBlank()) {
+                            String matchedUpKey =
+                                    findMatchingKeyIgnoreCase(cleanRow, upTable.trim());
+                            if (matchedUpKey != null
+                                    && cleanRow.get(matchedUpKey) instanceof Map<?, ?>) {
+                                cleanRow.remove(matchedUpKey);
                             }
                         }
                     }
@@ -284,6 +308,21 @@ public class SavePlanCompiler {
         }
 
         return cleanRow;
+    }
+
+    private static String findMatchingKeyIgnoreCase(Map<String, Object> map, String targetKey) {
+        if (map == null || targetKey == null) {
+            return null;
+        }
+        if (map.containsKey(targetKey)) {
+            return targetKey;
+        }
+        for (String k : map.keySet()) {
+            if (targetKey.equalsIgnoreCase(k)) {
+                return k;
+            }
+        }
+        return null;
     }
 
     /** 从 Object 中安全提取 List<DataRow> 记录列表 */

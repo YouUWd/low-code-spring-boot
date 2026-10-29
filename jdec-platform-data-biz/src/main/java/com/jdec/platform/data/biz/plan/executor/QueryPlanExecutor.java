@@ -123,9 +123,13 @@ public class QueryPlanExecutor {
             QueryNodePlan rootPlan, String primaryTable, Integer limit, Integer offset) {
         DSLContext dsl = jooqDataContextFactory.getContext();
 
-        // 1. 构建根查询物理投影字段列表
+        // 1. 构建根查询物理投影字段列表（含 1:1 伴生表主键锚点）
         List<Field<?>> selectFields =
-                buildSelectFields(primaryTable, rootPlan.getProjectedFields());
+                buildSelectFields(
+                        primaryTable,
+                        rootPlan.getProjectedFields(),
+                        null,
+                        rootPlan.getAttachedJoins());
 
         SelectJoinStep<Record> selectStep =
                 selectFields.isEmpty()
@@ -149,7 +153,13 @@ public class QueryPlanExecutor {
         List<Long> primaryIds = new ArrayList<>();
         List<DataRow> rootRows = new ArrayList<>();
         for (Record r : records) {
-            DataRow rootRow = extractRow(r, primaryTable, rootPlan.getProjectedFields(), null);
+            DataRow rootRow =
+                    extractRow(
+                            r,
+                            primaryTable,
+                            rootPlan.getProjectedFields(),
+                            null,
+                            rootPlan.getAttachedJoins());
             rootRows.add(rootRow);
             Object pk = TreeResultAssembler.extractRowPrimaryId(rootRow, primaryTable);
             if (pk instanceof Number num) {
@@ -239,7 +249,11 @@ public class QueryPlanExecutor {
 
             // 1. 构建物理投影字段列表 (包含主键、技术外键及伴生表字段)
             List<Field<?>> selectFields =
-                    buildSelectFields(childTable, childPlan.getProjectedFields(), fkField);
+                    buildSelectFields(
+                            childTable,
+                            childPlan.getProjectedFields(),
+                            fkField,
+                            childPlan.getAttachedJoins());
 
             SelectJoinStep<Record> queryStep =
                     selectFields.isEmpty()
@@ -268,7 +282,12 @@ public class QueryPlanExecutor {
                 Result<Record> childRecords = query.orderBy(childPlan.getOrderFields()).fetch();
                 for (Record r : childRecords) {
                     DataRow crow =
-                            extractRow(r, childTable, childPlan.getProjectedFields(), fkField);
+                            extractRow(
+                                    r,
+                                    childTable,
+                                    childPlan.getProjectedFields(),
+                                    fkField,
+                                    childPlan.getAttachedJoins());
                     childRows.add(crow);
                     Object pk = TreeResultAssembler.extractRowPrimaryId(crow, childTable);
                     if (pk instanceof Number pkNum) {
@@ -297,12 +316,21 @@ public class QueryPlanExecutor {
 
     /** 将物理投影规格转换为 jOOQ Field 列表 (支持伴生表列名别名隔离，且保证必须包含主键 id) */
     private List<Field<?>> buildSelectFields(String primaryTable, List<PhysicalFieldSpec> specs) {
-        return buildSelectFields(primaryTable, specs, null);
+        return buildSelectFields(primaryTable, specs, null, null);
     }
 
     /** 将物理投影规格转换为 jOOQ Field 列表 (支持伴生表列名别名隔离，且保证必须包含主键 id 与技术外键 fkField) */
     private List<Field<?>> buildSelectFields(
             String primaryTable, List<PhysicalFieldSpec> specs, String fkField) {
+        return buildSelectFields(primaryTable, specs, fkField, null);
+    }
+
+    /** 将物理投影规格转换为 jOOQ Field 列表 (支持伴生表列名别名隔离，且保证必须包含主表主键 id、技术外键 fkField 以及 1:1 伴生表主键 id) */
+    private List<Field<?>> buildSelectFields(
+            String primaryTable,
+            List<PhysicalFieldSpec> specs,
+            String fkField,
+            List<AttachedTableSpec> attachedJoins) {
         // 若未指定投影规格（如全字段投影回退场景），返回空列表触发 SELECT * 全字段扫描
         if (specs == null || specs.isEmpty()) {
             return Collections.emptyList();
@@ -321,6 +349,24 @@ public class QueryPlanExecutor {
                 fields.add(DSL.field(DSL.name(primaryTable, fkField)).as(fkField));
             }
         }
+
+        // 0.1 若存在 1:1 伴生表 JOIN，自动将伴生表自身的主键 id 纳入 SELECT（别名 {compTable}_id），
+        //     保证查询返回的伴生表空间自带 id，从而在回写保存时直接识别为 UPDATE（100% 读写同构）
+        if (attachedJoins != null && !attachedJoins.isEmpty()) {
+            for (AttachedTableSpec joinSpec : attachedJoins) {
+                if (joinSpec != null
+                        && "1:1".equalsIgnoreCase(joinSpec.getJoinKind())
+                        && joinSpec.getTargetTable() != null
+                        && !joinSpec.getTargetTable().isBlank()) {
+                    String compTable = joinSpec.getTargetTable().trim();
+                    String compIdAlias = compTable + "_id";
+                    if (added.add(compIdAlias.toLowerCase())) {
+                        fields.add(DSL.field(DSL.name(compTable, "id")).as(compIdAlias));
+                    }
+                }
+            }
+        }
+
         for (PhysicalFieldSpec spec : specs) {
             String tbl = spec.getTableName() != null ? spec.getTableName() : primaryTable;
             String col = spec.getColumnName();
@@ -560,9 +606,14 @@ public class QueryPlanExecutor {
      * 将一条物理记录抽取为同构 DataRow：主表空间先落主键 id，再按投影规格（或全列回退）填充字段。
      *
      * @param fkField 非空时额外注入内部技术外键 {@code _fk_xxx}，供装配阶段按父键分组（装配完成后剥离）
+     * @param attachedJoins 附加表 JOIN 规格列表（用于提取 1:1 伴生表主键 id）
      */
     private DataRow extractRow(
-            Record r, String table, List<PhysicalFieldSpec> specs, String fkField) {
+            Record r,
+            String table,
+            List<PhysicalFieldSpec> specs,
+            String fkField,
+            List<AttachedTableSpec> attachedJoins) {
         DataRow row = new DataRow();
         Object pkVal = null;
         try {
@@ -587,6 +638,31 @@ public class QueryPlanExecutor {
                     row.getTables().put("_fk_" + fkField, fkVal);
                 }
             } catch (Exception ignored) {
+            }
+        }
+
+        // 提取 1:1 伴生表自身的主键 id 并放入伴生表命名空间，保障读写 100% 同构
+        if (attachedJoins != null && !attachedJoins.isEmpty()) {
+            for (AttachedTableSpec joinSpec : attachedJoins) {
+                if (joinSpec != null
+                        && "1:1".equalsIgnoreCase(joinSpec.getJoinKind())
+                        && joinSpec.getTargetTable() != null
+                        && !joinSpec.getTargetTable().isBlank()) {
+                    String compTable = joinSpec.getTargetTable().trim();
+                    Object compPk = null;
+                    try {
+                        compPk = r.get(compTable + "_id");
+                    } catch (Exception ignored) {
+                    }
+                    if (compPk != null) {
+                        Map<String, Object> compTableMap = row.getTable(compTable);
+                        if (compTableMap == null) {
+                            compTableMap = new LinkedHashMap<>();
+                            row.putTable(compTable, compTableMap);
+                        }
+                        compTableMap.put("id", compPk);
+                    }
+                }
             }
         }
 
