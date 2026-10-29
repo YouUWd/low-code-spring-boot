@@ -33,6 +33,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -516,8 +517,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             for (ModuleFieldDTO f : parentModuleInfo.getFields()) {
                 String col = f.getColumnName();
                 String fullKey =
-                        (primaryTable != null && !primaryTable.isBlank())
-                                ? primaryTable + "." + col
+                        (f.getTableName() != null && !f.getTableName().isBlank())
+                                ? f.getTableName() + "." + col
                                 : col;
 
                 ModulePermissionDTO.FieldPermissionItem fp =
@@ -557,6 +558,18 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 .businessTypeCode(
                                         fieldNameMap.containsKey(fullKey)
                                                 ? fieldNameMap.get(fullKey).getBusinessTypeCode()
+                                                : null)
+                                .unitDataIndex(
+                                        fieldNameMap.containsKey(fullKey)
+                                                        && StringUtils.isNotBlank(
+                                                                fieldNameMap
+                                                                        .get(fullKey)
+                                                                        .getUnitColumnName())
+                                                ? f.getTableName()
+                                                        + "."
+                                                        + fieldNameMap
+                                                                .get(fullKey)
+                                                                .getUnitColumnName()
                                                 : null)
                                 .build();
 
