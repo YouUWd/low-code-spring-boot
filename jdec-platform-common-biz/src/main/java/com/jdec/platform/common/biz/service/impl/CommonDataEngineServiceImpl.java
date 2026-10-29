@@ -463,6 +463,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         if (changeRequestDetailQueryReq.getChangeRequestId() <= 0) {
             log.debug("变更申请新建。直接返回原版本的详情数据。");
+            builder.changeRequestData(new HashMap<>());
         } else {
             log.debug("变更申请详情查看。查询变更申请单数据返回");
             if (Objects.nonNull(detailDataResp) && Objects.nonNull(detailDataResp.getData())) {
@@ -473,7 +474,17 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 Map<String, Object> changeRequestData =
                         dataEngineApi.getRecordDataByName(
                                 tableName, changeRequestDetailQueryReq.getChangeRequestId());
-                builder.changeRequestData(changeRequestData);
+
+                // 将变更内容字段加上表名前缀（table_name.field），与 row 的 key 结构对齐
+                Map<String, Object> returnMap =
+                        changeRequestData.entrySet().stream()
+                                .filter(ele -> Objects.nonNull(ele.getValue()))
+                                .collect(
+                                        Collectors.toMap(
+                                                entry -> tableName + "." + entry.getKey(),
+                                                Map.Entry::getValue));
+
+                builder.changeRequestData(returnMap);
             }
         }
 
