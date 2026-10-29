@@ -64,6 +64,9 @@ public class ModuleBizDataServiceImpl implements ModuleBizDataService {
         queryReq.setVersion(queryContext.getVersionNo());
         queryReq.setFilterFields(new ArrayList<>(filterField));
         queryReq.setShowVersionCompare(false);
+        if (queryContext.getLatestWordData() != null) {
+            queryReq.setLatestWordData(queryContext.getLatestWordData());
+        }
         List<NestedModuleDataDTO> nestedModuleDataDTOList =
                 dynamicQueryService.getDetail(queryReq, null);
         result = nestedModuleDataDTOList.get(0);

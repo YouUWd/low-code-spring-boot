@@ -6,6 +6,7 @@ import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface ModuleMetaDataService {
     Map<Long, SysModuleCombineInfo> getModuleMetaDataMap(ModuleQueryContext moduleQueryContext);
@@ -22,4 +23,6 @@ public interface ModuleMetaDataService {
     Boolean getApprovalStatusByModuleIdAsync(Long moduleId);
 
     List<ColumnInfoResp> getTableMetaDataByTabName(String projectNo, String tableName);
+
+    Set<String> getTableMetaFiledDataByTabName(String projectNo, String tableName);
 }

@@ -25,10 +25,8 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -394,8 +392,8 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
                                 .roleId(UserContext.getRoleId())
-                                .isBuildFieldPermission(true)
-                                .isBuildFieldPro(true)
+                                .isBuildFieldPermission(false)
+                                .isBuildFieldPro(false)
                                 .build());
         if (CollectionUtil.isEmpty(moduleCacheMap)) {
             throw new BusinessException(
@@ -408,11 +406,11 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
 
         SysModuleCombineInfo rootModule = moduleCacheMap.get(rootModuleId);
 
-        if (rootModule.getModuleInfo().getChangeModuleId() == null
-                || rootModule.getModuleInfo().getChangeModuleId() <= 0) {
-            throw new BusinessException(
-                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "模块没有配置变更申请单");
-        }
+        //        if (rootModule.getModuleInfo().getEnableChange() == null
+        //                || rootModule.getModuleInfo().getEnableChange() <= 0) {
+        //            throw new BusinessException(
+        //                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "模块没有配置变更申请单");
+        //        }
 
         Boolean isApproval = moduleMetaDataService.getApprovalStatusByModuleIdAsync(rootModuleId);
         if (isApproval == null) {
@@ -440,6 +438,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .moduleCacheMap(moduleCacheMap)
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
+                                .latestWordData(false)
                                 .loginUser(UserContext.getLoginUser())
                                 .build());
         if (detailData == null) {
@@ -462,8 +461,11 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .get(structureRootModuleId)
                                 .getModuleInfo()
                                 .getPrimaryTable());
-
         String changeTable = rootModule.getModuleInfo().getPrimaryTable() + "_change";
+
+        Set<String> columnInfoRespList =
+                moduleMetaDataService.getTableMetaFiledDataByTabName(
+                        AppContext.getProjectNo(), changeTable);
         LocalDateTime now = LocalDateTime.now();
         Map<String, Object> changeApplyData = new HashMap<>();
         changeApplyData.put(
@@ -476,6 +478,34 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         changeApplyData.put("created_date", now);
         changeApplyData.put("updated_by", UserContext.getOperateUserId());
         changeApplyData.put("updated_date", now);
+        changeApplyData.put("subject_id", AppContext.getSubjectId());
+        changeApplyData.put("deleted", (byte) 0);
+
+        // 业务字段
+        Set<String> bizColumns =
+                columnInfoRespList.stream()
+                        .filter(x -> !changeApplyData.containsKey(x))
+                        .collect(Collectors.toSet());
+        bizColumns.remove("id");
+        // 补充业务字段
+        for (String f : bizColumns) {
+            Object baseVale =
+                    detailData
+                            .getRecord()
+                            .get(0)
+                            .getRow()
+                            .get(rootModule.getModuleInfo().getPrimaryTable() + "." + f);
+            Object newValue =
+                    req.getNestedModuleData()
+                            .getRecord()
+                            .get(0)
+                            .getRow()
+                            .get(rootModule.getModuleInfo().getPrimaryTable() + "." + f);
+            changeApplyData.put(f, DataPersistenceUtil.getFieldWriteValue(baseVale));
+            if (newValue != null) {
+                changeApplyData.put(f, DataPersistenceUtil.getFieldWriteValue(newValue));
+            }
+        }
 
         // 待保存的数据
         String changeItemTable = changeTable + "_item";

@@ -397,8 +397,8 @@ public class DataPersistenceUtil {
         if (o1 != null && o2 == null) {
             return false;
         }
-        String o1Value = String.valueOf(getFieldWriteValue(o1));
-        String o2Value = String.valueOf(getFieldWriteValue(o2));
+        String o1Value = String.valueOf(getFieldTxtValue(o1));
+        String o2Value = String.valueOf(getFieldTxtValue(o2));
         return o1Value.equals(o2Value);
     }
 
@@ -437,6 +437,8 @@ public class DataPersistenceUtil {
 
         try {
             txt = JsonUtil.obj2Json(value);
+            Object o = JsonUtil.json2Obj(txt, Object.class);
+            txt = JsonUtil.obj2Json(o);
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }

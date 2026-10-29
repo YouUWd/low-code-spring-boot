@@ -321,4 +321,11 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
             throw new RuntimeException("查询列信息失败: " + e.getMessage(), e);
         }
     }
+
+    @Override
+    public Set<String> getTableMetaFiledDataByTabName(String projectNo, String tableName) {
+        return getTableMetaDataByTabName(projectNo, tableName).stream()
+                .map(ColumnInfoResp::getColumnName)
+                .collect(Collectors.toSet());
+    }
 }

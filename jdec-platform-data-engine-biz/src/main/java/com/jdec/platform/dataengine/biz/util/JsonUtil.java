@@ -2,10 +2,7 @@ package com.jdec.platform.dataengine.biz.util;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
@@ -25,6 +22,7 @@ public class JsonUtil {
         MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         MAPPER.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
         MAPPER.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+        MAPPER.enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY);
         MAPPER.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
         SimpleModule module = new SimpleModule();
         module.addDeserializer(
@@ -41,6 +39,7 @@ public class JsonUtil {
                 new LocalDateSerializer(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
         module.addSerializer(org.jooq.JSON.class, new JooqJSONSerializer());
         module.addSerializer(org.jooq.JSONB.class, new JooqJSONBSerializer());
+
         MAPPER.registerModule(module);
         MAPPER.setTimeZone(TimeZone.getTimeZone("Asia/Shanghai"));
     }

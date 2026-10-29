@@ -26,5 +26,7 @@ public class ModuleDetailQueryContext {
 
     private Long subjectId;
 
+    private Boolean latestWordData;
+
     private LoginUser loginUser;
 }
