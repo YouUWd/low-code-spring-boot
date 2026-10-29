@@ -2,8 +2,10 @@ package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.request.ChangeRequestDetailQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuDetailQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuVersionListQueryReq;
+import com.jdec.platform.common.api.dto.response.*;
 import com.jdec.platform.common.api.dto.response.DetailDataResp;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
@@ -223,6 +225,13 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         .btnType(menuDetailQueryReq.getBtnType())
                         .build();
 
+        if ("apply-change".equals(menuDetailQueryReq.getBtnType())
+                && menuDetailQueryReq
+                        instanceof ChangeRequestDetailQueryReq changeRequestDetailQueryReq) {
+            dynamicDetailQueryReq.setChangeRequestId(
+                    changeRequestDetailQueryReq.getChangeRequestId());
+        }
+
         List<FieldWordCloudDTO> worldCloudConfigs =
                 configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
 
@@ -340,7 +349,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                         + e.getValue().getColumnName(),
                                         Map.Entry::getValue));
 
-        if ("change-request".equals(menuDetailQueryReq.getBtnType())) {
+        if ("apply-change".equals(menuDetailQueryReq.getBtnType())) {
             queryModel = QueryModel.CHANGE_REQUEST;
         } else if ("change".equals(menuDetailQueryReq.getBtnType())) {
             // 变更走新建权限
@@ -439,6 +448,42 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         Long moduleId = targetMenu.getModuleId();
 
         return dataEngineApi.getCreatedUserInfo(moduleId, id, businessNo);
+    }
+
+    @Override
+    public ChangeRequestResp getChangeRequestDetailByMenu(
+            ChangeRequestDetailQueryReq changeRequestDetailQueryReq) {
+        ChangeRequestResp.ChangeRequestRespBuilder builder = ChangeRequestResp.builder();
+
+        //        MenuDetailQueryReq menuDetailQueryReq = MenuDetailQueryReq.builder().build();
+        //        BeanUtils.copyProperties(changeRequestDetailQueryReq, menuDetailQueryReq);
+        //
+        //        menuDetailQueryReq.setShowVersionCompare(true);
+        //        menuDetailQueryReq.setLatestWordData(false);
+
+        changeRequestDetailQueryReq.setShowVersionCompare(true);
+        changeRequestDetailQueryReq.setLatestWordData(false);
+
+        DetailDataResp<NestedModuleDataDTO> detailDataResp =
+                getDetailByMenu(changeRequestDetailQueryReq);
+
+        if (changeRequestDetailQueryReq.getChangeRequestId() <= 0) {
+            log.debug("变更申请新建。直接返回原版本的详情数据。");
+        } else {
+            log.debug("变更申请详情查看。查询变更申请单数据返回");
+            if (Objects.nonNull(detailDataResp) && Objects.nonNull(detailDataResp.getData())) {
+                Long rootModuleId = detailDataResp.getData().getModuleId();
+                ModuleTreeDTO rootNode =
+                        configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+                String tableName = rootNode.getRootModule().getPrimaryTable() + "_change";
+                Map<String, Object> changeRequestData =
+                        dataEngineApi.getRecordDataByName(
+                                tableName, changeRequestDetailQueryReq.getChangeRequestId());
+                builder.changeRequestData(changeRequestData);
+            }
+        }
+
+        return builder.detailData(detailDataResp).build();
     }
 
     private ModuleMetaDTO buildModuleMetaList(

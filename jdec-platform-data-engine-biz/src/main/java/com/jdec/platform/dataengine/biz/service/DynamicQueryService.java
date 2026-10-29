@@ -116,26 +116,26 @@ public class DynamicQueryService {
 
         SysModuleSimpleTreeResp pruneMenus = pruneForest(rootNode, involveModules);
 
-        boolean history = false;
-
         Boolean hasApproval =
                 sysApprovalChainConfigApi.getApprovalStatus(
                         List.of(dynamicDetailQueryReq.getModuleId()));
 
+        if (btnType.equals("apply-change")) {
+            hasApproval = false;
+        }
+
         QueryType queryType;
 
         if (hasApproval) {
-            if (!history) {
-                queryType = QueryType.DETAIL_APPROVAL_CURRENT;
-            } else {
-                queryType = QueryType.DETAIL_APPROVAL_HISTORY;
-            }
+            queryType = QueryType.DETAIL_APPROVAL_CURRENT;
+        } else if (btnType.equals("apply-change")) {
+            queryType = QueryType.DETAIL_CHANGE_REQUEST;
         } else {
             queryType = QueryType.DETAIL;
         }
 
         switch (queryType) {
-            case DETAIL, DETAIL_APPROVAL_CURRENT -> {
+            case DETAIL, DETAIL_APPROVAL_CURRENT, DETAIL_CHANGE_REQUEST -> {
                 recursiveQuery(
                         pruneMenus,
                         resultList,
@@ -147,13 +147,6 @@ public class DynamicQueryService {
                         Objects.isNull(dynamicDetailQueryReq.getLatestWordData())
                                 || dynamicDetailQueryReq.getLatestWordData());
             }
-            case DETAIL_APPROVAL_HISTORY ->
-                    getHistoryDetailData(
-                            pruneMenus,
-                            resultList,
-                            dynamicDetailQueryReq,
-                            btnType,
-                            moduleIdToFieldMap);
             default -> throw new IllegalStateException("Unexpected value: " + queryType);
         }
 
@@ -165,23 +158,32 @@ public class DynamicQueryService {
 
                 List<NestedModuleDataDTO> preVersionResultList = new ArrayList<>();
 
-                // 查找当前数据的上一版本
-                Record preVersionRecord = getPreVersion(rootNode, dynamicDetailQueryReq.getId());
-                if (Objects.nonNull(preVersionRecord)) {
-                    // 查找上一版本的详情数据
-                    Map<String, Object> preVersionResultMap = preVersionRecord.intoMap();
+                if (queryType == QueryType.DETAIL_APPROVAL_CURRENT) {
 
-                    recursiveQuery(
-                            pruneMenus,
-                            preVersionResultList,
-                            Long.parseLong(String.valueOf(preVersionResultMap.get("id"))),
-                            btnType,
-                            true,
-                            moduleIdToFieldMap,
-                            queryType,
-                            Objects.isNull(dynamicDetailQueryReq.getLatestWordData())
-                                    || dynamicDetailQueryReq.getLatestWordData());
+                    // 查找当前数据的上一版本
+                    Record preVersionRecord =
+                            getPreVersion(rootNode, dynamicDetailQueryReq.getId());
+                    if (Objects.nonNull(preVersionRecord)) {
+                        // 查找上一版本的详情数据
+                        Map<String, Object> preVersionResultMap = preVersionRecord.intoMap();
+
+                        recursiveQuery(
+                                pruneMenus,
+                                preVersionResultList,
+                                Long.parseLong(String.valueOf(preVersionResultMap.get("id"))),
+                                btnType,
+                                true,
+                                moduleIdToFieldMap,
+                                queryType,
+                                Objects.isNull(dynamicDetailQueryReq.getLatestWordData())
+                                        || dynamicDetailQueryReq.getLatestWordData());
+                    }
+                } else {
+                    preVersionResultList = resultList;
                 }
+
+                ModuleTreeDTO moduleTreeDTO =
+                        configApi.getModuleTree(AppContext.getProjectNo(), null, rootNode.getId());
 
                 DataIntegrationContext dataIntegrationContext =
                         DataIntegrationContext.builder()
@@ -190,7 +192,9 @@ public class DynamicQueryService {
                                 .version(dynamicDetailQueryReq.getVersion())
                                 .moduleIdToFieldMap(moduleIdToFieldMap)
                                 .queryType(queryType)
+                                .changeRequestId(dynamicDetailQueryReq.getChangeRequestId())
                                 .preVersionData(preVersionResultList)
+                                .moduleTree(moduleTreeDTO)
                                 .build();
 
                 detailDataProcessFactory.processData(resultList, dataIntegrationContext);
@@ -1311,91 +1315,6 @@ public class DynamicQueryService {
         return recordDataDTOList;
     }
 
-    private void getHistoryDetailData(
-            SysModuleSimpleTreeResp moduleTree,
-            List<NestedModuleDataDTO> resultList,
-            DynamicDetailQueryReq dynamicDetailQueryReq,
-            String btnType,
-            Map<Long, List<ModuleFieldDTO>> moduleFieldsMap) {
-
-        Long subjectId = AppContext.getSubjectId();
-        Long roleId = UserContext.getRoleId();
-
-        QueryType queryType = QueryType.DETAIL_APPROVAL_HISTORY;
-
-        DetailQueryContext detailQueryContext =
-                DetailQueryContext.builder()
-                        .btnType(btnType)
-                        .id(dynamicDetailQueryReq.getId())
-                        .version(dynamicDetailQueryReq.getVersion())
-                        .moduleId(moduleTree.getId())
-                        .roleId(roleId)
-                        .subjectId(subjectId)
-                        .queryType(queryType)
-                        .build();
-
-        recursiveFillModuleFields(moduleTree, moduleFieldsMap);
-
-        List<RecordDataDTO> recordDataDTOList =
-                detailBizQueryService.queryDetailBiz(detailQueryContext);
-
-        NestedModuleDataDTO.NestedModuleDataDTOBuilder nestedModuleDataDTOBuilder =
-                NestedModuleDataDTO.builder();
-
-        nestedModuleDataDTOBuilder.moduleId(moduleTree.getId());
-        nestedModuleDataDTOBuilder.record(recordDataDTOList);
-
-        resultList.add(nestedModuleDataDTOBuilder.build());
-    }
-
-    private void recursiveFillModuleFields(
-            SysModuleSimpleTreeResp moduleTree,
-            Map<Long, List<ModuleFieldDTO>> moduleIdToFieldMap) {
-
-        // filterFields为空时，返回本模块所有字段
-        if (moduleIdToFieldMap.isEmpty()) {
-            List<ModuleFieldDTO> moduleFields =
-                    dataModuleConfigService.listFieldsByModuleIds(
-                            Arrays.asList(moduleTree.getId()));
-            moduleIdToFieldMap.put(
-                    moduleTree.getId(),
-                    moduleFields.stream()
-                            .filter(ele -> ele.getModuleId().equals(moduleTree.getId()))
-                            .collect(Collectors.toList()));
-        }
-
-        List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
-        if (moduleIdToFieldMap.containsKey(moduleTree.getId())) {
-            moduleFileds = moduleIdToFieldMap.get(moduleTree.getId());
-        }
-
-        List<ModuleFieldDTO> finalModuleFileds = moduleFileds;
-        List<ModuleFieldDTO> relateFields =
-                getIdAndRelateIdField(moduleTree.getId()).stream()
-                        .filter(
-                                ele ->
-                                        !finalModuleFileds.stream()
-                                                .anyMatch(
-                                                        item ->
-                                                                item.getTableName()
-                                                                                .equals(
-                                                                                        ele
-                                                                                                .getTableName())
-                                                                        && item.getColumnName()
-                                                                                .equals(
-                                                                                        ele
-                                                                                                .getColumnName())))
-                        .collect(Collectors.toList());
-
-        moduleIdToFieldMap
-                .computeIfAbsent(moduleTree.getId(), k -> new ArrayList<>())
-                .addAll(relateFields);
-
-        for (SysModuleSimpleTreeResp child : moduleTree.getChildren()) {
-            recursiveFillModuleFields(child, moduleIdToFieldMap);
-        }
-    }
-
     /**
      * 根据模块配置补充主键id和关联id的权限节点配置
      *
@@ -1954,45 +1873,7 @@ public class DynamicQueryService {
             primaryTable = sysModuleInfo.getPrimaryTable();
         }
 
-        DSLContext dslContext = jooqContextFactory.getContext();
-
-        List<Field<?>> queryFields =
-                fields.stream()
-                        .map(
-                                item ->
-                                        DSL.field(
-                                                        DSL.name(
-                                                                item.getTableName(),
-                                                                item.getColumnName()))
-                                                .as(
-                                                        item.getTableName()
-                                                                + "."
-                                                                + item.getColumnName()))
-                        .collect(Collectors.toList());
-        SelectJoinStep<Record> query;
-        if (CollectionUtils.isEmpty(fields)) {
-            query = dslContext.select(DSL.asterisk()).from(primaryTable);
-        } else {
-            query = dslContext.select(queryFields).from(primaryTable);
-        }
-
-        // 构造SQL 查询条件
-        List<Condition> conditions = new ArrayList<>();
-
-        conditions.add(DSL.field(DSL.name(primaryTable, "id")).in(ids));
-
-        query.where(conditions);
-
-        List<Map<String, Object>> resultMaps = new ArrayList<>();
-
-        Result<Record> result = query.fetch();
-        for (Record record : result) {
-            if (Objects.nonNull(record)) {
-                resultMaps.add(record.intoMap());
-            }
-        }
-
-        return resultMaps;
+        return getRecordDataByName(primaryTable, ids, fields, moduleInfo);
     }
 
     /** 递归移除节点中的指定字段（如 id、pid、relation_no） */
@@ -2063,5 +1944,48 @@ public class DynamicQueryService {
             // 基础值节点：字符串、数字、布尔、null，直接返回副本
             return targetNode.deepCopy();
         }
+    }
+
+    public List<Map<String, Object>> getRecordDataByName(
+            String tableName, List<Long> ids, List<ModuleFieldDTO> fields, ModuleInfo moduleInfo) {
+        DSLContext dslContext = jooqContextFactory.getContext();
+
+        List<Field<?>> queryFields =
+                fields.stream()
+                        .map(
+                                item ->
+                                        DSL.field(
+                                                        DSL.name(
+                                                                item.getTableName(),
+                                                                item.getColumnName()))
+                                                .as(
+                                                        item.getTableName()
+                                                                + "."
+                                                                + item.getColumnName()))
+                        .collect(Collectors.toList());
+        SelectJoinStep<Record> query;
+        if (CollectionUtils.isEmpty(fields)) {
+            query = dslContext.select(DSL.asterisk()).from(tableName);
+        } else {
+            query = dslContext.select(queryFields).from(tableName);
+        }
+
+        // 构造SQL 查询条件
+        List<Condition> conditions = new ArrayList<>();
+
+        conditions.add(DSL.field(DSL.name(tableName, "id")).in(ids));
+
+        query.where(conditions);
+
+        List<Map<String, Object>> resultMaps = new ArrayList<>();
+
+        Result<Record> result = query.fetch();
+        for (Record record : result) {
+            if (Objects.nonNull(record)) {
+                resultMaps.add(record.intoMap());
+            }
+        }
+
+        return resultMaps;
     }
 }

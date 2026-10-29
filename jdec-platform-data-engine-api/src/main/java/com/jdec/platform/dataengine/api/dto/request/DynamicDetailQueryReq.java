@@ -27,6 +27,12 @@ public class DynamicDetailQueryReq implements Serializable {
     @Schema(description = "详情数据ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "100")
     private Long id;
 
+    @Schema(
+            description = "变更申请数据ID",
+            requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+            example = "100")
+    private Long changeRequestId;
+
     @Schema(description = "版本 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "V2")
     private Integer version;
 

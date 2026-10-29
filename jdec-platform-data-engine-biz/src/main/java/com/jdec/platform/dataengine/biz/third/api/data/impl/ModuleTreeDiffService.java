@@ -1,6 +1,14 @@
 package com.jdec.platform.dataengine.biz.third.api.data.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
@@ -15,9 +23,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.jooq.JSON;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -498,13 +508,313 @@ public class ModuleTreeDiffService {
             return false;
         }
 
-        /**
-         * Field[] fields = sourceCls.getDeclaredFields(); for (Field field : fields) {
-         * field.setAccessible(true); Object sourceFieldVal; Object targetFieldVal; try {
-         * sourceFieldVal = field.get(source); targetFieldVal = field.get(target); } catch
-         * (IllegalAccessException e) { continue; } // 递归调用本方法嵌套对比 if (!isEqual(sourceFieldVal,
-         * targetFieldVal)) { return false; } }
-         */
         return Objects.equals(source, target);
+    }
+
+    public void moduleTreeDataMerge(
+            NestedModuleDataDTO oldTree,
+            Map<String, Map<String, Map<String, List<Map<String, Object>>>>> currentVersionMap,
+            ModuleTreeDTO moduleTreeDTO,
+            Long rootModuleId) {
+        recursiveMergeData(oldTree, currentVersionMap, moduleTreeDTO, rootModuleId);
+    }
+
+    /**
+     * 递归合并数据：将当前版本的变更数据（currentVersionMap）合并进旧版本树（oldTree）
+     *
+     * <p>处理逻辑：
+     *
+     * <ol>
+     *   <li>对当前模块的每一行 row 数据，按“update_data”中该行的变更（action 为 UPDATE/INSERT/DELETE）打上 改/新/删
+     *       标记，并把变更内容合并回 row，UPDATE 时生成 changeList；
+     *   <li>对子模块，按“insert_data”中以父行主键分组的新增数据，构造 changeType=新 的 RecordDataDTO 追加到子模块 record
+     *       数组（children 依据模块树配置补空占位）；
+     *   <li>递归处理子模块，逐层向下合并。
+     * </ol>
+     *
+     * @param oldTree 旧版本json树（原地合并变更数据）
+     * @param currentVersionMap 当前版本变更数据，结构：表名 -&gt; 数据类型(update_data/insert_data) -&gt; 行主键 -&gt;
+     *     变更记录列表
+     * @param moduleTreeDTO 模块树元数据（模块信息、字段、父子关系）
+     * @param parentPrimaryTablerowId 上一层模块的行主键ID（虚模块透传使用）
+     */
+    private void recursiveMergeData(
+            NestedModuleDataDTO oldTree,
+            Map<String, Map<String, Map<String, List<Map<String, Object>>>>> currentVersionMap,
+            ModuleTreeDTO moduleTreeDTO,
+            Long parentPrimaryTablerowId) {
+        if (Objects.isNull(oldTree)) {
+            return;
+        }
+        Long moduleId = oldTree.getModuleId();
+
+        // 当前模块（作为父模块）的元数据
+        ModuleInfo parentModuleInfo = moduleTreeDTO.getModule(moduleId);
+
+        // 该模块涉及的所有物理表名（主表 + 从表）
+        Set<String> parentModuleTables =
+                parentModuleInfo.getFields().stream()
+                        .map(ModuleFieldDTO::getTableName)
+                        .collect(Collectors.toSet());
+
+        // 主表名，用于从 row 中提取行主键（xxx.id）
+        String primaryTable = parentModuleInfo.getPrimaryTable();
+
+        // 处理当前模块的 record 数组
+        List<RecordDataDTO> recordArr = oldTree.getRecord();
+        if (!CollectionUtils.isEmpty(recordArr)) {
+            Iterator<RecordDataDTO> recordIt = recordArr.iterator();
+            while (recordIt.hasNext()) {
+                RecordDataDTO recordItem = recordIt.next();
+                Map<String, Object> rowRawData = recordItem.getRow();
+
+                Long primaryTablerowId;
+
+                Map<String, Map<String, Object>> changeList = new HashMap<>();
+
+                if (Objects.nonNull(rowRawData)) {
+                    // 提取row主键：找到 xxx.id 的字段值
+                    primaryTablerowId = extractRowPk(rowRawData, primaryTable);
+
+                    // 搜集模块行数据，主表和从表数据进行拼接：按表名遍历，命中当前行的 UPDATE/INSERT/DELETE 变更
+                    for (String tableName : parentModuleTables) {
+                        List<Map<String, Object>> currentChangeData =
+                                Optional.ofNullable(currentVersionMap.get(tableName))
+                                        .map(m -> m.get("update_data"))
+                                        .map(m -> m.get(String.valueOf(primaryTablerowId)))
+                                        .orElse(Collections.emptyList());
+
+                        // 当前行数据更改
+                        if (!CollectionUtils.isEmpty(currentChangeData)) {
+                            Map<String, Object> rowChangeData = currentChangeData.get(0);
+
+                            String tableNamePrefix =
+                                    String.valueOf(rowChangeData.get("table_name"));
+
+                            String action = String.valueOf(rowChangeData.get("action"));
+
+                            Map<String, Object> changeContentMap = new HashMap<>();
+
+                            Map<String, Object> originChangeContentMap = new HashMap<>();
+
+                            Object jsonObject = rowChangeData.get("change_content");
+                            if (jsonObject instanceof JSON jooqJson) {
+                                String jsonStr = jooqJson.data();
+                                if (StringUtils.isNotBlank(jsonStr)) {
+                                    try {
+                                        originChangeContentMap =
+                                                OBJECT_MAPPER.readValue(jsonStr, Map.class);
+                                    } catch (JsonProcessingException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                }
+                            }
+
+                            // 将变更内容字段加上表名前缀（table_name.field），与 row 的 key 结构对齐
+                            changeContentMap =
+                                    originChangeContentMap.entrySet().stream()
+                                            .collect(
+                                                    Collectors.toMap(
+                                                            entry ->
+                                                                    tableNamePrefix
+                                                                            + "."
+                                                                            + entry.getKey(),
+                                                            Map.Entry::getValue));
+
+                            Map<String, VersionSnapShot> currentChangeMap = new HashMap<>();
+
+                            if ("UPDATE".equals(action)) {
+                                // 对比row字段，生成changeList，挂在recordItem（和row平级）
+                                changeList.putAll(
+                                        buildRowChangeList(
+                                                rowRawData, changeContentMap, currentChangeMap));
+                                recordItem.setChangeType("改");
+                            } else if ("INSERT".equals(action)) {
+                                recordItem.setChangeType("新");
+                            } else {
+                                // DELETE 等其他动作统一标记为“删”
+                                recordItem.setChangeType("删");
+                            }
+
+                            // 将变更后的字段值覆盖回原始行数据，完成原地合并
+                            rowRawData.putAll(changeContentMap);
+                        }
+                    }
+
+                    if (!changeList.isEmpty()) {
+                        recordItem.setChangeList(changeList);
+                    }
+                } else {
+                    // row 为空（如虚模块占位节点），主键置 0 避免后续按 null 分组匹配
+                    primaryTablerowId = 0L;
+                }
+
+                // 递归处理当前recordItem的children
+                List<NestedModuleDataDTO> childrenNode = recordItem.getChildren();
+
+                if (!CollectionUtils.isEmpty(childrenNode)) {
+                    Long parentRowId;
+
+                    boolean virtualModule = false;
+                    if (Objects.isNull(rowRawData) && CollectionUtils.isEmpty(parentModuleTables)) {
+                        // 虚模块：自身无行数据也无物理表，仅作为层级占位
+                        log.debug(
+                                "模块id:{},模块名称:{}是虚模块", moduleId, parentModuleInfo.getModuleName());
+
+                        virtualModule = true;
+                        // 虚模块时，parentRowId使用上一层模块的主键ID,该值由递归传入
+                        parentRowId = parentPrimaryTablerowId;
+                    } else {
+                        parentRowId = primaryTablerowId;
+                    }
+                    for (NestedModuleDataDTO childModule : childrenNode) {
+                        ModuleInfo childModuleInfo =
+                                moduleTreeDTO.getModule(childModule.getModuleId());
+
+                        Map<String, Map<String, Object>> childTableChangeData = new HashMap<>();
+
+                        Set<String> childModuleTables =
+                                childModuleInfo.getFields().stream()
+                                        .map(ModuleFieldDTO::getTableName)
+                                        .collect(Collectors.toSet());
+
+                        // 搜集模块行数据，主表和从表数据进行拼接：按父行主键取出子表的新增数据，按 node_id 分组合并为完整行
+                        for (String childTableName : childModuleTables) {
+                            List<Map<String, Object>> childrenAddData =
+                                    Optional.ofNullable(currentVersionMap.get(childTableName))
+                                            .map(m -> m.get("insert_data"))
+                                            .map(m -> m.get(String.valueOf(parentRowId)))
+                                            .orElse(Collections.emptyList());
+
+                            childrenAddData.forEach(
+                                    ele -> {
+                                        Map<String, Object> originChangeContentMap =
+                                                (Map<String, Object>) ele.get("change_content");
+                                        String nodeId = String.valueOf(ele.get("node_id"));
+
+                                        Map<String, Object> prefixAddChangeContentMap =
+                                                originChangeContentMap.entrySet().stream()
+                                                        .collect(
+                                                                Collectors.toMap(
+                                                                        entry ->
+                                                                                childTableName
+                                                                                        + "."
+                                                                                        + entry
+                                                                                                .getKey(),
+                                                                        Map.Entry::getValue));
+                                        childTableChangeData
+                                                .computeIfAbsent(nodeId, k -> new HashMap<>())
+                                                .putAll(prefixAddChangeContentMap);
+                                    });
+                        }
+
+                        // 将合并出的新增行构造为 changeType=新 的记录追加到子模块，
+                        // children 依据模块树配置的子模块ID补空占位节点
+                        childModule
+                                .getRecord()
+                                .addAll(
+                                        childTableChangeData.values().stream()
+                                                .map(
+                                                        stringObjectMap ->
+                                                                RecordDataDTO.builder()
+                                                                        .row((stringObjectMap))
+                                                                        .changeType("新")
+                                                                        .children(
+                                                                                moduleTreeDTO
+                                                                                        .getChildModuleIds(
+                                                                                                childModule
+                                                                                                        .getModuleId())
+                                                                                        .stream()
+                                                                                        .map(
+                                                                                                id ->
+                                                                                                        NestedModuleDataDTO
+                                                                                                                .builder()
+                                                                                                                .moduleId(
+                                                                                                                        id)
+                                                                                                                .record(
+                                                                                                                        new ArrayList<>())
+                                                                                                                .build())
+                                                                                        .collect(
+                                                                                                Collectors
+                                                                                                        .toList()))
+                                                                        .build())
+                                                .toList());
+                        // 递归处理子模块，传入当前模块行主键作为其父级主键
+                        recursiveMergeData(
+                                childModule, currentVersionMap, moduleTreeDTO, primaryTablerowId);
+                    }
+                }
+            }
+        }
+    }
+
+    /** 自动将 JSON 字符串或 jOOQ JSON 对象转换为结构化的 List/Map，保持返回值纯净 */
+    private JsonNode parseIfJson(Object val) {
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof JSON jooqJson) {
+            String jsonStr = jooqJson.data();
+            if (jsonStr == null || jsonStr.isBlank()) {
+                return null;
+            }
+            try {
+                return OBJECT_MAPPER.readTree(jsonStr);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        if (val instanceof String str) {
+            String trimmed = str.trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
+                    || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                try {
+                    return OBJECT_MAPPER.readTree(trimmed);
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 给JsonNode第一层key增加统一前缀
+     *
+     * @param node 源节点
+     * @param prefix 前缀，如 "prefix_"
+     * @return 处理后的新JsonNode
+     */
+    public static JsonNode addFirstLevelKeyPrefix(JsonNode node, String prefix) {
+        if (node == null || prefix == null || prefix.isEmpty()) {
+            return node;
+        }
+        JsonNodeFactory factory = JsonNodeFactory.instance;
+
+        // 1. 对象节点：第一层key加前缀
+        if (node.isObject()) {
+            ObjectNode source = (ObjectNode) node;
+            ObjectNode target = factory.objectNode();
+            source.fields()
+                    .forEachRemaining(
+                            entry -> {
+                                String newKey = prefix + entry.getKey();
+                                target.set(newKey, entry.getValue());
+                            });
+            return target;
+        }
+
+        // 2. 数组节点：遍历数组内每个元素，元素对象才加前缀
+        if (node.isArray()) {
+            ArrayNode sourceArray = (ArrayNode) node;
+            ArrayNode targetArray = factory.arrayNode();
+            for (JsonNode item : sourceArray) {
+                targetArray.add(addFirstLevelKeyPrefix(item, prefix));
+            }
+            return targetArray;
+        }
+
+        // 3. 值节点（字符串、数字、布尔等）直接返回
+        return node;
     }
 }

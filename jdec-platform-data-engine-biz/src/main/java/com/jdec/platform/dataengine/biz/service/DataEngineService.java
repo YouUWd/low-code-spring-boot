@@ -7,10 +7,7 @@ import com.jdec.platform.dataengine.api.dto.response.*;
 import com.jdec.platform.dataengine.biz.operatelog.annotation.SaveOperateLog;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -59,7 +56,15 @@ public class DataEngineService implements DataEngineApi {
         List<Map<String, Object>> dataList =
                 dynamicQueryService.getRecordDatas(
                         moduleId, Arrays.asList(id), new ArrayList<>(), null);
-        return CollectionUtils.isEmpty(dataList) ? null : dataList.get(0);
+        return CollectionUtils.isEmpty(dataList) ? new HashMap<>() : dataList.get(0);
+    }
+
+    @Override
+    public Map<String, Object> getRecordDataByName(String tableName, Long id) {
+        List<Map<String, Object>> dataList =
+                dynamicQueryService.getRecordDataByName(
+                        tableName, Collections.singletonList(id), new ArrayList<>(), null);
+        return CollectionUtils.isEmpty(dataList) ? new HashMap<>() : dataList.getFirst();
     }
 
     @Override

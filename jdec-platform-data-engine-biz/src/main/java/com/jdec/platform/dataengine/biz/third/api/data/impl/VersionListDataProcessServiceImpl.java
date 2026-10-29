@@ -20,10 +20,7 @@ public class VersionListDataProcessServiceImpl implements DetailDataProcessServi
     private final DataEngineSnapshotMapper dataEngineSnapshotMapper;
 
     private final Set<QueryType> TYPE_SET =
-            Set.of(
-                    QueryType.DETAIL_APPROVAL_CURRENT,
-                    QueryType.DETAIL_APPROVAL_HISTORY,
-                    QueryType.DETAIL_SUBTABLE_QUERY);
+            Set.of(QueryType.DETAIL_APPROVAL_CURRENT, QueryType.DETAIL_SUBTABLE_QUERY);
 
     @Override
     public void processAssembleData(

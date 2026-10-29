@@ -15,7 +15,10 @@ import org.springframework.stereotype.Service;
 public class IdConditionBuilderServiceImpl implements SingleBizConditionBuilderService {
 
     private final Set<QueryType> TYPE_SET =
-            Set.of(QueryType.DETAIL, QueryType.DETAIL_APPROVAL_CURRENT);
+            Set.of(
+                    QueryType.DETAIL,
+                    QueryType.DETAIL_APPROVAL_CURRENT,
+                    QueryType.DETAIL_CHANGE_REQUEST);
 
     @Override
     public Boolean isReferTo(QueryType queryType) {

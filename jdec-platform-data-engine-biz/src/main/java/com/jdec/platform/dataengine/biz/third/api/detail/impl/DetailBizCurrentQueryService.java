@@ -36,7 +36,10 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
     private final DetailDataProcessFactory detailDataProcessFactory;
 
     private final Set<QueryType> TYPE_SET =
-            Set.of(QueryType.DETAIL, QueryType.DETAIL_APPROVAL_CURRENT);
+            Set.of(
+                    QueryType.DETAIL,
+                    QueryType.DETAIL_APPROVAL_CURRENT,
+                    QueryType.DETAIL_CHANGE_REQUEST);
 
     @Override
     public Boolean isReferTo(QueryType queryType) {
@@ -48,9 +51,7 @@ public class DetailBizCurrentQueryService implements DetailBizReferQueryService 
 
         List<RecordDataDTO> recordDataDTOList = new ArrayList<>();
 
-        Boolean hasApproval =
-                context.getQueryType() == QueryType.DETAIL_APPROVAL_CURRENT
-                        || context.getQueryType() == QueryType.DETAIL_APPROVAL_HISTORY;
+        Boolean hasApproval = context.getQueryType() == QueryType.DETAIL_APPROVAL_CURRENT;
 
         ModuleFilterInfo moduleFilterInfo =
                 ModuleFilterInfo.builder().moduleInfo(ModuleInfo.builder().build()).build();
