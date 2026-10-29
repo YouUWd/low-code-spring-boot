@@ -1090,11 +1090,10 @@ public class ModuleTreeDataUtils {
                         result.computeIfAbsent(child.getModuleId(), k -> new HashMap<>())
                                 .computeIfAbsent(dataId, k -> new HashMap<>())
                                 .putAll(recordDataDTO.getRow());
-
-                        if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
-                            collectModuleChildrenDataMap(
-                                    recordDataDTO.getChildren(), moduleCacheMap, result);
-                        }
+                    }
+                    if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                        collectModuleChildrenDataMap(
+                                recordDataDTO.getChildren(), moduleCacheMap, result);
                     }
                 }
             }
@@ -1424,7 +1423,7 @@ public class ModuleTreeDataUtils {
                                 .nodeId(String.valueOf(primaryDataId))
                                 .parentNodeId(String.valueOf(parentDataId))
                                 .changeContent(tableRow)
-                                .action("I")
+                                .action("INSERT")
                                 .build();
                 result.add(changeItemDTO);
 
@@ -1438,7 +1437,7 @@ public class ModuleTreeDataUtils {
                                     .nodeId(String.valueOf(primaryDataId))
                                     .parentNodeId(String.valueOf(parentDataId))
                                     .changeContent(subTableRow)
-                                    .action("I")
+                                    .action("INSERT")
                                     .build();
                     result.add(item);
                 }
@@ -1465,7 +1464,7 @@ public class ModuleTreeDataUtils {
                                 .nodeId(String.valueOf(primaryDataId))
                                 .parentNodeId(String.valueOf(parentDataId))
                                 .changeContent(getRowChangeContent(tableRowNew, tableRowBase))
-                                .action("U")
+                                .action("UPDATE")
                                 .build();
                 result.add(changeItemDTO);
 
@@ -1482,7 +1481,7 @@ public class ModuleTreeDataUtils {
                                     .parentNodeId(String.valueOf(parentDataId))
                                     .changeContent(
                                             getRowChangeContent(subTableRow, subTableRowBase))
-                                    .action("U")
+                                    .action("UPDATE")
                                     .build();
                     result.add(item);
                 }
@@ -1505,7 +1504,7 @@ public class ModuleTreeDataUtils {
                                 .nodeId(String.valueOf(primaryDataId))
                                 .parentNodeId(String.valueOf(parentDataId))
                                 .changeContent(null)
-                                .action("D")
+                                .action("DELETE")
                                 .build();
                 result.add(changeItemDTO);
 
@@ -1519,7 +1518,7 @@ public class ModuleTreeDataUtils {
                                     .nodeId(String.valueOf(primaryDataId))
                                     .parentNodeId(String.valueOf(parentDataId))
                                     .changeContent(null)
-                                    .action("D")
+                                    .action("DELETE")
                                     .build();
                     result.add(item);
                 }
