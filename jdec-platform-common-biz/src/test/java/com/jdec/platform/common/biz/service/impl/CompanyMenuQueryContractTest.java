@@ -5,7 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
-import com.jdec.platform.approval.api.dto.ApprovalIdButton;
+import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.FieldSortItem;
 import com.jdec.platform.common.api.dto.request.FlatFilterItem;
@@ -726,17 +726,10 @@ class CompanyMenuQueryContractTest {
     @DisplayName("测试待办(approvalType=1)中记录的 btnList 成功组装为办理(handle)")
     void testApprovalButtons_fallbackForNonEngineTodoRecords() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
-        ApprovalIdButton todoBtn = new ApprovalIdButton();
-        todoBtn.setBusinessNo("CR999");
-        todoBtn.setButtonKey("handle");
-        todoBtn.setButtonName("办理");
-
-        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp approvalResp =
-                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
-        approvalResp.setToDoList(List.of(todoBtn));
-        approvalResp.setDoneList(Collections.emptyList());
-        approvalResp.setAllList(List.of(todoBtn));
-        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(approvalResp);
+        ApprovalBusinessNoResp todo = new ApprovalBusinessNoResp();
+        todo.setBusinessNumber("CR999");
+        todo.setApprovalType(1);
+        when(approvalEngine.getApprovalBusinessNo(eq(1001L))).thenReturn(List.of(todo));
 
         Map<String, Object> tableData = new HashMap<>();
         tableData.put("id", 999L);
@@ -755,20 +748,18 @@ class CompanyMenuQueryContractTest {
                         100L, MenuQueryReq.builder().approvalType(1).build());
 
         assertNotNull(resp);
-        assertNotNull(resp.getApproval());
-        assertEquals(1, resp.getApproval().size());
+        assertNotNull(resp.getApprovalActions());
+        assertEquals(1, resp.getApprovalActions().size());
 
-        var approvalRow = resp.getApproval().get(0);
+        var approvalRow = resp.getApprovalActions().get(0);
         assertNotNull(approvalRow.getRow());
-        assertEquals(999L, approvalRow.getRow().get("id"));
+        assertEquals(999L, approvalRow.getId());
 
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> btnList =
-                (List<Map<String, Object>>) approvalRow.getRow().get("btnList");
+        var btnList = approvalRow.getBtnList();
         assertNotNull(btnList);
         assertEquals(1, btnList.size());
-        assertEquals("handle", btnList.get(0).get("buttonKey"));
-        assertEquals("办理", btnList.get(0).get("buttonName"));
+        assertEquals("handle", btnList.get(0).getButtonKey());
+        assertEquals("办理", btnList.get(0).getButtonName());
     }
 
     @Test
@@ -776,40 +767,35 @@ class CompanyMenuQueryContractTest {
     void testApprovalButtons_allTypeCorrectButtons() {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
-        // 模拟审批引擎返回：记录 101 为办理(handle)，记录 102 为查阅(view)
-        ApprovalIdButton btn101 = new ApprovalIdButton();
-        btn101.setRecordId(101L);
-        btn101.setButtonKey("handle");
-        btn101.setButtonName("办理");
+        // 模拟审批引擎返回：记录 CR101 为办理(handle)，记录 CR102 为查阅(view)
+        ApprovalBusinessNoResp item101 = new ApprovalBusinessNoResp();
+        item101.setBusinessNumber("CR101");
+        item101.setApprovalType(1); // 待办
 
-        ApprovalIdButton btn102 = new ApprovalIdButton();
-        btn102.setRecordId(102L);
-        btn102.setButtonKey("view");
-        btn102.setButtonName("查阅");
+        ApprovalBusinessNoResp item102 = new ApprovalBusinessNoResp();
+        item102.setBusinessNumber("CR102");
+        item102.setApprovalType(2); // 已办
 
-        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp countResp =
-                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
-        countResp.setToDoList(List.of(btn101));
-        countResp.setDoneList(List.of(btn102));
-        countResp.setAllList(List.of(btn101, btn102));
-
-        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(countResp);
+        when(approvalEngine.getApprovalBusinessNo(eq(1001L))).thenReturn(List.of(item101, item102));
 
         // 模拟底层数据返回 3 条记录：101(审批中待办), 102(已办), 999(非审批引擎自建草稿)
         Map<String, Object> row101 = new HashMap<>();
         row101.put("id", 101L);
+        row101.put("business_no", "CR101");
         row101.put("created_by", 2L);
         row101.put("business_status", 2);
         row101.put("company_name", "审批中待办企业");
 
         Map<String, Object> row102 = new HashMap<>();
         row102.put("id", 102L);
+        row102.put("business_no", "CR102");
         row102.put("created_by", 2L);
         row102.put("business_status", 3);
         row102.put("company_name", "已归档企业");
 
         Map<String, Object> row999 = new HashMap<>();
         row999.put("id", 999L);
+        row999.put("business_no", "CR999");
         row999.put("created_by", 1L); // 当前用户自建草稿
         row999.put("business_status", 1);
         row999.put("company_name", "自建草稿企业");
@@ -828,18 +814,16 @@ class CompanyMenuQueryContractTest {
                         100L, MenuQueryReq.builder().approvalType(3).build());
 
         assertNotNull(resp);
-        assertNotNull(resp.getApproval());
-        assertEquals(3, resp.getApproval().size());
+        assertNotNull(resp.getApprovalActions());
+        assertEquals(3, resp.getApprovalActions().size());
 
         Map<Long, String> btnKeyMap = new HashMap<>();
-        for (var approvalItem : resp.getApproval()) {
-            Long id = ((Number) approvalItem.getRow().get("id")).longValue();
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> btns =
-                    (List<Map<String, Object>>) approvalItem.getRow().get("btnList");
+        for (var approvalItem : resp.getApprovalActions()) {
+            Long id = approvalItem.getId();
+            var btns = approvalItem.getBtnList();
             assertNotNull(btns);
             assertFalse(btns.isEmpty());
-            btnKeyMap.put(id, (String) btns.get(0).get("buttonKey"));
+            btnKeyMap.put(id, btns.get(0).getButtonKey());
         }
 
         assertEquals("handle", btnKeyMap.get(101L), "审批待办记录应为办理(handle)");
@@ -1353,15 +1337,10 @@ class CompanyMenuQueryContractTest {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
         // 1. 审批引擎返回待办记录 CR001
-        ApprovalIdButton btn101 = new ApprovalIdButton();
-        btn101.setBusinessNo("CR001");
-        btn101.setButtonKey("handle");
-        btn101.setButtonName("办理");
-
-        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp resp =
-                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
-        resp.setToDoList(List.of(btn101));
-        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
+        ApprovalBusinessNoResp todo = new ApprovalBusinessNoResp();
+        todo.setBusinessNumber("CR001");
+        todo.setApprovalType(1);
+        when(approvalEngine.getApprovalBusinessNo(eq(1001L))).thenReturn(List.of(todo));
 
         // 执行查询
         commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().approvalType(1).build());
@@ -1384,15 +1363,10 @@ class CompanyMenuQueryContractTest {
         when(sysApprovalChainConfigApi.getApprovalStatus(any())).thenReturn(true);
 
         // 1. 审批引擎返回全部记录 CR001
-        ApprovalIdButton btn101 = new ApprovalIdButton();
-        btn101.setBusinessNo("CR001");
-        btn101.setButtonKey("handle");
-        btn101.setButtonName("办理");
-
-        com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp resp =
-                new com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp();
-        resp.setAllList(List.of(btn101));
-        when(approvalEngine.getApprovalListButton(eq(1001L))).thenReturn(resp);
+        ApprovalBusinessNoResp all = new ApprovalBusinessNoResp();
+        all.setBusinessNumber("CR001");
+        all.setApprovalType(3);
+        when(approvalEngine.getApprovalBusinessNo(eq(1001L))).thenReturn(List.of(all));
 
         // 执行查询
         commonAggregateService.queryByMenu(100L, MenuQueryReq.builder().approvalType(3).build());

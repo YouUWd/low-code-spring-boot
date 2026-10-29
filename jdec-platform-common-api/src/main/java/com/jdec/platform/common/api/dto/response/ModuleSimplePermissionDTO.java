@@ -23,4 +23,7 @@ public class ModuleSimplePermissionDTO implements Serializable {
 
     @Schema(description = "是否具有编辑权限: 1-是, 0-否", example = "1")
     private Integer edit;
+
+    @Schema(description = "权限码0：无权限，1：仅查看， 2：编辑", example = "1")
+    private Integer permissionCode;
 }

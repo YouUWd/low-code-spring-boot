@@ -1,7 +1,9 @@
 package com.jdec.platform.common.biz.controller;
 
+import com.jdec.platform.common.api.dto.request.ChangeRequestDetailQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuDetailQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuVersionListQueryReq;
+import com.jdec.platform.common.api.dto.response.ChangeRequestResp;
 import com.jdec.platform.common.api.dto.response.DetailDataResp;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
@@ -45,6 +47,17 @@ public class CommonDataEngineController {
                     ex);
             throw ex;
         }
+    }
+
+    @PostMapping("/menu/change-request/detail")
+    @Operation(
+            summary = "基于菜单 ID 的变更申请单据详情查询",
+            description = "仅需传入 menuId 和单据 id，内部自动解析根模块 ID 及勾选字段，返回单据元数据定义与同构详情树")
+    public ApiResponse<ChangeRequestResp> getChangeRequestDetailByMenu(
+            @RequestBody ChangeRequestDetailQueryReq menuDetailQueryReq) {
+        return ApiResponse.success(null);
+        //        return
+        // ApiResponse.success(commonDataEngineService.getChangeRequestDetailByMenu(menuDetailQueryReq));
     }
 
     @PostMapping("/menu/get-version-list")

@@ -10,6 +10,7 @@ import com.jdec.platform.externalobject.biz.service.support.ExternalObjectRealti
 import com.jdec.platform.externalobject.biz.service.support.ExternalObjectRealtimeRepository.MemberRow;
 import com.jdec.platform.externalobject.biz.service.support.ExternalObjectTable;
 import com.jdec.platform.externalobject.biz.service.support.ExternalObjectWordValues;
+import com.jdec.platform.shared.exception.ApiCodeEnum;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,6 +45,8 @@ import org.springframework.stereotype.Service;
  * <p>请求只包含 {@code table.field} 与字段值。人员字段（姓名、手机号、证件号）不是单字段查重，而是按三者组合判断： 其余两个字段的值与自身记录由 {@code subId}
  * 查询人员行补齐；比对范围包含同一主单的其它人员行与其它外部对象，排除当前人员行本身； 非人员字段不排除当前对象自身（前端可按 {@code companyId}
  * 过滤），但同样排除当前对象的历史版本。
+ *
+ * <p>查重请求不合法时统一返回 {@link ApiCodeEnum#WARNING_EXISTS}（702），与其它业务异常的 700 区分。
  */
 @Service
 @RequiredArgsConstructor
@@ -60,11 +63,11 @@ public class ExternalObjectDuplicateCheckService implements ExternalObjectDuplic
     @Override
     public ExternalObjectDuplicateCheckResp check(ExternalObjectDuplicateCheckReq req) {
         if (req == null) {
-            throw new BusinessException("查重请求不能为空");
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "查重请求不能为空");
         }
         String field = ExternalObjectWordValues.trim(req.field()).toLowerCase(Locale.ROOT);
         if (field.isEmpty()) {
-            throw new BusinessException("查重字段不能为空");
+            throw new BusinessException(ApiCodeEnum.WARNING_EXISTS.getCode(), "查重字段不能为空");
         }
         String value = ExternalObjectWordValues.toText(req.value());
         if (value.isEmpty()) {
@@ -75,7 +78,8 @@ public class ExternalObjectDuplicateCheckService implements ExternalObjectDuplic
         }
         DuplicateField spec = FIELDS.get(field);
         if (spec == null) {
-            throw new BusinessException("不支持查重的字段: " + req.field());
+            throw new BusinessException(
+                    ApiCodeEnum.WARNING_EXISTS.getCode(), "不支持查重的字段: " + req.field());
         }
         // 比较口径与保存/提交校验一致：去空白，统一社会信用代码另转大写
         String normalizedValue = spec.normalize().apply(value);

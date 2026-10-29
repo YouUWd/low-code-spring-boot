@@ -4,21 +4,21 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.List;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "基于菜单的详情数据查询请求")
 public class MenuDetailQueryReq implements Serializable {
 
-    @Schema(description = "菜单ID", example = "20")
+    @Schema(description = "菜单ID", example = "20", requiredMode = Schema.RequiredMode.REQUIRED)
     private List<Long> menuIds;
 
-    @Schema(description = "详情数据ID", example = "20")
+    @Schema(description = "详情数据ID", example = "20", requiredMode = Schema.RequiredMode.REQUIRED)
     private Long id;
 
     @Schema(description = "是否返回版本对比", example = "false")

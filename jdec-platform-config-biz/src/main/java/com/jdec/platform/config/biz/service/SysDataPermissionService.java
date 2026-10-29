@@ -5,6 +5,8 @@ import static org.jooq.impl.DSL.*;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysDataPermissionApi;
 import com.jdec.platform.config.api.dto.request.DataPermissionQueryItem;
 import com.jdec.platform.config.api.dto.request.QuerySysDataPermissionReq;
@@ -29,12 +31,15 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.enums.CommonStatusEnum;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.DSLContext;
 import org.jooq.Field;
+import org.jooq.JSON;
+import org.jooq.JSONB;
 import org.jooq.Record;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -46,6 +51,17 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 @DataSource(DataSourceConstants.CONFIG_CENTER)
 public class SysDataPermissionService implements SysDataPermissionApi {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /** 业务数据为空时的统一占位值 */
+    private static final String NULL_VALUE = "Null";
+
+    /** 是否来自词云：是（sys_field.relation_business_no 有值） */
+    private static final Integer CLOUD_YES = 1;
+
+    /** 是否来自词云：否 */
+    private static final Integer CLOUD_NO = 0;
 
     private final SysDataPermissionMapper sysDataPermissionMapper;
     private final SysProjectSubjectMapper sysProjectSubjectMapper;
@@ -206,6 +222,13 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                                     fieldConfig != null ? fieldConfig.getBusinessTypeCode() : null);
                             resp.setBusinessTypeName(
                                     fieldConfig != null ? fieldConfig.getBusinessTypeName() : null);
+                            // 是否来自词云：按权限编码「表名*字段名」在 sys_field 的关联关系业务编号判定
+                            resp.setCloud(
+                                    fieldConfig != null
+                                                    && StringUtils.hasText(
+                                                            fieldConfig.getRelationBusinessNo())
+                                            ? CLOUD_YES
+                                            : CLOUD_NO);
                             resp.setSubjectInfos(
                                     CollUtil.emptyIfNull(codeSubjectMap.get(type.getCode()))
                                             .stream()
@@ -331,7 +354,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
     }
 
     /**
-     * 按权限编码「表名*字段名」批量查询 {@code sys_field}，取得字段配置的业务类型。
+     * 按权限编码「表名*字段名」批量查询 {@code sys_field}，取得字段配置的业务类型与关联关系业务编号（用于词云标识）。
      *
      * <p>返回 权限编码 -> 字段配置（同键保留首条），编码非法或无匹配配置时返回空。
      */
@@ -390,7 +413,9 @@ public class SysDataPermissionService implements SysDataPermissionApi {
      * 直连项目编码对应的数据源，查询各权限编码下的业务数据。
      *
      * <p>权限编码形如「表名*字段名」，逐项拼接 SQL： {@code SELECT DISTINCT subject_id, 字段名 FROM 表名 WHERE subject_id
-     * IN (主体ID列表)}， 结果按 主体ID -> 权限编码 归集，按字段 JDBC 原始类型返回，空值统一记为 "Null"。 单个查询项查询失败时仅记日志，不影响权限节点列表查询。
+     * IN (主体ID列表)}， 结果按 主体ID -> 权限编码 归集，保持字段原始类型返回：标量原样返回，JSON 字段返回 JSON 结构而非 JSON 文本，空值记为 "Null"。
+     * 字段值存数组时按元素打散拆分，每项元素各算一条业务数据，同一主体下重复的数据只保留一条 （去重口径见 {@link #dedupKey(Object)}）；
+     * 单个查询项查询失败时仅记日志，不影响权限节点列表查询。
      */
     private Map<Long, Map<String, List<Object>>> queryBizData(
             String projectNo, List<DataPermissionQueryItem> queryItems) {
@@ -408,6 +433,8 @@ public class SysDataPermissionService implements SysDataPermissionApi {
         }
 
         Field<String> subjectField = field(name("subject_id"), String.class);
+        // 去重键集合：主体ID#权限编码 -> 已收集业务数据的去重键
+        Map<String, Set<Object>> seenBizNameKeys = new HashMap<>();
         for (DataPermissionQueryItem item : queryItems) {
             List<String> subjectIds =
                     CollUtil.emptyIfNull(item.getSubjectIds()).stream()
@@ -436,11 +463,19 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                         continue;
                     }
                     Object value = record.get(valueField);
-                    // null 统一转换为 "Null"
-                    subjectBizDataMap
-                            .computeIfAbsent(subjectId, key -> new HashMap<>())
-                            .computeIfAbsent(dataPermissionCode, key -> new ArrayList<>())
-                            .add(value == null ? "Null" : value);
+                    List<Object> bizNames =
+                            subjectBizDataMap
+                                    .computeIfAbsent(subjectId, key -> new HashMap<>())
+                                    .computeIfAbsent(dataPermissionCode, key -> new ArrayList<>());
+                    Set<Object> seenKeys =
+                            seenBizNameKeys.computeIfAbsent(
+                                    subjectId + "#" + dataPermissionCode, key -> new HashSet<>());
+                    // 数组字段按元素拆分，同一业务数据只保留首次出现的展示值
+                    for (Map.Entry<Object, Object> entry : flattenBizNames(value).entrySet()) {
+                        if (seenKeys.add(entry.getKey())) {
+                            bizNames.add(entry.getValue());
+                        }
+                    }
                 }
             } catch (Exception e) {
                 log.error(
@@ -452,6 +487,113 @@ public class SysDataPermissionService implements SysDataPermissionApi {
             }
         }
         return subjectBizDataMap;
+    }
+
+    /**
+     * 将字段值打散拆分，返回「去重键 -> 展示值」映射，保持元素出现顺序。
+     *
+     * <p>数组按元素逐个展开，非数组按单值返回；展示值尽量保留业务字段原始类型，JSON 文本与 jOOQ JSON/JSONB 对象解析为 {@code Map}/{@code List}
+     * 后返回，前端拿到的是 JSON 结构而不是 JSON 文本，标量（字符串、数字、布尔）原样返回； 字段值为空时保留占位 {@link #NULL_VALUE}，数组内的空元素直接忽略。
+     */
+    private Map<Object, Object> flattenBizNames(Object value) {
+        Map<Object, Object> bizNames = new LinkedHashMap<>();
+        if (value == null) {
+            bizNames.put(NULL_VALUE, NULL_VALUE);
+            return bizNames;
+        }
+        for (Object element : toElements(value)) {
+            if (element != null) {
+                Object displayValue = toDisplayValue(element);
+                bizNames.putIfAbsent(
+                        dedupKey(displayValue), displayValue == null ? NULL_VALUE : displayValue);
+            }
+        }
+        return bizNames;
+    }
+
+    /**
+     * 业务数据的展示值：尽量保留业务字段的原始类型。
+     *
+     * <p>jOOQ JSON/JSONB 包装类型先取出 JSON 文本，再按 JSON 结构解析为 {@code Map}/{@code List}；字符串、数字、布尔等
+     * 标量原样返回，解析失败时按原始文本返回。
+     */
+    private Object toDisplayValue(Object element) {
+        Object value = unwrapJson(element);
+        if (value instanceof CharSequence text) {
+            String content = text.toString().trim();
+            if (isJsonContainer(content)) {
+                try {
+                    return OBJECT_MAPPER.readValue(content, Object.class);
+                } catch (Exception e) {
+                    log.debug("字段值不是合法的 JSON，按单值处理: {}", content);
+                    return value;
+                }
+            }
+        }
+        return value;
+    }
+
+    /** 判断文本是否形如 JSON 对象或数组 */
+    private boolean isJsonContainer(String content) {
+        return (content.startsWith("{") && content.endsWith("}"))
+                || (content.startsWith("[") && content.endsWith("]"));
+    }
+
+    /** 解包 jOOQ 的 JSON/JSONB 包装类型，其余类型原样返回 */
+    private Object unwrapJson(Object value) {
+        if (value instanceof JSON jooqJson) {
+            return jooqJson.data();
+        }
+        if (value instanceof JSONB jooqJsonb) {
+            return jooqJsonb.data();
+        }
+        return value;
+    }
+
+    /**
+     * 业务数据的去重键：决定两条拆分结果是否算同一条。
+     *
+     * <p>数字按数值比较（{@code 1} 与 {@code 1.0} 视为同一值）；对象/数组按 JSON 结构比较，忽略对象键顺序；
+     * 字符串、布尔等按原值严格比较（不忽略大小写与首尾空格）。
+     */
+    private Object dedupKey(Object element) {
+        if (element instanceof Number number) {
+            try {
+                return new BigDecimal(number.toString()).stripTrailingZeros();
+            } catch (NumberFormatException e) {
+                return number.toString();
+            }
+        }
+        if (element instanceof Map<?, ?> || element instanceof Collection<?>) {
+            try {
+                return OBJECT_MAPPER.valueToTree(element);
+            } catch (Exception e) {
+                return String.valueOf(element);
+            }
+        }
+        return element;
+    }
+
+    /** 识别并展开数组值：jOOQ JSON、集合、Java 数组、JSON 数组文本，其余按单值返回 */
+    private List<Object> toElements(Object value) {
+        value = unwrapJson(value);
+        if (value instanceof Collection<?> collection) {
+            return new ArrayList<>(collection);
+        }
+        if (value instanceof Object[] array) {
+            return Arrays.asList(array);
+        }
+        if (value instanceof CharSequence text) {
+            String content = text.toString().trim();
+            if (content.startsWith("[") && content.endsWith("]")) {
+                try {
+                    return OBJECT_MAPPER.readValue(content, new TypeReference<List<Object>>() {});
+                } catch (Exception e) {
+                    log.debug("字段值不是合法的 JSON 数组，按单值处理: {}", content);
+                }
+            }
+        }
+        return Collections.singletonList(value);
     }
 
     /** 将查询结果中的主体ID转换为 Long，非法值返回 null */

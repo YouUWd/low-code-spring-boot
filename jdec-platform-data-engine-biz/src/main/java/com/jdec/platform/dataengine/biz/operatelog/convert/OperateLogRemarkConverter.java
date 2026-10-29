@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.operatelog.convert;
 
 import cn.hutool.core.collection.CollectionUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -20,9 +21,11 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -35,11 +38,29 @@ import org.springframework.stereotype.Service;
  *
  * <p>按模块树并行下降：模块按 {@code moduleId} 对齐，数据行按主键 {@code id} 对齐；新行无主键视为新增，
  * 旧行在新数据中不存在视为删除（删除只记录唯一标识字段）。主子模块变更挂到对应父行的 {@code children} 下。
+ *
+ * <p>数据行名称 {@code name} 取自模块配置的「代表业务唯一性字段」（sys_module_field.biz_key_order）：
+ * 优先取旧数据中的字段值，旧数据中缺失时退回本次提交的新值，多字段按「【字段1-字段2-字段3】」拼接。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class OperateLogRemarkConverter {
+
+    /** 数据行名称中唯一标识字段的拼接分隔符 */
+    private static final String UNIQUE_NAME_SEPARATOR = "-";
+
+    /** 数据行名称的前缀、后缀（整体包裹唯一标识字段拼接结果，如【W001-张三】） */
+    private static final String UNIQUE_NAME_PREFIX = "【";
+
+    private static final String UNIQUE_NAME_SUFFIX = "】";
+
+    /** 多值字段（数组）展示文本的拼接分隔符 */
+    private static final String MULTI_VALUE_SEPARATOR = ",";
+
+    /** 结构化字段值（引用/词云回填的对象）取展示文本时按顺序匹配的名称属性 */
+    private static final List<String> DISPLAY_TEXT_KEYS =
+            List.of("name", "displayName", "display_name", "label", "text", "title", "value");
 
     private final SysMenuApi sysMenuApi;
 
@@ -141,11 +162,9 @@ public class OperateLogRemarkConverter {
                                 .add(
                                         RowChangeLogDTO.builder()
                                                 .name(
-                                                        DataPersistenceUtil.getUniqueName(
-                                                                DataPersistenceUtil
-                                                                        .getTableRowMapFromWideRow(
-                                                                                newRec.getRow(),
-                                                                                primaryTable),
+                                                        buildRowName(
+                                                                getRowMap(oldRec, primaryTable),
+                                                                getRowMap(newRec, primaryTable),
                                                                 uniqueFields))
                                                 .children(children)
                                                 .build());
@@ -164,11 +183,9 @@ public class OperateLogRemarkConverter {
                         rowLog =
                                 RowChangeLogDTO.builder()
                                         .name(
-                                                DataPersistenceUtil.getUniqueName(
-                                                        DataPersistenceUtil
-                                                                .getTableRowMapFromWideRow(
-                                                                        newRec.getRow(),
-                                                                        primaryTable),
+                                                buildRowName(
+                                                        null,
+                                                        getRowMap(newRec, primaryTable),
                                                         uniqueFields))
                                         .build();
                     }
@@ -263,7 +280,7 @@ public class OperateLogRemarkConverter {
             return null;
         }
         return RowChangeLogDTO.builder()
-                .name(DataPersistenceUtil.getUniqueName(newRow, uniqueFields))
+                .name(buildRowName(oldRow, newRow, uniqueFields))
                 .columns(columns)
                 .build();
     }
@@ -280,7 +297,7 @@ public class OperateLogRemarkConverter {
             return null;
         }
         return RowChangeLogDTO.builder()
-                .name(DataPersistenceUtil.getUniqueName(newRow, uniqueFields))
+                .name(buildRowName(null, newRow, uniqueFields))
                 .columns(columns)
                 .build();
     }
@@ -377,10 +394,14 @@ public class OperateLogRemarkConverter {
     }
 
     /**
-     * 比较字段值：null 与空白视为相同；数组/对象按 JSON 结构比较（忽略对象键顺序）； 其余标量按字面值比较——同为数字时按数值比较（100 无论
-     * BigDecimal/double/int 均相等），否则按文本比较。
+     * 比较字段值：null 与空白视为相同；数组/对象按 JSON 语义比较；其余标量按字面值比较——同为数字时按数值比较 （100 无论 BigDecimal/double/int
+     * 均相等），否则按文本比较。
+     *
+     * <p>旧数据来自快照反序列化（Map/List），新数据来自详情查询（可能是 JsonNode，且引用/词云回填会增删值为 null
+     * 的键），直接按节点相等比较会把未变更字段记成变更，而落库序列化又会隐藏 null 值，导致 old 与 newer 看起来一模一样； 因此统一转成 JSON
+     * 树后按业务语义比较：忽略对象键顺序、忽略 null 值键的有无、数字按数值比较。
      */
-    private boolean isSameValue(Object oldValue, Object newerValue) {
+    boolean isSameValue(Object oldValue, Object newerValue) {
         Object oldNormalized = normalizeValue(oldValue);
         Object newerNormalized = normalizeValue(newerValue);
         boolean oldBlank = isBlankValue(oldNormalized);
@@ -388,10 +409,8 @@ public class OperateLogRemarkConverter {
         if (oldBlank || newerBlank) {
             return oldBlank && newerBlank;
         }
-        if (isContainerValue(oldNormalized) || isContainerValue(newerNormalized)) {
-            return objectMapper
-                    .valueToTree(oldNormalized)
-                    .equals(objectMapper.valueToTree(newerNormalized));
+        if (isStructuredValue(oldNormalized) || isStructuredValue(newerNormalized)) {
+            return isSameJson(toJsonNode(oldNormalized), toJsonNode(newerNormalized));
         }
         if (oldNormalized instanceof Number oldNumber
                 && newerNormalized instanceof Number newerNumber) {
@@ -406,6 +425,80 @@ public class OperateLogRemarkConverter {
                 DataPersistenceUtil.getFieldTxtValue(newerNormalized));
     }
 
+    /** JSON 树比较：null/缺失/空白等价，对象忽略值为 null 的键，数组逐项比较，数字按数值比较 */
+    private boolean isSameJson(JsonNode oldNode, JsonNode newerNode) {
+        boolean oldEmpty = isEmptyJsonNode(oldNode);
+        boolean newerEmpty = isEmptyJsonNode(newerNode);
+        if (oldEmpty || newerEmpty) {
+            return oldEmpty && newerEmpty;
+        }
+        if (oldNode.isNumber() && newerNode.isNumber()) {
+            return toBigDecimal(oldNode.decimalValue())
+                            .compareTo(toBigDecimal(newerNode.decimalValue()))
+                    == 0;
+        }
+        if (oldNode.isObject() && newerNode.isObject()) {
+            Set<String> fieldNames = new LinkedHashSet<>();
+            oldNode.fieldNames().forEachRemaining(fieldNames::add);
+            newerNode.fieldNames().forEachRemaining(fieldNames::add);
+            for (String fieldName : fieldNames) {
+                if (!isSameJson(oldNode.get(fieldName), newerNode.get(fieldName))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (oldNode.isArray() && newerNode.isArray()) {
+            if (oldNode.size() != newerNode.size()) {
+                return false;
+            }
+            for (int i = 0; i < oldNode.size(); i++) {
+                if (!isSameJson(oldNode.get(i), newerNode.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        // 结构与标量互比、对象与数组互比均视为不同值
+        if (oldNode.isContainerNode() || newerNode.isContainerNode()) {
+            return false;
+        }
+        return oldNode.asText().equals(newerNode.asText());
+    }
+
+    /** 空值节点：节点缺失、JSON null、空白文本 */
+    private boolean isEmptyJsonNode(JsonNode node) {
+        return node == null
+                || node.isNull()
+                || node.isMissingNode()
+                || (node.isTextual() && StringUtils.isBlank(node.asText()));
+    }
+
+    /** Map/List/数组/JsonNode(Object、Array) 视为结构化值，需要按 JSON 语义比较 */
+    private boolean isStructuredValue(Object value) {
+        if (value instanceof Collection<?>
+                || value instanceof Map<?, ?>
+                || value.getClass().isArray()) {
+            return true;
+        }
+        return value instanceof JsonNode node && (node.isObject() || node.isArray());
+    }
+
+    /** 统一转 JSON 树：JsonNode 原样使用，Map/List/数组转节点，其余标量转值节点 */
+    private JsonNode toJsonNode(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof JsonNode node) {
+            return node;
+        }
+        try {
+            return objectMapper.valueToTree(value);
+        } catch (Exception e) {
+            return objectMapper.getNodeFactory().textNode(String.valueOf(value));
+        }
+    }
+
     /** 数字统一转 BigDecimal 比较：忽略类型与精度差异（100、100.0、100.00 视为同一值） */
     private BigDecimal toBigDecimal(Number number) {
         if (number instanceof BigDecimal decimal) {
@@ -418,15 +511,12 @@ public class OperateLogRemarkConverter {
         return new BigDecimal(number.toString());
     }
 
-    /** null 与空白字符串视为同一空值，避免未改动字段因 null/"" 差异进入 remark */
+    /** null、空白字符串、JSON null/空白文本视为同一空值，避免未改动字段因 null/"" 差异进入 remark */
     private boolean isBlankValue(Object value) {
+        if (value instanceof JsonNode node) {
+            return isEmptyJsonNode(node);
+        }
         return value == null || (value instanceof CharSequence text && StringUtils.isBlank(text));
-    }
-
-    private boolean isContainerValue(Object value) {
-        return value instanceof Collection<?>
-                || value instanceof Map<?, ?>
-                || value.getClass().isArray();
     }
 
     private RowChangeLogDTO buildDeleteRow(
@@ -459,9 +549,89 @@ public class OperateLogRemarkConverter {
             }
         }
         return RowChangeLogDTO.builder()
-                .name(DataPersistenceUtil.getUniqueName(rowMap, uniqueFields))
+                .name(buildRowName(rowMap, null, uniqueFields))
                 .columns(columns.isEmpty() ? null : columns)
                 .build();
+    }
+
+    /**
+     * 数据行名称：按模块配置的「代表业务唯一性字段」取值，字段值优先取旧数据，旧数据中缺失（新增行或旧详情未返回该字段）时退回新值，按「【字段1-字段2-字段3】」拼接；字段值均为空时返回空串。
+     *
+     * @param oldRow 旧数据行，新增行为 null
+     * @param newRow 本次提交的数据行，删除行为 null
+     * @param uniqueFields 模块配置的代表业务唯一性字段（按 biz_key_order 排序）
+     */
+    private String buildRowName(
+            Map<String, Object> oldRow, Map<String, Object> newRow, List<String> uniqueFields) {
+        if (CollectionUtil.isEmpty(uniqueFields)) {
+            return "";
+        }
+        List<String> values = new ArrayList<>();
+        for (String uniqueField : uniqueFields) {
+            String value = getDisplayText(oldRow, uniqueField);
+            if (StringUtils.isBlank(value)) {
+                value = getDisplayText(newRow, uniqueField);
+            }
+            if (StringUtils.isNotBlank(value)) {
+                values.add(value);
+            }
+        }
+        if (values.isEmpty()) {
+            return "";
+        }
+        return UNIQUE_NAME_PREFIX + String.join(UNIQUE_NAME_SEPARATOR, values) + UNIQUE_NAME_SUFFIX;
+    }
+
+    private Map<String, Object> getRowMap(RecordDataDTO rec, String primaryTable) {
+        if (rec == null || rec.getRow() == null) {
+            return null;
+        }
+        return DataPersistenceUtil.getTableRowMapFromWideRow(rec.getRow(), primaryTable);
+    }
+
+    private String getDisplayText(Map<String, Object> row, String field) {
+        if (row == null || !row.containsKey(field)) {
+            return null;
+        }
+        return toDisplayText(normalizeValue(row.get(field)));
+    }
+
+    /** 字段值转展示文本：结构化值（引用/词云回填的对象或数组）取名称类属性，避免把 JSON 原文拼进数据行名称 */
+    private String toDisplayText(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (isStructuredValue(value)) {
+            return toDisplayText(toJsonNode(value));
+        }
+        String text = DataPersistenceUtil.getFieldTxtValue(value);
+        return StringUtils.isBlank(text) ? null : text;
+    }
+
+    private String toDisplayText(JsonNode node) {
+        if (isEmptyJsonNode(node)) {
+            return null;
+        }
+        if (node.isValueNode()) {
+            return node.asText();
+        }
+        if (node.isArray()) {
+            List<String> parts = new ArrayList<>();
+            for (JsonNode item : node) {
+                String text = toDisplayText(item);
+                if (StringUtils.isNotBlank(text)) {
+                    parts.add(text);
+                }
+            }
+            return String.join(MULTI_VALUE_SEPARATOR, parts);
+        }
+        for (String key : DISPLAY_TEXT_KEYS) {
+            String text = toDisplayText(node.get(key));
+            if (StringUtils.isNotBlank(text)) {
+                return text;
+            }
+        }
+        return null;
     }
 
     private List<ModuleChangeLogDTO> buildChildren(

@@ -29,9 +29,11 @@ public interface UserMenuHeaderApi {
     /**
      * 查询用户在指定列表菜单下的多级列头展示结构
      *
-     * <p>与 {@code SysMenuHeaderApi#getMenuHeaderDisplay} 同一套展示组装逻辑，区别在于数据来源为业务库的 {@code
-     * user_menu_header}：按用户 + 菜单（详情菜单ID）+ {@code subject_id} + {@code project_no} 纯读取该用户已保存的个性化表头
-     * 节点，只输出已勾选（{@code checked=1}）的列并保留其祖先菜单节点，无配置时返回空（header 为 null）。
+     * <p>与 {@code SysMenuHeaderApi#getMenuHeaderDisplay} 同一套展示组装逻辑，区别在于叠加了业务库 {@code
+     * user_menu_header} 中该用户（用户 + 菜单（详情菜单ID）+ {@code subject_id} + {@code project_no}）的个性化配置： 以「菜单
+     * + 字段 + {@code sys_menu_header} + 角色权限」生成的默认表头树为骨架，按 {@code virId} 逐节点合并，用户有记录取用户配置，
+     * 用户没有记录的节点（模块侧新增、或 {@code sys_menu_header} 后来才勾选的列）回落到系统默认值； 合并后只输出已勾选（{@code
+     * checked=1}）的列并保留其祖先菜单节点，无勾选列时 header 为 null。
      *
      * <p>字段可见性按角色权限过滤，满足哪些权限由入参共同决定（{@code roleId} 为空时不做任何权限过滤）：
      *

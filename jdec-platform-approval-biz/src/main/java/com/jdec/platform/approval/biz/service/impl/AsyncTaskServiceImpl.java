@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.approval.api.AsyncTaskService;
 import com.jdec.platform.approval.api.dto.ApprovalProcessDTO;
 import com.jdec.platform.approval.biz.dto.LogContentDTO;
@@ -63,6 +64,9 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     private final SysWechatTemplateApi sysWechatTemplateApi;
     private final ApprovalChainMapper approvalChainMapper;
     private final ProjectProperties projectProperties;
+
+    /** 取消按钮：取消只回退单据状态，不产生业务变更，日志 remark 不记录变更明细 */
+    private static final String BUTTON_CANCEL = "cancel";
 
     // ==================== 企业微信消息（无事务，纯 IO） ====================
     @Override
@@ -154,6 +158,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             MonitorApproveOperation approveBase = new MonitorApproveOperation();
             approveBase.setLogSubType("operationLog");
             approveBase.setPath(modelConfig.getExtra());
+            approveBase.setType(approvalProcessDTO.getButton());
             approveBase.setName(approvalProcessDTO.getCurrentStatusTitle());
             approveBase.setResult(modelConfig.getDescription());
             approveBase.setApprovalType(
@@ -181,7 +186,12 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             contentBase.setResult("成功");
             contentBase.setFontColor("");
             monitorControlLogReq.setContent(contentBase);
-            monitorControlLogReq.setRemark(approvalProcessDTO.getReason());
+            // 取消（cancel）按钮的记录保留 comment（取消原因），去掉 change（回调的对比结果会把回退当成新增，容易误读）
+            if (BUTTON_CANCEL.equals(approvalProcessDTO.getButton())) {
+                monitorControlLogReq.setRemark(remarkWithoutChange(approvalProcessDTO.getReason()));
+            } else {
+                monitorControlLogReq.setRemark(approvalProcessDTO.getReason());
+            }
             monitorLogApi.saveLog(monitorControlLogReq);
 
             if (Objects.nonNull(approvalProcessDTO.getAutoRemark())) {
@@ -208,6 +218,16 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             // 日志异常
             log.error("审批操作日志保存异常", e);
         }
+    }
+
+    /** 取消日志的 remark 只保留 comment（取消原因），去掉 change 变更明细。 */
+    private JsonNode remarkWithoutChange(Object remark) {
+        if (!(remark instanceof JsonNode node)) {
+            return null;
+        }
+        ObjectNode copy = node.deepCopy();
+        copy.remove("change");
+        return copy;
     }
 
     // 保存消息日志-----------------------------------------------------------------------

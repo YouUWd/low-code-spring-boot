@@ -1,13 +1,14 @@
 package com.jdec.platform.common.biz.service.impl;
 
 import com.jdec.platform.approval.api.IApprovalEngine;
-import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
+import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuTableSpec;
-import com.jdec.platform.common.api.dto.response.ApprovalRowItem;
+import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
+import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.MenuApprovalCountResp;
@@ -16,7 +17,9 @@ import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
-import com.jdec.platform.common.biz.custom.CustomActionContext;
+import com.jdec.platform.common.biz.action.MenuActionBundle;
+import com.jdec.platform.common.biz.action.MenuActionButtonService;
+import com.jdec.platform.common.biz.action.MenuActionContext;
 import com.jdec.platform.common.biz.custom.RowCustomActionService;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.common.biz.service.QueryResultEnhanceService;
@@ -72,6 +75,7 @@ import org.springframework.util.CollectionUtils;
  * <ul>
  *   <li>{@link CommonFilterResolver}：系统级过滤条件（审批引擎 + 数据权限 + 草稿）灵活组合与主表物理 ID 求解。
  *   <li>{@link ApprovalConditionResolver}：审批单据提取与行级操作按钮（办理 / 查阅）组装。
+ *   <li>{@link MenuActionButtonService}：操作按钮集中处理中枢，集中调度定制操作与业务互动权限，分别独立输出。
  *   <li>{@link PhysicalQueryMapper}：1:N 模块分支冲突校验、表头字段收集、物理表/过滤/排序消歧映射与 {@link DataRow} 同构树转换。
  *   <li>{@link ModuleTreeDTO}：模块树层级深度计算、1:N 顶层分支拓扑推导与物理表归属检索。
  *   <li>{@link QueryResultEnhanceService}：查询结果与候选项数据增强（用户信息、业务状态、文件/图片等）。
@@ -91,7 +95,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private final IApprovalEngine approvalEngine;
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final QueryResultEnhanceService queryResultEnhanceService;
-    private final RowCustomActionService rowCustomActionService;
+    private final MenuActionButtonService menuActionButtonService;
 
     @Autowired
     public CommonAggregateServiceImpl(
@@ -103,7 +107,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             IApprovalEngine approvalEngine,
             SysApprovalChainConfigApi sysApprovalChainConfigApi,
             QueryResultEnhanceService queryResultEnhanceService,
-            RowCustomActionService rowCustomActionService) {
+            @Autowired(required = false) MenuActionButtonService menuActionButtonService) {
         this.userMenuHeaderApi = userMenuHeaderApi;
         this.openMenuApi = openMenuApi;
         this.configApi = configApi;
@@ -112,7 +116,31 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         this.approvalEngine = approvalEngine;
         this.sysApprovalChainConfigApi = sysApprovalChainConfigApi;
         this.queryResultEnhanceService = queryResultEnhanceService;
-        this.rowCustomActionService = rowCustomActionService;
+        this.menuActionButtonService = menuActionButtonService;
+    }
+
+    public CommonAggregateServiceImpl(
+            UserMenuHeaderApi userMenuHeaderApi,
+            OpenMenuApi openMenuApi,
+            ConfigApi configApi,
+            DataApi dataApi,
+            CommonFilterResolver commonFilterResolver,
+            IApprovalEngine approvalEngine,
+            SysApprovalChainConfigApi sysApprovalChainConfigApi,
+            QueryResultEnhanceService queryResultEnhanceService,
+            RowCustomActionService rowCustomActionService) {
+        this(
+                userMenuHeaderApi,
+                openMenuApi,
+                configApi,
+                dataApi,
+                commonFilterResolver,
+                approvalEngine,
+                sysApprovalChainConfigApi,
+                queryResultEnhanceService,
+                rowCustomActionService != null
+                        ? new MenuActionButtonService(rowCustomActionService, null, null)
+                        : null);
     }
 
     public CommonAggregateServiceImpl(
@@ -133,7 +161,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 approvalEngine,
                 sysApprovalChainConfigApi,
                 queryResultEnhanceService,
-                new RowCustomActionService(Collections.emptyList()));
+                (MenuActionButtonService) null);
     }
 
     public CommonAggregateServiceImpl(
@@ -230,8 +258,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 灵活组合系统级过滤条件 (审批引擎 + 数据权限 + 草稿)
         boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
-        ApprovalIdButtonListResp approvalResp =
-                approvalEnabled ? fetchApprovalButtonList(rootModuleId) : null;
+        List<ApprovalBusinessNoResp> approvalResp =
+                approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
         ModulePermissionDTO rootModulePerm = fetchModulePermission(rootModuleId, roleId);
         boolean hasEditPermission = hasModuleEditPermission(rootModulePerm);
 
@@ -261,17 +289,18 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         : 0;
         Long changeModuleId = rootModuleInfo != null ? rootModuleInfo.getChangeModuleId() : null;
 
-        CustomActionContext customActionCtx =
-                new CustomActionContext(
-                        AppContext.getProjectNo(),
-                        rootModuleId,
-                        moduleCode,
-                        primaryTable,
-                        enableActive,
-                        changeModuleId,
-                        userId,
-                        roleId,
-                        hasEditPermission);
+        MenuActionContext actionCtx =
+                MenuActionContext.builder()
+                        .projectNo(AppContext.getProjectNo())
+                        .rootModuleId(rootModuleId)
+                        .moduleCode(moduleCode)
+                        .primaryTable(primaryTable)
+                        .enableActive(enableActive)
+                        .changeModuleId(changeModuleId)
+                        .userId(userId)
+                        .roleId(roleId)
+                        .hasEditPermission(hasEditPermission)
+                        .build();
 
         if (filterResult.isEmpty()) {
             log.info(
@@ -280,15 +309,20 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                     rootModuleId,
                     primaryTable);
             ModuleDataNode emptyNode = buildEmptyModuleDataNode(rootModuleId, menuId);
-            List<ApprovalRowItem> emptyApprovalRows =
+            List<ActionRowItem> emptyApprovalRows =
                     approvalEnabled ? Collections.emptyList() : null;
-            List<ApprovalRowItem> emptyCustomActions =
-                    (rowCustomActionService != null
-                                    && rowCustomActionService.hasActiveProviders(customActionCtx))
-                            ? Collections.emptyList()
-                            : null;
+            MenuActionBundle emptyActions =
+                    menuActionButtonService != null
+                            ? menuActionButtonService.buildEmptyActions(actionCtx)
+                            : MenuActionBundle.none();
             return assembleMenuDataResp(
-                    headerRoot, rootModulePerm, emptyNode, emptyApprovalRows, emptyCustomActions);
+                    headerRoot,
+                    rootModulePerm,
+                    emptyNode,
+                    emptyActions.getGlobalActions(),
+                    emptyApprovalRows,
+                    emptyActions.getCustomActions(),
+                    emptyActions.getInteractionActions());
         }
 
         if (!filterResult.filters().isEmpty()) {
@@ -340,16 +374,16 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             }
         }
 
-        List<ApprovalRowItem> approvalRows =
+        List<ActionRowItem> approvalRows =
                 approvalEnabled
                         ? ApprovalConditionResolver.buildApprovalRows(
                                 rawRecords, primaryTable, approvalType, approvalResp, userId)
                         : null;
 
-        List<ApprovalRowItem> customActions =
-                rowCustomActionService != null
-                        ? rowCustomActionService.buildCustomActions(rawRecords, customActionCtx)
-                        : null;
+        MenuActionBundle actions =
+                menuActionButtonService != null
+                        ? menuActionButtonService.buildActions(rawRecords, actionCtx)
+                        : MenuActionBundle.none();
 
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
@@ -360,17 +394,28 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         log.info(
-                "[PageQuery-Finish] 分页查询组装完成: menuId={}, rootModuleId={}, 总耗时={}ms, total={}, 返回记录数={}, 审批行数={}, 定制操作行数={}",
+                "[PageQuery-Finish] 分页查询组装完成: menuId={}, rootModuleId={}, 总耗时={}ms, total={}, 返回记录数={}, 审批行数={}, 定制操作行数={}, 互动操作行数={}",
                 menuId,
                 rootModuleId,
                 System.currentTimeMillis() - queryStart,
                 total,
                 recordItems.size(),
                 approvalRows != null ? approvalRows.size() : "null(未启用审批)",
-                customActions != null ? customActions.size() : "null(无定制操作)");
+                actions.getCustomActions() != null
+                        ? actions.getCustomActions().size()
+                        : "null(无定制操作)",
+                actions.getInteractionActions() != null
+                        ? actions.getInteractionActions().size()
+                        : "null(无互动操作)");
 
         return assembleMenuDataResp(
-                headerRoot, rootModulePerm, rootNode, approvalRows, customActions);
+                headerRoot,
+                rootModulePerm,
+                rootNode,
+                actions.getGlobalActions(),
+                approvalRows,
+                actions.getCustomActions(),
+                actions.getInteractionActions());
     }
 
     @Override
@@ -410,8 +455,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         // 3. 灵活组合系统级过滤条件 (默认查询全部集合: approvalType = 3)
         boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
-        ApprovalIdButtonListResp approvalResp =
-                approvalEnabled ? fetchApprovalButtonList(rootModuleId) : null;
+        List<ApprovalBusinessNoResp> approvalResp =
+                approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
         ProjectTableRelationsDTO projectRelations =
                 configApi.getProjectTableRelations(AppContext.getProjectNo());
         Long roleId = UserContext.getRoleId();
@@ -566,8 +611,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         Integer approvalType = req.getApprovalType();
         boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
-        ApprovalIdButtonListResp approvalResp =
-                approvalEnabled ? fetchApprovalButtonList(rootModuleId) : null;
+        List<ApprovalBusinessNoResp> approvalResp =
+                approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
         ProjectTableRelationsDTO projectRelations =
                 configApi.getProjectTableRelations(AppContext.getProjectNo());
         Long roleId = UserContext.getRoleId();
@@ -617,28 +662,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
         ProjectTableRelationsDTO projectRelations =
                 configApi.getProjectTableRelations(AppContext.getProjectNo());
-        String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
-
-        long countStart = System.currentTimeMillis();
-        Long currentUserId = getEffectiveUserId();
         Long roleId = UserContext.getRoleId();
         boolean hasEditPermission =
                 hasModuleEditPermission(fetchModulePermission(rootModuleId, roleId));
-        log.info(
-                "[ApprovalCount-Start] 开始统计菜单审批角标: menuId={}, rootModuleId={}, primaryTable={}, currentUserId={}, roleId={}, hasEditPermission={}",
-                menuId,
-                rootModuleId,
-                primaryTable,
-                currentUserId,
-                roleId,
-                hasEditPermission);
 
+        long countStart = System.currentTimeMillis();
         long todoCount = 0L;
         long doneCount = 0L;
-        long totalCount;
+        long totalCount = 0L;
 
         if (isApprovalChainEnabled(rootModuleId)) {
-            ApprovalIdButtonListResp resp = fetchApprovalButtonList(rootModuleId);
+            List<ApprovalBusinessNoResp> resp = fetchApprovalBusinessNos(rootModuleId);
             // 待办 (type = 1): 仅【审批引擎(待办)】
             todoCount =
                     countByFilterSpec(
@@ -689,7 +723,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     // ==================== 2. 系统级过滤组合与审批流编排 ====================
 
     /**
-     * 按业务场景灵活组合系统级过滤条件（审批引擎 + 数据权限 + 草稿）
+     * 按业务场景灵活组合系统级过滤条件（轻量级审批引擎 + 数据权限 + 草稿）
      *
      * <ul>
      *   <li>未启用审批且有编辑权限：【全部有效数据】(active = 1，移除限制性 filter)
@@ -702,7 +736,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private FilterSpec buildSystemFilterSpec(
             Integer approvalType,
             boolean approvalChainEnabled,
-            ApprovalIdButtonListResp approvalResp,
+            List<ApprovalBusinessNoResp> approvalResp,
             ProjectTableRelationsDTO projectRelations,
             boolean hasEditPermission) {
         if (!approvalChainEnabled) {
@@ -716,21 +750,40 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         if (approvalType == null) {
             return FilterSpec.of("Default").withDataPermission(projectRelations).withMyRecords();
         }
+
+        List<String> businessNos = extractBusinessNosByType(approvalResp, approvalType);
+
         return switch (approvalType) {
-            case 1 ->
-                    FilterSpec.of("Todo")
-                            .withApprovalButtons(
-                                    approvalResp != null ? approvalResp.getToDoList() : null);
-            case 2 ->
-                    FilterSpec.of("Done")
-                            .withApprovalButtons(
-                                    approvalResp != null ? approvalResp.getDoneList() : null);
+            case 1 -> FilterSpec.of("Todo").withApproval(businessNos);
+            case 2 -> FilterSpec.of("Done").withApproval(businessNos);
             default ->
                     FilterSpec.of("All")
-                            .withApprovalButtons(
-                                    approvalResp != null ? approvalResp.getAllList() : null)
+                            .withApproval(businessNos)
                             .withDataPermission(projectRelations);
         };
+    }
+
+    private List<String> extractBusinessNosByType(
+            List<ApprovalBusinessNoResp> approvalResp, Integer targetApprovalType) {
+        if (CollectionUtils.isEmpty(approvalResp)) {
+            return Collections.emptyList();
+        }
+        return approvalResp.stream()
+                .filter(Objects::nonNull)
+                .filter(
+                        item ->
+                                item.getBusinessNumber() != null
+                                        && !item.getBusinessNumber().isBlank())
+                .filter(
+                        item -> {
+                            if (targetApprovalType == null || targetApprovalType == 3) {
+                                return true;
+                            }
+                            return Objects.equals(targetApprovalType, item.getApprovalType());
+                        })
+                .map(item -> item.getBusinessNumber().trim())
+                .distinct()
+                .toList();
     }
 
     private PrimaryFilterResult resolveSystemFilters(ModuleTreeDTO moduleTree, FilterSpec spec) {
@@ -768,12 +821,12 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
     }
 
-    private ApprovalIdButtonListResp fetchApprovalButtonList(Long rootModuleId) {
+    private List<ApprovalBusinessNoResp> fetchApprovalBusinessNos(Long rootModuleId) {
         if (rootModuleId == null) {
             return null;
         }
         try {
-            return approvalEngine.getApprovalListButton(rootModuleId);
+            return approvalEngine.getApprovalBusinessNo(rootModuleId);
         } catch (Exception ex) {
             log.warn("获取模块审批单据列表失败: rootModuleId={}, err={}", rootModuleId, ex.getMessage());
             return null;
@@ -1024,8 +1077,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             MenuHeaderColumnResp headerRoot,
             ModulePermissionDTO rootModulePerm,
             ModuleDataNode dataNode,
-            List<ApprovalRowItem> approvalRows,
-            List<ApprovalRowItem> customActions) {
+            List<ActionButtonDTO> globalActions,
+            List<ActionRowItem> approvalRows,
+            List<ActionRowItem> customActions,
+            List<ActionRowItem> interactionActions) {
         ModuleSimplePermissionDTO permission =
                 ModuleSimplePermissionDTO.builder()
                         .apply(
@@ -1050,11 +1105,23 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         return MenuDataResp.builder()
                 .header(headerRoot)
-                .permission(permission)
-                .approval(approvalRows)
+                .modulePermission(permission)
+                .globalActions(globalActions)
+                .approvalActions(approvalRows)
                 .customActions(customActions)
+                .interactionActions(interactionActions)
                 .data(dataNode)
                 .build();
+    }
+
+    private MenuDataResp assembleMenuDataResp(
+            MenuHeaderColumnResp headerRoot,
+            ModulePermissionDTO rootModulePerm,
+            ModuleDataNode dataNode,
+            List<ActionRowItem> approvalRows,
+            List<ActionRowItem> customActions) {
+        return assembleMenuDataResp(
+                headerRoot, rootModulePerm, dataNode, null, approvalRows, customActions, null);
     }
 
     private MenuHeaderColumnResp queryHeaderRootQuietly(Long menuId, Long roleId) {

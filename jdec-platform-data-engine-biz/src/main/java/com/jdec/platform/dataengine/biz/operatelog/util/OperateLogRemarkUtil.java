@@ -27,10 +27,11 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>无审批链：{@code {"change":[...]}}
  *   <li>有审批链：{@code {"comment":"审批原因","change":[...]}}（comment 为空时退化为无审批链结构）
+ *   <li>仅有审批原因、无字段变更：{@code {"comment":"审批原因"}}（如驳回时数据未改动，仍需返回审批原因供前端渲染）
  * </ul>
  *
  * <p>字段明细会补充 {@code cloud} 标记（1-来自词云，0-否）与 {@code businessTypeCode}（sys_field 配置的业务类型编码，未配置时不输出）。
- * 无任何变更时返回 {@code null}，调用方据此跳过日志记录。
+ * 既无任何变更、也无审批原因时返回 {@code null}，调用方据此跳过日志记录。
  */
 @Slf4j
 @Component
@@ -91,8 +92,9 @@ public class OperateLogRemarkUtil {
      * @param newData 本次保存提交的数据
      * @param moduleCacheMap 模块元数据（含字段、唯一标识、子表、模块名）
      * @param menuId 菜单ID（取变更项名称，可为 null）
-     * @param comment 审批原因；为空时退化为无审批链结构 {@code {"change":[...]}}
-     * @return remark 对象；无任何变更时返回 null
+     * @param comment 审批原因；为空时退化为无审批链结构 {@code {"change":[...]}}；有值时即使无字段变更也返回 {@code
+     *     {"comment":"审批原因"}}
+     * @return remark 对象；既无变更、也无审批原因时返回 null
      */
     public JsonNode buildRemark(
             NestedModuleDataDTO oldData,
@@ -102,10 +104,19 @@ public class OperateLogRemarkUtil {
             String comment) {
         OperateLogRemarkDTO remark =
                 operateLogRemarkConverter.convert(oldData, newData, moduleCacheMap, menuId);
-        if (remark == null || CollectionUtil.isEmpty(remark.getChange())) {
+        boolean hasChange = remark != null && CollectionUtil.isNotEmpty(remark.getChange());
+        boolean hasComment = StringUtils.isNotBlank(comment);
+        // 无字段变更且无审批原因，调用方据此跳过日志记录
+        if (!hasChange && !hasComment) {
             return null;
         }
-        if (StringUtils.isNotBlank(comment)) {
+        if (remark == null) {
+            remark = OperateLogRemarkDTO.builder().build();
+        } else if (!hasChange) {
+            // 仅有审批原因（如驳回且数据未改动）：change 置空，不输出空数组
+            remark.setChange(null);
+        }
+        if (hasComment) {
             remark.setComment(comment);
         }
         JsonNode remarkNode;
@@ -115,8 +126,10 @@ public class OperateLogRemarkUtil {
             log.error("操作日志 remark 转换失败", e);
             throw new BusinessException("操作日志生成失败：remark 格式不正确");
         }
-        // 字段明细补充词云标记与业务类型编码：均取自 sys_field 配置
-        fillColumnExtras(remarkNode);
+        // 字段明细补充词云标记与业务类型编码：均取自 sys_field 配置；无字段明细时无需查询
+        if (hasChange) {
+            fillColumnExtras(remarkNode);
+        }
         return remarkNode;
     }
 

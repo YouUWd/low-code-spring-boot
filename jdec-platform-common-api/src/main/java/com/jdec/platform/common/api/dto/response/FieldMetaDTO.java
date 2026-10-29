@@ -30,10 +30,13 @@ public class FieldMetaDTO implements Serializable {
     @Schema(description = "是否可编辑", example = "true")
     private Boolean edit;
 
+    @Schema(description = "权限码0：无权限，1：仅查看， 2：编辑", example = "1")
+    private Integer permissionCode;
+
     @Schema(description = "词云关系ID", example = "true")
     private String businessNo;
 
     /** 业务类型名称 */
-    @Schema(description = "业务类型名称", example = "图片")
-    private String businessTypeName;
+    @Schema(description = "业务类型编码", example = "图片")
+    private String businessTypeCode;
 }
