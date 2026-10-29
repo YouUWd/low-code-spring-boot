@@ -321,6 +321,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             return assembleMenuDataResp(
                     headerRoot,
                     rootModulePerm,
+                    enableChange,
                     emptyNode,
                     emptyActions.getGlobalActions(),
                     emptyApprovalRows,
@@ -414,6 +415,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return assembleMenuDataResp(
                 headerRoot,
                 rootModulePerm,
+                enableChange,
                 rootNode,
                 actions.getGlobalActions(),
                 approvalRows,
@@ -1079,6 +1081,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private MenuDataResp assembleMenuDataResp(
             MenuHeaderColumnResp headerRoot,
             ModulePermissionDTO rootModulePerm,
+            Integer enableChange,
             ModuleDataNode dataNode,
             List<ActionButtonDTO> globalActions,
             List<ActionRowItem> approvalRows,
@@ -1109,6 +1112,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return MenuDataResp.builder()
                 .header(headerRoot)
                 .modulePermission(permission)
+                .enableChange(enableChange != null ? enableChange : 0)
                 .globalActions(globalActions)
                 .approvalActions(approvalRows)
                 .customActions(customActions)
@@ -1124,7 +1128,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             List<ActionRowItem> approvalRows,
             List<ActionRowItem> customActions) {
         return assembleMenuDataResp(
-                headerRoot, rootModulePerm, dataNode, null, approvalRows, customActions, null);
+                headerRoot, rootModulePerm, 0, dataNode, null, approvalRows, customActions, null);
     }
 
     private MenuHeaderColumnResp queryHeaderRootQuietly(Long menuId, Long roleId) {
