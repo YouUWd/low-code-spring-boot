@@ -29,4 +29,6 @@ public interface DataEngineApi {
      * @return
      */
     Integer modifyBusinessFormStatus(BusinessFormStatusReq req);
+
+    ChangeApplySaveResp saveChangeApply(DynamicSaveReq req);
 }

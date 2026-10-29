@@ -7,7 +7,8 @@ public enum SaveButtonType {
     SAVE("save", "保存"),
     CHANGE("change_save", "变更"),
     REAL_TIME_SAVE("realTime_save", "实时保存"),
-    APPROVAL_SAVE("approval_save", "审批保存(通过,驳回，取消)");
+    APPROVAL_SAVE("approval_save", "审批保存(通过,驳回，取消)"),
+    CHANGE_APPLY_SAVE("change_apply_save", "变更申请保存");
 
     private final String key;
     private final String title;

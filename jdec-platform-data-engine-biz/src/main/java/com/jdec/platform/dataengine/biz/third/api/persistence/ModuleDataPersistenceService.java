@@ -21,4 +21,10 @@ public interface ModuleDataPersistenceService {
 
     Integer modifyBusinessFormStatus(
             String tableName, String businessNo, Integer originalStatus, Integer newStatus);
+
+    Long saveChangeApplyAndItem(
+            String changeTab,
+            Map<String, Object> changeData,
+            String changeItemTab,
+            List<Map<String, Object>> changeItemData);
 }

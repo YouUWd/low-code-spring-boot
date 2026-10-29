@@ -2,10 +2,13 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.collection.ListUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.BusinessFormStatusReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
+import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
@@ -15,9 +18,14 @@ import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
 import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.*;
+import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -332,5 +340,147 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
 
         return moduleDataPersistenceService.modifyBusinessFormStatus(
                 rootMainTable, req.getBusinessNo(), req.getOriginalStatus(), req.getTargetStatus());
+    }
+
+    @Override
+    public ChangeApplySaveResp saveChangeApply(DynamicSaveReq req) {
+
+        // 参数为空，顶层模块ID为空，顶层模块结构为空
+        if (req == null
+                || req.getNestedModuleData() == null
+                || req.getNestedModuleData().getModuleId() == null
+                || CollectionUtil.isEmpty(req.getNestedModuleData().getRecord())) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_REQUEST.getCode(),
+                    ApiResponseCodeEnum.BAD_REQUEST.getMessage());
+        }
+        // 这不一定是根模块 保存变更申请单 一定是从根模块 开始
+        Long structureRootModuleId = req.getNestedModuleData().getModuleId();
+        Map<Long, SysModuleCombineInfo> moduleCacheMap =
+                moduleMetaDataService.getModuleMetaDataMapAsync(
+                        ModuleQueryContext.builder()
+                                .moduleId(structureRootModuleId)
+                                .projectNo(AppContext.getProjectNo())
+                                .subjectId(AppContext.getSubjectId())
+                                .roleId(UserContext.getRoleId())
+                                .isBuildFieldPermission(true)
+                                .isBuildFieldPro(true)
+                                .build());
+        if (CollectionUtil.isEmpty(moduleCacheMap)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        // 获取根模块ID
+        Long rootModuleId =
+                moduleCacheMap.get(structureRootModuleId).getModuleTree().getRootModuleId();
+
+        SysModuleCombineInfo rootModule = moduleCacheMap.get(rootModuleId);
+
+        if (rootModule.getModuleInfo().getChangeModuleId() == null
+                || rootModule.getModuleInfo().getChangeModuleId() <= 0) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "模块没有配置变更申请单");
+        }
+
+        Boolean isApproval = moduleMetaDataService.getApprovalStatusByModuleIdAsync(rootModuleId);
+        if (isApproval == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getMessage());
+        }
+        SaveType saveType = SaveType.getSaveType(req.getBtnType());
+        if (saveType == null) {
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "保存变更申请单类型不能为空");
+        }
+
+        Long rootModuleMainTableDataId =
+                DataPersistenceUtil.getTableRowIdWithTabName(
+                        req.getNestedModuleData().getRecord().get(0).getRow(),
+                        moduleCacheMap
+                                .get(structureRootModuleId)
+                                .getModuleInfo()
+                                .getPrimaryTable());
+        NestedModuleDataDTO detailData =
+                moduleBizDataService.getModuleDetailDataAsync(
+                        ModuleDetailQueryContext.builder()
+                                .moduleId(rootModuleId)
+                                .dataId(rootModuleMainTableDataId)
+                                .moduleCacheMap(moduleCacheMap)
+                                .projectNo(AppContext.getProjectNo())
+                                .subjectId(AppContext.getSubjectId())
+                                .loginUser(UserContext.getLoginUser())
+                                .build());
+        if (detailData == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "保存变更申请单时，详情页数据为空");
+        }
+
+        String businessNo =
+                DataPersistenceUtil.getTableRowBusinessNoWithTabName(
+                        detailData.getRecord().get(0).getRow(),
+                        moduleCacheMap
+                                .get(structureRootModuleId)
+                                .getModuleInfo()
+                                .getPrimaryTable());
+
+        Integer versionNo =
+                DataPersistenceUtil.getTableRowVersionWithTabName(
+                        detailData.getRecord().get(0).getRow(),
+                        moduleCacheMap
+                                .get(structureRootModuleId)
+                                .getModuleInfo()
+                                .getPrimaryTable());
+
+        String changeTable = rootModule.getModuleInfo().getPrimaryTable() + "_change";
+        LocalDateTime now = LocalDateTime.now();
+        Map<String, Object> changeApplyData = new HashMap<>();
+        changeApplyData.put(
+                "change_no",
+                DataPersistenceUtil.getNewBusinessNo(
+                        rootModule.getModuleInfo().getModuleCode() + "-change", null));
+        changeApplyData.put("source_id", rootModuleMainTableDataId);
+        changeApplyData.put("modify_reason", req.getChangeAppyReason());
+        changeApplyData.put("created_by", UserContext.getOperateUserId());
+        changeApplyData.put("created_date", now);
+        changeApplyData.put("updated_by", UserContext.getOperateUserId());
+        changeApplyData.put("updated_date", now);
+
+        // 待保存的数据
+        String changeItemTable = changeTable + "_item";
+        NestedModuleDataDTO nestedSaveData = req.getNestedModuleData();
+        List<ChangeItemDTO> changeItemList =
+                ModuleTreeDataUtils.getChangeItemList(detailData, nestedSaveData, moduleCacheMap);
+        List<Map<String, Object>> changeItemDataList = new ArrayList<>();
+        for (ChangeItemDTO changeItemDTO : changeItemList) {
+            Map<String, Object> changeItemData = new HashMap<>();
+            changeItemData.put("table_name", changeItemDTO.getTableName());
+            changeItemData.put("node_id", changeItemDTO.getNodeId());
+            changeItemData.put("parent_node_id", changeItemDTO.getParentNodeId());
+            changeItemData.put("action", changeItemDTO.getAction());
+            changeItemData.put("created_date", now);
+            if (changeItemDTO.getChangeContent() != null) {
+                try {
+                    changeItemData.put(
+                            "change_content", JsonUtil.obj2Json(changeItemDTO.getChangeContent()));
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            changeItemDataList.add(changeItemData);
+        }
+
+        Long changeId =
+                moduleDataPersistenceService.saveChangeApplyAndItem(
+                        changeTable, changeApplyData, changeItemTable, changeItemDataList);
+
+        ChangeApplySaveResp resp = new ChangeApplySaveResp();
+        resp.setBusinessNo(businessNo);
+        resp.setVersionNo(versionNo);
+        resp.setModuleId(rootModuleId);
+        resp.setDataId(rootModuleMainTableDataId);
+        resp.setChangeApplyId(changeId);
+
+        return resp;
     }
 }

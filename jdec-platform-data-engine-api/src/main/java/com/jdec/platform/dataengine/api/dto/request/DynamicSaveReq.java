@@ -23,4 +23,7 @@ public class DynamicSaveReq {
 
     @Schema(description = "按钮类型")
     private String btnType;
+
+    @Schema(description = "变更申请原因")
+    private String changeAppyReason;
 }

@@ -6,6 +6,7 @@ import com.jdec.platform.common.biz.service.UserService;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -103,6 +104,21 @@ public class CommonController {
         } catch (Exception ex) {
             log.error(
                     "Common DataEngine save failed: menuId={},err={}", menuId, ex.getMessage(), ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/business/apply/save")
+    @Operation(summary = "保存业务变更申请单数据", description = "保存业务变更申请单数据")
+    public ApiResponse<ChangeApplySaveResp> businessApplySave(@RequestBody DynamicSaveReq req) {
+        try {
+            return ApiResponse.success(dataEngineApi.saveChangeApply(req));
+        } catch (Exception ex) {
+            log.error(
+                    "Common DataEngine save failed: moduleId={},err={}",
+                    req.getNestedModuleData().getModuleId(),
+                    ex.getMessage(),
+                    ex);
             throw ex;
         }
     }

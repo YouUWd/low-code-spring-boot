@@ -3,9 +3,7 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.dataengine.api.dto.model.*;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
-import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
-import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.biz.dto.*;
 import com.jdec.platform.dataengine.biz.dto.context.DynamicSaveReqContext;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
@@ -26,6 +24,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.impl.DSL;
+import org.jooq.impl.SQLDataType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -225,6 +226,57 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         updateMap.put(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD, LocalDateTime.now());
         return baseSingleTablePersistenceService.updateRecordByCondition(
                 jooqContextFactory.getContext(), tableName, updateMap, condition);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long saveChangeApplyAndItem(
+            String changeTab,
+            Map<String, Object> changeData,
+            String changeItemTab,
+            List<Map<String, Object>> changeItemData) {
+        DSLContext dslContext = jooqContextFactory.getContext();
+        // Insert 并获取自增主键
+        Record inserted =
+                dslContext
+                        .insertInto(DSL.table(DSL.name(changeTab)))
+                        .set(DataPersistenceUtil.getUpdateFields(changeData))
+                        .returning(
+                                DSL.field(
+                                        DSL.name(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD),
+                                        SQLDataType.BIGINT.identity(true)))
+                        .fetchOne();
+
+        if (inserted == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
+        }
+        // 获取 插入的ID
+        Long changeId =
+                inserted.getValue(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD, Long.class);
+
+        if (changeId == null) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
+        }
+
+        for (Map<String, Object> item : changeItemData) {
+            item.put("change_id", changeId);
+            // Insert 并获取自增主键
+            Record insertedItem =
+                    dslContext
+                            .insertInto(DSL.table(DSL.name(changeItemTab)))
+                            .set(DataPersistenceUtil.getUpdateFields(item))
+                            .returning(
+                                    DSL.field(
+                                            DSL.name(
+                                                    CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD),
+                                            SQLDataType.BIGINT.identity(true)))
+                            .fetchOne();
+        }
+        return changeId;
     }
 
     private Long saveModuleData(

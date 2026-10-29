@@ -66,4 +66,9 @@ public class DataEngineService implements DataEngineApi {
     public Integer modifyBusinessFormStatus(BusinessFormStatusReq req) {
         return moduleDataStoreService.modifyBusinessFormStatus(req);
     }
+
+    @Override
+    public ChangeApplySaveResp saveChangeApply(DynamicSaveReq req) {
+        return moduleDataStoreService.saveChangeApply(req);
+    }
 }

@@ -1,8 +1,13 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
+import static net.sf.jsqlparser.util.validation.metadata.NamedObject.table;
+
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.collection.ListUtil;
+import cn.hutool.core.util.IdUtil;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
+import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleRowNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
@@ -27,6 +32,23 @@ public class ModuleTreeDataUtils {
                     "active",
                     "source_id",
                     "version_no");
+
+    private static final Set<String> UN_COMPARE_FIELDS =
+            Set.of(
+                    "id",
+                    "subject_id",
+                    "business_no",
+                    "version_no",
+                    "business_status",
+                    "created_by",
+                    "updated_by",
+                    "created_date",
+                    "updated_date",
+                    "deleted",
+                    "active",
+                    "source_id",
+                    "node_id",
+                    "parent_node_id");
 
     /**
      * 根据 新增数据 构建模块树节点数据
@@ -1033,5 +1055,495 @@ public class ModuleTreeDataUtils {
             }
         }
         return null;
+    }
+
+    public static Map<Long, Map<Long, Map<String, Object>>> collectModuleDataMap(
+            NestedModuleDataDTO base, Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        Map<Long, Map<Long, Map<String, Object>>> result = new HashMap<>();
+        if (base == null) {
+            return result;
+        }
+        collectModuleChildrenDataMap(ListUtil.of(base), moduleCacheMap, result);
+        return result;
+    }
+
+    public static void collectModuleChildrenDataMap(
+            List<NestedModuleDataDTO> children,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            Map<Long, Map<Long, Map<String, Object>>> result) {
+        if (CollectionUtil.isEmpty(children)) {
+            return;
+        }
+        for (NestedModuleDataDTO child : children) {
+            if (CollectionUtil.isNotEmpty(child.getRecord())) {
+                for (RecordDataDTO recordDataDTO : child.getRecord()) {
+                    // 有行数据
+                    if (CollectionUtil.isNotEmpty(recordDataDTO.getRow())) {
+                        Long dataId =
+                                DataPersistenceUtil.getTableRowIdWithTabName(
+                                        recordDataDTO.getRow(),
+                                        moduleCacheMap
+                                                .get(child.getModuleId())
+                                                .getModuleInfo()
+                                                .getPrimaryTable());
+                        // 收集数据map
+                        result.computeIfAbsent(child.getModuleId(), k -> new HashMap<>())
+                                .computeIfAbsent(dataId, k -> new HashMap<>())
+                                .putAll(recordDataDTO.getRow());
+
+                        if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                            collectModuleChildrenDataMap(
+                                    recordDataDTO.getChildren(), moduleCacheMap, result);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public static List<ChangeItemDTO> getChangeItemList(
+            NestedModuleDataDTO baseData,
+            NestedModuleDataDTO newData,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        // 从详情页中收集 数据
+        Map<Long, Map<Long, Map<String, Object>>> dataMap =
+                collectModuleDataMap(baseData, moduleCacheMap);
+        // 从详情页中收集 数据 父子及级关系 , 父模块 1001 的数据 1233 ---> 子模块 1002的数据 1234,2345
+        Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap =
+                collectParentToChildDataMap(baseData, moduleCacheMap);
+
+        List<ChangeItemDTO> changeItemList = new ArrayList<>();
+
+        RecordDataDTO rootBase = baseData.getRecord().get(0);
+
+        RecordDataDTO rootNew = newData.getRecord().get(0);
+
+        Long dataId =
+                DataPersistenceUtil.getTableRowIdWithTabName(
+                        rootNew.getRow(),
+                        moduleCacheMap
+                                .get(newData.getModuleId())
+                                .getModuleInfo()
+                                .getPrimaryTable());
+
+        Long rootModuleId = newData.getModuleId();
+
+        List<ChangeItemDTO> changes =
+                getRowChangeItemList(
+                        rootBase.getRow(),
+                        rootNew.getRow(),
+                        0L,
+                        "U",
+                        newData.getModuleId(),
+                        moduleCacheMap);
+        if (CollectionUtil.isNotEmpty(changes)) {
+            changeItemList.addAll(changes);
+        }
+        for (NestedModuleDataDTO child : rootNew.getChildren()) {
+            getChildChangeItemList(
+                    child,
+                    rootModuleId,
+                    dataId,
+                    false,
+                    dataMap,
+                    parentToChildDataMap,
+                    moduleCacheMap,
+                    changeItemList);
+        }
+
+        return changeItemList;
+    }
+
+    private static void getChildChangeItemList(
+            NestedModuleDataDTO child,
+            Long parentIdModuleId,
+            Long parentDataId,
+            Boolean isParentInsert,
+            Map<Long, Map<Long, Map<String, Object>>> dataMap,
+            Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            List<ChangeItemDTO> changeItemList) {
+        if (child == null) {
+            return;
+        }
+
+        Long currentModuleId = child.getModuleId();
+
+        // 虚拟模块 不处理
+        if (StringUtils.isEmpty(
+                moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable())) {
+            if (CollectionUtil.isNotEmpty(child.getRecord())) {
+                for (RecordDataDTO recordDataDTO : child.getRecord()) {
+                    if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                        for (NestedModuleDataDTO childChild : recordDataDTO.getChildren()) {
+                            getChildChangeItemList(
+                                    childChild,
+                                    childChild.getModuleId(),
+                                    parentDataId,
+                                    isParentInsert,
+                                    dataMap,
+                                    parentToChildDataMap,
+                                    moduleCacheMap,
+                                    changeItemList);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        // child.getRecord() 有可能为空
+        List<RecordDataDTO> updatedRecords =
+                child.getRecord() != null ? child.getRecord() : Collections.emptyList();
+
+        // 先计算出 当前模块删除了哪些ID
+        // 显示更新的 ID
+        Set<Long> updateIds = new HashSet<>();
+        // 计算 这个模块更新的ID
+        for (RecordDataDTO recordDataDTO : updatedRecords) {
+            Long dataId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            recordDataDTO.getRow(),
+                            moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
+            if (dataId != null && dataId > 0) {
+                updateIds.add(dataId);
+            }
+        }
+        // 详情页中的所有的ID  这个模块 所在父模块parentModuleId的父数据parentDataId 下所有子模块的数据ID
+        Set<Long> dbIds =
+                parentToChildDataMap
+                        .getOrDefault(parentIdModuleId, new HashMap<>())
+                        .getOrDefault(parentDataId, new HashMap<>())
+                        .getOrDefault(currentModuleId, new HashSet<>());
+
+        // 计算 隐士删除的ID
+        Set<Long> deletionIds =
+                dbIds.stream()
+                        .filter(x -> x != null)
+                        .filter(x -> !updateIds.contains(x))
+                        .collect(Collectors.toSet());
+
+        // 处理子模块数据
+        for (RecordDataDTO recordDataDTO : updatedRecords) {
+            Long dataId =
+                    DataPersistenceUtil.getTableRowIdWithTabName(
+                            recordDataDTO.getRow(),
+                            moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable());
+            boolean currentInsert = (dataId == null || dataId <= 0);
+
+            // 当前节点的数据是新增的
+            if (isParentInsert || currentInsert) {
+                Set<String> tables = moduleCacheMap.get(currentModuleId).getAllTables();
+                for (String tab : tables) {
+                    // 补充ID字段
+                    DataPersistenceUtil.fillTableRowFieldInWideRow(
+                            recordDataDTO.getRow(), tab, "id", IdUtil.getSnowflakeNextId());
+                }
+
+                // 新增的节点数据
+                List<ChangeItemDTO> changes =
+                        getRowChangeItemList(
+                                null,
+                                recordDataDTO.getRow(),
+                                parentDataId,
+                                "I",
+                                currentModuleId,
+                                moduleCacheMap);
+                if (CollectionUtil.isNotEmpty(changes)) {
+                    changeItemList.addAll(changes);
+                }
+                dataId =
+                        DataPersistenceUtil.getTableRowIdWithTabName(
+                                recordDataDTO.getRow(),
+                                moduleCacheMap
+                                        .get(currentModuleId)
+                                        .getModuleInfo()
+                                        .getPrimaryTable());
+            } else {
+                // 当前节点数是 修改的
+                Map<String, Object> baseRow =
+                        dataMap.getOrDefault(currentModuleId, new HashMap<>())
+                                .getOrDefault(dataId, new HashMap<>());
+
+                List<ChangeItemDTO> changes =
+                        getRowChangeItemList(
+                                baseRow,
+                                recordDataDTO.getRow(),
+                                parentDataId,
+                                "U",
+                                currentModuleId,
+                                moduleCacheMap);
+                if (CollectionUtil.isNotEmpty(changes)) {
+                    changeItemList.addAll(changes);
+                }
+            }
+
+            if (CollectionUtil.isNotEmpty(recordDataDTO.getChildren())) {
+                for (NestedModuleDataDTO childChild : recordDataDTO.getChildren()) {
+                    getChildChangeItemList(
+                            childChild,
+                            childChild.getModuleId(),
+                            dataId,
+                            (isParentInsert || currentInsert),
+                            dataMap,
+                            parentToChildDataMap,
+                            moduleCacheMap,
+                            changeItemList);
+                }
+            }
+        }
+
+        /// 处理子数据 完成后 补充 删除的数据ID
+        if (CollectionUtil.isNotEmpty(deletionIds)) {
+            // todo 构建删除的数据行
+            getRowDeletionItemList(
+                    deletionIds,
+                    currentModuleId,
+                    parentIdModuleId,
+                    parentDataId,
+                    dataMap,
+                    parentToChildDataMap,
+                    moduleCacheMap,
+                    changeItemList);
+        }
+    }
+
+    public static void getRowDeletionItemList(
+            Set<Long> deletionIds,
+            Long currentModuleId,
+            Long parentIdModuleId,
+            Long parentDataId,
+            Map<Long, Map<Long, Map<String, Object>>> dataMap,
+            Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            List<ChangeItemDTO> changeItemList) {
+
+        // 虚拟模块处理
+        if (StringUtils.isEmpty(
+                moduleCacheMap.get(currentModuleId).getModuleInfo().getPrimaryTable())) {
+            SysModuleCombineInfo currentModule = moduleCacheMap.get(currentModuleId);
+            // 子数据 的删除处理
+            for (Long dataId : deletionIds) {
+                // 如果当前模块又子模块
+                if (CollectionUtil.isNotEmpty(
+                        currentModule.getModuleTree().getChildModuleIds(currentModuleId))) {
+                    for (Long childModuleId :
+                            currentModule.getModuleTree().getChildModuleIds(currentModuleId)) {
+                        // 获取当前 删除数据 的 子模块的子数据
+                        Set<Long> childDataIds =
+                                parentToChildDataMap
+                                        .getOrDefault(parentIdModuleId, new HashMap<>())
+                                        .getOrDefault(dataId, new HashMap<>())
+                                        .getOrDefault(childModuleId, new HashSet<>());
+                        if (CollectionUtil.isNotEmpty(childDataIds)) {
+                            getRowDeletionItemList(
+                                    childDataIds,
+                                    childModuleId,
+                                    currentModuleId,
+                                    dataId,
+                                    dataMap,
+                                    parentToChildDataMap,
+                                    moduleCacheMap,
+                                    changeItemList);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        // 先处理删除的数据
+        for (Long dataId : deletionIds) {
+            Map<String, Object> baseRow =
+                    dataMap.getOrDefault(currentModuleId, new HashMap<>())
+                            .getOrDefault(dataId, new HashMap<>());
+            // 删除的行
+            List<ChangeItemDTO> changes =
+                    getRowChangeItemList(
+                            baseRow, null, parentDataId, "D", currentModuleId, moduleCacheMap);
+            if (CollectionUtil.isNotEmpty(changes)) {
+                changeItemList.addAll(changes);
+            }
+        }
+
+        SysModuleCombineInfo currentModule = moduleCacheMap.get(currentModuleId);
+        // 子数据 的删除处理
+        for (Long dataId : deletionIds) {
+            // 如果当前模块又子模块
+            if (CollectionUtil.isNotEmpty(
+                    currentModule.getModuleTree().getChildModuleIds(currentModuleId))) {
+                for (Long childModuleId :
+                        currentModule.getModuleTree().getChildModuleIds(currentModuleId)) {
+                    // 获取当前 删除数据 的 子模块的子数据
+                    Set<Long> childDataIds =
+                            parentToChildDataMap
+                                    .getOrDefault(parentIdModuleId, new HashMap<>())
+                                    .getOrDefault(dataId, new HashMap<>())
+                                    .getOrDefault(childModuleId, new HashSet<>());
+                    if (CollectionUtil.isNotEmpty(childDataIds)) {
+                        getRowDeletionItemList(
+                                childDataIds,
+                                childModuleId,
+                                currentModuleId,
+                                dataId,
+                                dataMap,
+                                parentToChildDataMap,
+                                moduleCacheMap,
+                                changeItemList);
+                    }
+                }
+            }
+        }
+    }
+
+    public static List<ChangeItemDTO> getRowChangeItemList(
+            Map<String, Object> rowBase,
+            Map<String, Object> rowNew,
+            Long parentDataId,
+            String action,
+            Long moduleId,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap) {
+        List<ChangeItemDTO> result = new ArrayList<>();
+        Set<String> subTables = moduleCacheMap.get(moduleId).getSubTables();
+        switch (action) {
+            case "I" -> {
+
+                // 先处理主表数据
+                Map<String, Object> tableRow =
+                        DataPersistenceUtil.getTableRowMapFromWideRow(
+                                rowNew,
+                                moduleCacheMap.get(moduleId).getModuleInfo().getPrimaryTable());
+                Long primaryDataId = DataPersistenceUtil.getTableRowId(tableRow);
+                ChangeItemDTO changeItemDTO =
+                        ChangeItemDTO.builder()
+                                .tableName(
+                                        moduleCacheMap
+                                                .get(moduleId)
+                                                .getModuleInfo()
+                                                .getPrimaryTable())
+                                .nodeId(String.valueOf(primaryDataId))
+                                .parentNodeId(String.valueOf(parentDataId))
+                                .changeContent(tableRow)
+                                .action("I")
+                                .build();
+                result.add(changeItemDTO);
+
+                for (String table : subTables) {
+                    Map<String, Object> subTableRow =
+                            DataPersistenceUtil.getTableRowMapFromWideRow(rowNew, table);
+                    Long subTableDataId = DataPersistenceUtil.getTableRowId(subTableRow);
+                    ChangeItemDTO item =
+                            ChangeItemDTO.builder()
+                                    .tableName(table)
+                                    .nodeId(String.valueOf(primaryDataId))
+                                    .parentNodeId(String.valueOf(parentDataId))
+                                    .changeContent(subTableRow)
+                                    .action("I")
+                                    .build();
+                    result.add(item);
+                }
+            }
+            case "U" -> {
+
+                // 先处理主表数据
+                Map<String, Object> tableRowNew =
+                        DataPersistenceUtil.getTableRowMapFromWideRow(
+                                rowNew,
+                                moduleCacheMap.get(moduleId).getModuleInfo().getPrimaryTable());
+                Map<String, Object> tableRowBase =
+                        DataPersistenceUtil.getTableRowMapFromWideRow(
+                                rowBase,
+                                moduleCacheMap.get(moduleId).getModuleInfo().getPrimaryTable());
+                Long primaryDataId = DataPersistenceUtil.getTableRowId(tableRowNew);
+                ChangeItemDTO changeItemDTO =
+                        ChangeItemDTO.builder()
+                                .tableName(
+                                        moduleCacheMap
+                                                .get(moduleId)
+                                                .getModuleInfo()
+                                                .getPrimaryTable())
+                                .nodeId(String.valueOf(primaryDataId))
+                                .parentNodeId(String.valueOf(parentDataId))
+                                .changeContent(getRowChangeContent(tableRowNew, tableRowBase))
+                                .action("U")
+                                .build();
+                result.add(changeItemDTO);
+
+                for (String table : subTables) {
+                    Map<String, Object> subTableRow =
+                            DataPersistenceUtil.getTableRowMapFromWideRow(rowNew, table);
+                    Map<String, Object> subTableRowBase =
+                            DataPersistenceUtil.getTableRowMapFromWideRow(rowBase, table);
+                    Long subTableDataId = DataPersistenceUtil.getTableRowId(subTableRow);
+                    ChangeItemDTO item =
+                            ChangeItemDTO.builder()
+                                    .tableName(table)
+                                    .nodeId(String.valueOf(primaryDataId))
+                                    .parentNodeId(String.valueOf(parentDataId))
+                                    .changeContent(
+                                            getRowChangeContent(subTableRow, subTableRowBase))
+                                    .action("U")
+                                    .build();
+                    result.add(item);
+                }
+            }
+            case "D" -> {
+
+                // 先处理主表数据
+                Map<String, Object> tableRow =
+                        DataPersistenceUtil.getTableRowMapFromWideRow(
+                                rowBase,
+                                moduleCacheMap.get(moduleId).getModuleInfo().getPrimaryTable());
+                Long primaryDataId = DataPersistenceUtil.getTableRowId(tableRow);
+                ChangeItemDTO changeItemDTO =
+                        ChangeItemDTO.builder()
+                                .tableName(
+                                        moduleCacheMap
+                                                .get(moduleId)
+                                                .getModuleInfo()
+                                                .getPrimaryTable())
+                                .nodeId(String.valueOf(primaryDataId))
+                                .parentNodeId(String.valueOf(parentDataId))
+                                .changeContent(null)
+                                .action("D")
+                                .build();
+                result.add(changeItemDTO);
+
+                for (String table : subTables) {
+                    Map<String, Object> subTableRow =
+                            DataPersistenceUtil.getTableRowMapFromWideRow(rowBase, table);
+                    Long subTableDataId = DataPersistenceUtil.getTableRowId(subTableRow);
+                    ChangeItemDTO item =
+                            ChangeItemDTO.builder()
+                                    .tableName(table)
+                                    .nodeId(String.valueOf(primaryDataId))
+                                    .parentNodeId(String.valueOf(parentDataId))
+                                    .changeContent(null)
+                                    .action("D")
+                                    .build();
+                    result.add(item);
+                }
+            }
+        }
+        return result;
+    }
+
+    public static Map<String, Object> getRowChangeContent(
+            Map<String, Object> rowNew, Map<String, Object> rowBase) {
+        Map<String, Object> changeMap = new HashMap<>();
+        for (String key : rowNew.keySet()) {
+            if (UN_COMPARE_FIELDS.contains(key)) {
+                continue;
+            }
+            Object newValue = rowNew.get(key);
+            Object dbValue = rowBase.get(key);
+            // 没有修改
+            boolean isEqual = DataPersistenceUtil.isEqualValue(newValue, dbValue);
+            if (isEqual) {
+                continue;
+            }
+            changeMap.put(key, newValue);
+        }
+        return changeMap;
     }
 }

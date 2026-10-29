@@ -8,6 +8,7 @@ import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
 import com.jdec.platform.config.api.dto.response.PermissionTableGroupResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -34,6 +36,8 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
     private final SysFieldApi sysFieldApi;
 
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
+
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public Map<Long, SysModuleCombineInfo> getModuleMetaDataMap(
@@ -249,6 +253,25 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
     }
 
     @Override
+    public ModuleTreeDTO getModuleTree(String projectNo, Long subjectId, Long rootModuleId) {
+        return configApi.getModuleTree(projectNo, subjectId, rootModuleId);
+    }
+
+    @Override
+    public ModuleTreeDTO getModuleTreeAsync(String projectNo, Long subjectId, Long rootModuleId) {
+        CompletableFuture<ModuleTreeDTO> future =
+                CompletableFuture.supplyAsync(
+                        () -> {
+                            return getModuleTree(projectNo, subjectId, rootModuleId);
+                        });
+        try {
+            return future.get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
     public Boolean getApprovalStatusByModuleId(Long moduleId) {
         return sysApprovalChainConfigApi.getApprovalStatus(List.of(moduleId));
     }
@@ -264,6 +287,38 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
             return future.get();
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public List<ColumnInfoResp> getTableMetaDataByTabName(String projectNo, String tableName) {
+        log.debug("查询项目 {} 表 {} 的列信息", projectNo, tableName);
+        String sql =
+                """
+                        SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT, IS_NULLABLE, COLUMN_KEY, EXTRA
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                        ORDER BY ORDINAL_POSITION
+                        """;
+
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, projectNo, tableName);
+            List<ColumnInfoResp> columns =
+                    rows.stream()
+                            .map(
+                                    row ->
+                                            ColumnInfoResp.builder()
+                                                    .columnName((String) row.get("COLUMN_NAME"))
+                                                    .columnType((String) row.get("COLUMN_TYPE"))
+                                                    .columnComment(
+                                                            (String) row.get("COLUMN_COMMENT"))
+                                                    .build())
+                            .toList();
+
+            return columns;
+        } catch (Exception e) {
+            log.error("查询表 {}.{} 的列信息失败", projectNo, tableName, e);
+            throw new RuntimeException("查询列信息失败: " + e.getMessage(), e);
         }
     }
 }

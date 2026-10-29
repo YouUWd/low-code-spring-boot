@@ -7,7 +7,8 @@ public enum SaveType {
     SAVE("save"),
     APPROVAL_CHANGE("change_save"),
     APPROVAL_REALTIME_SAVE("realtime_save"),
-    APPROVAL_SAVE("approval_save");
+    APPROVAL_SAVE("approval_save"),
+    CHANGE_APPLY_SAVE("change_apply_save");
 
     private String btn;
 
@@ -36,6 +37,9 @@ public enum SaveType {
             }
             case APPROVAL_SAVE -> {
                 saveType = SaveType.APPROVAL_SAVE;
+            }
+            case CHANGE_APPLY_SAVE -> {
+                saveType = SaveType.CHANGE_APPLY_SAVE;
             }
         }
         return saveType;
