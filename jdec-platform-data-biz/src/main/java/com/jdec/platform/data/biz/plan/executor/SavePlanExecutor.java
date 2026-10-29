@@ -233,8 +233,9 @@ public class SavePlanExecutor {
                     if (idObj == null && r.get(table) instanceof Map<?, ?> tm) {
                         idObj = tm.get("id");
                     }
-                    if (idObj instanceof Number num && num.longValue() > 0) {
-                        incomingValidIds.add(num.longValue());
+                    Long parsedId = parsePositiveId(idObj);
+                    if (parsedId != null) {
+                        incomingValidIds.add(parsedId);
                     }
                 }
             }
@@ -392,9 +393,32 @@ public class SavePlanExecutor {
         if (idObj == null && table != null && row.get(table) instanceof Map<?, ?> tm) {
             idObj = tm.get("id");
         }
-        Long id = null;
-        if (idObj instanceof Number num && num.longValue() > 0) {
-            id = num.longValue();
+        Long id = parsePositiveId(idObj);
+
+        String parentFkColumn = nodePlan != null ? nodePlan.getParentForeignKey() : null;
+        String primaryMetaTable =
+                (nodePlan != null
+                                && nodePlan.getModuleMeta() != null
+                                && nodePlan.getModuleMeta().getPrimaryTable() != null)
+                        ? nodePlan.getModuleMeta().getPrimaryTable().trim()
+                        : null;
+        boolean isCompanionTable =
+                table != null
+                        && primaryMetaTable != null
+                        && !primaryMetaTable.isBlank()
+                        && !primaryMetaTable.equalsIgnoreCase(table)
+                        && parentFkColumn != null
+                        && !parentFkColumn.isBlank()
+                        && !"id".equalsIgnoreCase(parentFkColumn)
+                        && parentId != null;
+
+        // 若为 1:1 伴生表且入参未携带伴生表自身 id，自动按 (fk = parentId AND deleted = 0) 反查已有记录主键，
+        // 保障局部增量更新或未显式投影伴生表 id 的场景下精准走 UPDATE，杜绝唯一键冲突与重复伴生行。
+        if (id == null && isCompanionTable) {
+            id = findExistingOneToOneRowId(dsl, table, parentFkColumn, parentId);
+            if (id != null) {
+                row.put("id", id);
+            }
         }
 
         // 提取是否标记删除
@@ -433,21 +457,24 @@ public class SavePlanExecutor {
         Map<Field<Object>, Object> fieldValues = new LinkedHashMap<>();
 
         Set<String> validColumns = null;
-        String parentFkColumn = null;
         if (nodePlan != null
                 && nodePlan.getModuleMeta() != null
                 && nodePlan.getModuleMeta().getFields() != null) {
-            parentFkColumn = nodePlan.getParentForeignKey();
             validColumns = new HashSet<>();
             for (var f : nodePlan.getModuleMeta().getFields()) {
                 if (f != null && f.getColumnName() != null) {
-                    if (f.getTableName() == null || f.getTableName().equalsIgnoreCase(table)) {
+                    String fTable =
+                            (f.getTableName() != null && !f.getTableName().isBlank())
+                                    ? f.getTableName().trim()
+                                    : primaryMetaTable;
+                    if (fTable == null || fTable.equalsIgnoreCase(table)) {
                         validColumns.add(f.getColumnName().toLowerCase());
                     }
                 }
             }
         }
 
+        boolean hasNonNullBusinessValue = false;
         for (Map.Entry<String, Object> entry : row.entrySet()) {
             String col = entry.getKey();
             Object val = entry.getValue();
@@ -471,6 +498,12 @@ public class SavePlanExecutor {
                 }
             }
 
+            if (val != null
+                    && !"id".equalsIgnoreCase(col)
+                    && (parentFkColumn == null || !parentFkColumn.equalsIgnoreCase(col))) {
+                hasNonNullBusinessValue = true;
+            }
+
             // 支持实体中配置的 JSON/JSON 数组字段 (如 nature, cooperation_types 等 List/Map 结构)
             if (val instanceof Map<?, ?> || val instanceof List<?>) {
                 try {
@@ -481,6 +514,11 @@ public class SavePlanExecutor {
             }
 
             fieldValues.put(DSL.field(DSL.name(table, col)), val);
+        }
+
+        // 若为 1:1 伴生表的新增场景，且除回填外键外所有业务字段全为 null（例如 LEFT JOIN 未命中的空伴生表回写），跳过空行插入
+        if (id == null && isCompanionTable && !hasNonNullBusinessValue) {
+            return null;
         }
 
         if (id != null) {
@@ -534,6 +572,47 @@ public class SavePlanExecutor {
             backfillId(sourceRow, table, generatedId);
             return generatedId;
         }
+    }
+
+    /** 按父外键反查 1:1 伴生表/从表当前存活记录的主键 ID */
+    private Long findExistingOneToOneRowId(
+            DSLContext dsl, String table, String fkColumn, Long parentId) {
+        try {
+            Long existingId =
+                    dsl.select(DSL.field(DSL.name(table, "id"), Long.class))
+                            .from(DSL.table(DSL.name(table)))
+                            .where(
+                                    DSL.field(DSL.name(table, fkColumn))
+                                            .eq(parentId)
+                                            .and(
+                                                    DSL.field(DSL.name(table, "deleted"))
+                                                            .eq((byte) 0)))
+                            .limit(1)
+                            .fetchOne(0, Long.class);
+            return (existingId != null && existingId > 0) ? existingId : null;
+        } catch (Exception ex) {
+            log.debug(
+                    "查询 1:1 表 [{}] 外键 [{}={}] 存活记录未命中: {}",
+                    table,
+                    fkColumn,
+                    parentId,
+                    ex.getMessage());
+            return null;
+        }
+    }
+
+    private static Long parsePositiveId(Object idObj) {
+        if (idObj instanceof Number num && num.longValue() > 0) {
+            return num.longValue();
+        }
+        if (idObj instanceof String str && !str.isBlank()) {
+            try {
+                long parsed = Long.parseLong(str.trim());
+                return parsed > 0 ? parsed : null;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
     }
 
     /**

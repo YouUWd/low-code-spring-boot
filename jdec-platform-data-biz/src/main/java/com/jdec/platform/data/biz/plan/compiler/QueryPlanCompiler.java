@@ -301,18 +301,10 @@ public class QueryPlanCompiler {
         }
         List<PhysicalFieldSpec> primaryProjectedFields = new ArrayList<>();
         if (!isVirtual) {
-            // 主表投影
-            TableSpec mainSpec = findTableSpec(currentModuleId, primaryTable, tableSpecs);
-            if (isFullTreeMode || mainSpec != null) {
-                List<String> requestedCols = mainSpec != null ? mainSpec.getColumns() : null;
-                primaryProjectedFields.addAll(
-                        compilePhysicalTableProjection(meta, primaryTable, requestedCols));
-            }
-
-            // 全字段模式 + 存在附加表 ⇒ 必须显式列出「主表 + 附加表」的声明字段，不能走 SELECT *。
-            // 原因：SELECT * 下记录里附加表列名不带表前缀，执行器无投影规格时的回退分支会把它们
-            // 全部塞进【主表】空间（如 course.prerequisite），破坏「行键 = 物理表名」的契约。
             if (isFullTreeMode) {
+                // 全字段模式 + 存在附加表 ⇒ 必须显式列出「主表 + 附加表」的声明字段，不能走 SELECT *。
+                // 原因：SELECT * 下记录里附加表列名不带表前缀，执行器无投影规格时的回退分支会把它们
+                // 全部塞进【主表】空间（如 course.prerequisite），破坏「行键 = 物理表名」的契约。
                 List<String> attachedTables =
                         attachedTablesOf(primaryTable, projectRelations, tree, declaredTables);
                 if (!attachedTables.isEmpty()) {
@@ -325,53 +317,74 @@ public class QueryPlanCompiler {
                                         meta, attached, declaredColumnsOf(meta, attached)));
                     }
                 }
-            }
+            } else {
+                List<PhysicalFieldSpec> attachedProjectedFields = new ArrayList<>();
 
-            // 伴生表投影（垂直拆分：relation_type='1:1' 且 join_table 未被模块树认领）
-            if (projectRelations != null && projectRelations.getForwardRelations() != null) {
-                List<TableRelationDTO> fwdRels =
-                        projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
-                if (fwdRels != null) {
-                    for (TableRelationDTO rel : fwdRels) {
-                        if (ModuleRelationResolver.isCompanionRelation(rel, tree)) {
-                            String compTable = rel.getJoinTable();
-                            if (compTable != null && !compTable.isBlank()) {
-                                TableSpec compSpec =
-                                        findTableSpec(
-                                                currentModuleId, compTable.trim(), tableSpecs);
-                                if ((isFullTreeMode || compSpec != null)
-                                        && declaredTables.contains(
-                                                compTable.trim().toLowerCase())) {
-                                    List<String> compCols =
-                                            compSpec != null ? compSpec.getColumns() : null;
-                                    primaryProjectedFields.addAll(
-                                            compilePhysicalTableProjection(
-                                                    meta, compTable.trim(), compCols));
+                // 伴生表投影（垂直拆分：relation_type='1:1' 且 join_table 未被模块树认领）
+                if (projectRelations != null && projectRelations.getForwardRelations() != null) {
+                    List<TableRelationDTO> fwdRels =
+                            projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
+                    if (fwdRels != null) {
+                        for (TableRelationDTO rel : fwdRels) {
+                            if (ModuleRelationResolver.isCompanionRelation(rel, tree)) {
+                                String compTable = rel.getJoinTable();
+                                if (compTable != null && !compTable.isBlank()) {
+                                    String trimmedComp = compTable.trim();
+                                    TableSpec compSpec =
+                                            findTableSpec(currentModuleId, trimmedComp, tableSpecs);
+                                    if (compSpec != null
+                                            && declaredTables.contains(trimmedComp.toLowerCase())) {
+                                        List<String> compCols =
+                                                isAllColumns(compSpec.getColumns())
+                                                        ? declaredColumnsOf(meta, trimmedComp)
+                                                        : compSpec.getColumns();
+                                        attachedProjectedFields.addAll(
+                                                compilePhysicalTableProjection(
+                                                        meta, trimmedComp, compCols));
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // 上游表投影（多对一：本表是 join_table，main_table 未被模块树认领）
-            if (projectRelations != null && projectRelations.getReverseRelations() != null) {
-                List<TableRelationDTO> revRels =
-                        projectRelations.getReverseRelations().get(primaryTable.toLowerCase());
-                if (revRels != null) {
-                    for (TableRelationDTO rel : revRels) {
-                        if (ModuleRelationResolver.isUpstreamRelation(rel, primaryTable, tree)) {
-                            String upTable = rel.getMainTable().trim();
-                            TableSpec upSpec = findTableSpec(currentModuleId, upTable, tableSpecs);
-                            if ((isFullTreeMode || upSpec != null)
-                                    && declaredTables.contains(upTable.toLowerCase())) {
-                                List<String> upCols = upSpec != null ? upSpec.getColumns() : null;
-                                primaryProjectedFields.addAll(
-                                        compilePhysicalTableProjection(meta, upTable, upCols));
+                // 上游表投影（多对一：本表是 join_table，main_table 未被模块树认领）
+                if (projectRelations != null && projectRelations.getReverseRelations() != null) {
+                    List<TableRelationDTO> revRels =
+                            projectRelations.getReverseRelations().get(primaryTable.toLowerCase());
+                    if (revRels != null) {
+                        for (TableRelationDTO rel : revRels) {
+                            if (ModuleRelationResolver.isUpstreamRelation(
+                                    rel, primaryTable, tree)) {
+                                String upTable = rel.getMainTable().trim();
+                                TableSpec upSpec =
+                                        findTableSpec(currentModuleId, upTable, tableSpecs);
+                                if (upSpec != null
+                                        && declaredTables.contains(upTable.toLowerCase())) {
+                                    List<String> upCols =
+                                            isAllColumns(upSpec.getColumns())
+                                                    ? declaredColumnsOf(meta, upTable)
+                                                    : upSpec.getColumns();
+                                    attachedProjectedFields.addAll(
+                                            compilePhysicalTableProjection(meta, upTable, upCols));
+                                }
                             }
                         }
                     }
                 }
+
+                // 主表投影：若同时投影了附加表且主表指定了 *，自动展开为主表声明列，避免主表列被置空丢弃
+                TableSpec mainSpec = findTableSpec(currentModuleId, primaryTable, tableSpecs);
+                if (mainSpec != null) {
+                    List<String> requestedCols =
+                            (!attachedProjectedFields.isEmpty()
+                                            && isAllColumns(mainSpec.getColumns()))
+                                    ? declaredColumnsOf(meta, primaryTable)
+                                    : mainSpec.getColumns();
+                    primaryProjectedFields.addAll(
+                            compilePhysicalTableProjection(meta, primaryTable, requestedCols));
+                }
+                primaryProjectedFields.addAll(attachedProjectedFields);
             }
         }
 
@@ -395,7 +408,6 @@ public class QueryPlanCompiler {
             for (Long childMid : childModuleIds) {
                 ModuleInfo childMeta = tree.getModule(childMid);
                 if (childMeta != null) {
-                    String childTable = ModuleRelationResolver.resolvePrimaryTable(childMeta);
                     boolean shouldIncludeChild = isFullTreeMode;
                     if (!isFullTreeMode) {
                         shouldIncludeChild =
@@ -534,13 +546,16 @@ public class QueryPlanCompiler {
                 .build();
     }
 
+    private static boolean isAllColumns(List<String> requestedColumns) {
+        return requestedColumns == null
+                || requestedColumns.isEmpty()
+                || requestedColumns.contains("*");
+    }
+
     private List<PhysicalFieldSpec> compilePhysicalTableProjection(
             ModuleInfo meta, String table, List<String> requestedColumns) {
         List<PhysicalFieldSpec> specs = new ArrayList<>();
-        boolean isAllCols =
-                requestedColumns == null
-                        || requestedColumns.isEmpty()
-                        || requestedColumns.contains("*");
+        boolean isAllCols = isAllColumns(requestedColumns);
 
         Map<String, ModuleFieldDTO> colMap = new LinkedHashMap<>();
         if (meta != null && meta.getFields() != null) {

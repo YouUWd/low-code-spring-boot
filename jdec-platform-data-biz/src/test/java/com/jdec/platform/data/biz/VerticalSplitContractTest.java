@@ -9,31 +9,46 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.data.api.dto.common.DataBlock;
+import com.jdec.platform.data.api.dto.common.DataRow;
+import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.TableSpec;
+import com.jdec.platform.data.api.dto.response.DataSaveResp;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
+import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
+import com.jdec.platform.data.biz.plan.executor.SavePlanExecutor;
 import com.jdec.platform.data.biz.plan.model.AttachedTableSpec;
 import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
+import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
+import com.jdec.platform.data.biz.service.DataPersistenceService;
 import com.jdec.platform.data.biz.service.DataQueryService;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import org.h2.jdbcx.JdbcDataSource;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
+import org.jooq.impl.DefaultConfiguration;
 import org.jooq.tools.jdbc.MockConnection;
 import org.jooq.tools.jdbc.MockDataProvider;
 import org.jooq.tools.jdbc.MockResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 垂直拆分（伴生表）与上游表 JOIN 的契约测试 · 真实 school 元数据
@@ -208,7 +223,7 @@ class VerticalSplitContractTest {
     // ==================== 执行期：真的下发 LEFT JOIN ====================
 
     @Test
-    @DisplayName("V6 执行侧真的下发 LEFT JOIN：SQL 同时含 course_syllabus 与 teacher 的 JOIN 与 ON 键")
+    @DisplayName("V6 执行侧真的下发 LEFT JOIN：SQL 同时含 course_syllabus 与 teacher 的 JOIN、ON 键及伴生表主键投影")
     void executorEmitsLeftJoinsForBothDirections() {
         List<String> sqls = new ArrayList<>();
         DataQueryService service = serviceCapturing(sqls);
@@ -226,6 +241,9 @@ class VerticalSplitContractTest {
         assertTrue(
                 sql.contains("`course`.`teacher_id` = `teacher`.`id`"),
                 "上游表 ON 键应为 course.teacher_id = teacher.id，实际=" + sql);
+        assertTrue(
+                sql.contains("`course_syllabus`.`id` as `course_syllabus_id`"),
+                "1:1 伴生表必须自动投影主键 course_syllabus_id 以保障读写同构更新，实际=" + sql);
         assertTrue(
                 sql.contains("`course_syllabus`.`prerequisite` as `course_syllabus_prerequisite`"),
                 "附加表列必须带 tbl_col 别名，否则会被塞进主表空间，实际=" + sql);
@@ -282,34 +300,206 @@ class VerticalSplitContractTest {
     }
 
     @Test
-    @DisplayName("V10 保存侧：1:1 伴生表编译为 companionPlans，落库时自动外键回填并级联落库")
+    @DisplayName("V10 保存侧：1:1 伴生表编译为 companionPlans，且自动剥离 N:1 上游只读表")
     void savePlanCompilerExtractsCompanionPlans() {
-        com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler saveCompiler =
-                new com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler();
-        com.jdec.platform.data.api.dto.common.DataRow row =
-                new com.jdec.platform.data.api.dto.common.DataRow();
+        SavePlanCompiler saveCompiler = new SavePlanCompiler();
+        DataRow row = new DataRow();
         row.putValue(COURSE, "course_name", "高级软件架构");
         row.putValue(SYLLABUS, "prerequisite", "Java编程基础");
+        row.putValue(TEACHER, "teacher_name", "王教授");
 
-        com.jdec.platform.data.api.dto.common.DataBlock block =
-                com.jdec.platform.data.api.dto.common.DataBlock.builder()
-                        .moduleId(COURSE_MODULE_ID)
-                        .records(List.of(row))
-                        .build();
+        DataBlock block =
+                DataBlock.builder().moduleId(COURSE_MODULE_ID).records(List.of(row)).build();
 
-        com.jdec.platform.data.biz.plan.model.SaveNodePlan plan =
-                saveCompiler.compile(block, courseMeta()).getRootNodePlan();
+        SaveNodePlan plan = saveCompiler.compile(block, courseMeta()).getRootNodePlan();
 
         assertNotNull(plan.getCompanionPlans(), "伴生表计划列表不应为空");
         assertEquals(1, plan.getCompanionPlans().size(), "应有1行伴生表计划");
-        List<com.jdec.platform.data.biz.plan.model.SaveNodePlan> rowCompanions =
-                plan.getCompanionPlans().get(0);
+        List<SaveNodePlan> rowCompanions = plan.getCompanionPlans().get(0);
         assertEquals(1, rowCompanions.size(), "第一行应包含1个伴生表计划");
-        com.jdec.platform.data.biz.plan.model.SaveNodePlan compPlan = rowCompanions.get(0);
+        SaveNodePlan compPlan = rowCompanions.get(0);
         assertEquals(SYLLABUS, compPlan.getPrimaryTable(), "伴生表名应为 course_syllabus");
         assertEquals("course_id", compPlan.getParentForeignKey(), "伴生表外键字段应为 course_id");
         assertEquals(1, compPlan.getRecords().size());
         assertEquals("Java编程基础", compPlan.getRecords().get(0).get("prerequisite"));
+        assertFalse(plan.getRecords().get(0).containsKey(TEACHER), "上游只读表 teacher 必须从主表落库字段中剥离");
+    }
+
+    @Test
+    @DisplayName("V11 H2 全链路读写同构：新建主表+伴生表 → getDetail 读取（自带伴生表 id） → 修改后原样 save 更新，不触发唯一键冲突")
+    void companionTableFullReadWriteIsomorphicUpdateInH2() throws Exception {
+        JdbcDataSource ds = new JdbcDataSource();
+        ds.setURL(
+                "jdbc:h2:mem:vertical_split_it;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
+        ds.setUser("sa");
+        ds.setPassword("");
+
+        try (Connection conn = ds.getConnection();
+                Statement stmt = conn.createStatement()) {
+            stmt.execute("DROP ALL OBJECTS");
+            stmt.execute(
+                    """
+                    CREATE TABLE `teacher` (
+                      `id` bigint NOT NULL AUTO_INCREMENT,
+                      `subject_id` bigint NOT NULL DEFAULT 0,
+                      `teacher_name` varchar(100) NOT NULL,
+                      `title` varchar(64) DEFAULT NULL,
+                      `deleted` tinyint NOT NULL DEFAULT 0,
+                      PRIMARY KEY (`id`)
+                    );
+                    CREATE TABLE `course` (
+                      `id` bigint NOT NULL AUTO_INCREMENT,
+                      `subject_id` bigint NOT NULL DEFAULT 0,
+                      `course_code` varchar(64) DEFAULT NULL,
+                      `course_name` varchar(150) NOT NULL,
+                      `credit` int DEFAULT 0,
+                      `teacher_id` bigint DEFAULT NULL,
+                      `status` varchar(32) DEFAULT 'NORMAL',
+                      `created_by` bigint DEFAULT NULL,
+                      `created_date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      `updated_by` bigint DEFAULT NULL,
+                      `updated_date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      `deleted` tinyint NOT NULL DEFAULT 0,
+                      PRIMARY KEY (`id`)
+                    );
+                    CREATE TABLE `course_syllabus` (
+                      `id` bigint NOT NULL AUTO_INCREMENT,
+                      `subject_id` bigint NOT NULL DEFAULT 0,
+                      `course_id` bigint NOT NULL,
+                      `prerequisite` varchar(255) DEFAULT NULL,
+                      `syllabus_content` varchar(1000) DEFAULT NULL,
+                      `created_by` bigint DEFAULT NULL,
+                      `created_date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      `updated_by` bigint DEFAULT NULL,
+                      `updated_date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      `deleted` tinyint NOT NULL DEFAULT 0,
+                      PRIMARY KEY (`id`),
+                      UNIQUE KEY `uk_course_syllabus_course_id` (`course_id`)
+                    );
+                    INSERT INTO `teacher` (`id`, `teacher_name`, `title`, `deleted`) VALUES (10, '周教授', '博导', 0);
+                    """);
+
+            TransactionAwareDataSourceProxy txAware = new TransactionAwareDataSourceProxy(ds);
+            TransactionTemplate txTemplate =
+                    new TransactionTemplate(new DataSourceTransactionManager(txAware));
+
+            DefaultConfiguration jooqConfig = new DefaultConfiguration();
+            jooqConfig.set(txAware);
+            jooqConfig.set(SQLDialect.MYSQL);
+            DSLContext dsl = DSL.using(jooqConfig);
+
+            FakeFactory factory = new FakeFactory(dsl);
+            PlanMetaLoader metaLoader =
+                    new PlanMetaLoader(configApiFor(courseTree(), courseRelations()));
+            DataQueryService queryService =
+                    new DataQueryService(
+                            new QueryPlanCompiler(),
+                            new QueryPlanExecutor(factory, new TreeResultAssembler()),
+                            metaLoader);
+            DataPersistenceService persistenceService =
+                    new DataPersistenceService(
+                            new SavePlanCompiler(), new SavePlanExecutor(factory), metaLoader);
+
+            // 1. 首次新建保存：主表 course + 伴生表 course_syllabus
+            DataRow newRow = new DataRow();
+            newRow.putValue(COURSE, "course_code", "CS-101");
+            newRow.putValue(COURSE, "course_name", "分布式系统架构");
+            newRow.putValue(COURSE, "credit", 4);
+            newRow.putValue(COURSE, "teacher_id", 10L);
+            newRow.putValue(SYLLABUS, "prerequisite", "操作系统与计算机网络");
+            newRow.putValue(SYLLABUS, "syllabus_content", "第一章：一致性协议");
+
+            DataSaveResp createdResp =
+                    txTemplate.execute(
+                            status ->
+                                    persistenceService.save(
+                                            DataBlock.of(COURSE_MODULE_ID, newRow)));
+            Long courseId = createdResp.getRootId();
+            assertNotNull(courseId);
+            Long syllabusId = createdResp.getFirstRecord().getLong(SYLLABUS, "id");
+            assertNotNull(syllabusId, "新建保存后伴生表主键 id 必须回填到 DataRow");
+
+            // 2. getDetail 查询：验证伴生表空间自动携带 id，且上游表 teacher 一并返回
+            DataBlock detail =
+                    queryService.getDetail(
+                            DetailQueryReq.builder()
+                                    .moduleId(COURSE_MODULE_ID)
+                                    .id(courseId)
+                                    .build());
+            DataRow loadedRow = detail.getFirstRecord();
+            assertNotNull(loadedRow);
+            assertEquals(courseId, loadedRow.getLong(COURSE, "id"));
+            assertEquals(
+                    syllabusId,
+                    loadedRow.getLong(SYLLABUS, "id"),
+                    "getDetail 返回的伴生表空间必须包含伴生表主键 id");
+            assertEquals("操作系统与计算机网络", loadedRow.getString(SYLLABUS, "prerequisite"));
+            assertEquals("周教授", loadedRow.getString(TEACHER, "teacher_name"));
+
+            // 3. 场景 A：基于 getDetail 返回的 DataBlock 修改主表与伴生表后原样回写 save（100% 读写同构）
+            loadedRow.putValue(COURSE, "course_name", "分布式系统架构（进阶版）");
+            loadedRow.putValue(SYLLABUS, "prerequisite", "操作系统、网络与并发编程");
+            DataSaveResp updatedResp =
+                    txTemplate.execute(status -> persistenceService.save(detail));
+            assertEquals(courseId, updatedResp.getRootId());
+
+            assertEquals(
+                    1L,
+                    dsl.fetchCount(DSL.table(DSL.name(SYLLABUS))),
+                    "伴生表必须执行 UPDATE 而非重复 INSERT");
+            assertEquals(
+                    "分布式系统架构（进阶版）",
+                    dsl.select(DSL.field(DSL.name("course_name"), String.class))
+                            .from(DSL.table(DSL.name(COURSE)))
+                            .where(DSL.field(DSL.name("id")).eq(courseId))
+                            .fetchOne(0, String.class));
+            assertEquals(
+                    "操作系统、网络与并发编程",
+                    dsl.select(DSL.field(DSL.name("prerequisite"), String.class))
+                            .from(DSL.table(DSL.name(SYLLABUS)))
+                            .where(DSL.field(DSL.name("id")).eq(syllabusId))
+                            .fetchOne(0, String.class));
+
+            // 4. 场景 B：前端仅传主表 id 与伴生表局部修改列（未传伴生表自身 id），自动按 course_id 反查主键并执行 UPDATE
+            DataRow partialPatchRow = new DataRow();
+            partialPatchRow.putValue(COURSE, "id", courseId);
+            partialPatchRow.putValue(COURSE, "course_name", "分布式系统架构（终极版）");
+            partialPatchRow.putValue(SYLLABUS, "syllabus_content", "第二章：Raft 与 Paxos 实战");
+
+            DataSaveResp partialResp =
+                    txTemplate.execute(
+                            status ->
+                                    persistenceService.save(
+                                            DataBlock.of(COURSE_MODULE_ID, partialPatchRow)));
+            assertEquals(courseId, partialResp.getRootId());
+            assertEquals(
+                    syllabusId,
+                    partialResp.getFirstRecord().getLong(SYLLABUS, "id"),
+                    "未传伴生表 id 时应按外键反查已有主键并回填");
+            assertEquals(
+                    1L,
+                    dsl.fetchCount(DSL.table(DSL.name(SYLLABUS))),
+                    "局部更新未传伴生表 id 时同样不得新增重复伴生表记录");
+            assertEquals(
+                    "操作系统、网络与并发编程",
+                    dsl.select(DSL.field(DSL.name("prerequisite"), String.class))
+                            .from(DSL.table(DSL.name(SYLLABUS)))
+                            .where(DSL.field(DSL.name("id")).eq(syllabusId))
+                            .fetchOne(0, String.class),
+                    "未在局部更新中提交的伴生表字段应保持原值");
+            assertEquals(
+                    "第二章：Raft 与 Paxos 实战",
+                    dsl.select(DSL.field(DSL.name("syllabus_content"), String.class))
+                            .from(DSL.table(DSL.name(SYLLABUS)))
+                            .where(DSL.field(DSL.name("id")).eq(syllabusId))
+                            .fetchOne(0, String.class),
+                    "局部更新提交的伴生表字段应成功落库");
+        } finally {
+            try (Connection conn = ds.getConnection();
+                    Statement stmt = conn.createStatement()) {
+                stmt.execute("DROP ALL OBJECTS");
+            }
+        }
     }
 
     // ==================== 断言辅助 ====================
