@@ -120,7 +120,7 @@ public class DynamicQueryService {
                 sysApprovalChainConfigApi.getApprovalStatus(
                         List.of(dynamicDetailQueryReq.getModuleId()));
 
-        if (btnType.equals("apply-change")) {
+        if ("apply-change".equals(btnType)) {
             hasApproval = false;
         }
 
