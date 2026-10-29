@@ -138,6 +138,11 @@ public final class ExternalObjectWordValues {
         return containsTitle(nature, "机关");
     }
 
+    /** 对象性质是否为企业。 */
+    public static boolean isEnterpriseNature(String nature) {
+        return containsTitle(nature, "企业");
+    }
+
     /** 去除首尾空白；null 返回空串。 */
     public static String trim(String value) {
         return value == null ? "" : value.trim();

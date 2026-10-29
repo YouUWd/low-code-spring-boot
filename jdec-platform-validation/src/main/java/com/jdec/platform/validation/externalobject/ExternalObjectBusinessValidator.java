@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>本层在必填校验全部通过后执行，只校验有值的字段：未填写的字段已由必填层提示，不再做格式或取值校验。
  *
- * <p>覆盖规则：合作类型与对象性质、登记状态可选值、统一社会信用代码格式与前缀、身份证号格式、参保人数正整数。 对象性质无值时依赖对象性质的规则全部跳过。
+ * <p>覆盖规则：合作类型与对象性质、登记状态可选值、统一社会信用代码格式与前缀、身份证号格式、参保人数正整数（仅企业性质）。 对象性质无值时依赖对象性质的规则全部跳过。
  *
  * <p>人员姓名、手机号、证件号的重复判断不是单字段格式问题，已统一放入查重层（{@link ExternalObjectDuplicateValidator}），本层不再校验人员信息。
  */
@@ -60,7 +60,7 @@ public class ExternalObjectBusinessValidator {
         validateRegStatus(nature, info.regStatus(), messages);
         validateUscc(nature, snapshot.basicInfo(), messages);
         validateIdCardNo(nature, snapshot.basicInfo(), messages);
-        validateInsuredCount(snapshot.basicInfo(), messages);
+        validateInsuredCount(nature, snapshot.basicInfo(), messages);
     }
 
     /** 合作类型：选择“监管”时对象性质必须为机关。 */
@@ -177,10 +177,20 @@ public class ExternalObjectBusinessValidator {
         }
     }
 
-    /** 参保人数：填写时必须为正整数。 */
+    /**
+     * 参保人数：仅企业性质校验，填写时必须为正整数。
+     *
+     * <p>与必填层口径一致：参保人数只在对象性质为企业时必填，非企业性质前端不展示该字段，库中该列默认值为 {@code 0}， 不能当作已填写的非法值处理。
+     *
+     * <p>企业性质下 {@code 0} 及负数已由必填层按“未填”拦截（{@code 基本信息 - 参保人数}），此处的校验仅作为绕过必填层时的防御。
+     */
     private void validateInsuredCount(
+            String nature,
             ExternalObjectSnapshot.BasicInfoRow basicInfo,
             ExternalObjectValidationMessages messages) {
+        if (!ExternalObjectValues.isEnterpriseNature(nature)) {
+            return;
+        }
         Integer insuredCount = basicInfo == null ? null : basicInfo.insuredCount();
         if (insuredCount != null && insuredCount < 1) {
             messages.add("参保人数必须为正整数");

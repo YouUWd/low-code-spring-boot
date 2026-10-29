@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
  *       存在记录时逐行校验行内必填项；
  *   <li>人员构成按类型判断校验字段：部门行只校验部门名称，员工行（类型为空按默认员工）校验手机号码，个人性质只校验手机号码；
  *   <li>一对一子表（basic_info、address、credit_rating）没有记录时，视为一行所有字段均为空， 按该子表的必填规则逐项收集字段级提示，不再提示“数据不存在”；
+ *   <li>参保人数按正整数判断是否已填：库中该列为 {@code INT DEFAULT 0}，值为 0 或负数时按未填提示；
  *   <li>三级子表（member_contact）没有记录时不参与必填校验；
  *   <li>contact_name 是“联系人行”的标识：其他联系方式行为空、联系人行有值，因此不再反向要求必填；
  *   <li>保存校验（{@link #validateOnSave}）只校验前端提交的模块，未提交的模块不产生提示； 无主单ID且未提交基本信息数据时，基本信息的所有必填规则视为未满足；
@@ -247,7 +248,8 @@ public class ExternalObjectRequiredValidator {
             requireText(row.legalPerson(), "基本信息 - 法定代表人/负责人", messages);
         }
         if (flags.enterprise()) {
-            requireNotNull(row.insuredCount(), "基本信息 - 参保人数", messages);
+            // 参保人数列在库中为 INT DEFAULT 0，0 表示未填，按正整数判断“是否已填”
+            requirePositive(row.insuredCount(), "基本信息 - 参保人数", messages);
         }
         if (flags.regCapitalRequired()) {
             requireNotNull(row.regCapital(), "基本信息 - 注册资本", messages);
@@ -358,6 +360,14 @@ public class ExternalObjectRequiredValidator {
     private static void requireNotNull(
             Object value, String label, ExternalObjectValidationMessages messages) {
         if (value == null) {
+            messages.add(label);
+        }
+    }
+
+    /** 正整数必填：null 或小于 1 均视为未填（兼容库中整型列的默认值 0）。 */
+    private static void requirePositive(
+            Integer value, String label, ExternalObjectValidationMessages messages) {
+        if (value == null || value < 1) {
             messages.add(label);
         }
     }
