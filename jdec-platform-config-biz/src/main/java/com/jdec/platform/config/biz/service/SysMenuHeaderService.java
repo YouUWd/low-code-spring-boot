@@ -66,12 +66,6 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 字段索引分隔符 */
     private static final String DATA_INDEX_SEPARATOR = ".";
 
-    /** 关联字段标记：是（sys_field.relation_business_no 有值） */
-    private static final Integer RELATION_WORD_YES = 1;
-
-    /** 关联字段标记：否 */
-    private static final Integer RELATION_WORD_NO = 0;
-
     /** sys_field 未删除标记 */
     private static final Integer FIELD_DELETED_NO = 0;
 
@@ -547,10 +541,11 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
             fieldResp.setModuleId(field.getModuleId());
             fieldResp.setDataIndex(dataIndex);
             fieldResp.setLabel(firstNotBlank(field.getDisplayName(), field.getColumnName()));
+            // 关联字段业务编号：直接取 sys_field.relation_business_no，空值表示非关联字段
+            String relationBusinessNo =
+                    fieldConfig != null ? fieldConfig.getRelationBusinessNo() : null;
             fieldResp.setRelationWord(
-                    fieldConfig != null && StringUtils.hasText(fieldConfig.getRelationBusinessNo())
-                            ? RELATION_WORD_YES
-                            : RELATION_WORD_NO);
+                    StringUtils.hasText(relationBusinessNo) ? relationBusinessNo.trim() : null);
             fieldResp.setBusinessTypeCode(
                     fieldConfig != null ? fieldConfig.getBusinessTypeCode() : null);
             fieldResp.setBusinessTypeName(

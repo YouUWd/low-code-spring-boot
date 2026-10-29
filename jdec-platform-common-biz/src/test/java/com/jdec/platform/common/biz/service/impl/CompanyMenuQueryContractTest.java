@@ -1032,13 +1032,13 @@ class CompanyMenuQueryContractTest {
     void testGetOptionsByMenu_wordCloudField_filtersRemovedFieldsAndRetainsCompleteInfo() {
         when(openMenuApi.getModuleIdByMenuId(eq(100L))).thenReturn(1001L);
 
-        // 构建词云字段的表头树节点 (relationWord = 1)
+        // 构建词云字段的表头树节点 (relationWord = 该字段关联的业务编号)
         MenuHeaderColumnResp fieldNode =
                 MenuHeaderColumnResp.builder()
                         .fieldId(10006L)
                         .moduleId(1001L)
                         .dataIndex("1001.info.cooperation_types")
-                        .relationWord(1)
+                        .relationWord("cooperation_types")
                         .build();
         MenuHeaderColumnResp headerRoot =
                 MenuHeaderColumnResp.builder().moduleId(1001L).children(List.of(fieldNode)).build();
