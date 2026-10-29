@@ -54,8 +54,8 @@ public class SysModule {
     /** 是否开启启停功能: 0-否, 1-是 */
     @Builder.Default private Integer enableActive = 0;
 
-    /** 变更申请模块 ID */
-    private Long changeModuleId;
+    /** 是否启用变更申请: 0-否, 1-是 */
+    @Builder.Default private Integer enableChange = 0;
 
     /** 排序顺序 */
     private Integer sortOrder;

@@ -163,7 +163,7 @@ public class ConfigServiceImpl implements ConfigApi {
                             .moduleDesc(m.getModuleDesc())
                             .primaryTable(m.getPrimaryTable())
                             .enableActive(m.getEnableActive())
-                            .changeModuleId(m.getChangeModuleId())
+                            .enableChange(m.getEnableChange())
                             .fields(fields)
                             .build();
 

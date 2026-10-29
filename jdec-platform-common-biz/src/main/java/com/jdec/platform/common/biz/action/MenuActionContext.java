@@ -27,8 +27,8 @@ public class MenuActionContext {
     /** 模块是否开启启停功能 (1-开启, 0-关闭) */
     private final Integer enableActive;
 
-    /** 变更流程关联的目标模块 ID */
-    private final Long changeModuleId;
+    /** 模块是否启用变更申请 (1-开启, 0-关闭) */
+    private final Integer enableChange;
 
     /** 当前请求操作的用户 ID */
     private final Long userId;

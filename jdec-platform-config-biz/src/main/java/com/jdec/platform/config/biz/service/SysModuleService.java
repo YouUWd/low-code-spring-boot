@@ -94,7 +94,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setParentId(module.getParentId() != null ? module.getParentId() : 0L);
         resp.setPrimaryTable(module.getPrimaryTable());
         resp.setEnableActive(module.getEnableActive());
-        resp.setChangeModuleId(module.getChangeModuleId());
+        resp.setEnableChange(module.getEnableChange());
         resp.setSortOrder(module.getSortOrder());
         resp.setCreatedBy(module.getCreatedBy());
         resp.setCreatedDate(module.getCreatedDate());
@@ -136,7 +136,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setParentId(module.getParentId() != null ? module.getParentId() : 0L);
         moduleInfo.setPrimaryTable(module.getPrimaryTable());
         moduleInfo.setEnableActive(module.getEnableActive());
-        moduleInfo.setChangeModuleId(module.getChangeModuleId());
+        moduleInfo.setEnableChange(module.getEnableChange());
         moduleInfo.setSortOrder(module.getSortOrder());
         moduleInfo.setCreatedBy(module.getCreatedBy());
         moduleInfo.setCreatedDate(module.getCreatedDate());
@@ -584,7 +584,7 @@ public class SysModuleService implements SysModuleApi {
         module.setSourceSubjects(request.getSourceSubjects());
         module.setPrimaryTable(request.getPrimaryTable());
         module.setEnableActive(request.getEnableActive() != null ? request.getEnableActive() : 0);
-        module.setChangeModuleId(request.getChangeModuleId());
+        module.setEnableChange(request.getEnableChange() != null ? request.getEnableChange() : 0);
         module.setModuleCode(request.getModuleCode());
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
@@ -614,8 +614,8 @@ public class SysModuleService implements SysModuleApi {
         if (request.getEnableActive() != null) {
             module.setEnableActive(request.getEnableActive());
         }
-        if (request.getChangeModuleId() != null) {
-            module.setChangeModuleId(request.getChangeModuleId());
+        if (request.getEnableChange() != null) {
+            module.setEnableChange(request.getEnableChange());
         }
         module.setUpdatedDate(LocalDateTime.now());
     }

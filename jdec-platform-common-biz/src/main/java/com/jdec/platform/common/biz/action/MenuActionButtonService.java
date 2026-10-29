@@ -134,7 +134,7 @@ public class MenuActionButtonService {
                 ctx.getModuleCode(),
                 ctx.getPrimaryTable(),
                 ctx.getEnableActive(),
-                ctx.getChangeModuleId(),
+                ctx.getEnableChange(),
                 ctx.getUserId(),
                 ctx.getRoleId(),
                 ctx.isHasEditPermission());

@@ -287,7 +287,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 (rootModuleInfo != null && rootModuleInfo.getEnableActive() != null)
                         ? rootModuleInfo.getEnableActive()
                         : 0;
-        Long changeModuleId = rootModuleInfo != null ? rootModuleInfo.getChangeModuleId() : null;
+        Integer enableChange =
+                (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
+                        ? rootModuleInfo.getEnableChange()
+                        : 0;
 
         MenuActionContext actionCtx =
                 MenuActionContext.builder()
@@ -296,7 +299,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .moduleCode(moduleCode)
                         .primaryTable(primaryTable)
                         .enableActive(enableActive)
-                        .changeModuleId(changeModuleId)
+                        .enableChange(enableChange)
                         .userId(userId)
                         .roleId(roleId)
                         .hasEditPermission(hasEditPermission)
