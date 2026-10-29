@@ -38,6 +38,12 @@ public class SingleTableQueryReq implements Serializable {
     @Schema(description = "限制返回的最大条数 (可选，缺省无限制)", example = "100")
     private Integer limit;
 
+    @Schema(description = "页码 (从 1 开始，启用分页时有效)", example = "1")
+    private Integer pageNo;
+
+    @Schema(description = "每页条数 (启用分页时有效)", example = "20")
+    private Integer pageSize;
+
     @Schema(description = "是否启用 DISTINCT 去重投影 (可选，缺省为 false)", example = "true")
     private Boolean distinct;
 

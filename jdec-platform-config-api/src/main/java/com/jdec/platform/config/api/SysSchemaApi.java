@@ -4,6 +4,7 @@ import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** 物理数据表及架构元数据查询接口（纯净底层元数据服务） */
 public interface SysSchemaApi {
@@ -24,4 +25,13 @@ public interface SysSchemaApi {
      * @return 键为表名(全小写)，值为表注释(若无则为空或等于表名)的映射
      */
     Map<String, String> getTableComments(String projectNo, Collection<String> tableNames);
+
+    /**
+     * 获取指定项目数据源下物理表的实际列名集合 (从 INFORMATION_SCHEMA.COLUMNS 查询)
+     *
+     * @param projectNo 项目编码
+     * @param tableName 物理表名
+     * @return 实际物理列名集合 (全小写)
+     */
+    Set<String> getTableColumnNames(String projectNo, String tableName);
 }

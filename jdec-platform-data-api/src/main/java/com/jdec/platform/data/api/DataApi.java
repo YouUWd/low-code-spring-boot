@@ -43,6 +43,15 @@ public interface DataApi {
     // ==================== 单表轻量操作契约 (Single Table APIs) ====================
 
     /**
+     * 单表分页轻量查询 (不依赖模块树，直接在目标单表上执行原生分页查询与总条数统计)
+     *
+     * @param req 单表查询请求 (支持通过 pageNo 与 pageSize 分页)
+     * @return 分页数据对象，包含当前页记录列表及总条数
+     */
+    DataPage<List<java.util.Map<String, Object>>> querySingleTablePage(
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req);
+
+    /**
      * 单表列表轻量投影查询 (不依赖模块树，直接在目标单表上执行查询，跳过多表编译与复杂上下文)
      *
      * @param req 单表查询请求

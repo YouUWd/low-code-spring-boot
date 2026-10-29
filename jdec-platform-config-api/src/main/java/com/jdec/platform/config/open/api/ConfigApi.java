@@ -8,6 +8,7 @@ import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 统一配置开放接口 (供数据引擎、流程引擎等下游核心消费)
@@ -92,4 +93,15 @@ public interface ConfigApi {
 
     /** 全量清空所有配置元数据缓存 (模块、字段、表关系、子孙拓扑等) */
     void clearMetaCache();
+
+    // ================= 6. 物理架构元数据 (Schema) =============
+
+    /**
+     * 查询指定项目数据源下某物理表在数据库中的实际列名集合 (从物理 Schema 查询)
+     *
+     * @param projectNo 项目编码
+     * @param tableName 物理表名
+     * @return 实际物理列名集合 (全小写)
+     */
+    Set<String> getTableColumnNames(String projectNo, String tableName);
 }

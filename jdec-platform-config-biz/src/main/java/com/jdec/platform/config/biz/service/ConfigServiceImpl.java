@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jdec.platform.config.api.SysSchemaApi;
 import com.jdec.platform.config.api.dto.common.FieldColumnExtrasDTO;
 import com.jdec.platform.config.api.dto.common.FieldWordCloudDTO;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -53,6 +54,7 @@ public class ConfigServiceImpl implements ConfigApi {
     private final SysTableRelationMapper sysTableRelationMapper;
     private final SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
     private final SysFieldMapper sysFieldMapper;
+    private final SysSchemaApi sysSchemaApi;
 
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -644,5 +646,14 @@ public class ConfigServiceImpl implements ConfigApi {
             })
     public void clearMetaCache() {
         log.info("已通过注解式缓存全量清空所有配置元数据缓存");
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public Set<String> getTableColumnNames(String projectNo, String tableName) {
+        if (sysSchemaApi == null) {
+            return Collections.emptySet();
+        }
+        return sysSchemaApi.getTableColumnNames(projectNo, tableName);
     }
 }
