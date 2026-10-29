@@ -82,8 +82,7 @@ public class DynamicQueryService {
     private final VersionDataQueryStrategyFactory versionDataQueryStrategyFactory;
 
     /** 动态主子表详情查询 (顶层包含 moduleId 等标识，元数据包含 fieldNames 与 permissions) */
-    public List<NestedModuleDataDTO> getDetail(
-            DynamicDetailQueryReq dynamicDetailQueryReq, String btnType) {
+    public List<NestedModuleDataDTO> getDetail(DynamicDetailQueryReq dynamicDetailQueryReq) {
         List<NestedModuleDataDTO> resultList = new ArrayList<>();
 
         // 获取模块树
@@ -120,7 +119,7 @@ public class DynamicQueryService {
                 sysApprovalChainConfigApi.getApprovalStatus(
                         List.of(dynamicDetailQueryReq.getModuleId()));
 
-        if ("apply-change".equals(btnType)) {
+        if ("apply-change".equals(dynamicDetailQueryReq.getBtnType())) {
             hasApproval = false;
         }
 
@@ -128,7 +127,7 @@ public class DynamicQueryService {
 
         if (hasApproval) {
             queryType = QueryType.DETAIL_APPROVAL_CURRENT;
-        } else if (btnType.equals("apply-change")) {
+        } else if ("apply-change".equals(dynamicDetailQueryReq.getBtnType())) {
             queryType = QueryType.DETAIL_CHANGE_REQUEST;
         } else {
             queryType = QueryType.DETAIL;
@@ -140,7 +139,7 @@ public class DynamicQueryService {
                         pruneMenus,
                         resultList,
                         dynamicDetailQueryReq.getId(),
-                        btnType,
+                        dynamicDetailQueryReq.getBtnType(),
                         true,
                         moduleIdToFieldMap,
                         queryType,
@@ -171,7 +170,7 @@ public class DynamicQueryService {
                                 pruneMenus,
                                 preVersionResultList,
                                 Long.parseLong(String.valueOf(preVersionResultMap.get("id"))),
-                                btnType,
+                                dynamicDetailQueryReq.getBtnType(),
                                 true,
                                 moduleIdToFieldMap,
                                 queryType,

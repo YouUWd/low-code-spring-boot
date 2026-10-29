@@ -24,8 +24,7 @@ public class DataEngineService implements DataEngineApi {
     public NestedModuleDataDTO getDetail(DynamicDetailQueryReq dynamicDetailQueryReq) {
 
         List<NestedModuleDataDTO> detailDatas =
-                dynamicQueryService.getDetail(
-                        dynamicDetailQueryReq, dynamicDetailQueryReq.getBtnType());
+                dynamicQueryService.getDetail(dynamicDetailQueryReq);
 
         return detailDatas.get(0);
     }
