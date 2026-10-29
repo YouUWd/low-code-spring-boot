@@ -71,7 +71,8 @@ public class ExternalObjectRealtimeValidateService implements ExternalObjectReal
             case "basic_info.uscc" -> validateUscc(resolveNature(req, table), req.value());
             case "basic_info.id_card_no" ->
                     validateIdCardNo(resolveNature(req, table), req.value());
-            case "basic_info.insured_count" -> validateInsuredCount(req.value());
+            case "basic_info.insured_count" ->
+                    validateInsuredCount(resolveNature(req, table), req.value());
             default -> ExternalObjectRealtimeValidateResp.ok();
         };
     }
@@ -223,8 +224,16 @@ public class ExternalObjectRealtimeValidateService implements ExternalObjectReal
                 : ExternalObjectRealtimeValidateResp.fail("身份证号错误");
     }
 
-    /** 参保人数：正整数。 */
-    private static ExternalObjectRealtimeValidateResp validateInsuredCount(Object value) {
+    /**
+     * 参保人数：仅企业性质校验正整数。
+     *
+     * <p>参保人数只在对象性质为企业时必填，非企业性质前端不展示该字段， 库中该列默认值为 {@code 0}，不能当作已填写的非法值处理。
+     */
+    private static ExternalObjectRealtimeValidateResp validateInsuredCount(
+            String nature, Object value) {
+        if (!ExternalObjectWordValues.isEnterpriseNature(nature)) {
+            return ExternalObjectRealtimeValidateResp.ok();
+        }
         String count = compactUpperCase(firstValue(value));
         if (count.isEmpty()) {
             return ExternalObjectRealtimeValidateResp.ok();
