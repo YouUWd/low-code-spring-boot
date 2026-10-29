@@ -455,12 +455,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             ChangeRequestDetailQueryReq changeRequestDetailQueryReq) {
         ChangeRequestResp.ChangeRequestRespBuilder builder = ChangeRequestResp.builder();
 
-        //        MenuDetailQueryReq menuDetailQueryReq = MenuDetailQueryReq.builder().build();
-        //        BeanUtils.copyProperties(changeRequestDetailQueryReq, menuDetailQueryReq);
-        //
-        //        menuDetailQueryReq.setShowVersionCompare(true);
-        //        menuDetailQueryReq.setLatestWordData(false);
-
         changeRequestDetailQueryReq.setShowVersionCompare(true);
         changeRequestDetailQueryReq.setLatestWordData(false);
 

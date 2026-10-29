@@ -578,6 +578,8 @@ public class ModuleTreeDiffService {
 
                     // 搜集模块行数据，主表和从表数据进行拼接：按表名遍历，命中当前行的 UPDATE/INSERT/DELETE 变更
                     for (String tableName : parentModuleTables) {
+                        Long tableRowId = extractRowPk(rowRawData, tableName);
+
                         List<Map<String, Object>> currentChangeData =
                                 Optional.ofNullable(currentVersionMap.get(tableName))
                                         .map(m -> m.get("update_data"))
@@ -587,6 +589,15 @@ public class ModuleTreeDiffService {
                         // 当前行数据更改
                         if (!CollectionUtils.isEmpty(currentChangeData)) {
                             Map<String, Object> rowChangeData = currentChangeData.get(0);
+
+                            // 同一张表在多个模块使用，用当前数据的source_id筛选，取出对应的正确数据
+                            //                            Map<String, Object> rowChangeData =
+                            // currentChangeData.stream()
+                            //                                    .filter(m -> m.get("source_id") ==
+                            // null || Objects.equals(tableRowId,
+                            // Long.parseLong(String.valueOf(m.get("source_id")))))
+                            //                                    .findFirst()
+                            //                                    .orElse(null);
 
                             String tableNamePrefix =
                                     String.valueOf(rowChangeData.get("table_name"));
