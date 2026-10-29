@@ -3,6 +3,7 @@ package com.jdec.platform.common.biz.service.impl;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.request.MenuChangeQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
@@ -46,6 +47,7 @@ import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SingleTableQueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
@@ -421,6 +423,247 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 approvalRows,
                 actions.getCustomActions(),
                 actions.getInteractionActions());
+    }
+
+    @Override
+    public MenuDataResp queryChangeListByMenu(Long menuId, MenuChangeQueryReq req) {
+        if (menuId == null) {
+            throw new BusinessException("菜单 ID 不能为空");
+        }
+
+        long queryStart = System.currentTimeMillis();
+        Long userId = getEffectiveUserId();
+        Long roleId = UserContext.getRoleId();
+        int pageNo =
+                (req != null && req.getPageNo() != null && req.getPageNo() > 0)
+                        ? req.getPageNo()
+                        : 1;
+        int pageSize =
+                (req != null && req.getPageSize() != null && req.getPageSize() > 0)
+                        ? req.getPageSize()
+                        : 20;
+
+        log.info(
+                "[ChangeQuery-Start] 接收变更单列表查询: menuId={}, pageNo={}, pageSize={}, readStatus={}, userId={}, roleId={}",
+                menuId,
+                pageNo,
+                pageSize,
+                req != null ? req.getReadStatus() : null,
+                userId,
+                roleId);
+
+        // 1. 获取原单菜单的表头配置与模块树
+        MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
+        Long rootModuleId = headerRoot.getModuleId();
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
+        if (primaryTable == null || primaryTable.isBlank()) {
+            throw new BusinessException("原单根模块主表未配置，无法推导变更表名: moduleId=" + rootModuleId);
+        }
+
+        // 确保变更专有字段 (id, change_no, source_id, modify_reason, read_status) 在表头树中存在
+        ensureChangeColumnsInHeader(headerRoot, primaryTable, rootModuleId);
+
+        // 2. 规则编程推导变更表名: primaryTable + "_change"
+        String changeTable = primaryTable + "_change";
+
+        // 3. 从数据库物理 Schema 动态查询变更表的实际物理列名集合 (杜绝硬编码，由数据库元数据对齐)
+        Set<String> schemaColumns =
+                configApi.getTableColumnNames(AppContext.getProjectNo(), changeTable);
+        Set<String> validColumns =
+                (schemaColumns != null && !schemaColumns.isEmpty())
+                        ? schemaColumns
+                        : Collections.emptySet();
+
+        // 4. 收集单表查询投影字段 (变更单已冗余记录变更后的业务字段)
+        Set<String> targetColumns = new LinkedHashSet<>();
+        targetColumns.add("id");
+        targetColumns.add("change_no");
+        targetColumns.add("source_id");
+        targetColumns.add("modify_reason");
+        targetColumns.add("read_status");
+
+        // 从表头元数据递归收集原单主表的物理列
+        List<Long> checkedFieldIds = PhysicalQueryMapper.collectCheckedFieldIds(headerRoot);
+        if (!CollectionUtils.isEmpty(checkedFieldIds)) {
+            for (Long fId : checkedFieldIds) {
+                if (fId == null) {
+                    continue;
+                }
+                try {
+                    PhysicalQueryMapper.PhysicalFieldRef ref =
+                            PhysicalQueryMapper.resolve(moduleTree, fId);
+                    if (primaryTable.equalsIgnoreCase(ref.tableName())) {
+                        String col = ref.columnName() != null ? ref.columnName().trim() : "";
+                        if (!col.isEmpty()) {
+                            targetColumns.add(col);
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // 忽略非物理字段或跨模块字段
+                }
+            }
+        }
+
+        // 从模块树元数据补充原单主表的定义字段
+        if (moduleTree.getFieldMap() != null) {
+            for (ModuleFieldDTO f : moduleTree.getFieldMap().values()) {
+                if (f != null && f.getColumnName() != null && !f.getColumnName().isBlank()) {
+                    String tbl = f.getTableName();
+                    if (tbl == null || tbl.isBlank()) {
+                        tbl = primaryTable;
+                    }
+                    String col = f.getColumnName().trim();
+                    if (primaryTable.equalsIgnoreCase(tbl)) {
+                        targetColumns.add(col);
+                    }
+                }
+            }
+        }
+
+        // 基于数据库物理 Schema 动态校验过滤：仅保留变更表中实际存在的列，自动剔除主表特有字段
+        if (!validColumns.isEmpty()) {
+            targetColumns.removeIf(col -> !validColumns.contains(col.toLowerCase()));
+        }
+
+        // 5. 构建单表过滤条件 (基于物理 Schema 动态过滤不存在的列)
+        List<FilterItem> singleFilters = new ArrayList<>();
+        if (validColumns.isEmpty() || validColumns.contains("deleted")) {
+            singleFilters.add(FilterItem.eq(changeTable, "deleted", (byte) 0));
+        }
+
+        // 已读/未读状态过滤: 0-未读, 1-已读, 2或null-全部
+        if (req != null && req.getReadStatus() != null) {
+            if (req.getReadStatus() == 0 || req.getReadStatus() == 1) {
+                if (validColumns.isEmpty() || validColumns.contains("read_status")) {
+                    singleFilters.add(
+                            FilterItem.eq(changeTable, "read_status", req.getReadStatus()));
+                }
+            }
+        }
+
+        // 已读/未读状态过滤: 0-未读, 1-已读, 2或null-全部
+        if (req != null && req.getReadStatus() != null) {
+            if (req.getReadStatus() == 0 || req.getReadStatus() == 1) {
+                if (validColumns.isEmpty() || validColumns.contains("read_status")) {
+                    singleFilters.add(
+                            FilterItem.eq(changeTable, "read_status", req.getReadStatus()));
+                }
+            }
+        }
+
+        if (req != null && req.getFilters() != null) {
+            List<FilterItem> mappedFilters =
+                    PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters());
+            for (FilterItem f : mappedFilters) {
+                if (f != null && f.getColumnName() != null && !f.getColumnName().isBlank()) {
+                    String col = f.getColumnName().trim();
+                    if (validColumns.isEmpty() || validColumns.contains(col.toLowerCase())) {
+                        f.setTableName(changeTable);
+                        singleFilters.add(f);
+                    }
+                }
+            }
+        }
+
+        // 6. 构建单表排序规则 (基于物理 Schema 动态过滤不存在的列)
+        List<SortItem> singleSorts = new ArrayList<>();
+        if (req != null && req.getSorts() != null) {
+            List<SortItem> mappedSorts =
+                    PhysicalQueryMapper.toTableSorts(moduleTree, req.getSorts());
+            for (SortItem s : mappedSorts) {
+                if (s != null && s.getColumnName() != null && !s.getColumnName().isBlank()) {
+                    String col = s.getColumnName().trim();
+                    if (validColumns.isEmpty() || validColumns.contains(col.toLowerCase())) {
+                        singleSorts.add(s);
+                    }
+                }
+            }
+        }
+        if (singleSorts.isEmpty()) {
+            singleSorts.add(SortItem.desc("id"));
+        }
+
+        // 6. 调用 dataApi 进行单表原生分页查询
+        SingleTableQueryReq singleReq =
+                SingleTableQueryReq.builder()
+                        .tableName(changeTable)
+                        .columns(new ArrayList<>(targetColumns))
+                        .filters(singleFilters)
+                        .sorts(singleSorts)
+                        .pageNo(pageNo)
+                        .pageSize(pageSize)
+                        .build();
+
+        DataPage<List<Map<String, Object>>> pageResult = dataApi.querySingleTablePage(singleReq);
+        long total =
+                (pageResult != null && pageResult.getTotal() != null) ? pageResult.getTotal() : 0L;
+
+        // 7. 组装 DataRow (平铺于 primaryTable 域中，供前端和字典增强统一消费)
+        List<DataRow> rawRecords = new ArrayList<>();
+        if (pageResult != null && pageResult.getData() != null) {
+            for (Map<String, Object> recordMap : pageResult.getData()) {
+                if (recordMap == null) {
+                    continue;
+                }
+                Map<String, Object> merged = new LinkedHashMap<>(recordMap);
+                Object cId = merged.get("id");
+                if (cId != null) {
+                    merged.put("change_id", cId);
+                }
+                DataRow dr = new DataRow();
+                dr.putTable(primaryTable, merged);
+                rawRecords.add(dr);
+            }
+        }
+
+        // 8. 字典与结果增强 (复用原单列头配置与通用字典增强)
+        List<DataRecordItem> recordItems = new ArrayList<>(rawRecords.size());
+        if (!rawRecords.isEmpty()) {
+            queryResultEnhanceService.enhanceDataRows(
+                    rawRecords, rootModuleId, primaryTable, headerRoot);
+            for (DataRow rawRow : rawRecords) {
+                if (rawRow != null) {
+                    recordItems.add(PhysicalQueryMapper.toDataRecordItem(rawRow));
+                }
+            }
+        }
+
+        ModuleInfo rootModuleInfo = moduleTree.getModule(rootModuleId);
+        Integer enableChange =
+                (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
+                        ? rootModuleInfo.getEnableChange()
+                        : 0;
+
+        ModuleDataNode rootNode =
+                ModuleDataNode.builder()
+                        .moduleId(rootModuleId)
+                        .menuId(menuId)
+                        .total(total)
+                        .record(recordItems)
+                        .build();
+
+        log.info(
+                "[ChangeQuery-Finish] 变更单单表分页查询组装完成: menuId={}, changeTable={}, primaryTable={}, 总耗时={}ms, total={}, 返回记录数={}",
+                menuId,
+                changeTable,
+                primaryTable,
+                System.currentTimeMillis() - queryStart,
+                total,
+                recordItems.size());
+
+        MenuHeaderColumnResp prunedHeaderRoot = pruneHeaderToFirstLevel(headerRoot);
+
+        return assembleMenuDataResp(
+                prunedHeaderRoot,
+                null,
+                enableChange,
+                rootNode,
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList(),
+                Collections.emptyList());
     }
 
     @Override
@@ -1188,5 +1431,186 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private Long getEffectiveUserId() {
         return UserContext.isMockLogin() ? UserContext.getMockUserId() : UserContext.getUserId();
+    }
+
+    /** 裁剪表头树，仅保留根模块 moduleId 对应的一级列节点（过滤掉所有其他子模块/菜单及更深层节点），并移除 sorted 和 searchType */
+    private MenuHeaderColumnResp pruneHeaderToFirstLevel(MenuHeaderColumnResp headerRoot) {
+        if (headerRoot == null) {
+            return null;
+        }
+        Long rootModuleId = headerRoot.getModuleId();
+        MenuHeaderColumnResp pruned = copyHeaderColumn(headerRoot);
+        pruned.setSorted(null);
+        pruned.setSearchType(null);
+        if (headerRoot.getChildren() != null) {
+            List<MenuHeaderColumnResp> firstLevel = new ArrayList<>();
+            for (MenuHeaderColumnResp child : headerRoot.getChildren()) {
+                if (child == null) {
+                    continue;
+                }
+                // 仅保留根模块 moduleId 的信息，排除其他模块/菜单
+                if (rootModuleId != null && !rootModuleId.equals(child.getModuleId())) {
+                    continue;
+                }
+                // 排除无字段信息的纯菜单节点
+                if (Integer.valueOf(0).equals(child.getNodeType())
+                        && child.getFieldId() == null
+                        && child.getDataIndex() == null) {
+                    continue;
+                }
+                MenuHeaderColumnResp prunedChild = copyHeaderColumn(child);
+                prunedChild.setChildren(null);
+                prunedChild.setSorted(null);
+                prunedChild.setSearchType(null);
+                firstLevel.add(prunedChild);
+            }
+            pruned.setChildren(firstLevel);
+        }
+        return pruned;
+    }
+
+    private MenuHeaderColumnResp copyHeaderColumn(MenuHeaderColumnResp node) {
+        if (node == null) {
+            return null;
+        }
+        return MenuHeaderColumnResp.builder()
+                .sourceId(node.getSourceId())
+                .label(node.getLabel())
+                .colors(node.getColors() != null ? new ArrayList<>(node.getColors()) : null)
+                .fieldId(node.getFieldId())
+                .moduleId(node.getModuleId())
+                .dataIndex(node.getDataIndex())
+                .relationWord(node.getRelationWord())
+                .nodeType(node.getNodeType())
+                .width(node.getWidth())
+                .sorted(node.getSorted())
+                .searchType(node.getSearchType())
+                .businessTypeCode(node.getBusinessTypeCode())
+                .businessTypeName(node.getBusinessTypeName())
+                .unitDataIndex(node.getUnitDataIndex())
+                .ellipsis(node.getEllipsis())
+                .fixed(node.getFixed())
+                .sortValue(node.getSortValue())
+                .children(node.getChildren())
+                .build();
+    }
+
+    /** 确保变更单固有属性字段 (id, change_no, source_id, modify_reason) 在表头树中存在 */
+    private void ensureChangeColumnsInHeader(
+            MenuHeaderColumnResp headerRoot, String primaryTable, Long rootModuleId) {
+        if (headerRoot == null) {
+            return;
+        }
+        if (headerRoot.getChildren() == null) {
+            headerRoot.setChildren(new ArrayList<>());
+        } else if (!(headerRoot.getChildren() instanceof ArrayList)) {
+            headerRoot.setChildren(new ArrayList<>(headerRoot.getChildren()));
+        }
+
+        List<MenuHeaderColumnResp> extraColumns = new ArrayList<>();
+
+        if (!headerContainsColumn(headerRoot, primaryTable, "id")) {
+            extraColumns.add(
+                    MenuHeaderColumnResp.builder()
+                            .label("变更ID")
+                            .dataIndex(primaryTable != null ? primaryTable + ".id" : "id")
+                            .nodeType(1)
+                            .moduleId(rootModuleId)
+                            .width(100)
+                            .sorted(1)
+                            .build());
+        }
+
+        if (!headerContainsColumn(headerRoot, primaryTable, "change_no")) {
+            extraColumns.add(
+                    MenuHeaderColumnResp.builder()
+                            .label("变更单号")
+                            .dataIndex(
+                                    primaryTable != null
+                                            ? primaryTable + ".change_no"
+                                            : "change_no")
+                            .nodeType(1)
+                            .moduleId(rootModuleId)
+                            .width(180)
+                            .build());
+        }
+
+        if (!headerContainsColumn(headerRoot, primaryTable, "source_id")) {
+            extraColumns.add(
+                    MenuHeaderColumnResp.builder()
+                            .label("原单ID")
+                            .dataIndex(
+                                    primaryTable != null
+                                            ? primaryTable + ".source_id"
+                                            : "source_id")
+                            .nodeType(1)
+                            .moduleId(rootModuleId)
+                            .width(100)
+                            .build());
+        }
+
+        if (!headerContainsColumn(headerRoot, primaryTable, "modify_reason")) {
+            extraColumns.add(
+                    MenuHeaderColumnResp.builder()
+                            .label("变更原因")
+                            .dataIndex(
+                                    primaryTable != null
+                                            ? primaryTable + ".modify_reason"
+                                            : "modify_reason")
+                            .nodeType(1)
+                            .moduleId(rootModuleId)
+                            .width(200)
+                            .build());
+        }
+
+        if (!headerContainsColumn(headerRoot, primaryTable, "read_status")) {
+            extraColumns.add(
+                    MenuHeaderColumnResp.builder()
+                            .label("读取状态")
+                            .dataIndex(
+                                    primaryTable != null
+                                            ? primaryTable + ".read_status"
+                                            : "read_status")
+                            .nodeType(1)
+                            .moduleId(rootModuleId)
+                            .width(100)
+                            .build());
+        }
+
+        if (!extraColumns.isEmpty()) {
+            headerRoot.getChildren().addAll(0, extraColumns);
+        }
+    }
+
+    private boolean headerContainsColumn(
+            MenuHeaderColumnResp headerRoot, String primaryTable, String colName) {
+        if (headerRoot == null) {
+            return false;
+        }
+        String targetDataIndex = primaryTable != null ? primaryTable + "." + colName : colName;
+        return checkColumnRecursive(headerRoot, colName, targetDataIndex);
+    }
+
+    private boolean checkColumnRecursive(
+            MenuHeaderColumnResp node, String colName, String targetDataIndex) {
+        if (node == null) {
+            return false;
+        }
+        String di = node.getDataIndex();
+        if (di != null) {
+            if (di.equalsIgnoreCase(targetDataIndex)
+                    || di.equalsIgnoreCase(colName)
+                    || di.endsWith("." + colName)) {
+                return true;
+            }
+        }
+        if (node.getChildren() != null) {
+            for (MenuHeaderColumnResp child : node.getChildren()) {
+                if (checkColumnRecursive(child, colName, targetDataIndex)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

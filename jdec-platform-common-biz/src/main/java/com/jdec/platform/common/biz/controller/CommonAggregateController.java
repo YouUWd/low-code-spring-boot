@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.controller;
 
+import com.jdec.platform.common.api.dto.request.MenuChangeQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
@@ -47,6 +48,25 @@ public class CommonAggregateController {
         } catch (Exception ex) {
             log.error(
                     "Common aggregate queryByMenu failed: menuId={}, err={}",
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/menu/{menuId}/changes")
+    @Operation(
+            summary = "基于原单菜单 ID 的变更申请单列表动态查询 (${primaryTable}_change)",
+            description = "复用原单菜单的列头配置与元数据，执行 ${primaryTable}_change 单表轻量查询，支持已读/未读状态与业务条件过滤")
+    public ApiResponse<MenuDataResp> queryChangeListByMenu(
+            @PathVariable Long menuId, @RequestBody(required = false) MenuChangeQueryReq req) {
+        try {
+            MenuDataResp result = commonAggregateService.queryChangeListByMenu(menuId, req);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common aggregate queryChangeListByMenu failed: menuId={}, err={}",
                     menuId,
                     ex.getMessage(),
                     ex);

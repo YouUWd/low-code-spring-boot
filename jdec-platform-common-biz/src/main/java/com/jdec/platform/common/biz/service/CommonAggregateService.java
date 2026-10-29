@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.service;
 
+import com.jdec.platform.common.api.dto.request.MenuChangeQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
@@ -20,6 +21,15 @@ public interface CommonAggregateService {
      * @return 包含顶层多级列头、权限汇总、审批链数据与自相似数据树的复合响应
      */
     MenuDataResp queryByMenu(Long menuId, MenuQueryReq req);
+
+    /**
+     * 基于原单菜单 ID 的变更申请单列表动态查询 (${primaryTable}_change)
+     *
+     * @param menuId 原单菜单 ID
+     * @param req 面向 UI 的变更单查询过滤、排序与分页请求体 (可选，支持 readStatus 0-未读, 1-已读, 2-全部)
+     * @return 包含原单元数据与变更合成结果的数据分页复合响应
+     */
+    MenuDataResp queryChangeListByMenu(Long menuId, MenuChangeQueryReq req);
 
     /**
      * 动态数据列表全量查询 (不分页，支持自定义物理投影字段与平铺过滤，获取最新启用 business_status=99 的最大版本)

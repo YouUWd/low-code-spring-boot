@@ -52,6 +52,12 @@ public class DataService implements DataApi {
     }
 
     @Override
+    public DataPage<List<java.util.Map<String, Object>>> querySingleTablePage(
+            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+        return singleTableQueryService.querySingleTablePage(req);
+    }
+
+    @Override
     public List<java.util.Map<String, Object>> querySingleTableList(
             com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
         return singleTableQueryService.querySingleTableList(req);

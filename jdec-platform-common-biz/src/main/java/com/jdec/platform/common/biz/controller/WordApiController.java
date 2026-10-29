@@ -2,14 +2,11 @@ package com.jdec.platform.common.biz.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.third.WordApiClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping({"/api/common/word", "/api/config/word"})
-@Tag(name = "Word 外部服务", description = "Word 外部 API 的关系查询、绑定/取消绑定接口")
+@Tag(name = "Word 外部服务", description = "Word 外部 API 的关系查询、绑定/取消绑定接口: 业务使用common，配置使用config")
 public class WordApiController {
 
     private final WordApiClient wordApiClient;
@@ -75,26 +72,6 @@ public class WordApiController {
     @Operation(summary = "获取关系词编辑信息")
     public ApiResponse<JsonNode> getRelationWordEdit(@RequestBody Map<String, Object> params) {
         JsonNode data = wordApiClient.getRelationWordEdit(params, new TypeReference<>() {});
-        removeFields(data);
         return ApiResponse.success(data);
-    }
-
-    /** 递归移除节点中的指定字段（如 id、pid、relation_no） */
-    private void removeFields(JsonNode node) {
-        if (node == null) {
-            return;
-        }
-        if (node instanceof ObjectNode objectNode) {
-            for (String field : REMOVED_FIELDS) {
-                objectNode.remove(field);
-            }
-            for (Iterator<JsonNode> it = objectNode.elements(); it.hasNext(); ) {
-                removeFields(it.next());
-            }
-        } else if (node instanceof ArrayNode arrayNode) {
-            for (JsonNode item : arrayNode) {
-                removeFields(item);
-            }
-        }
     }
 }
