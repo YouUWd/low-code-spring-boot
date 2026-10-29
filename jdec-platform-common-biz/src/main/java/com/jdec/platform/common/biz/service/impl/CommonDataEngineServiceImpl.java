@@ -8,6 +8,7 @@ import com.jdec.platform.common.api.dto.response.DetailDataResp;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
+import com.jdec.platform.common.biz.QueryModel;
 import com.jdec.platform.common.biz.service.CommonDataEngineService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysFieldApi;
@@ -240,11 +241,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             }
         }
 
-        // 当前步骤能否编辑，有审批链时生效，无审批链时权限和模块权限一致
-        Boolean canEdit = dynamicDetailQueryReq.getId() <= 0 ? false : true;
-
-        // 申请权限能否生效
-        Boolean canApply = dynamicDetailQueryReq.getId() <= 0 ? true : false;
+        // 当前请求的查看模式，新建或编辑或仅查看或者是变更申请
+        QueryModel queryModel =
+                dynamicDetailQueryReq.getId() <= 0 ? QueryModel.CREATE : QueryModel.EDIT;
 
         if (Objects.nonNull(detailData) && !CollectionUtils.isEmpty(detailData.getRecord())) {
             if (hasApproval) {
@@ -296,14 +295,28 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                     log.debug("数据id:{},创建人id:{}为草稿数据", dynamicDetailQueryReq.getId(), createById);
 
                     // 草稿只有创建人能编辑
-                    canEdit = userId.equals(createById);
+                    boolean canEdit = userId.equals(createById);
+
+                    // 等待提交状态使用新建权限
+                    queryModel = canEdit ? QueryModel.CREATE : QueryModel.VIEW;
+                } else if (businessStatusValue == 99 || businessStatusValue == -99) {
+                    // 已启用或取消的单据，只能查看
+                    queryModel = QueryModel.VIEW;
                 } else if (dynamicDetailQueryReq.getId() > 0) {
-                    canEdit =
+                    // 审批流程中，判断当前步骤是否有操作权限(可编辑)
+                    boolean canOperate =
                             iApprovalEngine.getCanEdit(
                                     rootModule.getId(),
                                     dynamicDetailQueryReq.getId(),
                                     dynamicDetailQueryReq.getBtnType());
-                    log.debug("从审批链获取id:{}当前步骤编辑权限:{}", dynamicDetailQueryReq.getId(), canEdit);
+
+                    if (!canOperate) {
+                        queryModel = QueryModel.VIEW;
+                    } else {
+                        queryModel = QueryModel.EDIT;
+                    }
+
+                    log.debug("从审批链获取id:{}当前步骤编辑权限:{}", dynamicDetailQueryReq.getId(), canOperate);
                 }
             }
         }
@@ -327,6 +340,13 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                         + e.getValue().getColumnName(),
                                         Map.Entry::getValue));
 
+        if ("change-request".equals(menuDetailQueryReq.getBtnType())) {
+            queryModel = QueryModel.CHANGE_REQUEST;
+        } else if ("change".equals(menuDetailQueryReq.getBtnType())) {
+            // 变更走新建权限
+            queryModel = QueryModel.CREATE;
+        }
+
         // 构建模块元数据配置列表 (ModuleMetaDTO)
         ModuleMetaDTO metaDTO =
                 buildModuleMetaList(
@@ -337,8 +357,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         nameToWorldConfMap,
                         fieldNameMap,
                         rootNode,
-                        canEdit,
-                        canApply);
+                        queryModel);
 
         if (dynamicDetailQueryReq.getId() <= 0) {
             detailData = buildTemplateTree(metaDTO);
@@ -430,8 +449,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
             Map<String, SysFieldResp> fieldNameMap,
             ModuleTreeDTO moduleTreeDTO,
-            Boolean canEdit,
-            Boolean canApply) {
+            QueryModel queryModel) {
         if (moduleTreeDTO == null || moduleTreeDTO.getModuleMap() == null) {
             return null;
         }
@@ -460,13 +478,26 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                         ? modPerm.getModuleTreeFieldPermissions().get(f.getId())
                                         : null;
 
+                // 申请阶段，使用申请和查看权限 编辑阶段，使用编辑和查看权限 启用阶段，使用查看权限
+                Integer permissionCode = 0;
+                if (queryModel == QueryModel.CREATE) {
+                    permissionCode = fp != null ? (fp.getApply() ? 2 : fp.getView() ? 1 : 0) : 0;
+                } else if (queryModel == QueryModel.EDIT) {
+                    permissionCode = fp != null ? (fp.getEdit() ? 2 : fp.getView() ? 1 : 0) : 0;
+                } else if (queryModel == QueryModel.VIEW) {
+                    permissionCode = fp != null ? (fp.getView() ? 1 : 0) : 0;
+                } else if (queryModel == QueryModel.CHANGE_REQUEST) {
+                    permissionCode = fp != null ? (fp.getEdit() || fp.getView() ? 2 : 0) : 0;
+                }
+
                 FieldMetaDTO fMeta =
                         FieldMetaDTO.builder()
                                 .id(f.getId())
                                 .displayName(f.getDisplayName())
-                                .apply(fp != null ? fp.getApply() && canApply : false)
+                                .apply(fp != null ? fp.getApply() : false)
                                 .view(fp != null ? fp.getView() : false)
-                                .edit(fp != null ? fp.getEdit() && canEdit : false)
+                                .edit(fp != null ? fp.getEdit() : false)
+                                .permissionCode(permissionCode)
                                 .businessNo(
                                         worldCloudConfigMap.containsKey(fullKey)
                                                 ? worldCloudConfigMap
@@ -488,12 +519,25 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         ModuleSimplePermissionDTO permission = null;
 
         if (permMap != null && permMap.get(rootModuleId) != null) {
-            ModulePermissionDTO p = permMap.get(rootModuleId);
+
+            ModulePermissionDTO mp = permMap.get(rootModuleId);
+
+            Integer modulePermissionCode = 0;
+            if (queryModel == QueryModel.CREATE) {
+                modulePermissionCode = mp != null ? (mp.getApply() ? 2 : mp.getView() ? 1 : 0) : 0;
+            } else if (queryModel == QueryModel.EDIT) {
+                modulePermissionCode = mp != null ? (mp.getEdit() ? 2 : mp.getView() ? 1 : 0) : 0;
+            } else if (queryModel == QueryModel.VIEW) {
+                modulePermissionCode = mp != null ? (mp.getView() ? 1 : 0) : 0;
+            } else if (queryModel == QueryModel.CHANGE_REQUEST) {
+                modulePermissionCode = mp != null ? (mp.getEdit() || mp.getView() ? 2 : 0) : 0;
+            }
             permission =
                     ModuleSimplePermissionDTO.builder()
-                            .apply(Boolean.TRUE.equals(p.getApply()) ? 1 : 0)
-                            .view(Boolean.TRUE.equals(p.getView()) ? 1 : 0)
-                            .edit(Boolean.TRUE.equals(p.getEdit()) ? 1 : 0)
+                            .apply(Boolean.TRUE.equals(mp.getApply()) ? 1 : 0)
+                            .view(Boolean.TRUE.equals(mp.getView()) ? 1 : 0)
+                            .edit(Boolean.TRUE.equals(mp.getEdit()) ? 1 : 0)
+                            .permissionCode(modulePermissionCode)
                             .build();
         }
 
@@ -504,7 +548,6 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         if (!CollectionUtils.isEmpty(moduleTreeDTO.getParentToChildren().get(rootModuleId))) {
             for (Long modId : moduleTreeDTO.getParentToChildren().get(rootModuleId)) {
                 ModuleInfo childModInfo = moduleTreeDTO.getModuleMap().get(modId);
-                ;
                 if (childModInfo == null) {
                     continue;
                 }
@@ -517,8 +560,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 worldCloudConfigMap,
                                 fieldNameMap,
                                 moduleTreeDTO,
-                                canEdit,
-                                canApply));
+                                queryModel));
             }
         }
 
