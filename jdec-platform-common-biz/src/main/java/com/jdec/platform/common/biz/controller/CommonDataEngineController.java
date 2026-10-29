@@ -55,9 +55,8 @@ public class CommonDataEngineController {
             description = "仅需传入 menuId 和单据 id，内部自动解析根模块 ID 及勾选字段，返回单据元数据定义与同构详情树")
     public ApiResponse<ChangeRequestResp> getChangeRequestDetailByMenu(
             @RequestBody ChangeRequestDetailQueryReq menuDetailQueryReq) {
-        return ApiResponse.success(null);
-        //        return
-        // ApiResponse.success(commonDataEngineService.getChangeRequestDetailByMenu(menuDetailQueryReq));
+        return ApiResponse.success(
+                commonDataEngineService.getChangeRequestDetailByMenu(menuDetailQueryReq));
     }
 
     @PostMapping("/menu/get-version-list")

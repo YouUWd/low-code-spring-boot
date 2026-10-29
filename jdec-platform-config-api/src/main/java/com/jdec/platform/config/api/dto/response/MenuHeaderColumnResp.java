@@ -42,9 +42,9 @@ public class MenuHeaderColumnResp {
     private String dataIndex;
 
     @Schema(
-            description = "是否关联字段（仅字段节点输出）：0-否，1-是（sys_field 中该表名+列名配置了 relation_business_no）",
-            example = "1")
-    private Integer relationWord;
+            description = "关联字段业务编号（仅字段节点输出，取自 sys_field.relation_business_no；为空表示非关联字段）",
+            example = "company_name")
+    private String relationWord;
 
     @Schema(description = "节点类型：0-菜单 / 1-字段")
     private Integer nodeType;

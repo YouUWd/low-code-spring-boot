@@ -22,6 +22,8 @@ public interface DataEngineApi {
 
     Map<String, Object> getRecordData(Long moduleId, Long id);
 
+    Map<String, Object> getRecordDataByName(String tableName, Long id);
+
     /**
      * 修改单据状态
      *
