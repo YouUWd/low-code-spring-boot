@@ -1987,4 +1987,38 @@ public class DynamicQueryService {
 
         return resultMaps;
     }
+
+    public CreatedUserInfoResp getCreatedUserInfo(Long userId) {
+        CreatedUserInfoResp.CreatedUserInfoRespBuilder createdUserInfoRespBuilder =
+                CreatedUserInfoResp.builder();
+
+        UserDetailResp createByUser = new UserDetailResp();
+        if (!userId.equals(9999999L)) {
+            try {
+                createByUser = sysUserApi.getUserDetailByUserId(userId);
+            } catch (Exception e) {
+                createByUser.setId(userId);
+                createByUser.setUserName("");
+            }
+        } else {
+            createByUser.setId(9999999L);
+            createByUser.setUserName("系统自动审批");
+        }
+
+        UserInfo.UserInfoBuilder userInfoBuilder = UserInfo.builder();
+
+        if (createByUser != null) {
+            userInfoBuilder
+                    .id(createByUser.getId())
+                    .userName(createByUser.getUserName())
+                    .userAvatar(createByUser.getUserAvatar())
+                    .departName(createByUser.getDepartName())
+                    .positionName(createByUser.getPositionName())
+                    .workNumber(createByUser.getWorkNumber());
+
+            createdUserInfoRespBuilder.createUser(userInfoBuilder.build());
+        }
+
+        return createdUserInfoRespBuilder.build();
+    }
 }

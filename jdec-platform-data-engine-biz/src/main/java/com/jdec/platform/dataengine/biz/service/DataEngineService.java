@@ -51,6 +51,11 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
+    public CreatedUserInfoResp getCreatedUserInfo(Long userId) {
+        return dynamicQueryService.getCreatedUserInfo(userId);
+    }
+
+    @Override
     public Map<String, Object> getRecordData(Long moduleId, Long id) {
         List<Map<String, Object>> dataList =
                 dynamicQueryService.getRecordDatas(

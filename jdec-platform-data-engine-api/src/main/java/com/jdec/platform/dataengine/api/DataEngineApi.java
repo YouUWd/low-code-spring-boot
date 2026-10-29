@@ -20,6 +20,8 @@ public interface DataEngineApi {
 
     CreatedUserInfoResp getCreatedUserInfo(Long moduleId, Long id, String businessNo);
 
+    CreatedUserInfoResp getCreatedUserInfo(Long userId);
+
     Map<String, Object> getRecordData(Long moduleId, Long id);
 
     Map<String, Object> getRecordDataByName(String tableName, Long id);

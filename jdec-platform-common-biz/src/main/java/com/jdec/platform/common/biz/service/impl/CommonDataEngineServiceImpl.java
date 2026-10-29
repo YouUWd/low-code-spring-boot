@@ -1,5 +1,6 @@
 package com.jdec.platform.common.biz.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.ChangeRequestDetailQueryReq;
@@ -484,6 +485,18 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                         Collectors.toMap(
                                                 entry -> tableName + "." + entry.getKey(),
                                                 Map.Entry::getValue));
+
+                if (returnMap != null
+                        && !returnMap.isEmpty()
+                        && returnMap.containsKey(tableName + "." + "created_by")) {
+                    CreatedUserInfoResp createdUserInfoResp =
+                            dataEngineApi.getCreatedUserInfo(
+                                    Long.parseLong(
+                                            String.valueOf(
+                                                    returnMap.get(
+                                                            tableName + "." + "created_by"))));
+                    returnMap.putAll(BeanUtil.beanToMap(createdUserInfoResp));
+                }
 
                 builder.changeRequestData(returnMap);
             }
