@@ -55,6 +55,7 @@ public class ConfigServiceImpl implements ConfigApi {
     private final SysFieldMapper sysFieldMapper;
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     @Cacheable(cacheNames = "config:module_tree", key = "#rootModuleId", unless = "#result == null")
     public ModuleTreeDTO getModuleTree(String projectNo, Long subjectId, Long rootModuleId) {
         log.info(
