@@ -3,6 +3,7 @@ package com.jdec.platform.common.biz.service.impl;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
+import com.jdec.platform.common.api.dto.request.MenuActiveToggleReq;
 import com.jdec.platform.common.api.dto.request.MenuChangeQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
@@ -13,23 +14,22 @@ import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.api.dto.response.FieldMetaDTO;
 import com.jdec.platform.common.api.dto.response.MenuApprovalCountResp;
+import com.jdec.platform.common.api.dto.response.MenuChangeCountResp;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
+import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.common.biz.action.MenuActionBundle;
 import com.jdec.platform.common.biz.action.MenuActionButtonService;
 import com.jdec.platform.common.biz.action.MenuActionContext;
-import com.jdec.platform.common.biz.custom.RowCustomActionService;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.common.biz.service.QueryResultEnhanceService;
 import com.jdec.platform.common.biz.service.impl.CommonFilterResolver.FilterSpec;
 import com.jdec.platform.common.biz.service.impl.CommonFilterResolver.PrimaryFilterResult;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
-import com.jdec.platform.config.api.SysFileApi;
 import com.jdec.platform.config.api.SysStatusApi;
-import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModulePermissionDTO;
@@ -37,6 +37,7 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
+import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.data.api.DataApi;
@@ -54,7 +55,9 @@ import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -64,27 +67,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.jooq.DSLContext;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 /**
  * 公共业务聚合服务实现 (基于菜单的数据隔离、动态列表与详情聚合)
  *
- * <p>Service 层仅负责跨服务业务编排（表头配置、模块树元数据、系统级过滤组合决策、数据引擎查询与字典增强），底层逻辑均已下沉：
- *
- * <ul>
- *   <li>{@link CommonFilterResolver}：系统级过滤条件（审批引擎 + 数据权限 + 草稿）灵活组合与主表物理 ID 求解。
- *   <li>{@link ApprovalConditionResolver}：审批单据提取与行级操作按钮（办理 / 查阅）组装。
- *   <li>{@link MenuActionButtonService}：操作按钮集中处理中枢，集中调度定制操作与业务互动权限，分别独立输出。
- *   <li>{@link PhysicalQueryMapper}：1:N 模块分支冲突校验、表头字段收集、物理表/过滤/排序消歧映射与 {@link DataRow} 同构树转换。
- *   <li>{@link ModuleTreeDTO}：模块树层级深度计算、1:N 顶层分支拓扑推导与物理表归属检索。
- *   <li>{@link QueryResultEnhanceService}：查询结果与候选项数据增强（用户信息、业务状态、文件/图片等）。
- * </ul>
+ * <p>Service 层仅负责跨服务业务编排（表头配置、模块树元数据、系统级过滤组合决策、数据引擎查询与字典增强），底层逻辑均已下沉至 {@link CommonFilterResolver}、
+ * {@link ApprovalConditionResolver}、{@link MenuActionButtonService}、{@link PhysicalQueryMapper} 与
+ * {@link QueryResultEnhanceService}。
  */
 @Slf4j
 @Service
+@AllArgsConstructor
 public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private static final int ENABLED_BUSINESS_STATUS = 99;
@@ -98,118 +98,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private final SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private final QueryResultEnhanceService queryResultEnhanceService;
     private final MenuActionButtonService menuActionButtonService;
-
-    @Autowired
-    public CommonAggregateServiceImpl(
-            UserMenuHeaderApi userMenuHeaderApi,
-            OpenMenuApi openMenuApi,
-            ConfigApi configApi,
-            DataApi dataApi,
-            CommonFilterResolver commonFilterResolver,
-            IApprovalEngine approvalEngine,
-            SysApprovalChainConfigApi sysApprovalChainConfigApi,
-            QueryResultEnhanceService queryResultEnhanceService,
-            @Autowired(required = false) MenuActionButtonService menuActionButtonService) {
-        this.userMenuHeaderApi = userMenuHeaderApi;
-        this.openMenuApi = openMenuApi;
-        this.configApi = configApi;
-        this.dataApi = dataApi;
-        this.commonFilterResolver = commonFilterResolver;
-        this.approvalEngine = approvalEngine;
-        this.sysApprovalChainConfigApi = sysApprovalChainConfigApi;
-        this.queryResultEnhanceService = queryResultEnhanceService;
-        this.menuActionButtonService = menuActionButtonService;
-    }
-
-    public CommonAggregateServiceImpl(
-            UserMenuHeaderApi userMenuHeaderApi,
-            OpenMenuApi openMenuApi,
-            ConfigApi configApi,
-            DataApi dataApi,
-            CommonFilterResolver commonFilterResolver,
-            IApprovalEngine approvalEngine,
-            SysApprovalChainConfigApi sysApprovalChainConfigApi,
-            QueryResultEnhanceService queryResultEnhanceService,
-            RowCustomActionService rowCustomActionService) {
-        this(
-                userMenuHeaderApi,
-                openMenuApi,
-                configApi,
-                dataApi,
-                commonFilterResolver,
-                approvalEngine,
-                sysApprovalChainConfigApi,
-                queryResultEnhanceService,
-                rowCustomActionService != null
-                        ? new MenuActionButtonService(rowCustomActionService, null, null)
-                        : null);
-    }
-
-    public CommonAggregateServiceImpl(
-            UserMenuHeaderApi userMenuHeaderApi,
-            OpenMenuApi openMenuApi,
-            ConfigApi configApi,
-            DataApi dataApi,
-            CommonFilterResolver commonFilterResolver,
-            IApprovalEngine approvalEngine,
-            SysApprovalChainConfigApi sysApprovalChainConfigApi,
-            QueryResultEnhanceService queryResultEnhanceService) {
-        this(
-                userMenuHeaderApi,
-                openMenuApi,
-                configApi,
-                dataApi,
-                commonFilterResolver,
-                approvalEngine,
-                sysApprovalChainConfigApi,
-                queryResultEnhanceService,
-                (MenuActionButtonService) null);
-    }
-
-    public CommonAggregateServiceImpl(
-            UserMenuHeaderApi userMenuHeaderApi,
-            OpenMenuApi openMenuApi,
-            ConfigApi configApi,
-            DataApi dataApi,
-            CommonFilterResolver commonFilterResolver,
-            SysUserApi sysUserApi,
-            SysStatusApi sysStatusApi,
-            IApprovalEngine approvalEngine,
-            SysApprovalChainConfigApi sysApprovalChainConfigApi,
-            SysFileApi sysFileApi) {
-        this(
-                userMenuHeaderApi,
-                openMenuApi,
-                configApi,
-                dataApi,
-                commonFilterResolver,
-                approvalEngine,
-                sysApprovalChainConfigApi,
-                new QueryResultEnhanceServiceImpl(sysUserApi, sysStatusApi));
-    }
-
-    public CommonAggregateServiceImpl(
-            UserMenuHeaderApi userMenuHeaderApi,
-            OpenMenuApi openMenuApi,
-            ConfigApi configApi,
-            DataApi dataApi,
-            CommonFilterResolver commonFilterResolver,
-            SysUserApi sysUserApi,
-            SysStatusApi sysStatusApi,
-            IApprovalEngine approvalEngine,
-            SysApprovalChainConfigApi sysApprovalChainConfigApi) {
-        this(
-                userMenuHeaderApi,
-                openMenuApi,
-                configApi,
-                dataApi,
-                commonFilterResolver,
-                sysUserApi,
-                sysStatusApi,
-                approvalEngine,
-                sysApprovalChainConfigApi,
-                null);
-    }
+    private final JooqDataContextFactory jooqDataContextFactory;
+    private final SysStatusApi sysStatusApi;
 
     // ==================== 1. 核心公开业务接口实现 ====================
 
@@ -235,7 +125,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 userId,
                 roleId);
 
-        // 1. 获取用户在该菜单下的个性化表头展示配置及模块树拓扑
         MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
         Long rootModuleId = headerRoot.getModuleId();
         ModuleTreeDTO moduleTree =
@@ -244,7 +133,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 configApi.getProjectTableRelations(AppContext.getProjectNo());
         String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
 
-        // 2. 委托 PhysicalQueryMapper 校验 1:N 分支、修饰表头并收集勾选字段，转换为物理查询参数
         List<Long> checkedFieldIds =
                 PhysicalQueryMapper.collectAndMaskHeaderFields(
                         headerRoot, req, moduleTree, projectRelations);
@@ -258,20 +146,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         ? PhysicalQueryMapper.toTableSorts(moduleTree, req.getSorts())
                         : new ArrayList<>();
 
-        // 3. 灵活组合系统级过滤条件 (审批引擎 + 数据权限 + 草稿)
         boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
         List<ApprovalBusinessNoResp> approvalResp =
                 approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
         ModulePermissionDTO rootModulePerm = fetchModulePermission(rootModuleId, roleId);
         boolean hasEditPermission = hasModuleEditPermission(rootModulePerm);
-
-        log.info(
-                "[PageQuery-Context] 菜单关联根模块及主表: menuId={}, rootModuleId={}, primaryTable={}, approvalEnabled={}, hasEditPermission={}",
-                menuId,
-                rootModuleId,
-                primaryTable,
-                approvalEnabled,
-                hasEditPermission);
 
         PrimaryFilterResult filterResult =
                 resolveSystemFilters(
@@ -284,12 +163,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 hasEditPermission));
 
         ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
-        String moduleCode = rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null;
-        Integer enableActive =
+        int enableActive =
                 (rootModuleInfo != null && rootModuleInfo.getEnableActive() != null)
                         ? rootModuleInfo.getEnableActive()
                         : 0;
-        Integer enableChange =
+        int enableChange =
                 (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
                         ? rootModuleInfo.getEnableChange()
                         : 0;
@@ -298,7 +176,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 MenuActionContext.builder()
                         .projectNo(AppContext.getProjectNo())
                         .rootModuleId(rootModuleId)
-                        .moduleCode(moduleCode)
+                        .moduleCode(rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null)
                         .primaryTable(primaryTable)
                         .enableActive(enableActive)
                         .enableChange(enableChange)
@@ -309,13 +187,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         if (filterResult.isEmpty()) {
             log.info(
-                    "[PageQuery-ShortCircuit] 主表权限/审批过滤结果为空，短路直接返回空页面: menuId={}, rootModuleId={}, primaryTable={}",
+                    "[PageQuery-ShortCircuit] 主表权限/审批过滤结果为空，直接返回空页: menuId={}, rootModuleId={}",
                     menuId,
-                    rootModuleId,
-                    primaryTable);
-            ModuleDataNode emptyNode = buildEmptyModuleDataNode(rootModuleId, menuId);
-            List<ActionRowItem> emptyApprovalRows =
-                    approvalEnabled ? Collections.emptyList() : null;
+                    rootModuleId);
             MenuActionBundle emptyActions =
                     menuActionButtonService != null
                             ? menuActionButtonService.buildEmptyActions(actionCtx)
@@ -323,20 +197,15 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             return assembleMenuDataResp(
                     headerRoot,
                     rootModulePerm,
-                    enableChange,
-                    emptyNode,
+                    buildEmptyModuleDataNode(rootModuleId, menuId),
                     emptyActions.getGlobalActions(),
-                    emptyApprovalRows,
+                    approvalEnabled ? Collections.emptyList() : null,
                     emptyActions.getCustomActions(),
                     emptyActions.getInteractionActions());
         }
 
-        if (!filterResult.filters().isEmpty()) {
-            finalFilters.addAll(filterResult.filters());
-        }
+        finalFilters.addAll(filterResult.filters());
 
-        // 4. 调用底层低代码数据引擎进行分页查询
-        long queryPageStart = System.currentTimeMillis();
         DataPage<DataBlock> rawDataPage =
                 dataApi.queryPage(
                         PageQueryReq.builder()
@@ -347,9 +216,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 .pageNo(pageNo)
                                 .pageSize(pageSize)
                                 .build());
-        long queryPageCost = System.currentTimeMillis() - queryPageStart;
 
-        Long total =
+        long total =
                 (rawDataPage != null && rawDataPage.getTotal() != null)
                         ? rawDataPage.getTotal()
                         : 0L;
@@ -358,34 +226,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         ? rawDataPage.getRecords()
                         : Collections.emptyList();
 
-        log.info(
-                "[PageQuery-Execute] 底层低代码数据引擎分页查询完成: menuId={}, rootModuleId={}, 耗时={}ms, total={}, 当前页行数={}, pageNo={}, pageSize={}",
-                menuId,
-                rootModuleId,
-                queryPageCost,
-                total,
-                rawRecords.size(),
-                pageNo,
-                pageSize);
-
-        // 5. 增强主表字典字段并委托 PhysicalQueryMapper 与 ApprovalConditionResolver 组装响应
-        List<DataRecordItem> recordItems = new ArrayList<>(rawRecords.size());
-        if (!rawRecords.isEmpty()) {
-            queryResultEnhanceService.enhanceDataRows(
-                    rawRecords, rootModuleId, primaryTable, headerRoot);
-            for (DataRow rawRow : rawRecords) {
-                if (rawRow != null) {
-                    recordItems.add(PhysicalQueryMapper.toDataRecordItem(rawRow));
-                }
-            }
-        }
-
+        List<DataRecordItem> recordItems =
+                enhanceAndConvertRecords(rawRecords, rootModuleId, primaryTable, headerRoot);
         List<ActionRowItem> approvalRows =
                 approvalEnabled
                         ? ApprovalConditionResolver.buildApprovalRows(
                                 rawRecords, primaryTable, approvalType, approvalResp, userId)
                         : null;
-
         MenuActionBundle actions =
                 menuActionButtonService != null
                         ? menuActionButtonService.buildActions(rawRecords, actionCtx)
@@ -400,24 +247,16 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .build();
 
         log.info(
-                "[PageQuery-Finish] 分页查询组装完成: menuId={}, rootModuleId={}, 总耗时={}ms, total={}, 返回记录数={}, 审批行数={}, 定制操作行数={}, 互动操作行数={}",
+                "[PageQuery-Finish] 分页查询组装完成: menuId={}, rootModuleId={}, 总耗时={}ms, total={}, 返回记录数={}",
                 menuId,
                 rootModuleId,
                 System.currentTimeMillis() - queryStart,
                 total,
-                recordItems.size(),
-                approvalRows != null ? approvalRows.size() : "null(未启用审批)",
-                actions.getCustomActions() != null
-                        ? actions.getCustomActions().size()
-                        : "null(无定制操作)",
-                actions.getInteractionActions() != null
-                        ? actions.getInteractionActions().size()
-                        : "null(无互动操作)");
+                recordItems.size());
 
         return assembleMenuDataResp(
                 headerRoot,
                 rootModulePerm,
-                enableChange,
                 rootNode,
                 actions.getGlobalActions(),
                 approvalRows,
@@ -452,7 +291,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 userId,
                 roleId);
 
-        // 1. 获取原单菜单的表头配置与模块树
         MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
         Long rootModuleId = headerRoot.getModuleId();
         ModuleTreeDTO moduleTree =
@@ -462,179 +300,34 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new BusinessException("原单根模块主表未配置，无法推导变更表名: moduleId=" + rootModuleId);
         }
 
-        // 确保变更专有字段 (id, change_no, source_id, modify_reason, read_status) 在表头树中存在
-        ensureChangeColumnsInHeader(headerRoot, primaryTable, rootModuleId);
+        PhysicalQueryMapper.ensureChangeColumnsInHeader(headerRoot, primaryTable, rootModuleId);
+        MenuHeaderColumnResp prunedHeader = PhysicalQueryMapper.pruneHeaderToFirstLevel(headerRoot);
 
-        // 2. 规则编程推导变更表名: primaryTable + "_change"
         String changeTable = primaryTable + "_change";
+        List<String> targetColumns =
+                PhysicalQueryMapper.collectChangeTargetColumns(
+                        prunedHeader, moduleTree, primaryTable);
+        List<FilterItem> singleFilters =
+                PhysicalQueryMapper.buildChangeFilters(req, moduleTree, primaryTable, changeTable);
+        List<SortItem> singleSorts =
+                PhysicalQueryMapper.buildChangeSorts(req, moduleTree, primaryTable);
 
-        // 3. 从数据库物理 Schema 动态查询变更表的实际物理列名集合 (杜绝硬编码，由数据库元数据对齐)
-        Set<String> schemaColumns =
-                configApi.getTableColumnNames(AppContext.getProjectNo(), changeTable);
-        Set<String> validColumns =
-                (schemaColumns != null && !schemaColumns.isEmpty())
-                        ? schemaColumns
-                        : Collections.emptySet();
+        DataPage<List<Map<String, Object>>> pageResult =
+                dataApi.querySingleTablePage(
+                        SingleTableQueryReq.builder()
+                                .tableName(changeTable)
+                                .columns(targetColumns)
+                                .filters(singleFilters)
+                                .sorts(singleSorts)
+                                .pageNo(pageNo)
+                                .pageSize(pageSize)
+                                .build());
 
-        // 4. 收集单表查询投影字段 (变更单已冗余记录变更后的业务字段)
-        Set<String> targetColumns = new LinkedHashSet<>();
-        targetColumns.add("id");
-        targetColumns.add("change_no");
-        targetColumns.add("source_id");
-        targetColumns.add("modify_reason");
-        targetColumns.add("read_status");
-
-        // 从表头元数据递归收集原单主表的物理列
-        List<Long> checkedFieldIds = PhysicalQueryMapper.collectCheckedFieldIds(headerRoot);
-        if (!CollectionUtils.isEmpty(checkedFieldIds)) {
-            for (Long fId : checkedFieldIds) {
-                if (fId == null) {
-                    continue;
-                }
-                try {
-                    PhysicalQueryMapper.PhysicalFieldRef ref =
-                            PhysicalQueryMapper.resolve(moduleTree, fId);
-                    if (primaryTable.equalsIgnoreCase(ref.tableName())) {
-                        String col = ref.columnName() != null ? ref.columnName().trim() : "";
-                        if (!col.isEmpty()) {
-                            targetColumns.add(col);
-                        }
-                    }
-                } catch (Exception ignored) {
-                    // 忽略非物理字段或跨模块字段
-                }
-            }
-        }
-
-        // 从模块树元数据补充原单主表的定义字段
-        if (moduleTree.getFieldMap() != null) {
-            for (ModuleFieldDTO f : moduleTree.getFieldMap().values()) {
-                if (f != null && f.getColumnName() != null && !f.getColumnName().isBlank()) {
-                    String tbl = f.getTableName();
-                    if (tbl == null || tbl.isBlank()) {
-                        tbl = primaryTable;
-                    }
-                    String col = f.getColumnName().trim();
-                    if (primaryTable.equalsIgnoreCase(tbl)) {
-                        targetColumns.add(col);
-                    }
-                }
-            }
-        }
-
-        // 基于数据库物理 Schema 动态校验过滤：仅保留变更表中实际存在的列，自动剔除主表特有字段
-        if (!validColumns.isEmpty()) {
-            targetColumns.removeIf(col -> !validColumns.contains(col.toLowerCase()));
-        }
-
-        // 5. 构建单表过滤条件 (基于物理 Schema 动态过滤不存在的列)
-        List<FilterItem> singleFilters = new ArrayList<>();
-        if (validColumns.isEmpty() || validColumns.contains("deleted")) {
-            singleFilters.add(FilterItem.eq(changeTable, "deleted", (byte) 0));
-        }
-
-        // 已读/未读状态过滤: 0-未读, 1-已读, 2或null-全部
-        if (req != null && req.getReadStatus() != null) {
-            if (req.getReadStatus() == 0 || req.getReadStatus() == 1) {
-                if (validColumns.isEmpty() || validColumns.contains("read_status")) {
-                    singleFilters.add(
-                            FilterItem.eq(changeTable, "read_status", req.getReadStatus()));
-                }
-            }
-        }
-
-        // 已读/未读状态过滤: 0-未读, 1-已读, 2或null-全部
-        if (req != null && req.getReadStatus() != null) {
-            if (req.getReadStatus() == 0 || req.getReadStatus() == 1) {
-                if (validColumns.isEmpty() || validColumns.contains("read_status")) {
-                    singleFilters.add(
-                            FilterItem.eq(changeTable, "read_status", req.getReadStatus()));
-                }
-            }
-        }
-
-        if (req != null && req.getFilters() != null) {
-            List<FilterItem> mappedFilters =
-                    PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters());
-            for (FilterItem f : mappedFilters) {
-                if (f != null && f.getColumnName() != null && !f.getColumnName().isBlank()) {
-                    String col = f.getColumnName().trim();
-                    if (validColumns.isEmpty() || validColumns.contains(col.toLowerCase())) {
-                        f.setTableName(changeTable);
-                        singleFilters.add(f);
-                    }
-                }
-            }
-        }
-
-        // 6. 构建单表排序规则 (基于物理 Schema 动态过滤不存在的列)
-        List<SortItem> singleSorts = new ArrayList<>();
-        if (req != null && req.getSorts() != null) {
-            List<SortItem> mappedSorts =
-                    PhysicalQueryMapper.toTableSorts(moduleTree, req.getSorts());
-            for (SortItem s : mappedSorts) {
-                if (s != null && s.getColumnName() != null && !s.getColumnName().isBlank()) {
-                    String col = s.getColumnName().trim();
-                    if (validColumns.isEmpty() || validColumns.contains(col.toLowerCase())) {
-                        singleSorts.add(s);
-                    }
-                }
-            }
-        }
-        if (singleSorts.isEmpty()) {
-            singleSorts.add(SortItem.desc("id"));
-        }
-
-        // 6. 调用 dataApi 进行单表原生分页查询
-        SingleTableQueryReq singleReq =
-                SingleTableQueryReq.builder()
-                        .tableName(changeTable)
-                        .columns(new ArrayList<>(targetColumns))
-                        .filters(singleFilters)
-                        .sorts(singleSorts)
-                        .pageNo(pageNo)
-                        .pageSize(pageSize)
-                        .build();
-
-        DataPage<List<Map<String, Object>>> pageResult = dataApi.querySingleTablePage(singleReq);
         long total =
                 (pageResult != null && pageResult.getTotal() != null) ? pageResult.getTotal() : 0L;
-
-        // 7. 组装 DataRow (平铺于 primaryTable 域中，供前端和字典增强统一消费)
-        List<DataRow> rawRecords = new ArrayList<>();
-        if (pageResult != null && pageResult.getData() != null) {
-            for (Map<String, Object> recordMap : pageResult.getData()) {
-                if (recordMap == null) {
-                    continue;
-                }
-                Map<String, Object> merged = new LinkedHashMap<>(recordMap);
-                Object cId = merged.get("id");
-                if (cId != null) {
-                    merged.put("change_id", cId);
-                }
-                DataRow dr = new DataRow();
-                dr.putTable(primaryTable, merged);
-                rawRecords.add(dr);
-            }
-        }
-
-        // 8. 字典与结果增强 (复用原单列头配置与通用字典增强)
-        List<DataRecordItem> recordItems = new ArrayList<>(rawRecords.size());
-        if (!rawRecords.isEmpty()) {
-            queryResultEnhanceService.enhanceDataRows(
-                    rawRecords, rootModuleId, primaryTable, headerRoot);
-            for (DataRow rawRow : rawRecords) {
-                if (rawRow != null) {
-                    recordItems.add(PhysicalQueryMapper.toDataRecordItem(rawRow));
-                }
-            }
-        }
-
-        ModuleInfo rootModuleInfo = moduleTree.getModule(rootModuleId);
-        Integer enableChange =
-                (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
-                        ? rootModuleInfo.getEnableChange()
-                        : 0;
+        List<DataRow> rawRecords = PhysicalQueryMapper.toChangeDataRows(pageResult, primaryTable);
+        List<DataRecordItem> recordItems =
+                enhanceAndConvertRecords(rawRecords, rootModuleId, primaryTable, prunedHeader);
 
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
@@ -653,22 +346,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 total,
                 recordItems.size());
 
-        MenuHeaderColumnResp prunedHeaderRoot = pruneHeaderToFirstLevel(headerRoot);
-
-        return assembleMenuDataResp(
-                prunedHeaderRoot,
-                null,
-                enableChange,
-                rootNode,
-                Collections.emptyList(),
-                Collections.emptyList(),
-                Collections.emptyList(),
-                Collections.emptyList());
+        return assembleMenuDataResp(prunedHeader, null, rootNode, null, null, null, null);
     }
 
     @Override
     public ModuleDataNode queryList(MenuListReq req) {
-        // 1. 定位目标公共根模块树与最顶层目标模块上下文
         ModuleTreeDTO moduleTree = resolveRootModuleTree(req);
         Long rootModuleId = moduleTree.getRootModuleId();
         String primaryTable = moduleTree.getPrimaryTable();
@@ -679,17 +361,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 resolveTargetModuleContext(
                         req, rootModuleId, rootMenuId, moduleTree, moduleToMenuMap);
 
-        // 2. 委托 PhysicalQueryMapper 将平铺物理表/过滤/排序规格转换为底层引擎参数
+        List<MenuTableSpec> reqTables = req != null ? req.getTables() : null;
         List<TableSpec> tableSpecs =
                 PhysicalQueryMapper.toTableSpecs(
-                        req != null ? req.getTables() : null,
-                        moduleTree,
-                        openMenuApi::getModuleIdByMenuId);
+                        reqTables, moduleTree, openMenuApi::getModuleIdByMenuId);
         Map<String, Set<String>> requestedTableColumnsMap =
                 PhysicalQueryMapper.buildRequestedTableColumnsMap(
-                        req != null ? req.getTables() : null,
-                        moduleTree,
-                        openMenuApi::getModuleIdByMenuId);
+                        reqTables, moduleTree, openMenuApi::getModuleIdByMenuId);
         List<FilterItem> finalFilters =
                 PhysicalQueryMapper.toFlatFilters(
                         req != null ? req.getFilters() : null,
@@ -701,39 +379,20 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         moduleTree,
                         openMenuApi::getModuleIdByMenuId);
 
-        // 3. 灵活组合系统级过滤条件 (默认查询全部集合: approvalType = 3)
-        boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
-        List<ApprovalBusinessNoResp> approvalResp =
-                approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
-        ProjectTableRelationsDTO projectRelations =
-                configApi.getProjectTableRelations(AppContext.getProjectNo());
         Long roleId = UserContext.getRoleId();
-        boolean hasEditPermission =
-                hasModuleEditPermission(fetchModulePermission(rootModuleId, roleId));
         PrimaryFilterResult filterResult =
-                resolveSystemFilters(
-                        moduleTree,
-                        buildSystemFilterSpec(
-                                3,
-                                approvalEnabled,
-                                approvalResp,
-                                projectRelations,
-                                hasEditPermission));
+                resolveMenuSystemFilters(moduleTree, rootModuleId, roleId, 3);
         if (filterResult.isEmpty()) {
             return buildEmptyModuleDataNode(targetCtx.targetModuleId(), targetCtx.targetMenuId());
         }
-        if (!filterResult.filters().isEmpty()) {
-            finalFilters.addAll(filterResult.filters());
-        }
+        finalFilters.addAll(filterResult.filters());
 
-        // 4. 求解匹配的每个 business_no 最新启用 (business_status = 99) 的最大版本主键 ID 列表
         List<Long> latestEnabledIds =
                 fetchLatestEnabledVersionIds(rootModuleId, primaryTable, finalFilters, finalSorts);
         if (CollectionUtils.isEmpty(latestEnabledIds)) {
             return buildEmptyModuleDataNode(targetCtx.targetModuleId(), targetCtx.targetMenuId());
         }
 
-        // 5. 基于唯一主键 ID 列表进行全量关联投影查询
         FilterItem idInFilter = FilterItem.in(primaryTable, "id", latestEnabledIds);
         idInFilter.setModuleId(rootModuleId);
 
@@ -751,7 +410,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         ? enabledBlock.getRecords()
                         : Collections.emptyList();
 
-        // 6. 委托 PhysicalQueryMapper 转换为自相似同构树记录列表，并按目标模块层级裁剪提取
         List<DataRecordItem> recordList = new ArrayList<>(finalRows.size());
         if (!finalRows.isEmpty()) {
             MenuHeaderColumnResp headerRoot = queryHeaderRootQuietly(rootMenuId, roleId);
@@ -795,7 +453,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Long userId = getEffectiveUserId();
         Long roleId = UserContext.getRoleId();
 
-        // 1. 获取表头展示配置与模块树，委托 PhysicalQueryMapper 收集字段并生成表投影规格
         MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
         Long rootModuleId = headerRoot.getModuleId();
         ModuleTreeDTO moduleTree =
@@ -804,7 +461,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<Long> checkedFieldIds = PhysicalQueryMapper.collectCheckedFieldIds(headerRoot);
         List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
 
-        // 2. 调用底层低代码引擎获取单据详情
         DataBlock dataBlock =
                 dataApi.getDetail(
                         DetailQueryReq.builder()
@@ -813,7 +469,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 .tables(tableSpecs)
                                 .build());
 
-        // 3. 增强字段并转换为 ModuleDataNode 树
         ModuleDataNode dataTree =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
@@ -831,10 +486,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             }
         }
 
-        // 4. 构建模块元数据配置列表并返回响应
-        List<ModuleMetaDTO> metaList =
-                buildModuleMetaList(moduleTree, rootModuleId, menuId, roleId);
-        return MenuDetailResp.builder().meta(metaList).data(dataTree).build();
+        return MenuDetailResp.builder()
+                .meta(buildModuleMetaList(moduleTree, rootModuleId, menuId, roleId))
+                .data(dataTree)
+                .build();
     }
 
     @Override
@@ -846,54 +501,33 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new IllegalArgumentException("目标字段 ID (fieldId) 不能为空");
         }
 
-        // 1. 解析菜单关联的根模块 ID 与目标物理字段
         Long rootModuleId = getModuleIdByMenuOrThrow(menuId);
         ModuleTreeDTO moduleTree =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
         PhysicalQueryMapper.PhysicalFieldRef targetField =
                 PhysicalQueryMapper.resolve(moduleTree, req.getFieldId());
 
-        // 2. 组装前端传入的过滤条件与系统级过滤条件 (审批引擎 + 数据权限 + 草稿)
         List<FilterItem> finalFilters =
                 PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters());
-
-        Integer approvalType = req.getApprovalType();
-        boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
-        List<ApprovalBusinessNoResp> approvalResp =
-                approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
-        ProjectTableRelationsDTO projectRelations =
-                configApi.getProjectTableRelations(AppContext.getProjectNo());
         Long roleId = UserContext.getRoleId();
-        boolean hasEditPermission =
-                hasModuleEditPermission(fetchModulePermission(rootModuleId, roleId));
 
         PrimaryFilterResult filterResult =
-                resolveSystemFilters(
-                        moduleTree,
-                        buildSystemFilterSpec(
-                                approvalType,
-                                approvalEnabled,
-                                approvalResp,
-                                projectRelations,
-                                hasEditPermission));
+                resolveMenuSystemFilters(moduleTree, rootModuleId, roleId, req.getApprovalType());
         if (filterResult.isEmpty()) {
             return Collections.emptyList();
         }
-        if (!filterResult.filters().isEmpty()) {
-            finalFilters.addAll(filterResult.filters());
-        }
+        finalFilters.addAll(filterResult.filters());
 
-        // 3. 调用底层低代码数据引擎获取候选项并增强展示
-        OptionReq optionReq =
-                OptionReq.builder()
-                        .moduleId(rootModuleId)
-                        .tableName(targetField.tableName())
-                        .columnName(targetField.columnName())
-                        .filters(finalFilters)
-                        .direction(req.getDirection())
-                        .build();
+        List<DataOptionResp> rawOptions =
+                dataApi.getOptions(
+                        OptionReq.builder()
+                                .moduleId(rootModuleId)
+                                .tableName(targetField.tableName())
+                                .columnName(targetField.columnName())
+                                .filters(finalFilters)
+                                .direction(req.getDirection())
+                                .build());
 
-        List<DataOptionResp> rawOptions = dataApi.getOptions(optionReq);
         MenuHeaderColumnResp headerRoot = queryHeaderRootQuietly(menuId, roleId);
         return queryResultEnhanceService.enhanceOptions(
                 rawOptions, targetField.columnName(), rootModuleId, headerRoot, req.getFieldId());
@@ -910,32 +544,29 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
         ProjectTableRelationsDTO projectRelations =
                 configApi.getProjectTableRelations(AppContext.getProjectNo());
-        Long roleId = UserContext.getRoleId();
         boolean hasEditPermission =
-                hasModuleEditPermission(fetchModulePermission(rootModuleId, roleId));
+                hasModuleEditPermission(
+                        fetchModulePermission(rootModuleId, UserContext.getRoleId()));
 
         long countStart = System.currentTimeMillis();
         long todoCount = 0L;
         long doneCount = 0L;
-        long totalCount = 0L;
+        long totalCount;
 
         if (isApprovalChainEnabled(rootModuleId)) {
             List<ApprovalBusinessNoResp> resp = fetchApprovalBusinessNos(rootModuleId);
-            // 待办 (type = 1): 仅【审批引擎(待办)】
             todoCount =
                     countByFilterSpec(
                             rootModuleId,
                             moduleTree,
                             buildSystemFilterSpec(
                                     1, true, resp, projectRelations, hasEditPermission));
-            // 已办 (type = 2): 仅【审批引擎(已办)】
             doneCount =
                     countByFilterSpec(
                             rootModuleId,
                             moduleTree,
                             buildSystemFilterSpec(
                                     2, true, resp, projectRelations, hasEditPermission));
-            // 全部 (type = 3): 【审批引擎(全部)】 + 【数据权限】
             totalCount =
                     countByFilterSpec(
                             rootModuleId,
@@ -943,8 +574,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             buildSystemFilterSpec(
                                     3, true, resp, projectRelations, hasEditPermission));
         } else {
-            // 未启用审批流:
-            // 若用户角色拥有模块编辑权限，移除限制性过滤条件，统计所有 active=1 的数据；若无编辑权限，按【数据权限】+【个人全部单据】统计
             totalCount =
                     countByFilterSpec(
                             rootModuleId,
@@ -968,19 +597,145 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 MenuApprovalCountResp.of("全部", 3, totalCount));
     }
 
+    @Override
+    public MenuChangeCountResp getChangeCountByMenu(Long menuId) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+
+        Long rootModuleId = getModuleIdByMenuOrThrow(menuId);
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
+        int enableChange =
+                (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
+                        ? rootModuleInfo.getEnableChange()
+                        : 0;
+        if (enableChange != 1) {
+            return MenuChangeCountResp.of(0, 0L);
+        }
+
+        String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
+        if (primaryTable == null || primaryTable.isBlank()) {
+            return MenuChangeCountResp.of(enableChange, 0L);
+        }
+
+        String changeTable = primaryTable + "_change";
+        List<FilterItem> filters =
+                List.of(
+                        FilterItem.eq(changeTable, "deleted", (byte) 0),
+                        FilterItem.eq(changeTable, "read_status", 0));
+        Long unreadCount =
+                dataApi.countSingleTable(
+                        SingleTableQueryReq.builder()
+                                .tableName(changeTable)
+                                .filters(filters)
+                                .build());
+
+        return MenuChangeCountResp.of(enableChange, unreadCount);
+    }
+
+    @Override
+    public StatusSimpleResp toggleActiveStatusByMenu(Long menuId, MenuActiveToggleReq req) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+        if (req == null) {
+            throw new IllegalArgumentException("请求体 req 不能为空");
+        }
+        List<String> businessNos = req.getBusinessNos();
+        if (CollectionUtils.isEmpty(businessNos)) {
+            throw new IllegalArgumentException("业务编号列表 businessNos 不能为空");
+        }
+        List<String> validBusinessNos =
+                businessNos.stream()
+                        .filter(no -> no != null && !no.isBlank())
+                        .map(String::trim)
+                        .distinct()
+                        .toList();
+        if (validBusinessNos.isEmpty()) {
+            throw new IllegalArgumentException("业务编号列表 businessNos 不能为空且至少包含一个有效单号");
+        }
+
+        boolean activate = req.isActivate();
+        int originalStatus = activate ? 11 : 99;
+        int targetStatus = activate ? 99 : 11;
+
+        Long rootModuleId = getModuleIdByMenuOrThrow(menuId);
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
+        Integer enableActive = rootModuleInfo != null ? rootModuleInfo.getEnableActive() : null;
+        if (enableActive != null && enableActive != 1) {
+            throw new BusinessException("当前菜单对应模块未开启启停功能 (enableActive != 1)");
+        }
+
+        String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
+        if (primaryTable == null || primaryTable.isBlank()) {
+            throw new BusinessException("菜单 [" + menuId + "] 未关联有效的物理主表");
+        }
+
+        log.info(
+                "[ActiveToggle-Start] 接收菜单批量单据启停请求: menuId={}, rootModuleId={}, primaryTable={}, activate={}, originalStatus={}, targetStatus={}, businessNosCount={}",
+                menuId,
+                rootModuleId,
+                primaryTable,
+                activate,
+                originalStatus,
+                targetStatus,
+                validBusinessNos.size());
+
+        DSLContext dsl = jooqDataContextFactory.getContext();
+        Table<?> table = resolveTable(primaryTable);
+
+        int updatedRows =
+                dsl.update(table)
+                        .set(DSL.field(DSL.name("business_status"), Integer.class), targetStatus)
+                        .set(DSL.field(DSL.name("update_by")), UserContext.getOperateUserId())
+                        .set(DSL.field(DSL.name("updated_date")), LocalDateTime.now())
+                        .where(
+                                DSL.field(DSL.name("business_no"), String.class)
+                                        .in(validBusinessNos))
+                        .and(
+                                DSL.field(DSL.name("business_status"), Integer.class)
+                                        .eq(originalStatus))
+                        .and(DSL.field(DSL.name("deleted"), Byte.class).eq((byte) 0))
+                        .execute();
+
+        StatusSimpleResp statusResp = resolveEnhancedStatus(rootModuleId, targetStatus);
+
+        log.info(
+                "[ActiveToggle-Finish] 菜单批量单据启停执行完成: menuId={}, primaryTable={}, 目标状态={}, 匹配并更新行数={}, 返回状态={}",
+                menuId,
+                primaryTable,
+                targetStatus,
+                updatedRows,
+                statusResp);
+
+        return statusResp;
+    }
+
     // ==================== 2. 系统级过滤组合与审批流编排 ====================
 
-    /**
-     * 按业务场景灵活组合系统级过滤条件（轻量级审批引擎 + 数据权限 + 草稿）
-     *
-     * <ul>
-     *   <li>未启用审批且有编辑权限：【全部有效数据】(active = 1，移除限制性 filter)
-     *   <li>未启用审批且无编辑权限：【数据权限】+【个人全部单据】
-     *   <li>1-待办：仅【审批引擎(待办)】
-     *   <li>2-已办：仅【审批引擎(已办)】
-     *   <li>3-全部：【审批引擎(全部)】+【数据权限】
-     * </ul>
-     */
+    private PrimaryFilterResult resolveMenuSystemFilters(
+            ModuleTreeDTO moduleTree, Long rootModuleId, Long roleId, Integer approvalType) {
+        boolean approvalEnabled = isApprovalChainEnabled(rootModuleId);
+        List<ApprovalBusinessNoResp> approvalResp =
+                approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
+        ProjectTableRelationsDTO projectRelations =
+                configApi.getProjectTableRelations(AppContext.getProjectNo());
+        boolean hasEditPermission =
+                hasModuleEditPermission(fetchModulePermission(rootModuleId, roleId));
+        return resolveSystemFilters(
+                moduleTree,
+                buildSystemFilterSpec(
+                        approvalType,
+                        approvalEnabled,
+                        approvalResp,
+                        projectRelations,
+                        hasEditPermission));
+    }
+
     private FilterSpec buildSystemFilterSpec(
             Integer approvalType,
             boolean approvalChainEnabled,
@@ -988,19 +743,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             ProjectTableRelationsDTO projectRelations,
             boolean hasEditPermission) {
         if (!approvalChainEnabled) {
-            if (hasEditPermission) {
-                return FilterSpec.of("NoApproval-EditAllowed").withAllActive();
-            }
-            return FilterSpec.of("NoApproval-ReadOnly")
-                    .withDataPermission(projectRelations)
-                    .withMyRecords();
+            return hasEditPermission
+                    ? FilterSpec.of("NoApproval-EditAllowed").withAllActive()
+                    : FilterSpec.of("NoApproval-ReadOnly")
+                            .withDataPermission(projectRelations)
+                            .withMyRecords();
         }
         if (approvalType == null) {
             return FilterSpec.of("Default").withDataPermission(projectRelations).withMyRecords();
         }
 
         List<String> businessNos = extractBusinessNosByType(approvalResp, approvalType);
-
         return switch (approvalType) {
             case 1 -> FilterSpec.of("Todo").withApproval(businessNos);
             case 2 -> FilterSpec.of("Done").withApproval(businessNos);
@@ -1017,18 +770,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             return Collections.emptyList();
         }
         return approvalResp.stream()
-                .filter(Objects::nonNull)
                 .filter(
                         item ->
-                                item.getBusinessNumber() != null
+                                item != null
+                                        && item.getBusinessNumber() != null
                                         && !item.getBusinessNumber().isBlank())
                 .filter(
-                        item -> {
-                            if (targetApprovalType == null || targetApprovalType == 3) {
-                                return true;
-                            }
-                            return Objects.equals(targetApprovalType, item.getApprovalType());
-                        })
+                        item ->
+                                targetApprovalType == null
+                                        || targetApprovalType == 3
+                                        || Objects.equals(
+                                                targetApprovalType, item.getApprovalType()))
                 .map(item -> item.getBusinessNumber().trim())
                 .distinct()
                 .toList();
@@ -1081,7 +833,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
     }
 
-    // ==================== 3. 菜单与模块上下文服务编排 ====================
+    // ==================== 4. 菜单与模块上下文服务编排 ====================
 
     private record TargetModuleContext(Long targetModuleId, Long targetMenuId) {}
 
@@ -1182,9 +934,6 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             }
         }
 
-        if (targetModuleId == null) {
-            targetModuleId = rootModuleId;
-        }
         if (targetMenuId == null) {
             targetMenuId = moduleToMenuMap.get(targetModuleId);
             if (targetMenuId == null && targetModuleId != null) {
@@ -1199,23 +948,27 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             String primaryTable,
             List<FilterItem> finalFilters,
             List<SortItem> finalSorts) {
-        TableSpec lightSpec = TableSpec.of(rootModuleId, primaryTable, "id", "business_no");
         DataBlock lightBlock =
                 dataApi.queryList(
                         QueryReq.builder()
                                 .moduleId(rootModuleId)
-                                .tables(List.of(lightSpec))
+                                .tables(
+                                        List.of(
+                                                TableSpec.of(
+                                                        rootModuleId,
+                                                        primaryTable,
+                                                        "id",
+                                                        "business_no")))
                                 .filters(finalFilters)
                                 .sorts(finalSorts)
                                 .build());
 
-        List<DataRow> lightRows =
-                (lightBlock != null && lightBlock.getRecords() != null)
-                        ? lightBlock.getRecords()
-                        : Collections.emptyList();
+        if (lightBlock == null || CollectionUtils.isEmpty(lightBlock.getRecords())) {
+            return Collections.emptyList();
+        }
 
         Set<String> businessNoSet = new LinkedHashSet<>();
-        for (DataRow r : lightRows) {
+        for (DataRow r : lightBlock.getRecords()) {
             if (r != null) {
                 String bNo = r.getString(primaryTable, "business_no");
                 if (bNo != null && !bNo.isBlank()) {
@@ -1223,14 +976,31 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 }
             }
         }
-
-        if (businessNoSet.isEmpty()) {
-            return Collections.emptyList();
-        }
-        return dataApi.getLatestVersionIds(primaryTable, businessNoSet, ENABLED_BUSINESS_STATUS);
+        return businessNoSet.isEmpty()
+                ? Collections.emptyList()
+                : dataApi.getLatestVersionIds(primaryTable, businessNoSet, ENABLED_BUSINESS_STATUS);
     }
 
-    // ==================== 4. 权限元数据装配与字典增强 ====================
+    // ==================== 5. 权限元数据装配、结果转换与基础辅助 ====================
+
+    private List<DataRecordItem> enhanceAndConvertRecords(
+            List<DataRow> rawRecords,
+            Long rootModuleId,
+            String primaryTable,
+            MenuHeaderColumnResp headerRoot) {
+        if (CollectionUtils.isEmpty(rawRecords)) {
+            return new ArrayList<>();
+        }
+        queryResultEnhanceService.enhanceDataRows(
+                rawRecords, rootModuleId, primaryTable, headerRoot);
+        List<DataRecordItem> items = new ArrayList<>(rawRecords.size());
+        for (DataRow rawRow : rawRecords) {
+            if (rawRow != null) {
+                items.add(PhysicalQueryMapper.toDataRecordItem(rawRow));
+            }
+        }
+        return items;
+    }
 
     private List<ModuleMetaDTO> buildModuleMetaList(
             ModuleTreeDTO moduleTree, Long rootModuleId, Long menuId, Long roleId) {
@@ -1266,24 +1036,16 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             (primaryTable != null && !primaryTable.isBlank())
                                     ? primaryTable + "." + col
                                     : col;
-
                     ModulePermissionDTO.FieldPermissionItem fp =
-                            (modPerm != null && modPerm.getModuleFieldPermissions() != null)
-                                    ? modPerm.getModuleFieldPermissions().get(f.getId())
-                                    : (modPerm != null
-                                                    && modPerm.getModuleTreeFieldPermissions()
-                                                            != null)
-                                            ? modPerm.getModuleTreeFieldPermissions().get(f.getId())
-                                            : null;
-
+                            resolveFieldPermission(modPerm, f.getId());
                     fieldMetaMap.put(
                             fullKey,
                             FieldMetaDTO.builder()
                                     .id(f.getId())
                                     .displayName(f.getDisplayName())
-                                    .apply(fp != null ? fp.getApply() : true)
-                                    .view(fp != null ? fp.getView() : true)
-                                    .edit(fp != null ? fp.getEdit() : true)
+                                    .apply(fp == null || fp.getApply())
+                                    .view(fp == null || fp.getView())
+                                    .edit(fp == null || fp.getEdit())
                                     .build());
                 }
             }
@@ -1295,8 +1057,21 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             .fields(fieldMetaMap)
                             .build());
         }
-
         return metaList;
+    }
+
+    private ModulePermissionDTO.FieldPermissionItem resolveFieldPermission(
+            ModulePermissionDTO modPerm, Long fieldId) {
+        if (modPerm == null) {
+            return null;
+        }
+        if (modPerm.getModuleFieldPermissions() != null) {
+            return modPerm.getModuleFieldPermissions().get(fieldId);
+        }
+        if (modPerm.getModuleTreeFieldPermissions() != null) {
+            return modPerm.getModuleTreeFieldPermissions().get(fieldId);
+        }
+        return null;
     }
 
     private ModulePermissionDTO fetchModulePermission(Long rootModuleId, Long roleId) {
@@ -1324,38 +1099,23 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     private MenuDataResp assembleMenuDataResp(
             MenuHeaderColumnResp headerRoot,
             ModulePermissionDTO rootModulePerm,
-            Integer enableChange,
             ModuleDataNode dataNode,
             List<ActionButtonDTO> globalActions,
             List<ActionRowItem> approvalRows,
             List<ActionRowItem> customActions,
             List<ActionRowItem> interactionActions) {
         ModuleSimplePermissionDTO permission =
-                ModuleSimplePermissionDTO.builder()
-                        .apply(
-                                rootModulePerm != null
-                                                && Boolean.TRUE.equals(rootModulePerm.getApply())
-                                        ? 1
-                                        : 0)
-                        .view(
-                                rootModulePerm != null
-                                                && Boolean.TRUE.equals(rootModulePerm.getView())
-                                        ? 1
-                                        : 0)
-                        .edit(
-                                rootModulePerm != null
-                                                && Boolean.TRUE.equals(rootModulePerm.getEdit())
-                                        ? 1
-                                        : 0)
-                        .build();
-        if (rootModulePerm == null) {
-            permission = ModuleSimplePermissionDTO.builder().apply(1).view(1).edit(1).build();
-        }
+                rootModulePerm == null
+                        ? null
+                        : ModuleSimplePermissionDTO.builder()
+                                .apply(Boolean.TRUE.equals(rootModulePerm.getApply()) ? 1 : 0)
+                                .view(Boolean.TRUE.equals(rootModulePerm.getView()) ? 1 : 0)
+                                .edit(Boolean.TRUE.equals(rootModulePerm.getEdit()) ? 1 : 0)
+                                .build();
 
         return MenuDataResp.builder()
                 .header(headerRoot)
                 .modulePermission(permission)
-                .enableChange(enableChange != null ? enableChange : 0)
                 .globalActions(globalActions)
                 .approvalActions(approvalRows)
                 .customActions(customActions)
@@ -1364,30 +1124,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 .build();
     }
 
-    private MenuDataResp assembleMenuDataResp(
-            MenuHeaderColumnResp headerRoot,
-            ModulePermissionDTO rootModulePerm,
-            ModuleDataNode dataNode,
-            List<ActionRowItem> approvalRows,
-            List<ActionRowItem> customActions) {
-        return assembleMenuDataResp(
-                headerRoot, rootModulePerm, 0, dataNode, null, approvalRows, customActions, null);
-    }
-
     private MenuHeaderColumnResp queryHeaderRootQuietly(Long menuId, Long roleId) {
         if (menuId == null) {
             return null;
         }
         try {
-            Long userId = getEffectiveUserId();
-            return getHeaderDisplayOrThrow(userId, menuId, roleId);
+            return getHeaderDisplayOrThrow(getEffectiveUserId(), menuId, roleId);
         } catch (Exception ex) {
             log.debug("获取菜单列头配置失败: menuId={}, roleId={}, err={}", menuId, roleId, ex.getMessage());
             return null;
         }
     }
-
-    // ==================== 5. 公共基础辅助方法 ====================
 
     private MenuHeaderColumnResp getHeaderDisplayOrThrow(Long userId, Long menuId, Long roleId) {
         MenuHeaderDisplayResp headerDisplay =
@@ -1405,6 +1152,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private Long getModuleIdByMenuOrThrow(Long menuId) {
         Long rootModuleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (rootModuleId == null) {
+            MenuHeaderColumnResp headerRoot =
+                    queryHeaderRootQuietly(menuId, UserContext.getRoleId());
+            if (headerRoot != null) {
+                rootModuleId = headerRoot.getModuleId();
+            }
+        }
         if (rootModuleId == null) {
             throw new BusinessException("菜单 [" + menuId + "] 未关联或绑定有效的根模块");
         }
@@ -1433,184 +1187,36 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         return UserContext.isMockLogin() ? UserContext.getMockUserId() : UserContext.getUserId();
     }
 
-    /** 裁剪表头树，仅保留根模块 moduleId 对应的一级列节点（过滤掉所有其他子模块/菜单及更深层节点），并移除 sorted 和 searchType */
-    private MenuHeaderColumnResp pruneHeaderToFirstLevel(MenuHeaderColumnResp headerRoot) {
-        if (headerRoot == null) {
-            return null;
+    private Table<?> resolveTable(String tableName) {
+        if (tableName.contains(".")) {
+            String[] parts = tableName.split("\\.");
+            return DSL.table(DSL.name(parts[0], parts[1]));
         }
-        Long rootModuleId = headerRoot.getModuleId();
-        MenuHeaderColumnResp pruned = copyHeaderColumn(headerRoot);
-        pruned.setSorted(null);
-        pruned.setSearchType(null);
-        if (headerRoot.getChildren() != null) {
-            List<MenuHeaderColumnResp> firstLevel = new ArrayList<>();
-            for (MenuHeaderColumnResp child : headerRoot.getChildren()) {
-                if (child == null) {
-                    continue;
+        return DSL.table(DSL.name(tableName));
+    }
+
+    private StatusSimpleResp resolveEnhancedStatus(Long rootModuleId, Integer targetStatus) {
+        if (sysStatusApi != null && rootModuleId != null && targetStatus != null) {
+            try {
+                ModuleApprovalChainConfigResp.StatusNode node =
+                        sysStatusApi.getStatusByValue(targetStatus, rootModuleId);
+                if (node != null) {
+                    return StatusSimpleResp.builder()
+                            .title(node.getTitle())
+                            .statusValue(node.getStatusValue())
+                            .statusBackground(node.getStatusBackground())
+                            .statusFontColor(node.getStatusFontColor())
+                            .build();
                 }
-                // 仅保留根模块 moduleId 的信息，排除其他模块/菜单
-                if (rootModuleId != null && !rootModuleId.equals(child.getModuleId())) {
-                    continue;
-                }
-                // 排除无字段信息的纯菜单节点
-                if (Integer.valueOf(0).equals(child.getNodeType())
-                        && child.getFieldId() == null
-                        && child.getDataIndex() == null) {
-                    continue;
-                }
-                MenuHeaderColumnResp prunedChild = copyHeaderColumn(child);
-                prunedChild.setChildren(null);
-                prunedChild.setSorted(null);
-                prunedChild.setSearchType(null);
-                firstLevel.add(prunedChild);
-            }
-            pruned.setChildren(firstLevel);
-        }
-        return pruned;
-    }
-
-    private MenuHeaderColumnResp copyHeaderColumn(MenuHeaderColumnResp node) {
-        if (node == null) {
-            return null;
-        }
-        return MenuHeaderColumnResp.builder()
-                .sourceId(node.getSourceId())
-                .label(node.getLabel())
-                .colors(node.getColors() != null ? new ArrayList<>(node.getColors()) : null)
-                .fieldId(node.getFieldId())
-                .moduleId(node.getModuleId())
-                .dataIndex(node.getDataIndex())
-                .relationWord(node.getRelationWord())
-                .nodeType(node.getNodeType())
-                .width(node.getWidth())
-                .sorted(node.getSorted())
-                .searchType(node.getSearchType())
-                .businessTypeCode(node.getBusinessTypeCode())
-                .businessTypeName(node.getBusinessTypeName())
-                .unitDataIndex(node.getUnitDataIndex())
-                .ellipsis(node.getEllipsis())
-                .fixed(node.getFixed())
-                .sortValue(node.getSortValue())
-                .children(node.getChildren())
-                .build();
-    }
-
-    /** 确保变更单固有属性字段 (id, change_no, source_id, modify_reason) 在表头树中存在 */
-    private void ensureChangeColumnsInHeader(
-            MenuHeaderColumnResp headerRoot, String primaryTable, Long rootModuleId) {
-        if (headerRoot == null) {
-            return;
-        }
-        if (headerRoot.getChildren() == null) {
-            headerRoot.setChildren(new ArrayList<>());
-        } else if (!(headerRoot.getChildren() instanceof ArrayList)) {
-            headerRoot.setChildren(new ArrayList<>(headerRoot.getChildren()));
-        }
-
-        List<MenuHeaderColumnResp> extraColumns = new ArrayList<>();
-
-        if (!headerContainsColumn(headerRoot, primaryTable, "id")) {
-            extraColumns.add(
-                    MenuHeaderColumnResp.builder()
-                            .label("变更ID")
-                            .dataIndex(primaryTable != null ? primaryTable + ".id" : "id")
-                            .nodeType(1)
-                            .moduleId(rootModuleId)
-                            .width(100)
-                            .sorted(1)
-                            .build());
-        }
-
-        if (!headerContainsColumn(headerRoot, primaryTable, "change_no")) {
-            extraColumns.add(
-                    MenuHeaderColumnResp.builder()
-                            .label("变更单号")
-                            .dataIndex(
-                                    primaryTable != null
-                                            ? primaryTable + ".change_no"
-                                            : "change_no")
-                            .nodeType(1)
-                            .moduleId(rootModuleId)
-                            .width(180)
-                            .build());
-        }
-
-        if (!headerContainsColumn(headerRoot, primaryTable, "source_id")) {
-            extraColumns.add(
-                    MenuHeaderColumnResp.builder()
-                            .label("原单ID")
-                            .dataIndex(
-                                    primaryTable != null
-                                            ? primaryTable + ".source_id"
-                                            : "source_id")
-                            .nodeType(1)
-                            .moduleId(rootModuleId)
-                            .width(100)
-                            .build());
-        }
-
-        if (!headerContainsColumn(headerRoot, primaryTable, "modify_reason")) {
-            extraColumns.add(
-                    MenuHeaderColumnResp.builder()
-                            .label("变更原因")
-                            .dataIndex(
-                                    primaryTable != null
-                                            ? primaryTable + ".modify_reason"
-                                            : "modify_reason")
-                            .nodeType(1)
-                            .moduleId(rootModuleId)
-                            .width(200)
-                            .build());
-        }
-
-        if (!headerContainsColumn(headerRoot, primaryTable, "read_status")) {
-            extraColumns.add(
-                    MenuHeaderColumnResp.builder()
-                            .label("读取状态")
-                            .dataIndex(
-                                    primaryTable != null
-                                            ? primaryTable + ".read_status"
-                                            : "read_status")
-                            .nodeType(1)
-                            .moduleId(rootModuleId)
-                            .width(100)
-                            .build());
-        }
-
-        if (!extraColumns.isEmpty()) {
-            headerRoot.getChildren().addAll(0, extraColumns);
-        }
-    }
-
-    private boolean headerContainsColumn(
-            MenuHeaderColumnResp headerRoot, String primaryTable, String colName) {
-        if (headerRoot == null) {
-            return false;
-        }
-        String targetDataIndex = primaryTable != null ? primaryTable + "." + colName : colName;
-        return checkColumnRecursive(headerRoot, colName, targetDataIndex);
-    }
-
-    private boolean checkColumnRecursive(
-            MenuHeaderColumnResp node, String colName, String targetDataIndex) {
-        if (node == null) {
-            return false;
-        }
-        String di = node.getDataIndex();
-        if (di != null) {
-            if (di.equalsIgnoreCase(targetDataIndex)
-                    || di.equalsIgnoreCase(colName)
-                    || di.endsWith("." + colName)) {
-                return true;
+            } catch (Exception ex) {
+                log.warn(
+                        "获取模块增强状态信息失败: moduleId={}, statusValue={}, err={}",
+                        rootModuleId,
+                        targetStatus,
+                        ex.getMessage());
             }
         }
-        if (node.getChildren() != null) {
-            for (MenuHeaderColumnResp child : node.getChildren()) {
-                if (checkColumnRecursive(child, colName, targetDataIndex)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        String fallbackTitle = (targetStatus != null && targetStatus == 99) ? "启用" : "停用";
+        return StatusSimpleResp.builder().statusValue(targetStatus).title(fallbackTitle).build();
     }
 }

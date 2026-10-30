@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.MenuChangeQueryReq;
+import com.jdec.platform.common.api.dto.response.MenuChangeCountResp;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.biz.controller.CommonAggregateController;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
@@ -95,11 +96,12 @@ class CompanyChangeListQueryTest {
                         configApi,
                         dataApi,
                         commonFilterResolver,
-                        sysUserApi,
-                        sysStatusApi,
                         approvalEngine,
                         sysApprovalChainConfigApi,
-                        sysFileApi);
+                        queryResultEnhanceService,
+                        null,
+                        null,
+                        sysStatusApi);
 
         controller = new CommonAggregateController(service);
     }
@@ -204,23 +206,7 @@ class CompanyChangeListQueryTest {
                         .build();
         when(configApi.getModuleTree(eq("company"), any(), eq(rootModuleId))).thenReturn(tree);
 
-        // 2. Mock 从物理 Schema 动态查询 info_change 表真实列名（从数据库对齐，不包含主表特有字段）
-        java.util.Set<String> mockSchemaCols =
-                java.util.Set.of(
-                        "id",
-                        "change_no",
-                        "source_id",
-                        "modify_reason",
-                        "company_name",
-                        "business_no",
-                        "deleted",
-                        "created_by",
-                        "created_date",
-                        "updated_by",
-                        "updated_date");
-        when(configApi.getTableColumnNames(any(), eq("info_change"))).thenReturn(mockSchemaCols);
-
-        // 3. Mock dataApi.querySingleTablePage
+        // 2. Mock dataApi.querySingleTablePage
         Map<String, Object> recordData = new LinkedHashMap<>();
         recordData.put("id", changeId);
         recordData.put("change_no", "CHG202610290001");
@@ -230,7 +216,7 @@ class CompanyChangeListQueryTest {
         recordData.put("company_name", "更名后测试01");
         recordData.put("business_status", 1);
         recordData.put("deleted", (byte) 0);
-        recordData.put("version", 1);
+        recordData.put("version_no", 1);
 
         DataPage<List<Map<String, Object>>> mockPage = DataPage.of(1, 20, 1L, List.of(recordData));
         when(dataApi.querySingleTablePage(any())).thenReturn(mockPage);
@@ -240,8 +226,7 @@ class CompanyChangeListQueryTest {
                 service.queryChangeListByMenu(
                         menuId, MenuChangeQueryReq.builder().pageNo(1).pageSize(20).build());
 
-        // 4. 验证从物理 Schema 查询与 dataApi.querySingleTablePage 调用契约
-        verify(configApi).getTableColumnNames(eq("company"), eq("info_change"));
+        // 4. 验证 dataApi.querySingleTablePage 调用契约（主表与变更表同构，直接包含主表字段与变更专有字段）
         ArgumentCaptor<SingleTableQueryReq> captor =
                 ArgumentCaptor.forClass(SingleTableQueryReq.class);
         verify(dataApi).querySingleTablePage(captor.capture());
@@ -252,14 +237,13 @@ class CompanyChangeListQueryTest {
         assertEquals(20, req.getPageSize());
         assertTrue(req.getColumns().contains("company_name"));
         assertTrue(req.getColumns().contains("business_no"));
+        assertTrue(req.getColumns().contains("business_status"));
+        assertTrue(req.getColumns().contains("version_no"));
         assertTrue(req.getColumns().contains("id"));
         assertTrue(req.getColumns().contains("change_no"));
-
-        // 验证主表特有字段已安全过滤，不传给单表查询
-        assertFalse(req.getColumns().contains("business_status"));
-        assertFalse(req.getColumns().contains("version_no"));
-        assertFalse(req.getColumns().contains("active"));
-        assertFalse(req.getColumns().contains("version"));
+        assertTrue(req.getColumns().contains("source_id"));
+        assertTrue(req.getColumns().contains("modify_reason"));
+        assertTrue(req.getColumns().contains("read_status"));
 
         // 5. 验证返回数据与纯 info 命名空间结构
         assertNotNull(resp);
@@ -360,8 +344,6 @@ class CompanyChangeListQueryTest {
                         .fieldToModuleMap(new HashMap<>())
                         .build();
         when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
-        when(configApi.getTableColumnNames(any(), eq("info_change")))
-                .thenReturn(java.util.Set.of("id", "change_no", "business_no"));
         when(dataApi.querySingleTablePage(any()))
                 .thenReturn(DataPage.of(1, 20, 0L, Collections.emptyList()));
 
@@ -426,8 +408,6 @@ class CompanyChangeListQueryTest {
                         .fieldToModuleMap(new HashMap<>())
                         .build();
         when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
-        when(configApi.getTableColumnNames(any(), eq("info_change")))
-                .thenReturn(java.util.Set.of("id", "change_no", "read_status", "deleted"));
         when(dataApi.querySingleTablePage(any()))
                 .thenReturn(DataPage.of(1, 20, 0L, Collections.emptyList()));
 
@@ -475,5 +455,48 @@ class CompanyChangeListQueryTest {
                 req3.getFilters().stream()
                         .anyMatch(f -> "read_status".equalsIgnoreCase(f.getColumnName()));
         assertFalse(hasReadFilter, "全部状态下不得添加 read_status 条件");
+    }
+
+    @Test
+    @DisplayName("测试变更启用状态与未读数量统计端点 getChangeCountByMenu")
+    void testGetChangeCountByMenu() {
+        Long menuId = 400L;
+        Long rootModuleId = 1001L;
+
+        when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
+        ModuleInfo moduleInfo =
+                ModuleInfo.builder()
+                        .moduleId(rootModuleId)
+                        .primaryTable("info")
+                        .enableChange(1)
+                        .build();
+        ModuleTreeDTO moduleTree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(rootModuleId)
+                        .rootModule(moduleInfo)
+                        .moduleMap(Map.of(rootModuleId, moduleInfo))
+                        .build();
+        when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
+        when(dataApi.countSingleTable(any())).thenReturn(6L);
+
+        ApiResponse<MenuChangeCountResp> apiResp = controller.getChangeCountByMenu(menuId);
+        assertNotNull(apiResp);
+        assertEquals(200, apiResp.getStatus());
+        MenuChangeCountResp data = apiResp.getData();
+        assertNotNull(data);
+        assertEquals(1, data.getEnableChange());
+        assertEquals(6L, data.getUnreadCount());
+
+        ArgumentCaptor<SingleTableQueryReq> captor =
+                ArgumentCaptor.forClass(SingleTableQueryReq.class);
+        verify(dataApi).countSingleTable(captor.capture());
+        SingleTableQueryReq countReq = captor.getValue();
+        assertEquals("info_change", countReq.getTableName());
+        assertTrue(
+                countReq.getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        "read_status".equalsIgnoreCase(f.getColumnName())
+                                                && Integer.valueOf(0).equals(f.getValue())));
     }
 }
