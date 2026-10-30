@@ -18,11 +18,11 @@ public interface SysButtonMapper extends BaseMapper<SysButton> {
             "INSERT INTO sys_button (id, title, alias, type, description, default_bg_color, default_font_color,"
                     + " default_border, levitate_bg_color, levitate_font_color, levitate_border_color,"
                     + " selected_bg_color, selected_font_color, selected_border_color, icon, log_name, sort_order,"
-                    + " showed, enabled, subject_id, project_no, created_date, updated_date, deleted) "
+                    + " showed, enabled, subject_id, project_no, created_date, updated_date) "
                     + "VALUES (#{id}, #{title}, #{alias}, #{type}, #{description}, #{defaultBgColor},"
                     + " #{defaultFontColor}, #{defaultBorder}, #{levitateBgColor}, #{levitateFontColor},"
                     + " #{levitateBorderColor}, #{selectedBgColor}, #{selectedFontColor}, #{selectedBorderColor},"
                     + " #{icon}, #{logName}, #{sortOrder}, #{showed}, #{enabled}, #{subjectId}, #{projectNo},"
-                    + " #{createdDate}, #{updatedDate}, 0)")
+                    + " #{createdDate}, #{updatedDate})")
     int insertWithId(SysButton entity);
 }
