@@ -13,6 +13,9 @@ COPY jdec-platform-app/target/*.jar app.jar
 
 EXPOSE 8080
 
+# 默认运行环境配置
+ENV SPRING_PROFILES_ACTIVE=test
+
 # JVM 参数
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:MaxRAMPercentage=75.0 \
@@ -24,4 +27,4 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport \
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.profiles.active=${SPRING_PROFILES_ACTIVE} -jar app.jar"]

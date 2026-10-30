@@ -4,7 +4,6 @@ import com.jdec.platform.common.biz.constant.IndustryConstants;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.common.biz.service.UserService;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
-import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -30,7 +29,6 @@ import org.springframework.web.bind.annotation.*;
 public class CommonController {
 
     private final UserService userService;
-    private final DataEngineApi dataEngineApi;
     private final CommonApprovalService commonApprovalService;
 
     /**
@@ -112,7 +110,7 @@ public class CommonController {
     @Operation(summary = "保存业务变更申请单数据", description = "保存业务变更申请单数据")
     public ApiResponse<ChangeApplySaveResp> businessApplySave(@RequestBody DynamicSaveReq req) {
         try {
-            return ApiResponse.success(dataEngineApi.saveChangeApply(req));
+            return ApiResponse.success(commonApprovalService.businessApplySave(req));
         } catch (Exception ex) {
             log.error(
                     "Common DataEngine save failed: moduleId={},err={}",

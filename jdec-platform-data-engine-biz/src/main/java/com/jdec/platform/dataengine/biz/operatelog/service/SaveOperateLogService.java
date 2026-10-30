@@ -8,7 +8,9 @@ import com.jdec.platform.common.api.dto.log.MonitorContentSystem;
 import com.jdec.platform.common.api.dto.log.MonitorLoginInfo;
 import com.jdec.platform.common.api.dto.log.MonitorMockInfo;
 import com.jdec.platform.common.api.dto.request.MonitorLogSaveReq;
+import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.SysMenuApi;
+import com.jdec.platform.config.api.dto.response.SysConfigItemResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
@@ -53,17 +55,17 @@ public class SaveOperateLogService {
     /** 操作动作：删除 */
     public static final String OPERATION_DELETE = "删除";
 
-    /** 首次保存动作图标 */
-    private static final String APPROVE_PATH_SAVE =
-            "http://192.168.60.8:9001/jdec-platform/image/pass.svg";
+    /** 通用配置分类：日志状态图标（图标地址存于配置项 extra） */
+    private static final String LOG_STATE_ICON_CATEGORY = "logStateIcon";
 
-    /** 修改动作图标 */
-    private static final String APPROVE_PATH_UPDATE =
-            "http://192.168.60.8:9001/jdec-platform/image/submit.svg";
+    /** 日志状态：通过，首次保存动作取该图标 */
+    private static final String LOG_STATE_PASS = "pass";
 
-    /** 删除动作图标 */
-    private static final String APPROVE_PATH_DELETE =
-            "http://192.168.60.8:9001/jdec-platform/image/reject.svg";
+    /** 日志状态：提交，修改动作取该图标 */
+    private static final String LOG_STATE_SUBMIT = "submit";
+
+    /** 日志状态：驳回，删除动作取该图标 */
+    private static final String LOG_STATE_REJECT = "reject";
 
     /** 无审批链时为手动操作 */
     private static final Integer APPROVAL_TYPE_MANUAL = 1;
@@ -79,6 +81,8 @@ public class SaveOperateLogService {
     private final SysMenuApi sysMenuApi;
 
     private final OpenMenuApi openMenuApi;
+
+    private final SysConfigCategoryApi sysConfigCategoryApi;
 
     /** 保存前：判断是否需要记录日志并取旧数据；不需要（非普通保存 / 有审批链 / 参数缺失）返回 null。 */
     public SaveOperateLogContext prepare(DynamicSaveReq req) {
@@ -241,18 +245,35 @@ public class SaveOperateLogService {
         return approve;
     }
 
-    /** 按操作动作选择图标：首次保存取通过图标、修改取提交图标、删除取驳回图标 */
+    /** 按操作动作选择日志状态图标：首次保存取通过、修改取提交、删除取驳回 */
     private String resolveApprovePath(String operation) {
         if (OPERATION_SAVE.equals(operation)) {
-            return APPROVE_PATH_SAVE;
+            return queryLogStateIcon(LOG_STATE_PASS);
         }
         if (OPERATION_DELETE.equals(operation)) {
-            return APPROVE_PATH_DELETE;
+            return queryLogStateIcon(LOG_STATE_REJECT);
         }
         if (OPERATION_UPDATE.equals(operation)) {
-            return APPROVE_PATH_UPDATE;
+            return queryLogStateIcon(LOG_STATE_SUBMIT);
         }
         return null;
+    }
+
+    /** 从通用配置「日志状态图标」读取图标地址（存于配置项 extra），配置缺失或查询失败返回 null 不影响日志落库 */
+    private String queryLogStateIcon(String state) {
+        try {
+            SysConfigItemResp config =
+                    sysConfigCategoryApi.getConfigItemsByValue(LOG_STATE_ICON_CATEGORY, state);
+            if (config == null) {
+                log.warn(
+                        "通用配置缺少日志状态图标: categoryAlias={}, value={}", LOG_STATE_ICON_CATEGORY, state);
+                return null;
+            }
+            return config.getExtra();
+        } catch (Exception e) {
+            log.warn("查询通用配置日志状态图标失败: value={}", state, e);
+            return null;
+        }
     }
 
     /** 日志内容：系统日志子类型，承载最外层菜单名称/参数与业务编码 */

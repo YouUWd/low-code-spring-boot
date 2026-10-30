@@ -18,8 +18,8 @@ public interface SysRoleModuleFieldPermissionMapper
      * 读写维度全部放开；用于角色与模块的整体绑定。
      */
     @Insert(
-            "INSERT INTO sys_role_module_field_permission (role_id, module_id, field_id, table_name,"
-                    + " column_name, readable, writable, updatable, apply, view, edit, deleted) "
-                    + "VALUES (#{roleId}, #{moduleId}, 0, '', '', 1, 1, 1, 1, 1, 1, 0)")
+            "INSERT INTO sys_role_module_field_permission (role_id, module_id, module_field_id, "
+                    + " apply, view, edit) "
+                    + "VALUES (#{roleId}, #{moduleId}, 0, 1, 1, 1)")
     int insertModulePermission(@Param("roleId") Long roleId, @Param("moduleId") Long moduleId);
 }

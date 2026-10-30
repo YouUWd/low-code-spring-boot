@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
  * <p>本层在必填校验与业务规则校验全部通过后执行，只有已填写值的字段参与查重：空值已在必填层提示， 不会再当作重复值比对，避免“字段没填却提示重复”。
  *
  * <p>查重范围：{@code active=1} 的外部对象；尚未终结的业务编号再补充最后一个启用版本（由 {@link
- * ExternalObjectSnapshotRepository#findDuplicateInfos(Long)} 负责收集）。当前外部对象按主键、来源主键、业务编号排除（含历史版本）。
+ * ExternalObjectSnapshotRepository#findDuplicateInfos(Long)} 负责收集）。当前外部对象按主键、来源主键、业务编号排除（含历史版本）；
+ * 变更申请单保存时，另外排除本次变更的原单据（{@code excludeCompanyId}）及其同业务编号的其它版本。
  *
  * <p>查重项与提示：
  *
@@ -52,11 +53,33 @@ public class ExternalObjectDuplicateValidator {
      */
     public void validate(
             ExternalObjectSnapshot snapshot, ExternalObjectValidationMessages messages) {
+        validate(snapshot, messages, null);
+    }
+
+    /**
+     * 执行查重校验。
+     *
+     * @param snapshot 外部对象整单数据
+     * @param messages 校验提示收集器，命中重复的提示写入该集合
+     * @param excludeCompanyId 需要排除的已保存主单（变更申请单保存时为本次变更的原单据）；为空时只排除当前对象自身
+     */
+    public void validate(
+            ExternalObjectSnapshot snapshot,
+            ExternalObjectValidationMessages messages,
+            Long excludeCompanyId) {
         ExternalObjectSnapshot.InfoRow info = snapshot.info();
-        List<ExternalObjectSnapshot.InfoBrief> candidates =
+        List<ExternalObjectSnapshot.InfoBrief> savedObjects =
                 repository.findDuplicateInfos(info.subjectId()).stream()
                         .filter(Objects::nonNull)
+                        .toList();
+        // 变更申请单保存：原单据及其同业务编号的其它版本都不参与查重比对
+        String excludeBusinessNo = excludeBusinessNo(savedObjects, excludeCompanyId);
+        List<ExternalObjectSnapshot.InfoBrief> candidates =
+                savedObjects.stream()
                         .filter(candidate -> !sameObject(candidate, info))
+                        .filter(
+                                candidate ->
+                                        !excluded(candidate, excludeCompanyId, excludeBusinessNo))
                         .toList();
         List<Long> companyIds =
                 candidates.stream().map(ExternalObjectSnapshot.InfoBrief::id).toList();
@@ -67,7 +90,7 @@ public class ExternalObjectDuplicateValidator {
 
         // 查重是全局的：库里同一主单的人员行即使本次没有提交，也要参与组合比对
         validateMembers(
-                mergeStoredMembers(info, snapshot.members()),
+                mergeStoredMembers(info, snapshot.members(), excludeCompanyId),
                 info.nature(),
                 info.companyName(),
                 companyIds,
@@ -83,12 +106,14 @@ public class ExternalObjectDuplicateValidator {
      * <p>整单校验时提交行本来就来自库，合并结果与原集合一致（幂等）；本次未提交任何人员行时返回空集合，不查库。
      */
     private List<ExternalObjectSnapshot.MemberRow> mergeStoredMembers(
-            ExternalObjectSnapshot.InfoRow info, List<ExternalObjectSnapshot.MemberRow> submitted) {
+            ExternalObjectSnapshot.InfoRow info,
+            List<ExternalObjectSnapshot.MemberRow> submitted,
+            Long excludeCompanyId) {
         if (submitted.isEmpty()) {
             return submitted;
         }
         List<ExternalObjectSnapshot.MemberRow> stored =
-                repository.findMembersOfCompany(storedCompanyId(info));
+                repository.findMembersOfCompany(storedCompanyId(info, excludeCompanyId));
         if (stored.isEmpty()) {
             return submitted;
         }
@@ -113,12 +138,41 @@ public class ExternalObjectDuplicateValidator {
         return result;
     }
 
-    /** 合并库中人员行时的主单ID：优先当前主单，其次来源主单（变更申请）。 */
-    private static Long storedCompanyId(ExternalObjectSnapshot.InfoRow info) {
+    /** 合并库中人员行时的主单ID：优先变更的原单据，其次当前主单，最后来源主单（变更申请）。 */
+    private static Long storedCompanyId(
+            ExternalObjectSnapshot.InfoRow info, Long excludeCompanyId) {
+        if (excludeCompanyId != null && excludeCompanyId > 0) {
+            return excludeCompanyId;
+        }
         if (info.id() != null && info.id() > 0) {
             return info.id();
         }
         return info.sourceId() != null && info.sourceId() > 0 ? info.sourceId() : null;
+    }
+
+    /** 被排除的原单据业务编号：原单据在查重范围内时，其同业务编号的其它版本一并排除。 */
+    private static String excludeBusinessNo(
+            List<ExternalObjectSnapshot.InfoBrief> savedObjects, Long excludeCompanyId) {
+        if (excludeCompanyId == null) {
+            return null;
+        }
+        return savedObjects.stream()
+                .filter(candidate -> excludeCompanyId.equals(candidate.id()))
+                .map(ExternalObjectSnapshot.InfoBrief::businessNo)
+                .filter(businessNo -> !ExternalObjectValues.isBlank(businessNo))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** 是否为变更申请单需要排除的原单据（含同业务编号的其它版本）。 */
+    private static boolean excluded(
+            ExternalObjectSnapshot.InfoBrief candidate,
+            Long excludeCompanyId,
+            String excludeBusinessNo) {
+        if (excludeCompanyId != null && excludeCompanyId.equals(candidate.id())) {
+            return true;
+        }
+        return excludeBusinessNo != null && excludeBusinessNo.equals(candidate.businessNo());
     }
 
     /** 排除当前外部对象自身及其历史版本。 */

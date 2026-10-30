@@ -23,12 +23,6 @@ public class MenuActiveToggleReq {
             requiredMode = Schema.RequiredMode.REQUIRED)
     private List<String> businessNos;
 
-    @Schema(description = "目标业务状态: 99-启用(将11改为99), 11-停用(将99改为11)", example = "99")
-    private Integer targetStatus;
-
-    @Schema(description = "启用标识: 1-启用, 0-停用 (与 targetStatus 互通)", example = "1")
-    private Integer active;
-
     @Schema(
             description = "操作动作标识: activate(启用), deactivate(停用) (与 targetStatus 互通)",
             example = "activate")
@@ -41,14 +35,10 @@ public class MenuActiveToggleReq {
      * @throws IllegalArgumentException 当未指定有效的目标状态或动作时抛出
      */
     public boolean isActivate() {
-        if (Integer.valueOf(99).equals(targetStatus)
-                || Integer.valueOf(1).equals(active)
-                || "activate".equalsIgnoreCase(action)) {
+        if ("activate".equalsIgnoreCase(action)) {
             return true;
         }
-        if (Integer.valueOf(11).equals(targetStatus)
-                || Integer.valueOf(0).equals(active)
-                || "deactivate".equalsIgnoreCase(action)) {
+        if ("deactivate".equalsIgnoreCase(action)) {
             return false;
         }
         throw new IllegalArgumentException(

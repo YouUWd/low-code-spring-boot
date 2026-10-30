@@ -9,7 +9,7 @@ import org.springframework.web.filter.CorsFilter;
 
 /** 全局跨域配置（仅在 dev 环境生效） */
 @Configuration
-@Profile(value = {"dev", "wuhan", "local"})
+@Profile(value = {"dev", "wuhan", "local", "test"})
 public class DevCorsConfig {
 
     @Bean

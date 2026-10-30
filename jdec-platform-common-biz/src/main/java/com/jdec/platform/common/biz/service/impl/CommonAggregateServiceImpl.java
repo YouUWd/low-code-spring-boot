@@ -615,7 +615,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             return MenuChangeCountResp.of(0, 0L);
         }
 
-        String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
+        String primaryTable = moduleTree.getPrimaryTable();
         if (primaryTable == null || primaryTable.isBlank()) {
             return MenuChangeCountResp.of(enableChange, 0L);
         }
@@ -658,8 +658,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         boolean activate = req.isActivate();
-        int originalStatus = activate ? 11 : 99;
-        int targetStatus = activate ? 99 : 11;
+        int originalStatus = activate ? -2 : 99;
+        int targetStatus = activate ? 99 : -2;
 
         Long rootModuleId = getModuleIdByMenuOrThrow(menuId);
         ModuleTreeDTO moduleTree =
@@ -691,7 +691,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         int updatedRows =
                 dsl.update(table)
                         .set(DSL.field(DSL.name("business_status"), Integer.class), targetStatus)
-                        .set(DSL.field(DSL.name("update_by")), UserContext.getOperateUserId())
+                        .set(DSL.field(DSL.name("updated_by")), UserContext.getOperateUserId())
                         .set(DSL.field(DSL.name("updated_date")), LocalDateTime.now())
                         .where(
                                 DSL.field(DSL.name("business_no"), String.class)

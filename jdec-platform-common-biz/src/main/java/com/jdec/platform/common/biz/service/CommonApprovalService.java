@@ -2,6 +2,7 @@ package com.jdec.platform.common.biz.service;
 
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import java.util.List;
 import java.util.Map;
 
@@ -13,6 +14,8 @@ public interface CommonApprovalService {
     Long businessSave(DynamicSaveReq req);
 
     Long businessSubmit(DynamicSaveReq req);
+
+    ChangeApplySaveResp businessApplySave(DynamicSaveReq req);
 
     Map<String, Object> getDetailHead(Long menuId, Long recordId, String btnType);
 

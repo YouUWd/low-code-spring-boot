@@ -7,6 +7,7 @@ import com.jdec.platform.externalobject.api.dto.response.ExternalObjectRealtimeV
 import com.jdec.platform.externalobject.biz.entity.Info;
 import com.jdec.platform.externalobject.biz.mapper.InfoMapper;
 import com.jdec.platform.externalobject.biz.service.CompanyCustomService;
+import com.jdec.platform.externalobject.biz.service.support.ExternalObjectWordValues;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
@@ -15,7 +16,6 @@ import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 /** 外部对象特定业务定制服务实现类 */
 @Slf4j
@@ -41,7 +41,11 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
         if (req.getId() == null) {
             throw new IllegalArgumentException("单据 ID 不能为空");
         }
-        if (!StringUtils.hasText(req.getRegStatus())) {
+        if (req.getRegStatus() == null) {
+            throw new IllegalArgumentException("登记状态 regStatus 不能为空");
+        }
+        String regStatusText = ExternalObjectWordValues.toText(req.getRegStatus()).trim();
+        if (ExternalObjectWordValues.isBlank(regStatusText)) {
             throw new IllegalArgumentException("登记状态 regStatus 不能为空");
         }
 
@@ -58,12 +62,12 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
             throw new BusinessException("只有处于【已启用 (99)】或【已取消 (-99)】状态的单据才允许修改登记状态");
         }
 
-        // 3. 关联对象性质 (nature) 执行登记状态规则校验
-        validateRegStatus(info, req.getRegStatus().trim());
+        // 3. 关联对象性质 (nature) 执行登记状态规则校验 (传入原始 Object 或转换文本)
+        validateRegStatus(info, req.getRegStatus());
 
-        // 4. 执行更新
+        // 4. 执行更新 (数据库中保存 JSON 字符串)
         String oldRegStatus = info.getRegStatus();
-        info.setRegStatus(req.getRegStatus().trim());
+        info.setRegStatus(regStatusText);
         info.setUpdatedBy(UserContext.getOperateUserId());
         info.setUpdatedDate(LocalDateTime.now());
         infoMapper.updateById(info);
@@ -78,7 +82,7 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                 UserContext.getOperateUserId());
     }
 
-    private void validateRegStatus(Info info, String regStatus) {
+    private void validateRegStatus(Info info, Object regStatus) {
         if (realtimeValidateApi == null || info == null) {
             return;
         }

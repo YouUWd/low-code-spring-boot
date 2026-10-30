@@ -9,7 +9,7 @@
   },
   {
     "id": 2,
-    "code": "FORBIDDEND-test",
+    "code": "FORBIDDEN",
     "name": "全局禁用",
     "description": "一键禁用所有角色权限",
     "sort": 0,

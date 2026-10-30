@@ -19,6 +19,8 @@ import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.security.model.LoginUser;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,12 @@ class CompanyCustomControllerTest {
         assertThatThrownBy(() -> service.updateRegStatus(noIdReq))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("单据 ID 不能为空");
+
+        CompanyRegStatusUpdateReq nullStatusReq =
+                CompanyRegStatusUpdateReq.builder().id(100L).regStatus(null).build();
+        assertThatThrownBy(() -> service.updateRegStatus(nullStatusReq))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("登记状态 regStatus 不能为空");
 
         CompanyRegStatusUpdateReq blankStatusReq =
                 CompanyRegStatusUpdateReq.builder().id(100L).regStatus("  ").build();
@@ -143,32 +151,35 @@ class CompanyCustomControllerTest {
     }
 
     @Test
-    @DisplayName("启用(99)状态单据基于 ID 成功更新登记状态")
+    @DisplayName("启用(99)状态单据基于 ID 成功更新 JSON 结构登记状态")
     void testUpdateRegStatusById_Active_Success() {
         Info info = new Info();
         info.setId(100L);
         info.setBusinessNo("CR202610300001");
         info.setBusinessStatus(99);
         info.setNature("[{\"word_describe\":\"企业\"}]");
-        info.setRegStatus("存续");
+        info.setRegStatus("[{\"word_describe\":\"存续\",\"word_id\":455}]");
         info.setDeleted(0);
         when(infoMapper.selectById(100L)).thenReturn(info);
 
+        List<Map<String, Object>> targetJson =
+                List.of(Map.of("word_describe", "注销", "word_id", 456));
         CompanyRegStatusUpdateReq req =
-                CompanyRegStatusUpdateReq.builder().id(100L).regStatus("注销").build();
+                CompanyRegStatusUpdateReq.builder().id(100L).regStatus(targetJson).build();
 
         service.updateRegStatus(req);
 
         ArgumentCaptor<Info> captor = ArgumentCaptor.forClass(Info.class);
         verify(infoMapper).updateById(captor.capture());
         Info updated = captor.getValue();
-        assertThat(updated.getRegStatus()).isEqualTo("注销");
+        assertThat(updated.getRegStatus()).contains("注销");
+        assertThat(updated.getRegStatus()).contains("456");
         assertThat(updated.getUpdatedBy()).isEqualTo(999L);
         assertThat(updated.getUpdatedDate()).isNotNull();
     }
 
     @Test
-    @DisplayName("取消(-99)状态单据基于 ID 成功更新登记状态")
+    @DisplayName("取消(-99)状态单据基于 ID 成功更新字符串登记状态")
     void testUpdateRegStatusById_Cancel_Success() {
         Info info = new Info();
         info.setId(200L);

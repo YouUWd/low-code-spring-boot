@@ -480,6 +480,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         changeApplyData.put("updated_date", now);
         changeApplyData.put("subject_id", AppContext.getSubjectId());
         changeApplyData.put("deleted", (byte) 0);
+        changeApplyData.put("read_status", (byte) 0);
 
         // 业务字段
         Set<String> bizColumns =
@@ -520,7 +521,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             changeItemData.put("parent_node_id", changeItemDTO.getParentNodeId());
             changeItemData.put("action", changeItemDTO.getAction());
             changeItemData.put("created_date", now);
-            if (changeItemDTO.getChangeContent() != null) {
+            if (CollectionUtil.isNotEmpty(changeItemDTO.getChangeContent())) {
                 try {
                     changeItemData.put(
                             "change_content", JsonUtil.obj2Json(changeItemDTO.getChangeContent()));

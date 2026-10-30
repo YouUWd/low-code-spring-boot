@@ -1376,7 +1376,7 @@ public class ModuleTreeDataUtils {
                     // 获取当前 删除数据 的 子模块的子数据
                     Set<Long> childDataIds =
                             parentToChildDataMap
-                                    .getOrDefault(parentIdModuleId, new HashMap<>())
+                                    .getOrDefault(currentModuleId, new HashMap<>())
                                     .getOrDefault(dataId, new HashMap<>())
                                     .getOrDefault(childModuleId, new HashSet<>());
                     if (CollectionUtil.isNotEmpty(childDataIds)) {
@@ -1454,36 +1454,42 @@ public class ModuleTreeDataUtils {
                                 rowBase,
                                 moduleCacheMap.get(moduleId).getModuleInfo().getPrimaryTable());
                 Long primaryDataId = DataPersistenceUtil.getTableRowId(tableRowNew);
-                ChangeItemDTO changeItemDTO =
-                        ChangeItemDTO.builder()
-                                .tableName(
-                                        moduleCacheMap
-                                                .get(moduleId)
-                                                .getModuleInfo()
-                                                .getPrimaryTable())
-                                .nodeId(String.valueOf(primaryDataId))
-                                .parentNodeId(String.valueOf(parentDataId))
-                                .changeContent(getRowChangeContent(tableRowNew, tableRowBase))
-                                .action("UPDATE")
-                                .build();
-                result.add(changeItemDTO);
-
+                Map<String, Object> changeMap = getRowChangeContent(tableRowNew, tableRowBase);
+                if (CollectionUtil.isNotEmpty(changeMap)) {
+                    ChangeItemDTO changeItemDTO =
+                            ChangeItemDTO.builder()
+                                    .tableName(
+                                            moduleCacheMap
+                                                    .get(moduleId)
+                                                    .getModuleInfo()
+                                                    .getPrimaryTable())
+                                    .nodeId(String.valueOf(primaryDataId))
+                                    .parentNodeId(String.valueOf(parentDataId))
+                                    .changeContent(changeMap)
+                                    .action("UPDATE")
+                                    .build();
+                    result.add(changeItemDTO);
+                }
                 for (String table : subTables) {
                     Map<String, Object> subTableRow =
                             DataPersistenceUtil.getTableRowMapFromWideRow(rowNew, table);
                     Map<String, Object> subTableRowBase =
                             DataPersistenceUtil.getTableRowMapFromWideRow(rowBase, table);
                     Long subTableDataId = DataPersistenceUtil.getTableRowId(subTableRow);
-                    ChangeItemDTO item =
-                            ChangeItemDTO.builder()
-                                    .tableName(table)
-                                    .nodeId(String.valueOf(primaryDataId))
-                                    .parentNodeId(String.valueOf(parentDataId))
-                                    .changeContent(
-                                            getRowChangeContent(subTableRow, subTableRowBase))
-                                    .action("UPDATE")
-                                    .build();
-                    result.add(item);
+
+                    Map<String, Object> subChangeMap =
+                            getRowChangeContent(subTableRow, subTableRowBase);
+                    if (CollectionUtil.isNotEmpty(subChangeMap)) {
+                        ChangeItemDTO item =
+                                ChangeItemDTO.builder()
+                                        .tableName(table)
+                                        .nodeId(String.valueOf(primaryDataId))
+                                        .parentNodeId(String.valueOf(parentDataId))
+                                        .changeContent(subChangeMap)
+                                        .action("UPDATE")
+                                        .build();
+                        result.add(item);
+                    }
                 }
             }
             case "D" -> {
@@ -1503,7 +1509,7 @@ public class ModuleTreeDataUtils {
                                                 .getPrimaryTable())
                                 .nodeId(String.valueOf(primaryDataId))
                                 .parentNodeId(String.valueOf(parentDataId))
-                                .changeContent(null)
+                                .changeContent(Map.of("id", primaryDataId, "deleted", 1))
                                 .action("DELETE")
                                 .build();
                 result.add(changeItemDTO);
@@ -1517,7 +1523,7 @@ public class ModuleTreeDataUtils {
                                     .tableName(table)
                                     .nodeId(String.valueOf(primaryDataId))
                                     .parentNodeId(String.valueOf(parentDataId))
-                                    .changeContent(null)
+                                    .changeContent(Map.of("id", subTableDataId, "deleted", 1))
                                     .action("DELETE")
                                     .build();
                     result.add(item);
