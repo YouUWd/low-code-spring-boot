@@ -153,6 +153,19 @@ public final class ExternalObjectValues {
         return containsTitle(nature, "村民委员会");
     }
 
+    /** 人员类型是否为公司节点（组织架构根节点，兼容 COMPANY/company/公司）。 */
+    public static boolean isCompanyType(String type) {
+        if (isBlank(type)) {
+            return false;
+        }
+        for (String title : titles(type)) {
+            if (title.contains("公司") || title.toUpperCase(Locale.ROOT).contains("COMPANY")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 人员类型是否为部门（兼容 DEPT/department/部门）。 */
     public static boolean isDepartmentType(String type) {
         if (isBlank(type)) {
