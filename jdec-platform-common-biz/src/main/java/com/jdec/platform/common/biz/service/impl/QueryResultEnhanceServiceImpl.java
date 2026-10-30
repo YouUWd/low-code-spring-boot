@@ -228,7 +228,8 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
                 || "wordCloud".equalsIgnoreCase(businessTypeCode);
     }
 
-    private static final Set<String> WORD_CLOUD_REMOVED_FIELDS = Set.of("id", "pid", "relation_no");
+    private static final Set<String> WORD_CLOUD_REMOVED_FIELDS =
+            Set.of("id", "pid", "relation_no", "relation_id", "word_id");
 
     /**
      * 针对词云配置字段的下拉候选项进行增强过滤与 JSON 语义去重： 1. 统一转为 JsonNode 树结构 2. 递归剔除内部结构字段 (id, pid, relation_no) 3.
