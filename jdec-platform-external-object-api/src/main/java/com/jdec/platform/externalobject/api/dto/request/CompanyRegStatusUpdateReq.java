@@ -1,7 +1,6 @@
 package com.jdec.platform.externalobject.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 import lombok.AllArgsConstructor;
@@ -23,10 +22,10 @@ public class CompanyRegStatusUpdateReq implements Serializable {
     @Schema(description = "单据物理主键 ID", example = "100", requiredMode = Schema.RequiredMode.REQUIRED)
     private Long id;
 
-    @NotBlank(message = "登记状态 regStatus 不能为空")
+    @NotNull(message = "登记状态 regStatus 不能为空")
     @Schema(
-            description = "目标登记状态 (如 '存续'、'注销'，或词条 JSON)",
+            description = "目标登记状态 JSON (支持 JSON 数组、对象或普通字符串/词条配置)",
             example = "[{\"word_describe\":\"存续\",\"word_id\":455}]",
             requiredMode = Schema.RequiredMode.REQUIRED)
-    private String regStatus;
+    private Object regStatus;
 }

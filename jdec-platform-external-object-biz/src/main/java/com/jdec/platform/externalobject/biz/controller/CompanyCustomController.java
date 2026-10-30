@@ -16,11 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 /** 外部对象定制化业务控制器 (COMPANY-ROOT 模块) */
 @Slf4j
 @RestController
-@RequestMapping({
-    "/api/external-object/company/custom",
-    "/api/external-object/v1/company/custom",
-    "/api/company/custom"
-})
+@RequestMapping("/api/company/custom")
 @RequiredArgsConstructor
 @Tag(name = "外部对象定制接口", description = "提供外部对象单据定制化业务操作，如修改登记状态等")
 public class CompanyCustomController {
