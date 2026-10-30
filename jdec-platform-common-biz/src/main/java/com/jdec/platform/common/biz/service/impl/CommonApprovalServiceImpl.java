@@ -19,6 +19,7 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.request.VersionListQueryReq;
+import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.dataengine.api.dto.response.CreatedUserInfoResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.api.dto.response.VersionListResp;
@@ -156,7 +157,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     }
 
     /**
-     * 主模块第一条记录是否已有主单ID（主表 {@code id}）。
+     * 主模块第一条记录的主单ID（主表 {@code id}）。
      *
      * <p>主单ID没有值代表新增：有审批链新增保存需要按无审批链保存同样的规则校验，已有主单ID的编辑保存不做校验。 主表名取自模块树配置，取不到时按新增处理。
      */
@@ -167,19 +168,25 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     /** 主模块第一条记录是否已有主单ID（主表 {@code id}）。 */
     private boolean hasMainRecordId(
             ModuleTreeDTO moduleTree, NestedModuleDataDTO nestedModuleData) {
+        return mainRecordId(moduleTree, nestedModuleData) != null;
+    }
+
+    /** 主模块第一条记录的主单ID（主表 {@code id}）；没有值时返回 null。 */
+    private static Long mainRecordId(
+            ModuleTreeDTO moduleTree, NestedModuleDataDTO nestedModuleData) {
         List<RecordDataDTO> records = nestedModuleData.getRecord();
         if (records == null || records.isEmpty() || records.get(0) == null) {
-            return false;
+            return null;
         }
         Map<String, Object> row = records.get(0).getRow();
         if (row == null || row.isEmpty()) {
-            return false;
+            return null;
         }
         String primaryTable = moduleTree == null ? null : moduleTree.getPrimaryTable();
         if (primaryTable == null || primaryTable.isBlank()) {
-            return false;
+            return null;
         }
-        return isPositiveId(row.get(primaryTable + ".id"));
+        return positiveId(row.get(primaryTable + ".id"));
     }
 
     /** 解析前端提交结构对应的模块树；模块ID为空或配置不存在时返回 null。 */
@@ -194,21 +201,23 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     }
 
     /** 主单ID：空值、空串、非数字或非正数都视为没有值。 */
-    private static boolean isPositiveId(Object value) {
+    private static Long positiveId(Object value) {
         if (value instanceof Number number) {
-            return number.longValue() > 0;
+            long id = number.longValue();
+            return id > 0 ? id : null;
         }
         if (value == null) {
-            return false;
+            return null;
         }
         String text = String.valueOf(value).trim();
         if (text.isEmpty()) {
-            return false;
+            return null;
         }
         try {
-            return Long.parseLong(text) > 0;
+            long id = Long.parseLong(text);
+            return id > 0 ? id : null;
         } catch (NumberFormatException e) {
-            return false;
+            return null;
         }
     }
 
@@ -246,6 +255,35 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalReq.setButton("submit");
         approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
+    }
+
+    // 保存变更申请单
+    @Override
+    public ChangeApplySaveResp businessApplySave(DynamicSaveReq req) {
+        // 保存前校验：只校验前端提交的变更数据，查重排除本次变更的原单据
+        checkChangeApplyBeforeStore(req);
+        return dataEngineApi.saveChangeApply(req);
+    }
+
+    /**
+     * 变更申请单保存前的校验。
+     *
+     * <p>校验数据完全取自前端提交的变更数据，未提交的模块不参与校验；查重时按变更申请单对应的原单据（提交结构第一行的主表主键）排除， 原单据及其同业务编号的其它版本都不作为重复比对对象。
+     */
+    private void checkChangeApplyBeforeStore(DynamicSaveReq req) {
+        if (req == null
+                || req.getNestedModuleData() == null
+                || req.getNestedModuleData().getModuleId() == null) {
+            return;
+        }
+        NestedModuleDataDTO nestedModuleData = req.getNestedModuleData();
+        ModuleTreeDTO moduleTree = moduleTreeOf(nestedModuleData);
+        Long rootModuleId =
+                moduleTree == null || moduleTree.getRootModuleId() == null
+                        ? nestedModuleData.getModuleId()
+                        : moduleTree.getRootModuleId();
+        submitCheckRouter.checkOnSave(
+                rootModuleId, nestedModuleData, mainRecordId(moduleTree, nestedModuleData));
     }
 
     public void approvalSave(Long moduleId, ApprovalReq req) {

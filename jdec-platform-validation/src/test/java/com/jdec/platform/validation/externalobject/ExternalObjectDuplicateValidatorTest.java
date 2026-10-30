@@ -60,19 +60,74 @@ class ExternalObjectDuplicateValidatorTest {
         when(repository.findDuplicateInfos(SUBJECT_ID)).thenReturn(List.of());
     }
 
+    /** 变更申请单保存：原单据及其同业务编号的其它版本都不参与查重比对。 */
+    @Test
+    void shouldExcludeSourceCompanyAndItsVersionsOnChangeApply() {
+        when(repository.findDuplicateInfos(SUBJECT_ID))
+                .thenReturn(
+                        List.of(
+                                infoBrief(COMPANY_ID, "YW001", "甲公司"),
+                                infoBrief(11L, "YW001", "甲公司"),
+                                infoBrief(20L, "YW002", "乙公司")));
+
+        ExternalObjectValidationMessages messages = messages();
+        validator.validate(
+                snapshot(
+                        null,
+                        null,
+                        "甲公司",
+                        List.of(member(null, "张三", "13800000000", "110101199003071234"))),
+                messages,
+                COMPANY_ID);
+
+        assertDoesNotThrow(messages::throwIfNotEmpty);
+        // 人员行合并仍按原单据查库
+        verify(repository).findMembersOfCompany(COMPANY_ID);
+    }
+
+    /** 变更申请单保存：除原单据外，其它已保存对象仍然参与查重。 */
+    @Test
+    void shouldStillDetectOtherObjectsOnChangeApply() {
+        when(repository.findDuplicateInfos(SUBJECT_ID))
+                .thenReturn(
+                        List.of(
+                                infoBrief(COMPANY_ID, "YW001", "甲公司"),
+                                infoBrief(20L, "YW002", "乙公司")));
+
+        ExternalObjectValidationMessages messages = messages();
+        validator.validate(snapshot(null, null, "乙公司", List.of()), messages, COMPANY_ID);
+        BusinessException exception =
+                assertThrows(BusinessException.class, messages::throwIfNotEmpty);
+
+        assertEquals("外部对象全称【乙公司】已存在，请核对后重新填写!", exception.getMessage());
+    }
+
+    private static ExternalObjectSnapshot.InfoBrief infoBrief(
+            Long id, String businessNo, String companyName) {
+        return new ExternalObjectSnapshot.InfoBrief(id, businessNo, companyName);
+    }
+
     private static ExternalObjectValidationMessages messages() {
         return new ExternalObjectValidationMessages(ExternalObjectCheckStage.DUPLICATE);
     }
 
     private static ExternalObjectSnapshot snapshot(ExternalObjectSnapshot.MemberRow member) {
+        return snapshot(COMPANY_ID, "YW001", "甲公司", List.of(member));
+    }
+
+    private static ExternalObjectSnapshot snapshot(
+            Long id,
+            String businessNo,
+            String companyName,
+            List<ExternalObjectSnapshot.MemberRow> members) {
         return new ExternalObjectSnapshot(
                 new ExternalObjectSnapshot.InfoRow(
-                        COMPANY_ID,
-                        "YW001",
+                        id,
+                        businessNo,
                         1,
                         SUBJECT_ID,
                         null,
-                        "甲公司",
+                        companyName,
                         null,
                         "企业",
                         null,
@@ -82,7 +137,7 @@ class ExternalObjectDuplicateValidatorTest {
                         null,
                         null),
                 null,
-                List.of(member),
+                members,
                 null,
                 List.of(),
                 List.of(),

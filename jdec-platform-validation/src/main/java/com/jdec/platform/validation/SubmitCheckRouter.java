@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  * 当前接入外部对象管理，后续场地产线按各自模块ID在此追加。
  *
  * <p>保存校验（{@link #checkOnSave}）同样按根模块ID分发：无审批链保存直接生效，有审批链的新增保存（主单ID没有值）落库前也执行该校验，
- * 当前单据的数据完全取自前端提交的参数，仅查重会读取其他已保存对象作为比对基准。
+ * 当前单据的数据完全取自前端提交的参数，仅查重会读取其他已保存对象作为比对基准。变更申请单保存同样只校验前端提交的数据， 但查重时按变更的原单据排除，避免与自身旧版本误报重复。
  *
  * <p>提交校验时如果主单ID没有值，无法按主单加载业务库，改为由 {@link #checkOnSubmit} 使用前端提交的嵌套模块数据校验：
  * 所有需要校验的模块都参与，未提交数据的模块按该模块校验全部不通过处理，必须全部通过后才能提交。
@@ -85,9 +85,27 @@ public class SubmitCheckRouter {
         if (nestedModuleData == null || nestedModuleData.getModuleId() == null) {
             return;
         }
-        if (EXTERNAL_OBJECT_MODULE_ID.equals(nestedModuleData.getModuleId())) {
+        checkOnSave(nestedModuleData.getModuleId(), nestedModuleData, null);
+    }
+
+    /**
+     * 执行保存校验（变更申请单保存：按根模块路由，查重排除本次变更的原单据）。
+     *
+     * <p>校验数据全部取自前端提交的参数；查重时排除原单据（{@code excludeCompanyId}）及其同业务编号的其它版本， 避免变更后的数据与自身的旧版本误报重复。
+     *
+     * @param moduleId 根模块ID
+     * @param nestedModuleData 变更申请单保存请求中的模块嵌套数据
+     * @param excludeCompanyId 查重需要排除的原单据主单ID
+     */
+    public void checkOnSave(
+            Long moduleId, NestedModuleDataDTO nestedModuleData, Long excludeCompanyId) {
+        if (moduleId == null || nestedModuleData == null) {
+            return;
+        }
+        if (EXTERNAL_OBJECT_MODULE_ID.equals(moduleId)) {
             submitCheckTaskExecutor.runAndWait(
-                    "外部对象保存校验", () -> externalObjectSaveCheckService.check(nestedModuleData));
+                    "外部对象保存校验",
+                    () -> externalObjectSaveCheckService.check(nestedModuleData, excludeCompanyId));
             return;
         }
         // 后续场地产线：按各自根模块ID在此追加对应保存校验

@@ -74,6 +74,22 @@ public class ExternalObjectValidationPipeline {
      */
     public void checkOnSave(
             ExternalObjectSnapshot snapshot, Set<String> tables, boolean basicInfoAbsentOnCreate) {
+        checkOnSave(snapshot, tables, basicInfoAbsentOnCreate, null);
+    }
+
+    /**
+     * 保存校验：只校验本次提交的模块，并可指定查重排除的原单据。
+     *
+     * @param snapshot 由前端提交参数转换得到的整单数据
+     * @param tables 本次提交且需要校验的模块表名
+     * @param basicInfoAbsentOnCreate 无主单ID且未提交基本信息数据：基本信息的所有必填规则视为未满足
+     * @param excludeCompanyId 查重需要排除的已保存主单（变更申请单保存时为本次变更的原单据）
+     */
+    public void checkOnSave(
+            ExternalObjectSnapshot snapshot,
+            Set<String> tables,
+            boolean basicInfoAbsentOnCreate,
+            Long excludeCompanyId) {
         run(
                 ExternalObjectCheckStage.REQUIRED,
                 messages ->
@@ -84,7 +100,7 @@ public class ExternalObjectValidationPipeline {
                 messages -> businessValidator.validate(snapshot, messages));
         run(
                 ExternalObjectCheckStage.DUPLICATE,
-                messages -> duplicateValidator.validate(snapshot, messages));
+                messages -> duplicateValidator.validate(snapshot, messages, excludeCompanyId));
     }
 
     /** 执行单层校验：收集该层全部提示，存在不通过项时立即抛出，后续层级不再执行。 */

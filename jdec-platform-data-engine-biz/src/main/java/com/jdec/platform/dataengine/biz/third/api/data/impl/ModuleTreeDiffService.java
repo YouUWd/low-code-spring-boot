@@ -622,15 +622,18 @@ public class ModuleTreeDiffService {
                             }
 
                             // 将变更内容字段加上表名前缀（table_name.field），与 row 的 key 结构对齐
+
                             changeContentMap =
                                     originChangeContentMap.entrySet().stream()
                                             .collect(
-                                                    Collectors.toMap(
-                                                            entry ->
+                                                    HashMap::new,
+                                                    (map, item) ->
+                                                            map.put(
                                                                     tableNamePrefix
                                                                             + "."
-                                                                            + entry.getKey(),
-                                                            Map.Entry::getValue));
+                                                                            + item.getKey(),
+                                                                    item.getValue()),
+                                                    HashMap::putAll);
 
                             Map<String, VersionSnapShot> currentChangeMap = new HashMap<>();
 
@@ -699,20 +702,41 @@ public class ModuleTreeDiffService {
 
                             childrenAddData.forEach(
                                     ele -> {
+                                        Object jsonObject = ele.get("change_content");
+
                                         Map<String, Object> originChangeContentMap =
-                                                (Map<String, Object>) ele.get("change_content");
+                                                new HashMap<>();
+                                        if (jsonObject instanceof JSON jooqJson) {
+                                            String jsonStr = jooqJson.data();
+                                            if (StringUtils.isNotBlank(jsonStr)) {
+                                                try {
+                                                    originChangeContentMap =
+                                                            OBJECT_MAPPER.readValue(
+                                                                    jsonStr, Map.class);
+                                                } catch (JsonProcessingException e) {
+                                                    throw new RuntimeException(e);
+                                                }
+                                            }
+                                        }
+
                                         String nodeId = String.valueOf(ele.get("node_id"));
 
                                         Map<String, Object> prefixAddChangeContentMap =
+                                                new HashMap<>();
+
+                                        prefixAddChangeContentMap =
                                                 originChangeContentMap.entrySet().stream()
                                                         .collect(
-                                                                Collectors.toMap(
-                                                                        entry ->
+                                                                HashMap::new,
+                                                                (map, item) ->
+                                                                        map.put(
                                                                                 childTableName
                                                                                         + "."
-                                                                                        + entry
+                                                                                        + item
                                                                                                 .getKey(),
-                                                                        Map.Entry::getValue));
+                                                                                item.getValue()),
+                                                                HashMap::putAll);
+
                                         childTableChangeData
                                                 .computeIfAbsent(nodeId, k -> new HashMap<>())
                                                 .putAll(prefixAddChangeContentMap);
