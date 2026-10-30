@@ -84,6 +84,15 @@ public interface SysConfigCategoryApi {
     void dragItem(SysConfigItemDragReq req);
 
     /**
+     * 查询指定分类下的配置项列表（公共查询）
+     *
+     * <p>按 categoryAlias 查当前项目 + 主体下的全部配置项，按 sort、id 升序返回扁平列表； 分类或配置项不存在时返回空列表，不抛异常
+     *
+     * @param categoryAlias 分类英文标识
+     */
+    List<SysConfigItemResp> getConfigItemsByCategoryAlias(String categoryAlias);
+
+    /**
      * 查找指定分类下的配置项
      *
      * @param categoryAlias 分类英文标识

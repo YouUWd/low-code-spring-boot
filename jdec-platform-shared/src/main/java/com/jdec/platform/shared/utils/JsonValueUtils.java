@@ -34,4 +34,31 @@ public final class JsonValueUtils {
         }
         return value;
     }
+
+    /**
+     * 将 JSON 对象/数组文本解析为结构化值。
+     *
+     * <p>用于值可能已被上游提前序列化成文本的场景：若直接再序列化，会多套一层引号转义，落库或下发后变成 JSON 字符串标量而非 JSON 对象。 非文本值、普通文本、形似 JSON
+     * 但解析失败的内容均原样返回。
+     */
+    public static Object parseStructuredText(Object value) {
+        if (!(value instanceof String text)) {
+            return value;
+        }
+        String trimmed = text.trim();
+        if (!isJsonStructure(trimmed)) {
+            return value;
+        }
+        try {
+            return OBJECT_MAPPER.readTree(trimmed);
+        } catch (JsonProcessingException e) {
+            return value;
+        }
+    }
+
+    /** 文本是否形似 JSON 对象或数组 */
+    private static boolean isJsonStructure(String text) {
+        return (text.startsWith("{") && text.endsWith("}"))
+                || (text.startsWith("[") && text.endsWith("]"));
+    }
 }

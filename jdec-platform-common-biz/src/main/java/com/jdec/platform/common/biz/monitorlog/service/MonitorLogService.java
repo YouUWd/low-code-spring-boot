@@ -21,6 +21,7 @@ import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
 import com.jdec.platform.shared.security.SecurityUtils;
+import com.jdec.platform.shared.utils.JsonValueUtils;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -82,6 +83,7 @@ public class MonitorLogService implements MonitorLogApi {
     private final MonitorOperateIndexService monitorOperateIndexService;
     private final MonitorLogEnrichService monitorLogEnrichService;
     private final MonitorLogFieldPermissionService monitorLogFieldPermissionService;
+    private final MonitorLogRemarkExtrasService monitorLogRemarkExtrasService;
     private final OpenMenuApi openMenuApi;
     private final Map<Integer, MonitorLogSaveHandler> saveHandlers;
 
@@ -91,6 +93,7 @@ public class MonitorLogService implements MonitorLogApi {
             MonitorOperateIndexService monitorOperateIndexService,
             MonitorLogEnrichService monitorLogEnrichService,
             MonitorLogFieldPermissionService monitorLogFieldPermissionService,
+            MonitorLogRemarkExtrasService monitorLogRemarkExtrasService,
             OpenMenuApi openMenuApi,
             List<MonitorLogSaveHandler> handlers) {
         this.jooqDataContextFactory = jooqDataContextFactory;
@@ -98,6 +101,7 @@ public class MonitorLogService implements MonitorLogApi {
         this.monitorOperateIndexService = monitorOperateIndexService;
         this.monitorLogEnrichService = monitorLogEnrichService;
         this.monitorLogFieldPermissionService = monitorLogFieldPermissionService;
+        this.monitorLogRemarkExtrasService = monitorLogRemarkExtrasService;
         this.openMenuApi = openMenuApi;
         this.saveHandlers =
                 handlers.stream()
@@ -333,6 +337,13 @@ public class MonitorLogService implements MonitorLogApi {
                                     monitorLogFieldPermissionService.filterRemark(
                                             resp.getDescription(), readableFieldIndexes)));
         }
+
+        // 字段扩展信息补齐：cloud / businessTypeCode 按当前 sys_field 配置实时补充，历史日志同样生效
+        records.forEach(
+                resp ->
+                        resp.setDescription(
+                                monitorLogRemarkExtrasService.fillColumnExtras(
+                                        resp.getDescription())));
         return records;
     }
 
@@ -418,10 +429,19 @@ public class MonitorLogService implements MonitorLogApi {
                 .browser(entity.getBrowser())
                 .platForm(entity.getPlatForm())
                 .content(parse(entity.getContent(), MonitorContentBase.class, "content"))
-                .description(parse(entity.getDescription(), Object.class, "remark"))
+                .description(parseRemark(entity.getDescription()))
                 .recordTime(entity.getRecordTime())
                 .createdDate(entity.getCreatedDate())
                 .build();
+    }
+
+    /**
+     * 解析 remark 为对象。
+     *
+     * <p>历史数据中 remark 可能是 JSON 字符串标量（多套一层引号转义），解析后再做一次结构化归一化， 保证对外统一为对象/数组（字段权限过滤依赖该形态）。
+     */
+    private Object parseRemark(String json) {
+        return JsonValueUtils.parseStructuredText(parse(json, Object.class, "remark"));
     }
 
     /** JSON 字符串反序列化，为空或格式非法时返回 null（不影响整页日志返回） */
