@@ -32,7 +32,7 @@ public class ActiveToggleButtonProvider implements CustomButtonProvider {
     public static final int STATUS_ACTIVE = 99;
 
     /** 业务状态：停用 (11) */
-    public static final int STATUS_DEACTIVE = 11;
+    public static final int STATUS_DEACTIVE = -2;
 
     public static final ActionButtonDTO ACTIVATE_BUTTON =
             ActionButtonDTO.of(BTN_KEY_ACTIVATE, BTN_NAME_ACTIVATE);
