@@ -24,6 +24,7 @@ import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
+import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
@@ -151,6 +152,39 @@ class CommonApprovalServiceImplSubmitCheckTest {
 
         verify(submitCheckRouter, never()).checkOnSubmit(any(), any());
         verify(submitCheckRouter, never()).check(any(), any(), any(), any());
+    }
+
+    /** 变更申请单保存：只校验前端提交的数据，查重按原单据（主表第一行ID）排除后再落库。 */
+    @Test
+    void changeApplySaveShouldCheckFrontendDataAndExcludeSource() {
+        ChangeApplySaveResp saved = new ChangeApplySaveResp();
+        saved.setDataId(7L);
+        when(dataEngineApi.saveChangeApply(any())).thenReturn(saved);
+        NestedModuleDataDTO nested = module(row("info.id", 7L, "info.company_name", "测试企业"));
+
+        ChangeApplySaveResp result = service.businessApplySave(req(nested, "change_apply_save"));
+
+        assertEquals(7L, result.getDataId());
+        InOrder inOrder = inOrder(submitCheckRouter, dataEngineApi);
+        inOrder.verify(submitCheckRouter).checkOnSave(INFO_MODULE_ID, nested, 7L);
+        inOrder.verify(dataEngineApi).saveChangeApply(any());
+    }
+
+    /** 变更申请单保存校验不通过：不落库。 */
+    @Test
+    void changeApplySaveShouldAbortWhenCheckFails() {
+        NestedModuleDataDTO nested = module(row("info.id", 7L, "info.company_name", "测试企业"));
+        doThrow(new BusinessException("外部对象全称【测试企业】已存在，请核对后重新填写!"))
+                .when(submitCheckRouter)
+                .checkOnSave(INFO_MODULE_ID, nested, 7L);
+
+        BusinessException exception =
+                assertThrows(
+                        BusinessException.class,
+                        () -> service.businessApplySave(req(nested, "change_apply_save")));
+
+        assertEquals("外部对象全称【测试企业】已存在，请核对后重新填写!", exception.getMessage());
+        verify(dataEngineApi, never()).saveChangeApply(any());
     }
 
     private static DynamicSaveResp saved(Long dataId) {
