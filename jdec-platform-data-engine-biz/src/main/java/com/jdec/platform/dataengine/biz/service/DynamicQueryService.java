@@ -697,8 +697,9 @@ public class DynamicQueryService {
 
         // 填充parent_id字段
         if (topQuery) {
-            fillParentData(
-                    moduleNode.getId(), moduleTreeDTO, currentModuleData, queryReq.getFields());
+            //            fillParentData(
+            //                    moduleNode.getId(), moduleTreeDTO, currentModuleData,
+            // queryReq.getFields());
         }
 
         // 模块信息
@@ -893,43 +894,44 @@ public class DynamicQueryService {
                                 });
 
                 // 内部引用参数构造
-                row.keySet().stream()
-                        .filter(key -> key.equals(moduleInfo.getPrimaryTable() + "." + "parent_id"))
-                        .forEach(
-                                ele -> {
-                                    if (Objects.nonNull(row.get(ele))) {
-                                        List<Map<String, Object>> parentObject = new ArrayList<>();
-                                        //                                        List<Map<String,
-                                        // Object>> parentObject =
-                                        //
-                                        // (List<Map<String, Object>>) row.get(ele);
-                                        if (!CollectionUtils.isEmpty(parentObject)) {
 
-                                            Map<String, Object> parentDataMap = parentObject.get(0);
+                /*row.keySet().stream()
+                .filter(key -> key.equals(moduleInfo.getPrimaryTable() + "." + "parent_id"))
+                .forEach(
+                        ele -> {
+                            if (Objects.nonNull(row.get(ele))) {
+                                List<Map<String, Object>> parentObject = new ArrayList<>();
+                                //                                        List<Map<String,
+                                // Object>> parentObject =
+                                //
+                                // (List<Map<String, Object>>) row.get(ele);
+                                if (!CollectionUtils.isEmpty(parentObject)) {
 
-                                            ReferenceQueryParam referenceQueryParam =
-                                                    InternalRefQueryParam.builder()
-                                                            .bizType(
-                                                                    ReferenceBizType.INTERNAL_REF
-                                                                            .getType())
-                                                            .businessNo(
-                                                                    String.valueOf(
-                                                                            parentDataMap.get(
-                                                                                    "business_no")))
-                                                            .tableName(moduleInfo.getPrimaryTable())
-                                                            .fieldName(ele.split("\\.")[1])
-                                                            .build();
+                                    Map<String, Object> parentDataMap = parentObject.get(0);
 
-                                            referenceQueryParamMap
-                                                    .computeIfAbsent(
-                                                            moduleNode.getId(),
-                                                            k -> new HashMap<>())
-                                                    .computeIfAbsent(
-                                                            primaryId, v -> new ArrayList<>())
-                                                    .add(referenceQueryParam);
-                                        }
-                                    }
-                                });
+                                    ReferenceQueryParam referenceQueryParam =
+                                            InternalRefQueryParam.builder()
+                                                    .bizType(
+                                                            ReferenceBizType.INTERNAL_REF
+                                                                    .getType())
+                                                    .businessNo(
+                                                            String.valueOf(
+                                                                    parentDataMap.get(
+                                                                            "business_no")))
+                                                    .tableName(moduleInfo.getPrimaryTable())
+                                                    .fieldName(ele.split("\\.")[1])
+                                                    .build();
+
+                                    referenceQueryParamMap
+                                            .computeIfAbsent(
+                                                    moduleNode.getId(),
+                                                    k -> new HashMap<>())
+                                            .computeIfAbsent(
+                                                    primaryId, v -> new ArrayList<>())
+                                            .add(referenceQueryParam);
+                                }
+                            }
+                        });*/
             }
         }
 

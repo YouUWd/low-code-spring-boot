@@ -314,7 +314,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
                     // 等待提交状态使用新建权限
                     queryModel = canEdit ? QueryModel.CREATE : QueryModel.VIEW;
-                } else if (businessStatusValue == 99 || businessStatusValue == -99) {
+                } else if (businessStatusValue == 99
+                        || businessStatusValue == -99
+                        || businessStatusValue == -2) {
                     // 已启用或取消的单据，只能查看
                     queryModel = QueryModel.VIEW;
                 } else if (dynamicDetailQueryReq.getId() > 0) {
