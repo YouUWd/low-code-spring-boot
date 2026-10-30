@@ -691,7 +691,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         int updatedRows =
                 dsl.update(table)
                         .set(DSL.field(DSL.name("business_status"), Integer.class), targetStatus)
-                        .set(DSL.field(DSL.name("update_by")), UserContext.getOperateUserId())
+                        .set(DSL.field(DSL.name("updated_by")), UserContext.getOperateUserId())
                         .set(DSL.field(DSL.name("updated_date")), LocalDateTime.now())
                         .where(
                                 DSL.field(DSL.name("business_no"), String.class)
