@@ -1,7 +1,14 @@
 package com.jdec.platform.data.api.dto.request;
 
+import com.jdec.platform.data.api.model.predicate.ColumnRef;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.Predicate;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -188,7 +195,7 @@ public class FilterItem implements Serializable {
                 .tableName(tableName)
                 .columnName(columnName)
                 .operator("BETWEEN")
-                .value(java.util.List.of(lower, upper))
+                .value(List.of(lower, upper))
                 .build();
     }
 
@@ -201,10 +208,7 @@ public class FilterItem implements Serializable {
     }
 
     public static FilterItem and(FilterItem... children) {
-        return and(
-                children != null
-                        ? java.util.Arrays.asList(children)
-                        : java.util.Collections.emptyList());
+        return and(children != null ? Arrays.asList(children) : Collections.emptyList());
     }
 
     public static FilterItem or(List<FilterItem> children) {
@@ -212,31 +216,23 @@ public class FilterItem implements Serializable {
     }
 
     public static FilterItem or(FilterItem... children) {
-        return or(
-                children != null
-                        ? java.util.Arrays.asList(children)
-                        : java.util.Collections.emptyList());
+        return or(children != null ? Arrays.asList(children) : Collections.emptyList());
     }
 
     /** 将当前 FilterItem 转换为统一规范的 Predicate AST */
-    public com.jdec.platform.data.api.model.predicate.Predicate toPredicate() {
+    public Predicate toPredicate() {
         boolean hasSelf = this.columnName != null && !this.columnName.isBlank();
-        com.jdec.platform.data.api.model.predicate.Predicate selfPred = null;
+        Predicate selfPred = null;
         if (hasSelf) {
-            var colRef =
-                    com.jdec.platform.data.api.model.predicate.ColumnRef.of(
-                            this.moduleId, this.tableName, this.columnName);
-            selfPred =
-                    com.jdec.platform.data.api.model.predicate.ComparisonPredicate.of(
-                            colRef, this.operator, this.value);
+            var colRef = ColumnRef.of(this.moduleId, this.tableName, this.columnName);
+            selfPred = ComparisonPredicate.of(colRef, this.operator, this.value);
         }
 
         if (this.children == null || this.children.isEmpty()) {
             return selfPred;
         }
 
-        java.util.List<com.jdec.platform.data.api.model.predicate.Predicate> childPreds =
-                new java.util.ArrayList<>();
+        List<Predicate> childPreds = new ArrayList<>();
         for (FilterItem child : this.children) {
             if (child != null) {
                 var cp = child.toPredicate();
@@ -252,35 +248,29 @@ public class FilterItem implements Serializable {
 
         String log =
                 (this.logic != null && !this.logic.isBlank()) ? this.logic.toUpperCase() : "AND";
-        com.jdec.platform.data.api.model.predicate.Predicate childrenCombined =
+        Predicate childrenCombined =
                 "OR".equals(log)
-                        ? com.jdec.platform.data.api.model.predicate.CompoundPredicate.or(
-                                childPreds)
-                        : com.jdec.platform.data.api.model.predicate.CompoundPredicate.and(
-                                childPreds);
+                        ? CompoundPredicate.or(childPreds)
+                        : CompoundPredicate.and(childPreds);
 
         if (selfPred != null) {
             return "OR".equals(log)
-                    ? com.jdec.platform.data.api.model.predicate.CompoundPredicate.or(
-                            selfPred, childrenCombined)
-                    : com.jdec.platform.data.api.model.predicate.CompoundPredicate.and(
-                            selfPred, childrenCombined);
+                    ? CompoundPredicate.or(selfPred, childrenCombined)
+                    : CompoundPredicate.and(selfPred, childrenCombined);
         }
         return childrenCombined;
     }
 
     /** 将 Predicate AST 转换为向后兼容的 FilterItem */
-    public static FilterItem fromPredicate(
-            com.jdec.platform.data.api.model.predicate.Predicate pred) {
+    public static FilterItem fromPredicate(Predicate pred) {
         if (pred == null) {
             return null;
         }
-        if (pred instanceof com.jdec.platform.data.api.model.predicate.ComparisonPredicate comp) {
+        if (pred instanceof ComparisonPredicate comp) {
             String tbl = null;
             String col = null;
             Long mid = null;
-            if (comp.getExpression()
-                    instanceof com.jdec.platform.data.api.model.predicate.ColumnRef cr) {
+            if (comp.getExpression() instanceof ColumnRef cr) {
                 tbl = cr.getTableName();
                 col = cr.getColumnName();
                 mid = cr.getModuleId();
@@ -295,8 +285,8 @@ public class FilterItem implements Serializable {
                     .value(comp.getValue())
                     .build();
         }
-        if (pred instanceof com.jdec.platform.data.api.model.predicate.CompoundPredicate comp) {
-            java.util.List<FilterItem> childItems = new java.util.ArrayList<>();
+        if (pred instanceof CompoundPredicate comp) {
+            List<FilterItem> childItems = new ArrayList<>();
             if (comp.getPredicates() != null) {
                 for (var p : comp.getPredicates()) {
                     var item = fromPredicate(p);

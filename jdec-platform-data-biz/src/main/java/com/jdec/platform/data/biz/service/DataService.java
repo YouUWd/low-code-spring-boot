@@ -7,10 +7,13 @@ import com.jdec.platform.data.api.dto.request.ForkVersionReq;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SingleTableQueryReq;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.DataSaveResp;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,31 +55,28 @@ public class DataService implements DataApi {
     }
 
     @Override
-    public DataPage<List<java.util.Map<String, Object>>> querySingleTablePage(
-            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+    public DataPage<List<Map<String, Object>>> querySingleTablePage(SingleTableQueryReq req) {
         return singleTableQueryService.querySingleTablePage(req);
     }
 
     @Override
-    public List<java.util.Map<String, Object>> querySingleTableList(
-            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+    public List<Map<String, Object>> querySingleTableList(SingleTableQueryReq req) {
         return singleTableQueryService.querySingleTableList(req);
     }
 
     @Override
-    public <T> List<T> querySingleTableColumn(
-            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req, Class<T> targetType) {
+    public <T> List<T> querySingleTableColumn(SingleTableQueryReq req, Class<T> targetType) {
         return singleTableQueryService.querySingleTableColumn(req, targetType);
     }
 
     @Override
-    public Long countSingleTable(com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+    public Long countSingleTable(SingleTableQueryReq req) {
         return singleTableQueryService.countSingleTable(req);
     }
 
     @Override
     public List<Long> getLatestVersionIds(
-            String tableName, java.util.Collection<String> businessNos, Integer businessStatus) {
+            String tableName, Collection<String> businessNos, Integer businessStatus) {
         return singleTableQueryService.getLatestVersionIds(tableName, businessNos, businessStatus);
     }
 

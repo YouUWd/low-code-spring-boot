@@ -2,6 +2,8 @@ package com.jdec.platform.data.api.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -58,14 +60,14 @@ public class SingleTableQueryReq implements Serializable {
     public static SingleTableQueryReq of(String tableName, String... columns) {
         return SingleTableQueryReq.builder()
                 .tableName(tableName)
-                .columns(columns != null ? java.util.Arrays.asList(columns) : null)
+                .columns(columns != null ? Arrays.asList(columns) : null)
                 .build();
     }
 
     public SingleTableQueryReq addFilter(FilterItem filter) {
         if (filter != null) {
             if (this.filters == null) {
-                this.filters = new java.util.ArrayList<>();
+                this.filters = new ArrayList<>();
             }
             this.filters.add(filter);
         }
@@ -75,7 +77,7 @@ public class SingleTableQueryReq implements Serializable {
     public SingleTableQueryReq addSort(SortItem sort) {
         if (sort != null) {
             if (this.sorts == null) {
-                this.sorts = new java.util.ArrayList<>();
+                this.sorts = new ArrayList<>();
             }
             this.sorts.add(sort);
         }

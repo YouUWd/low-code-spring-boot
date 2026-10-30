@@ -98,11 +98,12 @@ class CompanyMenuQueryContractTest {
                         configApi,
                         dataApi,
                         commonFilterResolver,
-                        sysUserApi,
-                        sysStatusApi,
                         approvalEngine,
                         sysApprovalChainConfigApi,
-                        sysFileApi);
+                        new QueryResultEnhanceServiceImpl(sysUserApi, sysStatusApi),
+                        null,
+                        null,
+                        sysStatusApi);
 
         initCompanyFixture();
 

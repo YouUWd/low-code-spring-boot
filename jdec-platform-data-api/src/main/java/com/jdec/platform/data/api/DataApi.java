@@ -6,10 +6,13 @@ import com.jdec.platform.data.api.dto.request.ForkVersionReq;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.dto.request.SingleTableQueryReq;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.DataSaveResp;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 通用低代码数据引擎客户端接口 (DataApi)
@@ -48,8 +51,7 @@ public interface DataApi {
      * @param req 单表查询请求 (支持通过 pageNo 与 pageSize 分页)
      * @return 分页数据对象，包含当前页记录列表及总条数
      */
-    DataPage<List<java.util.Map<String, Object>>> querySingleTablePage(
-            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req);
+    DataPage<List<Map<String, Object>>> querySingleTablePage(SingleTableQueryReq req);
 
     /**
      * 单表列表轻量投影查询 (不依赖模块树，直接在目标单表上执行查询，跳过多表编译与复杂上下文)
@@ -57,8 +59,7 @@ public interface DataApi {
      * @param req 单表查询请求
      * @return 记录列表，每条记录为 Map<列名, 字段值>
      */
-    List<java.util.Map<String, Object>> querySingleTableList(
-            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req);
+    List<Map<String, Object>> querySingleTableList(SingleTableQueryReq req);
 
     /**
      * 单表单列值投影查询 (直接提取满足条件的指定列数据，例如 List<Long> ids 或 List<String> businessNos)
@@ -67,8 +68,7 @@ public interface DataApi {
      * @param targetType 目标类型 Class
      * @return 单列值列表
      */
-    <T> List<T> querySingleTableColumn(
-            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req, Class<T> targetType);
+    <T> List<T> querySingleTableColumn(SingleTableQueryReq req, Class<T> targetType);
 
     /**
      * 单表主键 ID 列表轻量查询快捷方法 (相当于 querySingleTableColumn(req, Long.class))
@@ -76,8 +76,7 @@ public interface DataApi {
      * @param req 单表查询请求
      * @return 满足条件的 ID 列表
      */
-    default List<Long> querySingleTableIds(
-            com.jdec.platform.data.api.dto.request.SingleTableQueryReq req) {
+    default List<Long> querySingleTableIds(SingleTableQueryReq req) {
         return querySingleTableColumn(req, Long.class);
     }
 
@@ -87,7 +86,7 @@ public interface DataApi {
      * @param req 单表查询请求 (仅使用 tableName 与 filters)
      * @return 满足条件的记录数
      */
-    Long countSingleTable(com.jdec.platform.data.api.dto.request.SingleTableQueryReq req);
+    Long countSingleTable(SingleTableQueryReq req);
 
     /**
      * 批量查询单据最新启用的最大版本主键 ID 集合
@@ -100,7 +99,7 @@ public interface DataApi {
      * @return 各单号最新启用的记录 ID 列表
      */
     List<Long> getLatestVersionIds(
-            String tableName, java.util.Collection<String> businessNos, Integer businessStatus);
+            String tableName, Collection<String> businessNos, Integer businessStatus);
 
     // ==================== 写契约 (100% 读写同构强约束) ====================
 

@@ -1,13 +1,16 @@
 package com.jdec.platform.common.biz.controller;
 
+import com.jdec.platform.common.api.dto.request.MenuActiveToggleReq;
 import com.jdec.platform.common.api.dto.request.MenuChangeQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
 import com.jdec.platform.common.api.dto.response.MenuApprovalCountResp;
+import com.jdec.platform.common.api.dto.response.MenuChangeCountResp;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
+import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -147,6 +150,45 @@ public class CommonAggregateController {
         } catch (Exception ex) {
             log.error(
                     "Common aggregate getApprovalCountByMenu failed: menuId={}, err={}",
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/menu/{menuId}/change-count")
+    @Operation(
+            summary = "基于菜单 ID 查询是否启用变更申请及未读变更申请单数量",
+            description =
+                    "传入 menuId，返回该菜单关联根模块的 enableChange(1-是, 0-否) 及 ${primaryTable}_change 表中未读(read_status=0)的记录数量")
+    public ApiResponse<MenuChangeCountResp> getChangeCountByMenu(@PathVariable Long menuId) {
+        try {
+            MenuChangeCountResp result = commonAggregateService.getChangeCountByMenu(menuId);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common aggregate getChangeCountByMenu failed: menuId={}, err={}",
+                    menuId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/menu/{menuId}/active-toggle")
+    @Operation(
+            summary = "基于菜单 ID 批量更新单据启停业务状态",
+            description =
+                    "根据 business_no 批量更新业务单据状态：启用是将 11 改为 99，停用是将 99 改为 11，不更改其他状态的数据。返回目标状态增强后的 StatusSimpleResp 对象")
+    public ApiResponse<StatusSimpleResp> toggleActiveStatusByMenu(
+            @PathVariable Long menuId, @RequestBody MenuActiveToggleReq req) {
+        try {
+            StatusSimpleResp result = commonAggregateService.toggleActiveStatusByMenu(menuId, req);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common aggregate toggleActiveStatusByMenu failed: menuId={}, err={}",
                     menuId,
                     ex.getMessage(),
                     ex);

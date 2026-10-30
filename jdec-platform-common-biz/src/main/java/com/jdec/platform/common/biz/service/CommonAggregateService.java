@@ -1,12 +1,16 @@
 package com.jdec.platform.common.biz.service;
 
+import com.jdec.platform.common.api.dto.request.MenuActiveToggleReq;
 import com.jdec.platform.common.api.dto.request.MenuChangeQueryReq;
 import com.jdec.platform.common.api.dto.request.MenuListReq;
 import com.jdec.platform.common.api.dto.request.MenuOptionReq;
 import com.jdec.platform.common.api.dto.request.MenuQueryReq;
+import com.jdec.platform.common.api.dto.response.MenuApprovalCountResp;
+import com.jdec.platform.common.api.dto.response.MenuChangeCountResp;
 import com.jdec.platform.common.api.dto.response.MenuDataResp;
 import com.jdec.platform.common.api.dto.response.MenuDetailResp;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
+import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import java.util.List;
 
@@ -65,6 +69,24 @@ public interface CommonAggregateService {
      * @param menuId 菜单 ID
      * @return 审批统计响应列表: 1(待办)、2(已办)、3(全部)
      */
-    List<com.jdec.platform.common.api.dto.response.MenuApprovalCountResp> getApprovalCountByMenu(
-            Long menuId);
+    List<MenuApprovalCountResp> getApprovalCountByMenu(Long menuId);
+
+    /**
+     * 基于菜单 ID 查询是否启用变更申请及未读变更申请单数量
+     *
+     * @param menuId 菜单 ID
+     * @return 变更启用状态 (enableChange) 与未读变更申请单数量 (unreadCount)
+     */
+    MenuChangeCountResp getChangeCountByMenu(Long menuId);
+
+    /**
+     * 基于菜单 ID 批量更新单据启停业务状态
+     *
+     * <p>根据 business_no 批量更新：启用是将 11 改为 99，停用是将 99 改为 11，不更改其他状态的数据。
+     *
+     * @param menuId 菜单 ID
+     * @param req 批量启停请求体
+     * @return 目标状态增强后的简要状态对象 (包含 title, statusValue, statusBackground, statusFontColor)
+     */
+    StatusSimpleResp toggleActiveStatusByMenu(Long menuId, MenuActiveToggleReq req);
 }

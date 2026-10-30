@@ -41,6 +41,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.h2.jdbcx.JdbcDataSource;
 import org.jooq.DSLContext;
@@ -194,7 +197,7 @@ class CompanyH2IntegrationTest {
         AppContext.remove();
     }
 
-    private <T> T inTx(java.util.function.Supplier<T> action) {
+    private <T> T inTx(Supplier<T> action) {
         return txTemplate.execute(status -> action.get());
     }
 
@@ -1959,7 +1962,7 @@ class CompanyH2IntegrationTest {
     }
 
     private static String tableOf(String sql) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("from `(\\w+)`").matcher(sql);
+        Matcher m = Pattern.compile("from `(\\w+)`").matcher(sql);
         return m.find() ? m.group(1) : null;
     }
 

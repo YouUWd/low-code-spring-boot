@@ -30,9 +30,6 @@ public class MenuDataResp implements Serializable {
     @Schema(description = "模块权限汇总 (1-有权限, 0-无权限)")
     private ModuleSimplePermissionDTO modulePermission;
 
-    @Schema(description = "是否启用变更申请: 1-是, 0-否", example = "0")
-    private Integer enableChange;
-
     @Schema(description = "页面全局操作按钮列表 (供页面顶部工具栏直接渲染)")
     private List<ActionButtonDTO> globalActions;
 
