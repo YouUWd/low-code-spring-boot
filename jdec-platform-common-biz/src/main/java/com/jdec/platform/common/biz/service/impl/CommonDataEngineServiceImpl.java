@@ -1,6 +1,7 @@
 package com.jdec.platform.common.biz.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.ChangeRequestDetailQueryReq;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.jooq.JSON;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -43,6 +45,8 @@ import org.springframework.util.CollectionUtils;
 @Service
 @RequiredArgsConstructor
 public class CommonDataEngineServiceImpl implements CommonDataEngineService {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final DataEngineApi dataEngineApi;
 
@@ -486,16 +490,17 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                 entry -> tableName + "." + entry.getKey(),
                                                 Map.Entry::getValue));
 
-                if (returnMap != null
-                        && !returnMap.isEmpty()
-                        && returnMap.containsKey(tableName + "." + "created_by")) {
-                    CreatedUserInfoResp createdUserInfoResp =
-                            dataEngineApi.getCreatedUserInfo(
-                                    Long.parseLong(
-                                            String.valueOf(
-                                                    returnMap.get(
-                                                            tableName + "." + "created_by"))));
-                    returnMap.putAll(BeanUtil.beanToMap(createdUserInfoResp));
+                if (returnMap != null && !returnMap.isEmpty()) {
+                    dealJsonField(returnMap);
+                    if (returnMap.containsKey(tableName + "." + "created_by")) {
+                        CreatedUserInfoResp createdUserInfoResp =
+                                dataEngineApi.getCreatedUserInfo(
+                                        Long.parseLong(
+                                                String.valueOf(
+                                                        returnMap.get(
+                                                                tableName + "." + "created_by"))));
+                        returnMap.putAll(BeanUtil.beanToMap(createdUserInfoResp));
+                    }
                 }
 
                 builder.changeRequestData(returnMap);
@@ -748,5 +753,42 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         nestedModuleDataDTOBuilder.record(Collections.singletonList(recordDataDTOBuilder.build()));
         return nestedModuleDataDTOBuilder.build();
+    }
+
+    private void dealJsonField(Map<String, Object> resultMap) {
+        for (Map.Entry<String, Object> entry : resultMap.entrySet()) {
+            Object val = parseIfJson(entry.getValue());
+            resultMap.put(entry.getKey(), val);
+        }
+    }
+
+    /** 自动将 JSON 字符串或 jOOQ JSON 对象转换为结构化的 List/Map，保持返回值纯净 */
+    private Object parseIfJson(Object val) {
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof JSON jooqJson) {
+            String jsonStr = jooqJson.data();
+            if (jsonStr == null || jsonStr.isBlank()) {
+                return null;
+            }
+            try {
+                return OBJECT_MAPPER.readTree(jsonStr);
+            } catch (Exception e) {
+                return jsonStr;
+            }
+        }
+        if (val instanceof String str) {
+            String trimmed = str.trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
+                    || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                try {
+                    return OBJECT_MAPPER.readTree(trimmed);
+                } catch (Exception ignored) {
+                    return val;
+                }
+            }
+        }
+        return val;
     }
 }
