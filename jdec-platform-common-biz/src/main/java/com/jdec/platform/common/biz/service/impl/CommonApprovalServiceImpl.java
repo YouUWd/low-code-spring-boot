@@ -305,33 +305,32 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
             // 当前状态
             Integer versionNo = 0;
             Map<String, Object> approvalStatus = new HashMap<>();
+            ModuleApprovalChainConfigResp.StatusNode statusNode =
+                    new ModuleApprovalChainConfigResp.StatusNode();
             if (Objects.nonNull(btnType)
                     && (btnType.equals("change") || btnType.equals("change-change"))) {
-                ModuleApprovalChainConfigResp.StatusNode statusNode =
-                        sysStatusApi.getStatusByValue(1, rootModuleId);
+                statusNode = sysStatusApi.getStatusByValue(1, rootModuleId);
                 if (Objects.isNull(statusNode)) {
                     throw new BusinessException(601, "模块状态配置异常");
                 }
-                approvalStatus.put("id", statusNode.getId());
-                approvalStatus.put("statusValue", statusNode.getStatusValue());
-                approvalStatus.put("title", statusNode.getTitle());
-                approvalStatus.put("statusBackground", statusNode.getStatusBackground());
-                approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
                 // 当前版本号
                 versionNo = versionList.getFirst().getVersion();
 
             } else {
-                ModuleApprovalChainConfigResp.StatusNode statusNode =
+                statusNode =
                         sysStatusApi.getStatusByValue(
                                 (Integer) recordData.get("business_status"), rootModuleId);
-                approvalStatus.put("id", statusNode.getId());
-                approvalStatus.put("statusValue", statusNode.getStatusValue());
-                approvalStatus.put("title", statusNode.getTitle());
-                approvalStatus.put("statusBackground", statusNode.getStatusBackground());
-                approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+                if (Objects.isNull(statusNode)) {
+                    throw new BusinessException(601, "模块状态配置异常");
+                }
                 // 当前版本号
                 versionNo = (Integer) recordData.get("version_no");
             }
+            approvalStatus.put("id", statusNode.getId());
+            approvalStatus.put("statusValue", statusNode.getStatusValue());
+            approvalStatus.put("title", statusNode.getTitle());
+            approvalStatus.put("statusBackground", statusNode.getStatusBackground());
+            approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
             result.put("versionNo", versionNo);
             result.put("approvalStatus", approvalStatus);
             // 是否草稿
@@ -359,6 +358,11 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 result.put("requestChange", true);
             } else {
                 result.put("requestChange", false);
+            }
+            // 停用状态
+            if (statusNode.getStatusValue() == -2) {
+                result.put("btnList", null);
+                result.put("canEdit", 0);
             }
         }
         return result;
