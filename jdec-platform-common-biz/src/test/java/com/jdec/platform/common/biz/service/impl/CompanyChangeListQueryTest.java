@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -37,6 +38,8 @@ import com.jdec.platform.data.api.dto.request.SingleTableQueryReq;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
+import com.jdec.platform.shared.datasource.JooqDataContextFactory;
+import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.security.model.LoginUser;
 import java.util.Collections;
@@ -44,6 +47,12 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jooq.DSLContext;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
+import org.jooq.tools.jdbc.MockConnection;
+import org.jooq.tools.jdbc.MockDataProvider;
+import org.jooq.tools.jdbc.MockResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -63,6 +72,9 @@ class CompanyChangeListQueryTest {
     private SysApprovalChainConfigApi sysApprovalChainConfigApi;
     private SysFileApi sysFileApi;
     private QueryResultEnhanceService queryResultEnhanceService;
+    private JooqDataContextFactory jooqDataContextFactory;
+    private DSLContext dslContext;
+    private List<String> executedSqls;
     private CommonAggregateServiceImpl service;
     private CommonAggregateController controller;
 
@@ -83,11 +95,24 @@ class CompanyChangeListQueryTest {
         sysApprovalChainConfigApi = mock(SysApprovalChainConfigApi.class);
         sysFileApi = mock(SysFileApi.class);
         queryResultEnhanceService = mock(QueryResultEnhanceService.class);
+        jooqDataContextFactory = mock(JooqDataContextFactory.class);
+
+        executedSqls = new java.util.ArrayList<>();
+        MockDataProvider provider =
+                ctx -> {
+                    executedSqls.add(ctx.sql());
+                    return new MockResult[] {new MockResult(1)};
+                };
+        MockConnection conn = new MockConnection(provider);
+        dslContext = DSL.using(conn, SQLDialect.MYSQL);
+        when(jooqDataContextFactory.getContext()).thenReturn(dslContext);
 
         CommonFilterResolver.PrimaryFilterResult dummyResult =
                 CommonFilterResolver.PrimaryFilterResult.of(
                         Collections.emptyList(), Collections.emptyList());
         when(commonFilterResolver.resolve(any(), any())).thenReturn(dummyResult);
+        // 默认模拟当前登录用户在主表有创建的记录 (id: 286)
+        when(dataApi.querySingleTableList(any())).thenReturn(List.of(Map.of("id", 286L)));
 
         service =
                 new CommonAggregateServiceImpl(
@@ -100,7 +125,7 @@ class CompanyChangeListQueryTest {
                         sysApprovalChainConfigApi,
                         queryResultEnhanceService,
                         null,
-                        null,
+                        jooqDataContextFactory,
                         sysStatusApi);
 
         controller = new CommonAggregateController(service);
@@ -244,6 +269,15 @@ class CompanyChangeListQueryTest {
         assertTrue(req.getColumns().contains("source_id"));
         assertTrue(req.getColumns().contains("modify_reason"));
         assertTrue(req.getColumns().contains("read_status"));
+
+        // 验证必须包含主表创建人为当前用户的 source_id IN (286L) 条件
+        assertTrue(
+                req.getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        "source_id".equalsIgnoreCase(f.getColumnName())
+                                                && "IN".equalsIgnoreCase(f.getOperator())
+                                                && List.of(286L).equals(f.getValue())));
 
         // 5. 验证返回数据与纯 info 命名空间结构
         assertNotNull(resp);
@@ -498,5 +532,201 @@ class CompanyChangeListQueryTest {
                                 f ->
                                         "read_status".equalsIgnoreCase(f.getColumnName())
                                                 && Integer.valueOf(0).equals(f.getValue())));
+        // 验证统计未读数时同样绑定了当前用户创建的主表记录 source_id IN (286L)
+        assertTrue(
+                countReq.getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        "source_id".equalsIgnoreCase(f.getColumnName())
+                                                && "IN".equalsIgnoreCase(f.getOperator())
+                                                && List.of(286L).equals(f.getValue())));
+    }
+
+    @Test
+    @DisplayName("测试当前用户在原单主表无创建记录时，变更单列表与未读数量统计均短路返回空结果")
+    void testChangeListAndCount_userHasNoPrimaryRecords_returnsEmpty() {
+        Long menuId = 500L;
+        Long rootModuleId = 1001L;
+
+        // 模拟当前登录用户在主表无任何记录
+        when(dataApi.querySingleTableList(any())).thenReturn(Collections.emptyList());
+
+        when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
+        ModuleInfo moduleInfo =
+                ModuleInfo.builder()
+                        .moduleId(rootModuleId)
+                        .primaryTable("info")
+                        .enableChange(1)
+                        .build();
+        ModuleTreeDTO moduleTree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(rootModuleId)
+                        .rootModule(moduleInfo)
+                        .moduleMap(Map.of(rootModuleId, moduleInfo))
+                        .fieldMap(new HashMap<>())
+                        .fieldToModuleMap(new HashMap<>())
+                        .build();
+        when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
+
+        MenuHeaderColumnResp headerRoot =
+                MenuHeaderColumnResp.builder()
+                        .moduleId(rootModuleId)
+                        .children(new java.util.ArrayList<>())
+                        .build();
+        when(userMenuHeaderApi.getUserMenuHeaderDisplay(
+                        anyLong(), anyLong(), anyLong(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(MenuHeaderDisplayResp.builder().header(headerRoot).build());
+
+        // 1. 验证数量统计短路返回 0L，不调用 dataApi.countSingleTable
+        ApiResponse<MenuChangeCountResp> countResp = controller.getChangeCountByMenu(menuId);
+        assertNotNull(countResp);
+        assertEquals(0L, countResp.getData().getUnreadCount());
+        verify(dataApi, org.mockito.Mockito.never()).countSingleTable(any());
+
+        // 2. 验证列表查询短路返回空列表，不调用 dataApi.querySingleTablePage
+        ApiResponse<MenuDataResp> listResp =
+                controller.queryChangeListByMenu(
+                        menuId, MenuChangeQueryReq.builder().pageNo(1).pageSize(10).build());
+        assertNotNull(listResp);
+        assertNotNull(listResp.getData());
+        assertNotNull(listResp.getData().getData());
+        assertEquals(0L, listResp.getData().getData().getTotal());
+        assertTrue(listResp.getData().getData().getRecord().isEmpty());
+        verify(dataApi, org.mockito.Mockito.never()).querySingleTablePage(any());
+    }
+
+    @Test
+    @DisplayName("测试 Controller 端点 markChangeAsRead 与 markChangeAsReadFromBody 成功委托 Service")
+    void testControllerMarkChangeAsRead() {
+        CommonAggregateService mockService = mock(CommonAggregateService.class);
+        CommonAggregateController testController = new CommonAggregateController(mockService);
+
+        when(mockService.markChangeAsRead(100L, 50L)).thenReturn(true);
+
+        // 1. 路径变量调用
+        ApiResponse<Boolean> resp1 = testController.markChangeAsRead(100L, 50L);
+        assertNotNull(resp1);
+        assertEquals(200, resp1.getStatus());
+        assertTrue(resp1.getData());
+
+        // 2. RequestBody 传参调用 (Map 携带 changeId)
+        ApiResponse<Boolean> resp2 =
+                testController.markChangeAsReadFromBody(100L, null, Map.of("changeId", 50L));
+        assertNotNull(resp2);
+        assertEquals(200, resp2.getStatus());
+        assertTrue(resp2.getData());
+
+        // 3. RequestParam 传参调用
+        ApiResponse<Boolean> resp3 = testController.markChangeAsReadFromBody(100L, 50L, null);
+        assertNotNull(resp3);
+        assertEquals(200, resp3.getStatus());
+        assertTrue(resp3.getData());
+    }
+
+    @Test
+    @DisplayName("测试 Service 标记已读: 未读记录成功更新 read_status=1 并返回 true")
+    void testServiceMarkChangeAsRead_unreadRecord_executesUpdate() {
+        Long menuId = 200L;
+        Long changeId = 15L;
+        Long rootModuleId = 1001L;
+
+        when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
+        ModuleInfo moduleInfo =
+                ModuleInfo.builder()
+                        .moduleId(rootModuleId)
+                        .primaryTable("info")
+                        .enableChange(1)
+                        .build();
+        ModuleTreeDTO moduleTree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(rootModuleId)
+                        .rootModule(moduleInfo)
+                        .moduleMap(Map.of(rootModuleId, moduleInfo))
+                        .fieldMap(new HashMap<>())
+                        .fieldToModuleMap(new HashMap<>())
+                        .build();
+        when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
+
+        // 模拟当前用户的主表创建记录 (id: 286L) 与该未读变更单 (id: 15L, read_status: 0)
+        when(dataApi.querySingleTableList(any()))
+                .thenReturn(List.of(Map.of("id", 286L))) // fetchUserCreatedPrimaryTableIds
+                .thenReturn(List.of(Map.of("id", changeId, "read_status", 0))); // 校验变更单存在且属于用户
+
+        Boolean result = service.markChangeAsRead(menuId, changeId);
+        assertTrue(result);
+        assertEquals(1, executedSqls.size());
+        String executedSql = executedSqls.get(0).toLowerCase();
+        assertTrue(executedSql.contains("update `info_change`"));
+        assertTrue(executedSql.contains("`read_status` = ?"));
+    }
+
+    @Test
+    @DisplayName("测试 Service 标记已读: 变更单已为已读时直接返回 true 无需重复更新")
+    void testServiceMarkChangeAsRead_alreadyRead_returnsTrueWithoutUpdate() {
+        Long menuId = 200L;
+        Long changeId = 16L;
+        Long rootModuleId = 1001L;
+
+        when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
+        ModuleInfo moduleInfo =
+                ModuleInfo.builder()
+                        .moduleId(rootModuleId)
+                        .primaryTable("info")
+                        .enableChange(1)
+                        .build();
+        ModuleTreeDTO moduleTree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(rootModuleId)
+                        .rootModule(moduleInfo)
+                        .moduleMap(Map.of(rootModuleId, moduleInfo))
+                        .fieldMap(new HashMap<>())
+                        .fieldToModuleMap(new HashMap<>())
+                        .build();
+        when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
+
+        // 模拟当前用户主表记录与已读变更单 (read_status: 1)
+        when(dataApi.querySingleTableList(any()))
+                .thenReturn(List.of(Map.of("id", 286L)))
+                .thenReturn(List.of(Map.of("id", changeId, "read_status", 1)));
+
+        Boolean result = service.markChangeAsRead(menuId, changeId);
+        assertTrue(result);
+        assertTrue(executedSqls.isEmpty(), "已读状态不应产生更新 SQL");
+    }
+
+    @Test
+    @DisplayName("测试 Service 标记已读: 变更单不存在或非当前用户主表数据时抛出 BusinessException")
+    void testServiceMarkChangeAsRead_notFoundOrNoPermission_throwsException() {
+        Long menuId = 200L;
+        Long changeId = 999L;
+        Long rootModuleId = 1001L;
+
+        when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
+        ModuleInfo moduleInfo =
+                ModuleInfo.builder()
+                        .moduleId(rootModuleId)
+                        .primaryTable("info")
+                        .enableChange(1)
+                        .build();
+        ModuleTreeDTO moduleTree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(rootModuleId)
+                        .rootModule(moduleInfo)
+                        .moduleMap(Map.of(rootModuleId, moduleInfo))
+                        .fieldMap(new HashMap<>())
+                        .fieldToModuleMap(new HashMap<>())
+                        .build();
+        when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
+
+        // 变更单不存在或不在用户主表 ID 中
+        when(dataApi.querySingleTableList(any()))
+                .thenReturn(List.of(Map.of("id", 286L)))
+                .thenReturn(Collections.emptyList());
+
+        assertThrows(
+                BusinessException.class,
+                () -> {
+                    service.markChangeAsRead(menuId, changeId);
+                });
     }
 }
